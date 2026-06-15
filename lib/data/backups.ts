@@ -16,10 +16,10 @@ function toDTO(b: Backup): BackupDTO {
   return {
     ...b,
     databaseName: b.databaseId
-      ? d.databases.find((x) => x.id === b.databaseId)?.name ?? null
+      ? (d.databases.find((x) => x.id === b.databaseId)?.name ?? null)
       : null,
     destinationName:
-      d.s3Destinations.find((x) => x.id === b.destinationId)?.name ?? "—",
+      d.s3Destinations.find((x) => x.id === b.destinationId)?.name ?? "",
   };
 }
 
@@ -53,7 +53,12 @@ export async function createBackup(input: {
     createdAt: nowIso(),
   };
   mutate((d) => d.backups.push(b));
-  recordActivity("backup", `Created backup schedule ${b.name}`, user.name, null);
+  recordActivity(
+    "backup",
+    `Created backup schedule ${b.name}`,
+    user.name,
+    null,
+  );
   return toDTO(b);
 }
 
@@ -68,7 +73,10 @@ export async function runBackup(id: string): Promise<void> {
   recordActivity("backup", `Ran backup manually`, user.name, null);
 }
 
-export async function toggleBackup(id: string, enabled: boolean): Promise<void> {
+export async function toggleBackup(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
   await assertUser();
   mutate((d) => {
     const b = d.backups.find((x) => x.id === id);

@@ -26,7 +26,10 @@ export function Sidebar({ server }: { server: Server | null }) {
   // `hydrated` guards the width transition so the persisted state does not
   // animate on first paint. localStorage is only available after mount, so the
   // value is read in an effect.
-  const [state, setState] = React.useState({ collapsed: false, hydrated: false });
+  const [state, setState] = React.useState({
+    collapsed: false,
+    hydrated: false,
+  });
   const { collapsed, hydrated } = state;
 
   React.useEffect(() => {
@@ -71,13 +74,13 @@ export function Sidebar({ server }: { server: Server | null }) {
       className={cn(
         "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex",
         hydrated && "transition-[width] duration-200 ease-out",
-        collapsed ? "w-15" : "w-60"
+        collapsed ? "w-15" : "w-60",
       )}
     >
       <div
         className={cn(
           "flex h-14 items-center",
-          collapsed ? "justify-center px-2" : "px-5"
+          collapsed ? "justify-center px-2" : "px-5",
         )}
       >
         <Link href="/" className="cursor-pointer" aria-label="Deplo home">
@@ -97,7 +100,7 @@ export function Sidebar({ server }: { server: Server | null }) {
                 href="/servers"
                 className={cn(
                   "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground",
-                  collapsed && "justify-center"
+                  collapsed && "justify-center",
                 )}
               >
                 <StatusDot status={server.status} />
@@ -113,7 +116,7 @@ export function Sidebar({ server }: { server: Server | null }) {
             </TooltipTrigger>
             {collapsed && (
               <TooltipContent side="right">
-                {server.name} — {server.cpuUsage}% CPU
+                {server.name} {server.cpuUsage}% CPU
               </TooltipContent>
             )}
           </Tooltip>
@@ -123,7 +126,7 @@ export function Sidebar({ server }: { server: Server | null }) {
       <div
         className={cn(
           "border-t border-sidebar-border p-2",
-          collapsed ? "flex justify-center" : "flex justify-end"
+          collapsed ? "flex justify-center" : "flex justify-end",
         )}
       >
         <Tooltip delayDuration={400}>

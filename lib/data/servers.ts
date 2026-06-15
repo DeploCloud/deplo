@@ -49,7 +49,7 @@ export async function addServer(input: AddServerInput): Promise<Server> {
     type: "remote",
     status: "provisioning",
     ip: host,
-    dockerVersion: "—",
+    dockerVersion: "",
     traefikEnabled: false,
     cpuCores: 0,
     memoryMb: 0,

@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
-  Deplo design system — Vercel-style black & white (shadcn tokens).
+  Deplo design system  Vercel-style black & white (shadcn tokens).
   Light + dark. App defaults to dark (see <html class="dark">).
 */
 :root {
@@ -162,12 +162,16 @@
 
 /* Subtle grid / shimmer helpers reused across pages */
 .deplo-grid-bg {
-  background-image: radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    var(--border) 1px,
+    transparent 0
+  );
   background-size: 28px 28px;
 }
 
 /* ------------------------------------------------------------------ */
-/* Page + element transitions — the "single-page app" feel.            */
+/* Page + element transitions  the "single-page app" feel.            */
 /* Routes are prefetched by <Link>; this only animates the entrance so */
 /* navigating between pages stays instant but never feels abrupt.      */
 /* ------------------------------------------------------------------ */
@@ -203,12 +207,24 @@
 .stagger-children > * {
   animation: deplo-page-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 40ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 80ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 120ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 160ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger-children > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+.stagger-children > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+.stagger-children > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+.stagger-children > *:nth-child(5) {
+  animation-delay: 160ms;
+}
+.stagger-children > *:nth-child(6) {
+  animation-delay: 200ms;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .animate-page-in,

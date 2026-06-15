@@ -16,7 +16,7 @@ export function CodeBlock({
     <div
       className={cn(
         "group relative overflow-hidden rounded-lg border border-border bg-[#0a0a0a] dark:bg-[#0a0a0a]",
-        className
+        className,
       )}
     >
       {(filename || language) && (
@@ -36,11 +36,13 @@ export function CodeBlock({
   );
 }
 
-/** Single-line inline command with copy button — for install one-liners. */
+/** Single-line inline command with copy button  for install one-liners. */
 export function CommandLine({ command }: { command: string }) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-border bg-[#0a0a0a] px-3 py-2">
-      <span className="select-none font-mono text-sm text-muted-foreground">$</span>
+      <span className="select-none font-mono text-sm text-muted-foreground">
+        $
+      </span>
       <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-sm text-zinc-200">
         {command}
       </code>

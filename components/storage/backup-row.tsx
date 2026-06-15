@@ -47,20 +47,24 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
     <TableRow>
       <TableCell className="font-medium">{backup.name}</TableCell>
       <TableCell className="text-muted-foreground">
-        {backup.databaseName ?? "—"}
+        {backup.databaseName ?? ""}
       </TableCell>
-      <TableCell className="text-muted-foreground">{backup.destinationName}</TableCell>
+      <TableCell className="text-muted-foreground">
+        {backup.destinationName}
+      </TableCell>
       <TableCell>
         <code className="font-mono text-xs">{backup.schedule}</code>
       </TableCell>
-      <TableCell className="text-muted-foreground">{backup.retentionDays}d</TableCell>
+      <TableCell className="text-muted-foreground">
+        {backup.retentionDays}d
+      </TableCell>
       <TableCell>
         {backup.lastStatus === "never" ? (
           <span className="text-xs text-muted-foreground">Never run</span>
         ) : (
           <span className="flex items-center gap-1.5 text-xs">
             <StatusDot status={backup.lastStatus} />
-            {backup.lastRunAt ? timeAgo(backup.lastRunAt) : "—"}
+            {backup.lastRunAt ? timeAgo(backup.lastRunAt) : ""}
           </span>
         )}
       </TableCell>

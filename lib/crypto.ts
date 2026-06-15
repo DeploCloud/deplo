@@ -13,7 +13,7 @@ import {
 /**
  * Central secret material.
  * In production set DEPLO_SECRET to a long random string (>= 32 chars).
- * A dev fallback is used otherwise so the app still runs locally — a warning
+ * A dev fallback is used otherwise so the app still runs locally  a warning
  * is emitted once because it is NOT safe for production.
  */
 let warned = false;
@@ -23,7 +23,7 @@ function rootSecret(): string {
   if (!warned && process.env.NODE_ENV === "production") {
     warned = true;
     console.warn(
-      "[deplo] DEPLO_SECRET is not set or too short — using an insecure dev key. Set DEPLO_SECRET in production."
+      "[deplo] DEPLO_SECRET is not set or too short  using an insecure dev key. Set DEPLO_SECRET in production.",
     );
   }
   return "deplo-dev-insecure-secret-change-me-please-0000";
@@ -65,13 +65,10 @@ export function encryptSecret(plaintext: string): string {
   const key = deriveKey("secrets");
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const enc = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
+  const enc = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `v1.${iv.toString("base64")}.${tag.toString("base64")}.${enc.toString(
-    "base64"
+    "base64",
   )}`;
 }
 
@@ -83,7 +80,7 @@ export function decryptSecret(payload: string): string {
     const decipher = createDecipheriv(
       "aes-256-gcm",
       key,
-      Buffer.from(ivB64, "base64")
+      Buffer.from(ivB64, "base64"),
     );
     decipher.setAuthTag(Buffer.from(tagB64, "base64"));
     const dec = Buffer.concat([
@@ -120,23 +117,27 @@ function fromB64url(s: string): Buffer {
 export function signSession(payload: SessionPayload): string {
   const body = b64url(Buffer.from(JSON.stringify(payload), "utf8"));
   const sig = b64url(
-    createHmac("sha256", deriveKey("session")).update(body).digest()
+    createHmac("sha256", deriveKey("session")).update(body).digest(),
   );
   return `${body}.${sig}`;
 }
 
-export function verifySession(token: string | undefined): SessionPayload | null {
+export function verifySession(
+  token: string | undefined,
+): SessionPayload | null {
   if (!token) return null;
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
   const expected = b64url(
-    createHmac("sha256", deriveKey("session")).update(body).digest()
+    createHmac("sha256", deriveKey("session")).update(body).digest(),
   );
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   try {
-    const payload = JSON.parse(fromB64url(body).toString("utf8")) as SessionPayload;
+    const payload = JSON.parse(
+      fromB64url(body).toString("utf8"),
+    ) as SessionPayload;
     if (typeof payload.exp !== "number" || payload.exp * 1000 < Date.now())
       return null;
     return payload;

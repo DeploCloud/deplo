@@ -1,4 +1,4 @@
-# Deplo control plane — self-deploy behind Traefik, backed by Postgres.
+# Deplo control plane  self-deploy behind Traefik, backed by Postgres.
 # On the server:
 #   1. docker network create deplo            (once; shared with Traefik)
 #   2. export DEPLO_DOMAIN=deplo.example.com

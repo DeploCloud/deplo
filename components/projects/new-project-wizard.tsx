@@ -82,19 +82,25 @@ function guessFramework(repo: string): FrameworkId {
 }
 
 function parseRepo(
-  url: string
-): { repo: string; provider: "github" | "gitlab" | "bitbucket" | "git" } | null {
+  url: string,
+): {
+  repo: string;
+  provider: "github" | "gitlab" | "bitbucket" | "git";
+} | null {
   const clean = url.trim().replace(/\.git$/, "");
-  const m = clean.match(/(?:github|gitlab|bitbucket)\.com[/:]([\w.-]+\/[\w.-]+)/i);
+  const m = clean.match(
+    /(?:github|gitlab|bitbucket)\.com[/:]([\w.-]+\/[\w.-]+)/i,
+  );
   const provider = /gitlab/i.test(clean)
     ? "gitlab"
     : /bitbucket/i.test(clean)
-    ? "bitbucket"
-    : /github/i.test(clean)
-    ? "github"
-    : "git";
+      ? "bitbucket"
+      : /github/i.test(clean)
+        ? "github"
+        : "git";
   if (m) return { repo: m[1], provider };
-  if (/^[\w.-]+\/[\w.-]+$/.test(clean)) return { repo: clean, provider: "github" };
+  if (/^[\w.-]+\/[\w.-]+$/.test(clean))
+    return { repo: clean, provider: "github" };
   if (/^https?:\/\/.+\/.+/.test(clean)) {
     const tail = clean.replace(/^https?:\/\/[^/]+\//, "");
     return { repo: tail, provider: "git" };
@@ -134,26 +140,27 @@ export function NewProjectWizard({
 
   const [serverId, setServerId] = React.useState(defaultServerId);
   const [source, setSource] = React.useState<DeploySource>(
-    isTemplate ? "docker-image" : "github"
+    isTemplate ? "docker-image" : "github",
   );
   const [repoUrl, setRepoUrl] = React.useState(
-    presetRepo ? `https://github.com/${presetRepo}` : ""
+    presetRepo ? `https://github.com/${presetRepo}` : "",
   );
   const [dockerImage, setDockerImage] = React.useState("");
   const [name, setName] = React.useState(presetName ?? template?.name ?? "");
   const [branch, setBranch] = React.useState("main");
   const [framework, setFramework] = React.useState<FrameworkId>(
-    isTemplate ? "docker" : "nextjs"
+    isTemplate ? "docker" : "nextjs",
   );
   const [detected, setDetected] = React.useState<FrameworkId | null>(null);
   const [autoDeploy, setAutoDeploy] = React.useState(true);
   const [advanced, setAdvanced] = React.useState(false);
   const [build, setBuild] = React.useState(() =>
-    buildConfigFor(isTemplate ? "docker" : "nextjs")
+    buildConfigFor(isTemplate ? "docker" : "nextjs"),
   );
 
   const preset = FRAMEWORKS[framework];
-  const usesGit = source === "github" || source === "git" || source === "dockerfile";
+  const usesGit =
+    source === "github" || source === "git" || source === "dockerfile";
 
   function onRepoChange(value: string) {
     setRepoUrl(value);
@@ -171,7 +178,10 @@ export function NewProjectWizard({
 
   function applyFramework(fw: FrameworkId) {
     setFramework(fw);
-    setBuild((b) => ({ ...buildConfigFor(fw), rootDirectory: b.rootDirectory }));
+    setBuild((b) => ({
+      ...buildConfigFor(fw),
+      rootDirectory: b.rootDirectory,
+    }));
   }
 
   function onSourceChange(next: DeploySource) {
@@ -192,9 +202,12 @@ export function NewProjectWizard({
       return;
     }
 
-    let repo = null as
-      | null
-      | { provider: "github" | "gitlab" | "bitbucket" | "git"; url: string; repo: string; branch: string };
+    let repo = null as null | {
+      provider: "github" | "gitlab" | "bitbucket" | "git";
+      url: string;
+      repo: string;
+      branch: string;
+    };
     let image: string | null = null;
     let projectFramework = framework;
 
@@ -206,7 +219,9 @@ export function NewProjectWizard({
       }
       repo = {
         provider: parsed.provider,
-        url: repoUrl.startsWith("http") ? repoUrl : `https://github.com/${parsed.repo}`,
+        url: repoUrl.startsWith("http")
+          ? repoUrl
+          : `https://github.com/${parsed.repo}`,
         repo: parsed.repo,
         branch: branch || "main",
       };
@@ -219,7 +234,9 @@ export function NewProjectWizard({
       projectFramework = "docker";
       repo = {
         provider: parsed.provider,
-        url: repoUrl.startsWith("http") ? repoUrl : `https://github.com/${parsed.repo}`,
+        url: repoUrl.startsWith("http")
+          ? repoUrl
+          : `https://github.com/${parsed.repo}`,
         repo: parsed.repo,
         branch: branch || "main",
       };
@@ -254,7 +271,7 @@ export function NewProjectWizard({
         autoDeploy: usesGit ? autoDeploy : false,
       });
       if (res.ok && res.data) {
-        toast.success("Project created — deploying…");
+        toast.success("Project created  deploying…");
         router.push(`/projects/${res.data.slug}`);
       } else if (!res.ok) {
         toast.error(res.error);
@@ -264,7 +281,7 @@ export function NewProjectWizard({
 
   return (
     <div className="space-y-6">
-      {/* Target server — front and centre, especially for templates. */}
+      {/* Target server  front and centre, especially for templates. */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -273,8 +290,8 @@ export function NewProjectWizard({
           </CardTitle>
           <CardDescription>
             Choose which server runs this {isTemplate ? "template" : "project"}.
-            The master is the host running Deplo; remote servers appear here once
-            connected.
+            The master is the host running Deplo; remote servers appear here
+            once connected.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -306,8 +323,8 @@ export function NewProjectWizard({
           <CardHeader>
             <CardTitle>Template</CardTitle>
             <CardDescription>
-              Deplo provisions the template&apos;s container stack and exposes it
-              through Traefik with automatic HTTPS.
+              Deplo provisions the template&apos;s container stack and exposes
+              it through Traefik with automatic HTTPS.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex items-center gap-4">
@@ -359,7 +376,9 @@ export function NewProjectWizard({
               })}
             </div>
 
-            {(source === "github" || source === "git" || source === "dockerfile") && (
+            {(source === "github" ||
+              source === "git" ||
+              source === "dockerfile") && (
               <div className="space-y-2">
                 <Label htmlFor="repo">
                   {source === "dockerfile"
@@ -408,8 +427,8 @@ export function NewProjectWizard({
               <div className="rounded-lg border border-dashed border-border p-6 text-center">
                 <Upload className="mx-auto mb-2 size-6 text-muted-foreground" />
                 <p className="text-sm">
-                  Create the project, then upload a code archive from the project
-                  page to trigger the first build.
+                  Create the project, then upload a code archive from the
+                  project page to trigger the first build.
                 </p>
               </div>
             )}
@@ -473,11 +492,13 @@ export function NewProjectWizard({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">{preset.description}</p>
+              <p className="text-xs text-muted-foreground">
+                {preset.description}
+              </p>
             </div>
           )}
 
-          {/* Advanced build settings — only relevant when Deplo builds the app. */}
+          {/* Advanced build settings  only relevant when Deplo builds the app. */}
           {!isTemplate && source !== "docker-image" && (
             <>
               <button
@@ -487,7 +508,10 @@ export function NewProjectWizard({
               >
                 <span className="font-medium">Build &amp; Output Settings</span>
                 <ChevronDown
-                  className={cn("size-4 transition-transform", advanced && "rotate-180")}
+                  className={cn(
+                    "size-4 transition-transform",
+                    advanced && "rotate-180",
+                  )}
                 />
               </button>
 
@@ -497,37 +521,49 @@ export function NewProjectWizard({
                     label="Root Directory"
                     tooltip="Directory in the repo where your app lives."
                     value={build.rootDirectory}
-                    onChange={(v) => setBuild((b) => ({ ...b, rootDirectory: v }))}
+                    onChange={(v) =>
+                      setBuild((b) => ({ ...b, rootDirectory: v }))
+                    }
                   />
                   <BuildField
                     label="Node.js Version"
                     tooltip="Runtime version used for the build container."
                     value={build.nodeVersion}
-                    onChange={(v) => setBuild((b) => ({ ...b, nodeVersion: v }))}
+                    onChange={(v) =>
+                      setBuild((b) => ({ ...b, nodeVersion: v }))
+                    }
                   />
                   <BuildField
                     label="Install Command"
                     tooltip="Command to install dependencies."
                     value={build.installCommand}
-                    onChange={(v) => setBuild((b) => ({ ...b, installCommand: v }))}
+                    onChange={(v) =>
+                      setBuild((b) => ({ ...b, installCommand: v }))
+                    }
                   />
                   <BuildField
                     label="Build Command"
                     tooltip="Command that produces the production build."
                     value={build.buildCommand}
-                    onChange={(v) => setBuild((b) => ({ ...b, buildCommand: v }))}
+                    onChange={(v) =>
+                      setBuild((b) => ({ ...b, buildCommand: v }))
+                    }
                   />
                   <BuildField
                     label="Output Directory"
                     tooltip="Directory containing the build output."
                     value={build.outputDirectory}
-                    onChange={(v) => setBuild((b) => ({ ...b, outputDirectory: v }))}
+                    onChange={(v) =>
+                      setBuild((b) => ({ ...b, outputDirectory: v }))
+                    }
                   />
                   <BuildField
                     label="Start Command"
                     tooltip="Command to run the server (leave empty for static)."
                     value={build.startCommand}
-                    onChange={(v) => setBuild((b) => ({ ...b, startCommand: v }))}
+                    onChange={(v) =>
+                      setBuild((b) => ({ ...b, startCommand: v }))
+                    }
                   />
                   <div className="space-y-2">
                     <Label>Container Port</Label>
@@ -535,7 +571,10 @@ export function NewProjectWizard({
                       type="number"
                       value={build.port}
                       onChange={(e) =>
-                        setBuild((b) => ({ ...b, port: Number(e.target.value) || 3000 }))
+                        setBuild((b) => ({
+                          ...b,
+                          port: Number(e.target.value) || 3000,
+                        }))
                       }
                     />
                   </div>

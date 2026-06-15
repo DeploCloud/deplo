@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
  *  - Set hardening response headers.
  *  - Optimistic auth redirect (presence-only cookie check). Real verification
  *    happens in layouts (requireUser) and the data layer (assertUser), per
- *    Next.js guidance — the proxy must not be the sole auth gate.
+ *    Next.js guidance  the proxy must not be the sole auth gate.
  *
  * Note: runs in the Edge runtime, so it must avoid node:crypto. It only checks
  * cookie presence; signature verification is done server-side downstream.
@@ -57,7 +57,7 @@ export function proxy(request: NextRequest) {
   // ---- Optimistic auth redirect -------------------------------------------
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
   const isPublic = PUBLIC_PATHS.some(
-    (p) => pathname === p || pathname.startsWith(p + "/")
+    (p) => pathname === p || pathname.startsWith(p + "/"),
   );
 
   if (!hasSession && !isPublic) {
@@ -85,12 +85,12 @@ export function proxy(request: NextRequest) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(), browsing-topics=()"
+    "camera=(), microphone=(), geolocation=(), browsing-topics=()",
   );
   if (isHttps) {
     response.headers.set(
       "Strict-Transport-Security",
-      "max-age=63072000; includeSubDomains; preload"
+      "max-age=63072000; includeSubDomains; preload",
     );
   }
   return response;

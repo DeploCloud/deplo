@@ -56,7 +56,8 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
         <div>
           <h3 className="text-sm font-medium">API Tokens</h3>
           <p className="text-sm text-muted-foreground">
-            Tokens authenticate the Deplo CLI and API. Treat them like passwords.
+            Tokens authenticate the Deplo CLI and API. Treat them like
+            passwords.
           </p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -161,7 +162,7 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
               Token created
             </DialogTitle>
             <DialogDescription>
-              Copy it now — for security it won&apos;t be shown again.
+              Copy it now for security it won&apos;t be shown again.
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-3 py-2">

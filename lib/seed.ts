@@ -1,12 +1,7 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import type {
-  DeploData,
-  Deployment,
-  LogLine,
-  Project,
-} from "./types";
+import type { DeploData, Deployment, LogLine, Project } from "./types";
 import { hashPassword, encryptSecret, randomToken } from "./crypto";
 
 function id(prefix: string): string {
@@ -28,11 +23,11 @@ function buildLogs(framework: string): LogLine[] {
     [t(0), "command", "Cloning github repository (branch: main)"],
     [t(1), "info", "Cloning completed in 842ms"],
     [t(2), "command", "Detected framework: " + framework],
-    [t(3), "command", "Running \"install\" command: `bun install`"],
+    [t(3), "command", 'Running "install" command: `bun install`'],
     [t(4), "info", "bun install v1.3.13"],
     [t(5), "info", "Resolved, downloaded and extracted 412 packages"],
     [t(6), "info", "Done in 6.10s"],
-    [t(7), "command", "Running \"build\" command: `bun run build`"],
+    [t(7), "command", 'Running "build" command: `bun run build`'],
     [t(8), "info", "▲ Next.js 16.2.9"],
     [t(9), "info", "Creating an optimized production build ..."],
     [t(10), "info", "✓ Compiled successfully"],
@@ -63,7 +58,7 @@ export function buildSeed(): DeploData {
     if (process.env.NODE_ENV === "production") {
       adminPassword = randomToken(12);
       console.warn(
-        `\n[deplo] No DEPLO_ADMIN_PASSWORD set. Generated a one-time admin password for ${adminEmail}:\n\n    ${adminPassword}\n\nLog in and change it, or set DEPLO_ADMIN_PASSWORD and re-initialize for a stable credential.\n`
+        `\n[deplo] No DEPLO_ADMIN_PASSWORD set. Generated a one-time admin password for ${adminEmail}:\n\n    ${adminPassword}\n\nLog in and change it, or set DEPLO_ADMIN_PASSWORD and re-initialize for a stable credential.\n`,
       );
     } else {
       adminPassword = "deplo-admin-2026";
@@ -101,8 +96,10 @@ export function buildSeed(): DeploData {
         id: depId,
         projectId,
         status,
-        environment: i === 0 ? "production" : i % 2 === 0 ? "production" : "preview",
-        commitSha: randomBytes(4).toString("hex") + randomBytes(3).toString("hex"),
+        environment:
+          i === 0 ? "production" : i % 2 === 0 ? "production" : "preview",
+        commitSha:
+          randomBytes(4).toString("hex") + randomBytes(3).toString("hex"),
         commitMessage: messages[i % messages.length],
         commitAuthor: "IdraDev",
         branch,
@@ -319,7 +316,7 @@ export function buildSeed(): DeploData {
         host: "db-app-postgres.internal",
         port: 5432,
         connectionStringEnc: encryptSecret(
-          "postgres://app:secret@db-app-postgres.internal:5432/app"
+          "postgres://app:secret@db-app-postgres.internal:5432/app",
         ),
         exposedPublicly: false,
         sizeMb: 248,
@@ -335,7 +332,7 @@ export function buildSeed(): DeploData {
         host: "db-cache-redis.internal",
         port: 6379,
         connectionStringEnc: encryptSecret(
-          "redis://default:secret@db-cache-redis.internal:6379"
+          "redis://default:secret@db-cache-redis.internal:6379",
         ),
         exposedPublicly: false,
         sizeMb: 32,
@@ -345,7 +342,7 @@ export function buildSeed(): DeploData {
     s3Destinations: [
       {
         id: s3Id,
-        name: "Cloudflare R2 — backups",
+        name: "Cloudflare R2  backups",
         provider: "cloudflare-r2",
         endpoint: "https://<account>.r2.cloudflarestorage.com",
         region: "auto",
@@ -372,11 +369,31 @@ export function buildSeed(): DeploData {
     ],
     apiTokens: [],
     activities: [
-      activity("deployment", "Deployed showcase-esame to production", projects[0].id, 3 * HOUR),
-      activity("deployment", "Deployed idraweb to production", projects[2].id, 5 * HOUR),
+      activity(
+        "deployment",
+        "Deployed showcase-esame to production",
+        projects[0].id,
+        3 * HOUR,
+      ),
+      activity(
+        "deployment",
+        "Deployed idraweb to production",
+        projects[2].id,
+        5 * HOUR,
+      ),
       activity("database", "Created database app-postgres", null, 30 * DAY),
-      activity("domain", "Domain idragraphics.com verified", projects[2].id, 30 * DAY),
-      activity("backup", "Backup Daily Postgres backup completed", null, 8 * HOUR),
+      activity(
+        "domain",
+        "Domain idragraphics.com verified",
+        projects[2].id,
+        30 * DAY,
+      ),
+      activity(
+        "backup",
+        "Backup Daily Postgres backup completed",
+        null,
+        8 * HOUR,
+      ),
       activity("s3", "Connected S3 destination Cloudflare R2", null, 15 * DAY),
     ],
   };
@@ -387,7 +404,7 @@ export function buildSeed(): DeploData {
     type: DeploData["activities"][number]["type"],
     message: string,
     projectId: string | null,
-    offset: number
+    offset: number,
   ) {
     return {
       id: id("act"),

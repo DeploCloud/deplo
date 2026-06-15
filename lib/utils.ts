@@ -10,26 +10,27 @@ export function cn(...inputs: ClassValue[]) {
 
 /** Human-readable byte count (powered by `pretty-bytes`). */
 export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes)) return "—";
+  if (!Number.isFinite(bytes)) return "";
   return prettyBytes(Math.max(0, bytes));
 }
 
 /** Relative "time ago" formatting (powered by `date-fns`). */
 export function timeAgo(input: Date | string | number): string {
   const date = input instanceof Date ? input : new Date(input);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "";
   return formatDistanceToNowStrict(date, { addSuffix: true });
 }
 
 /** Title-case a slug or kebab string. */
 export function titleCase(input: string): string {
-  return input
-    .replace(/[-_]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return input.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Display name for a server: the host running Deplo is the "master". */
-export function serverLabel(server: { name: string; type: "localhost" | "remote" }): string {
+export function serverLabel(server: {
+  name: string;
+  type: "localhost" | "remote";
+}): string {
   if (server.type === "localhost") return "Master (this host)";
   return server.name;
 }

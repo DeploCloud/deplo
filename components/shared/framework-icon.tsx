@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { FRAMEWORKS } from "@/lib/frameworks";
 import type { FrameworkId } from "@/lib/types";
 
-/** Real (lucide) icon per framework — monochrome, matches the design system. */
+/** Real (lucide) icon per framework  monochrome, matches the design system. */
 const FRAMEWORK_ICONS: Record<FrameworkId, LucideIcon> = {
   nextjs: Triangle,
   sveltekit: Flame,
@@ -49,7 +49,7 @@ export function frameworkIcon(framework: FrameworkId): LucideIcon {
   return FRAMEWORK_ICONS[framework] ?? Box;
 }
 
-/** Bare framework glyph (no container) — for inline use in selects and lists. */
+/** Bare framework glyph (no container)  for inline use in selects and lists. */
 export function FrameworkGlyph({
   framework,
   className,
@@ -76,7 +76,7 @@ export function FrameworkIcon({
     <span
       className={cn(
         "flex shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-foreground",
-        className
+        className,
       )}
       style={{ width: size, height: size }}
       title={f.name}

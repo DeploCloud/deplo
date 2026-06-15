@@ -1,10 +1,4 @@
-import {
-  pgTable,
-  text,
-  timestamp,
-  boolean,
-  jsonb,
-} from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 
 /**
  * Drizzle schema for the Postgres backend.
@@ -13,7 +7,7 @@ import {
  *  1. The Better Auth tables (user / session / account / verification). Better
  *     Auth owns these via its Drizzle adapter; the column shape matches its
  *     core schema so `drizzle-kit` can generate the migrations.
- *  2. `deplo_state` — a single-row JSONB document that stores the control-plane
+ *  2. `deplo_state`  a single-row JSONB document that stores the control-plane
  *     data (projects, deployments, domains, databases, …). Keeping the existing
  *     `DeploData` shape as one document is a deliberate, low-risk way to put all
  *     control-plane data in Postgres without rewriting the data-access layer.

@@ -6,11 +6,10 @@ import { assertUser } from "../auth";
 import { recordActivity } from "./activity";
 import type { Domain } from "../types";
 
-const DOMAIN_RE =
-  /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
+const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
 
 export async function listDomains(
-  projectId?: string
+  projectId?: string,
 ): Promise<(Domain & { projectName: string; projectSlug: string })[]> {
   await assertUser();
   const d = read();
@@ -19,16 +18,20 @@ export async function listDomains(
     .sort((a, b) => Number(b.primary) - Number(a.primary))
     .map((x) => {
       const p = d.projects.find((pp) => pp.id === x.projectId);
-      return { ...x, projectName: p?.name ?? "—", projectSlug: p?.slug ?? "" };
+      return { ...x, projectName: p?.name ?? "", projectSlug: p?.slug ?? "" };
     });
 }
 
 export async function addDomain(
   projectId: string,
-  name: string
+  name: string,
 ): Promise<Domain> {
   const user = await assertUser();
-  const clean = name.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const clean = name
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "");
   if (!DOMAIN_RE.test(clean)) throw new Error("Enter a valid domain name");
   if (read().domains.some((x) => x.name === clean))
     throw new Error("Domain already added");
@@ -40,7 +43,8 @@ export async function addDomain(
     projectId,
     name: clean,
     status: "pending",
-    primary: read().domains.filter((x) => x.projectId === projectId).length === 0,
+    primary:
+      read().domains.filter((x) => x.projectId === projectId).length === 0,
     redirectTo: null,
     ssl: false,
     createdAt: nowIso(),
@@ -79,5 +83,10 @@ export async function removeDomain(id: string): Promise<void> {
   mutate((d) => {
     d.domains = d.domains.filter((x) => x.id !== id);
   });
-  recordActivity("domain", `Removed domain ${dom.name}`, user.name, dom.projectId);
+  recordActivity(
+    "domain",
+    `Removed domain ${dom.name}`,
+    user.name,
+    dom.projectId,
+  );
 }

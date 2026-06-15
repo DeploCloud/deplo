@@ -67,7 +67,8 @@ export default async function StoragePage() {
         <TabsContent value="databases" className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              PostgreSQL, MySQL, MongoDB, Redis and more — provisioned on your servers.
+              PostgreSQL, MySQL, MongoDB, Redis and more provisioned on your
+              servers.
             </p>
             <CreateDatabase />
           </div>
@@ -119,7 +120,10 @@ export default async function StoragePage() {
             </p>
             <CreateBackup
               databases={databases.map((d) => ({ id: d.id, name: d.name }))}
-              destinations={destinations.map((d) => ({ id: d.id, name: d.name }))}
+              destinations={destinations.map((d) => ({
+                id: d.id,
+                name: d.name,
+              }))}
             />
           </div>
           {backups.length === 0 ? (

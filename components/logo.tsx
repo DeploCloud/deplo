@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-/** Deplo mark — an inverted (downward) triangle. Monochrome, theme-aware. */
+/** Deplo mark  an inverted (downward) triangle. Monochrome, theme-aware. */
 export function DeploMark({
   className,
   size = 20,

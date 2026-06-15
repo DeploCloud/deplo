@@ -35,7 +35,7 @@ export function AddDomain({
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [projectId, setProjectId] = React.useState(
-    defaultProjectId ?? projects[0]?.id ?? ""
+    defaultProjectId ?? projects[0]?.id ?? "",
   );
   const [name, setName] = React.useState("");
 
@@ -43,7 +43,7 @@ export function AddDomain({
     startTransition(async () => {
       const res = await addDomainAction({ projectId, name });
       if (res.ok) {
-        toast.success("Domain added — configure DNS to verify");
+        toast.success("Domain added  configure DNS to verify");
         setOpen(false);
         setName("");
       } else {
@@ -104,10 +104,17 @@ export function AddDomain({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+          <Button
+            variant="outline"
+            onClick={() => setOpen(false)}
+            disabled={pending}
+          >
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending || !name.trim() || !projectId}>
+          <Button
+            onClick={submit}
+            disabled={pending || !name.trim() || !projectId}
+          >
             {pending ? "Adding…" : "Add domain"}
           </Button>
         </DialogFooter>

@@ -6,7 +6,12 @@ import { newId, nowIso } from "../ids";
 import { assertUser } from "../auth";
 import { recordActivity } from "./activity";
 import { FRAMEWORKS } from "../frameworks";
-import type { Deployment, DeploymentEnvironment, LogLine, Project } from "../types";
+import type {
+  Deployment,
+  DeploymentEnvironment,
+  LogLine,
+  Project,
+} from "../types";
 
 function shortSha(): string {
   return randomBytes(4).toString("hex") + randomBytes(3).toString("hex");
@@ -17,7 +22,10 @@ function genLogs(project: Project): LogLine[] {
   const now = Date.now();
   const t = (i: number) => new Date(now + i * 600).toISOString();
   const lines: [LogLine["level"], string][] = [
-    ["command", `Cloning ${project.repo?.repo ?? "source"} (branch: ${project.repo?.branch ?? "main"})`],
+    [
+      "command",
+      `Cloning ${project.repo?.repo ?? "source"} (branch: ${project.repo?.branch ?? "main"})`,
+    ],
     ["info", "Cloning completed"],
     ["command", `Detected framework: ${fw.name}`],
   ];
@@ -40,11 +48,12 @@ export function newDeploymentInternal(
     creator: string;
     commitMessage?: string;
     branch?: string;
-  }
+  },
 ): Deployment {
   const branch = opts.branch ?? project.repo?.branch ?? "main";
-  const host = (project.productionUrl ?? `https://${project.slug}.deplo.app`)
-    .replace(/^https?:\/\//, "");
+  const host = (
+    project.productionUrl ?? `https://${project.slug}.deplo.app`
+  ).replace(/^https?:\/\//, "");
   const url =
     opts.environment === "production"
       ? `https://${host}`
@@ -72,7 +81,7 @@ export function newDeploymentInternal(
     "deployment",
     `Deployed ${project.name} to ${opts.environment}`,
     opts.creator,
-    project.id
+    project.id,
   );
   return dep;
 }
@@ -91,7 +100,7 @@ export async function listDeployments(filter?: {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .map((x) => {
       const p = d.projects.find((pp) => pp.id === x.projectId);
-      return { ...x, projectName: p?.name ?? "—", projectSlug: p?.slug ?? "" };
+      return { ...x, projectName: p?.name ?? "", projectSlug: p?.slug ?? "" };
     });
 }
 
@@ -147,5 +156,10 @@ export async function promoteToProduction(id: string): Promise<void> {
       p.updatedAt = nowIso();
     }
   });
-  recordActivity("deployment", `Promoted deployment to production`, user.name, null);
+  recordActivity(
+    "deployment",
+    `Promoted deployment to production`,
+    user.name,
+    null,
+  );
 }

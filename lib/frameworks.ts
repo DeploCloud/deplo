@@ -1,5 +1,5 @@
 /**
- * Framework detection + build presets — the Vercel-style "we figured out your
+ * Framework detection + build presets  the Vercel-style "we figured out your
  * project for you" engine. Pure and isomorphic: used both in the new-project
  * wizard (client preview) and on the server when a deployment is created.
  */
@@ -281,7 +281,8 @@ export function detectFramework(manifest: RepoManifest): FrameworkId {
     ...(manifest.packageJson?.dependencies || {}),
     ...(manifest.packageJson?.devDependencies || {}),
   };
-  const hasDep = (name: string) => name.toLowerCase() in
+  const hasDep = (name: string) =>
+    name.toLowerCase() in
     Object.fromEntries(Object.keys(deps).map((k) => [k.toLowerCase(), true]));
 
   // Order matters: meta-frameworks before their underlying libraries.
@@ -317,7 +318,7 @@ export function detectFramework(manifest: RepoManifest): FrameworkId {
 /** Build a full BuildConfig from a detected framework + overrides. */
 export function buildConfigFor(
   framework: FrameworkId,
-  overrides: Partial<BuildConfig> = {}
+  overrides: Partial<BuildConfig> = {},
 ): BuildConfig {
   const p = FRAMEWORKS[framework];
   return {

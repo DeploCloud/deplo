@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { GitBranch, Clock, ScrollText, ExternalLink, Rocket } from "lucide-react";
+import {
+  GitBranch,
+  Clock,
+  ScrollText,
+  ExternalLink,
+  Rocket,
+} from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { listDeployments } from "@/lib/data/deployments";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
@@ -16,7 +17,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { timeAgo } from "@/lib/utils";
 
 export default async function ProjectOverview(
-  props: PageProps<"/projects/[slug]">
+  props: PageProps<"/projects/[slug]">,
 ) {
   const { slug } = await props.params;
   const project = await getProjectBySlug(slug);
@@ -139,7 +140,9 @@ export default async function ProjectOverview(
                   </p>
                 </div>
                 <Badge
-                  variant={d.environment === "production" ? "default" : "secondary"}
+                  variant={
+                    d.environment === "production" ? "default" : "secondary"
+                  }
                   className="hidden sm:inline-flex"
                 >
                   {d.environment}
@@ -160,7 +163,7 @@ export default async function ProjectOverview(
 }
 
 function formatDuration(ms: number | null): string {
-  if (!ms) return "—";
+  if (!ms) return "";
   const s = Math.round(ms / 1000);
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;

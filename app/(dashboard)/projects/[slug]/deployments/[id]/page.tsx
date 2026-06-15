@@ -3,12 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, GitBranch, Clock, ExternalLink } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { getDeployment, getLogs } from "@/lib/data/deployments";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,7 +30,7 @@ const LEVEL_CLASS: Record<string, string> = {
 };
 
 export default async function DeploymentDetailPage(
-  props: PageProps<"/projects/[slug]/deployments/[id]">
+  props: PageProps<"/projects/[slug]/deployments/[id]">,
 ) {
   const { slug, id } = await props.params;
   const project = await getProjectBySlug(slug);
@@ -56,7 +51,10 @@ export default async function DeploymentDetailPage(
     build: project.build,
     domains,
   });
-  const labels = traefikLabelsYaml({ name: project.slug, domains, port: project.build.port }, 0);
+  const labels = traefikLabelsYaml(
+    { name: project.slug, domains, port: project.build.port },
+    0,
+  );
 
   return (
     <div className="space-y-6">
@@ -78,7 +76,13 @@ export default async function DeploymentDetailPage(
             <StatusBadge status={deployment.status} />
           </Meta>
           <Meta label="Environment">
-            <Badge variant={deployment.environment === "production" ? "default" : "secondary"}>
+            <Badge
+              variant={
+                deployment.environment === "production"
+                  ? "default"
+                  : "secondary"
+              }
+            >
               {deployment.environment}
             </Badge>
           </Meta>
@@ -96,7 +100,7 @@ export default async function DeploymentDetailPage(
               <Clock className="size-3.5" />
               {deployment.buildDurationMs
                 ? `${Math.round(deployment.buildDurationMs / 1000)}s`
-                : "—"}
+                : ""}
             </span>
           </Meta>
           <div className="sm:col-span-2">
@@ -110,7 +114,11 @@ export default async function DeploymentDetailPage(
           </Meta>
           <div className="flex items-end">
             <Button variant="outline" size="sm" asChild>
-              <a href={deployment.url} target="_blank" rel="noopener noreferrer">
+              <a
+                href={deployment.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <ExternalLink className="size-4" />
                 Visit
               </a>
@@ -122,7 +130,9 @@ export default async function DeploymentDetailPage(
       <Tabs defaultValue="logs">
         <UnderlineTabsList>
           <UnderlineTabsTrigger value="logs">Build Logs</UnderlineTabsTrigger>
-          <UnderlineTabsTrigger value="config">Configuration</UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="config">
+            Configuration
+          </UnderlineTabsTrigger>
         </UnderlineTabsList>
 
         <TabsContent value="logs">

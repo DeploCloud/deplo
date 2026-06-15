@@ -10,7 +10,7 @@ import { rateLimit } from "@/lib/security";
  * Best-effort client IP. NOTE: X-Forwarded-For is attacker-spoofable when the
  * upstream proxy doesn't strip it, so it is used only as a *secondary* limiter
  * dimension. The non-spoofable dimensions (target email + a global counter)
- * are what actually bound brute force — header rotation cannot reset those.
+ * are what actually bound brute force  header rotation cannot reset those.
  */
 async function clientKey(scope: string): Promise<string> {
   const h = await headers();
@@ -23,7 +23,7 @@ async function clientKey(scope: string): Promise<string> {
 
 /** Throws-style helper: returns an error message when any limiter trips. */
 function checkLimits(
-  checks: { key: string; limit: number; windowMs: number }[]
+  checks: { key: string; limit: number; windowMs: number }[],
 ): string | null {
   let worst = 0;
   for (const c of checks) {
@@ -44,7 +44,7 @@ const loginSchema = z.object({
 
 export async function loginAction(
   _prev: AuthState,
-  formData: FormData
+  formData: FormData,
 ): Promise<AuthState> {
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
@@ -80,7 +80,7 @@ const signupSchema = z.object({
 
 export async function signupAction(
   _prev: AuthState,
-  formData: FormData
+  formData: FormData,
 ): Promise<AuthState> {
   const parsed = signupSchema.safeParse({
     name: formData.get("name"),
@@ -101,7 +101,7 @@ export async function signupAction(
   const res = await signup(
     parsed.data.name,
     parsed.data.email,
-    parsed.data.password
+    parsed.data.password,
   );
   if (!res.ok) return { error: res.error };
   redirect("/");

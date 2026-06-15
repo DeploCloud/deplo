@@ -1,6 +1,12 @@
 import "server-only";
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { DeploData } from "./types";
 import { buildSeed } from "./seed";
@@ -10,10 +16,10 @@ import { loadDocument, saveDocument } from "./db/document-store";
 /**
  * Control-plane store with two interchangeable backends behind one API:
  *
- *  - Postgres (when `DEPLO_DATABASE_URL` is set) — the production system of
+ *  - Postgres (when `DEPLO_DATABASE_URL` is set)  the production system of
  *    record. The document is hydrated into an in-memory cache once per process
  *    so reads stay synchronous; mutations write through to Postgres.
- *  - Local JSON file (default) — zero-config, so the app runs with no database.
+ *  - Local JSON file (default)  zero-config, so the app runs with no database.
  *
  * `read()`/`mutate()` are synchronous (the data-access layer depends on that).
  * In Postgres mode, call `ensureStoreReady()` (awaited in the dashboard layout
@@ -42,7 +48,7 @@ function loadFromFile(): DeploData {
     try {
       return JSON.parse(readFileSync(DATA_FILE, "utf8")) as DeploData;
     } catch {
-      // corrupt file — fall through to reseed
+      // corrupt file  fall through to reseed
     }
   }
   const seeded = buildSeed();
@@ -75,7 +81,7 @@ function queuePostgresWrite(data: DeploData) {
 
 /**
  * Hydrate the in-memory cache from Postgres. Idempotent and safe to call from
- * multiple concurrent requests — the work happens at most once.
+ * multiple concurrent requests  the work happens at most once.
  */
 export async function ensureStoreReady(): Promise<void> {
   if (!USE_PG || hydrated) return;

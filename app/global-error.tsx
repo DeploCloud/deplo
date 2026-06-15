@@ -2,7 +2,7 @@
 
 /**
  * Global error boundary. It replaces the root layout entirely, so it renders
- * its own <html>/<body> and must NOT use request-time APIs (headers/cookies) —
+ * its own <html>/<body> and must NOT use request-time APIs (headers/cookies)
  * that keeps it statically renderable and avoids pulling the nonce-reading root
  * layout into the build's error-page prerender.
  */
@@ -41,7 +41,13 @@ export default function GlobalError({
           <h1 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>
             Something went wrong
           </h1>
-          <p style={{ color: "#a1a1aa", marginTop: "0.5rem", fontSize: "0.875rem" }}>
+          <p
+            style={{
+              color: "#a1a1aa",
+              marginTop: "0.5rem",
+              fontSize: "0.875rem",
+            }}
+          >
             An unexpected error occurred.
           </p>
           <button
