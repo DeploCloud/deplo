@@ -16,13 +16,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { TokensPanel } from "@/components/settings/tokens-panel";
-import { timeAgo } from "@/lib/utils";
+import { TeamForm } from "@/components/settings/team-form";
 
 export const metadata = { title: "Settings" };
 
@@ -56,16 +54,7 @@ export default async function SettingsPage() {
               <CardDescription>Your workspace details.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Team name</Label>
-                  <Input defaultValue={team.name} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Slug</Label>
-                  <Input defaultValue={team.slug} className="font-mono text-sm" />
-                </div>
-              </div>
+              <TeamForm name={team.name} slug={team.slug} />
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Plan:</span>
                 <Badge variant="secondary" className="capitalize">

@@ -6,7 +6,6 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   ChevronDown,
   Menu,
-  Plus,
   Search,
   Rocket,
   Database,
@@ -21,7 +20,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -111,13 +109,6 @@ export function Topbar({
             <Badge variant="secondary" className="ml-auto capitalize">
               {team.plan}
             </Badge>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <Link href="/settings" className="cursor-pointer">
-              <Plus className="size-4" />
-              Create Team
-            </Link>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

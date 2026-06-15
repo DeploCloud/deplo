@@ -22,7 +22,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import {
+  SimpleTooltip,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { createBackupAction } from "@/lib/actions/backups";
 
 export function CreateBackup({
@@ -67,18 +72,31 @@ export function CreateBackup({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <SimpleTooltip
-          content={noDeps ? "Add an S3 destination first" : "Schedule a backup"}
-        >
-          <span>
-            <Button size="sm" disabled={noDeps}>
-              <Plus className="size-4" />
-              New Backup
-            </Button>
-          </span>
-        </SimpleTooltip>
-      </DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {noDeps ? (
+            // Disabled buttons swallow pointer events, so wrap in a focusable
+            // span to keep the tooltip reachable. No DialogTrigger here means a
+            // click can never open the dialog while dependencies are missing.
+            <span tabIndex={0}>
+              <Button size="sm" disabled>
+                <Plus className="size-4" />
+                New Backup
+              </Button>
+            </span>
+          ) : (
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="size-4" />
+                New Backup
+              </Button>
+            </DialogTrigger>
+          )}
+        </TooltipTrigger>
+        <TooltipContent>
+          {noDeps ? "Add an S3 destination first" : "Schedule a backup"}
+        </TooltipContent>
+      </Tooltip>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Schedule a backup</DialogTitle>
