@@ -150,7 +150,10 @@ async function provisionDatabase(
   });
   const file = dbStackFile(opts.service);
   await writeFile(file, yaml);
-  await docker(["compose", "-f", file, "up", "-d"], { timeout: 600_000 });
+  await docker(
+    ["compose", "-p", `deplo-${opts.service}`, "-f", file, "up", "-d"],
+    { timeout: 600_000 },
+  );
   mutate((d) => {
     const db = d.databases.find((x) => x.id === id);
     if (db) db.status = "running";
@@ -166,9 +169,10 @@ export async function setDatabaseRunning(
   if (!db) throw new Error("Not found");
   const file = dbStackFile(db.host);
   // Let a real docker failure surface to the caller; only update state on success.
-  await docker(["compose", "-f", file, running ? "start" : "stop"], {
-    timeout: 60_000,
-  });
+  await docker(
+    ["compose", "-p", `deplo-${db.host}`, "-f", file, running ? "start" : "stop"],
+    { timeout: 60_000 },
+  );
   mutate((d) => {
     const x = d.databases.find((y) => y.id === id);
     if (x) x.status = running ? "running" : "stopped";
@@ -181,9 +185,10 @@ export async function deleteDatabase(id: string): Promise<void> {
   if (!db) throw new Error("Not found");
   // Tear down the real container + volume.
   const file = dbStackFile(db.host);
-  await docker(["compose", "-f", file, "down", "-v"], { timeout: 60_000 }).catch(
-    () => {},
-  );
+  await docker(
+    ["compose", "-p", `deplo-${db.host}`, "-f", file, "down", "-v"],
+    { timeout: 60_000 },
+  ).catch(() => {});
   await rm(file, { force: true }).catch(() => {});
   mutate((d) => {
     d.databases = d.databases.filter((x) => x.id !== id);
