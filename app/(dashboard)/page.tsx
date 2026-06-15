@@ -30,9 +30,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
     : projects;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-      {/* Left rail */}
-      <div className="order-2 space-y-6 lg:order-1">
+    <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+      {/* Right rail */}
+      <div className="order-2 space-y-6 lg:order-2">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Recent activity</CardTitle>
@@ -76,7 +76,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
       </div>
 
       {/* Projects */}
-      <div className="order-1 space-y-5 lg:order-2">
+      <div className="order-1 space-y-5 lg:order-1">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
           <Button asChild size="sm">

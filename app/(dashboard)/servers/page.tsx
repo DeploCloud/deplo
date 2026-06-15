@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { Cpu, MemoryStick, HardDrive, Network, Server as ServerIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -16,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { listServers } from "@/lib/data/servers";
-import { resolvePublicBaseUrl } from "@/lib/public-url";
+import { installOneLiner } from "@/lib/install-script";
 import { serverLabel } from "@/lib/utils";
 import type { Server } from "@/lib/types";
 
@@ -103,7 +102,7 @@ function ServerCard({ server }: { server: Server }) {
 export default async function ServersPage() {
   const servers = await listServers();
 
-  const base = resolvePublicBaseUrl(await headers());
+  const installCommand = installOneLiner();
 
   return (
     <div className="space-y-6">
@@ -122,10 +121,10 @@ export default async function ServersPage() {
               manual configuration.
             </CardDescription>
           </div>
-          <AddServer installCommand={`curl -fsSL ${base}/install | bash`} />
+          <AddServer installCommand={installCommand} />
         </CardHeader>
         <CardContent>
-          <CommandLine command={`curl -fsSL ${base}/install | bash`} />
+          <CommandLine command={installCommand} />
         </CardContent>
       </Card>
 

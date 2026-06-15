@@ -69,12 +69,13 @@ export function Sidebar({ server }: { server: Server | null }) {
   }, [toggle]);
 
   return (
+    <>
     <aside
       data-collapsed={collapsed}
       className={cn(
-        "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex",
+        "sticky top-0 hidden h-screen shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar md:flex",
         hydrated && "transition-[width] duration-200 ease-out",
-        collapsed ? "w-15" : "w-60",
+        collapsed ? "w-0 border-r-0" : "w-60",
       )}
     >
       <div
@@ -154,5 +155,29 @@ export function Sidebar({ server }: { server: Server | null }) {
         </Tooltip>
       </div>
     </aside>
+
+      {/* Floating expand control — only handle left when fully collapsed */}
+      {collapsed && (
+        <Tooltip delayDuration={400}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={toggle}
+              aria-label="Expand sidebar"
+              className="fixed bottom-3 left-3 z-40 hidden bg-background shadow-sm md:flex"
+            >
+              <PanelLeftOpen className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            Expand sidebar
+            <kbd className="ml-1.5 rounded border border-border bg-muted px-1 text-[10px]">
+              [
+            </kbd>
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </>
   );
 }
