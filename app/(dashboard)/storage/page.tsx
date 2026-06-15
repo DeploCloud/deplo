@@ -1,0 +1,158 @@
+import { Database, Cloud, Archive } from "lucide-react";
+import { listDatabases } from "@/lib/data/databases";
+import { listS3 } from "@/lib/data/s3";
+import { listBackups } from "@/lib/data/backups";
+import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
+import {
+  Tabs,
+  TabsContent,
+  UnderlineTabsList,
+  UnderlineTabsTrigger,
+} from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { CreateDatabase } from "@/components/storage/create-database";
+import { DatabaseCard } from "@/components/storage/database-card";
+import { CreateS3 } from "@/components/storage/create-s3";
+import { S3Card } from "@/components/storage/s3-card";
+import { CreateBackup } from "@/components/storage/create-backup";
+import { BackupRow } from "@/components/storage/backup-row";
+
+export const metadata = { title: "Storage" };
+
+export default async function StoragePage() {
+  const [databases, destinations, backups] = await Promise.all([
+    listDatabases(),
+    listS3(),
+    listBackups(),
+  ]);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Storage"
+        description="Managed databases, S3 destinations and scheduled backups."
+      />
+
+      <Tabs defaultValue="databases">
+        <UnderlineTabsList>
+          <UnderlineTabsTrigger value="databases">
+            Databases
+            <Badge variant="muted" className="ml-2">
+              {databases.length}
+            </Badge>
+          </UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="s3">
+            S3 Destinations
+            <Badge variant="muted" className="ml-2">
+              {destinations.length}
+            </Badge>
+          </UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="backups">
+            Backups
+            <Badge variant="muted" className="ml-2">
+              {backups.length}
+            </Badge>
+          </UnderlineTabsTrigger>
+        </UnderlineTabsList>
+
+        {/* Databases */}
+        <TabsContent value="databases" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              PostgreSQL, MySQL, MongoDB, Redis and more — provisioned on your servers.
+            </p>
+            <CreateDatabase />
+          </div>
+          {databases.length === 0 ? (
+            <EmptyState
+              icon={Database}
+              title="No databases yet"
+              description="Create a managed database to connect to your apps."
+              action={<CreateDatabase />}
+            />
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {databases.map((db) => (
+                <DatabaseCard key={db.id} db={db} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* S3 destinations */}
+        <TabsContent value="s3" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Connect any S3-compatible storage for backups and assets.
+            </p>
+            <CreateS3 />
+          </div>
+          {destinations.length === 0 ? (
+            <EmptyState
+              icon={Cloud}
+              title="No S3 destinations"
+              description="Add a bucket (R2, S3, B2, MinIO…) to store backups and assets."
+              action={<CreateS3 />}
+            />
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {destinations.map((dest) => (
+                <S3Card key={dest.id} dest={dest} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Backups */}
+        <TabsContent value="backups" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Scheduled database backups pushed to your S3 destinations.
+            </p>
+            <CreateBackup
+              databases={databases.map((d) => ({ id: d.id, name: d.name }))}
+              destinations={destinations.map((d) => ({ id: d.id, name: d.name }))}
+            />
+          </div>
+          {backups.length === 0 ? (
+            <EmptyState
+              icon={Archive}
+              title="No backups scheduled"
+              description="Schedule automatic backups of your databases to S3."
+            />
+          ) : (
+            <div className="rounded-xl border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Database</TableHead>
+                    <TableHead>Destination</TableHead>
+                    <TableHead>Schedule</TableHead>
+                    <TableHead>Retention</TableHead>
+                    <TableHead>Last run</TableHead>
+                    <TableHead>Enabled</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {backups.map((b) => (
+                    <BackupRow key={b.id} backup={b} />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

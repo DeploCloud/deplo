@@ -1,0 +1,18 @@
+{
+  "id": "barrage",
+  "name": "Barrage",
+  "description": "Mobile-first web interface for the Deluge torrent client, letting you manage downloads from any device.",
+  "tags": [
+    "torrents",
+    "deluge",
+    "mobile"
+  ],
+  "logo": "/templates/barrage.png",
+  "links": {
+    "github": "https://github.com/maulik9898/barrage",
+    "website": "https://github.com/maulik9898/barrage",
+    "docs": "https://github.com/maulik9898/barrage/blob/main/README.md"
+  },
+  "version": "0.3.0",
+  "popular": false
+}

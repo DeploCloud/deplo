@@ -1,0 +1,20 @@
+{
+  "id": "homeassistant",
+  "name": "Home Assistant",
+  "description": "Open-source home automation hub that controls smart devices locally, putting privacy and offline control first.",
+  "tags": [
+    "iot",
+    "home-automation",
+    "internet-of-things",
+    "self-hosted",
+    "server"
+  ],
+  "logo": "/templates/homeassistant.svg",
+  "links": {
+    "github": "https://github.com/home-assistant/core",
+    "website": "https://www.home-assistant.io/",
+    "docs": "https://www.home-assistant.io/getting-started/onboarding/"
+  },
+  "version": "stable",
+  "popular": false
+}

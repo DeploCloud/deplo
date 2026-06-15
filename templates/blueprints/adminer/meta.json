@@ -1,0 +1,19 @@
+{
+  "id": "adminer",
+  "name": "Adminer",
+  "description": "Lightweight single-file database manager for MySQL, PostgreSQL, SQLite, and more through the browser.",
+  "tags": [
+    "databases",
+    "developer-tools",
+    "mysql",
+    "postgresql"
+  ],
+  "logo": "/templates/adminer.svg",
+  "links": {
+    "github": "https://github.com/vrana/adminer",
+    "website": "https://www.adminer.org/",
+    "docs": "https://www.adminer.org/en/plugins/"
+  },
+  "version": "4.8.1",
+  "popular": false
+}

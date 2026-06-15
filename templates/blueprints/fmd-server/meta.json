@@ -1,0 +1,19 @@
+{
+  "id": "fmd-server",
+  "name": "FMD Server",
+  "description": "Backend for the Find My Device Android app, letting you locate, lock, and control your phones remotely.",
+  "tags": [
+    "phone",
+    "security",
+    "gps",
+    "location"
+  ],
+  "logo": "/templates/fmd-server.svg",
+  "links": {
+    "github": "https://gitlab.com/fmd-foss/fmd-server",
+    "website": "https://fmd-foss.org",
+    "docs": "https://fmd-foss.org/docs/fmd-server/overview"
+  },
+  "version": "0.11.0",
+  "popular": false
+}

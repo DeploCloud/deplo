@@ -1,0 +1,17 @@
+{
+  "id": "lobe-chat",
+  "name": "Lobe Chat",
+  "description": "Modern open-source AI chat framework with a polished interface for conversing across multiple LLM providers.",
+  "tags": [
+    "IA",
+    "chat"
+  ],
+  "logo": "/templates/lobe-chat.png",
+  "links": {
+    "github": "https://github.com/lobehub/lobe-chat",
+    "website": "https://chat-preview.lobehub.com/",
+    "docs": "https://lobehub.com/docs/self-hosting/platform/docker-compose"
+  },
+  "version": "v1.26.1",
+  "popular": false
+}

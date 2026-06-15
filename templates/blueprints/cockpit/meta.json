@@ -1,0 +1,18 @@
+{
+  "id": "cockpit",
+  "name": "Cockpit",
+  "description": "API-first headless CMS for structuring and delivering content to websites, apps, and digital products.",
+  "tags": [
+    "cms",
+    "content-management",
+    "api"
+  ],
+  "logo": "/templates/cockpit.png",
+  "links": {
+    "github": "https://github.com/Cockpit-HQ",
+    "website": "https://getcockpit.com",
+    "docs": "https://getcockpit.com/documentation"
+  },
+  "version": "core-2.11.0",
+  "popular": false
+}

@@ -1,0 +1,16 @@
+{
+  "id": "doublezero",
+  "name": "Double Zero",
+  "description": "Dashboard for sending and monitoring transactional email through Amazon SES, with delivery tracking built in.",
+  "tags": [
+    "email"
+  ],
+  "logo": "/templates/doublezero.svg",
+  "links": {
+    "github": "https://github.com/technomancy-dev/00",
+    "website": "https://www.double-zero.cloud/",
+    "docs": "https://github.com/technomancy-dev/00"
+  },
+  "version": "v0.2.1",
+  "popular": false
+}

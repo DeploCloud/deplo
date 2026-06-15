@@ -1,0 +1,17 @@
+{
+  "id": "zipline",
+  "name": "Zipline",
+  "description": "ShareX-compatible file and image upload server with shortened links, an easy setup, and a feature-rich dashboard.",
+  "tags": [
+    "media system",
+    "storage"
+  ],
+  "logo": "/templates/zipline.png",
+  "links": {
+    "github": "https://github.com/diced/zipline",
+    "website": "https://zipline.diced.sh/",
+    "docs": "https://zipline.diced.sh/docs/"
+  },
+  "version": "v3.7.9",
+  "popular": false
+}

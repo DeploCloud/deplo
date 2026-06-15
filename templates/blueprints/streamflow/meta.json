@@ -1,0 +1,20 @@
+{
+  "id": "streamflow",
+  "name": "StreamFlow",
+  "description": "Live streaming app that broadcasts RTMP to YouTube, Facebook, and more at once, with scheduling and real-time monitoring.",
+  "tags": [
+    "streaming",
+    "rtmp",
+    "video",
+    "live-streaming",
+    "media"
+  ],
+  "logo": "/templates/streamflow.png",
+  "links": {
+    "github": "https://github.com/bangtutorial/streamflow",
+    "website": "https://github.com/bangtutorial/streamflow",
+    "docs": "https://github.com/bangtutorial/streamflow#readme"
+  },
+  "version": "2.1",
+  "popular": false
+}

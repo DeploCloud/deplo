@@ -1,0 +1,18 @@
+{
+  "id": "emqx",
+  "name": "EMQX",
+  "description": "Scalable MQTT broker for IoT, connected vehicles, and real-time messaging across millions of devices.",
+  "tags": [
+    "broker",
+    "iot",
+    "mqtt"
+  ],
+  "logo": "/templates/emqx.svg",
+  "links": {
+    "github": "https://github.com/emqx/emqx",
+    "website": "https://www.emqx.com",
+    "docs": "https://docs.emqx.com"
+  },
+  "version": "6.0.1",
+  "popular": false
+}

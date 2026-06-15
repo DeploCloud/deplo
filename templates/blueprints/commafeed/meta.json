@@ -1,0 +1,18 @@
+{
+  "id": "commafeed",
+  "name": "CommaFeed",
+  "description": "Lightweight, open-source RSS feed reader and news aggregator backed by PostgreSQL.",
+  "tags": [
+    "feed-reader",
+    "news-aggregator",
+    "rss"
+  ],
+  "logo": "/templates/commafeed.svg",
+  "links": {
+    "github": "https://github.com/Athou/commafeed",
+    "website": "https://www.commafeed.com/",
+    "docs": "https://github.com/Athou/commafeed/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

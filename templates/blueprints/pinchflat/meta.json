@@ -1,0 +1,18 @@
+{
+  "id": "pinchflat",
+  "name": "Pinchflat",
+  "description": "Self-hosted YouTube downloader that archives channels and playlists automatically via a clean web UI.",
+  "tags": [
+    "youtube",
+    "downloader",
+    "media"
+  ],
+  "logo": "/templates/pinchflat.png",
+  "links": {
+    "github": "https://github.com/kieraneglin/pinchflat",
+    "website": "https://github.com/kieraneglin/pinchflat",
+    "docs": "https://github.com/kieraneglin/pinchflat"
+  },
+  "version": "latest",
+  "popular": false
+}

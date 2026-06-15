@@ -1,0 +1,18 @@
+{
+  "id": "peppermint",
+  "name": "Peppermint",
+  "description": "Open-source ticketing and help desk system for tracking issues and managing customer support requests.",
+  "tags": [
+    "api",
+    "development",
+    "documentation"
+  ],
+  "logo": "/templates/peppermint.svg",
+  "links": {
+    "github": "https://github.com/Peppermint-Lab/peppermint",
+    "website": "https://peppermint.sh/",
+    "docs": "https://docs.peppermint.sh/"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,19 @@
+{
+  "id": "ipfs",
+  "name": "IPFS (Kubo)",
+  "description": "Run your own node on the IPFS decentralized network to store and serve files over a peer-to-peer gateway.",
+  "tags": [
+    "storage",
+    "decentralized",
+    "p2p",
+    "self-hosted"
+  ],
+  "logo": "/templates/ipfs.svg",
+  "links": {
+    "github": "https://github.com/ipfs/kubo",
+    "website": "https://ipfs.tech/",
+    "docs": "https://docs.ipfs.tech/"
+  },
+  "version": "latest",
+  "popular": false
+}

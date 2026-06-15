@@ -1,0 +1,18 @@
+{
+  "id": "dumbdrop",
+  "name": "DumbDrop",
+  "description": "Stripped-down file-sharing service for quick uploads, requiring no database or account.",
+  "tags": [
+    "file-sharing",
+    "self-hosted",
+    "simple"
+  ],
+  "logo": "/templates/dumbdrop.svg",
+  "links": {
+    "github": "https://github.com/dumbwareio/dumbdrop",
+    "website": "https://www.dumbware.io/software/DumbDrop/",
+    "docs": "https://github.com/dumbwareio/dumbdrop"
+  },
+  "version": "latest",
+  "popular": false
+}

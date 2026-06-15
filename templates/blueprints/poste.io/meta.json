@@ -1,0 +1,24 @@
+{
+  "id": "poste.io",
+  "name": "Poste.io",
+  "description": "All-in-one mail server with SMTP, IMAP, POP3, antispam, antivirus, webmail, and a web admin panel.",
+  "tags": [
+    "email",
+    "mail-server",
+    "smtp",
+    "imap",
+    "pop3",
+    "antispam",
+    "antivirus",
+    "webmail"
+  ],
+  "logo": "/templates/poste.io.svg",
+  "links": {
+    "github": "https://bitbucket.org/analogic/mailserver",
+    "website": "https://poste.io/",
+    "docs": "https://poste.io/doc/",
+    "docker": "https://hub.docker.com/r/analogic/poste.io"
+  },
+  "version": "latest",
+  "popular": false
+}

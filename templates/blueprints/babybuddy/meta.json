@@ -1,0 +1,18 @@
+{
+  "id": "babybuddy",
+  "name": "BabyBuddy",
+  "description": "Baby-tracking app for logging feedings, sleep, diaper changes, and growth milestones in one shared timeline.",
+  "tags": [
+    "parenting",
+    "tracking",
+    "family"
+  ],
+  "logo": "/templates/babybuddy.png",
+  "links": {
+    "github": "https://github.com/babybuddy/babybuddy",
+    "website": "https://babybuddy.app",
+    "docs": "https://docs.babybuddy.app"
+  },
+  "version": "2.7.0",
+  "popular": false
+}

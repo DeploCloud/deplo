@@ -1,0 +1,17 @@
+{
+  "id": "lavalink",
+  "name": "Lavalink",
+  "description": "Standalone audio-streaming node based on Lavaplayer, commonly used to play music in Discord bots.",
+  "tags": [
+    "voice",
+    "discord"
+  ],
+  "logo": "/templates/lavalink.svg",
+  "links": {
+    "github": "https://github.com/lavalink-devs/Lavalink",
+    "website": "https://lavalink.dev/",
+    "docs": "https://lavalink.dev/getting-started/index.html"
+  },
+  "version": "4.1.1",
+  "popular": false
+}

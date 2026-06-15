@@ -1,0 +1,18 @@
+{
+  "id": "classicpress",
+  "name": "ClassicPress",
+  "description": "Community-led CMS forked from WordPress 6.2 that keeps the classic TinyMCE editor as the default.",
+  "tags": [
+    "cms",
+    "wordpress",
+    "content-management"
+  ],
+  "logo": "/templates/classicpress.png",
+  "links": {
+    "github": "https://github.com/ClassicPress/",
+    "website": "https://www.classicpress.net/",
+    "docs": "https://docs.classicpress.net/"
+  },
+  "version": "php8.3-apache",
+  "popular": false
+}

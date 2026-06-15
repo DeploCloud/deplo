@@ -1,0 +1,18 @@
+{
+  "id": "morphos",
+  "name": "Morphos",
+  "description": "Lightweight service for distributed operations and orchestration across your infrastructure.",
+  "tags": [
+    "server",
+    "orchestration",
+    "lightweight"
+  ],
+  "logo": "/templates/morphos.png",
+  "links": {
+    "github": "https://github.com/danvergara/morphos-server",
+    "website": "https://github.com/danvergara/morphos-server",
+    "docs": "https://github.com/danvergara/morphos-server#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

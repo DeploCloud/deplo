@@ -1,0 +1,16 @@
+{
+  "id": "minio",
+  "name": "Minio",
+  "description": "High-performance, S3-compatible object storage server you can run on your own infrastructure.",
+  "tags": [
+    "storage"
+  ],
+  "logo": "/templates/minio.png",
+  "links": {
+    "github": "https://github.com/minio/minio",
+    "website": "https://minio.io/",
+    "docs": "https://docs.minio.io/"
+  },
+  "version": "latest",
+  "popular": true
+}

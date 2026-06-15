@@ -1,0 +1,60 @@
+# Deplo control plane — self-deploy behind Traefik, backed by Postgres.
+# On the server:
+#   1. docker network create deplo            (once; shared with Traefik)
+#   2. export DEPLO_DOMAIN=deplo.example.com
+#      export DEPLO_SECRET=$(openssl rand -base64 32)
+#      export DEPLO_DB_PASSWORD=$(openssl rand -base64 24)
+#   3. docker compose up -d --build
+services:
+  deplo:
+    build: .
+    image: deplo/control-plane:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - DEPLO_DATA_DIR=/data
+      - DEPLO_SECRET=${DEPLO_SECRET:?set DEPLO_SECRET}
+      - DEPLO_PUBLIC_URL=https://${DEPLO_DOMAIN:?set DEPLO_DOMAIN}
+      - DEPLO_DATABASE_URL=postgres://deplo:${DEPLO_DB_PASSWORD:?set DEPLO_DB_PASSWORD}@postgres:5432/deplo
+      - DEPLO_ADMIN_EMAIL=${DEPLO_ADMIN_EMAIL:-}
+      - DEPLO_ADMIN_PASSWORD=${DEPLO_ADMIN_PASSWORD:-}
+    volumes:
+      - deplo-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - deplo
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.deplo.rule=Host(`${DEPLO_DOMAIN}`)"
+      - "traefik.http.routers.deplo.entrypoints=websecure"
+      - "traefik.http.routers.deplo.tls.certresolver=letsencrypt"
+      - "traefik.http.services.deplo.loadbalancer.server.port=3000"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=deplo
+      - POSTGRES_PASSWORD=${DEPLO_DB_PASSWORD:?set DEPLO_DB_PASSWORD}
+      - POSTGRES_DB=deplo
+    volumes:
+      - deplo-postgres:/var/lib/postgresql/data
+    networks:
+      - deplo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deplo -d deplo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Not published to the host: only reachable on the internal `deplo` network.
+
+volumes:
+  deplo-data:
+  deplo-postgres:
+
+networks:
+  deplo:
+    external: true

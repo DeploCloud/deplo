@@ -1,0 +1,20 @@
+{
+  "id": "postgres-pgdog",
+  "name": "PostgreSQL with PgDog",
+  "description": "PostgreSQL paired with PgDog, a multi-threaded connection pooler and load balancer alternative to PgBouncer.",
+  "tags": [
+    "database",
+    "postgresql",
+    "pooler",
+    "proxy",
+    "load-balancer"
+  ],
+  "logo": "/templates/postgres-pgdog.png",
+  "links": {
+    "github": "https://github.com/pgdogdev/pgdog",
+    "website": "https://pgdog.dev",
+    "docs": "https://docs.pgdog.dev"
+  },
+  "version": "0.1.26",
+  "popular": false
+}

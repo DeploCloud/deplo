@@ -1,0 +1,20 @@
+{
+  "id": "wallos",
+  "name": "Wallos",
+  "description": "Subscription tracker that records recurring payments and gives you a clear view of your spending over time.",
+  "tags": [
+    "finance",
+    "subscription",
+    "budgeting",
+    "expense-tracking",
+    "spending"
+  ],
+  "logo": "/templates/wallos.png",
+  "links": {
+    "github": "https://github.com/ellite/wallos",
+    "website": "https://wallosapp.com",
+    "docs": "https://github.com/ellite/wallos?tab=readme-ov-file#getting-started"
+  },
+  "version": "latest",
+  "popular": false
+}

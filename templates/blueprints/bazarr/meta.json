@@ -1,0 +1,18 @@
+{
+  "id": "bazarr",
+  "name": "Bazarr",
+  "description": "Companion to Sonarr and Radarr that automatically finds and downloads subtitles for your media library.",
+  "tags": [
+    "subtitles",
+    "sonarr",
+    "radarr"
+  ],
+  "logo": "/templates/bazarr.png",
+  "links": {
+    "github": "https://github.com/morpheus65535/bazarr",
+    "website": "https://www.bazarr.media/",
+    "docs": "https://www.bazarr.media/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

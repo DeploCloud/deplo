@@ -1,0 +1,17 @@
+{
+  "id": "nextcloud-aio",
+  "name": "Nextcloud",
+  "description": "File sync and storage platform with built-in office, calendar, and chat for self-hosted collaboration and remote work.",
+  "tags": [
+    "file-manager",
+    "sync"
+  ],
+  "logo": "/templates/nextcloud-aio.png",
+  "links": {
+    "github": "https://github.com/nextcloud/docker",
+    "website": "https://nextcloud.com/",
+    "docs": "https://docs.nextcloud.com/"
+  },
+  "version": "stable",
+  "popular": false
+}

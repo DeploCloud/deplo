@@ -1,0 +1,21 @@
+{
+  "id": "bigcapital",
+  "name": "BigCapital",
+  "description": "Open-source QuickBooks alternative for accounting, bookkeeping, and financial reporting for small businesses.",
+  "tags": [
+    "accounting",
+    "finance",
+    "bookkeeping",
+    "quickbooks",
+    "erp",
+    "business"
+  ],
+  "logo": "/templates/bigcapital.svg",
+  "links": {
+    "github": "https://github.com/bigcapitalhq/bigcapital",
+    "website": "https://bigcapital.app/",
+    "docs": "https://github.com/bigcapitalhq/bigcapital"
+  },
+  "version": "latest",
+  "popular": false
+}

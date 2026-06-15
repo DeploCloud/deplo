@@ -1,0 +1,17 @@
+{
+  "id": "penpot",
+  "name": "Penpot",
+  "description": "Open-source design and prototyping tool built on web standards to keep designers and developers in sync.",
+  "tags": [
+    "design",
+    "collaboration"
+  ],
+  "logo": "/templates/penpot.svg",
+  "links": {
+    "github": "https://github.com/penpot/penpot",
+    "website": "https://penpot.app/",
+    "docs": "https://docs.penpot.app/"
+  },
+  "version": "2.3.2",
+  "popular": false
+}

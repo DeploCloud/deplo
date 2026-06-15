@@ -1,0 +1,17 @@
+{
+  "id": "triggerdotdev",
+  "name": "Trigger.dev",
+  "description": "Background jobs and event-driven workflow platform for running long-running tasks directly from your codebase.",
+  "tags": [
+    "event-driven",
+    "applications"
+  ],
+  "logo": "/templates/triggerdotdev.svg",
+  "links": {
+    "github": "https://github.com/triggerdotdev/trigger.dev",
+    "website": "https://trigger.dev/",
+    "docs": "https://trigger.dev/docs"
+  },
+  "version": "v3",
+  "popular": false
+}

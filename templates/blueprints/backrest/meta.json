@@ -1,0 +1,16 @@
+{
+  "id": "backrest",
+  "name": "Backrest",
+  "description": "Web UI for restic backups that schedules snapshots, browses repositories, and restores files from the browser.",
+  "tags": [
+    "backup"
+  ],
+  "logo": "/templates/backrest.svg",
+  "links": {
+    "github": "https://github.com/garethgeorge/backrest",
+    "website": "https://garethgeorge.github.io/backrest",
+    "docs": "https://garethgeorge.github.io/backrest/introduction/getting-started"
+  },
+  "version": "1.6.0",
+  "popular": false
+}

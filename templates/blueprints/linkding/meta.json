@@ -1,0 +1,17 @@
+{
+  "id": "linkding",
+  "name": "Linkding",
+  "description": "Self-hosted bookmark manager with a clean, fast interface for saving and tagging your links.",
+  "tags": [
+    "bookmark-manager",
+    "self-hosted"
+  ],
+  "logo": "/templates/linkding.svg",
+  "links": {
+    "github": "https://github.com/sissbruecker/linkding",
+    "website": "https://linkding.link/",
+    "docs": "https://github.com/sissbruecker/linkding/tree/master/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,18 @@
+{
+  "id": "letterfeed",
+  "name": "Letterfeed",
+  "description": "Turns email newsletters into RSS feeds so you can read subscriptions in your favorite feed reader.",
+  "tags": [
+    "email",
+    "self-hosted",
+    "productivity"
+  ],
+  "logo": "/templates/letterfeed.png",
+  "links": {
+    "github": "https://github.com/leonmuscoden/letterfeed",
+    "website": "https://github.com/leonmuscoden/letterfeed",
+    "docs": "https://github.com/leonmuscoden/letterfeed"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,18 @@
+{
+  "id": "syncthing",
+  "name": "Syncthing",
+  "description": "Continuous file synchronization tool that keeps files in sync across your devices in real time, with no central server.",
+  "tags": [
+    "file-sync",
+    "synchronization",
+    "backup"
+  ],
+  "logo": "/templates/syncthing.svg",
+  "links": {
+    "github": "https://github.com/syncthing/syncthing",
+    "website": "https://syncthing.net/",
+    "docs": "https://docs.syncthing.net/"
+  },
+  "version": "latest",
+  "popular": false
+}

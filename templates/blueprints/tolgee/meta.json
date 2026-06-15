@@ -1,0 +1,19 @@
+{
+  "id": "tolgee",
+  "name": "Tolgee",
+  "description": "Web-based localization platform that helps developers and translators manage app translations and i18n keys.",
+  "tags": [
+    "self-hosted",
+    "i18n",
+    "localization",
+    "translations"
+  ],
+  "logo": "/templates/tolgee.svg",
+  "links": {
+    "github": "https://github.com/tolgee/tolgee-platform",
+    "website": "https://tolgee.io",
+    "docs": "https://tolgee.io/platform"
+  },
+  "version": "latest",
+  "popular": false
+}

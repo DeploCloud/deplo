@@ -1,0 +1,17 @@
+{
+  "id": "bytestash",
+  "name": "ByteStash",
+  "description": "Self-hosted vault for storing, organizing, and filtering your code snippets in one secure place.",
+  "tags": [
+    "file-storage",
+    "self-hosted"
+  ],
+  "logo": "/templates/bytestash.png",
+  "links": {
+    "github": "https://github.com/jordan-dalby/ByteStash",
+    "website": "https://github.com/jordan-dalby/ByteStash",
+    "docs": "https://github.com/jordan-dalby/ByteStash"
+  },
+  "version": "latest",
+  "popular": false
+}

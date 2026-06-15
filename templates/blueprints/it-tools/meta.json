@@ -1,0 +1,17 @@
+{
+  "id": "it-tools",
+  "name": "IT Tools",
+  "description": "Collection of handy developer utilities like encoders, converters, and generators in one web interface.",
+  "tags": [
+    "developer",
+    "tools"
+  ],
+  "logo": "/templates/it-tools.svg",
+  "links": {
+    "github": "https://github.com/CorentinTh/it-tools",
+    "website": "https://it-tools.tech",
+    "docs": "https://it-tools.tech/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

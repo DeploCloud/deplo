@@ -1,0 +1,18 @@
+{
+  "id": "docmost",
+  "name": "Docmost",
+  "description": "Collaborative wiki and documentation tool for teams to write, organize, and share knowledge in real time.",
+  "tags": [
+    "self-hosted",
+    "open-source",
+    "manager"
+  ],
+  "logo": "/templates/docmost.png",
+  "links": {
+    "github": "https://github.com/docmost/docmost",
+    "website": "https://docmost.com/",
+    "docs": "https://docmost.com/docs/"
+  },
+  "version": "0.4.1",
+  "popular": false
+}

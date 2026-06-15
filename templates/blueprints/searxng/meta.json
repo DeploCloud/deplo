@@ -1,0 +1,20 @@
+{
+  "id": "searxng",
+  "name": "SearXNG",
+  "description": "Privacy-respecting metasearch engine that aggregates results from many search engines without tracking or profiling you.",
+  "tags": [
+    "search-engine",
+    "metasearch",
+    "privacy",
+    "self-hosted",
+    "aggregator"
+  ],
+  "logo": "/templates/searxng.png",
+  "links": {
+    "github": "https://github.com/searxng/searxng",
+    "website": "https://searxng.github.io/",
+    "docs": "https://docs.searxng.github.io/"
+  },
+  "version": "latest",
+  "popular": false
+}

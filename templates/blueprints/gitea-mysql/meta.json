@@ -1,0 +1,20 @@
+{
+  "id": "gitea-mysql",
+  "name": "Gitea (MySQL)",
+  "description": "Lightweight self-hosted Git service with issues, pull requests, and CI, bundled with MySQL 8 for storage.",
+  "tags": [
+    "git",
+    "scm",
+    "mysql",
+    "developer-tools",
+    "self-hosted"
+  ],
+  "logo": "/templates/gitea-mysql.png",
+  "links": {
+    "github": "https://github.com/go-gitea/gitea",
+    "website": "https://gitea.io/",
+    "docs": "https://docs.gitea.com/"
+  },
+  "version": "1.24.4",
+  "popular": false
+}

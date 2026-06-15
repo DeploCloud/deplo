@@ -1,0 +1,20 @@
+{
+  "id": "openinary",
+  "name": "Openinary",
+  "description": "Self-hosted media management service for storing and transforming images and videos, an alternative to Cloudinary.",
+  "tags": [
+    "media",
+    "images",
+    "videos",
+    "cloudinary-alternative",
+    "developer-tools"
+  ],
+  "logo": "/templates/openinary.svg",
+  "links": {
+    "github": "https://github.com/openinary/openinary",
+    "website": "https://openinary.dev",
+    "docs": "https://docs.openinary.dev"
+  },
+  "version": "latest",
+  "popular": false
+}

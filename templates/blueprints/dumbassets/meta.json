@@ -1,0 +1,18 @@
+{
+  "id": "dumbassets",
+  "name": "DumbAssets",
+  "description": "Minimal asset tracker for logging your belongings and equipment, with no database or login to set up.",
+  "tags": [
+    "asset-tracking",
+    "self-hosted",
+    "simple"
+  ],
+  "logo": "/templates/dumbassets.svg",
+  "links": {
+    "github": "https://github.com/dumbwareio/dumbassets",
+    "website": "https://www.dumbware.io/software/DumbAssets/",
+    "docs": "https://github.com/dumbwareio/dumbassets"
+  },
+  "version": "latest",
+  "popular": false
+}

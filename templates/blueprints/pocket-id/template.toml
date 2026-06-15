@@ -1,0 +1,15 @@
+[variables]
+main_domain = "${domain}"
+
+[config]
+mounts = []
+
+[[config.domains]]
+serviceName = "pocket-id"
+port = 1411
+host = "${main_domain}"
+
+[config.env]
+ENCRYPTION_KEY = "CHANGEME: openssl rand -base64 32"
+APP_URL = "http://${main_domain}"
+TRUST_PROXY = "true"

@@ -1,0 +1,18 @@
+{
+  "id": "actualbudget",
+  "name": "Actual Budget",
+  "description": "Local-first personal finance app using zero-based budgeting to track spending and plan your money.",
+  "tags": [
+    "budgeting",
+    "finance",
+    "money"
+  ],
+  "logo": "/templates/actualbudget.png",
+  "links": {
+    "github": "https://github.com/actualbudget/actual",
+    "website": "https://actualbudget.org",
+    "docs": "https://actualbudget.org/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

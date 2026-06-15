@@ -1,0 +1,18 @@
+{
+  "id": "colanode",
+  "name": "Colanode Server",
+  "description": "Local-first, open-source collaboration workspace that combines Slack-style chat and Notion-style docs.",
+  "tags": [
+    "documentation",
+    "knowledge-base",
+    "collaboration"
+  ],
+  "logo": "/templates/colanode.svg",
+  "links": {
+    "github": "https://github.com/colanode/colanode",
+    "website": "https://colanode.com",
+    "docs": "https://colanode.com/docs/"
+  },
+  "version": "v0.1.6",
+  "popular": false
+}

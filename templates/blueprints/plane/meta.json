@@ -1,0 +1,16 @@
+{
+  "id": "plane",
+  "name": "Plane",
+  "description": "Open-source project management tool for tracking issues, sprints, and roadmaps across teams.",
+  "tags": [
+    "kanban"
+  ],
+  "logo": "/templates/plane.png",
+  "links": {
+    "github": "https://github.com/makeplane/plane",
+    "website": "https://plane.so",
+    "docs": "https://docs.plane.so/"
+  },
+  "version": "v0.27.1",
+  "popular": false
+}

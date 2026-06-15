@@ -1,0 +1,19 @@
+{
+  "id": "networking-toolbox",
+  "name": "Networking Toolbox",
+  "description": "Collection of networking utilities like subnet, DNS, and IP calculators bundled into one self-hostable web app.",
+  "tags": [
+    "networking",
+    "tools",
+    "utilities",
+    "web"
+  ],
+  "logo": "/templates/networking-toolbox.png",
+  "links": {
+    "github": "https://github.com/lissy93/networking",
+    "website": "https://github.com/lissy93/networking",
+    "docs": "https://github.com/lissy93/networking#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

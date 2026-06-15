@@ -1,0 +1,19 @@
+{
+  "id": "domain-locker",
+  "name": "Domain Locker",
+  "description": "Domain portfolio tracker that monitors expiration dates and sends renewal reminders before names lapse.",
+  "tags": [
+    "domains",
+    "monitoring",
+    "utilities",
+    "postgres"
+  ],
+  "logo": "/templates/domain-locker.png",
+  "links": {
+    "github": "https://github.com/Lissy93/domain-locker",
+    "website": "https://domain-locker.com/",
+    "docs": "https://github.com/Lissy93/domain-locker#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

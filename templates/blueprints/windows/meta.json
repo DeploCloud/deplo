@@ -1,0 +1,18 @@
+{
+  "id": "windows",
+  "name": "Windows (dockerized)",
+  "description": "Runs a full Windows desktop inside a Docker container, accessible through your browser via a built-in VNC viewer.",
+  "tags": [
+    "self-hosted",
+    "open-source",
+    "os"
+  ],
+  "logo": "/templates/windows.png",
+  "links": {
+    "github": "https://github.com/dockur/windows",
+    "website": "",
+    "docs": "https://github.com/dockur/windows?tab=readme-ov-file#how-do-i-use-it"
+  },
+  "version": "4.00",
+  "popular": false
+}

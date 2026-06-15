@@ -1,0 +1,122 @@
+"use client";
+
+import * as React from "react";
+import { toast } from "sonner";
+import { MoreHorizontal, PlugZap, Trash2, Cloud } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { ConfirmAction } from "@/components/shared/confirm-action";
+import { timeAgo } from "@/lib/utils";
+import { testS3Action, deleteS3Action } from "@/lib/actions/s3";
+import type { S3DestinationDTO } from "@/lib/data/s3";
+
+const PROVIDER_LABEL: Record<string, string> = {
+  aws: "Amazon S3",
+  "cloudflare-r2": "Cloudflare R2",
+  "backblaze-b2": "Backblaze B2",
+  digitalocean: "DigitalOcean Spaces",
+  wasabi: "Wasabi",
+  minio: "MinIO",
+  other: "S3-compatible",
+};
+
+export function S3Card({ dest }: { dest: S3DestinationDTO }) {
+  const [pending, startTransition] = React.useTransition();
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+
+  function test() {
+    startTransition(async () => {
+      const res = await testS3Action(dest.id);
+      if (res.ok) toast.success("Connection verified");
+      else toast.error(res.error);
+    });
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg border border-border bg-secondary">
+              <Cloud className="size-5" />
+            </div>
+            <div>
+              <p className="font-medium">{dest.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {PROVIDER_LABEL[dest.provider] ?? dest.provider}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={dest.status} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="Destination menu">
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={test} disabled={pending}>
+                  <PlugZap className="size-4" />
+                  Test connection
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setConfirmOpen(true);
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                  Remove
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+          <div>
+            <dt className="text-muted-foreground">Bucket</dt>
+            <dd className="font-mono">{dest.bucket}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Region</dt>
+            <dd className="font-mono">{dest.region}</dd>
+          </div>
+          <div className="col-span-2">
+            <dt className="text-muted-foreground">Endpoint</dt>
+            <dd className="truncate font-mono">{dest.endpoint}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Access key</dt>
+            <dd className="font-mono">{dest.accessKeyMasked}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Added</dt>
+            <dd>{timeAgo(dest.createdAt)}</dd>
+          </div>
+        </dl>
+      </CardContent>
+
+      <ConfirmAction
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={`Remove ${dest.name}?`}
+        description="Backups configured to use this destination will stop running. Your bucket contents are not affected."
+        confirmLabel="Remove destination"
+        successMessage="Destination removed"
+        onConfirm={() => deleteS3Action(dest.id)}
+      />
+    </Card>
+  );
+}

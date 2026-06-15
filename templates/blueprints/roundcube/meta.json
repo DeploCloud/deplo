@@ -1,0 +1,18 @@
+{
+  "id": "roundcube",
+  "name": "Roundcube",
+  "description": "Browser-based IMAP webmail client written in PHP, giving your mail server a clean and familiar inbox interface.",
+  "tags": [
+    "self-hosted",
+    "email",
+    "webmail"
+  ],
+  "logo": "/templates/roundcube.svg",
+  "links": {
+    "github": "https://github.com/roundcube/roundcubemail",
+    "website": "https://roundcube.net/",
+    "docs": "https://roundcube.net/about/"
+  },
+  "version": "1.6.9",
+  "popular": false
+}

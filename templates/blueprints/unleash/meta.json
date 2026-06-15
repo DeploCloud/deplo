@@ -1,0 +1,19 @@
+{
+  "id": "unleash",
+  "name": "Unleash",
+  "description": "Feature flag and toggle management platform for rolling out, testing, and controlling features in production.",
+  "tags": [
+    "feature-flag",
+    "feature-management",
+    "feature-toggle",
+    "remote-configuration"
+  ],
+  "logo": "/templates/unleash.png",
+  "links": {
+    "github": "https://github.com/unleash/unleash",
+    "website": "https://www.getunleash.io/",
+    "docs": "https://docs.getunleash.io/"
+  },
+  "version": "7.4.0",
+  "popular": false
+}

@@ -1,0 +1,16 @@
+{
+  "id": "kestra",
+  "name": "Kestra",
+  "description": "Workflow orchestration platform that lets you define and run data pipelines as code or from the UI.",
+  "tags": [
+    "automation"
+  ],
+  "logo": "/templates/kestra.svg",
+  "links": {
+    "github": "https://github.com/kestra-io/kestra",
+    "website": "https://kestra.io",
+    "docs": "https://kestra.io/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

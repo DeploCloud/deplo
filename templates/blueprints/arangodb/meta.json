@@ -1,0 +1,18 @@
+{
+  "id": "arangodb",
+  "name": "ArangoDB",
+  "description": "Native multi-model database handling documents, graphs, and key-values through one query language.",
+  "tags": [
+    "database",
+    "graph-database",
+    "nosql"
+  ],
+  "logo": "/templates/arangodb.png",
+  "links": {
+    "github": "https://github.com/arangodb/arangodb",
+    "website": "https://www.arangodb.com/",
+    "docs": "https://www.arangodb.com/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

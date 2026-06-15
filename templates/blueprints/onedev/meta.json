@@ -1,0 +1,17 @@
+{
+  "id": "onedev",
+  "name": "OneDev",
+  "description": "Self-hosted Git server with built-in CI/CD pipelines, kanban boards, and package registries for development teams.",
+  "tags": [
+    "self-hosted",
+    "development"
+  ],
+  "logo": "/templates/onedev.png",
+  "links": {
+    "github": "https://github.com/theonedev/onedev/",
+    "website": "https://onedev.io/",
+    "docs": "https://docs.onedev.io/"
+  },
+  "version": "11.6.6",
+  "popular": false
+}

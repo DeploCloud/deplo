@@ -1,0 +1,18 @@
+{
+  "id": "supabase",
+  "name": "SupaBase",
+  "description": "Open-source Firebase alternative giving you a dedicated Postgres database with auth, storage, and APIs for your apps.",
+  "tags": [
+    "database",
+    "firebase",
+    "postgres"
+  ],
+  "logo": "/templates/supabase.svg",
+  "links": {
+    "github": "https://github.com/supabase/supabase",
+    "website": "https://supabase.com/",
+    "docs": "https://supabase.com/docs/guides/self-hosting"
+  },
+  "version": "1.25.04 / dokploy >= 0.22.5",
+  "popular": true
+}

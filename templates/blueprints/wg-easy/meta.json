@@ -1,0 +1,18 @@
+{
+  "id": "wg-easy",
+  "name": "WG-Easy",
+  "description": "WireGuard VPN server with a simple web UI for creating clients, sharing QR configs, and managing connections.",
+  "tags": [
+    "vpn",
+    "wireguard",
+    "networking"
+  ],
+  "logo": "/templates/wg-easy.png",
+  "links": {
+    "github": "https://github.com/wg-easy/wg-easy",
+    "website": "https://wg-easy.github.io/",
+    "docs": "https://github.com/wg-easy/wg-easy/wiki"
+  },
+  "version": "15",
+  "popular": false
+}

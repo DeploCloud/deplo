@@ -1,0 +1,16 @@
+{
+  "id": "kaneo",
+  "name": "Kaneo",
+  "description": "Open-source project management tool focused on simple, efficient task tracking for self-hosted teams.",
+  "tags": [
+    "Task Tracking"
+  ],
+  "logo": "/templates/kaneo.png",
+  "links": {
+    "github": "https://github.com/usekaneo/kaneo",
+    "website": "https://kaneo.app/",
+    "docs": "https://kaneo.app/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

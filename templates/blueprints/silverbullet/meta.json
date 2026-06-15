@@ -1,0 +1,19 @@
+{
+  "id": "silverbullet",
+  "name": "SilverBullet",
+  "description": "Markdown-based personal knowledge base for note-taking that grows smarter with linked pages and live queries.",
+  "tags": [
+    "notes",
+    "knowledge-base",
+    "productivity",
+    "markdown"
+  ],
+  "logo": "/templates/silverbullet.png",
+  "links": {
+    "github": "https://github.com/silverbulletmd/silverbullet",
+    "website": "https://silverbullet.md",
+    "docs": "https://silverbullet.md/docs"
+  },
+  "version": "v2",
+  "popular": false
+}

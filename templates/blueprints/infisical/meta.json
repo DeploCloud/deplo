@@ -1,0 +1,17 @@
+{
+  "id": "infisical",
+  "name": "Infisical",
+  "description": "Secrets management platform for storing, syncing, and sharing API keys and configuration across your team.",
+  "tags": [
+    "self-hosted",
+    "open-source"
+  ],
+  "logo": "/templates/infisical.jpg",
+  "links": {
+    "github": "https://github.com/Infisical/infisical",
+    "website": "https://infisical.com/",
+    "docs": "https://infisical.com/docs/documentation/getting-started/introduction"
+  },
+  "version": "0.135.0",
+  "popular": false
+}

@@ -1,0 +1,18 @@
+{
+  "id": "cloud9",
+  "name": "Cloud9",
+  "description": "Cloud-based IDE for writing, building, and debugging applications collaboratively in real time.",
+  "tags": [
+    "ide",
+    "development",
+    "cloud"
+  ],
+  "logo": "/templates/cloud9.png",
+  "links": {
+    "github": "https://github.com/c9",
+    "website": "https://aws.amazon.com/cloud9/",
+    "docs": "https://docs.aws.amazon.com/cloud9/"
+  },
+  "version": "1.29.2",
+  "popular": false
+}

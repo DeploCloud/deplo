@@ -1,0 +1,17 @@
+{
+  "id": "unifi",
+  "name": "Unifi Network",
+  "description": "Network management controller for configuring and monitoring UniFi access points, switches, and gateways.",
+  "tags": [
+    "self-hosted",
+    "networking"
+  ],
+  "logo": "/templates/unifi.webp",
+  "links": {
+    "github": "https://github.com/ubiquiti",
+    "website": "https://www.ui.com/",
+    "docs": "https://help.ui.com/hc/en-us/articles/360012282453-Self-Hosting-a-UniFi-Network-Server"
+  },
+  "version": "11.6.6",
+  "popular": false
+}

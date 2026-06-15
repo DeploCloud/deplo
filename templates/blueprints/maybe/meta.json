@@ -1,0 +1,17 @@
+{
+  "id": "maybe",
+  "name": "Maybe",
+  "description": "Personal finance app for tracking budgets, accounts, and expenses, hosted entirely on your own server.",
+  "tags": [
+    "finance",
+    "self-hosted"
+  ],
+  "logo": "/templates/maybe.svg",
+  "links": {
+    "github": "https://github.com/maybe-finance/maybe",
+    "website": "https://maybe.finance/",
+    "docs": "https://docs.maybe.finance/"
+  },
+  "version": "latest",
+  "popular": false
+}

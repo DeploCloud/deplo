@@ -1,0 +1,20 @@
+{
+  "id": "superset",
+  "name": "Superset (Unofficial)",
+  "description": "Data exploration and visualization platform for building interactive dashboards and charts from SQL databases.",
+  "tags": [
+    "analytics",
+    "bi",
+    "dashboard",
+    "database",
+    "sql"
+  ],
+  "logo": "/templates/superset.svg",
+  "links": {
+    "github": "https://github.com/amancevice/docker-superset",
+    "website": "https://superset.apache.org",
+    "docs": "https://superset.apache.org/docs/intro"
+  },
+  "version": "6.0.0",
+  "popular": false
+}

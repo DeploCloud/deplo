@@ -1,0 +1,18 @@
+{
+  "id": "pyrodactyl",
+  "name": "Pyrodactyl",
+  "description": "Pterodactyl-based game server panel rebuilt to be faster, smaller, and more accessible to manage.",
+  "tags": [
+    "self-hosted",
+    "open-source",
+    "management"
+  ],
+  "logo": "/templates/pyrodactyl.png",
+  "links": {
+    "github": "https://github.com/pyrohost/pyrodactyl",
+    "website": "https://pyrodactyl.dev",
+    "docs": "https://pyrodactyl.dev/docs"
+  },
+  "version": "main",
+  "popular": false
+}

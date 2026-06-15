@@ -1,0 +1,18 @@
+{
+  "id": "shlink",
+  "name": "Shlink",
+  "description": "Self-hosted URL shortener that serves short links under your own domain, with detailed click analytics and a REST API.",
+  "tags": [
+    "sharing",
+    "shortener",
+    "url"
+  ],
+  "logo": "/templates/shlink.svg",
+  "links": {
+    "github": "https://github.com/shlinkio/shlink",
+    "website": "https://shlink.io",
+    "docs": "https://shlink.io/documentation"
+  },
+  "version": "stable",
+  "popular": false
+}

@@ -1,0 +1,20 @@
+{
+  "id": "keycloak",
+  "name": "Keycloak",
+  "description": "Identity and access management server providing single sign-on, OAuth2, and OpenID Connect for your apps.",
+  "tags": [
+    "authentication",
+    "identity",
+    "sso",
+    "oauth2",
+    "openid-connect"
+  ],
+  "logo": "/templates/keycloak.svg",
+  "links": {
+    "github": "https://github.com/keycloak/keycloak",
+    "website": "https://www.keycloak.org/",
+    "docs": "https://www.keycloak.org/documentation"
+  },
+  "version": "26.0",
+  "popular": false
+}

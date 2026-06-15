@@ -1,0 +1,17 @@
+{
+  "id": "drawio",
+  "name": "draw.io",
+  "description": "Diagramming and whiteboarding tool for creating flowcharts, network diagrams, and wireframes in the browser.",
+  "tags": [
+    "drawing",
+    "diagrams"
+  ],
+  "logo": "/templates/drawio.svg",
+  "links": {
+    "github": "https://github.com/jgraph/drawio",
+    "website": "https://draw.io/",
+    "docs": "https://www.drawio.com/doc/"
+  },
+  "version": "24.7.17",
+  "popular": false
+}

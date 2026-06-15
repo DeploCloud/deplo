@@ -1,0 +1,17 @@
+[variables]
+main_domain = "${domain}"
+api_domain = "${domain}"
+
+[config]
+mounts = []
+
+[[config.domains]]
+serviceName = "minio"
+port = 9_001
+host = "${main_domain}"
+
+[config.env]
+MINIO_ROOT_USER = "minioadmin"
+MINIO_ROOT_PASSWORD = "${password:16}"
+MINIO_BROWSER_REDIRECT_URL = "http://${main_domain}"
+MINIO_BROWSER_REDIRECT = "false"

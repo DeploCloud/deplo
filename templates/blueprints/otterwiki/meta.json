@@ -1,0 +1,19 @@
+{
+  "id": "otterwiki",
+  "name": "Otter Wiki",
+  "description": "Lightweight wiki engine built with Python and Flask, storing markdown pages in Git for versioned documentation.",
+  "tags": [
+    "wiki",
+    "documentation",
+    "knowledge-base",
+    "markdown"
+  ],
+  "logo": "/templates/otterwiki.png",
+  "links": {
+    "github": "https://github.com/redimp/otterwiki",
+    "website": "https://otterwiki.com/",
+    "docs": "https://github.com/redimp/otterwiki/wiki"
+  },
+  "version": "2",
+  "popular": false
+}

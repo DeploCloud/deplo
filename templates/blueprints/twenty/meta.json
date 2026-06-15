@@ -1,0 +1,18 @@
+{
+  "id": "twenty",
+  "name": "Twenty CRM",
+  "description": "Modern CRM with a spreadsheet-like interface for managing contacts and deals, an open alternative to Salesforce.",
+  "tags": [
+    "crm",
+    "sales",
+    "business"
+  ],
+  "logo": "/templates/twenty.svg",
+  "links": {
+    "github": "https://github.com/twentyhq/twenty",
+    "website": "https://twenty.com",
+    "docs": "https://docs.twenty.com"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,18 @@
+{
+  "id": "lowcoder",
+  "name": "Lowcoder",
+  "description": "Open-source low-code platform for quickly building internal tools, dashboards, and business apps.",
+  "tags": [
+    "low-code",
+    "no-code",
+    "development"
+  ],
+  "logo": "/templates/lowcoder.png",
+  "links": {
+    "github": "https://github.com/lowcoder-org/lowcoder",
+    "website": "https://www.lowcoder.cloud/",
+    "docs": "https://docs.lowcoder.cloud/lowcoder-documentation"
+  },
+  "version": "2.6.4",
+  "popular": false
+}

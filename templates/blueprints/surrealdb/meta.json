@@ -1,0 +1,18 @@
+{
+  "id": "surrealdb",
+  "name": "SurrealDB",
+  "description": "Multi-model database combining relational, document, graph, time-series, vector, and geospatial data in one engine.",
+  "tags": [
+    "database",
+    "sql",
+    "surrealdb"
+  ],
+  "logo": "/templates/surrealdb.svg",
+  "links": {
+    "github": "https://github.com/surrealdb/surrealdb",
+    "website": "https://surrealdb.com",
+    "docs": "https://surrealdb.com/docs/surrealdb"
+  },
+  "version": "2.3.10",
+  "popular": false
+}

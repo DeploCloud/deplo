@@ -1,0 +1,21 @@
+{
+  "id": "agentdvr",
+  "name": "Agent DVR",
+  "description": "Video surveillance software with motion detection, alerts, and remote access for your security cameras.",
+  "tags": [
+    "surveillance",
+    "security",
+    "video",
+    "monitoring",
+    "dvr",
+    "camera"
+  ],
+  "logo": "/templates/agentdvr.png",
+  "links": {
+    "github": "https://github.com/ispysoftware/AgentDVR",
+    "website": "https://www.ispyconnect.com/",
+    "docs": "https://www.ispyconnect.com/userguide-agent-dvr.aspx"
+  },
+  "version": "latest",
+  "popular": false
+}

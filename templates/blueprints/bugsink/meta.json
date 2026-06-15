@@ -1,0 +1,18 @@
+{
+  "id": "bugsink",
+  "name": "Bugsink",
+  "description": "Self-hosted error tracker compatible with the Sentry SDK for capturing and monitoring application exceptions.",
+  "tags": [
+    "hosting",
+    "self-hosted",
+    "development"
+  ],
+  "logo": "/templates/bugsink.png",
+  "links": {
+    "github": "https://github.com/bugsink/bugsink/",
+    "website": "https://www.bugsink.com/",
+    "docs": "https://www.bugsink.com/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

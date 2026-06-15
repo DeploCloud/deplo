@@ -1,0 +1,19 @@
+{
+  "id": "adguardhome",
+  "name": "AdGuard Home",
+  "description": "Network-wide DNS server that blocks ads and trackers across every device, with parental controls.",
+  "tags": [
+    "privacy",
+    "security",
+    "dns",
+    "ad-blocking"
+  ],
+  "logo": "/templates/adguardhome.svg",
+  "links": {
+    "github": "https://github.com/AdguardTeam/AdGuardHome",
+    "website": "https://adguard.com",
+    "docs": "https://github.com/AdguardTeam/AdGuardHome/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

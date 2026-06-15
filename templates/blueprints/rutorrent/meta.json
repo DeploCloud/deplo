@@ -1,0 +1,19 @@
+{
+  "id": "rutorrent",
+  "name": "ruTorrent",
+  "description": "Web interface for the rTorrent BitTorrent client, letting you manage torrents and seeding from your browser.",
+  "tags": [
+    "torrent",
+    "rtorrent",
+    "webui",
+    "downloader"
+  ],
+  "logo": "/templates/rutorrent.svg",
+  "links": {
+    "github": "https://github.com/crazy-max/docker-rtorrent-rutorrent",
+    "website": "https://crazymax.dev/",
+    "docs": "https://github.com/crazy-max/docker-rtorrent-rutorrent"
+  },
+  "version": "latest",
+  "popular": false
+}

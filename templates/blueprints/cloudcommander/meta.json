@@ -1,0 +1,18 @@
+{
+  "id": "cloudcommander",
+  "name": "Cloud Commander",
+  "description": "Web-based file manager with a built-in console and text editor for working with server files in the browser.",
+  "tags": [
+    "file-manager",
+    "web-based",
+    "console"
+  ],
+  "logo": "/templates/cloudcommander.png",
+  "links": {
+    "github": "https://github.com/coderaiser/cloudcmd",
+    "website": "https://cloudcmd.io",
+    "docs": "https://cloudcmd.io/#install"
+  },
+  "version": "18.5.1",
+  "popular": false
+}

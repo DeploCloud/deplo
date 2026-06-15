@@ -1,0 +1,17 @@
+{
+  "id": "emby",
+  "name": "Emby",
+  "description": "Personal media server that streams your movies, TV, and music to apps on phones, TVs, and browsers.",
+  "tags": [
+    "media",
+    "media system"
+  ],
+  "logo": "/templates/emby.png",
+  "links": {
+    "github": "https://github.com/MediaBrowser/Emby",
+    "website": "https://emby.media/",
+    "docs": "https://emby.media/support/articles/Home.html"
+  },
+  "version": "4.9.1.17",
+  "popular": false
+}

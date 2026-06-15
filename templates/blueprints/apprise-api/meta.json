@@ -1,0 +1,17 @@
+{
+  "id": "apprise-api",
+  "name": "Apprise API",
+  "description": "Simple HTTP API for pushing notifications to dozens of popular services from a single endpoint.",
+  "tags": [
+    "notifications",
+    "api"
+  ],
+  "logo": "/templates/apprise-api.png",
+  "links": {
+    "github": "https://github.com/caronc/apprise-api",
+    "website": "https://github.com/caronc/apprise-api",
+    "docs": "https://github.com/caronc/apprise-api/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

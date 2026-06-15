@@ -1,0 +1,16 @@
+{
+  "id": "directus",
+  "name": "Directus",
+  "description": "Headless CMS that wraps any SQL database with an instant REST and GraphQL API plus an admin dashboard.",
+  "tags": [
+    "cms"
+  ],
+  "logo": "/templates/directus.jpg",
+  "links": {
+    "github": "https://github.com/directus/directus",
+    "website": "https://directus.io/",
+    "docs": "https://docs.directus.io/"
+  },
+  "version": "11.0.2",
+  "popular": true
+}

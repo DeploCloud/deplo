@@ -1,0 +1,18 @@
+{
+  "id": "anytype",
+  "name": "Anytype",
+  "description": "Local-first, encrypted knowledge base for notes, tasks, and wikis built from linked objects you define.",
+  "tags": [
+    "note-taking",
+    "local-first",
+    "peer-to-peer"
+  ],
+  "logo": "/templates/anytype.png",
+  "links": {
+    "github": "https://github.com/grishy/any-sync-bundle",
+    "docs": "https://doc.anytype.io/anytype-docs",
+    "website": "https://anytype.io/"
+  },
+  "version": "latest",
+  "popular": false
+}

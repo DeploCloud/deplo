@@ -1,0 +1,19 @@
+{
+  "id": "mautic",
+  "name": "Mautic",
+  "description": "Open-source marketing automation platform for email campaigns, landing pages, and contact nurturing.",
+  "tags": [
+    "marketing",
+    "automation",
+    "email",
+    "crm"
+  ],
+  "logo": "/templates/mautic.svg",
+  "links": {
+    "github": "https://github.com/mautic/mautic",
+    "website": "https://www.mautic.org/",
+    "docs": "https://docs.mautic.org/en"
+  },
+  "version": "5.1.1",
+  "popular": false
+}

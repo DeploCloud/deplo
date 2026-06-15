@@ -1,0 +1,20 @@
+{
+  "id": "conduwuit",
+  "name": "Conduwuit",
+  "description": "Featureful Matrix chat homeserver, a well-maintained fork of Conduit for self-hosted federated messaging.",
+  "tags": [
+    "backend",
+    "chat",
+    "communication",
+    "matrix",
+    "server"
+  ],
+  "logo": "/templates/conduwuit.svg",
+  "links": {
+    "github": "https://github.com/girlbossceo/conduwuit",
+    "website": "https://conduwuit.puppyirl.gay",
+    "docs": "https://conduwuit.puppyirl.gay/configuration.html"
+  },
+  "version": "latest",
+  "popular": false
+}

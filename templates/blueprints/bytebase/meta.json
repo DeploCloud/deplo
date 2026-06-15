@@ -1,0 +1,17 @@
+{
+  "id": "bytebase",
+  "name": "Bytebase",
+  "description": "Database DevOps and CI/CD tool for managing schema changes and reviewing migrations across teams.",
+  "tags": [
+    "database",
+    "self-hosted"
+  ],
+  "logo": "/templates/bytebase.png",
+  "links": {
+    "github": "https://github.com/bytebase/bytebase",
+    "website": "https://www.bytebase.com",
+    "docs": "https://www.bytebase.com/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

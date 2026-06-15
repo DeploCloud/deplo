@@ -1,0 +1,20 @@
+{
+  "id": "netdata",
+  "name": "Netdata",
+  "description": "Real-time monitoring tool that visualizes system, container, and application metrics with per-second granularity.",
+  "tags": [
+    "monitoring",
+    "metrics",
+    "analytics",
+    "performance",
+    "infrastructure"
+  ],
+  "logo": "/templates/netdata.svg",
+  "links": {
+    "github": "https://github.com/netdata/netdata",
+    "website": "https://www.netdata.cloud/",
+    "docs": "https://learn.netdata.cloud/"
+  },
+  "version": "latest",
+  "popular": false
+}

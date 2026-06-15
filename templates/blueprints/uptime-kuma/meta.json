@@ -1,0 +1,16 @@
+{
+  "id": "uptime-kuma",
+  "name": "Uptime Kuma",
+  "description": "Self-hosted uptime monitor that tracks websites and services and sends alerts when they go down.",
+  "tags": [
+    "monitoring"
+  ],
+  "logo": "/templates/uptime-kuma.png",
+  "links": {
+    "github": "https://github.com/louislam/uptime-kuma",
+    "website": "https://uptime.kuma.pet/",
+    "docs": "https://github.com/louislam/uptime-kuma/wiki"
+  },
+  "version": "2.1.0",
+  "popular": true
+}

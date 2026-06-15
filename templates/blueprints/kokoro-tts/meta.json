@@ -1,0 +1,20 @@
+{
+  "id": "kokoro-tts",
+  "name": "Kokoro TTS",
+  "description": "FastAPI server for the Kokoro-82M text-to-speech model, with multi-language voices and OpenAI-compatible endpoints.",
+  "tags": [
+    "text-to-speech",
+    "ai",
+    "voice",
+    "fastapi",
+    "openai-compatible"
+  ],
+  "logo": "/templates/kokoro-tts.svg",
+  "links": {
+    "github": "https://github.com/remsky/Kokoro-FastAPI",
+    "website": "https://github.com/remsky/Kokoro-FastAPI",
+    "docs": "https://github.com/remsky/Kokoro-FastAPI#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

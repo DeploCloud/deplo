@@ -1,0 +1,19 @@
+{
+  "id": "cloudflared",
+  "name": "Cloudflared",
+  "description": "Daemon that securely exposes local services to the internet through a Cloudflare Tunnel, no open ports needed.",
+  "tags": [
+    "cloud",
+    "networking",
+    "security",
+    "tunnel"
+  ],
+  "logo": "/templates/cloudflared.svg",
+  "links": {
+    "github": "https://github.com/cloudflare/cloudflared",
+    "website": "https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/",
+    "docs": "https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/"
+  },
+  "version": "latest",
+  "popular": false
+}

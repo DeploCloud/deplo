@@ -1,0 +1,20 @@
+{
+  "id": "quant-ux",
+  "name": "Quant-UX",
+  "description": "Open-source UX design tool for building interactive prototypes and running usability tests with behavior analytics.",
+  "tags": [
+    "design",
+    "ux",
+    "prototyping",
+    "user-research",
+    "analytics"
+  ],
+  "logo": "/templates/quant-ux.svg",
+  "links": {
+    "github": "https://github.com/KlausSchaefers/quant-ux",
+    "website": "https://www.quant-ux.com/",
+    "docs": "https://www.quant-ux.com/"
+  },
+  "version": "latest",
+  "popular": false
+}

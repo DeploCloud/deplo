@@ -1,0 +1,20 @@
+{
+  "id": "dolibarr",
+  "name": "Dolibarr",
+  "description": "Integrated ERP and CRM suite covering contacts, invoices, orders, stock, HR, and project management for small businesses.",
+  "tags": [
+    "erp",
+    "crm",
+    "business",
+    "management",
+    "invoicing"
+  ],
+  "logo": "/templates/dolibarr.svg",
+  "links": {
+    "github": "https://github.com/Dolibarr/dolibarr",
+    "website": "https://www.dolibarr.org/",
+    "docs": "https://wiki.dolibarr.org/"
+  },
+  "version": "21.0.0",
+  "popular": false
+}

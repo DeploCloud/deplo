@@ -1,0 +1,20 @@
+{
+  "id": "mazanoke",
+  "name": "MAZANOKE",
+  "description": "Self-hosted image hosting and sharing platform for uploading, organizing, and sharing your photos.",
+  "tags": [
+    "image-hosting",
+    "file-sharing",
+    "self-hosted",
+    "media",
+    "gallery"
+  ],
+  "logo": "/templates/mazanoke.svg",
+  "links": {
+    "github": "https://github.com/civilblur/mazanoke",
+    "website": "https://github.com/civilblur/mazanoke",
+    "docs": "https://github.com/civilblur/mazanoke"
+  },
+  "version": "latest",
+  "popular": false
+}

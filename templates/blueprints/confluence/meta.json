@@ -1,0 +1,19 @@
+{
+  "id": "confluence",
+  "name": "Confluence",
+  "description": "Team workspace from Atlassian for creating, organizing, and collaborating on documentation and project knowledge.",
+  "tags": [
+    "collaboration",
+    "documentation",
+    "productivity",
+    "project-management"
+  ],
+  "logo": "/templates/confluence.svg",
+  "links": {
+    "website": "https://confluence.atlassian.com",
+    "docs": "https://confluence.atlassian.com/doc/confluence-documentation-135922.html",
+    "github": "https://confluence.atlassian.com"
+  },
+  "version": "8.6",
+  "popular": false
+}

@@ -1,0 +1,16 @@
+{
+  "id": "openpanel",
+  "name": "OpenPanel",
+  "description": "Open-source web and product analytics platform that blends Mixpanel-style events with Plausible-like simplicity.",
+  "tags": [
+    "analytics"
+  ],
+  "logo": "/templates/openpanel.svg",
+  "links": {
+    "github": "https://github.com/Openpanel-dev/openpanel",
+    "website": "https://openpanel.dev/",
+    "docs": "https://openpanel.dev/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

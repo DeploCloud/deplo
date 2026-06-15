@@ -1,0 +1,18 @@
+{
+  "id": "wikijs",
+  "name": "Wiki.js",
+  "description": "Extensible open-source wiki platform for building documentation and knowledge bases with Markdown and access control.",
+  "tags": [
+    "knowledge-base",
+    "self-hosted",
+    "documentation"
+  ],
+  "logo": "/templates/wikijs.svg",
+  "links": {
+    "github": "https://github.com/requarks/wiki",
+    "website": "https://js.wiki/",
+    "docs": "https://docs.requarks.io/"
+  },
+  "version": "2.5",
+  "popular": false
+}

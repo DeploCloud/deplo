@@ -1,0 +1,19 @@
+{
+  "id": "qbitwebui",
+  "name": "qBittorrent Web UI",
+  "description": "Web dashboard for monitoring and controlling several qBittorrent instances from a single interface.",
+  "tags": [
+    "torrent",
+    "download",
+    "media",
+    "qbittorrent"
+  ],
+  "logo": "/templates/qbitwebui.png",
+  "links": {
+    "github": "https://github.com/Maciejonos/qbitwebui",
+    "website": "https://github.com/Maciejonos/qbitwebui",
+    "docs": "https://github.com/Maciejonos/qbitwebui#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

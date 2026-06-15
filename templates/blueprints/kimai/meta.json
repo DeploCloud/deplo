@@ -1,0 +1,18 @@
+{
+  "id": "kimai",
+  "name": "Kimai",
+  "description": "Multi-user time-tracking app for freelancers and teams to log hours, generate reports, and create invoices.",
+  "tags": [
+    "invoice",
+    "business",
+    "finance"
+  ],
+  "logo": "/templates/kimai.svg",
+  "links": {
+    "github": "https://github.com/kimai/kimai",
+    "website": "https://www.kimai.org",
+    "docs": "https://www.kimai.org/documentation"
+  },
+  "version": "2.31.0",
+  "popular": false
+}

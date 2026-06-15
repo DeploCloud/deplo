@@ -1,0 +1,20 @@
+{
+  "id": "hoppscotch",
+  "name": "Hoppscotch (AIO + Migrations)",
+  "description": "Open-source alternative to Postman for testing REST and GraphQL APIs, bundled all-in-one with automatic migrations.",
+  "tags": [
+    "api",
+    "testing",
+    "development",
+    "postman-alternative",
+    "graphql"
+  ],
+  "logo": "/templates/hoppscotch.png",
+  "links": {
+    "website": "https://hoppscotch.io/",
+    "github": "https://github.com/hoppscotch/hoppscotch",
+    "docs": "https://docs.hoppscotch.io/documentation/self-host/community-edition/install-and-build"
+  },
+  "version": "latest",
+  "popular": false
+}

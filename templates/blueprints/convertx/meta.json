@@ -1,0 +1,18 @@
+{
+  "id": "convertx",
+  "name": "ConvertX",
+  "description": "Self-hosted media file converter with optional user accounts and file management.",
+  "tags": [
+    "media",
+    "converter",
+    "ffmpeg"
+  ],
+  "logo": "/templates/convertx.png",
+  "links": {
+    "github": "https://github.com/c4illin/ConvertX",
+    "website": "https://github.com/c4illin/ConvertX",
+    "docs": "https://github.com/c4illin/ConvertX#environment-variables"
+  },
+  "version": "latest",
+  "popular": false
+}

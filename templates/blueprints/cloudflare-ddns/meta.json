@@ -1,0 +1,18 @@
+{
+  "id": "cloudflare-ddns",
+  "name": "Cloudflare DDNS",
+  "description": "Lightweight Cloudflare DDNS updater that keeps your DNS records pointed at a changing IP address.",
+  "tags": [
+    "cloud",
+    "networking",
+    "ddns"
+  ],
+  "logo": "/templates/cloudflare-ddns.svg",
+  "links": {
+    "github": "https://github.com/favonia/cloudflare-ddns",
+    "website": "https://github.com/favonia/cloudflare-ddns",
+    "docs": "https://github.com/favonia/cloudflare-ddns"
+  },
+  "version": "1.15.1",
+  "popular": false
+}

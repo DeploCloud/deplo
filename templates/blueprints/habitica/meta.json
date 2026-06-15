@@ -1,0 +1,19 @@
+{
+  "id": "habitica",
+  "name": "Habitica",
+  "description": "Habit and to-do tracker that gamifies your daily goals with rewards, penalties, and a social party system.",
+  "tags": [
+    "productivity",
+    "gamification",
+    "habits",
+    "self-hosted"
+  ],
+  "logo": "/templates/habitica.png",
+  "links": {
+    "github": "https://github.com/HabitRPG/habitica",
+    "website": "https://habitica.com/",
+    "docs": "https://habitica.fandom.com/wiki/Setting_up_Habitica_Locally"
+  },
+  "version": "latest",
+  "popular": false
+}

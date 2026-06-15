@@ -1,0 +1,20 @@
+{
+  "id": "chirpstack",
+  "name": "ChirpStack",
+  "description": "Open-source LoRaWAN network server for IoT, with gateway bridges, a REST API, and a device management UI.",
+  "tags": [
+    "iot",
+    "lorawan",
+    "network-server",
+    "gateway",
+    "monitoring"
+  ],
+  "logo": "/templates/chirpstack.png",
+  "links": {
+    "github": "https://github.com/chirpstack/chirpstack",
+    "website": "https://www.chirpstack.io/",
+    "docs": "https://www.chirpstack.io/docs/"
+  },
+  "version": "4",
+  "popular": false
+}

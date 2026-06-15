@@ -1,0 +1,18 @@
+{
+  "id": "xsshunter",
+  "name": "XSSHunter",
+  "description": "Security testing platform for detecting blind cross-site scripting flaws, built for pentesters and bug bounty hunters.",
+  "tags": [
+    "pentest",
+    "xsshunter",
+    "bugbounty"
+  ],
+  "logo": "/templates/xsshunter.png",
+  "links": {
+    "github": "https://github.com/rs-loves-bugs/xsshunter",
+    "website": "https://github.com/rs-loves-bugs/xsshunter",
+    "docs": "https://github.com/rs-loves-bugs/xsshunter#requirements"
+  },
+  "version": "latest",
+  "popular": false
+}

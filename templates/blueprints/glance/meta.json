@@ -1,0 +1,19 @@
+{
+  "id": "glance",
+  "name": "Glance",
+  "description": "Self-hosted dashboard that gathers RSS feeds, weather, bookmarks, and service status into one fast, minimal page.",
+  "tags": [
+    "dashboard",
+    "monitoring",
+    "widgets",
+    "rss"
+  ],
+  "logo": "/templates/glance.png",
+  "links": {
+    "github": "https://github.com/glanceapp/glance",
+    "docs": "https://github.com/glanceapp/glance/blob/main/docs/configuration.md",
+    "website": "https://glance.app/"
+  },
+  "version": "latest",
+  "popular": false
+}

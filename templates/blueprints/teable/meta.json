@@ -1,0 +1,19 @@
+{
+  "id": "teable",
+  "name": "teable",
+  "description": "No-code database built on PostgreSQL with a spreadsheet-style interface, an open alternative to Airtable.",
+  "tags": [
+    "database",
+    "spreadsheet",
+    "low-code",
+    "nocode"
+  ],
+  "logo": "/templates/teable.png",
+  "links": {
+    "github": "https://github.com/teableio/teable",
+    "website": "https://teable.io/",
+    "docs": "https://help.teable.io/"
+  },
+  "version": "v1.3.1-alpha-build.460",
+  "popular": false
+}

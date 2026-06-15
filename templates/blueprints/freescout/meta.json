@@ -1,0 +1,20 @@
+{
+  "id": "freescout",
+  "name": "FreeScout",
+  "description": "Self-hosted help desk and shared inbox for managing customer support email, an alternative to Help Scout and Zendesk.",
+  "tags": [
+    "helpdesk",
+    "support",
+    "email",
+    "customer-service",
+    "self-hosted"
+  ],
+  "logo": "/templates/freescout.svg",
+  "links": {
+    "github": "https://github.com/freescout-helpdesk/freescout",
+    "website": "https://freescout.net/",
+    "docs": "https://github.com/freescout-helpdesk/freescout/wiki/Installation-Guide"
+  },
+  "version": "latest",
+  "popular": false
+}

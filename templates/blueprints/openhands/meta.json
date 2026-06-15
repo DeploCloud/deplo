@@ -1,0 +1,19 @@
+{
+  "id": "openhands",
+  "name": "OpenHands",
+  "description": "Open-source platform for running and managing autonomous AI coding agents that write and execute software tasks.",
+  "tags": [
+    "ai",
+    "agents",
+    "llm",
+    "openai"
+  ],
+  "logo": "/templates/openhands.png",
+  "links": {
+    "github": "https://github.com/all-hands-ai/OpenHands",
+    "website": "https://github.com/all-hands-ai/OpenHands",
+    "docs": "https://github.com/all-hands-ai/OpenHands"
+  },
+  "version": "0.1.1",
+  "popular": false
+}

@@ -1,0 +1,18 @@
+{
+  "id": "huly",
+  "name": "Huly",
+  "description": "All-in-one project management platform combining issue tracking, docs, and chat as an alternative to Jira and Notion.",
+  "tags": [
+    "project-management",
+    "community",
+    "discussion"
+  ],
+  "logo": "/templates/huly.svg",
+  "links": {
+    "github": "https://github.com/hcengineering/huly-selfhost",
+    "website": "https://huly.io/",
+    "docs": "https://docs.huly.io/"
+  },
+  "version": "0.6.377",
+  "popular": false
+}

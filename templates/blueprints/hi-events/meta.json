@@ -1,0 +1,18 @@
+{
+  "id": "hi-events",
+  "name": "Hi.events",
+  "description": "Self-hosted event management and ticketing platform for creating, promoting, and selling tickets to your events.",
+  "tags": [
+    "self-hosted",
+    "open-source",
+    "manager"
+  ],
+  "logo": "/templates/hi-events.svg",
+  "links": {
+    "github": "https://github.com/HiEventsDev/hi.events",
+    "website": "https://hi.events/",
+    "docs": "https://hi.events/docs"
+  },
+  "version": "0.8.0-beta.1",
+  "popular": false
+}

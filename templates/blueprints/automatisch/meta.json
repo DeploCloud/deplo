@@ -1,0 +1,18 @@
+{
+  "id": "automatisch",
+  "name": "Automatisch",
+  "description": "Self-hosted workflow automation that connects apps to sync data and trigger actions, like Zapier.",
+  "tags": [
+    "automation",
+    "workflow",
+    "integration"
+  ],
+  "logo": "/templates/automatisch.png",
+  "links": {
+    "github": "https://github.com/automatisch/automatisch",
+    "website": "https://automatisch.io/docs",
+    "docs": "https://automatisch.io/docs"
+  },
+  "version": "2.0",
+  "popular": false
+}

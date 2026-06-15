@@ -1,0 +1,19 @@
+{
+  "id": "budibase",
+  "name": "Budibase",
+  "description": "Open-source low-code platform for building internal tools, forms, and approval apps backed by your data.",
+  "tags": [
+    "database",
+    "low-code",
+    "nocode",
+    "applications"
+  ],
+  "logo": "/templates/budibase.svg",
+  "links": {
+    "github": "https://github.com/Budibase/budibase",
+    "website": "https://budibase.com/",
+    "docs": "https://docs.budibase.com/docs/"
+  },
+  "version": "3.23.47",
+  "popular": false
+}

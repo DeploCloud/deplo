@@ -1,0 +1,16 @@
+{
+  "id": "rybbit",
+  "name": "Rybbit",
+  "description": "Privacy-friendly web analytics for tracking visitors without cookies, positioned as an open-source Google Analytics alternative.",
+  "tags": [
+    "analytics"
+  ],
+  "logo": "/templates/rybbit.png",
+  "links": {
+    "github": "https://github.com/rybbit-io/rybbit",
+    "website": "https://rybbit.io",
+    "docs": "https://www.rybbit.io/docs"
+  },
+  "version": "v1.5.1",
+  "popular": false
+}

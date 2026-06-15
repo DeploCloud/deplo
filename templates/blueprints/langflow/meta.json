@@ -1,0 +1,16 @@
+{
+  "id": "langflow",
+  "name": "Langflow",
+  "description": "Low-code visual builder for RAG pipelines and multi-agent AI apps, agnostic to any model, API, or database.",
+  "tags": [
+    "ai"
+  ],
+  "logo": "/templates/langflow.svg",
+  "links": {
+    "github": "https://github.com/langflow-ai/langflow/tree/main",
+    "website": "https://www.langflow.org/",
+    "docs": "https://docs.langflow.org/"
+  },
+  "version": "1.1.1",
+  "popular": false
+}

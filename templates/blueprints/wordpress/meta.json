@@ -1,0 +1,16 @@
+{
+  "id": "wordpress",
+  "name": "Wordpress",
+  "description": "Open-source content management system for building and running websites and blogs, powering much of the web.",
+  "tags": [
+    "cms"
+  ],
+  "logo": "/templates/wordpress.png",
+  "links": {
+    "github": "https://github.com/WordPress/WordPress",
+    "website": "https://wordpress.org/",
+    "docs": "https://wordpress.org/documentation/"
+  },
+  "version": "latest",
+  "popular": true
+}

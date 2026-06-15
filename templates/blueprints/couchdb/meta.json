@@ -1,0 +1,17 @@
+{
+  "id": "couchdb",
+  "name": "CouchDB",
+  "description": "Document-oriented NoSQL database from Apache built for easy replication and horizontal scaling.",
+  "tags": [
+    "database",
+    "storage"
+  ],
+  "logo": "/templates/couchdb.png",
+  "links": {
+    "github": "https://github.com/apache/couchdb",
+    "website": "https://couchdb.apache.org/",
+    "docs": "https://docs.couchdb.org/en/stable/"
+  },
+  "version": "latest",
+  "popular": false
+}

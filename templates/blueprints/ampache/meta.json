@@ -1,0 +1,18 @@
+{
+  "id": "ampache",
+  "name": "Ampache",
+  "description": "Web-based music and video streaming server for accessing your media library from any device.",
+  "tags": [
+    "media",
+    "music",
+    "streaming"
+  ],
+  "logo": "/templates/ampache.png",
+  "links": {
+    "github": "https://github.com/ampache/ampache",
+    "website": "http://ampache.org/",
+    "docs": "https://github.com/ampache/ampache/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

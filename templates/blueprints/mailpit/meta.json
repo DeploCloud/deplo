@@ -1,0 +1,17 @@
+{
+  "id": "mailpit",
+  "name": "Mailpit",
+  "description": "Email and SMTP testing tool that captures messages during development and shows them in a web inbox.",
+  "tags": [
+    "email",
+    "smtp"
+  ],
+  "logo": "/templates/mailpit.svg",
+  "links": {
+    "github": "https://github.com/axllent/mailpit",
+    "website": "https://mailpit.axllent.org/",
+    "docs": "https://mailpit.axllent.org/docs/"
+  },
+  "version": "v1.22.3",
+  "popular": false
+}

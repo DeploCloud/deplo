@@ -1,0 +1,19 @@
+{
+  "id": "gotenberg",
+  "name": "Gotenberg",
+  "description": "Stateless Docker API for converting HTML, Office files, and URLs into PDFs and merging documents.",
+  "tags": [
+    "api",
+    "backend",
+    "pdf",
+    "tools"
+  ],
+  "logo": "/templates/gotenberg.png",
+  "links": {
+    "github": "https://github.com/gotenberg/gotenberg",
+    "website": "https://gotenberg.dev",
+    "docs": "https://gotenberg.dev/docs/getting-started/introduction"
+  },
+  "version": "latest",
+  "popular": false
+}

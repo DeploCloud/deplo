@@ -1,0 +1,18 @@
+{
+  "id": "mealie",
+  "name": "Mealie (sqlite version)",
+  "description": "Recipe manager and meal planner for organizing your collection, shopping lists, and weekly menus.",
+  "tags": [
+    "recipes",
+    "shopping-list",
+    "meal-planning"
+  ],
+  "logo": "/templates/mealie.png",
+  "links": {
+    "github": "https://github.com/mealie-recipes/mealie",
+    "website": "https://mealie.io/",
+    "docs": "https://docs.mealie.io/"
+  },
+  "version": "latest",
+  "popular": false
+}

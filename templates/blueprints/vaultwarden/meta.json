@@ -1,0 +1,16 @@
+{
+  "id": "vaultwarden",
+  "name": "Vaultwarden",
+  "description": "Lightweight Bitwarden-compatible password manager server written in Rust, formerly known as bitwarden_rs.",
+  "tags": [
+    "open-source"
+  ],
+  "logo": "/templates/vaultwarden.svg",
+  "links": {
+    "github": "https://github.com/dani-garcia/vaultwarden",
+    "website": "",
+    "docs": "https://github.com/dani-garcia/vaultwarden/wiki"
+  },
+  "version": "1.34.3",
+  "popular": true
+}

@@ -1,0 +1,22 @@
+{
+  "id": "moltbot",
+  "name": "Moltbot",
+  "description": "Self-hosted WhatsApp gateway with AI-powered messaging, controlled through a command-line interface.",
+  "tags": [
+    "whatsapp",
+    "ai",
+    "messaging",
+    "chatbot",
+    "gateway",
+    "self-hosted",
+    "automation"
+  ],
+  "logo": "/templates/moltbot.svg",
+  "links": {
+    "github": "https://github.com/moltbot/moltbot",
+    "website": "https://molt.bot",
+    "docs": "https://docs.molt.bot"
+  },
+  "version": "2026.1.25",
+  "popular": false
+}

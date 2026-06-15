@@ -1,0 +1,18 @@
+{
+  "id": "prometheus",
+  "name": "Prometheus",
+  "description": "Open-source monitoring and alerting toolkit that collects time-series metrics for reliable observability.",
+  "tags": [
+    "monitoring",
+    "alerting",
+    "metrics"
+  ],
+  "logo": "/templates/prometheus.svg",
+  "links": {
+    "github": "https://github.com/prometheus/prometheus",
+    "website": "https://prometheus.io/",
+    "docs": "https://prometheus.io/docs/introduction/overview/"
+  },
+  "version": "latest",
+  "popular": false
+}

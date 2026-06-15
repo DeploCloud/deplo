@@ -1,0 +1,20 @@
+{
+  "id": "heyform",
+  "name": "HeyForm",
+  "description": "Form builder for creating conversational surveys, questionnaires, quizzes, and polls without writing any code.",
+  "tags": [
+    "form",
+    "builder",
+    "questionnaire",
+    "quiz",
+    "survey"
+  ],
+  "logo": "/templates/heyform.svg",
+  "links": {
+    "github": "https://github.com/heyform/heyform",
+    "website": "https://heyform.net",
+    "docs": "https://docs.heyform.net"
+  },
+  "version": "latest",
+  "popular": false
+}

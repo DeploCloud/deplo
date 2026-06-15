@@ -1,0 +1,19 @@
+{
+  "id": "calibre-web",
+  "name": "Calibre-Web",
+  "description": "Web interface for browsing, reading, and managing an existing Calibre e-book library from any browser.",
+  "tags": [
+    "ebooks",
+    "media",
+    "library",
+    "self-hosted"
+  ],
+  "logo": "/templates/calibre-web.png",
+  "links": {
+    "github": "https://github.com/janeczku/calibre-web",
+    "website": "https://github.com/janeczku/calibre-web",
+    "docs": "https://github.com/janeczku/calibre-web/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

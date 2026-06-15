@@ -1,0 +1,19 @@
+{
+  "id": "dashy",
+  "name": "Dashy",
+  "description": "Customizable homelab dashboard that organizes your self-hosted services with widgets, status checks, and themes.",
+  "tags": [
+    "dashboard",
+    "monitoring",
+    "self-hosted",
+    "homelab"
+  ],
+  "logo": "/templates/dashy.png",
+  "links": {
+    "github": "https://github.com/Lissy93/dashy",
+    "website": "https://dashy.to/",
+    "docs": "https://github.com/Lissy93/dashy/tree/master/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

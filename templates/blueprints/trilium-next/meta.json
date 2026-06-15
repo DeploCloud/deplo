@@ -1,0 +1,18 @@
+{
+  "id": "trilium-next",
+  "name": "TriliumNext",
+  "description": "Community-maintained successor to Trilium Notes, a cross-platform hierarchical knowledge base for personal notes.",
+  "tags": [
+    "self-hosted",
+    "productivity",
+    "personal-use"
+  ],
+  "logo": "/templates/trilium-next.svg",
+  "links": {
+    "github": "https://github.com/TriliumNext/Trilium",
+    "website": "https://triliumnotes.org/",
+    "docs": "https://docs.triliumnotes.org/"
+  },
+  "version": "latest",
+  "popular": false
+}

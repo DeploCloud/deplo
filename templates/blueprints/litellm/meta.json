@@ -1,0 +1,20 @@
+{
+  "id": "litellm",
+  "name": "LiteLLM",
+  "description": "OpenAI-compatible proxy that routes requests to 100+ LLM providers through a single unified endpoint.",
+  "tags": [
+    "ai",
+    "proxy",
+    "llm",
+    "openai-compatible",
+    "monitoring"
+  ],
+  "logo": "/templates/litellm.png",
+  "links": {
+    "github": "https://github.com/BerriAI/litellm",
+    "website": "https://docs.litellm.ai",
+    "docs": "https://docs.litellm.ai/docs/proxy/quick_start"
+  },
+  "version": "main-stable",
+  "popular": false
+}

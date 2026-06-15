@@ -1,0 +1,24 @@
+{
+  "id": "zitadel",
+  "name": "Zitadel",
+  "description": "Identity and access management platform with multi-tenancy, supporting OpenID Connect, SAML, and OAuth 2.0.",
+  "tags": [
+    "identity",
+    "authentication",
+    "authorization",
+    "iam",
+    "security",
+    "oauth",
+    "openid-connect",
+    "saml",
+    "multi-tenant"
+  ],
+  "logo": "/templates/zitadel.png",
+  "links": {
+    "github": "https://github.com/zitadel/zitadel",
+    "website": "https://zitadel.com/",
+    "docs": "https://zitadel.com/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

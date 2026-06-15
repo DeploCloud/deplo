@@ -1,0 +1,18 @@
+{
+  "id": "commento",
+  "name": "Commento",
+  "description": "Lightweight, privacy-friendly comments widget with markdown support and moderation for embedding on your site.",
+  "tags": [
+    "comments",
+    "discussion",
+    "website"
+  ],
+  "logo": "/templates/commento.png",
+  "links": {
+    "website": "https://commento.io/",
+    "docs": "https://commento.io/",
+    "github": "https://github.com/souramoo/commentoplusplus"
+  },
+  "version": "v1.8.0",
+  "popular": false
+}

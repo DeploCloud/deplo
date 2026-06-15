@@ -1,0 +1,20 @@
+{
+  "id": "peerdb",
+  "name": "PeerDB",
+  "description": "Data movement platform for fast Postgres replication and syncing data across databases and warehouses.",
+  "tags": [
+    "database",
+    "integration",
+    "sync",
+    "sql",
+    "workflow"
+  ],
+  "logo": "/templates/peerdb.jpeg",
+  "links": {
+    "github": "https://github.com/peerdb-io/peerdb",
+    "website": "https://peerdb.io",
+    "docs": "https://docs.peerdb.io"
+  },
+  "version": "v0.35.5",
+  "popular": false
+}

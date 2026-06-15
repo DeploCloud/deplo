@@ -1,0 +1,18 @@
+{
+  "id": "hoarder",
+  "name": "Hoarder",
+  "description": "Open-source bookmark and read-it-later app that auto-tags saved links, notes, and images using AI.",
+  "tags": [
+    "self-hosted",
+    "bookmarks",
+    "link-sharing"
+  ],
+  "logo": "/templates/hoarder.svg",
+  "links": {
+    "github": "https://github.com/hoarder/hoarder",
+    "website": "https://hoarder.app/",
+    "docs": "https://docs.hoarder.app/"
+  },
+  "version": "0.22.0",
+  "popular": false
+}

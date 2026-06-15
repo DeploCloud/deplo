@@ -1,0 +1,20 @@
+{
+  "id": "gitingest",
+  "name": "Gitingest",
+  "description": "Turns any Git repository into a single prompt-friendly text digest for feeding codebases into large language models.",
+  "tags": [
+    "analytics",
+    "s3",
+    "monitoring",
+    "sentry",
+    "metrics"
+  ],
+  "logo": "/templates/gitingest.png",
+  "links": {
+    "github": "https://github.com/coderamp-labs/gitingest",
+    "website": "https://gitingest.com",
+    "docs": "https://github.com/coderamp-labs/gitingest#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

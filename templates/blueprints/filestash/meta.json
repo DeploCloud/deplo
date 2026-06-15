@@ -1,0 +1,18 @@
+{
+  "id": "filestash",
+  "name": "Filestash",
+  "description": "Web file manager that connects your storage backends to your identity provider with fine-grained access control.",
+  "tags": [
+    "file-manager",
+    "document-editor",
+    "self-hosted"
+  ],
+  "logo": "/templates/filestash.svg",
+  "links": {
+    "github": "https://github.com/mickael-kerjean/filestash",
+    "website": "https://www.filestash.app/",
+    "docs": "https://www.filestash.app/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

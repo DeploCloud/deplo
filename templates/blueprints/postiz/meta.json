@@ -1,0 +1,18 @@
+{
+  "id": "postiz",
+  "name": "Postiz",
+  "description": "Open-source social media scheduler for planning and publishing content across multiple channels.",
+  "tags": [
+    "cms",
+    "content-management",
+    "publishing"
+  ],
+  "logo": "/templates/postiz.png",
+  "links": {
+    "github": "https://github.com/gitroomhq/postiz",
+    "website": "https://postiz.com",
+    "docs": "https://docs.postiz.com"
+  },
+  "version": "latest",
+  "popular": false
+}

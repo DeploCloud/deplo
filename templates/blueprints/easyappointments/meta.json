@@ -1,0 +1,18 @@
+{
+  "id": "easyappointments",
+  "name": "Easy!Appointments",
+  "description": "Web-based appointment scheduler that lets customers self-book time slots through a customizable booking page.",
+  "tags": [
+    "scheduling",
+    "appointments",
+    "booking"
+  ],
+  "logo": "/templates/easyappointments.png",
+  "links": {
+    "github": "https://github.com/alextselegidis/easyappointments",
+    "website": "https://easyappointments.org",
+    "docs": "https://easyappointments.org/docs"
+  },
+  "version": "1.5.0",
+  "popular": false
+}

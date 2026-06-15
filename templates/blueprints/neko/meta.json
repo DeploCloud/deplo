@@ -1,0 +1,19 @@
+{
+  "id": "neko",
+  "name": "Neko",
+  "description": "Virtual browser that runs inside Docker and streams its session over WebRTC for shared browsing and watch parties.",
+  "tags": [
+    "browser",
+    "virtual",
+    "sharing",
+    "remote"
+  ],
+  "logo": "/templates/neko.png",
+  "links": {
+    "github": "https://github.com/m1k1o/neko",
+    "website": "https://github.com/m1k1o/neko",
+    "docs": "https://github.com/m1k1o/neko"
+  },
+  "version": "latest",
+  "popular": false
+}

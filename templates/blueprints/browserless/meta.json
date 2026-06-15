@@ -1,0 +1,17 @@
+{
+  "id": "browserless",
+  "name": "Browserless",
+  "description": "Headless browser service for Puppeteer and Playwright, with REST APIs for scraping and PDF generation.",
+  "tags": [
+    "browser",
+    "automation"
+  ],
+  "logo": "/templates/browserless.svg",
+  "links": {
+    "github": "https://github.com/browserless/browserless",
+    "website": "https://www.browserless.io/",
+    "docs": "https://docs.browserless.io/"
+  },
+  "version": "2.23.0",
+  "popular": false
+}

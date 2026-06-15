@@ -1,0 +1,19 @@
+{
+  "id": "go-whatsapp-web-multidevice",
+  "name": "WhatsApp API Multi Device Version",
+  "description": "Self-hosted WhatsApp HTTP API for sending and receiving chats, images, and voice notes from your own server.",
+  "tags": [
+    "whatsapp",
+    "self-hosted",
+    "open-source",
+    "api"
+  ],
+  "logo": "/templates/go-whatsapp-web-multidevice.svg",
+  "links": {
+    "github": "https://github.com/aldinokemal/go-whatsapp-web-multidevice",
+    "website": "https://github.com/aldinokemal/go-whatsapp-web-multidevice",
+    "docs": "https://github.com/aldinokemal/go-whatsapp-web-multidevice"
+  },
+  "version": "latest",
+  "popular": false
+}

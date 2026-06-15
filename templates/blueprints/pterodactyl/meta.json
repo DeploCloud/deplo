@@ -1,0 +1,18 @@
+{
+  "id": "pterodactyl",
+  "name": "Pterodactyl",
+  "description": "Open-source game server management panel for deploying and controlling game servers in isolated containers.",
+  "tags": [
+    "self-hosted",
+    "open-source",
+    "management"
+  ],
+  "logo": "/templates/pterodactyl.png",
+  "links": {
+    "github": "https://github.com/pterodactyl/panel",
+    "website": "https://pterodactyl.io",
+    "docs": "https://pterodactyl.io/project/introduction.html"
+  },
+  "version": "latest",
+  "popular": false
+}

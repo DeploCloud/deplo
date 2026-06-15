@@ -1,0 +1,18 @@
+{
+  "id": "commentoplusplus",
+  "name": "Commento++",
+  "description": "Open-source embeddable comments box with markdown, voting, spam detection, moderation, and OAuth login.",
+  "tags": [
+    "comments",
+    "website",
+    "open-source"
+  ],
+  "logo": "/templates/commentoplusplus.png",
+  "links": {
+    "website": "https://commento.io/",
+    "docs": "https://commento.io/",
+    "github": "https://github.com/souramoo/commentoplusplus"
+  },
+  "version": "v1.8.7",
+  "popular": false
+}

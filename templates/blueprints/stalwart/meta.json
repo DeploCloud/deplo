@@ -1,0 +1,22 @@
+{
+  "id": "stalwart",
+  "name": "Stalwart",
+  "description": "All-in-one mail server written in Rust, supporting JMAP, IMAP4, POP3, and SMTP with a focus on security and scalability.",
+  "tags": [
+    "email",
+    "smtp",
+    "jmap",
+    "imap4",
+    "pop3",
+    "self-hosted",
+    "mail-server"
+  ],
+  "logo": "/templates/stalwart.svg",
+  "links": {
+    "github": "https://github.com/stalwartlabs/mail-server",
+    "website": "https://stalw.art/",
+    "docs": "https://stalw.art/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

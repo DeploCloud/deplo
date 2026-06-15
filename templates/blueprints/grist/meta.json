@@ -1,0 +1,20 @@
+{
+  "id": "grist",
+  "name": "Grist",
+  "description": "Open-source alternative to Airtable that blends spreadsheet flexibility with relational database structure and formulas.",
+  "tags": [
+    "spreadsheet",
+    "database",
+    "productivity",
+    "self-hosted",
+    "data-management"
+  ],
+  "logo": "/templates/grist.png",
+  "links": {
+    "github": "https://github.com/gristlabs/grist-core",
+    "website": "https://www.getgrist.com/",
+    "docs": "https://support.getgrist.com/self-managed/"
+  },
+  "version": "latest",
+  "popular": false
+}

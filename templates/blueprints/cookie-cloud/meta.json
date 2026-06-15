@@ -1,0 +1,19 @@
+{
+  "id": "cookie-cloud",
+  "name": "CookieCloud",
+  "description": "Self-hosted backend for securely syncing and managing browser cookies across your devices.",
+  "tags": [
+    "cookies",
+    "sync",
+    "selfhosted",
+    "privacy"
+  ],
+  "logo": "/templates/cookie-cloud.png",
+  "links": {
+    "github": "https://github.com/easychen/cookiecloud",
+    "website": "https://github.com/easychen/cookiecloud",
+    "docs": "https://github.com/easychen/cookiecloud#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

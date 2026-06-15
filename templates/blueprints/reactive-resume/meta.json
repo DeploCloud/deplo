@@ -1,0 +1,19 @@
+{
+  "id": "reactive-resume",
+  "name": "Reactive Resume",
+  "description": "Open-source resume builder for creating, editing, and sharing professional resumes from clean templates.",
+  "tags": [
+    "resume",
+    "cv",
+    "productivity",
+    "document"
+  ],
+  "logo": "/templates/reactive-resume.svg",
+  "links": {
+    "github": "https://github.com/AmruthPillai/Reactive-Resume",
+    "website": "https://rxresu.me/",
+    "docs": "https://docs.rxresu.me/"
+  },
+  "version": "latest",
+  "popular": false
+}

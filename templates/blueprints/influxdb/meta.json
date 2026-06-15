@@ -1,0 +1,19 @@
+{
+  "id": "influxdb",
+  "name": "InfluxDB",
+  "description": "Time-series database for collecting, storing, and querying metrics, events, and sensor data at scale.",
+  "tags": [
+    "self-hosted",
+    "open-source",
+    "storage",
+    "database"
+  ],
+  "logo": "/templates/influxdb.png",
+  "links": {
+    "github": "https://github.com/influxdata/influxdb",
+    "website": "https://www.influxdata.com/",
+    "docs": "https://docs.influxdata.com/influxdb/v2/"
+  },
+  "version": "2.7.10",
+  "popular": false
+}

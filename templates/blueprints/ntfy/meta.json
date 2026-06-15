@@ -1,0 +1,20 @@
+{
+  "id": "ntfy",
+  "name": "NTFY",
+  "description": "Pub-sub notification service that pushes alerts to your phone or desktop via simple HTTP PUT and POST requests.",
+  "tags": [
+    "alerting",
+    "alerts",
+    "api",
+    "notifications",
+    "self-hosted"
+  ],
+  "logo": "/templates/ntfy.png",
+  "links": {
+    "github": "https://github.com/binwiederhier/ntfy",
+    "website": "https://ntfy.sh/",
+    "docs": "https://docs.ntfy.sh/"
+  },
+  "version": "latest",
+  "popular": false
+}

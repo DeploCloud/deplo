@@ -1,0 +1,20 @@
+{
+  "id": "budget-board",
+  "name": "Budget Board",
+  "description": "Self-hosted personal budgeting app with a web UI and a PostgreSQL-backed server for tracking finances.",
+  "tags": [
+    "finance",
+    "postgres",
+    "self-hosted",
+    "docker",
+    "compose"
+  ],
+  "logo": "/templates/budget-board.png",
+  "links": {
+    "github": "https://github.com/teelur/budget-board",
+    "website": "https://budgetboard.net/",
+    "docs": "https://budgetboard.net/"
+  },
+  "version": "release",
+  "popular": false
+}

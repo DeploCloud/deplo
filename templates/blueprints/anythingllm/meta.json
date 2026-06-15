@@ -1,0 +1,18 @@
+{
+  "id": "anythingllm",
+  "name": "AnythingLLM",
+  "description": "Private document chatbot that lets you query your own files using the LLM provider of your choice.",
+  "tags": [
+    "ai",
+    "llm",
+    "chatbot"
+  ],
+  "logo": "/templates/anythingllm.png",
+  "links": {
+    "github": "https://github.com/Mintplex-Labs/anything-llm",
+    "website": "https://useanything.com",
+    "docs": "https://github.com/Mintplex-Labs/anything-llm/tree/master/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

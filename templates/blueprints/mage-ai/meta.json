@@ -1,0 +1,19 @@
+{
+  "id": "mage-ai",
+  "name": "Mage AI",
+  "description": "Data pipeline tool for building, running, and managing ETL workflows that integrate and transform data.",
+  "tags": [
+    "data",
+    "dbt",
+    "etl",
+    "pipelines"
+  ],
+  "logo": "/templates/mage-ai.svg",
+  "links": {
+    "github": "https://github.com/mage-ai/mage-ai",
+    "website": "https://mage.ai",
+    "docs": "https://docs.mage.ai"
+  },
+  "version": "0.9.78",
+  "popular": false
+}

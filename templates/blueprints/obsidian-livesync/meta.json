@@ -1,0 +1,18 @@
+{
+  "id": "obsidian-livesync",
+  "name": "Obsidian LiveSync",
+  "description": "Self-hosted CouchDB backend for syncing Obsidian vaults across devices in real time without third-party services.",
+  "tags": [
+    "database",
+    "sync",
+    "obsidian"
+  ],
+  "logo": "/templates/obsidian-livesync.png",
+  "links": {
+    "github": "https://github.com/vrtmrz/obsidian-livesync",
+    "website": "https://obsidian.md/sync",
+    "docs": "https://docs.couchdb.apache.org/"
+  },
+  "version": "latest",
+  "popular": false
+}

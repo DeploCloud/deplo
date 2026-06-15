@@ -1,0 +1,20 @@
+{
+  "id": "seaweedfs",
+  "name": "SeaweedFS",
+  "description": "Fast distributed storage for blobs, objects, and files, with an S3-compatible API, FUSE mount, and WebDAV support.",
+  "tags": [
+    "storage",
+    "s3",
+    "distributed",
+    "object-storage",
+    "file-system"
+  ],
+  "logo": "/templates/seaweedfs.svg",
+  "links": {
+    "github": "https://github.com/seaweedfs/seaweedfs",
+    "website": "https://seaweedfs.com/",
+    "docs": "https://github.com/seaweedfs/seaweedfs/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

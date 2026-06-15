@@ -1,0 +1,21 @@
+{
+  "id": "navidrome",
+  "name": "Navidrome",
+  "description": "Music server and streamer compatible with Subsonic and Airsonic clients, letting you access your collection anywhere.",
+  "tags": [
+    "music",
+    "streaming",
+    "media-server",
+    "subsonic",
+    "self-hosted",
+    "audio"
+  ],
+  "logo": "/templates/navidrome.png",
+  "links": {
+    "github": "https://github.com/navidrome/navidrome",
+    "website": "https://www.navidrome.org/",
+    "docs": "https://www.navidrome.org/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

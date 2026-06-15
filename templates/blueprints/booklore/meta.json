@@ -1,0 +1,19 @@
+{
+  "id": "booklore",
+  "name": "Booklore",
+  "description": "Self-hosted app for organizing and serving your book collection, backed by a MariaDB database.",
+  "tags": [
+    "books",
+    "library",
+    "database",
+    "mariadb"
+  ],
+  "logo": "/templates/booklore.png",
+  "links": {
+    "github": "https://github.com/booklore-app/BookLore",
+    "website": "https://github.com/booklore-app/BookLore",
+    "docs": "https://github.com/booklore-app/BookLore/tree/develop/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

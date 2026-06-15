@@ -1,0 +1,19 @@
+{
+  "id": "open-fiesta",
+  "name": "Open Fiesta",
+  "description": "Open-source AI chat interface that connects to multiple model backends including OpenRouter, Gemini, and Ollama.",
+  "tags": [
+    "ai",
+    "chatbot",
+    "inference",
+    "frontend"
+  ],
+  "logo": "/templates/open-fiesta.png",
+  "links": {
+    "github": "https://github.com/jaainil/open-fiesta",
+    "website": "https://github.com/jaainil/open-fiesta",
+    "docs": "https://github.com/jaainil/open-fiesta#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,22 @@
+{
+  "id": "openclaw",
+  "name": "Openclaw",
+  "description": "Self-hosted WhatsApp gateway with a CLI and RPC agent for building AI-powered messaging bots and automations.",
+  "tags": [
+    "whatsapp",
+    "ai",
+    "messaging",
+    "chatbot",
+    "gateway",
+    "self-hosted",
+    "automation"
+  ],
+  "logo": "/templates/openclaw.svg",
+  "links": {
+    "github": "https://github.com/openclaw/openclaw",
+    "website": "https://openclaw.ai/",
+    "docs": "https://docs.openclaw.ai/"
+  },
+  "version": "2026.1.29",
+  "popular": false
+}

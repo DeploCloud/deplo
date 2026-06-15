@@ -1,0 +1,18 @@
+{
+  "id": "photoprism",
+  "name": "Photoprism",
+  "description": "Self-hosted photo manager that uses AI to automatically tag, organize, and search your picture library.",
+  "tags": [
+    "media",
+    "photos",
+    "self-hosted"
+  ],
+  "logo": "/templates/photoprism.svg",
+  "links": {
+    "github": "https://github.com/photoprism/photoprism",
+    "website": "https://www.photoprism.app/",
+    "docs": "https://docs.photoprism.app/"
+  },
+  "version": "latest",
+  "popular": false
+}

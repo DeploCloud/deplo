@@ -1,0 +1,18 @@
+{
+  "id": "alltube",
+  "name": "AllTube",
+  "description": "Web front-end for youtube-dl that downloads and converts videos from YouTube and many other sites.",
+  "tags": [
+    "media",
+    "video",
+    "downloader"
+  ],
+  "logo": "/templates/alltube.png",
+  "links": {
+    "github": "https://github.com/Rudloff/alltube",
+    "website": "https://github.com/Rudloff/alltube",
+    "docs": "https://github.com/Rudloff/alltube/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

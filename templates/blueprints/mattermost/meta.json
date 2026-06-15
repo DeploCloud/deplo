@@ -1,0 +1,17 @@
+{
+  "id": "mattermost",
+  "name": "Mattermost",
+  "description": "Open-source team messaging platform and self-hosted alternative to Slack for chat and collaboration.",
+  "tags": [
+    "chat",
+    "self-hosted"
+  ],
+  "logo": "/templates/mattermost.png",
+  "links": {
+    "github": "https://github.com/mattermost/mattermost",
+    "website": "https://mattermost.com/",
+    "docs": "https://docs.mattermost.com/"
+  },
+  "version": "10.6.1",
+  "popular": false
+}

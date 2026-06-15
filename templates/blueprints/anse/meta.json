@@ -1,0 +1,19 @@
+{
+  "id": "anse",
+  "name": "Anse",
+  "description": "Clean web UI for chatting with OpenAI-compatible AI models, an open-source ChatGPT alternative.",
+  "tags": [
+    "ai",
+    "chatbot",
+    "openai",
+    "ui"
+  ],
+  "logo": "/templates/anse.png",
+  "links": {
+    "github": "https://github.com/ddiu8081/anse",
+    "website": "https://anse.app/",
+    "docs": "https://github.com/ddiu8081/anse#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

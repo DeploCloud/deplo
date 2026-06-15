@@ -1,0 +1,19 @@
+{
+  "id": "picsur",
+  "name": "Picsur",
+  "description": "Self-hosted image host with an admin panel and Postgres backend for uploading and sharing pictures.",
+  "tags": [
+    "image-hosting",
+    "media",
+    "self-hosted",
+    "postgres"
+  ],
+  "logo": "/templates/picsur.png",
+  "links": {
+    "github": "https://github.com/CaramelFur/picsur",
+    "website": "https://github.com/CaramelFur/picsur",
+    "docs": "https://github.com/CaramelFur/picsur#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

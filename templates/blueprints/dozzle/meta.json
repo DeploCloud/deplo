@@ -1,0 +1,18 @@
+{
+  "id": "dozzle",
+  "name": "Dozzle",
+  "description": "Real-time log viewer for Docker containers, streaming output live in the browser with no setup or storage.",
+  "tags": [
+    "monitoring",
+    "logs",
+    "docker"
+  ],
+  "logo": "/templates/dozzle.png",
+  "links": {
+    "github": "https://github.com/amir20/dozzle",
+    "website": "https://dozzle.dev",
+    "docs": "https://dozzle.dev/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

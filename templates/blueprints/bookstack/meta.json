@@ -1,0 +1,17 @@
+{
+  "id": "bookstack",
+  "name": "BookStack",
+  "description": "Self-hosted wiki and documentation platform that organizes content into books, chapters, and pages.",
+  "tags": [
+    "documentation",
+    "self-hosted"
+  ],
+  "logo": "/templates/bookstack.svg",
+  "links": {
+    "github": "https://github.com/BookStackApp/BookStack",
+    "website": "https://www.bookstackapp.com",
+    "docs": "https://www.bookstackapp.com/docs"
+  },
+  "version": "24.12.1",
+  "popular": false
+}

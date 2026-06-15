@@ -1,0 +1,21 @@
+{
+  "id": "ihatemoney",
+  "name": "I Hate Money",
+  "description": "Shared-expense tracker that records who paid for what and settles up who owes whom across a group.",
+  "tags": [
+    "budget",
+    "finance",
+    "expense-sharing",
+    "self-hosted",
+    "money-management",
+    "group-finances"
+  ],
+  "logo": "/templates/ihatemoney.png",
+  "links": {
+    "github": "https://github.com/spiral-project/ihatemoney",
+    "website": "https://ihatemoney.org/",
+    "docs": "https://ihatemoney.readthedocs.io/"
+  },
+  "version": "latest",
+  "popular": false
+}

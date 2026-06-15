@@ -1,0 +1,16 @@
+{
+  "id": "typesense",
+  "name": "Typesense",
+  "description": "Fast, typo-tolerant search engine for adding instant search and filtering to apps, an open alternative to Algolia.",
+  "tags": [
+    "search"
+  ],
+  "logo": "/templates/typesense.png",
+  "links": {
+    "github": "https://github.com/typesense/typesense",
+    "website": "https://typesense.org/",
+    "docs": "https://typesense.org/docs"
+  },
+  "version": "29.0",
+  "popular": false
+}

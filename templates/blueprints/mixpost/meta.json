@@ -1,0 +1,18 @@
+{
+  "id": "mixpost",
+  "name": "Mixpost",
+  "description": "Open-source social media scheduler for creating, scheduling, and publishing posts across many platforms.",
+  "tags": [
+    "social-media",
+    "management",
+    "scheduling"
+  ],
+  "logo": "/templates/mixpost.png",
+  "links": {
+    "github": "https://github.com/inovector/mixpost",
+    "website": "https://mixpost.app/",
+    "docs": "https://docs.mixpost.app/"
+  },
+  "version": "latest",
+  "popular": false
+}

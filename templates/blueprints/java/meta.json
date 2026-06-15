@@ -1,0 +1,19 @@
+{
+  "id": "java",
+  "name": "Java Runtime (Multi-Version)",
+  "description": "Configurable Java runtime supporting versions 8 through 21, suited for Minecraft servers and Spring Boot apps.",
+  "tags": [
+    "java",
+    "minecraft",
+    "runtime",
+    "pterodactyl"
+  ],
+  "logo": "/templates/java.png",
+  "links": {
+    "github": "https://github.com/pterodactyl/yolks",
+    "website": "https://java.com/",
+    "docs": "https://docs.oracle.com/en/java/"
+  },
+  "version": "8-21",
+  "popular": false
+}

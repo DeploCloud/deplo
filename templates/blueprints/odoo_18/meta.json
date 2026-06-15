@@ -1,0 +1,16 @@
+{
+  "id": "odoo_18",
+  "name": "Odoo",
+  "description": "Open-source business management suite (ERP) covering sales, inventory, accounting, and CRM, here on version 18.",
+  "tags": [
+    "erp"
+  ],
+  "logo": "/templates/odoo_18.png",
+  "links": {
+    "github": "https://github.com/odoo/odoo",
+    "website": "https://odoo.com/",
+    "docs": "https://www.odoo.com/documentation/"
+  },
+  "version": "18.0",
+  "popular": false
+}

@@ -1,0 +1,19 @@
+{
+  "id": "kener",
+  "name": "Kener",
+  "description": "Open-source status page for monitoring service uptime and sending incident notifications to your users.",
+  "tags": [
+    "monitoring",
+    "status-page",
+    "alerting",
+    "self-hosted"
+  ],
+  "logo": "/templates/kener.png",
+  "links": {
+    "github": "https://github.com/rajnandan1/kener",
+    "website": "https://kener.ing/",
+    "docs": "https://kener.ing/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

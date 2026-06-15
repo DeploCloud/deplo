@@ -1,0 +1,19 @@
+{
+  "id": "fivem",
+  "name": "FiveM Server",
+  "description": "Dedicated server for hosting modded GTA V multiplayer, with an optional txAdmin web panel for management.",
+  "tags": [
+    "gaming",
+    "gta",
+    "multiplayer",
+    "server"
+  ],
+  "logo": "/templates/fivem.svg",
+  "links": {
+    "github": "https://github.com/spritsail/fivem",
+    "website": "https://fivem.net/",
+    "docs": "https://docs.fivem.net/docs/server-manual/"
+  },
+  "version": "latest",
+  "popular": false
+}

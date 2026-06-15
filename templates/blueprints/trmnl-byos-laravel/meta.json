@@ -1,0 +1,16 @@
+{
+  "id": "trmnl-byos-laravel",
+  "name": "TRMNL BYOS Laravel",
+  "description": "Self-hosted server for managing TRMNL e-ink displays and the content shown on your own devices.",
+  "tags": [
+    "e-ink"
+  ],
+  "logo": "/templates/trmnl-byos-laravel.svg",
+  "links": {
+    "github": "https://github.com/usetrmnl/byos_laravel",
+    "website": "https://docs.usetrmnl.com/go/diy/byos",
+    "docs": "https://github.com/usetrmnl/byos_laravel/blob/main/README.md"
+  },
+  "version": "0.27.0",
+  "popular": false
+}

@@ -1,0 +1,19 @@
+{
+  "id": "onetimesecret",
+  "name": "One Time Secret",
+  "description": "Secure secret sharing service that creates self-destructing links viewable only once, ideal for passwords and keys.",
+  "tags": [
+    "auth",
+    "password",
+    "secret",
+    "secure"
+  ],
+  "logo": "/templates/onetimesecret.svg",
+  "links": {
+    "github": "https://github.com/onetimesecret/onetimesecret",
+    "website": "https://onetimesecret.com",
+    "docs": "https://docs.onetimesecret.com"
+  },
+  "version": "latest",
+  "popular": false
+}

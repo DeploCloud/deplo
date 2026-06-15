@@ -1,0 +1,19 @@
+{
+  "id": "scrypted",
+  "name": "Scrypted",
+  "description": "Home automation and NVR platform that unifies smart-home devices and camera surveillance under HomeKit, Alexa, and Google Home.",
+  "tags": [
+    "home-automation",
+    "nvr",
+    "smart-home",
+    "surveillance"
+  ],
+  "logo": "/templates/scrypted.png",
+  "links": {
+    "github": "https://github.com/koush/scrypted",
+    "website": "https://www.scrypted.app/",
+    "docs": "https://docs.scrypted.app/"
+  },
+  "version": "latest",
+  "popular": false
+}

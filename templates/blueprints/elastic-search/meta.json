@@ -1,0 +1,17 @@
+{
+  "id": "elastic-search",
+  "name": "Elasticsearch",
+  "description": "Distributed search and analytics engine for full-text search, log analysis, and querying large structured datasets.",
+  "tags": [
+    "search",
+    "analytics"
+  ],
+  "logo": "/templates/elastic-search.svg",
+  "links": {
+    "github": "https://github.com/elastic/elasticsearch",
+    "website": "https://www.elastic.co/elasticsearch/",
+    "docs": "https://docs.elastic.co/elasticsearch/"
+  },
+  "version": "8.10.2",
+  "popular": false
+}

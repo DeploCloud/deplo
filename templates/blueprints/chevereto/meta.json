@@ -1,0 +1,20 @@
+{
+  "id": "chevereto",
+  "name": "Chevereto",
+  "description": "Self-hosted image and video hosting platform for uploading, organizing, and sharing media in albums.",
+  "tags": [
+    "Image Hosting",
+    "File Management",
+    "Open Source",
+    "Multi-User",
+    "Private Albums"
+  ],
+  "logo": "/templates/chevereto.png",
+  "links": {
+    "github": "https://github.com/chevereto/chevereto",
+    "website": "https://chevereto.com/",
+    "docs": "https://v4-docs.chevereto.com/"
+  },
+  "version": "4",
+  "popular": false
+}

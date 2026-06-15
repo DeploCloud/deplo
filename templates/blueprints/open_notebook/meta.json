@@ -1,0 +1,19 @@
+{
+  "id": "open_notebook",
+  "name": "Open Notebook",
+  "description": "AI-powered notebook backed by SurrealDB for organizing research and chatting with your notes and sources.",
+  "tags": [
+    "notebook",
+    "ai",
+    "database",
+    "surrealdb"
+  ],
+  "logo": "/templates/open_notebook.svg",
+  "links": {
+    "github": "https://github.com/lfnovo/open_notebook",
+    "website": "https://www.open-notebook.ai/",
+    "docs": "https://www.open-notebook.ai/get-started.html"
+  },
+  "version": "latest",
+  "popular": false
+}

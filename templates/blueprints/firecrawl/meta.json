@@ -1,0 +1,20 @@
+{
+  "id": "firecrawl",
+  "name": "Firecrawl",
+  "description": "Crawling API that turns any URL and its subpages into clean markdown or structured data, ideal for LLM pipelines.",
+  "tags": [
+    "api",
+    "crawler",
+    "scraping",
+    "data-extraction",
+    "llm"
+  ],
+  "logo": "/templates/firecrawl.svg",
+  "links": {
+    "github": "https://github.com/firecrawl/firecrawl",
+    "website": "https://firecrawl.dev",
+    "docs": "https://github.com/firecrawl/firecrawl"
+  },
+  "version": "latest",
+  "popular": false
+}

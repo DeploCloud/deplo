@@ -1,0 +1,20 @@
+{
+  "id": "jenkins",
+  "name": "jenkins",
+  "description": "Automation server for CI/CD that builds, tests, and deploys software through configurable pipelines.",
+  "tags": [
+    "ci-cd",
+    "devops",
+    "automation",
+    "pipelines",
+    "open-source"
+  ],
+  "logo": "/templates/jenkins.svg",
+  "links": {
+    "github": "https://github.com/jenkinsci/jenkins",
+    "website": "https://www.jenkins.io/",
+    "docs": "https://www.jenkins.io/doc/"
+  },
+  "version": "latest",
+  "popular": false
+}

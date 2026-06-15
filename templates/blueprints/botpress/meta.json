@@ -1,0 +1,17 @@
+{
+  "id": "botpress",
+  "name": "Botpress",
+  "description": "Platform for building, deploying, and managing conversational AI chatbots and agents.",
+  "tags": [
+    "ai",
+    "self-hosted"
+  ],
+  "logo": "/templates/botpress.png",
+  "links": {
+    "github": "https://github.com/botpress/botpress",
+    "website": "https://botpress.com",
+    "docs": "https://botpress.com/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

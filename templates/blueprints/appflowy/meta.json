@@ -1,0 +1,20 @@
+{
+  "id": "appflowy",
+  "name": "App Flowy",
+  "description": "Notes and project workspace you fully control, positioned as an open-source alternative to Notion.",
+  "tags": [
+    "productivity",
+    "self-hosted",
+    "notes",
+    "knowledge-base",
+    "notion-alternative"
+  ],
+  "logo": "/templates/appflowy.png",
+  "links": {
+    "github": "https://github.com/AppFlowy-IO/AppFlowy",
+    "website": "https://appflowy.io/",
+    "docs": "https://docs.appflowy.io/docs"
+  },
+  "version": "0.9.3",
+  "popular": false
+}

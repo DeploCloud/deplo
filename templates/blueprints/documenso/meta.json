@@ -1,0 +1,16 @@
+{
+  "id": "documenso",
+  "name": "Documenso",
+  "description": "Open-source alternative to DocuSign for sending, signing, and managing digital documents securely.",
+  "tags": [
+    "document-signing"
+  ],
+  "logo": "/templates/documenso.png",
+  "links": {
+    "github": "https://github.com/documenso/documenso",
+    "website": "https://documenso.com/",
+    "docs": "https://documenso.com/docs"
+  },
+  "version": "v1.5.6",
+  "popular": true
+}

@@ -1,0 +1,19 @@
+{
+  "id": "cloudreve",
+  "name": "Cloudreve",
+  "description": "Self-hosted file management and sharing system supporting local, OneDrive, S3, and other storage backends.",
+  "tags": [
+    "storage",
+    "file-sharing",
+    "cloud",
+    "self-hosted"
+  ],
+  "logo": "/templates/cloudreve.png",
+  "links": {
+    "github": "https://github.com/cloudreve/Cloudreve",
+    "website": "https://cloudreve.org",
+    "docs": "https://docs.cloudreve.org"
+  },
+  "version": "4.10.1",
+  "popular": false
+}

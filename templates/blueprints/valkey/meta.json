@@ -1,0 +1,19 @@
+{
+  "id": "valkey",
+  "name": "Valkey",
+  "description": "In-memory key-value store and cache, a community-driven fork of Redis backed by the Linux Foundation.",
+  "tags": [
+    "database",
+    "cache",
+    "redis",
+    "in-memory"
+  ],
+  "logo": "/templates/valkey.svg",
+  "links": {
+    "github": "https://github.com/valkey-io/valkey",
+    "website": "https://valkey.io/",
+    "docs": "https://github.com/valkey-io/valkey"
+  },
+  "version": "8.1.4",
+  "popular": false
+}

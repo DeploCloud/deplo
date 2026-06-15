@@ -1,0 +1,18 @@
+{
+  "id": "evolutionapi",
+  "name": "Evolution API",
+  "description": "WhatsApp messaging API for small businesses to automate conversations and integrate chat into their apps.",
+  "tags": [
+    "api",
+    "whatsapp",
+    "messaging"
+  ],
+  "logo": "/templates/evolutionapi.png",
+  "links": {
+    "github": "https://github.com/EvolutionAPI/evolution-api",
+    "docs": "https://doc.evolution-api.com/v2/en/get-started/introduction",
+    "website": "https://evolution-api.com/opensource-whatsapp-api/"
+  },
+  "version": "v2.1.2",
+  "popular": false
+}

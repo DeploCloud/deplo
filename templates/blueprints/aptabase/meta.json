@@ -1,0 +1,17 @@
+{
+  "id": "aptabase",
+  "name": "Aptabase",
+  "description": "Privacy-friendly, self-hosted analytics for tracking usage in web, mobile, and desktop apps.",
+  "tags": [
+    "analytics",
+    "self-hosted"
+  ],
+  "logo": "/templates/aptabase.svg",
+  "links": {
+    "github": "https://github.com/aptabase/aptabase",
+    "website": "https://aptabase.com/",
+    "docs": "https://github.com/aptabase/aptabase/blob/main/README.md"
+  },
+  "version": "v1.0.0",
+  "popular": false
+}

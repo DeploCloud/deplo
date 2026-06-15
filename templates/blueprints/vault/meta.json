@@ -1,0 +1,19 @@
+{
+  "id": "vault",
+  "name": "Vault",
+  "description": "Secrets manager that stores and tightly controls access to API keys, passwords, and certificates with audit logging.",
+  "tags": [
+    "security",
+    "secrets",
+    "devops",
+    "infrastructure"
+  ],
+  "logo": "/templates/vault.svg",
+  "links": {
+    "github": "https://github.com/hashicorp/vault",
+    "website": "https://www.vaultproject.io/",
+    "docs": "https://developer.hashicorp.com/vault/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

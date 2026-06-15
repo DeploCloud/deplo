@@ -1,0 +1,19 @@
+{
+  "id": "gitlab-ce",
+  "name": "GitLab CE",
+  "description": "Open-source DevOps platform for Git hosting, CI/CD pipelines, issue tracking, and project management in one place.",
+  "tags": [
+    "git",
+    "ci-cd",
+    "version-control",
+    "project-management"
+  ],
+  "logo": "/templates/gitlab-ce.svg",
+  "links": {
+    "github": "https://gitlab.com/gitlab-org/gitlab-ce",
+    "website": "https://gitlab.com/",
+    "docs": "https://docs.gitlab.com/ee/"
+  },
+  "version": "latest",
+  "popular": false
+}

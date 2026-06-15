@@ -1,0 +1,21 @@
+{
+  "id": "openresty-manager",
+  "name": "OpenResty Manager",
+  "description": "Web UI for OpenResty and Nginx that simplifies reverse proxying with access control, free SSL, and flood protection.",
+  "tags": [
+    "web",
+    "proxy",
+    "security",
+    "self-hosted",
+    "openresty",
+    "nginx"
+  ],
+  "logo": "/templates/openresty-manager.svg",
+  "links": {
+    "github": "https://github.com/Safe3/openresty-manager",
+    "website": "https://om.uusec.com/",
+    "docs": "https://github.com/Safe3/openresty-manager"
+  },
+  "version": "1.2.0",
+  "popular": false
+}

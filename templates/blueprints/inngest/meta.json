@@ -1,0 +1,20 @@
+{
+  "id": "inngest",
+  "name": "Inngest",
+  "description": "Event-driven workflow engine for background jobs, with built-in retries, scheduling, and observability.",
+  "tags": [
+    "workflow",
+    "automation",
+    "self-hosted",
+    "serverless",
+    "events"
+  ],
+  "logo": "/templates/inngest.svg",
+  "links": {
+    "github": "https://github.com/inngest/inngest",
+    "website": "https://www.inngest.com/",
+    "docs": "https://www.inngest.com/docs/self-hosting"
+  },
+  "version": "v1.12.1",
+  "popular": false
+}

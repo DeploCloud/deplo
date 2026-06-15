@@ -1,0 +1,22 @@
+{
+  "id": "signoz",
+  "name": "SigNoz",
+  "description": "Open-source observability platform and Datadog alternative, unifying traces, metrics, and logs via OpenTelemetry.",
+  "tags": [
+    "monitoring",
+    "observability",
+    "metrics",
+    "traces",
+    "logs",
+    "opentelemetry",
+    "apm"
+  ],
+  "logo": "/templates/signoz.svg",
+  "links": {
+    "github": "https://github.com/SigNoz/signoz",
+    "website": "https://signoz.io/",
+    "docs": "https://signoz.io/docs/"
+  },
+  "version": "v0.97.1",
+  "popular": false
+}

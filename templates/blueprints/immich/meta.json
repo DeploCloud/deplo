@@ -1,0 +1,19 @@
+{
+  "id": "immich",
+  "name": "Immich",
+  "description": "High-performance photo and video backup for your phone, an open-source alternative to Google Photos.",
+  "tags": [
+    "photos",
+    "videos",
+    "backup",
+    "media"
+  ],
+  "logo": "/templates/immich.svg",
+  "links": {
+    "github": "https://github.com/immich-app/immich",
+    "website": "https://immich.app/",
+    "docs": "https://immich.app/docs/overview/introduction"
+  },
+  "version": "v1.121.0",
+  "popular": true
+}

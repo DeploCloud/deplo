@@ -1,0 +1,17 @@
+{
+  "id": "crowdsec",
+  "name": "Crowdsec",
+  "description": "Open-source security engine that detects and blocks malicious IPs to protect your infrastructure and apps.",
+  "tags": [
+    "security",
+    "firewall"
+  ],
+  "logo": "/templates/crowdsec.png",
+  "links": {
+    "github": "https://github.com/crowdsecurity/crowdsec",
+    "website": "https://crowdsec.net/",
+    "docs": "https://docs.crowdsec.net"
+  },
+  "version": "latest",
+  "popular": false
+}

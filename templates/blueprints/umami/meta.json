@@ -1,0 +1,16 @@
+{
+  "id": "umami",
+  "name": "Umami",
+  "description": "Privacy-focused web analytics that tracks visitors without cookies, a lightweight alternative to Google Analytics.",
+  "tags": [
+    "analytics"
+  ],
+  "logo": "/templates/umami.png",
+  "links": {
+    "github": "https://github.com/umami-software/umami",
+    "website": "https://umami.is",
+    "docs": "https://umami.is/docs"
+  },
+  "version": "v3.0.3",
+  "popular": true
+}

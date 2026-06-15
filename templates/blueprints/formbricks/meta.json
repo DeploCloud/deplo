@@ -1,0 +1,17 @@
+{
+  "id": "formbricks",
+  "name": "Formbricks",
+  "description": "Open-source survey and form platform for collecting user feedback and turning it into actionable insights.",
+  "tags": [
+    "forms",
+    "analytics"
+  ],
+  "logo": "/templates/formbricks.png",
+  "links": {
+    "github": "https://github.com/formbricks/formbricks",
+    "website": "https://formbricks.com/",
+    "docs": "https://formbricks.com/docs"
+  },
+  "version": "v3.1.3",
+  "popular": false
+}

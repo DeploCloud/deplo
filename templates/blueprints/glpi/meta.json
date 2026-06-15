@@ -1,0 +1,18 @@
+{
+  "id": "glpi",
+  "name": "GLPI Project",
+  "description": "Open-source IT service management and asset tracking tool with ticketing, inventory, and helpdesk features.",
+  "tags": [
+    "self-hosted",
+    "project-management",
+    "management"
+  ],
+  "logo": "/templates/glpi.webp",
+  "links": {
+    "github": "https://github.com/glpi-project/glpi",
+    "website": "https://glpi-project.org/",
+    "docs": "https://glpi-project.org/documentation/"
+  },
+  "version": "10.0.16",
+  "popular": false
+}

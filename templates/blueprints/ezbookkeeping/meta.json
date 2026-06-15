@@ -1,0 +1,21 @@
+{
+  "id": "ezbookkeeping",
+  "name": "EZBookkeeping",
+  "description": "Self-hosted bookkeeping app for tracking income, expenses, and accounts with built-in financial reports.",
+  "tags": [
+    "bookkeeping",
+    "finance",
+    "accounting",
+    "self-hosted",
+    "personal-finance",
+    "business-finance"
+  ],
+  "logo": "/templates/ezbookkeeping.png",
+  "links": {
+    "github": "https://github.com/mayswind/ezbookkeeping",
+    "website": "https://github.com/mayswind/ezbookkeeping",
+    "docs": "https://github.com/mayswind/ezbookkeeping"
+  },
+  "version": "latest",
+  "popular": false
+}

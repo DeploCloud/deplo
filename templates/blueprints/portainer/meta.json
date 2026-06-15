@@ -1,0 +1,17 @@
+{
+  "id": "portainer",
+  "name": "Portainer",
+  "description": "Container management UI for deploying, monitoring, and securing apps across Docker and Kubernetes.",
+  "tags": [
+    "cloud",
+    "monitoring"
+  ],
+  "logo": "/templates/portainer.png",
+  "links": {
+    "github": "https://github.com/portainer/portainer",
+    "website": "https://www.portainer.io/",
+    "docs": "https://docs.portainer.io/"
+  },
+  "version": "latest",
+  "popular": true
+}

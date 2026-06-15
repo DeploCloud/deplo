@@ -1,0 +1,21 @@
+{
+  "id": "flatnotes-totp",
+  "name": "Flatnotes (TOTP)",
+  "description": "Self-hosted Markdown note app, secured with TOTP two-factor login on top of username and password.",
+  "tags": [
+    "notes",
+    "productivity",
+    "markdown",
+    "self-hosted",
+    "totp",
+    "2fa"
+  ],
+  "logo": "/templates/flatnotes-totp.png",
+  "links": {
+    "github": "https://github.com/dullage/flatnotes",
+    "website": "https://flatnotes.io",
+    "docs": "https://github.com/dullage/flatnotes"
+  },
+  "version": "latest",
+  "popular": false
+}

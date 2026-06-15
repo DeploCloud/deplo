@@ -1,0 +1,21 @@
+{
+  "id": "n8n-runner-postgres-ollama",
+  "name": "n8n + Worker + Runner with Redis/Postgres and Ollama",
+  "description": "Workflow automation tool n8n bundled with PostgreSQL, a dedicated runner, and Ollama for running local AI models in flows.",
+  "tags": [
+    "ai",
+    "automation",
+    "workflow",
+    "low-code",
+    "postgres",
+    "ollama"
+  ],
+  "logo": "/templates/n8n-runner-postgres-ollama.png",
+  "links": {
+    "github": "https://github.com/n8n-io/n8n",
+    "website": "https://n8n.io/",
+    "docs": "https://docs.n8n.io/"
+  },
+  "version": "latest",
+  "popular": false
+}

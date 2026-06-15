@@ -1,0 +1,18 @@
+{
+  "id": "typecho",
+  "name": "Typecho",
+  "description": "Lightweight PHP blogging platform and CMS with Markdown support and multi-database compatibility.",
+  "tags": [
+    "blog",
+    "cms",
+    "php"
+  ],
+  "logo": "/templates/typecho.png",
+  "links": {
+    "github": "https://github.com/typecho/typecho",
+    "website": "https://typecho.org/",
+    "docs": "http://docs.typecho.org"
+  },
+  "version": "stable",
+  "popular": false
+}

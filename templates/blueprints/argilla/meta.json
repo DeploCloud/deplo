@@ -1,0 +1,18 @@
+{
+  "id": "argilla",
+  "name": "Argilla",
+  "description": "Data annotation and labeling platform that helps teams curate quality datasets for machine learning.",
+  "tags": [
+    "machine-learning",
+    "data-labeling",
+    "ai"
+  ],
+  "logo": "/templates/argilla.svg",
+  "links": {
+    "github": "https://github.com/argilla-io/argilla",
+    "website": "https://www.argilla.io/",
+    "docs": "https://docs.argilla.io/"
+  },
+  "version": "latest",
+  "popular": false
+}

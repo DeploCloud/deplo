@@ -1,0 +1,20 @@
+{
+  "id": "poke",
+  "name": "Poke",
+  "description": "Privacy-focused, self-hosted YouTube front-end for watching and sharing videos without tracking.",
+  "tags": [
+    "video",
+    "youtube-alternative",
+    "self-hosted",
+    "privacy",
+    "streaming"
+  ],
+  "logo": "/templates/poke.png",
+  "links": {
+    "github": "https://codeberg.org/ashley/poke",
+    "website": "https://poketube.fun/",
+    "docs": "https://codeberg.org/ashley/poke"
+  },
+  "version": "latest",
+  "popular": false
+}

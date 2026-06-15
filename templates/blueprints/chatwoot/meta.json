@@ -1,0 +1,18 @@
+{
+  "id": "chatwoot",
+  "name": "Chatwoot",
+  "description": "Open-source customer engagement suite with a shared inbox, live chat, and omnichannel support for teams.",
+  "tags": [
+    "support",
+    "chat",
+    "customer-service"
+  ],
+  "logo": "/templates/chatwoot.svg",
+  "links": {
+    "github": "https://github.com/chatwoot/chatwoot",
+    "website": "https://www.chatwoot.com",
+    "docs": "https://www.chatwoot.com/docs"
+  },
+  "version": "v3.14.1",
+  "popular": false
+}

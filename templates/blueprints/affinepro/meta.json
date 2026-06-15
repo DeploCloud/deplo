@@ -1,0 +1,19 @@
+{
+  "id": "affinepro",
+  "name": "Affine Pro",
+  "description": "Workspace combining docs, whiteboards, and databases for notes and collaborative project management.",
+  "tags": [
+    "collaboration",
+    "self-hosted",
+    "productivity",
+    "project-management"
+  ],
+  "logo": "/templates/affinepro.png",
+  "links": {
+    "github": "https://github.com/toeverything/Affine",
+    "website": "https://affine.pro/",
+    "docs": "https://affine.pro/docs"
+  },
+  "version": "stable-780dd83",
+  "popular": false
+}

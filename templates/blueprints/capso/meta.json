@@ -1,0 +1,20 @@
+{
+  "id": "capso",
+  "name": "Cap.so",
+  "description": "Cap is an open-source screen recorder for sharing videos, backed by MySQL and S3-compatible storage.",
+  "tags": [
+    "web",
+    "s3",
+    "mysql",
+    "development",
+    "self-hosted"
+  ],
+  "logo": "/templates/capso.png",
+  "links": {
+    "github": "https://github.com/CapSoftware/Cap",
+    "website": "https://cap.so/",
+    "docs": "https://cap.so/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

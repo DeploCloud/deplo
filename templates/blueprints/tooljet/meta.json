@@ -1,0 +1,18 @@
+{
+  "id": "tooljet",
+  "name": "Tooljet",
+  "description": "Low-code platform for building internal tools and dashboards that connect to your databases and APIs.",
+  "tags": [
+    "file-sync",
+    "file-sharing",
+    "self-hosted"
+  ],
+  "logo": "/templates/tooljet.png",
+  "links": {
+    "github": "https://github.com/ToolJet/ToolJet",
+    "website": "https://tooljet.ai/",
+    "docs": "https://docs.tooljet.ai/"
+  },
+  "version": "ee-lts-latest",
+  "popular": false
+}

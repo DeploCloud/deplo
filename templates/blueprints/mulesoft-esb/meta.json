@@ -1,0 +1,20 @@
+{
+  "id": "mulesoft-esb",
+  "name": "MuleSoft ESB Runtime Community Edition",
+  "description": "Java-based integration runtime for connecting applications, APIs, and data sources via an enterprise ESB.",
+  "tags": [
+    "integration",
+    "api",
+    "esb",
+    "enterprise",
+    "java"
+  ],
+  "logo": "/templates/mulesoft-esb.png",
+  "links": {
+    "github": "https://github.com/mulesoft",
+    "website": "https://www.mulesoft.com/",
+    "docs": "https://docs.mulesoft.com/"
+  },
+  "version": "latest",
+  "popular": false
+}

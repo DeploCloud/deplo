@@ -1,0 +1,22 @@
+{
+  "id": "karakeep",
+  "name": "KaraKeep",
+  "description": "Bookmark-everything app for links, notes, and images with AI tagging and full-text search, formerly Hoarder.",
+  "tags": [
+    "bookmarks",
+    "bookmark-manager",
+    "self-hosted",
+    "ai",
+    "search",
+    "notes",
+    "productivity"
+  ],
+  "logo": "/templates/karakeep.svg",
+  "links": {
+    "github": "https://github.com/karakeep-app/karakeep",
+    "website": "https://karakeep.app/",
+    "docs": "https://github.com/karakeep-app/karakeep/tree/main/docs"
+  },
+  "version": "0.25.0",
+  "popular": false
+}

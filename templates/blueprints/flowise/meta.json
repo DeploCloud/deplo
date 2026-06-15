@@ -1,0 +1,19 @@
+{
+  "id": "flowise",
+  "name": "Flowise",
+  "description": "Open-source visual builder for assembling LLM apps and AI agent workflows through a drag-and-drop interface.",
+  "tags": [
+    "AI",
+    "LLM",
+    "workflow",
+    "automation"
+  ],
+  "logo": "/templates/flowise.png",
+  "links": {
+    "github": "https://github.com/FlowiseAI/Flowise",
+    "website": "https://flowiseai.com/",
+    "docs": "https://docs.flowiseai.com/"
+  },
+  "version": "latest",
+  "popular": false
+}

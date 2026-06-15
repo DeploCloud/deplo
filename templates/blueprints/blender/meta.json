@@ -1,0 +1,18 @@
+{
+  "id": "blender",
+  "name": "Blender",
+  "description": "Free 3D creation suite covering modeling, animation, rendering, compositing, and video editing.",
+  "tags": [
+    "3d",
+    "rendering",
+    "animation"
+  ],
+  "logo": "/templates/blender.svg",
+  "links": {
+    "github": "https://github.com/linuxserver/docker-blender",
+    "website": "https://www.blender.org/",
+    "docs": "https://docs.blender.org/"
+  },
+  "version": "latest",
+  "popular": false
+}

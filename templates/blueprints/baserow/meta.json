@@ -1,0 +1,16 @@
+{
+  "id": "baserow",
+  "name": "Baserow",
+  "description": "Open-source Airtable alternative for building databases and spreadsheets through a no-code interface.",
+  "tags": [
+    "database"
+  ],
+  "logo": "/templates/baserow.webp",
+  "links": {
+    "github": "https://github.com/Baserow/baserow",
+    "website": "https://baserow.io/",
+    "docs": "https://baserow.io/docs/index"
+  },
+  "version": "1.25.2",
+  "popular": false
+}

@@ -1,0 +1,19 @@
+{
+  "id": "usesend",
+  "name": "useSend",
+  "description": "Transactional email sending service with an API and SMTP, an open alternative to Resend and SendGrid.",
+  "tags": [
+    "e-mail",
+    "marketing",
+    "business",
+    "self-hosted"
+  ],
+  "logo": "/templates/usesend.png",
+  "links": {
+    "github": "https://github.com/usesend/usesend",
+    "website": "https://usesend.com/",
+    "docs": "https://docs.usesend.com/introduction"
+  },
+  "version": "latest",
+  "popular": false
+}

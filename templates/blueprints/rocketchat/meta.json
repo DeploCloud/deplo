@@ -1,0 +1,16 @@
+{
+  "id": "rocketchat",
+  "name": "Rocketchat",
+  "description": "Open-source team chat platform for messaging, channels, and collaboration, positioned as a Slack alternative.",
+  "tags": [
+    "chat"
+  ],
+  "logo": "/templates/rocketchat.png",
+  "links": {
+    "github": "https://github.com/RocketChat/Rocket.Chat",
+    "website": "https://rocket.chat/",
+    "docs": "https://rocket.chat/docs/"
+  },
+  "version": "6.9.2",
+  "popular": false
+}

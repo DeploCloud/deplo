@@ -1,0 +1,18 @@
+{
+  "id": "verdaccio",
+  "name": "Verdaccio",
+  "description": "Lightweight private npm registry and proxy for hosting your own Node.js packages and caching public ones.",
+  "tags": [
+    "node.js",
+    "package-repository",
+    "npm"
+  ],
+  "logo": "/templates/verdaccio.svg",
+  "links": {
+    "github": "https://github.com/verdaccio/verdaccio",
+    "website": "https://www.verdaccio.org/",
+    "docs": "https://www.verdaccio.org/docs/what-is-verdaccio"
+  },
+  "version": "6",
+  "popular": false
+}

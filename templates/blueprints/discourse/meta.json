@@ -1,0 +1,18 @@
+{
+  "id": "discourse",
+  "name": "Discourse",
+  "description": "Modern forum platform for community discussions, doubling as a mailing list or real-time chat room.",
+  "tags": [
+    "forum",
+    "community",
+    "discussion"
+  ],
+  "logo": "/templates/discourse.svg",
+  "links": {
+    "github": "https://github.com/discourse/discourse",
+    "website": "https://www.discourse.org/",
+    "docs": "https://meta.discourse.org/"
+  },
+  "version": "3.5.0",
+  "popular": false
+}

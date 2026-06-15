@@ -1,0 +1,19 @@
+{
+  "id": "pastefy",
+  "name": "Pastefy",
+  "description": "Open-source pastebin for sharing code and text, with syntax highlighting and OAuth2 sign-in.",
+  "tags": [
+    "pastebin",
+    "text-sharing",
+    "collaboration",
+    "oauth2"
+  ],
+  "logo": "/templates/pastefy.png",
+  "links": {
+    "github": "https://github.com/interaapps/pastefy",
+    "website": "https://pastefy.app",
+    "docs": "https://github.com/interaapps/pastefy/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

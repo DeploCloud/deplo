@@ -1,0 +1,19 @@
+{
+  "id": "parseable",
+  "name": "Parseable",
+  "description": "Log analytics and observability platform that stores and queries logs directly on object storage.",
+  "tags": [
+    "observability",
+    "logging",
+    "analytics",
+    "monitoring"
+  ],
+  "logo": "/templates/parseable.svg",
+  "links": {
+    "github": "https://github.com/parseablehq/parseable",
+    "website": "https://www.parseable.com/",
+    "docs": "https://www.parseable.com/docs"
+  },
+  "version": "v1.6.5",
+  "popular": false
+}

@@ -1,0 +1,21 @@
+{
+  "id": "bolt.diy",
+  "name": "bolt.diy",
+  "description": "AI coding agent that builds, runs, edits, and deploys full-stack web apps using the LLM of your choice.",
+  "tags": [
+    "ai",
+    "self-hosted",
+    "development",
+    "chatbot",
+    "ide",
+    "llm"
+  ],
+  "logo": "/templates/bolt.diy.jpg",
+  "links": {
+    "github": "https://github.com/stackblitz-labs/bolt.diy",
+    "website": "https://stackblitz-labs.github.io/bolt.diy/",
+    "docs": "https://stackblitz-labs.github.io/bolt.diy/"
+  },
+  "version": "latest",
+  "popular": false
+}

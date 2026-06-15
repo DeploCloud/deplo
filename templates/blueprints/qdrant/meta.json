@@ -1,0 +1,18 @@
+{
+  "id": "qdrant",
+  "name": "Qdrant",
+  "description": "Open-source vector database for storing embeddings and running fast similarity search to power AI and recommendation features.",
+  "tags": [
+    "vector-db",
+    "database",
+    "search"
+  ],
+  "logo": "/templates/qdrant.svg",
+  "links": {
+    "github": "https://github.com/qdrant/qdrant",
+    "website": "https://qdrant.tech/",
+    "docs": "https://qdrant.tech/documentation/"
+  },
+  "version": "latest",
+  "popular": false
+}

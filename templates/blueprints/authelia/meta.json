@@ -1,0 +1,22 @@
+{
+  "id": "authelia",
+  "name": "Authelia",
+  "description": "Authentication portal that adds single sign-on and two-factor login in front of your web apps.",
+  "tags": [
+    "authentication",
+    "authorization",
+    "2fa",
+    "sso",
+    "security",
+    "reverse-proxy",
+    "ldap"
+  ],
+  "logo": "/templates/authelia.png",
+  "links": {
+    "github": "https://github.com/authelia/authelia",
+    "website": "https://www.authelia.com/",
+    "docs": "https://www.authelia.com/overview/prologue/introduction/"
+  },
+  "version": "latest",
+  "popular": false
+}

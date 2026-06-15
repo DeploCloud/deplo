@@ -1,0 +1,17 @@
+{
+  "id": "dragonfly-db",
+  "name": "Dragonfly",
+  "description": "Drop-in Redis and Memcached replacement built for high throughput on modern multi-core hardware.",
+  "tags": [
+    "database",
+    "redis"
+  ],
+  "logo": "/templates/dragonfly-db.png",
+  "links": {
+    "github": "https://github.com/dragonflydb/dragonfly",
+    "website": "https://www.dragonflydb.io/",
+    "docs": "https://www.dragonflydb.io/docs"
+  },
+  "version": "1.28.1",
+  "popular": false
+}

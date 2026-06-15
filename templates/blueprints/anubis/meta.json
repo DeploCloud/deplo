@@ -1,0 +1,17 @@
+{
+  "id": "anubis",
+  "name": "Anubis",
+  "description": "Reverse-proxy bot protection that uses proof-of-work challenges to keep scrapers off your website.",
+  "tags": [
+    "self-hosted",
+    "bot-protection"
+  ],
+  "logo": "/templates/anubis.webp",
+  "links": {
+    "github": "https://github.com/TecharoHQ/anubis",
+    "website": "https://anubis.techaro.lol",
+    "docs": "https://anubis.techaro.lol/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

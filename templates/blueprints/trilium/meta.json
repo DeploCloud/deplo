@@ -1,0 +1,18 @@
+{
+  "id": "trilium",
+  "name": "Trilium",
+  "description": "Hierarchical note-taking app for building large personal knowledge bases with linked, structured notes.",
+  "tags": [
+    "self-hosted",
+    "productivity",
+    "personal-use"
+  ],
+  "logo": "/templates/trilium.png",
+  "links": {
+    "github": "https://github.com/zadam/trilium",
+    "website": "https://github.com/zadam/trilium",
+    "docs": "https://github.com/zadam/trilium/wiki/"
+  },
+  "version": "latest",
+  "popular": false
+}

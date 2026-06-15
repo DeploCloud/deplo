@@ -1,0 +1,19 @@
+{
+  "id": "strapi",
+  "name": "Strapi",
+  "description": "Open-source headless CMS for building customizable APIs with a friendly admin panel for managing content.",
+  "tags": [
+    "headless",
+    "cms",
+    "content-management"
+  ],
+  "logo": "/templates/strapi.svg",
+  "links": {
+    "github": "https://github.com/strapi/strapi",
+    "discord": "https://discord.com/invite/strapi",
+    "docs": "https://docs.strapi.io",
+    "website": "https://strapi.io"
+  },
+  "version": "v5.33.0",
+  "popular": true
+}

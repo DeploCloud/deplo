@@ -1,0 +1,20 @@
+{
+  "id": "homebridge",
+  "name": "Homebridge",
+  "description": "Bridge that adds Apple HomeKit support to smart home devices that do not natively work with it.",
+  "tags": [
+    "iot",
+    "homekit",
+    "internet-of-things",
+    "self-hosted",
+    "server"
+  ],
+  "logo": "/templates/homebridge.svg",
+  "links": {
+    "github": "https://github.com/homebridge/homebridge",
+    "website": "https://homebridge.io/",
+    "docs": "https://github.com/homebridge/homebridge/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

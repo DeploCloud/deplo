@@ -1,0 +1,18 @@
+{
+  "id": "listmonk",
+  "name": "Listmonk",
+  "description": "High-performance newsletter and mailing list manager with a modern dashboard for self-hosted email campaigns.",
+  "tags": [
+    "email",
+    "newsletter",
+    "mailing-list"
+  ],
+  "logo": "/templates/listmonk.png",
+  "links": {
+    "github": "https://github.com/knadh/listmonk",
+    "website": "https://listmonk.app/",
+    "docs": "https://listmonk.app/docs/"
+  },
+  "version": "v3.0.0",
+  "popular": false
+}

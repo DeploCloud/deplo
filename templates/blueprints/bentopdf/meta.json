@@ -1,0 +1,19 @@
+{
+  "id": "bentopdf",
+  "name": "BentoPDF",
+  "description": "Lightweight PDF generation microservice exposing a simple HTTP API for creating documents on demand.",
+  "tags": [
+    "pdf",
+    "converter",
+    "api",
+    "utility"
+  ],
+  "logo": "/templates/bentopdf.png",
+  "links": {
+    "github": "https://github.com/bentopdf/bentopdf",
+    "website": "https://bentopdf.com/",
+    "docs": "https://github.com/bentopdf/bentopdf#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

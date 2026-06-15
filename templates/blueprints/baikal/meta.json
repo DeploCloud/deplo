@@ -1,0 +1,19 @@
+{
+  "id": "baikal",
+  "name": "Baikal",
+  "description": "Lightweight CalDAV and CardDAV server for syncing calendars and contacts across your devices.",
+  "tags": [
+    "calendar",
+    "contacts",
+    "caldav",
+    "carddav"
+  ],
+  "logo": "/templates/baikal.png",
+  "links": {
+    "website": "https://sabre.io/baikal/",
+    "github": "https://sabre.io/baikal/",
+    "docs": "https://sabre.io/baikal/install/"
+  },
+  "version": "nginx-php8.2",
+  "popular": false
+}

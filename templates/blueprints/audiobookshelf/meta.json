@@ -1,0 +1,18 @@
+{
+  "id": "audiobookshelf",
+  "name": "Audiobookshelf",
+  "description": "Self-hosted server that organizes and streams your audiobook and podcast library to any device.",
+  "tags": [
+    "media",
+    "audiobooks",
+    "podcasts"
+  ],
+  "logo": "/templates/audiobookshelf.png",
+  "links": {
+    "github": "https://github.com/advplyr/audiobookshelf",
+    "website": "https://www.audiobookshelf.org",
+    "docs": "https://www.audiobookshelf.org/docs"
+  },
+  "version": "2.19.4",
+  "popular": false
+}

@@ -1,0 +1,17 @@
+{
+  "id": "scrutiny",
+  "name": "Scrutiny",
+  "description": "Hard drive health dashboard that monitors S.M.A.R.T. data and historical trends to warn you before disks fail.",
+  "tags": [
+    "monitoring",
+    "NAS"
+  ],
+  "logo": "/templates/scrutiny.png",
+  "links": {
+    "github": "https://github.com/AnalogJ/scrutiny/",
+    "website": "",
+    "docs": ""
+  },
+  "version": "latest",
+  "popular": false
+}

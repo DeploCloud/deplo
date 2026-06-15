@@ -1,0 +1,17 @@
+{
+  "id": "conduit",
+  "name": "Conduit",
+  "description": "Simple, fast Matrix homeserver written in Rust for hosting your own federated chat.",
+  "tags": [
+    "matrix",
+    "communication"
+  ],
+  "logo": "/templates/conduit.svg",
+  "links": {
+    "github": "https://gitlab.com/famedly/conduit",
+    "website": "https://conduit.rs/",
+    "docs": "https://docs.conduit.rs/"
+  },
+  "version": "v0.9.0",
+  "popular": false
+}

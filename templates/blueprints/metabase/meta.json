@@ -1,0 +1,17 @@
+{
+  "id": "metabase",
+  "name": "Metabase",
+  "description": "Open-source business intelligence tool for querying databases and building dashboards without SQL.",
+  "tags": [
+    "database",
+    "dashboard"
+  ],
+  "logo": "/templates/metabase.png",
+  "links": {
+    "github": "https://github.com/metabase/metabase",
+    "website": "https://www.metabase.com/",
+    "docs": "https://www.metabase.com/docs/"
+  },
+  "version": "v0.50.8",
+  "popular": true
+}

@@ -1,0 +1,19 @@
+{
+  "id": "mumble",
+  "name": "Mumble",
+  "description": "Low-latency, high-quality voice chat server for gaming and team communication over VoIP.",
+  "tags": [
+    "voice-chat",
+    "communication",
+    "gaming",
+    "voip"
+  ],
+  "logo": "/templates/mumble.png",
+  "links": {
+    "github": "https://github.com/mumble-voip/mumble",
+    "website": "https://www.mumble.info/",
+    "docs": "https://wiki.mumble.info/"
+  },
+  "version": "latest",
+  "popular": false
+}

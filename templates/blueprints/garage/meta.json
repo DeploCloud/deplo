@@ -1,0 +1,17 @@
+{
+  "id": "garage",
+  "name": "Garage S3",
+  "description": "Distributed S3-compatible object storage built for self-hosting across multiple machines without a single point of failure.",
+  "tags": [
+    "storage",
+    "object-storage"
+  ],
+  "logo": "/templates/garage.svg",
+  "links": {
+    "github": "https://git.deuxfleurs.fr/Deuxfleurs/garage",
+    "website": "https://garagehq.deuxfleurs.fr",
+    "docs": "https://garagehq.deuxfleurs.fr/documentation/quick-start/"
+  },
+  "version": "latest",
+  "popular": false
+}

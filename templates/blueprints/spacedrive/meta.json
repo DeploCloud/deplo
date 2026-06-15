@@ -1,0 +1,18 @@
+{
+  "id": "spacedrive",
+  "name": "Spacedrive",
+  "description": "Cross-platform file manager built on a virtual distributed filesystem, organizing files across all your devices at once.",
+  "tags": [
+    "file-manager",
+    "vdfs",
+    "storage"
+  ],
+  "logo": "/templates/spacedrive.png",
+  "links": {
+    "github": "https://github.com/spacedriveapp/spacedrive",
+    "website": "https://spacedrive.com/",
+    "docs": "https://www.spacedrive.com/docs/product/getting-started/introduction"
+  },
+  "version": "latest",
+  "popular": false
+}

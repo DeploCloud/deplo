@@ -1,0 +1,18 @@
+{
+  "id": "grimoire",
+  "name": "Grimoire",
+  "description": "Self-hosted bookmark manager focused on speed and simplicity for organizing and revisiting your saved links.",
+  "tags": [
+    "bookmarks",
+    "self-hosted",
+    "knowledge-management"
+  ],
+  "logo": "/templates/grimoire.webp",
+  "links": {
+    "github": "https://github.com/goniszewski/grimoire",
+    "website": "https://github.com/goniszewski/grimoire",
+    "docs": "https://github.com/goniszewski/grimoire"
+  },
+  "version": "latest",
+  "popular": false
+}

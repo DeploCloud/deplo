@@ -1,0 +1,19 @@
+{
+  "id": "minepanel",
+  "name": "Minepanel",
+  "description": "Web panel for managing Docker-based Minecraft servers: create, configure, and monitor multiple instances.",
+  "tags": [
+    "gaming",
+    "minecraft",
+    "server-management",
+    "docker"
+  ],
+  "logo": "/templates/minepanel.webp",
+  "links": {
+    "github": "https://github.com/Ketbome/minepanel",
+    "website": "https://minepanel.ketbome.lat",
+    "docs": "https://minepanel.ketbome.lat"
+  },
+  "version": "1.7.1",
+  "popular": false
+}

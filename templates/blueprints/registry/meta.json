@@ -1,0 +1,18 @@
+{
+  "id": "registry",
+  "name": "Docker Registry",
+  "description": "Reference implementation of the Docker Registry for storing, versioning, and distributing container images and OCI artifacts.",
+  "tags": [
+    "registry",
+    "docker",
+    "self-hosted"
+  ],
+  "logo": "/templates/registry.png",
+  "links": {
+    "github": "https://github.com/distribution/distribution",
+    "website": "https://hub.docker.com/_/registry",
+    "docs": "https://distribution.github.io/distribution/"
+  },
+  "version": "2",
+  "popular": false
+}

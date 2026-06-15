@@ -1,0 +1,20 @@
+{
+  "id": "storyden",
+  "name": "Storyden",
+  "description": "Modern, extensible forum and bulletin board platform for building secure online communities and discussions.",
+  "tags": [
+    "forum",
+    "discussion",
+    "community",
+    "open-source"
+  ],
+  "logo": "/templates/storyden.png",
+  "links": {
+    "github": "https://github.com/Southclaws/storyden",
+    "discord": "https://discord.gg/XF6ZBGF9XF",
+    "docs": "https://www.storyden.org/docs/introduction",
+    "website": "https://www.storyden.org/"
+  },
+  "version": "latest",
+  "popular": false
+}

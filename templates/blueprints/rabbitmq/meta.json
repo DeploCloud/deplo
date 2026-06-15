@@ -1,0 +1,18 @@
+{
+  "id": "rabbitmq",
+  "name": "RabbitMQ",
+  "description": "Open-source message broker that queues and routes messages between services using AMQP and other protocols.",
+  "tags": [
+    "message-broker",
+    "queue",
+    "rabbitmq"
+  ],
+  "logo": "/templates/rabbitmq.svg",
+  "links": {
+    "github": "https://github.com/rabbitmq/rabbitmq-server",
+    "website": "https://www.rabbitmq.com/",
+    "docs": "https://www.rabbitmq.com/documentation.html"
+  },
+  "version": "4.1-management",
+  "popular": false
+}

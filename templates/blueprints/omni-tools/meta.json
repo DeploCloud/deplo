@@ -1,0 +1,19 @@
+{
+  "id": "omni-tools",
+  "name": "Omni-Tools",
+  "description": "Self-hosted collection of everyday utilities for text, image, and data conversions, all in one web interface.",
+  "tags": [
+    "tools",
+    "utilities",
+    "collection",
+    "self-hosted"
+  ],
+  "logo": "/templates/omni-tools.png",
+  "links": {
+    "github": "https://github.com/iib0011/omni-tools",
+    "website": "https://github.com/iib0011/omni-tools",
+    "docs": "https://github.com/iib0011/omni-tools"
+  },
+  "version": "latest",
+  "popular": false
+}

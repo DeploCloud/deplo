@@ -1,0 +1,18 @@
+{
+  "id": "alist",
+  "name": "AList",
+  "description": "File listing and WebDAV server that unifies local and cloud storage providers behind one interface.",
+  "tags": [
+    "file",
+    "webdav",
+    "storage"
+  ],
+  "logo": "/templates/alist.svg",
+  "links": {
+    "github": "https://github.com/AlistGo/alist",
+    "website": "https://alistgo.com/",
+    "docs": "https://alistgo.com/guide/install/docker.html"
+  },
+  "version": "v3.55.0",
+  "popular": false
+}

@@ -1,0 +1,18 @@
+{
+  "id": "windmill",
+  "name": "Windmill",
+  "description": "Developer platform for turning scripts into workflows and internal apps, an open-source alternative to Retool and Airplane.",
+  "tags": [
+    "workflow",
+    "automation",
+    "development"
+  ],
+  "logo": "/templates/windmill.svg",
+  "links": {
+    "github": "https://github.com/windmill-labs/windmill",
+    "website": "https://www.windmill.dev/",
+    "docs": "https://docs.windmill.dev/"
+  },
+  "version": "latest",
+  "popular": false
+}

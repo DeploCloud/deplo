@@ -1,0 +1,17 @@
+{
+  "id": "calibre",
+  "name": "Calibre",
+  "description": "E-book library manager that organizes, converts, and reads collections across most major formats and reader devices.",
+  "tags": [
+    "Documents",
+    "E-Commerce"
+  ],
+  "logo": "/templates/calibre.png",
+  "links": {
+    "github": "https://github.com/kovidgoyal/calibre",
+    "website": "https://calibre-ebook.com/",
+    "docs": "https://manual.calibre-ebook.com/"
+  },
+  "version": "7.26.0",
+  "popular": false
+}

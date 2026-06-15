@@ -1,0 +1,19 @@
+{
+  "id": "ojs",
+  "name": "Open Journal Systems",
+  "description": "Open Journal Systems, a publishing platform for managing peer review and online distribution of scholarly journals.",
+  "tags": [
+    "publishing",
+    "journal",
+    "research",
+    "academic"
+  ],
+  "logo": "/templates/ojs.svg",
+  "links": {
+    "github": "https://github.com/pkp/docker-ojs",
+    "website": "https://pkp.sfu.ca/ojs/",
+    "docs": "https://pkp.sfu.ca/ojs/docs/"
+  },
+  "version": "3.3.0-21",
+  "popular": false
+}

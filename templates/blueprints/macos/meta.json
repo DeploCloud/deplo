@@ -1,0 +1,18 @@
+{
+  "id": "macos",
+  "name": "MacOS (dockerized)",
+  "description": "Run a full macOS environment inside a Docker container, accessible over VNC from your browser.",
+  "tags": [
+    "self-hosted",
+    "open-source",
+    "os"
+  ],
+  "logo": "/templates/macos.png",
+  "links": {
+    "github": "https://github.com/dockur/macos",
+    "website": "",
+    "docs": "https://github.com/dockur/macos?tab=readme-ov-file#how-do-i-use-it"
+  },
+  "version": "1.14",
+  "popular": false
+}

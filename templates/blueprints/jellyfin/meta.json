@@ -1,0 +1,16 @@
+{
+  "id": "jellyfin",
+  "name": "jellyfin",
+  "description": "Media server for streaming your own movies, TV, and music to any device, a free alternative to Plex.",
+  "tags": [
+    "media system"
+  ],
+  "logo": "/templates/jellyfin.svg",
+  "links": {
+    "github": "https://github.com/jellyfin/jellyfin",
+    "website": "https://jellyfin.org/",
+    "docs": "https://jellyfin.org/docs/"
+  },
+  "version": "v10.9.7",
+  "popular": true
+}

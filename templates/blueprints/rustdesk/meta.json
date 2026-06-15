@@ -1,0 +1,18 @@
+{
+  "id": "rustdesk",
+  "name": "RustDesk",
+  "description": "Open-source remote desktop server for self-hosted screen sharing and remote control, an alternative to TeamViewer.",
+  "tags": [
+    "remote-desktop",
+    "self-hosted",
+    "productivity"
+  ],
+  "logo": "/templates/rustdesk.png",
+  "links": {
+    "github": "https://github.com/rustdesk/rustdesk-server",
+    "website": "https://rustdesk.com/",
+    "docs": "https://rustdesk.com/docs/"
+  },
+  "version": "latest",
+  "popular": true
+}

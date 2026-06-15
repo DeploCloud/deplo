@@ -1,0 +1,16 @@
+{
+  "id": "plausible",
+  "name": "Plausible",
+  "description": "Privacy-friendly, open-source alternative to Google Analytics for lightweight, cookie-free website stats.",
+  "tags": [
+    "analytics"
+  ],
+  "logo": "/templates/plausible.svg",
+  "links": {
+    "github": "https://github.com/plausible/plausible",
+    "website": "https://plausible.io/",
+    "docs": "https://plausible.io/docs"
+  },
+  "version": "v2.1.5",
+  "popular": true
+}

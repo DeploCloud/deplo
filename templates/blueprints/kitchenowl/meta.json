@@ -1,0 +1,19 @@
+{
+  "id": "kitchenowl",
+  "name": "KitchenOwl",
+  "description": "Grocery list and recipe manager that helps you plan meals and share shopping lists across your household.",
+  "tags": [
+    "self-hosted",
+    "recipes",
+    "grocery",
+    "personal"
+  ],
+  "logo": "/templates/kitchenowl.png",
+  "links": {
+    "github": "https://github.com/TomBursch/kitchenowl",
+    "website": "https://kitchenowl.org/",
+    "docs": "https://github.com/TomBursch/kitchenowl/wiki"
+  },
+  "version": "v0.7.1",
+  "popular": false
+}

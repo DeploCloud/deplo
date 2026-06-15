@@ -1,0 +1,16 @@
+{
+  "id": "ontime",
+  "name": "Ontime",
+  "description": "Browser-based tool for managing event rundowns, scheduling, and cueing, with timers for live productions.",
+  "tags": [
+    "event"
+  ],
+  "logo": "/templates/ontime.png",
+  "links": {
+    "github": "https://github.com/cpvalente/ontime/",
+    "website": "https://getontime.no",
+    "docs": "https://docs.getontime.no"
+  },
+  "version": "v3.8.0",
+  "popular": false
+}

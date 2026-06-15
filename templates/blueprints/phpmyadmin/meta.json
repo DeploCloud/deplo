@@ -1,0 +1,16 @@
+{
+  "id": "phpmyadmin",
+  "name": "Phpmyadmin",
+  "description": "Web interface for administering MySQL and MariaDB databases, from running queries to managing tables.",
+  "tags": [
+    "database"
+  ],
+  "logo": "/templates/phpmyadmin.png",
+  "links": {
+    "github": "https://github.com/phpmyadmin/phpmyadmin",
+    "website": "https://www.phpmyadmin.net/",
+    "docs": "https://www.phpmyadmin.net/docs/"
+  },
+  "version": "5.2.1",
+  "popular": false
+}

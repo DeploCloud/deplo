@@ -1,0 +1,17 @@
+{
+  "id": "answer",
+  "name": "Answer",
+  "description": "Self-hosted Q&A platform from Apache for building community knowledge bases and help centers.",
+  "tags": [
+    "q&a",
+    "self-hosted"
+  ],
+  "logo": "/templates/answer.png",
+  "links": {
+    "github": "https://github.com/apache/answer",
+    "website": "https://answer.apache.org/",
+    "docs": "https://answer.apache.org/docs"
+  },
+  "version": "v1.4.1",
+  "popular": false
+}

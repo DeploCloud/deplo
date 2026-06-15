@@ -1,0 +1,19 @@
+{
+  "id": "zabbix",
+  "name": "Zabbix",
+  "description": "Enterprise-grade monitoring platform for networks, servers, and cloud services with metrics, alerting, and dashboards.",
+  "tags": [
+    "monitoring",
+    "infrastructure",
+    "observability",
+    "alerting"
+  ],
+  "logo": "/templates/zabbix.png",
+  "links": {
+    "github": "https://github.com/zabbix/zabbix-docker",
+    "website": "https://www.zabbix.com/",
+    "docs": "https://www.zabbix.com/documentation/current/en/manual/installation/containers"
+  },
+  "version": "7.4",
+  "popular": false
+}

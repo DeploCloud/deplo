@@ -1,0 +1,19 @@
+{
+  "id": "wuzapi",
+  "name": "WuzAPI",
+  "description": "RESTful WhatsApp API gateway supporting multiple devices and concurrent sessions for messaging automation.",
+  "tags": [
+    "api",
+    "whatsapp",
+    "messaging",
+    "automation"
+  ],
+  "logo": "/templates/wuzapi.png",
+  "links": {
+    "github": "https://github.com/asternic/wuzapi",
+    "website": "https://www.wuzapi.app/",
+    "docs": "https://github.com/asternic/wuzapi/blob/main/README.md"
+  },
+  "version": "v1.0.0",
+  "popular": false
+}

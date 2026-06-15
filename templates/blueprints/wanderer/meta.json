@@ -1,0 +1,19 @@
+{
+  "id": "wanderer",
+  "name": "Wanderer",
+  "description": "Self-hosted trail database and route tracker for recording, browsing, and sharing your hikes and outdoor activities.",
+  "tags": [
+    "mapping",
+    "geolocation",
+    "search",
+    "self-hosted"
+  ],
+  "logo": "/templates/wanderer.png",
+  "links": {
+    "github": "https://github.com/flomp/wanderer",
+    "website": "https://wanderer.app",
+    "docs": "https://github.com/flomp/wanderer#readme"
+  },
+  "version": "1.0.0",
+  "popular": false
+}

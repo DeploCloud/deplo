@@ -1,0 +1,19 @@
+{
+  "id": "tianji",
+  "name": "Tianji",
+  "description": "Combines website analytics, uptime monitoring, and server status tracking in a single self-hosted dashboard.",
+  "tags": [
+    "analytics",
+    "monitoring",
+    "web",
+    "uptime"
+  ],
+  "logo": "/templates/tianji.svg",
+  "links": {
+    "github": "https://github.com/msgbyte/tianji",
+    "website": "https://tianji.dev/",
+    "docs": "https://tianji.dev/docs/intro"
+  },
+  "version": "latest",
+  "popular": false
+}

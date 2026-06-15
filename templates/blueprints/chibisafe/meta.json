@@ -1,0 +1,18 @@
+{
+  "id": "chibisafe",
+  "name": "Chibisafe",
+  "description": "Self-hosted file vault for uploading and sharing files, with a clean interface and fast uploads.",
+  "tags": [
+    "media system",
+    "storage",
+    "file-sharing"
+  ],
+  "logo": "/templates/chibisafe.svg",
+  "links": {
+    "github": "https://github.com/chibisafe/chibisafe",
+    "website": "https://chibisafe.app",
+    "docs": "https://chibisafe.app/docs/intro"
+  },
+  "version": "latest",
+  "popular": false
+}

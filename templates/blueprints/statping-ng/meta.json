@@ -1,0 +1,17 @@
+{
+  "id": "statping-ng",
+  "name": "Statping-NG",
+  "description": "Status page for monitoring websites and apps, with health checks, uptime metrics, and notifications when things break.",
+  "tags": [
+    "monitoring",
+    "status-page"
+  ],
+  "logo": "/templates/statping-ng.png",
+  "links": {
+    "github": "https://github.com/adamboutcher/statping-ng",
+    "website": "https://statping-ng.github.io/",
+    "docs": "https://statping-ng.github.io/install.html"
+  },
+  "version": "latest",
+  "popular": false
+}

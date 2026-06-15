@@ -1,0 +1,19 @@
+{
+  "id": "datalens",
+  "name": "DataLens",
+  "description": "Business intelligence platform for building interactive dashboards, charts, and data visualizations from your databases.",
+  "tags": [
+    "analytics",
+    "self-hosted",
+    "bi",
+    "monitoring"
+  ],
+  "logo": "/templates/datalens.svg",
+  "links": {
+    "github": "https://github.com/datalens-tech/datalens",
+    "website": "https://datalens.tech/",
+    "docs": "https://datalens.tech/docs/"
+  },
+  "version": "1.23.0",
+  "popular": false
+}

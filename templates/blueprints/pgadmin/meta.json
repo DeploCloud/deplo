@@ -1,0 +1,18 @@
+{
+  "id": "pgadmin",
+  "name": "pgAdmin",
+  "description": "Web-based administration and development tool for managing PostgreSQL databases through a rich GUI.",
+  "tags": [
+    "database",
+    "postgres",
+    "admin"
+  ],
+  "logo": "/templates/pgadmin.webp",
+  "links": {
+    "github": "https://github.com/pgadmin-org/pgadmin4",
+    "website": "https://www.pgadmin.org/",
+    "docs": "https://www.pgadmin.org/docs/"
+  },
+  "version": "8.3",
+  "popular": false
+}

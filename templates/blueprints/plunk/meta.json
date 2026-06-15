@@ -1,0 +1,19 @@
+{
+  "id": "plunk",
+  "name": "Plunk",
+  "description": "Open-source email platform combining marketing, transactional, and broadcast email in one tool.",
+  "tags": [
+    "email",
+    "newsletter",
+    "mailing-list",
+    "marketing"
+  ],
+  "logo": "/templates/plunk.png",
+  "links": {
+    "github": "https://github.com/useplunk/plunk",
+    "website": "https://www.useplunk.com/",
+    "docs": "https://docs.useplunk.com"
+  },
+  "version": "latest",
+  "popular": false
+}

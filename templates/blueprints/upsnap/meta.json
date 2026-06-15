@@ -1,0 +1,19 @@
+{
+  "id": "upsnap",
+  "name": "Upsnap",
+  "description": "Network device dashboard built on PocketBase for monitoring hosts and waking them remotely via Wake-on-LAN.",
+  "tags": [
+    "network",
+    "monitoring",
+    "dashboard",
+    "self-hosted"
+  ],
+  "logo": "/templates/upsnap.svg",
+  "links": {
+    "github": "https://github.com/seriousm4x/upsnap",
+    "website": "https://github.com/seriousm4x/upsnap",
+    "docs": "https://github.com/seriousm4x/upsnap#readme"
+  },
+  "version": "5",
+  "popular": false
+}

@@ -1,0 +1,18 @@
+{
+  "id": "etherpad",
+  "name": "Etherpad",
+  "description": "Real-time collaborative document editor where multiple people can write and edit the same text at once.",
+  "tags": [
+    "collaboration",
+    "text-editor",
+    "real-time"
+  ],
+  "logo": "/templates/etherpad.png",
+  "links": {
+    "github": "https://github.com/ether/etherpad-lite",
+    "website": "https://etherpad.org/",
+    "docs": "https://github.com/ether/etherpad-lite/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

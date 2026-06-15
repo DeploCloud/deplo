@@ -1,0 +1,19 @@
+{
+  "id": "libretranslate",
+  "name": "LibreTranslate",
+  "description": "Free machine translation API powered by Argos Translate, running fully self-hosted with no external services.",
+  "tags": [
+    "translation",
+    "api",
+    "nlp",
+    "language"
+  ],
+  "logo": "/templates/libretranslate.svg",
+  "links": {
+    "github": "https://github.com/LibreTranslate/LibreTranslate",
+    "website": "https://libretranslate.com/",
+    "docs": "https://docs.libretranslate.com/"
+  },
+  "version": "1.7.3",
+  "popular": false
+}

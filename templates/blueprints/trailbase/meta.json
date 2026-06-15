@@ -1,0 +1,18 @@
+{
+  "id": "trailbase",
+  "name": "TrailBase",
+  "description": "Single-file backend on Rust and SQLite providing type-safe REST APIs, authentication, realtime, and an admin UI.",
+  "tags": [
+    "backend",
+    "database",
+    "api"
+  ],
+  "logo": "/templates/trailbase.svg",
+  "links": {
+    "github": "https://github.com/trailbase/trailbase",
+    "website": "https://trailbase.io/",
+    "docs": "https://trailbase.io/getting-started/install"
+  },
+  "version": "latest",
+  "popular": false
+}

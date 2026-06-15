@@ -1,0 +1,19 @@
+{
+  "id": "mcsmanager",
+  "name": "MCSManager",
+  "description": "Web dashboard for running and managing Minecraft and other game servers, with a beginner-friendly UI.",
+  "tags": [
+    "minecraft",
+    "game-server",
+    "management",
+    "dashboard"
+  ],
+  "logo": "/templates/mcsmanager.png",
+  "links": {
+    "github": "https://github.com/MCSManager/MCSManager",
+    "website": "https://github.com/MCSManager/MCSManager",
+    "docs": "https://github.com/MCSManager/MCSManager#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

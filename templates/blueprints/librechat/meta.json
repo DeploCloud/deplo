@@ -1,0 +1,21 @@
+{
+  "id": "librechat",
+  "name": "LibreChat",
+  "description": "Open-source AI chat interface that works with OpenAI, Ollama, Google, and other providers in one place.",
+  "tags": [
+    "ai",
+    "chatbot",
+    "llm",
+    "MIT-license",
+    "BYOK",
+    "generative-ai"
+  ],
+  "logo": "/templates/librechat.png",
+  "links": {
+    "github": "https://github.com/danny-avila/librechat",
+    "website": "https://librechat.ai",
+    "docs": "https://docs.librechat.ai"
+  },
+  "version": "latest",
+  "popular": false
+}

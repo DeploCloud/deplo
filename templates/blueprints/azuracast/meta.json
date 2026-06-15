@@ -1,0 +1,21 @@
+{
+  "id": "azuracast",
+  "name": "AzuraCast",
+  "description": "All-in-one web radio suite for running internet radio stations from a single management interface.",
+  "tags": [
+    "radio",
+    "streaming",
+    "media",
+    "broadcasting",
+    "music",
+    "entertainment"
+  ],
+  "logo": "/templates/azuracast.png",
+  "links": {
+    "github": "https://github.com/AzuraCast/AzuraCast",
+    "website": "https://www.azuracast.com/",
+    "docs": "https://docs.azuracast.com/"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,19 @@
+{
+  "id": "snapp",
+  "name": "Snapp",
+  "description": "Self-hosted screenshot sharing service with user accounts and authentication to keep your captures private.",
+  "tags": [
+    "screenshot",
+    "sharing",
+    "self-hosted",
+    "authentication"
+  ],
+  "logo": "/templates/snapp.png",
+  "links": {
+    "github": "https://github.com/UraniaDev/snapp",
+    "website": "https://github.com/UraniaDev/snapp",
+    "docs": "https://github.com/UraniaDev/snapp"
+  },
+  "version": "0.9-rc-020",
+  "popular": false
+}

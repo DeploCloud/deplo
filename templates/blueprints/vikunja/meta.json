@@ -1,0 +1,19 @@
+{
+  "id": "vikunja",
+  "name": "Vikunja",
+  "description": "Open-source to-do and project management app for organizing tasks across lists, boards, and calendar views.",
+  "tags": [
+    "productivity",
+    "tasks",
+    "self-hosted",
+    "project-management"
+  ],
+  "logo": "/templates/vikunja.png",
+  "links": {
+    "github": "https://github.com/go-vikunja/vikunja",
+    "website": "https://vikunja.io/",
+    "docs": "https://vikunja.io/docs/"
+  },
+  "version": "0.23.0",
+  "popular": false
+}

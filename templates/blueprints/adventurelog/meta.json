@@ -1,0 +1,20 @@
+{
+  "id": "adventurelog",
+  "name": "AdventureLog",
+  "description": "Open-source travel journal for logging trips and adventures on a map, with Strava integration.",
+  "tags": [
+    "activity",
+    "maps",
+    "django",
+    "react",
+    "postgres"
+  ],
+  "logo": "/templates/adventurelog.svg",
+  "links": {
+    "github": "https://github.com/seanmorley15/adventurelog",
+    "website": "https://adventurelog.app/",
+    "docs": "https://adventurelog.app/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

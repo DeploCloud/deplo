@@ -1,0 +1,18 @@
+{
+  "id": "directory-lister",
+  "name": "Directory Lister",
+  "description": "Lightweight PHP app that turns any web-accessible folder into a browsable, navigable file listing.",
+  "tags": [
+    "file-manager",
+    "directory-listing",
+    "php"
+  ],
+  "logo": "/templates/directory-lister.png",
+  "links": {
+    "github": "https://github.com/DirectoryLister/DirectoryLister",
+    "website": "https://www.directorylister.com/",
+    "docs": "https://docs.directorylister.com/"
+  },
+  "version": "latest",
+  "popular": false
+}

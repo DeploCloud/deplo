@@ -1,0 +1,17 @@
+{
+  "id": "komari-monitor",
+  "name": "Komari Monitor",
+  "description": "Lightweight server monitoring tool for tracking CPU, memory, and performance metrics across your machines.",
+  "tags": [
+    "monitoring",
+    "self-hosted"
+  ],
+  "logo": "/templates/komari-monitor.ico",
+  "links": {
+    "github": "https://github.com/komari-monitor/komari",
+    "website": "https://github.com/komari-monitor/komari",
+    "docs": "https://github.com/komari-monitor/komari#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,21 @@
+{
+  "id": "gitea-mirror",
+  "name": "Gitea Mirror",
+  "description": "Web app that automatically mirrors GitHub repositories and organizations to your self-hosted Gitea instance on a schedule.",
+  "tags": [
+    "git",
+    "mirror",
+    "github",
+    "gitea",
+    "self-hosted",
+    "automation"
+  ],
+  "logo": "/templates/gitea-mirror.png",
+  "links": {
+    "github": "https://github.com/arunavo4/gitea-mirror",
+    "website": "https://github.com/arunavo4/gitea-mirror",
+    "docs": "https://github.com/arunavo4/gitea-mirror#readme"
+  },
+  "version": "v2.11.2",
+  "popular": false
+}

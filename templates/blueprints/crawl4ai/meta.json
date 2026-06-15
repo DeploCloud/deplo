@@ -1,0 +1,20 @@
+{
+  "id": "crawl4ai",
+  "name": "Crawl4AI",
+  "description": "AI-oriented web crawler for screenshots, PDFs, and LLM-based extraction, with a playground and MCP integration.",
+  "tags": [
+    "crawler",
+    "scraping",
+    "AI",
+    "LLM",
+    "API"
+  ],
+  "logo": "/templates/crawl4ai.png",
+  "links": {
+    "github": "https://github.com/unclecode/crawl4ai",
+    "website": "https://crawl4ai.com",
+    "docs": "https://github.com/unclecode/crawl4ai#readme"
+  },
+  "version": "0.7.3",
+  "popular": false
+}

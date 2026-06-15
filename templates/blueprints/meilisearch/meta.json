@@ -1,0 +1,16 @@
+{
+  "id": "meilisearch",
+  "name": "Meilisearch",
+  "description": "Fast, open-source search engine for adding typo-tolerant instant search to your apps and websites.",
+  "tags": [
+    "search"
+  ],
+  "logo": "/templates/meilisearch.png",
+  "links": {
+    "github": "https://github.com/meilisearch/meilisearch",
+    "website": "https://www.meilisearch.com/",
+    "docs": "https://docs.meilisearch.com/"
+  },
+  "version": "v1.35.1",
+  "popular": false
+}

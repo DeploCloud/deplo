@@ -1,0 +1,17 @@
+{
+  "id": "filebrowser",
+  "name": "File Browser",
+  "description": "Standalone web file manager for uploading, editing, and previewing files, with per-user directories and access.",
+  "tags": [
+    "file-manager",
+    "storage"
+  ],
+  "logo": "/templates/filebrowser.svg",
+  "links": {
+    "github": "https://github.com/filebrowser/filebrowser",
+    "website": "https://filebrowser.org/",
+    "docs": "https://filebrowser.org/"
+  },
+  "version": "2.31.2",
+  "popular": false
+}

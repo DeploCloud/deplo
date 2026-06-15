@@ -1,0 +1,17 @@
+{
+  "id": "anonupload",
+  "name": "AnonUpload",
+  "description": "Anonymous file-sharing service that needs no database and keeps uploaded filenames private.",
+  "tags": [
+    "file-sharing",
+    "privacy"
+  ],
+  "logo": "/templates/anonupload.png",
+  "links": {
+    "github": "https://github.com/supernova3339/anonupload",
+    "docs": "https://github.com/Supernova3339/anonupload/blob/main/env.md",
+    "website": "https://anonupload.com/"
+  },
+  "version": "1",
+  "popular": false
+}

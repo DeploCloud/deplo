@@ -1,0 +1,19 @@
+{
+  "id": "passbolt",
+  "name": "Passbolt",
+  "description": "Open-source password manager for teams, built to share and collaborate on credentials and secrets securely.",
+  "tags": [
+    "password-manager",
+    "security",
+    "team-collaboration",
+    "encryption"
+  ],
+  "logo": "/templates/passbolt.svg",
+  "links": {
+    "github": "https://github.com/passbolt/passbolt_api",
+    "website": "https://www.passbolt.com/",
+    "docs": "https://www.passbolt.com/docs/"
+  },
+  "version": "latest-ce",
+  "popular": false
+}

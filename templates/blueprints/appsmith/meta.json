@@ -1,0 +1,16 @@
+{
+  "id": "appsmith",
+  "name": "Appsmith",
+  "description": "Open-source low-code platform for building internal tools, admin panels, and CRUD apps quickly.",
+  "tags": [
+    "cms"
+  ],
+  "logo": "/templates/appsmith.png",
+  "links": {
+    "github": "https://github.com/appsmithorg/appsmith",
+    "website": "https://appsmith.com/",
+    "docs": "https://docs.appsmith.com/"
+  },
+  "version": "v1.94",
+  "popular": false
+}

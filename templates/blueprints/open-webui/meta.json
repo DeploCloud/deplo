@@ -1,0 +1,16 @@
+{
+  "id": "open-webui",
+  "name": "Open WebUI",
+  "description": "Self-hosted chat interface for local LLMs, supporting Ollama and OpenAI-compatible APIs and running fully offline.",
+  "tags": [
+    "chat"
+  ],
+  "logo": "/templates/open-webui.png",
+  "links": {
+    "github": "https://github.com/open-webui/open-webui",
+    "website": "https://openwebui.com/",
+    "docs": "https://docs.openwebui.com/"
+  },
+  "version": "v0.3.7",
+  "popular": true
+}

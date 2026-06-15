@@ -1,0 +1,17 @@
+{
+  "id": "drizzle-gateway",
+  "name": "drizzle gateway",
+  "description": "Database gateway that exposes a browsable web interface for connecting to and querying your databases remotely.",
+  "tags": [
+    "database",
+    "gateway"
+  ],
+  "logo": "/templates/drizzle-gateway.svg",
+  "links": {
+    "github": "https://github.com/drizzle-team/drizzle-gateway",
+    "website": "https://drizzle-team.github.io/",
+    "docs": "https://drizzle-team.github.io/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

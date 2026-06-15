@@ -1,0 +1,22 @@
+{
+  "id": "paymenter",
+  "name": "Paymenter",
+  "description": "Billing and client management system for hosting providers, handling invoicing, payments, and automation.",
+  "tags": [
+    "billing",
+    "payment",
+    "hosting",
+    "invoicing",
+    "business",
+    "automation",
+    "client-management"
+  ],
+  "logo": "/templates/paymenter.png",
+  "links": {
+    "github": "https://github.com/Paymenter/Paymenter",
+    "website": "https://paymenter.org/",
+    "docs": "https://paymenter.org/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

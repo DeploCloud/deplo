@@ -1,0 +1,18 @@
+{
+  "id": "palmr",
+  "name": "Palmr",
+  "description": "Open-source alternative to WeTransfer for sharing files securely, with no tracking or size limits.",
+  "tags": [
+    "file-sharing",
+    "self-hosted",
+    "open-source"
+  ],
+  "logo": "/templates/palmr.png",
+  "links": {
+    "github": "https://github.com/kyantech/Palmr",
+    "website": "https://palmr.kyantech.com.br/",
+    "docs": "https://palmr.kyantech.com.br/docs/3.0-beta"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,20 @@
+{
+  "id": "mediacms",
+  "name": "MediaCMS",
+  "description": "Open-source video and media CMS for uploading, organizing, and streaming content from your own server.",
+  "tags": [
+    "media",
+    "video",
+    "cms",
+    "streaming",
+    "self-hosted"
+  ],
+  "logo": "/templates/mediacms.svg",
+  "links": {
+    "github": "https://github.com/mediacms/mediacms",
+    "website": "https://mediacms.io/",
+    "docs": "https://docs.mediacms.io/"
+  },
+  "version": "latest",
+  "popular": false
+}

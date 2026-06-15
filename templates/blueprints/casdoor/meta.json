@@ -1,0 +1,24 @@
+{
+  "id": "casdoor",
+  "name": "Casdoor",
+  "description": "Identity and access management platform with a web UI for SSO via OAuth2, OIDC, SAML, LDAP, and MFA.",
+  "tags": [
+    "authentication",
+    "authorization",
+    "oauth2",
+    "oidc",
+    "sso",
+    "saml",
+    "identity-management",
+    "access-management",
+    "security"
+  ],
+  "logo": "/templates/casdoor.png",
+  "links": {
+    "github": "https://github.com/casdoor/casdoor",
+    "website": "https://casdoor.org/",
+    "docs": "https://casdoor.org/docs/overview"
+  },
+  "version": "latest",
+  "popular": false
+}

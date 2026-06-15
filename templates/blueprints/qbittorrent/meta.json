@@ -1,0 +1,18 @@
+{
+  "id": "qbittorrent",
+  "name": "qBittorrent",
+  "description": "Open-source BitTorrent client with a built-in web UI for adding and managing downloads remotely from any browser.",
+  "tags": [
+    "torrent",
+    "download",
+    "file-sharing"
+  ],
+  "logo": "/templates/qbittorrent.svg",
+  "links": {
+    "github": "https://github.com/qbittorrent/qBittorrent",
+    "website": "https://www.qbittorrent.org/",
+    "docs": "https://github.com/qbittorrent/qBittorrent/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

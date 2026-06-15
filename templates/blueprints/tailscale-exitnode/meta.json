@@ -1,0 +1,16 @@
+{
+  "id": "tailscale-exitnode",
+  "name": "Tailscale Exit nodes",
+  "description": "Routes your internet traffic through a chosen device on your Tailscale network, acting as a private VPN gateway.",
+  "tags": [
+    "network"
+  ],
+  "logo": "/templates/tailscale-exitnode.svg",
+  "links": {
+    "github": "https://github.com/tailscale-dev/docker-guide-code-examples",
+    "website": "https://tailscale.com/",
+    "docs": "https://tailscale.com/kb/1408/quick-guide-exit-nodes"
+  },
+  "version": "1.0.0",
+  "popular": false
+}

@@ -1,0 +1,17 @@
+{
+  "id": "drawnix",
+  "name": "Drawnix",
+  "description": "Whiteboard app for sketching diagrams and visual content, combining freeform drawing with mind-mapping.",
+  "tags": [
+    "visualization",
+    "content-generation"
+  ],
+  "logo": "/templates/drawnix.png",
+  "links": {
+    "github": "https://github.com/pubuzhixing/drawnix",
+    "website": "https://hub.docker.com/r/pubuzhixing/drawnix",
+    "docs": "https://hub.docker.com/r/pubuzhixing/drawnix"
+  },
+  "version": "latest",
+  "popular": false
+}

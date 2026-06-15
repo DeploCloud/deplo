@@ -1,0 +1,18 @@
+{
+  "id": "postgresus",
+  "name": "Postgresus",
+  "description": "Open-source tool for automated PostgreSQL backups, with multiple storage targets and notifications.",
+  "tags": [
+    "postgres",
+    "backup",
+    "s3"
+  ],
+  "logo": "/templates/postgresus.svg",
+  "links": {
+    "github": "https://github.com/RostislavDugin/postgresus",
+    "website": "https://postgresus.com",
+    "docs": "https://postgresus.com"
+  },
+  "version": "latest",
+  "popular": false
+}

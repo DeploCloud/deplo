@@ -1,0 +1,19 @@
+{
+  "id": "dumbbudget",
+  "name": "DumbBudget",
+  "description": "Bare-bones personal budget tracker with PIN protection and no database required to get started.",
+  "tags": [
+    "budget",
+    "finance",
+    "self-hosted",
+    "simple"
+  ],
+  "logo": "/templates/dumbbudget.svg",
+  "links": {
+    "github": "https://github.com/dumbwareio/dumbbudget",
+    "website": "https://www.dumbware.io/software/DumbBudget/",
+    "docs": "https://github.com/dumbwareio/dumbbudget"
+  },
+  "version": "latest",
+  "popular": false
+}

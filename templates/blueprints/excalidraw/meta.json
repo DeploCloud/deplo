@@ -1,0 +1,16 @@
+{
+  "id": "excalidraw",
+  "name": "Excalidraw",
+  "description": "Open-source whiteboard for sketching diagrams and wireframes with a hand-drawn look, easy to share with others.",
+  "tags": [
+    "drawing"
+  ],
+  "logo": "/templates/excalidraw.jpg",
+  "links": {
+    "github": "https://github.com/excalidraw/excalidraw",
+    "website": "https://excalidraw.com/",
+    "docs": "https://docs.excalidraw.com/"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,19 @@
+{
+  "id": "gitea-sqlite",
+  "name": "Gitea (SQLite)",
+  "description": "Lightweight self-hosted Git service using SQLite for a simple, single-container setup with no separate database.",
+  "tags": [
+    "git",
+    "scm",
+    "developer-tools",
+    "self-hosted"
+  ],
+  "logo": "/templates/gitea-sqlite.png",
+  "links": {
+    "github": "https://github.com/go-gitea/gitea",
+    "website": "https://gitea.io/",
+    "docs": "https://docs.gitea.com/"
+  },
+  "version": "1.24.4",
+  "popular": false
+}

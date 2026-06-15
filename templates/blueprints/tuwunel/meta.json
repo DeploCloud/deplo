@@ -1,0 +1,19 @@
+{
+  "id": "tuwunel",
+  "name": "Tuwunel",
+  "description": "High-performance Matrix homeserver written in Rust, a lightweight alternative to Synapse and successor to Conduwuit.",
+  "tags": [
+    "matrix",
+    "chat",
+    "messaging",
+    "rust"
+  ],
+  "logo": "/templates/tuwunel.svg",
+  "links": {
+    "github": "https://github.com/matrix-construct/tuwunel",
+    "website": "https://tuwunel.chat",
+    "docs": "https://matrix-construct.github.io/tuwunel/"
+  },
+  "version": "v1.5.0",
+  "popular": false
+}

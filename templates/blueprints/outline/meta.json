@@ -1,0 +1,18 @@
+{
+  "id": "outline",
+  "name": "Outline",
+  "description": "Self-hosted knowledge base and team wiki with fast search and markdown editing for documentation and collaboration.",
+  "tags": [
+    "documentation",
+    "knowledge-base",
+    "self-hosted"
+  ],
+  "logo": "/templates/outline.png",
+  "links": {
+    "github": "https://github.com/outline/outline",
+    "website": "https://getoutline.com/",
+    "docs": "https://docs.getoutline.com/s/guide"
+  },
+  "version": "0.82.0",
+  "popular": true
+}

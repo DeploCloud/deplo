@@ -1,0 +1,18 @@
+{
+  "id": "coralproject",
+  "name": "Coral",
+  "description": "Open-source commenting platform with AI-assisted moderation and full data control, used by major news sites.",
+  "tags": [
+    "communication",
+    "community",
+    "privacy"
+  ],
+  "logo": "/templates/coralproject.png",
+  "links": {
+    "website": "https://coralproject.net/",
+    "docs": "https://docs.coralproject.net/",
+    "github": "https://github.com/coralproject/talk"
+  },
+  "version": "9.7.0",
+  "popular": false
+}

@@ -1,0 +1,21 @@
+{
+  "id": "frappe-lending",
+  "name": "Frappe Lending",
+  "description": "Open-source loan management system on the Frappe Framework for handling loans, repayments, and lending operations.",
+  "tags": [
+    "lending",
+    "finance",
+    "loans",
+    "payments",
+    "accounting",
+    "self-hosted"
+  ],
+  "logo": "/templates/frappe-lending.png",
+  "links": {
+    "github": "https://github.com/frappe/lending",
+    "docs": "https://docs.frappe.io/lending",
+    "website": "https://frappe.io"
+  },
+  "version": "latest",
+  "popular": false
+}

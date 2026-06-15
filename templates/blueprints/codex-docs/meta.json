@@ -1,0 +1,18 @@
+{
+  "id": "codex-docs",
+  "name": "CodeX Docs",
+  "description": "Documentation site built on the Editor.js block editor for writing and publishing technical docs.",
+  "tags": [
+    "documentation",
+    "development",
+    "collaboration"
+  ],
+  "logo": "/templates/codex-docs.svg",
+  "links": {
+    "github": "https://github.com/codex-team/codex.docs",
+    "website": "https://codex.so",
+    "docs": "https://docs.codex.so"
+  },
+  "version": "v2.2",
+  "popular": false
+}

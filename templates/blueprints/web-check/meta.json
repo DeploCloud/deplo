@@ -1,0 +1,19 @@
+{
+  "id": "web-check",
+  "name": "Web-Check",
+  "description": "Website analysis tool that reveals a site's security headers, performance, DNS, SSL, and SEO details in one report.",
+  "tags": [
+    "website-analyzer",
+    "security",
+    "performance",
+    "seo"
+  ],
+  "logo": "/templates/web-check.png",
+  "links": {
+    "github": "https://github.com/lissy93/web-check",
+    "website": "https://github.com/lissy93/web-check",
+    "docs": "https://github.com/lissy93/web-check"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,21 @@
+{
+  "id": "frappe-hr",
+  "name": "Frappe HR",
+  "description": "Open-source HR and payroll system handling attendance, leave, expenses, and performance for your team.",
+  "tags": [
+    "hrms",
+    "payroll",
+    "leaves",
+    "expenses",
+    "attendance",
+    "performace"
+  ],
+  "logo": "/templates/frappe-hr.svg",
+  "links": {
+    "github": "https://github.com/frappe/hrms",
+    "docs": "https://docs.frappe.io/hr",
+    "website": "https://frappe.io/hr"
+  },
+  "version": "version-15",
+  "popular": false
+}

@@ -1,0 +1,18 @@
+{
+  "id": "dumbpad",
+  "name": "DumbPad",
+  "description": "Minimal notepad app for jotting quick notes, secured with a PIN and needing no database.",
+  "tags": [
+    "notepad",
+    "self-hosted",
+    "simple"
+  ],
+  "logo": "/templates/dumbpad.svg",
+  "links": {
+    "github": "https://github.com/dumbwareio/dumbpad",
+    "website": "https://www.dumbware.io/software/DumbPad/",
+    "docs": "https://github.com/dumbwareio/dumbpad"
+  },
+  "version": "latest",
+  "popular": false
+}

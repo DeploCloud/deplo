@@ -1,0 +1,18 @@
+{
+  "id": "ryot",
+  "name": "Ryot",
+  "description": "Self-hosted tracker for movies, TV, games, books, and audiobooks, keeping all your media progress in one place.",
+  "tags": [
+    "media",
+    "tracking",
+    "self-hosted"
+  ],
+  "logo": "/templates/ryot.png",
+  "links": {
+    "github": "https://github.com/IgnisDa/ryot",
+    "website": "https://ryot.io/",
+    "docs": "https://docs.ryot.io/"
+  },
+  "version": "v7.10",
+  "popular": false
+}

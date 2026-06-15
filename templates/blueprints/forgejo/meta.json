@@ -1,0 +1,17 @@
+{
+  "id": "forgejo",
+  "name": "Forgejo",
+  "description": "Lightweight self-hosted Git forge for hosting repositories, issues, and pull requests with low maintenance.",
+  "tags": [
+    "self-hosted",
+    "storage"
+  ],
+  "logo": "/templates/forgejo.svg",
+  "links": {
+    "github": "https://codeberg.org/forgejo/forgejo",
+    "website": "https://forgejo.org/",
+    "docs": "https://forgejo.org/docs/latest/"
+  },
+  "version": "10",
+  "popular": false
+}

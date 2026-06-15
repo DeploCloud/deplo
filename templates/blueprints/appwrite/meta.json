@@ -1,0 +1,20 @@
+{
+  "id": "appwrite",
+  "name": "Appwrite",
+  "description": "Backend platform offering auth, databases, storage, and functions, an open-source Firebase alternative.",
+  "tags": [
+    "database",
+    "firebase",
+    "mariadb",
+    "hosting",
+    "self-hosted"
+  ],
+  "logo": "/templates/appwrite.svg",
+  "links": {
+    "github": "https://github.com/appwrite/appwrite",
+    "website": "https://appwrite.io/",
+    "docs": "https://appwrite.io/docs"
+  },
+  "version": "1.8.0",
+  "popular": true
+}

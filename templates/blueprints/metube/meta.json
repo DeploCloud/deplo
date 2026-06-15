@@ -1,0 +1,18 @@
+{
+  "id": "metube",
+  "name": "MeTube",
+  "description": "Web UI for yt-dlp that downloads videos and audio from YouTube and many other sites to your server.",
+  "tags": [
+    "downloader",
+    "youtube",
+    "media"
+  ],
+  "logo": "/templates/metube.png",
+  "links": {
+    "github": "https://github.com/alexta69/metube",
+    "website": "https://github.com/alexta69/metube",
+    "docs": "https://github.com/alexta69/metube/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

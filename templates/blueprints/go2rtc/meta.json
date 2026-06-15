@@ -1,0 +1,19 @@
+{
+  "id": "go2rtc",
+  "name": "go2rtc",
+  "description": "Camera streaming server that bridges dozens of video formats and protocols, with WebRTC and Home Assistant support.",
+  "tags": [
+    "streaming",
+    "webrtc",
+    "video",
+    "home assistant"
+  ],
+  "logo": "/templates/go2rtc.png",
+  "links": {
+    "github": "https://github.com/AlexxIT/go2rtc",
+    "website": "https://go2rtc.org/",
+    "docs": "https://go2rtc.org/"
+  },
+  "version": "latest",
+  "popular": false
+}

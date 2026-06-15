@@ -1,0 +1,16 @@
+{
+  "id": "focalboard",
+  "name": "Focalboard",
+  "description": "Open-source Kanban and project management board for technical teams, an alternative to Trello and Asana.",
+  "tags": [
+    "kanban"
+  ],
+  "logo": "/templates/focalboard.png",
+  "links": {
+    "github": "https://github.com/sysblok/focalboard",
+    "website": "https://focalboard.com",
+    "docs": "https://www.focalboard.com/docs/"
+  },
+  "version": "8.0.0",
+  "popular": false
+}

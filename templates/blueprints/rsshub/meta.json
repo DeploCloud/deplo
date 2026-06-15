@@ -1,0 +1,18 @@
+{
+  "id": "rsshub",
+  "name": "RSSHub",
+  "description": "Extensible RSS feed generator that turns thousands of websites and services into subscribable feeds.",
+  "tags": [
+    "rss",
+    "api",
+    "self-hosted"
+  ],
+  "logo": "/templates/rsshub.png",
+  "links": {
+    "github": "https://github.com/DIYgod/RSSHub",
+    "website": "https://rsshub.app/",
+    "docs": "https://docs.rsshub.app/"
+  },
+  "version": "1.0.0",
+  "popular": false
+}

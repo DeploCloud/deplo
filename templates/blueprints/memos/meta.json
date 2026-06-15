@@ -1,0 +1,18 @@
+{
+  "id": "memos",
+  "name": "Memos",
+  "description": "Open-source note-taking app for quickly capturing, organizing, and sharing lightweight notes and memos.",
+  "tags": [
+    "productivity",
+    "notes",
+    "bookmarks"
+  ],
+  "logo": "/templates/memos.png",
+  "links": {
+    "github": "https://github.com/usememos/memos",
+    "website": "https://www.usememos.com/",
+    "docs": "https://www.usememos.com/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

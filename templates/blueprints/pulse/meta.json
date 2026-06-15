@@ -1,0 +1,19 @@
+{
+  "id": "pulse",
+  "name": "Pulse",
+  "description": "Real-time monitoring dashboard for Proxmox VE, PBS, and Docker, showing metrics across nodes and containers.",
+  "tags": [
+    "monitoring",
+    "proxmox",
+    "docker",
+    "metrics"
+  ],
+  "logo": "/templates/pulse.svg",
+  "links": {
+    "github": "https://github.com/rcourtman/Pulse",
+    "website": "https://pulserelay.pro/",
+    "docs": "https://github.com/rcourtman/Pulse/blob/main/docs/README.md"
+  },
+  "version": "latest",
+  "popular": false
+}

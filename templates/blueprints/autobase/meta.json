@@ -1,0 +1,20 @@
+{
+  "id": "autobase",
+  "name": "Autobase",
+  "description": "Automated PostgreSQL cluster management for running your own self-hosted database-as-a-service.",
+  "tags": [
+    "database",
+    "postgres",
+    "automation",
+    "self-hosted",
+    "dbaas"
+  ],
+  "logo": "/templates/autobase.svg",
+  "links": {
+    "github": "https://github.com/vitabaks/autobase",
+    "website": "https://autobase.tech/",
+    "docs": "https://autobase.tech/docs"
+  },
+  "version": "2.5.2",
+  "popular": false
+}

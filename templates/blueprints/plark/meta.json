@@ -1,0 +1,18 @@
+{
+  "id": "plark",
+  "name": "Plark",
+  "description": "Self-hosted website builder for creating and publishing sites without writing code.",
+  "tags": [
+    "cms",
+    "content-management",
+    "blog"
+  ],
+  "logo": "/templates/plark.svg",
+  "links": {
+    "github": "https://github.com/plark-inc/render",
+    "website": "https://plark.com",
+    "docs": "https://plark.com/get-started"
+  },
+  "version": "latest",
+  "popular": false
+}

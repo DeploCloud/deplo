@@ -1,0 +1,20 @@
+{
+  "id": "gitea-postgres",
+  "name": "Gitea (PostgreSQL)",
+  "description": "Lightweight self-hosted Git service with issues, pull requests, and CI, bundled with PostgreSQL for storage.",
+  "tags": [
+    "git",
+    "scm",
+    "postgres",
+    "developer-tools",
+    "self-hosted"
+  ],
+  "logo": "/templates/gitea-postgres.png",
+  "links": {
+    "github": "https://github.com/go-gitea/gitea",
+    "website": "https://gitea.io/",
+    "docs": "https://docs.gitea.com/"
+  },
+  "version": "1.24.4",
+  "popular": false
+}

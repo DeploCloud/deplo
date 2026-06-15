@@ -1,0 +1,19 @@
+{
+  "id": "rss-bridge",
+  "name": "RSS-Bridge",
+  "description": "PHP tool that generates RSS and Atom feeds for sites that don't publish their own, so you can follow them in any reader.",
+  "tags": [
+    "rss",
+    "feeds",
+    "news",
+    "content"
+  ],
+  "logo": "/templates/rss-bridge.png",
+  "links": {
+    "github": "https://github.com/RSS-Bridge/rss-bridge",
+    "website": "https://rss-bridge.github.io/rss-bridge/",
+    "docs": "https://rss-bridge.github.io/rss-bridge/General/Project_goals.html"
+  },
+  "version": "latest",
+  "popular": false
+}

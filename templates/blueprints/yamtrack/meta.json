@@ -1,0 +1,20 @@
+{
+  "id": "yamtrack",
+  "name": "Yamtrack",
+  "description": "Self-hosted tracker for anime, manga, games, movies, and TV shows that keeps your watch and read progress in one place.",
+  "tags": [
+    "media",
+    "anime",
+    "manga",
+    "tracker",
+    "redis"
+  ],
+  "logo": "/templates/yamtrack.png",
+  "links": {
+    "github": "https://github.com/fuzzygrim/yamtrack",
+    "website": "https://github.com/fuzzygrim/yamtrack",
+    "docs": "https://github.com/fuzzygrim/yamtrack"
+  },
+  "version": "latest",
+  "popular": false
+}

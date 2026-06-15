@@ -1,0 +1,17 @@
+{
+  "id": "pocket-id",
+  "name": "Pocket ID",
+  "description": "Lightweight OIDC provider that lets users sign in to your services with passkeys instead of passwords.",
+  "tags": [
+    "identity",
+    "auth"
+  ],
+  "logo": "/templates/pocket-id.svg",
+  "links": {
+    "github": "https://github.com/pocket-id/pocket-id",
+    "website": "https://pocket-id.org/",
+    "docs": "https://pocket-id.org/docs"
+  },
+  "version": "v1",
+  "popular": false
+}

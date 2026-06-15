@@ -1,0 +1,22 @@
+{
+  "id": "docling-serve",
+  "name": "Docling Serve",
+  "description": "API service that parses and converts PDFs and office documents into structured, AI-ready text and data.",
+  "tags": [
+    "document-processing",
+    "api",
+    "ai",
+    "conversion",
+    "pdf",
+    "office"
+  ],
+  "logo": "/templates/docling-serve.png",
+  "links": {
+    "github": "https://github.com/docling-project/docling-serve",
+    "website": "https://docling-project.github.io/docling-serve/",
+    "docs": "https://docling-project.github.io/docling-serve/",
+    "dockerhub": "https://quay.io/repository/docling-project/docling-serve"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,16 @@
+{
+  "id": "ghost",
+  "name": "Ghost",
+  "description": "Open-source publishing platform for blogs, newsletters, and paid memberships, built on a modern Node.js stack.",
+  "tags": [
+    "cms"
+  ],
+  "logo": "/templates/ghost.jpeg",
+  "links": {
+    "github": "https://github.com/TryGhost/Ghost",
+    "website": "https://ghost.org/",
+    "docs": "https://ghost.org/docs/"
+  },
+  "version": "6.0.0",
+  "popular": true
+}

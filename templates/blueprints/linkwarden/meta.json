@@ -1,0 +1,17 @@
+{
+  "id": "linkwarden",
+  "name": "Linkwarden",
+  "description": "Collaborative bookmark manager that collects, organizes, and archives full webpage snapshots for safekeeping.",
+  "tags": [
+    "bookmarks",
+    "link-sharing"
+  ],
+  "logo": "/templates/linkwarden.png",
+  "links": {
+    "github": "https://github.com/linkwarden/linkwarden",
+    "website": "https://linkwarden.app/",
+    "docs": "https://docs.linkwarden.app/"
+  },
+  "version": "2.9.3",
+  "popular": true
+}

@@ -1,0 +1,19 @@
+{
+  "id": "opengist",
+  "name": "OpenGist",
+  "description": "Self-hosted pastebin and snippet sharing service, an open-source alternative to GitHub Gist backed by Git.",
+  "tags": [
+    "pastebin",
+    "code",
+    "snippets",
+    "self-hosted"
+  ],
+  "logo": "/templates/opengist.svg",
+  "links": {
+    "github": "https://github.com/thomiceli/opengist",
+    "website": "https://github.com/thomiceli/opengist",
+    "docs": "https://github.com/thomiceli/opengist"
+  },
+  "version": "1",
+  "popular": false
+}

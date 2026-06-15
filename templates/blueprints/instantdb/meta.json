@@ -1,0 +1,18 @@
+{
+  "id": "instantdb",
+  "name": "InstantDB",
+  "description": "Real-time database backend that syncs data instantly across clients, an open-source alternative to Firebase.",
+  "tags": [
+    "database",
+    "real-time",
+    "self-hosted"
+  ],
+  "logo": "/templates/instantdb.svg",
+  "links": {
+    "github": "https://github.com/instantdb/instant/tree/main/server",
+    "website": "https://github.com/instantdb/instant",
+    "docs": "https://github.com/instantdb/instant"
+  },
+  "version": "latest",
+  "popular": false
+}

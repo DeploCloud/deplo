@@ -1,0 +1,19 @@
+{
+  "id": "yt-dlp-webui",
+  "name": "yt-dlp-webui",
+  "description": "Web interface for yt-dlp that lets you queue and download video and audio from many sites without the command line.",
+  "tags": [
+    "downloader",
+    "youtube",
+    "media",
+    "webui"
+  ],
+  "logo": "/templates/yt-dlp-webui.ico",
+  "links": {
+    "github": "https://github.com/marcopiovanello/yt-dlp-web-ui",
+    "website": "https://github.com/marcopiovanello/yt-dlp-web-ui",
+    "docs": "https://github.com/marcopiovanello/yt-dlp-web-ui"
+  },
+  "version": "latest",
+  "popular": false
+}

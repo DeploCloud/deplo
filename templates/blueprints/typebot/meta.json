@@ -1,0 +1,18 @@
+{
+  "id": "typebot",
+  "name": "Typebot",
+  "description": "Visual builder for conversational forms and chatbots you can embed on sites or connect to messaging channels.",
+  "tags": [
+    "chatbot",
+    "builder",
+    "open-source"
+  ],
+  "logo": "/templates/typebot.svg",
+  "links": {
+    "github": "https://github.com/baptisteArno/typebot.io",
+    "website": "https://typebot.io/",
+    "docs": "https://docs.typebot.io/get-started/introduction"
+  },
+  "version": "2.27.0",
+  "popular": false
+}

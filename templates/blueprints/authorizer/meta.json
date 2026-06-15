@@ -1,0 +1,18 @@
+{
+  "id": "authorizer",
+  "name": "Authorizer",
+  "description": "Developer-focused auth solution providing user login, sign-up, and access control via a low-code setup.",
+  "tags": [
+    "authentication",
+    "authorization",
+    "security"
+  ],
+  "logo": "/templates/authorizer.png",
+  "links": {
+    "github": "https://github.com/authorizerdev/authorizer",
+    "website": "https://authorizer.dev",
+    "docs": "https://docs.authorizer.dev/"
+  },
+  "version": "1.4.4",
+  "popular": false
+}

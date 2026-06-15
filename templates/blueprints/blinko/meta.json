@@ -1,0 +1,19 @@
+{
+  "id": "blinko",
+  "name": "Blinko",
+  "description": "Self-hosted note-taking app for quickly capturing and organizing ideas and digital content.",
+  "tags": [
+    "productivity",
+    "organization",
+    "workflow",
+    "nextjs"
+  ],
+  "logo": "/templates/blinko.svg",
+  "links": {
+    "github": "https://github.com/blinkospace/blinko",
+    "website": "https://blinko.space/",
+    "docs": "https://docs.blinko.space/"
+  },
+  "version": "latest",
+  "popular": false
+}

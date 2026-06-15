@@ -1,0 +1,19 @@
+{
+  "id": "rustfs",
+  "name": "RustFS",
+  "description": "S3-compatible distributed object storage written in Rust, offering high-throughput file storage as a MinIO alternative.",
+  "tags": [
+    "storage",
+    "s3",
+    "object-storage",
+    "rust"
+  ],
+  "logo": "/templates/rustfs.svg",
+  "links": {
+    "github": "https://github.com/rustfs/rustfs",
+    "website": "https://rustfs.com/",
+    "docs": "https://docs.rustfs.com/"
+  },
+  "version": "latest",
+  "popular": false
+}

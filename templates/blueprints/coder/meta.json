@@ -1,0 +1,18 @@
+{
+  "id": "coder",
+  "name": "Coder",
+  "description": "Open-source cloud development environment you host yourself, giving teams remote workspaces on your infrastructure.",
+  "tags": [
+    "self-hosted",
+    "open-source",
+    "builder"
+  ],
+  "logo": "/templates/coder.svg",
+  "links": {
+    "github": "https://github.com/coder/coder",
+    "website": "https://coder.com/",
+    "docs": "https://coder.com/docs"
+  },
+  "version": "2.15.3",
+  "popular": false
+}

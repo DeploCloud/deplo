@@ -1,0 +1,19 @@
+{
+  "id": "carbone",
+  "name": "Carbone",
+  "description": "Document generation engine that renders PDF, DOCX, and XLSX files from JSON data and templates.",
+  "tags": [
+    "Document Generation",
+    "Automation",
+    "Reporting",
+    "Productivity"
+  ],
+  "logo": "/templates/carbone.png",
+  "links": {
+    "github": "https://github.com/carboneio/carbone",
+    "website": "https://carbone.io/",
+    "docs": "https://carbone.io/documentation/design/overview/getting-started.html"
+  },
+  "version": "4.25.5",
+  "popular": false
+}

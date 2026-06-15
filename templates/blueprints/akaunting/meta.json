@@ -1,0 +1,20 @@
+{
+  "id": "akaunting",
+  "name": "Akaunting",
+  "description": "Open-source accounting software for small businesses to manage invoices, expenses, and finances online.",
+  "tags": [
+    "finance",
+    "accounting",
+    "php",
+    "mariadb",
+    "self-hosted"
+  ],
+  "logo": "/templates/akaunting.png",
+  "links": {
+    "github": "https://github.com/akaunting/akaunting",
+    "website": "https://akaunting.com",
+    "docs": "https://akaunting.com/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

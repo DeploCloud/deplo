@@ -1,0 +1,18 @@
+{
+  "id": "activepieces",
+  "name": "Activepieces",
+  "description": "No-code business automation builder that connects your apps into workflows, an open-source alternative to Zapier.",
+  "tags": [
+    "automation",
+    "workflow",
+    "no-code"
+  ],
+  "logo": "/templates/activepieces.svg",
+  "links": {
+    "github": "https://github.com/activepieces/activepieces",
+    "website": "https://www.activepieces.com/",
+    "docs": "https://www.activepieces.com/docs"
+  },
+  "version": "0.35.0",
+  "popular": false
+}

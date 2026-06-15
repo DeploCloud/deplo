@@ -1,0 +1,18 @@
+{
+  "id": "stack-auth",
+  "name": "Stack Auth",
+  "description": "Open-source authentication platform and Auth0/Clerk alternative for adding user sign-in and management to your apps.",
+  "tags": [
+    "authentication",
+    "auth",
+    "authorization"
+  ],
+  "logo": "/templates/stack-auth.png",
+  "links": {
+    "github": "https://github.com/stack-auth/stack-auth",
+    "website": "https://stack-auth.com/",
+    "docs": "https://docs.stack-auth.com/next/overview"
+  },
+  "version": "latest",
+  "popular": false
+}

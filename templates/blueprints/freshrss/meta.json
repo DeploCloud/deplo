@@ -1,0 +1,21 @@
+{
+  "id": "freshrss",
+  "name": "FreshRSS",
+  "description": "Lightweight self-hosted RSS and Atom aggregator for following news feeds, extensible with themes and plugins.",
+  "tags": [
+    "rss",
+    "feed-reader",
+    "news",
+    "self-hosted",
+    "aggregator",
+    "reader"
+  ],
+  "logo": "/templates/freshrss.svg",
+  "links": {
+    "github": "https://github.com/FreshRSS/FreshRSS",
+    "website": "https://freshrss.org/",
+    "docs": "https://freshrss.github.io/FreshRSS/"
+  },
+  "version": "latest",
+  "popular": false
+}

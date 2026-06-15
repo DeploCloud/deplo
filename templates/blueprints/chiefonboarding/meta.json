@@ -1,0 +1,20 @@
+{
+  "id": "chiefonboarding",
+  "name": "Chief-Onboarding",
+  "description": "Employee onboarding platform that streamlines new-hire workflows, task tracking, and document management.",
+  "tags": [
+    "Employee Onboarding",
+    "HR Management",
+    "Task Tracking",
+    "Role-Based Access",
+    "Document Management"
+  ],
+  "logo": "/templates/chiefonboarding.png",
+  "links": {
+    "github": "https://github.com/chiefonboarding/chiefonboarding",
+    "website": "https://demo.chiefonboarding.com/",
+    "docs": "https://docs.chiefonboarding.com/"
+  },
+  "version": "v2.2.5",
+  "popular": false
+}

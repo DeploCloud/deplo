@@ -1,0 +1,17 @@
+{
+  "id": "garage-with-ui",
+  "name": "Garage S3 with Web UI",
+  "description": "Distributed S3-compatible object storage for self-hosting, bundled with a web UI for managing buckets and access keys.",
+  "tags": [
+    "storage",
+    "object-storage"
+  ],
+  "logo": "/templates/garage-with-ui.svg",
+  "links": {
+    "github": "https://git.deuxfleurs.fr/Deuxfleurs/garage",
+    "website": "https://garagehq.deuxfleurs.fr",
+    "docs": "https://garagehq.deuxfleurs.fr/documentation/quick-start/"
+  },
+  "version": "latest",
+  "popular": false
+}

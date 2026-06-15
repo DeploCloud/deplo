@@ -1,0 +1,18 @@
+{
+  "id": "slash",
+  "name": "Slash",
+  "description": "Self-hosted bookmarking service and link shortener for organizing and sharing your favorite links in one place.",
+  "tags": [
+    "bookmarks",
+    "link-shortener",
+    "self-hosted"
+  ],
+  "logo": "/templates/slash.png",
+  "links": {
+    "github": "https://github.com/yourselfhosted/slash",
+    "website": "https://github.com/yourselfhosted/slash#readme",
+    "docs": "https://github.com/yourselfhosted/slash/wiki"
+  },
+  "version": "latest",
+  "popular": false
+}

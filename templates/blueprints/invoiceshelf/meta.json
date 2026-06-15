@@ -1,0 +1,18 @@
+{
+  "id": "invoiceshelf",
+  "name": "InvoiceShelf",
+  "description": "Open-source invoicing tool for freelancers and small businesses to create estimates and track payments.",
+  "tags": [
+    "invoice",
+    "business",
+    "finance"
+  ],
+  "logo": "/templates/invoiceshelf.png",
+  "links": {
+    "github": "https://github.com/InvoiceShelf/invoiceshelf",
+    "website": "https://invoiceshelf.com",
+    "docs": "https://github.com/InvoiceShelf/invoiceshelf#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

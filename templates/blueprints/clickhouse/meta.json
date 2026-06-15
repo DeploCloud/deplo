@@ -1,0 +1,20 @@
+{
+  "id": "clickhouse",
+  "name": "ClickHouse",
+  "description": "Column-oriented OLAP database built for fast, real-time analytical queries over very large datasets.",
+  "tags": [
+    "self-hosted",
+    "open-source",
+    "database",
+    "olap",
+    "analytics"
+  ],
+  "logo": "/templates/clickhouse.png",
+  "links": {
+    "github": "https://github.com/ClickHouse/ClickHouse",
+    "website": "https://clickhouse.com/",
+    "docs": "https://clickhouse.com/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

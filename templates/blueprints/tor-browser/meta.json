@@ -1,0 +1,19 @@
+{
+  "id": "tor-browser",
+  "name": "Tor Browser",
+  "description": "Runs the Tor Browser inside a container, accessible from any device through a web-based VNC session.",
+  "tags": [
+    "privacy",
+    "security",
+    "browser",
+    "tor"
+  ],
+  "logo": "/templates/tor-browser.png",
+  "links": {
+    "github": "https://github.com/DomiStyle/docker-tor-browser",
+    "website": "https://www.torproject.org/",
+    "docs": "https://hub.docker.com/r/domistyle/tor-browser"
+  },
+  "version": "latest",
+  "popular": false
+}

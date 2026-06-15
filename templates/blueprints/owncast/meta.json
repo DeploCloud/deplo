@@ -1,0 +1,21 @@
+{
+  "id": "owncast",
+  "name": "Owncast",
+  "description": "Self-hosted live streaming and chat server that works with existing broadcast software as a YouTube Live alternative.",
+  "tags": [
+    "streaming",
+    "live-video",
+    "chat",
+    "broadcasting",
+    "self-hosted",
+    "rtmp"
+  ],
+  "logo": "/templates/owncast.png",
+  "links": {
+    "github": "https://github.com/owncast/owncast",
+    "website": "https://owncast.online/",
+    "docs": "https://owncast.online/docs/"
+  },
+  "version": "latest",
+  "popular": false
+}

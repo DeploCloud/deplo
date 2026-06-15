@@ -1,0 +1,17 @@
+{
+  "id": "ackee",
+  "name": "Ackee",
+  "description": "Self-hosted, privacy-friendly web analytics that tracks visitors without collecting personal data.",
+  "tags": [
+    "analytics",
+    "self-hosted"
+  ],
+  "logo": "/templates/ackee.png",
+  "links": {
+    "github": "https://github.com/electerious/Ackee",
+    "website": "https://ackee.electerious.com/",
+    "docs": "https://docs.ackee.electerious.com/"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,16 @@
+{
+  "id": "grafana",
+  "name": "Grafana",
+  "description": "Open-source platform for querying, visualizing, and alerting on metrics and logs through interactive dashboards.",
+  "tags": [
+    "monitoring"
+  ],
+  "logo": "/templates/grafana.svg",
+  "links": {
+    "github": "https://github.com/grafana/grafana",
+    "website": "https://grafana.com/",
+    "docs": "https://grafana.com/docs/"
+  },
+  "version": "12.4",
+  "popular": true
+}

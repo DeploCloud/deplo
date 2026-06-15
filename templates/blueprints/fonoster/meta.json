@@ -1,0 +1,21 @@
+{
+  "id": "fonoster",
+  "name": "Fonoster",
+  "description": "Open-source telephony stack for building voice apps with SIP, WebRTC, and PSTN, an alternative to Twilio.",
+  "tags": [
+    "telephony",
+    "voip",
+    "sip",
+    "webrtc",
+    "pstn",
+    "communication"
+  ],
+  "logo": "/templates/fonoster.svg",
+  "links": {
+    "github": "https://github.com/fonoster/fonoster",
+    "website": "https://fonoster.com/",
+    "docs": "https://docs.fonoster.com/"
+  },
+  "version": "0.15.15",
+  "popular": false
+}

@@ -1,0 +1,18 @@
+{
+  "id": "misaka-danmu-server",
+  "name": "Misaka Danmu Server",
+  "description": "Self-hosted danmaku server that serves scrolling bullet comments for video and streaming platforms.",
+  "tags": [
+    "streaming",
+    "danmaku",
+    "live"
+  ],
+  "logo": "/templates/misaka-danmu-server.png",
+  "links": {
+    "github": "https://github.com/l429609201/misaka_danmu_server",
+    "website": "https://github.com/l429609201/misaka_danmu_server",
+    "docs": "https://github.com/l429609201/misaka_danmu_server#readme"
+  },
+  "version": "latest",
+  "popular": false
+}

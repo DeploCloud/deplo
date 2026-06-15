@@ -1,0 +1,20 @@
+{
+  "id": "livekit",
+  "name": "Livekit",
+  "description": "Open-source WebRTC platform for building realtime video, audio, and live streaming into your applications.",
+  "tags": [
+    "Video",
+    "Audio",
+    "Real-time",
+    "Streaming",
+    "Webrtc"
+  ],
+  "logo": "/templates/livekit.svg",
+  "links": {
+    "github": "https://github.com/livekit/livekit",
+    "website": "https://livekit.io/",
+    "docs": "https://docs.livekit.io/"
+  },
+  "version": "v1.9.0",
+  "popular": false
+}

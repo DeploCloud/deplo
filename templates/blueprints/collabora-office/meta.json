@@ -1,0 +1,18 @@
+{
+  "id": "collabora-office",
+  "name": "Collabora Office",
+  "description": "Online office suite for collaboratively editing documents, spreadsheets, and presentations in the browser.",
+  "tags": [
+    "office",
+    "documents",
+    "collaboration"
+  ],
+  "logo": "/templates/collabora-office.svg",
+  "links": {
+    "github": "https://github.com/CollaboraOnline",
+    "website": "https://collaboraonline.com",
+    "docs": "https://sdk.collaboraonline.com/docs"
+  },
+  "version": "latest",
+  "popular": false
+}

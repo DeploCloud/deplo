@@ -1,0 +1,18 @@
+{
+  "id": "chromium",
+  "name": "Chromium",
+  "description": "Containerized Chromium browser you can access from a web browser for sandboxed, remote browsing.",
+  "tags": [
+    "browser",
+    "development",
+    "web"
+  ],
+  "logo": "/templates/chromium.png",
+  "links": {
+    "github": "https://github.com/linuxserver/docker-chromium",
+    "docs": "https://docs.linuxserver.io/images/docker-chromium",
+    "website": "https://docs.linuxserver.io/images/docker-chromium"
+  },
+  "version": "5f5dd27e-ls102",
+  "popular": false
+}

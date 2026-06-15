@@ -1,0 +1,16 @@
+{
+  "id": "enshrouded",
+  "name": "Enshrouded",
+  "description": "Dedicated server for hosting your own Enshrouded survival co-op game world for friends to join.",
+  "tags": [
+    "gaming"
+  ],
+  "logo": "/templates/enshrouded.png",
+  "links": {
+    "github": "https://github.com/mornedhels/enshrouded-server",
+    "website": "",
+    "docs": ""
+  },
+  "version": "1.0.0",
+  "popular": false
+}

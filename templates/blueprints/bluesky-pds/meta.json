@@ -1,0 +1,19 @@
+{
+  "id": "bluesky-pds",
+  "name": "Bluesky PDS",
+  "description": "Personal Data Server for Bluesky, letting you host your own account and data on the AT Protocol network.",
+  "tags": [
+    "bluesky",
+    "pds",
+    "data",
+    "server"
+  ],
+  "logo": "/templates/bluesky-pds.svg",
+  "links": {
+    "github": "https://github.com/bluesky-social/pds",
+    "website": "https://bsky.social/about",
+    "docs": "https://github.com/bluesky-social/pds"
+  },
+  "version": "0.4.182",
+  "popular": false
+}

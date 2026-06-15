@@ -1,0 +1,17 @@
+{
+  "id": "kutt",
+  "name": "Kutt",
+  "description": "Modern URL shortener with custom domains, link statistics, and user management for self-hosted short links.",
+  "tags": [
+    "link-shortener",
+    "link-sharing"
+  ],
+  "logo": "/templates/kutt.png",
+  "links": {
+    "github": "https://github.com/thedevs-network/kutt",
+    "website": "https://kutt.it",
+    "docs": "https://github.com/thedevs-network/kutt#kuttit"
+  },
+  "version": "latest",
+  "popular": false
+}

@@ -1,0 +1,19 @@
+{
+  "id": "rote",
+  "name": "Rote",
+  "description": "Open-source personal note-taking app with an open API, full data ownership, and simple Docker deployment.",
+  "tags": [
+    "notes",
+    "productivity",
+    "postgres",
+    "bun"
+  ],
+  "logo": "/templates/rote.png",
+  "links": {
+    "github": "https://github.com/Rabithua/Rote",
+    "website": "https://rote.ink",
+    "docs": "https://github.com/Rabithua/Rote/tree/main/doc/userguide"
+  },
+  "version": "latest",
+  "popular": false
+}
