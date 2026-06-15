@@ -25,21 +25,17 @@ export function SidebarNav({
   }
 
   return (
-    <nav
-      className={cn(
-        "flex flex-col gap-5 py-3",
-        collapsed ? "px-2" : "px-3"
-      )}
-    >
+    <nav className={cn("flex flex-col py-3", collapsed ? "px-2" : "px-3")}>
       {NAV.map((section, i) => (
         <div key={i} className="flex flex-col gap-0.5">
-          {section.title && !collapsed && (
-            <p className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
-              {section.title}
-            </p>
-          )}
-          {section.title && collapsed && i > 0 && (
-            <div className="mx-2 mb-1 border-t border-sidebar-border" />
+          {/* Divider between groups (Vercel-style), in place of section titles. */}
+          {i > 0 && (
+            <hr
+              className={cn(
+                "my-2 border-t border-sidebar-border",
+                collapsed ? "mx-1" : "mx-2"
+              )}
+            />
           )}
           {section.items.map((item) => {
             const active = isActive(item.href, item.exact);
@@ -53,9 +49,7 @@ export function SidebarNav({
                     aria-label={item.label}
                     className={cn(
                       "group flex cursor-pointer items-center gap-2.5 rounded-md text-sm transition-colors",
-                      collapsed
-                        ? "h-9 w-9 justify-center"
-                        : "px-3 py-1.5",
+                      collapsed ? "h-9 w-9 justify-center" : "px-3 py-1.5",
                       active
                         ? "bg-sidebar-accent font-medium text-foreground"
                         : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground"
