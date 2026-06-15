@@ -62,7 +62,7 @@ Deplo aims for parity with the popular self hosted platforms:
   ClickHouse), an S3 destinations tab for any S3 compatible bucket, and
   scheduled backups to those destinations.
 * Domains. Custom domains with automatic TLS.
-* Analytics, logs, activity audit, usage and team settings make up the rest of
+* Logs, activity audit, usage and team settings make up the rest of
   the dashboard.
 
 ## Install on a server

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Activity, ArrowRight, Gauge, HardDrive, Zap } from "lucide-react";
-import { getAnalytics } from "@/lib/data/analytics";
+import { getUsage } from "@/lib/data/usage";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +22,7 @@ function fmt(n: number): string {
 }
 
 export default async function UsagePage() {
-  const data = await getAnalytics(30);
+  const data = await getUsage(30);
   const { totals, metrics } = data;
 
   const summary = [
