@@ -85,7 +85,7 @@ On first run a local JSON store is seeded at `.deplo/data.json` (gitignored) wit
 | **Password** | `deplo-admin-2026` *(development convenience only)* |
 
 > [!IMPORTANT]
-> In production the fixed development password is **never** used. If `DEPLO_ADMIN_PASSWORD` is unset, Deplo generates a one-time admin password and prints it to the server logs on first boot. Set `DEPLO_SECRET` to derive all encryption and signing keys.
+> A real install starts **empty** — no demo data. The first visit opens a **setup wizard** that creates your workspace and admin account; the demo login above is development-only (`DEPLO_SEED_DEMO=true|false` overrides seeding). Set `DEPLO_SECRET` in production to derive all encryption and signing keys.
 
 ## 🧱 How it works
 

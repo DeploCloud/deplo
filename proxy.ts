@@ -15,7 +15,7 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 
 const SESSION_COOKIE = "deplo_session";
-const PUBLIC_PATHS = ["/login", "/signup"];
+const PUBLIC_PATHS = ["/login", "/signup", "/setup"];
 
 function generateNonce(): string {
   const arr = new Uint8Array(16);

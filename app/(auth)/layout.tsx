@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, isSetupNeeded } from "@/lib/auth";
 import { DeploLogo } from "@/components/logo";
 
 export default async function AuthLayout({
@@ -11,6 +11,8 @@ export default async function AuthLayout({
   // Real (signature-verifying) check  safe here, unlike the Edge proxy.
   const user = await getCurrentUser();
   if (user) redirect("/");
+  // Fresh install with no account yet  send to the setup wizard.
+  if (await isSetupNeeded()) redirect("/setup");
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center px-4">

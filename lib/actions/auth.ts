@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { login, signup, logout } from "@/lib/auth";
+import { login, signup, logout, completeSetup } from "@/lib/auth";
 import { rateLimit } from "@/lib/security";
 
 /**
@@ -103,6 +103,39 @@ export async function signupAction(
     parsed.data.email,
     parsed.data.password,
   );
+  if (!res.ok) return { error: res.error };
+  redirect("/");
+}
+
+const setupSchema = z.object({
+  teamName: z.string().min(1, "Workspace name is required").max(80),
+  name: z.string().min(1, "Your name is required").max(80),
+  email: z.string().email("Enter a valid email"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(200),
+});
+
+export async function setupAction(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const parsed = setupSchema.safeParse({
+    teamName: formData.get("teamName"),
+    name: formData.get("name"),
+    email: formData.get("email"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success)
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const limited = checkLimits([
+    { key: "setup:global", limit: 10, windowMs: 60_000 },
+  ]);
+  if (limited) return { error: limited };
+
+  const res = await completeSetup(parsed.data);
   if (!res.ok) return { error: res.error };
   redirect("/");
 }

@@ -10,8 +10,9 @@ import {
   signSession,
   verifySession,
 } from "./crypto";
-import type { PublicUser, User } from "./types";
+import type { PublicUser, Server, Team, User } from "./types";
 import { randomBytes } from "node:crypto";
+import os from "node:os";
 
 const SESSION_COOKIE = "deplo_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
@@ -41,11 +42,20 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   return user ? toPublic(user) : null;
 });
 
-/** Require an authenticated user or redirect to /login. */
+/**
+ * Require an authenticated user. Redirects to the setup wizard on a fresh
+ * install (no users yet), otherwise to /login.
+ */
 export async function requireUser(): Promise<PublicUser> {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) redirect((await isSetupNeeded()) ? "/setup" : "/login");
   return user;
+}
+
+/** True on a fresh install with no account yet  the setup wizard is required. */
+export async function isSetupNeeded(): Promise<boolean> {
+  await ensureStoreReady();
+  return read().users.length === 0;
 }
 
 /** Throwing variant for server actions / route handlers. */
@@ -110,6 +120,75 @@ export async function signup(
   };
   mutate((d) => d.users.push(user));
   await setSessionCookie(user.id);
+  return { ok: true };
+}
+
+/**
+ * First-run setup: create the workspace (team), the owner account and register
+ * the host running Deplo as the master server, then sign the owner in. Refuses
+ * to run once any account exists.
+ */
+export async function completeSetup(input: {
+  teamName: string;
+  name: string;
+  email: string;
+  password: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  await ensureStoreReady();
+  if (read().users.length > 0)
+    return { ok: false, error: "Setup has already been completed" };
+
+  const email = input.email.toLowerCase().trim();
+  const teamName = input.teamName.trim() || "Workspace";
+  const slug =
+    teamName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "workspace";
+  const now = new Date().toISOString();
+  const userId = `usr_${randomBytes(8).toString("hex")}`;
+
+  const team: Team = {
+    id: `team_${randomBytes(8).toString("hex")}`,
+    name: teamName,
+    slug,
+    plan: "hobby",
+    createdAt: now,
+  };
+  const user: User = {
+    id: userId,
+    email,
+    name: input.name.trim() || email.split("@")[0],
+    passwordHash: hashPassword(input.password),
+    role: "owner",
+    avatarColor: "#50e3c2",
+    createdAt: now,
+  };
+  // The host running Deplo is the master server; use its real CPU/memory.
+  const master: Server = {
+    id: `srv_${randomBytes(8).toString("hex")}`,
+    name: "master",
+    host: "localhost",
+    type: "localhost",
+    status: "online",
+    ip: "127.0.0.1",
+    dockerVersion: "",
+    traefikEnabled: true,
+    cpuCores: os.cpus().length || 1,
+    memoryMb: Math.round(os.totalmem() / (1024 * 1024)),
+    diskGb: 0,
+    cpuUsage: 0,
+    memoryUsage: 0,
+    diskUsage: 0,
+    createdAt: now,
+  };
+
+  mutate((d) => {
+    d.teams.push(team);
+    d.users.push(user);
+    if (d.servers.length === 0) d.servers.push(master);
+  });
+  await setSessionCookie(userId);
   return { ok: true };
 }
 

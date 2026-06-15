@@ -43,7 +43,51 @@ function buildLogs(framework: string): LogLine[] {
   return lines.map(([ts, level, text]) => ({ ts, level, text }));
 }
 
+/** Empty store for a real install: no demo data, no users (triggers setup). */
+function emptySeed(): DeploData {
+  return {
+    users: [],
+    teams: [],
+    servers: [],
+    projects: [],
+    deployments: [],
+    logs: {},
+    envVars: [],
+    domains: [],
+    databases: [],
+    s3Destinations: [],
+    backups: [],
+    apiTokens: [],
+    activities: [],
+    notificationSettings: {
+      channels: {
+        push: { enabled: false },
+        email: { enabled: false, address: "" },
+        discord: { enabled: false, webhookUrl: "" },
+        webhook: { enabled: false, url: "" },
+      },
+      events: {
+        deployment_failed: true,
+        deployment_succeeded: false,
+        server_offline: true,
+        high_resource_usage: true,
+        update_available: true,
+      },
+    },
+    sharedEnvGroups: [],
+    registries: [],
+  };
+}
+
 export function buildSeed(): DeploData {
+  // Demo data is for local development only. A real install (production) starts
+  // empty so the first visit lands on the setup wizard. Override with
+  // DEPLO_SEED_DEMO=true|false.
+  const demo = process.env.DEPLO_SEED_DEMO
+    ? process.env.DEPLO_SEED_DEMO === "true"
+    : process.env.NODE_ENV !== "production";
+  if (!demo) return emptySeed();
+
   const teamId = id("team");
   const serverId = id("srv");
   const remoteServerId = id("srv");
