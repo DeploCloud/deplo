@@ -66,7 +66,7 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
         </div>
       </div>
 
-      <ProjectTabs slug={slug} />
+      <ProjectTabs slug={slug} running={project.status === "active"} />
 
       {props.children}
     </div>

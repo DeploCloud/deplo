@@ -4,7 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-export function ProjectTabs({ slug }: { slug: string }) {
+export function ProjectTabs({
+  slug,
+  running = false,
+}: {
+  slug: string;
+  running?: boolean;
+}) {
   const pathname = usePathname();
   const base = `/projects/${slug}`;
   const tabs = [
@@ -12,6 +18,8 @@ export function ProjectTabs({ slug }: { slug: string }) {
     { label: "Deployments", href: `${base}#deployments` },
     { label: "Environment", href: `${base}/environment` },
     { label: "Domains", href: `${base}/domains` },
+    // Container console (docker attach) is only meaningful while running.
+    ...(running ? [{ label: "Console", href: `${base}/console` }] : []),
     { label: "Settings", href: `${base}/settings` },
   ];
 
