@@ -46,6 +46,16 @@ const createSchema = z.object({
   source: z.enum(DEPLOY_SOURCES),
   serverId: z.string().min(1).optional(),
   dockerImage: z.string().max(300).nullable().optional(),
+  compose: z.string().max(50000).nullable().optional(),
+  env: z
+    .array(
+      z.object({
+        key: z.string().max(256),
+        value: z.string().max(8000),
+      })
+    )
+    .max(200)
+    .optional(),
   repo: repoSchema.nullable(),
   build: z
     .object({
@@ -75,6 +85,8 @@ export async function createProjectAction(
       source: parsed.data.source,
       serverId: parsed.data.serverId,
       dockerImage: parsed.data.dockerImage ?? null,
+      compose: parsed.data.compose ?? null,
+      env: parsed.data.env,
       repo: parsed.data.repo,
       build: parsed.data.build,
       autoDeploy: parsed.data.autoDeploy,

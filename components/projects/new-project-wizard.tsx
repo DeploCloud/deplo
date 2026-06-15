@@ -15,6 +15,9 @@ import {
   Server as ServerIcon,
   Pencil,
   RotateCcw,
+  Plus,
+  Trash2,
+  FileText,
 } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import {
@@ -26,6 +29,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -54,6 +58,8 @@ export interface WizardTemplate {
   name: string;
   description: string;
   logo: string | null;
+  compose: string;
+  env: { key: string; value: string }[];
 }
 
 /** Lightweight client-side repo -> framework heuristic (Vercel-style guess). */
@@ -164,6 +170,12 @@ export function NewProjectWizard({
     buildConfigFor(isTemplate ? "docker" : "nextjs"),
   );
 
+  // Template-only: editable docker-compose and environment variables.
+  const [compose, setCompose] = React.useState(template?.compose ?? "");
+  const [envRows, setEnvRows] = React.useState<{ key: string; value: string }[]>(
+    template?.env ?? [],
+  );
+
   const preset = FRAMEWORKS[framework];
   const usesGit =
     source === "github" || source === "git" || source === "dockerfile";
@@ -264,6 +276,10 @@ export function NewProjectWizard({
         source,
         serverId,
         dockerImage: image,
+        compose: isTemplate ? compose : null,
+        env: isTemplate
+          ? envRows.filter((e) => e.key.trim())
+          : undefined,
         repo,
         build: {
           installCommand: build.installCommand,
@@ -466,6 +482,100 @@ export function NewProjectWizard({
                 </p>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {isTemplate && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="size-4" />
+              Docker Compose
+            </CardTitle>
+            <CardDescription>
+              The stack Deplo will deploy. Edit it directly to customise images,
+              ports, volumes or services before deploying.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={compose}
+              onChange={(e) => setCompose(e.target.value)}
+              spellCheck={false}
+              rows={14}
+              className="font-mono text-xs leading-relaxed"
+              placeholder="services:&#10;  app:&#10;    image: ..."
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {isTemplate && (
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>Environment variables</CardTitle>
+              <CardDescription>
+                Referenced as <code className="font-mono">{"${VAR}"}</code> in the
+                compose file. Generated secrets are prefilled; edit as needed.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEnvRows((rows) => [...rows, { key: "", value: "" }])}
+            >
+              <Plus className="size-4" />
+              Add
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {envRows.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No variables. Add one if your compose file needs it.
+              </p>
+            )}
+            {envRows.map((row, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  value={row.key}
+                  onChange={(e) =>
+                    setEnvRows((rows) =>
+                      rows.map((r, j) =>
+                        j === i ? { ...r, key: e.target.value } : r,
+                      ),
+                    )
+                  }
+                  placeholder="KEY"
+                  className="font-mono text-xs sm:max-w-[40%]"
+                />
+                <Input
+                  value={row.value}
+                  onChange={(e) =>
+                    setEnvRows((rows) =>
+                      rows.map((r, j) =>
+                        j === i ? { ...r, value: e.target.value } : r,
+                      ),
+                    )
+                  }
+                  placeholder="value"
+                  className="flex-1 font-mono text-xs"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Remove variable"
+                  onClick={() =>
+                    setEnvRows((rows) => rows.filter((_, j) => j !== i))
+                  }
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}

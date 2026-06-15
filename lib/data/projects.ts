@@ -3,17 +3,24 @@ import "server-only";
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
 import { assertUser } from "../auth";
+import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import { buildConfigFor } from "../frameworks";
 import type {
   BuildConfig,
   Deployment,
   DeploySource,
+  EnvTarget,
   FrameworkId,
   GitRepo,
   Project,
 } from "../types";
 import { newDeploymentInternal } from "./deployments";
+
+/** Heuristic: treat secret-looking keys as masked secrets. */
+function isSecretKey(key: string): boolean {
+  return /pass|secret|token|key|api|private|credential|dsn|url/i.test(key);
+}
 
 export interface ProjectSummary extends Project {
   latestDeployment: Deployment | null;
@@ -58,6 +65,8 @@ export interface CreateProjectInput {
   source: DeploySource;
   repo: GitRepo | null;
   dockerImage?: string | null;
+  compose?: string | null;
+  env?: { key: string; value: string }[];
   serverId?: string;
   build?: Partial<BuildConfig>;
   autoDeploy?: boolean;
@@ -94,6 +103,7 @@ export async function createProject(
     source: input.source,
     repo: input.repo,
     dockerImage: input.dockerImage ?? null,
+    compose: input.compose ?? null,
     build: buildConfigFor(input.framework, input.build),
     productionUrl: null,
     status: "queued",
@@ -103,7 +113,25 @@ export async function createProject(
     updatedAt: nowIso(),
   };
 
-  mutate((d) => d.projects.push(project));
+  // Initial environment variables (e.g. a template's defaults), encrypted at rest.
+  const now = nowIso();
+  const envVars = (input.env ?? [])
+    .filter((e) => e.key.trim())
+    .map((e) => ({
+      id: newId("env"),
+      projectId: project.id,
+      key: e.key.trim(),
+      valueEnc: encryptSecret(e.value),
+      targets: ["production", "preview", "development"] as EnvTarget[],
+      type: isSecretKey(e.key) ? ("secret" as const) : ("plain" as const),
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+  mutate((d) => {
+    d.projects.push(project);
+    d.envVars.push(...envVars);
+  });
   recordActivity("project", `Created project ${project.name}`, user.name, project.id);
 
   // Kick off the first deployment.

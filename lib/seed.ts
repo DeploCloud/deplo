@@ -122,6 +122,7 @@ export function buildSeed(): DeploData {
       framework: opts.framework,
       source: "github",
       dockerImage: null,
+      compose: null,
       repo: {
         provider: "github",
         url: `https://github.com/${opts.repo}`,

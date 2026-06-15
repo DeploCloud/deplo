@@ -127,6 +127,8 @@ export interface Project {
   repo: GitRepo | null;
   /** Image reference when source is "docker-image" (e.g. ghcr.io/org/app:tag). */
   dockerImage: string | null;
+  /** Editable docker-compose stack for template/compose deploys (else null). */
+  compose: string | null;
   build: BuildConfig;
   productionUrl: string | null;
   status: ProjectStatus;
