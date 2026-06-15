@@ -397,6 +397,21 @@ export function buildSeed(): DeploData {
       ),
       activity("s3", "Connected S3 destination Cloudflare R2", null, 15 * DAY),
     ],
+    notificationSettings: {
+      channels: {
+        push: { enabled: false },
+        email: { enabled: true, address: adminEmail },
+        discord: { enabled: false, webhookUrl: "" },
+        webhook: { enabled: false, url: "" },
+      },
+      events: {
+        deployment_failed: true,
+        deployment_succeeded: false,
+        server_offline: true,
+        high_resource_usage: true,
+        update_available: true,
+      },
+    },
   };
 
   return data;

@@ -2,18 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   ChevronDown,
   Menu,
-  Search,
   Rocket,
   Database,
   LayoutTemplate,
   Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -37,31 +35,8 @@ export function Topbar({
   user: PublicUser;
   team: Team;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
-  const [q, setQ] = React.useState("");
   const [mobileOpen, setMobileOpen] = React.useState(false);
-  const searchRef = React.useRef<HTMLInputElement>(null);
-
-  React.useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (
-        e.key.toLowerCase() === "f" &&
-        (e.target as HTMLElement)?.tagName !== "INPUT" &&
-        (e.target as HTMLElement)?.tagName !== "TEXTAREA"
-      ) {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  function submitSearch(e: React.FormEvent) {
-    e.preventDefault();
-    router.push(q.trim() ? `/?q=${encodeURIComponent(q.trim())}` : "/");
-  }
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md">
@@ -119,21 +94,6 @@ export function Topbar({
       </span>
 
       <div className="flex flex-1 items-center justify-end gap-2">
-        {/* Search */}
-        <form onSubmit={submitSearch} className="relative hidden w-full max-w-xs sm:block">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={searchRef}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search…"
-            className="h-8 pl-8 pr-8"
-          />
-          <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-muted px-1.5 text-[10px] text-muted-foreground md:inline">
-            F
-          </kbd>
-        </form>
-
         {/* Add New */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

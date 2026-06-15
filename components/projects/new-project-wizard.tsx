@@ -301,286 +301,11 @@ export function NewProjectWizard({
     });
   }
 
+  // Card order: configure the project first, then pick the source, then choose
+  // which server runs it (3rd). Template-only compose/env follow afterwards.
   return (
     <div className="space-y-6">
-      {/* Target server  front and centre, especially for templates. */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ServerIcon className="size-4" />
-            Deploy to
-          </CardTitle>
-          <CardDescription>
-            Choose which server runs this {isTemplate ? "template" : "project"}.
-            The master is the host running Deplo; remote servers appear here
-            once connected.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Select value={serverId} onValueChange={setServerId}>
-            <SelectTrigger className="max-w-md">
-              <SelectValue placeholder="Select a server" />
-            </SelectTrigger>
-            <SelectContent>
-              {servers.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  <span className="flex items-center gap-2">
-                    <ServerIcon className="size-4 text-muted-foreground" />
-                    {serverLabel(s)}
-                    {s.type === "remote" && (
-                      <Badge variant="secondary" className="ml-1">
-                        remote
-                      </Badge>
-                    )}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
-
-      {locked ? (
-        <Card>
-          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-            <div className="space-y-1.5">
-              <CardTitle>Template</CardTitle>
-              <CardDescription>
-                Deplo provisions the template&apos;s container stack and exposes
-                it through Traefik with automatic HTTPS.
-              </CardDescription>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setEditing(true)}
-            >
-              <Pencil className="size-4" />
-              Edit template
-            </Button>
-          </CardHeader>
-          <CardContent className="flex items-center gap-4">
-            <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg border border-border bg-white p-2">
-              {template!.logo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={template!.logo}
-                  alt={template!.name}
-                  className="size-full object-contain"
-                />
-              ) : (
-                <Container className="size-6 text-black" />
-              )}
-            </div>
-            <div>
-              <p className="font-medium">{template!.name}</p>
-              <p className="line-clamp-2 text-sm text-muted-foreground">
-                {template!.description}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-            <div className="space-y-1.5">
-              <CardTitle>Source</CardTitle>
-              <CardDescription>
-                {isTemplate
-                  ? `Customising ${template!.name}. Change the source, framework or build before deploying.`
-                  : "Where your code or image comes from. Deplo builds and runs it in Docker."}
-              </CardDescription>
-            </div>
-            {isTemplate && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setEditing(false);
-                  onSourceChange("docker-image");
-                }}
-              >
-                <RotateCcw className="size-4" />
-                Reset to template
-              </Button>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {SOURCE_TABS.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <Button
-                    key={tab.id}
-                    type="button"
-                    variant={source === tab.id ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => onSourceChange(tab.id)}
-                  >
-                    <Icon className="size-4" />
-                    {tab.label}
-                  </Button>
-                );
-              })}
-            </div>
-
-            {(source === "github" ||
-              source === "git" ||
-              source === "dockerfile") && (
-              <div className="space-y-2">
-                <Label htmlFor="repo">
-                  {source === "dockerfile"
-                    ? "Repository containing the Dockerfile"
-                    : "Repository URL"}
-                </Label>
-                <div className="relative">
-                  <GitHubIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="repo"
-                    value={repoUrl}
-                    onChange={(e) => onRepoChange(e.target.value)}
-                    placeholder="https://github.com/acme/my-app"
-                    className="pl-9 font-mono text-sm"
-                  />
-                </div>
-                {detected && source !== "dockerfile" && (
-                  <div className="flex items-center gap-1.5 text-xs text-[var(--success)]">
-                    <Sparkles className="size-3.5" />
-                    Detected framework: {FRAMEWORKS[detected].name}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {source === "docker-image" && (
-              <div className="space-y-2">
-                <Label htmlFor="image">Docker image</Label>
-                <div className="relative">
-                  <Container className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="image"
-                    value={dockerImage}
-                    onChange={(e) => setDockerImage(e.target.value)}
-                    placeholder="ghcr.io/acme/app:latest"
-                    className="pl-9 font-mono text-sm"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Pulls a prebuilt image from any registry. No build step runs.
-                </p>
-              </div>
-            )}
-
-            {source === "upload" && (
-              <div className="rounded-lg border border-dashed border-border p-6 text-center">
-                <Upload className="mx-auto mb-2 size-6 text-muted-foreground" />
-                <p className="text-sm">
-                  Create the project, then upload a code archive from the
-                  project page to trigger the first build.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {isTemplate && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="size-4" />
-              Docker Compose
-            </CardTitle>
-            <CardDescription>
-              The stack Deplo will deploy. Edit it directly to customise images,
-              ports, volumes or services before deploying.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={compose}
-              onChange={(e) => setCompose(e.target.value)}
-              spellCheck={false}
-              rows={14}
-              className="font-mono text-xs leading-relaxed"
-              placeholder="services:&#10;  app:&#10;    image: ..."
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {isTemplate && (
-        <Card>
-          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-            <div className="space-y-1.5">
-              <CardTitle>Environment variables</CardTitle>
-              <CardDescription>
-                Referenced as <code className="font-mono">{"${VAR}"}</code> in the
-                compose file. Generated secrets are prefilled; edit as needed.
-              </CardDescription>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setEnvRows((rows) => [...rows, { key: "", value: "" }])}
-            >
-              <Plus className="size-4" />
-              Add
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {envRows.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No variables. Add one if your compose file needs it.
-              </p>
-            )}
-            {envRows.map((row, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Input
-                  value={row.key}
-                  onChange={(e) =>
-                    setEnvRows((rows) =>
-                      rows.map((r, j) =>
-                        j === i ? { ...r, key: e.target.value } : r,
-                      ),
-                    )
-                  }
-                  placeholder="KEY"
-                  className="font-mono text-xs sm:max-w-[40%]"
-                />
-                <Input
-                  value={row.value}
-                  onChange={(e) =>
-                    setEnvRows((rows) =>
-                      rows.map((r, j) =>
-                        j === i ? { ...r, value: e.target.value } : r,
-                      ),
-                    )
-                  }
-                  placeholder="value"
-                  className="flex-1 font-mono text-xs"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Remove variable"
-                  onClick={() =>
-                    setEnvRows((rows) => rows.filter((_, j) => j !== i))
-                  }
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Configure */}
+      {/* 1. Configure */}
       <Card>
         <CardHeader>
           <CardTitle>Configure Project</CardTitle>
@@ -743,6 +468,284 @@ export function NewProjectWizard({
           )}
         </CardContent>
       </Card>
+
+      {/* 2. Source */}
+      {locked ? (
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>Template</CardTitle>
+              <CardDescription>
+                Deplo provisions the template&apos;s container stack and exposes
+                it through Traefik with automatic HTTPS.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="size-4" />
+              Edit template
+            </Button>
+          </CardHeader>
+          <CardContent className="flex items-center gap-4">
+            <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg border border-border bg-white p-2">
+              {template!.logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={template!.logo}
+                  alt={template!.name}
+                  className="size-full object-contain"
+                />
+              ) : (
+                <Container className="size-6 text-black" />
+              )}
+            </div>
+            <div>
+              <p className="font-medium">{template!.name}</p>
+              <p className="line-clamp-2 text-sm text-muted-foreground">
+                {template!.description}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>Source</CardTitle>
+              <CardDescription>
+                {isTemplate
+                  ? `Customising ${template!.name}. Change the source, framework or build before deploying.`
+                  : "Where your code or image comes from. Deplo builds and runs it in Docker."}
+              </CardDescription>
+            </div>
+            {isTemplate && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditing(false);
+                  onSourceChange("docker-image");
+                }}
+              >
+                <RotateCcw className="size-4" />
+                Reset to template
+              </Button>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {SOURCE_TABS.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <Button
+                    key={tab.id}
+                    type="button"
+                    variant={source === tab.id ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => onSourceChange(tab.id)}
+                  >
+                    <Icon className="size-4" />
+                    {tab.label}
+                  </Button>
+                );
+              })}
+            </div>
+
+            {(source === "github" ||
+              source === "git" ||
+              source === "dockerfile") && (
+              <div className="space-y-2">
+                <Label htmlFor="repo">
+                  {source === "dockerfile"
+                    ? "Repository containing the Dockerfile"
+                    : "Repository URL"}
+                </Label>
+                <div className="relative">
+                  <GitHubIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="repo"
+                    value={repoUrl}
+                    onChange={(e) => onRepoChange(e.target.value)}
+                    placeholder="https://github.com/acme/my-app"
+                    className="pl-9 font-mono text-sm"
+                  />
+                </div>
+                {detected && source !== "dockerfile" && (
+                  <div className="flex items-center gap-1.5 text-xs text-[var(--success)]">
+                    <Sparkles className="size-3.5" />
+                    Detected framework: {FRAMEWORKS[detected].name}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {source === "docker-image" && (
+              <div className="space-y-2">
+                <Label htmlFor="image">Docker image</Label>
+                <div className="relative">
+                  <Container className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="image"
+                    value={dockerImage}
+                    onChange={(e) => setDockerImage(e.target.value)}
+                    placeholder="ghcr.io/acme/app:latest"
+                    className="pl-9 font-mono text-sm"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Pulls a prebuilt image from any registry. No build step runs.
+                </p>
+              </div>
+            )}
+
+            {source === "upload" && (
+              <div className="rounded-lg border border-dashed border-border p-6 text-center">
+                <Upload className="mx-auto mb-2 size-6 text-muted-foreground" />
+                <p className="text-sm">
+                  Create the project, then upload a code archive from the
+                  project page to trigger the first build.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 3. Target server  pick where this runs, after choosing the source. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ServerIcon className="size-4" />
+            Deploy to
+          </CardTitle>
+          <CardDescription>
+            Choose which server runs this {isTemplate ? "template" : "project"}.
+            The master is the host running Deplo; remote servers appear here
+            once connected.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Select value={serverId} onValueChange={setServerId}>
+            <SelectTrigger className="max-w-md">
+              <SelectValue placeholder="Select a server" />
+            </SelectTrigger>
+            <SelectContent>
+              {servers.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  <span className="flex items-center gap-2">
+                    <ServerIcon className="size-4 text-muted-foreground" />
+                    {serverLabel(s)}
+                    {s.type === "remote" && (
+                      <Badge variant="secondary" className="ml-1">
+                        remote
+                      </Badge>
+                    )}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </CardContent>
+      </Card>
+
+      {isTemplate && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="size-4" />
+              Docker Compose
+            </CardTitle>
+            <CardDescription>
+              The stack Deplo will deploy. Edit it directly to customise images,
+              ports, volumes or services before deploying.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              value={compose}
+              onChange={(e) => setCompose(e.target.value)}
+              spellCheck={false}
+              rows={14}
+              className="font-mono text-xs leading-relaxed"
+              placeholder="services:&#10;  app:&#10;    image: ..."
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {isTemplate && (
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>Environment variables</CardTitle>
+              <CardDescription>
+                Referenced as <code className="font-mono">{"${VAR}"}</code> in the
+                compose file. Generated secrets are prefilled; edit as needed.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEnvRows((rows) => [...rows, { key: "", value: "" }])}
+            >
+              <Plus className="size-4" />
+              Add
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {envRows.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No variables. Add one if your compose file needs it.
+              </p>
+            )}
+            {envRows.map((row, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  value={row.key}
+                  onChange={(e) =>
+                    setEnvRows((rows) =>
+                      rows.map((r, j) =>
+                        j === i ? { ...r, key: e.target.value } : r,
+                      ),
+                    )
+                  }
+                  placeholder="KEY"
+                  className="font-mono text-xs sm:max-w-[40%]"
+                />
+                <Input
+                  value={row.value}
+                  onChange={(e) =>
+                    setEnvRows((rows) =>
+                      rows.map((r, j) =>
+                        j === i ? { ...r, value: e.target.value } : r,
+                      ),
+                    )
+                  }
+                  placeholder="value"
+                  className="flex-1 font-mono text-xs"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Remove variable"
+                  onClick={() =>
+                    setEnvRows((rows) => rows.filter((_, j) => j !== i))
+                  }
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex items-center justify-end gap-2">
         <Badge variant="outline" className="mr-auto gap-1.5">

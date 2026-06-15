@@ -302,6 +302,30 @@ export interface Activity {
   createdAt: string;
 }
 
+/**
+ * Notification / anomaly-alert configuration. Deplo can deliver alerts through
+ * browser push, email, a Discord webhook and a generic outbound webhook; the
+ * `events` map decides which conditions actually fire an alert.
+ */
+export type NotificationChannel = "push" | "email" | "discord" | "webhook";
+
+export type NotificationEvent =
+  | "deployment_failed"
+  | "deployment_succeeded"
+  | "server_offline"
+  | "high_resource_usage"
+  | "update_available";
+
+export interface NotificationSettings {
+  channels: {
+    push: { enabled: boolean };
+    email: { enabled: boolean; address: string };
+    discord: { enabled: boolean; webhookUrl: string };
+    webhook: { enabled: boolean; url: string };
+  };
+  events: Record<NotificationEvent, boolean>;
+}
+
 /** Whole persisted database shape. */
 export interface DeploData {
   users: User[];
@@ -317,4 +341,5 @@ export interface DeploData {
   backups: Backup[];
   apiTokens: ApiToken[];
   activities: Activity[];
+  notificationSettings: NotificationSettings;
 }

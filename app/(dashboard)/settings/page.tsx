@@ -2,6 +2,8 @@ import { ShieldCheck, Lock, KeyRound, Users } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { read } from "@/lib/store";
 import { listTokens } from "@/lib/data/tokens";
+import { getNotificationSettings } from "@/lib/data/notifications";
+import { DEPLO_VERSION } from "@/lib/version";
 import { PageHeader } from "@/components/shared/page-header";
 import {
   Tabs,
@@ -21,6 +23,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { TokensPanel } from "@/components/settings/tokens-panel";
 import { TeamForm } from "@/components/settings/team-form";
+import { NotificationsPanel } from "@/components/settings/notifications-panel";
+import { UpdateCard } from "@/components/settings/update-card";
 
 export const metadata = { title: "Settings" };
 
@@ -30,6 +34,7 @@ export default async function SettingsPage() {
   const team = data.teams[0];
   const tokens = await listTokens();
   const members = data.users;
+  const notifications = await getNotificationSettings();
 
   return (
     <div className="space-y-6">
@@ -43,6 +48,9 @@ export default async function SettingsPage() {
           <UnderlineTabsTrigger value="general">General</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="members">Members</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="tokens">API Tokens</UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="notifications">
+            Notifications
+          </UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="security">Security</UnderlineTabsTrigger>
         </UnderlineTabsList>
 
@@ -81,6 +89,8 @@ export default async function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          <UpdateCard current={DEPLO_VERSION} />
         </TabsContent>
 
         {/* Members */}
@@ -131,6 +141,11 @@ export default async function SettingsPage() {
         {/* Tokens */}
         <TabsContent value="tokens">
           <TokensPanel tokens={tokens} />
+        </TabsContent>
+
+        {/* Notifications */}
+        <TabsContent value="notifications">
+          <NotificationsPanel initial={notifications} />
         </TabsContent>
 
         {/* Security */}
