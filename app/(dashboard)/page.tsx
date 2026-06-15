@@ -10,8 +10,10 @@ import { ProjectSearch } from "@/components/projects/project-search";
 import { timeAgo } from "@/lib/utils";
 
 export default async function OverviewPage(props: PageProps<"/">) {
-  const { q } = await props.searchParams;
+  const { q, view: viewParam } = await props.searchParams;
   const query = (Array.isArray(q) ? q[0] : q)?.toLowerCase() ?? "";
+  const viewRaw = Array.isArray(viewParam) ? viewParam[0] : viewParam;
+  const view = viewRaw === "list" ? "list" : "grid";
 
   const [projects, activity] = await Promise.all([
     listProjects(),
@@ -85,7 +87,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
           </Button>
         </div>
 
-        <ProjectSearch initialQuery={query} />
+        <ProjectSearch initialQuery={query} initialView={view} />
 
         {filtered.length === 0 ? (
           query ? (
@@ -118,9 +120,15 @@ export default async function OverviewPage(props: PageProps<"/">) {
             />
           )
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div
+            className={
+              view === "list"
+                ? "flex flex-col gap-3"
+                : "grid gap-4 sm:grid-cols-2"
+            }
+          >
             {filtered.map((p) => (
-              <ProjectCard key={p.id} project={p} />
+              <ProjectCard key={p.id} project={p} view={view} />
             ))}
           </div>
         )}
