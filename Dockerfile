@@ -20,6 +20,10 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV DEPLO_DATA_DIR=/data
 
+# Real infrastructure tooling: the control plane shells out to these to clone
+# repos, build images and orchestrate containers over the mounted Docker socket.
+RUN apk add --no-cache docker-cli docker-cli-compose git curl
+
 RUN addgroup -g 1001 -S nodejs \
  && adduser -S deplo -u 1001 \
  && mkdir -p /data && chown deplo:nodejs /data
