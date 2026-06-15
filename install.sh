@@ -45,6 +45,13 @@ else
   ok "Docker already installed ($(docker --version | awk '{print $3}' | tr -d ,))"
 fi
 
+# Compose v2 plugin is required (the script uses `docker compose`).
+if ! docker compose version >/dev/null 2>&1; then
+  err "Docker Compose v2 (\`docker compose\`) is required but was not found."
+  err "Update Docker (it bundles the compose plugin) and re-run."
+  exit 1
+fi
+
 # 2. Workspace, secrets + network -------------------------------------------
 step "Preparing $DEPLO_DIR and the 'deplo' network..."
 mkdir -p "$DEPLO_DIR/traefik" "$DEPLO_DIR/data" "$DEPLO_DIR/acme"
@@ -122,7 +129,7 @@ services:
       retries: 5
 
   deplo:
-    image: deplo/control-plane:${DEPLO_VERSION}
+    image: ghcr.io/idradev/deplo:${DEPLO_VERSION}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -153,6 +160,16 @@ networks:
   deplo:
     external: true
 YAML
+# Pull the control-plane image first so a missing/private package fails with a
+# clear message instead of a cryptic compose error.
+DEPLO_IMAGE="ghcr.io/idradev/deplo:${DEPLO_VERSION}"
+if ! docker pull "$DEPLO_IMAGE" >/dev/null 2>&1; then
+  err "Could not pull $DEPLO_IMAGE."
+  err "If the package is private, make it public on GitHub, or authenticate first:"
+  err "  echo \$GHCR_TOKEN | docker login ghcr.io -u <user> --password-stdin"
+  exit 1
+fi
+
 docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
 ok "Deplo control plane running"
 

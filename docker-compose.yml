@@ -7,8 +7,9 @@
 #   3. docker compose up -d --build
 services:
   deplo:
+    # Build from this checkout, or comment out `build` to pull the published image.
     build: .
-    image: deplo/control-plane:latest
+    image: ghcr.io/idradev/deplo:latest
     restart: unless-stopped
     depends_on:
       postgres:
