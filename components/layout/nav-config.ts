@@ -8,7 +8,7 @@ import {
   Server,
   Settings,
   Activity,
-  HardDrive,
+  LineChart,
   type LucideIcon,
 } from "lucide-react";
 
@@ -89,10 +89,10 @@ export const NAV: NavSection[] = [
         tooltip: "Audit log of workspace events",
       },
       {
-        label: "Usage",
-        href: "/usage",
-        icon: HardDrive,
-        tooltip: "Resource usage & limits",
+        label: "Monitoring",
+        href: "/monitoring",
+        icon: LineChart,
+        tooltip: "Real-time server metrics",
       },
       {
         label: "Settings",

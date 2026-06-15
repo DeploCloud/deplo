@@ -40,10 +40,9 @@ export function ProjectCard({
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const dep = project.latestDeployment;
 
-  // Clicking anywhere on the card opens the latest deployment's management page.
-  const href = dep
-    ? `/projects/${project.slug}/deployments/${dep.id}`
-    : `/projects/${project.slug}`;
+  // Clicking anywhere on the card opens the project overview. The latest commit
+  // is shown on the card itself (compact) rather than deep-linking to it.
+  const href = `/projects/${project.slug}`;
 
   function redeploy() {
     startTransition(async () => {
@@ -208,11 +207,14 @@ export function ProjectCard({
         {/* Latest deployment */}
         {dep ? (
           <div className="rounded-lg border border-border bg-secondary/40 p-3">
-            <p className="line-clamp-1 text-sm text-foreground">
-              {dep.commitMessage}
-            </p>
-            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <StatusDot status={dep.status} />
+              <code className="shrink-0 font-mono text-foreground">
+                {dep.commitSha.slice(0, 7)}
+              </code>
+              <span className="min-w-0 flex-1 truncate">{dep.commitMessage}</span>
+            </div>
+            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
               <span>{timeAgo(dep.createdAt)}</span>
               <span className="text-muted-foreground/40">on</span>
               <GitBranch className="size-3" />
