@@ -30,6 +30,26 @@ export async function listEnv(projectId: string): Promise<EnvVarDTO[]> {
     .map(toDTO);
 }
 
+export interface ProjectEnvGroup {
+  project: { id: string; name: string; slug: string };
+  vars: EnvVarDTO[];
+}
+
+/** Every project's env vars, grouped by project (for the global Variables tab). */
+export async function listAllProjectEnv(): Promise<ProjectEnvGroup[]> {
+  await assertUser();
+  const d = read();
+  return [...d.projects]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((p) => ({
+      project: { id: p.id, name: p.name, slug: p.slug },
+      vars: d.envVars
+        .filter((e) => e.projectId === p.id)
+        .sort((a, b) => a.key.localeCompare(b.key))
+        .map(toDTO),
+    }));
+}
+
 /** Reveal a single secret value. Requires auth; returns decrypted plaintext. */
 export async function revealEnv(id: string): Promise<string> {
   await assertUser();

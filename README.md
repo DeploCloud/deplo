@@ -1,12 +1,93 @@
+<div align="center">
+
+<img src="https://em-content.zobj.net/source/twitter/376/rocket_1f680.png" width="110" alt="Deplo" />
+
 # Deplo
 
-Deplo is a self hosted deployment platform. It gives you the developer
-experience of Vercel with the feature set of Coolify, Dokploy and Easypanel,
-running entirely on your own infrastructure: a VPS, a remote server or a
-dedicated machine. Push a repository or pick a template and Deplo builds it in
-Docker, then exposes it through Traefik with automatic HTTPS.
+**push a repo, pick a server, get a deployment — on your own infrastructure**
 
-## How it works
+[![Release](https://img.shields.io/github/v/release/IdraDev/deplo?color=0a0a0a)](https://github.com/IdraDev/deplo/releases)
+[![Stars](https://img.shields.io/github/stars/IdraDev/deplo?style=flat)](https://github.com/IdraDev/deplo/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/IdraDev/deplo)](https://github.com/IdraDev/deplo/commits)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
+
+[Features](#-features) · [Quick start](#-quick-start) · [Configuration](#%EF%B8%8F-configuration) · [Security](#-security) · [Stack](#-tech-stack)
+
+</div>
+
+---
+
+## 💡 Why
+
+I wanted the **developer experience of Vercel** with the **feature set of Coolify / Dokploy / Easypanel** — but running entirely on **my own infrastructure**, with **zero vendor lock-in**. No per-seat pricing, no build minutes, no black box. Just a VPS, a Docker socket and a domain.
+
+Deplo is that: a self-hostable control plane. Push a repository or pick a template, and Deplo builds it in Docker and exposes it through Traefik with automatic HTTPS — on your master host or any remote server you connect.
+
+## ✨ Features
+
+| | Feature | What you get |
+| :-: | --- | --- |
+| 🚀 | **Deploys** | Git, any Git URL, a registry image, a Dockerfile, or an upload — with automatic framework detection and editable build commands. |
+| 🧩 | **Templates** | One-click deploys for a large catalog (WordPress, Ghost, Plausible, n8n, Supabase, MinIO, Uptime Kuma, Postgres, Redis…). |
+| 🖥️ | **Multi-server** | A master host plus remote servers connected over SSH. Every deploy targets a server you pick. |
+| 📊 | **Live monitoring** | Real-time CPU, memory, disk and network per server (master + remotes) with rolling charts. |
+| 🔔 | **Alerts** | Anomaly notifications via browser push, email, Discord webhook and a generic webhook. |
+| 🔑 | **Variables** | Per-project env vars plus **shared groups** reused across projects from one source of truth. |
+| 🗄️ | **Storage** | Managed databases (Postgres, MySQL, MariaDB, MongoDB, Redis, ClickHouse), S3 destinations and scheduled backups. |
+| 🌐 | **Domains** | Custom domains with automatic TLS via Let's Encrypt. |
+| 📦 | **Registries** | Connect GHCR / Docker Hub / GitLab / generic registries for private images. |
+| 🔄 | **Self-update aware** | Checks this repo for newer releases and notifies you in-app. |
+
+## 🚀 Quick start
+
+### Install on a server
+
+Run one command on a fresh Linux box — it installs Docker, Traefik (automatic HTTPS), a private Postgres and the Deplo control plane:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/IdraDev/deplo/main/install.sh | bash
+```
+
+The installer is idempotent: secrets are generated once and stored in `/opt/deplo/.env`, so re-running never rotates them. Override defaults with env vars:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/IdraDev/deplo/main/install.sh | \
+  DEPLO_DOMAIN=deplo.example.com ACME_EMAIL=you@example.com bash
+```
+
+> [!TIP]
+> Point your domain at the server's IP, then open the dashboard and finish setup in the browser.
+
+### Run the prebuilt image
+
+Each tagged release publishes a multi-arch image to GitHub Container Registry:
+
+```bash
+docker run -d --name deplo \
+  -p 3000:3000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v deplo-data:/data \
+  ghcr.io/idradev/deplo:latest
+```
+
+### Run locally
+
+```bash
+bun install
+bun run dev          # http://localhost:3000
+```
+
+On first run a local JSON store is seeded at `.deplo/data.json` (gitignored) with a demo team, servers and projects.
+
+| | Development login |
+| --- | --- |
+| **Email** | `admin@deluxhost.net` |
+| **Password** | `deplo-admin-2026` *(development convenience only)* |
+
+> [!IMPORTANT]
+> In production the fixed development password is **never** used. If `DEPLO_ADMIN_PASSWORD` is unset, Deplo generates a one-time admin password and prints it to the server logs on first boot. Set `DEPLO_SECRET` to derive all encryption and signing keys.
+
+## 🧱 How it works
 
 ```
                 +--------------------------------------------+
@@ -17,96 +98,22 @@ Docker, then exposes it through Traefik with automatic HTTPS.
                                         v
         +---------------------------------------------------+
         |  Your Linux server (master or a remote)           |
-        |                                                   |
-        |    +---------+   routes + TLS   +--------------+  |
-        |    | Traefik | <==============> | app          |  |
-        |    |  :80    |                  | db           |  |
-        |    |  :443   |   Let's Encrypt  | services     |  |
-        |    +---------+                  +--------------+  |
-        |          all on the shared `deplo` docker network |
+        |    +---------+   routes + TLS   +--------------+   |
+        |    | Traefik | <==============> | app          |   |
+        |    |  :80    |                  | db           |   |
+        |    |  :443   |   Let's Encrypt  | services     |   |
+        |    +---------+                  +--------------+   |
+        |        all on the shared `deplo` docker network   |
         +---------------------------------------------------+
 ```
 
-The platform rests on a few pieces of infrastructure:
+1. **Docker** — every app, database and service is a container; Deplo generates a `docker-compose.yml` per workload (`lib/deploy/compose.ts`).
+2. **Traefik** — one reverse proxy routes each domain to the right container and issues TLS via Let's Encrypt (`lib/deploy/traefik.ts`).
+3. **Postgres** — when `DEPLO_DATABASE_URL` is set it is the system of record and backs Better Auth; otherwise a zero-config local JSON store is used.
 
-1. Docker. Every app, database and service is a container. Deplo generates a
-   `docker-compose.yml` per workload (see `lib/deploy/compose.ts`).
-2. Traefik. A single reverse proxy routes each domain to the right container and
-   issues TLS certificates automatically through Let's Encrypt (HTTP-01).
-   Routing is configured with container labels generated in
-   `lib/deploy/traefik.ts`.
-3. Postgres. When `DEPLO_DATABASE_URL` is set, Postgres is the system of record
-   for all control plane data and backs Better Auth. Without it, Deplo falls
-   back to a zero config local JSON store so it still runs with no database.
+## ⚙️ Configuration
 
-Everything joins one shared Docker network called `deplo`, so Traefik can reach
-every service and services can reach each other by name.
-
-## Features
-
-Deplo aims for parity with the popular self hosted platforms:
-
-* Projects and deployments with automatic framework detection
-  (`lib/frameworks.ts`): Next.js, SvelteKit, Astro, Nuxt, Remix, Vite, Vue,
-  Angular, Gatsby, static sites, Node, Python, Go, Rust, PHP, or a raw
-  Dockerfile. Build commands are inferred and editable.
-* Multiple deploy sources, chosen in the wizard and editable per project:
-  GitHub, any Git URL, a prebuilt Docker image, a Dockerfile, or an upload.
-* Servers. A master server (the host running Deplo) plus remote servers added
-  over SSH. Every deploy targets a server you choose from a dropdown.
-* Templates. One click deploys for a large catalog of apps and services
-  (WordPress, Ghost, Plausible, n8n, Supabase, MinIO, Uptime Kuma, Postgres,
-  Redis and many more). Templates ask which server to run on, not for a Git
-  repository.
-* Storage. Managed databases (Postgres, MySQL, MariaDB, MongoDB, Redis,
-  ClickHouse), an S3 destinations tab for any S3 compatible bucket, and
-  scheduled backups to those destinations.
-* Domains. Custom domains with automatic TLS.
-* Real-time monitoring of every server (master and remotes): live CPU, memory,
-  disk and network with per-server charts.
-* Logs, activity audit and team settings make up the rest of the dashboard.
-
-## Install on a server
-
-Run one command on a fresh Linux box. It installs Docker, brings up Traefik with
-automatic HTTPS, provisions a private Postgres, and starts the Deplo control
-plane. No manual configuration is required:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/IdraDev/deplo/main/install.sh | bash
-```
-
-The installer is the static `install.sh` at the repo root, served directly from
-GitHub (the `/install` route on a running instance is a short alias that
-redirects there). It is idempotent: secrets are generated once and stored in
-`/opt/deplo/.env`, so re-running it never rotates them. Override defaults with
-env vars, e.g. `DEPLO_DOMAIN=deplo.example.com ACME_EMAIL=you@example.com`. After
-it finishes, point your domain at the server and finish setup in the browser.
-
-## Run locally
-
-```bash
-bun install
-bun run dev          # http://localhost:3000
-```
-
-On first run a local JSON store is seeded at `.deplo/data.json` (gitignored) with
-a demo team, a master server, a remote server and a few projects. Development
-login:
-
-* Email: `admin@deluxhost.net`
-* Password: `deplo-admin-2026` (development convenience only)
-
-Override these with `DEPLO_ADMIN_EMAIL` and `DEPLO_ADMIN_PASSWORD`.
-
-In production the fixed development password is never used. If
-`DEPLO_ADMIN_PASSWORD` is unset, Deplo generates a random one time admin password
-and prints it once to the server logs on first boot.
-
-## Use Postgres and Better Auth
-
-Set `DEPLO_DATABASE_URL` and Deplo switches to Postgres for all control plane
-data, and enables Better Auth at `/api/auth/*`.
+Set `DEPLO_DATABASE_URL` to switch to Postgres for all control-plane data and enable Better Auth at `/api/auth/*`:
 
 ```bash
 export DEPLO_DATABASE_URL=postgres://deplo:password@localhost:5432/deplo
@@ -115,47 +122,42 @@ bun run db:push      # create the Better Auth and state tables
 bun run dev
 ```
 
-The Docker Compose file ships a Postgres service, so `docker compose up -d`
-wires everything together automatically.
-
-### Environment variables
-
-Copy `.env.example` to `.env` and fill it in. The important ones:
+Copy `.env.example` to `.env` and fill in the important variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `DEPLO_SECRET` | Required in production. Root secret that derives all session signing and AES-256-GCM encryption keys, and is reused as the Better Auth secret. Use a long random string. |
-| `DEPLO_PUBLIC_URL` | Public URL the dashboard is served from. Used for cookies, TLS detection and the install command. |
+| `DEPLO_SECRET` | **Required in production.** Root secret deriving all session-signing and AES-256-GCM encryption keys; reused as the Better Auth secret. |
+| `DEPLO_PUBLIC_URL` | Public URL the dashboard is served from (cookies, TLS detection, install command). |
 | `DEPLO_DATABASE_URL` | Postgres connection string. When set, enables Postgres and Better Auth. |
 | `DEPLO_DATABASE_POOL_MAX` | Optional cap on the Postgres connection pool (default 10). |
 | `DEPLO_DATA_DIR` | Where the local JSON store lives when Postgres is not configured (default `./.deplo`). |
 | `DEPLO_ACME_EMAIL` | Email used for Let's Encrypt in the generated installer. |
 
-## Security
+## 🔄 Releases & CI
 
-* Sessions are HMAC signed stateless cookies (`HttpOnly`, `SameSite=Lax`,
-  `Secure` over HTTPS, 7 day expiry). When Postgres is configured, Better Auth
-  manages credential and session storage.
-* Secrets at rest (env vars, database connection strings, S3 keys) are
-  AES-256-GCM encrypted and only ever returned to the client masked.
-* Passwords are hashed with scrypt using constant time comparisons.
-* A per request CSP nonce plus hardening headers (HSTS, `X-Frame-Options: DENY`,
-  `nosniff`, `Referrer-Policy`, `Permissions-Policy`) are set in `proxy.ts`.
-* Every server action validates input with Zod and re-checks auth in the data
-  layer (`assertUser`); page level auth is never trusted alone.
-* Rate limiting protects the authentication endpoints.
+Pushing a `v*.*` tag triggers [`.github/workflows/docker-image.yml`](.github/workflows/docker-image.yml): it creates a GitHub Release and builds + pushes the image to `ghcr.io/idradev/deplo:<version>` and `:latest`.
 
-## Tech stack
+```bash
+git tag v1.2.0 && git push origin v1.2.0
+```
 
-Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, shadcn/ui in a
-black and white theme, Lucide icons, Docker, Traefik, Postgres, Drizzle, Better
-Auth and Bun.
+## 🔐 Security
 
-## Project layout
+- **Stateless sessions** — HMAC-signed cookies (`HttpOnly`, `SameSite=Lax`, `Secure` over HTTPS, 7-day expiry). Better Auth manages credentials when Postgres is configured.
+- **Secrets at rest** — env vars, DB connection strings, S3 keys and registry credentials are AES-256-GCM encrypted and only ever returned to the client masked.
+- **Passwords** — hashed with scrypt using constant-time comparisons.
+- **Hardened headers** — per-request CSP nonce plus HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy` and `Permissions-Policy` (`proxy.ts`).
+- **Defense in depth** — every server action validates input with Zod and re-checks auth in the data layer (`assertUser`); page-level auth is never trusted alone. Rate limiting protects the auth endpoints.
+
+## 🛠️ Tech stack
+
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Lucide · Docker · Traefik · Postgres · Drizzle · Better Auth · Bun
+
+## 🗂️ Project layout
 
 ```
 app/(auth)        login and signup
-app/(dashboard)   the product (overview, projects, storage, domains and more)
+app/(dashboard)   the product (overview, projects, variables, monitoring…)
 app/api/auth      Better Auth endpoints (active when Postgres is configured)
 app/install       alias that redirects to install.sh on GitHub
 install.sh        the installer (single source of truth, served from GitHub)
@@ -164,10 +166,15 @@ components/*      feature components
 lib/data          data access layer (server only, auth checked)
 lib/actions       server actions (Zod validated)
 lib/db            Postgres pool, Drizzle schema and document store
-lib/auth          session helpers and Better Auth configuration
 lib/deploy        docker-compose and Traefik generation
 lib/frameworks.ts framework detection engine
-lib/templates.ts  one click template catalog
+lib/templates.ts  one-click template catalog
 lib/crypto.ts     hashing, encryption and session signing
 proxy.ts          CSP, security headers and the optimistic auth gate
 ```
+
+## 📄 License
+
+MIT © [IdraDev](https://github.com/IdraDev)
+
+<div align="center"><sub>Built for people who'd rather own their deploys.</sub></div>

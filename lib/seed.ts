@@ -177,6 +177,45 @@ export function buildSeed(): DeploData {
     }),
   ];
 
+  // A couple of in-flight deployments so the Deployments history clearly shows
+  // which builds are still in progress vs. finished.
+  const buildingDepId = id("dpl");
+  const queuedDepId = id("dpl");
+  deployments.push(
+    {
+      id: buildingDepId,
+      projectId: projects[0].id,
+      status: "building",
+      environment: "preview",
+      commitSha: randomBytes(4).toString("hex") + randomBytes(3).toString("hex"),
+      commitMessage: "feat: experiment with edge caching",
+      commitAuthor: "IdraDev",
+      branch: "feat/edge-cache",
+      url: `https://${projects[0].slug}-preview.deplo.app`,
+      createdAt: iso(2 * MIN),
+      readyAt: null,
+      buildDurationMs: null,
+      creator: "IdraDev",
+    },
+    {
+      id: queuedDepId,
+      projectId: projects[0].id,
+      status: "queued",
+      environment: "preview",
+      commitSha: randomBytes(4).toString("hex") + randomBytes(3).toString("hex"),
+      commitMessage: "chore: tweak CI matrix",
+      commitAuthor: "IdraDev",
+      branch: "ci/matrix",
+      url: `https://${projects[0].slug}-preview.deplo.app`,
+      createdAt: iso(30 * 1000),
+      readyAt: null,
+      buildDurationMs: null,
+      creator: "IdraDev",
+    },
+  );
+  logs[buildingDepId] = buildLogs(frameworkLabel(projects[0].framework)).slice(0, 9);
+  logs[queuedDepId] = [];
+
   const dbId = id("db");
   const redisId = id("db");
 
@@ -412,6 +451,56 @@ export function buildSeed(): DeploData {
         update_available: true,
       },
     },
+    sharedEnvGroups: [
+      {
+        id: id("shenv"),
+        name: "Shared secrets",
+        description: "Common secrets injected into multiple projects.",
+        variables: [
+          {
+            key: "SENTRY_DSN",
+            valueEnc: encryptSecret(
+              "https://examplePublicKey@o0.ingest.sentry.io/0",
+            ),
+            type: "secret",
+          },
+          {
+            key: "RESEND_API_KEY",
+            valueEnc: encryptSecret("re_123456789abcdef"),
+            type: "secret",
+          },
+        ],
+        projectIds: [projects[0].id, projects[2].id],
+        createdAt: iso(20 * DAY),
+        updatedAt: iso(5 * DAY),
+      },
+      {
+        id: id("shenv"),
+        name: "Analytics",
+        description: "Public analytics keys shared across sites.",
+        variables: [
+          {
+            key: "NEXT_PUBLIC_PLAUSIBLE_DOMAIN",
+            valueEnc: encryptSecret("idragraphics.com"),
+            type: "plain",
+          },
+        ],
+        projectIds: [projects[2].id],
+        createdAt: iso(10 * DAY),
+        updatedAt: iso(10 * DAY),
+      },
+    ],
+    registries: [
+      {
+        id: id("reg"),
+        name: "GitHub Container Registry",
+        type: "ghcr",
+        registryUrl: "ghcr.io",
+        username: "IdraDev",
+        passwordEnc: encryptSecret("ghp_exampleTokenValue1234567890"),
+        createdAt: iso(18 * DAY),
+      },
+    ],
   };
 
   return data;

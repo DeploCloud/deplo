@@ -302,6 +302,44 @@ export interface Activity {
   createdAt: string;
 }
 
+export interface SharedEnvVar {
+  key: string;
+  /** encrypted at rest */
+  valueEnc: string;
+  type: "plain" | "secret";
+}
+
+/**
+ * A reusable set of environment variables defined once and attached to many
+ * projects (Coolify-style "shared variables"). Attached projects reference the
+ * single global value, so editing it here updates every attached project.
+ */
+export interface SharedEnvGroup {
+  id: ID;
+  name: string;
+  description: string;
+  variables: SharedEnvVar[];
+  /** ids of the projects this group is attached to */
+  projectIds: ID[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RegistryType = "ghcr" | "dockerhub" | "gitlab" | "generic";
+
+/** A container image registry used to pull/push images for deployments. */
+export interface Registry {
+  id: ID;
+  name: string;
+  type: RegistryType;
+  /** registry host, e.g. ghcr.io, docker.io, registry.gitlab.com */
+  registryUrl: string;
+  username: string;
+  /** encrypted at rest (password or access token) */
+  passwordEnc: string;
+  createdAt: string;
+}
+
 /**
  * Notification / anomaly-alert configuration. Deplo can deliver alerts through
  * browser push, email, a Discord webhook and a generic outbound webhook; the
@@ -342,4 +380,6 @@ export interface DeploData {
   apiTokens: ApiToken[];
   activities: Activity[];
   notificationSettings: NotificationSettings;
+  sharedEnvGroups: SharedEnvGroup[];
+  registries: Registry[];
 }

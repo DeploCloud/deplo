@@ -25,6 +25,8 @@ import { TokensPanel } from "@/components/settings/tokens-panel";
 import { TeamForm } from "@/components/settings/team-form";
 import { NotificationsPanel } from "@/components/settings/notifications-panel";
 import { UpdateCard } from "@/components/settings/update-card";
+import { RegistriesPanel } from "@/components/settings/registries-panel";
+import { listRegistries } from "@/lib/data/registries";
 
 export const metadata = { title: "Settings" };
 
@@ -35,6 +37,7 @@ export default async function SettingsPage() {
   const tokens = await listTokens();
   const members = data.users;
   const notifications = await getNotificationSettings();
+  const registries = await listRegistries();
 
   return (
     <div className="space-y-6">
@@ -50,6 +53,9 @@ export default async function SettingsPage() {
           <UnderlineTabsTrigger value="tokens">API Tokens</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="notifications">
             Notifications
+          </UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="registries">
+            Registries
           </UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="security">Security</UnderlineTabsTrigger>
         </UnderlineTabsList>
@@ -146,6 +152,11 @@ export default async function SettingsPage() {
         {/* Notifications */}
         <TabsContent value="notifications">
           <NotificationsPanel initial={notifications} />
+        </TabsContent>
+
+        {/* Registries */}
+        <TabsContent value="registries">
+          <RegistriesPanel registries={registries} />
         </TabsContent>
 
         {/* Security */}

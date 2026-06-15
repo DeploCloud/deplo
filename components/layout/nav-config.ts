@@ -9,6 +9,7 @@ import {
   Settings,
   Activity,
   LineChart,
+  Braces,
   type LucideIcon,
 } from "lucide-react";
 
@@ -64,6 +65,12 @@ export const NAV: NavSection[] = [
         href: "/domains",
         icon: Globe,
         tooltip: "Custom domains & TLS certificates",
+      },
+      {
+        label: "Variables",
+        href: "/variables",
+        icon: Braces,
+        tooltip: "Project & shared environment variables",
       },
       {
         label: "Servers",
