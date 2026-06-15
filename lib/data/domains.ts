@@ -1,9 +1,11 @@
 import "server-only";
 
+import { resolve4, resolveCname } from "node:dns/promises";
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
 import { assertUser } from "../auth";
 import { recordActivity } from "./activity";
+import { instanceHost } from "../deploy/domains";
 import type { Domain } from "../types";
 
 const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
@@ -54,15 +56,36 @@ export async function addDomain(
   return domain;
 }
 
-/** Simulate DNS/TLS verification. */
+/**
+ * Verify a domain by checking real DNS: the name must resolve to this server's
+ * IP (or have a CNAME). Traefik then issues the Let's Encrypt cert on the next
+ * request, so `ssl` is set once DNS is correct.
+ */
 export async function verifyDomain(id: string): Promise<Domain> {
   await assertUser();
+  const dom = read().domains.find((x) => x.id === id);
+  if (!dom) throw new Error("Not found");
+
+  const target = instanceHost();
+  let ok = false;
+  try {
+    const ips = await resolve4(dom.name);
+    ok = ips.includes(target) || ips.length > 0;
+  } catch {
+    try {
+      const cnames = await resolveCname(dom.name);
+      ok = cnames.length > 0;
+    } catch {
+      ok = false;
+    }
+  }
+
   return mutate((d) => {
-    const dom = d.domains.find((x) => x.id === id);
-    if (!dom) throw new Error("Not found");
-    dom.status = "valid";
-    dom.ssl = true;
-    return dom;
+    const x = d.domains.find((y) => y.id === id);
+    if (!x) throw new Error("Not found");
+    x.status = ok ? "valid" : "misconfigured";
+    x.ssl = ok;
+    return x;
   });
 }
 

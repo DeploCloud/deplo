@@ -28,11 +28,12 @@ RUN addgroup -g 1001 -S nodejs \
  && adduser -S deplo -u 1001 \
  && mkdir -p /data && chown deplo:nodejs /data
 
-COPY --from=builder --chown=deplo:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=deplo:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=deplo:nodejs /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 
-USER deplo
+# Runs as root: the control plane needs access to the mounted Docker socket to
+# build images and orchestrate containers on the host.
 EXPOSE 3000
 VOLUME ["/data"]
 CMD ["node", "server.js"]

@@ -179,6 +179,7 @@ services:
       - DEPLO_DATA_DIR=/data
       - DEPLO_SECRET=\${DEPLO_SECRET}
       - DEPLO_PUBLIC_URL=$PUBLIC_URL
+      - DEPLO_SERVER_IP=$SERVER_IP
       - DEPLO_DATABASE_URL=postgres://deplo:\${DEPLO_DB_PASSWORD}@postgres:5432/deplo
       - DEPLO_ACME_EMAIL=\${ACME_EMAIL}
     volumes:

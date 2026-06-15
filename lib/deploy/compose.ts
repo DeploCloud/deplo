@@ -5,6 +5,7 @@
  */
 import type { BuildConfig, DatabaseType } from "../types";
 import { traefikLabelsYaml } from "./traefik";
+import { sslipDomain } from "./domains";
 
 export interface AppComposeInput {
   name: string;
@@ -25,7 +26,7 @@ export function generateAppCompose(input: AppComposeInput): string {
     : "";
   const labels = traefikLabelsYaml({
     name,
-    domains: domains.length ? domains : [`${name}.deplo.app`],
+    domains: domains.length ? domains : [sslipDomain(name)],
     port: build.port,
   });
 

@@ -13,6 +13,8 @@ import {
 import type { PublicUser, Server, Team, User } from "./types";
 import { randomBytes } from "node:crypto";
 import os from "node:os";
+import { serverVersion } from "./infra/docker";
+import { hostMetrics } from "./infra/host";
 
 const SESSION_COOKIE = "deplo_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
@@ -164,19 +166,27 @@ export async function completeSetup(input: {
     avatarColor: "#50e3c2",
     createdAt: now,
   };
-  // The host running Deplo is the master server; use its real CPU/memory.
+  // The host running Deplo is the master server; probe its real specs.
+  const dockerVersion = await serverVersion();
+  let diskGb = 0;
+  try {
+    const hm = await hostMetrics(process.env.DEPLO_DATA_DIR || "/");
+    diskGb = Math.round(hm.diskTotal / 1024 ** 3);
+  } catch {
+    /* disk unknown */
+  }
   const master: Server = {
     id: `srv_${randomBytes(8).toString("hex")}`,
     name: "master",
     host: "localhost",
     type: "localhost",
     status: "online",
-    ip: "127.0.0.1",
-    dockerVersion: "",
+    ip: process.env.DEPLO_SERVER_IP?.trim() || "127.0.0.1",
+    dockerVersion,
     traefikEnabled: true,
     cpuCores: os.cpus().length || 1,
     memoryMb: Math.round(os.totalmem() / (1024 * 1024)),
-    diskGb: 0,
+    diskGb,
     cpuUsage: 0,
     memoryUsage: 0,
     diskUsage: 0,

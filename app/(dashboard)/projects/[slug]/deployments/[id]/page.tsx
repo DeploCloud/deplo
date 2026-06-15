@@ -18,6 +18,7 @@ import { CodeBlock } from "@/components/shared/code-block";
 import { cn, timeAgo } from "@/lib/utils";
 import { generateAppCompose } from "@/lib/deploy/compose";
 import { traefikLabelsYaml } from "@/lib/deploy/traefik";
+import { productionDomain } from "@/lib/deploy/domains";
 
 export const metadata = { title: "Deployment" };
 
@@ -45,7 +46,7 @@ export default async function DeploymentDetailPage(
 
   const domains = project.productionUrl
     ? [project.productionUrl.replace(/^https?:\/\//, "")]
-    : [`${project.slug}.deplo.app`];
+    : [productionDomain(project.slug)];
   const compose = generateAppCompose({
     name: project.slug,
     build: project.build,
