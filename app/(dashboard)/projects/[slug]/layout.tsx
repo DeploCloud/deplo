@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FrameworkIcon } from "@/components/shared/framework-icon";
 import { StatusDot } from "@/components/shared/status-badge";
 import { RedeployButton } from "@/components/projects/redeploy-button";
+import { ProjectControls } from "@/components/projects/project-controls";
 import { ProjectTabs } from "@/components/projects/project-tabs";
 
 export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]">) {
@@ -61,6 +62,7 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
                 </a>
               </Button>
             )}
+            <ProjectControls projectId={project.id} status={project.status} />
             <RedeployButton projectId={project.id} />
           </div>
         </div>

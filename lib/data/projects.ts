@@ -214,6 +214,51 @@ export async function renameProject(id: string, name: string): Promise<void> {
   recordActivity("project", `Renamed project to ${name}`, user.name, id);
 }
 
+/** Stop the project's running container (sets it idle). */
+export async function stopProject(id: string): Promise<void> {
+  const user = await assertUser();
+  const project = read().projects.find((x) => x.id === id);
+  if (!project) throw new Error("Project not found");
+  mutate((d) => {
+    const p = d.projects.find((x) => x.id === id)!;
+    p.status = "idle";
+    p.updatedAt = nowIso();
+  });
+  recordActivity("project", `Stopped ${project.name}`, user.name, id);
+}
+
+/** Start a previously stopped project's container. */
+export async function startProject(id: string): Promise<void> {
+  const user = await assertUser();
+  const project = read().projects.find((x) => x.id === id);
+  if (!project) throw new Error("Project not found");
+  mutate((d) => {
+    const p = d.projects.find((x) => x.id === id)!;
+    p.status = "active";
+    p.updatedAt = nowIso();
+  });
+  recordActivity("project", `Started ${project.name}`, user.name, id);
+}
+
+/** Rebuild the container image from the current source and bring it back up. */
+export async function rebuildProject(id: string): Promise<void> {
+  const user = await assertUser();
+  const project = read().projects.find((x) => x.id === id);
+  if (!project) throw new Error("Project not found");
+  const dep = newDeploymentInternal(project, {
+    environment: "production",
+    creator: user.name,
+    commitMessage: "Rebuild container",
+  });
+  mutate((d) => {
+    const p = d.projects.find((x) => x.id === id)!;
+    p.latestDeploymentId = dep.id;
+    p.status = "active";
+    p.productionUrl = dep.url;
+    p.updatedAt = nowIso();
+  });
+}
+
 export async function deleteProject(id: string): Promise<void> {
   const user = await assertUser();
   const project = read().projects.find((x) => x.id === id);

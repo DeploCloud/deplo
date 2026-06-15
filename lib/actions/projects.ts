@@ -9,6 +9,9 @@ import {
   deleteProject,
   renameProject,
   setAutoDeploy,
+  stopProject,
+  startProject,
+  rebuildProject,
   updateProjectBuild,
   updateProjectSource,
 } from "@/lib/data/projects";
@@ -104,6 +107,33 @@ export async function redeployAction(projectId: string): Promise<ActionResult> {
     revalidatePath("/deployments");
   }
   return { ok: res.ok, error: res.ok ? undefined : res.error } as ActionResult;
+}
+
+export async function stopProjectAction(id: string): Promise<ActionResult> {
+  const res = await run(() => stopProject(id));
+  if (res.ok) {
+    revalidatePath("/");
+    revalidatePath("/projects");
+  }
+  return res as ActionResult;
+}
+
+export async function startProjectAction(id: string): Promise<ActionResult> {
+  const res = await run(() => startProject(id));
+  if (res.ok) {
+    revalidatePath("/");
+    revalidatePath("/projects");
+  }
+  return res as ActionResult;
+}
+
+export async function rebuildProjectAction(id: string): Promise<ActionResult> {
+  const res = await run(() => rebuildProject(id));
+  if (res.ok) {
+    revalidatePath("/");
+    revalidatePath("/deployments");
+  }
+  return res as ActionResult;
 }
 
 export async function cancelDeploymentAction(
