@@ -13,6 +13,8 @@ import {
   FileCode2,
   Upload,
   Server as ServerIcon,
+  Pencil,
+  RotateCcw,
 } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import {
@@ -134,6 +136,10 @@ export function NewProjectWizard({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const isTemplate = Boolean(template);
+  // Templates start in a locked summary view. "Edit template" unlocks the full
+  // source/framework/build configuration so the user can tweak before deploying.
+  const [editing, setEditing] = React.useState(false);
+  const locked = isTemplate && !editing;
 
   const defaultServerId =
     servers.find((s) => s.type === "localhost")?.id ?? servers[0]?.id ?? "";
@@ -318,14 +324,25 @@ export function NewProjectWizard({
         </CardContent>
       </Card>
 
-      {isTemplate ? (
+      {locked ? (
         <Card>
-          <CardHeader>
-            <CardTitle>Template</CardTitle>
-            <CardDescription>
-              Deplo provisions the template&apos;s container stack and exposes
-              it through Traefik with automatic HTTPS.
-            </CardDescription>
+          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>Template</CardTitle>
+              <CardDescription>
+                Deplo provisions the template&apos;s container stack and exposes
+                it through Traefik with automatic HTTPS.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="size-4" />
+              Edit template
+            </Button>
           </CardHeader>
           <CardContent className="flex items-center gap-4">
             <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg border border-border bg-white p-2">
@@ -350,12 +367,29 @@ export function NewProjectWizard({
         </Card>
       ) : (
         <Card>
-          <CardHeader>
-            <CardTitle>Source</CardTitle>
-            <CardDescription>
-              Where your code or image comes from. Deplo builds and runs it in
-              Docker.
-            </CardDescription>
+          <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>Source</CardTitle>
+              <CardDescription>
+                {isTemplate
+                  ? `Customising ${template!.name}. Change the source, framework or build before deploying.`
+                  : "Where your code or image comes from. Deplo builds and runs it in Docker."}
+              </CardDescription>
+            </div>
+            {isTemplate && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditing(false);
+                  onSourceChange("docker-image");
+                }}
+              >
+                <RotateCcw className="size-4" />
+                Reset to template
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -471,7 +505,7 @@ export function NewProjectWizard({
             )}
           </div>
 
-          {!isTemplate && source !== "docker-image" && (
+          {!locked && source !== "docker-image" && (
             <div className="space-y-2">
               <Label>Framework Preset</Label>
               <Select
@@ -499,7 +533,7 @@ export function NewProjectWizard({
           )}
 
           {/* Advanced build settings  only relevant when Deplo builds the app. */}
-          {!isTemplate && source !== "docker-image" && (
+          {!locked && source !== "docker-image" && (
             <>
               <button
                 type="button"
@@ -605,6 +639,17 @@ export function NewProjectWizard({
           <Check className="size-3 text-[var(--success)]" />
           Docker + Traefik configured
         </Badge>
+        {locked && (
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil className="size-4" />
+            Edit
+          </Button>
+        )}
         <Button onClick={deploy} disabled={pending} size="lg">
           <Rocket className="size-4" />
           {pending ? "Deploying…" : "Deploy"}
