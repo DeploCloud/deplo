@@ -5,10 +5,55 @@ import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
 import { assertUser } from "../auth";
 import { recordActivity } from "./activity";
-import { instanceHost } from "../deploy/domains";
+import { instanceHost, sslipDomain } from "../deploy/domains";
 import type { Domain } from "../types";
 
 const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
+
+/**
+ * Generated sslip.io hostname for a project's slug on a given server IP. Pure
+ * helper used by both the deploy engine and project creation so the domain
+ * baked into a stack always matches the one shown in the Domains section.
+ */
+export function autoDomainName(slug: string, ip: string): string {
+  return sslipDomain(slug, ip);
+}
+
+/**
+ * Ensure a project has a registered primary domain and return its hostname.
+ *
+ * Runs without an authenticated user (the deploy pipeline is fire-and-forget),
+ * so it talks to the store directly. If a `preferred` name is given (e.g. the
+ * domain a template baked into its env), it is used as-is; otherwise the
+ * sslip.io hostname for the slug is generated. The first domain on a project is
+ * marked primary. Idempotent: returns the existing primary if one exists.
+ */
+export function ensureAutoDomain(
+  projectId: string,
+  opts: { slug: string; ip: string; preferred?: string },
+): string {
+  const existing = read().domains.filter((d) => d.projectId === projectId);
+  const primary = existing.find((d) => d.primary) ?? existing[0];
+  if (primary) return primary.name;
+
+  const name = (opts.preferred?.trim() || autoDomainName(opts.slug, opts.ip))
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "");
+  const domain: Domain = {
+    id: newId("dom"),
+    projectId,
+    name,
+    status: "valid",
+    primary: true,
+    redirectTo: null,
+    ssl: true,
+    source: "auto",
+    createdAt: nowIso(),
+  };
+  mutate((d) => d.domains.push(domain));
+  return name;
+}
 
 export async function listDomains(
   projectId?: string,

@@ -27,10 +27,27 @@ import { NotificationsPanel } from "@/components/settings/notifications-panel";
 import { UpdateCard } from "@/components/settings/update-card";
 import { RegistriesPanel } from "@/components/settings/registries-panel";
 import { listRegistries } from "@/lib/data/registries";
+import { GithubPanel } from "@/components/settings/github-panel";
+import { listGithubApps } from "@/lib/data/github";
 
 export const metadata = { title: "Settings" };
 
-export default async function SettingsPage() {
+const TABS = [
+  "general",
+  "members",
+  "tokens",
+  "notifications",
+  "registries",
+  "git",
+  "security",
+];
+
+export default async function SettingsPage(props: PageProps<"/settings">) {
+  const sp = await props.searchParams;
+  const tabParam = Array.isArray(sp.tab) ? sp.tab[0] : sp.tab;
+  const defaultTab = tabParam && TABS.includes(tabParam) ? tabParam : "general";
+  const gitStatus = Array.isArray(sp.git) ? sp.git[0] : sp.git;
+
   const user = await getCurrentUser();
   const data = read();
   const team = data.teams[0];
@@ -38,6 +55,7 @@ export default async function SettingsPage() {
   const members = data.users;
   const notifications = await getNotificationSettings();
   const registries = await listRegistries();
+  const githubApps = await listGithubApps();
 
   return (
     <div className="space-y-6">
@@ -46,7 +64,7 @@ export default async function SettingsPage() {
         description="Manage your team, members, API tokens and security."
       />
 
-      <Tabs defaultValue="general">
+      <Tabs defaultValue={defaultTab}>
         <UnderlineTabsList>
           <UnderlineTabsTrigger value="general">General</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="members">Members</UnderlineTabsTrigger>
@@ -57,6 +75,7 @@ export default async function SettingsPage() {
           <UnderlineTabsTrigger value="registries">
             Registries
           </UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="git">Git</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="security">Security</UnderlineTabsTrigger>
         </UnderlineTabsList>
 
@@ -157,6 +176,11 @@ export default async function SettingsPage() {
         {/* Registries */}
         <TabsContent value="registries">
           <RegistriesPanel registries={registries} />
+        </TabsContent>
+
+        {/* Git */}
+        <TabsContent value="git">
+          <GithubPanel apps={githubApps} gitStatus={gitStatus} />
         </TabsContent>
 
         {/* Security */}

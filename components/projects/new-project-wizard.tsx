@@ -46,6 +46,9 @@ import { FRAMEWORK_LIST, FRAMEWORKS, buildConfigFor } from "@/lib/frameworks";
 import type { DeploySource, FrameworkId } from "@/lib/types";
 import { createProjectAction } from "@/lib/actions/projects";
 import { cn, serverLabel } from "@/lib/utils";
+import { GithubRepoPicker, type GithubSelection } from "@/components/projects/github-repo-picker";
+import { GithubConnectButton } from "@/components/projects/github-connect-button";
+import type { GithubInstallationDTO } from "@/lib/data/github";
 
 export interface WizardServer {
   id: string;
@@ -60,6 +63,12 @@ export interface WizardTemplate {
   logo: string | null;
   compose: string;
   env: { key: string; value: string }[];
+  /** Which compose service + port Traefik exposes for this template. */
+  expose: { service: string; port: number } | null;
+  /** Pre-generated sslip.io domain baked into the template's env. */
+  autoDomain: string | null;
+  /** Template config files to materialise at deploy time. */
+  mounts: { filePath: string; content: string }[];
 }
 
 /** Lightweight client-side repo -> framework heuristic (Vercel-style guess). */
@@ -133,15 +142,20 @@ export function NewProjectWizard({
   template,
   presetRepo,
   presetName,
+  installations,
 }: {
   servers: WizardServer[];
   template?: WizardTemplate;
   presetRepo?: string;
   presetName?: string;
+  installations: GithubInstallationDTO[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const isTemplate = Boolean(template);
+  const [ghSelection, setGhSelection] = React.useState<GithubSelection | null>(
+    null,
+  );
   // Templates start in a locked summary view. "Edit template" unlocks the full
   // source/framework/build configuration so the user can tweak before deploying.
   const [editing, setEditing] = React.useState(false);
@@ -210,6 +224,11 @@ export function NewProjectWizard({
     }
   }
 
+  // Deploy the template's compose stack only while the source is still the
+  // template's own (docker-image). If the user edited the template and switched
+  // to a real repo/image source, that source wins and no compose is sent.
+  const useCompose = isTemplate && source === "docker-image";
+
   function deploy() {
     if (!name.trim()) {
       toast.error("Enter a project name");
@@ -225,11 +244,24 @@ export function NewProjectWizard({
       url: string;
       repo: string;
       branch: string;
+      installationId?: string | null;
     };
     let image: string | null = null;
     let projectFramework = framework;
 
-    if (source === "github" || source === "git") {
+    if (source === "github") {
+      if (!ghSelection) {
+        toast.error("Select a repository to deploy");
+        return;
+      }
+      repo = {
+        provider: "github",
+        url: `https://github.com/${ghSelection.fullName}`,
+        repo: ghSelection.fullName,
+        branch: ghSelection.branch || "main",
+        installationId: ghSelection.installationId,
+      };
+    } else if (source === "git") {
       const parsed = parseRepo(repoUrl);
       if (!parsed) {
         toast.error("Enter a valid Git repository URL");
@@ -276,7 +308,7 @@ export function NewProjectWizard({
         source,
         serverId,
         dockerImage: image,
-        compose: isTemplate ? compose : null,
+        compose: useCompose ? compose : null,
         env: isTemplate
           ? envRows.filter((e) => e.key.trim())
           : undefined,
@@ -291,6 +323,10 @@ export function NewProjectWizard({
           port: build.port,
         },
         autoDeploy: usesGit ? autoDeploy : false,
+        composeService: useCompose ? template!.expose?.service ?? null : null,
+        composePort: useCompose ? template!.expose?.port ?? null : null,
+        autoDomain: useCompose ? template!.autoDomain : null,
+        mounts: useCompose ? template!.mounts : null,
       });
       if (res.ok && res.data) {
         toast.success("Project created  deploying…");
@@ -324,7 +360,7 @@ export function NewProjectWizard({
                 placeholder="my-app"
               />
             </div>
-            {usesGit && (
+            {usesGit && source !== "github" && (
               <div className="space-y-2">
                 <Label htmlFor="branch">Production Branch</Label>
                 <div className="relative">
@@ -459,7 +495,10 @@ export function NewProjectWizard({
                 <div>
                   <p className="text-sm font-medium">Automatic deployments</p>
                   <p className="text-xs text-muted-foreground">
-                    Deploy on every push to {branch || "main"}.
+                    Deploy on every push to{" "}
+                    {(source === "github" ? ghSelection?.branch : branch) ||
+                      "main"}
+                    .
                   </p>
                 </div>
               </div>
@@ -556,9 +595,33 @@ export function NewProjectWizard({
               })}
             </div>
 
-            {(source === "github" ||
-              source === "git" ||
-              source === "dockerfile") && (
+            {source === "github" &&
+              (installations.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
+                  <GitHubIcon className="size-6 text-muted-foreground" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Connect GitHub to import a repo</p>
+                    <p className="text-xs text-muted-foreground">
+                      Deplo creates a GitHub App with only the permissions it
+                      needs, then you pick which repositories it can access.
+                    </p>
+                  </div>
+                  <GithubConnectButton size="sm" />
+                </div>
+              ) : (
+                <GithubRepoPicker
+                  installations={installations}
+                  onChange={(sel) => {
+                    setGhSelection(sel);
+                    if (sel && !name) {
+                      setName(sel.fullName.split("/")[1] ?? "");
+                      applyFramework(guessFramework(sel.fullName));
+                    }
+                  }}
+                />
+              ))}
+
+            {(source === "git" || source === "dockerfile") && (
               <div className="space-y-2">
                 <Label htmlFor="repo">
                   {source === "dockerfile"

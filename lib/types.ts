@@ -1,9 +1,3 @@
-/**
- * Deplo domain model.
- * Plain serializable types shared by the data layer, server actions and UI.
- * Secret fields are stored encrypted at rest and never sent to the client raw.
- */
-
 export type ID = string;
 
 export type Role = "owner" | "member" | "viewer";
@@ -102,6 +96,12 @@ export interface GitRepo {
   url: string;
   repo: string; // owner/name
   branch: string;
+  /**
+   * For private GitHub repos cloned through a connected GitHub App: the id of
+   * the installation whose short-lived token authenticates the clone. Absent
+   * for public repos or plain Git URLs.
+   */
+  installationId?: string | null;
 }
 
 export interface BuildConfig {
@@ -129,6 +129,18 @@ export interface Project {
   dockerImage: string | null;
   /** Editable docker-compose stack for template/compose deploys (else null). */
   compose: string | null;
+  /**
+   * For multi-service compose/template deploys: which service Traefik exposes
+   * and on which container port. Null for single-image/built projects (the
+   * build config's port is used instead).
+   */
+  expose: { service: string; port: number } | null;
+  /**
+   * Config files a template bind-mounts into its stack (e.g. an app's
+   * configuration.yml). Written next to the stack at deploy time with the same
+   * generated secrets the env uses. Null/empty for most projects.
+   */
+  mounts?: { filePath: string; content: string }[] | null;
   build: BuildConfig;
   productionUrl: string | null;
   status: ProjectStatus;
@@ -206,6 +218,12 @@ export interface Domain {
   primary: boolean;
   redirectTo: string | null;
   ssl: boolean;
+  /**
+   * "auto"  the zero-config sslip.io hostname Deplo generates for every
+   * deployment (already routed, no DNS setup). "custom"  a domain the user
+   * added and must point at this server. Defaults to "custom" when absent.
+   */
+  source?: "auto" | "custom";
   createdAt: string;
 }
 
@@ -364,6 +382,48 @@ export interface NotificationSettings {
   events: Record<NotificationEvent, boolean>;
 }
 
+/**
+ * A GitHub App connected to this Deplo instance, created through GitHub's App
+ * Manifest flow (one click  no manual copy/paste of ids and keys, the way
+ * Dokploy/Coolify do it). The private key and secrets are encrypted at rest and
+ * never leave the server; the dashboard only ever sees the public fields.
+ */
+export interface GithubApp {
+  id: ID;
+  /** Numeric GitHub App id (used as the JWT issuer). */
+  appId: number;
+  /** URL slug, e.g. used to build the install URL github.com/apps/<slug>. */
+  slug: string;
+  name: string;
+  clientId: string;
+  /** encrypted at rest */
+  clientSecretEnc: string;
+  /** encrypted at rest  verifies inbound webhook signatures */
+  webhookSecretEnc: string;
+  /** encrypted at rest  PEM used to sign installation-token JWTs (RS256) */
+  privateKeyEnc: string;
+  htmlUrl: string;
+  createdAt: string;
+}
+
+/**
+ * An installation of a connected GitHub App on a user/org account. The
+ * installation id is what mints short-lived access tokens to list and clone the
+ * repositories the user granted access to.
+ */
+export interface GithubInstallation {
+  id: ID;
+  /** FK to the GithubApp this installation belongs to. */
+  appId: ID;
+  /** Numeric GitHub installation id. */
+  installationId: number;
+  /** Account the app was installed on (login + kind). */
+  accountLogin: string;
+  accountType: "User" | "Organization";
+  avatarUrl: string;
+  createdAt: string;
+}
+
 /** Whole persisted database shape. */
 export interface DeploData {
   users: User[];
@@ -382,4 +442,6 @@ export interface DeploData {
   notificationSettings: NotificationSettings;
   sharedEnvGroups: SharedEnvGroup[];
   registries: Registry[];
+  githubApps: GithubApp[];
+  githubInstallations: GithubInstallation[];
 }

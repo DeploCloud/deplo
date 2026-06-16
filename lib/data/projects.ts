@@ -20,6 +20,8 @@ import {
   stopContainer,
   startContainer,
 } from "../deploy/build";
+import { ensureAutoDomain } from "./domains";
+import { instanceHost } from "../deploy/domains";
 import { teardownProject } from "./deployments";
 
 /** Heuristic: treat secret-looking keys as masked secrets. */
@@ -75,6 +77,13 @@ export interface CreateProjectInput {
   serverId?: string;
   build?: Partial<BuildConfig>;
   autoDeploy?: boolean;
+  /** Compose/template deploys: which service + port Traefik exposes. */
+  composeService?: string | null;
+  composePort?: number | null;
+  /** Pre-generated domain a template baked into its env; kept consistent. */
+  autoDomain?: string | null;
+  /** Template config files to materialise at deploy time. */
+  mounts?: { filePath: string; content: string }[] | null;
 }
 
 export async function createProject(
@@ -109,6 +118,11 @@ export async function createProject(
     repo: input.repo,
     dockerImage: input.dockerImage ?? null,
     compose: input.compose ?? null,
+    expose:
+      input.composeService && input.composePort
+        ? { service: input.composeService, port: input.composePort }
+        : null,
+    mounts: input.mounts?.length ? input.mounts : null,
     build: buildConfigFor(input.framework, input.build),
     productionUrl: null,
     status: "queued",
@@ -138,6 +152,17 @@ export async function createProject(
     d.envVars.push(...envVars);
   });
   recordActivity("project", `Created project ${project.name}`, user.name, project.id);
+
+  // Register the generated sslip.io domain so it shows up in the project's
+  // Domains section immediately and the deploy routes to the same hostname a
+  // template baked into its env.
+  const ip =
+    server.type === "localhost" ? instanceHost() : server.ip || instanceHost();
+  ensureAutoDomain(project.id, {
+    slug,
+    ip,
+    preferred: input.autoDomain ?? undefined,
+  });
 
   // Kick off the first real build + deploy. Runs in the background and flips
   // the project to active (or error) once the container is up.

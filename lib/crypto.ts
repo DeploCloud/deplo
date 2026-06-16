@@ -154,6 +154,48 @@ export function sha256Hex(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
+/* ------------------------------------------------------------------ */
+/* Stateless signed state (CSRF tokens for external OAuth-style flows) */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Sign an arbitrary short string into a tamper-proof, expiring token. Used to
+ * carry CSRF state through external redirect flows (e.g. the GitHub App
+ * manifest callback) without server-side storage.
+ */
+export function signState(data: string, ttlSeconds = 600): string {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const body = b64url(Buffer.from(JSON.stringify({ d: data, exp }), "utf8"));
+  const sig = b64url(
+    createHmac("sha256", deriveKey("state")).update(body).digest(),
+  );
+  return `${body}.${sig}`;
+}
+
+/** Verify a token from `signState`; returns the original data or null. */
+export function verifyState(token: string | undefined): string | null {
+  if (!token) return null;
+  const [body, sig] = token.split(".");
+  if (!body || !sig) return null;
+  const expected = b64url(
+    createHmac("sha256", deriveKey("state")).update(body).digest(),
+  );
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const payload = JSON.parse(fromB64url(body).toString("utf8")) as {
+      d: string;
+      exp: number;
+    };
+    if (typeof payload.exp !== "number" || payload.exp * 1000 < Date.now())
+      return null;
+    return payload.d;
+  } catch {
+    return null;
+  }
+}
+
 export function randomToken(bytes = 24): string {
   return b64url(randomBytes(bytes));
 }

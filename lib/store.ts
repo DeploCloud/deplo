@@ -30,6 +30,23 @@ const DATA_DIR = process.env.DEPLO_DATA_DIR || join(process.cwd(), ".deplo");
 const DATA_FILE = join(DATA_DIR, "data.json");
 const USE_PG = isPostgresEnabled();
 
+/**
+ * Backfill collections added in later versions so a document persisted by an
+ * older build never yields `undefined` where the data layer expects an array.
+ * Runs on every hydrate from either backend; mutates and returns the same
+ * object. Add new top-level collections here when the schema grows.
+ */
+function normalize(data: DeploData): DeploData {
+  const seed = buildSeed();
+  const d = data as unknown as Record<string, unknown>;
+  for (const key of Object.keys(seed) as (keyof DeploData)[]) {
+    if (d[key] === undefined || d[key] === null) {
+      d[key] = seed[key] as unknown;
+    }
+  }
+  return data;
+}
+
 let cache: DeploData | null = null;
 let hydrated = false;
 let hydrating: Promise<void> | null = null;
@@ -46,7 +63,7 @@ function loadFromFile(): DeploData {
   ensureDir();
   if (existsSync(DATA_FILE)) {
     try {
-      return JSON.parse(readFileSync(DATA_FILE, "utf8")) as DeploData;
+      return normalize(JSON.parse(readFileSync(DATA_FILE, "utf8")) as DeploData);
     } catch {
       // corrupt file  fall through to reseed
     }
@@ -89,7 +106,7 @@ export async function ensureStoreReady(): Promise<void> {
     hydrating = (async () => {
       const existing = await loadDocument();
       if (existing) {
-        cache = existing;
+        cache = normalize(existing);
       } else {
         cache = buildSeed();
         await saveDocument(cache);

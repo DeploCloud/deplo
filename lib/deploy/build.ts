@@ -2,7 +2,7 @@ import "server-only";
 
 import { mkdtemp, mkdir, rm, writeFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
 import { decryptSecret } from "../crypto";
@@ -11,7 +11,10 @@ import { docker, ensureNetwork } from "../infra/docker";
 import { spawnStream } from "../infra/exec";
 import { cloneStream, revParse } from "../infra/git";
 import { generateDockerfile } from "./dockerfile";
-import { productionDomain, previewDomain, instanceHost } from "./domains";
+import { previewDomain, instanceHost } from "./domains";
+import { buildComposeStack } from "./compose-stack";
+import { ensureAutoDomain } from "../data/domains";
+import { installationCloneUrl } from "../github/app";
 import type { Deployment, DeploymentEnvironment, LogLine, Server } from "../types";
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
@@ -170,9 +173,12 @@ export function startDeployment(
   const ip = serverIp(server);
   const environment = opts.environment ?? "production";
   const branch = opts.branch ?? project.repo?.branch ?? "main";
+  // Production routes through the project's registered primary domain (created
+  // here if missing) so the generated hostname is the same one shown in the
+  // Domains section and baked into a template's env. Previews are ephemeral.
   const domain =
     environment === "production"
-      ? productionDomain(project.slug, ip)
+      ? ensureAutoDomain(projectId, { slug: project.slug, ip })
       : previewDomain(project.slug, newId("").slice(1, 7), ip);
   const url = `https://${domain}`;
   const depId = newId("dpl");
@@ -230,7 +236,7 @@ async function runDeployment(depId: string): Promise<void> {
   const ip = serverIp(server);
   const domain =
     dep.environment === "production"
-      ? productionDomain(slug, ip)
+      ? ensureAutoDomain(project.id, { slug, ip })
       : dep.url.replace(/^https?:\/\//, "");
 
   setDep(depId, { status: "building" });
@@ -239,6 +245,25 @@ async function runDeployment(depId: string): Promise<void> {
   try {
     await mkdir(STACK_DIR, { recursive: true });
     await ensureNetwork("deplo");
+
+    // Multi-service compose / one-click template deploy: deploy the project's
+    // own compose stack, wired to Traefik on the generated domain. The compose
+    // interpolates its ${VARS} from an env-file we write alongside it. A real
+    // repo/image source takes precedence over a stale compose (e.g. a template
+    // edited and switched to GitHub).
+    if (project.compose && project.compose.trim() && !project.repo && !project.dockerImage) {
+      await deployComposeStack({
+        depId,
+        project,
+        name,
+        slug,
+        stackFile,
+        domain,
+        environment: dep.environment,
+        started,
+      });
+      return;
+    }
 
     let imageRef: string;
     let commitSha = "";
@@ -250,8 +275,15 @@ async function runDeployment(depId: string): Promise<void> {
     } else if (project.repo) {
       const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
       try {
+        // Private GitHub repos clone through the connected App's short-lived
+        // installation token; everything else uses the URL as-is. The token is
+        // never logged.
+        const cloneUrl = await installationCloneUrl(
+          project.repo.url,
+          project.repo.installationId ?? null,
+        );
         log(depId, "command", `git clone ${project.repo.url} (${dep.branch})`);
-        await cloneStream(project.repo.url, dep.branch, work, (line) =>
+        await cloneStream(cloneUrl, dep.branch, work, (line) =>
           log(depId, "info", line),
         );
         commitSha = await revParse(work);
@@ -332,7 +364,10 @@ async function runDeployment(depId: string): Promise<void> {
         buildDurationMs,
         commitSha: commitSha || dep.commitSha,
       });
-      setProject(project.id, { status: "active", productionUrl: dep.url });
+      setProject(project.id, {
+        status: "active",
+        ...(dep.environment === "production" ? { productionUrl: dep.url } : {}),
+      });
       log(depId, "info", `Deployment ready at ${dep.url}`);
     } else {
       setDep(depId, { status: "error", buildDurationMs });
@@ -346,27 +381,194 @@ async function runDeployment(depId: string): Promise<void> {
   }
 }
 
-/** Stop a project's container. */
+/**
+ * Deploy a project's docker-compose stack (templates / multi-service apps).
+ * Writes the stack and an env-file next to it, brings it up wired to Traefik on
+ * the generated domain, and waits for the exposed service to come up.
+ */
+async function deployComposeStack(opts: {
+  depId: string;
+  project: {
+    id: string;
+    compose: string | null;
+    expose: { service: string; port: number } | null;
+    mounts?: { filePath: string; content: string }[] | null;
+  };
+  name: string;
+  slug: string;
+  stackFile: string;
+  domain: string;
+  environment: DeploymentEnvironment;
+  started: number;
+}): Promise<void> {
+  const { depId, project, name, slug, stackFile, domain, environment, started } =
+    opts;
+
+  // Materialise any template config files into the project's isolated files dir
+  // (referenced by the compose as ../files/<x>) BEFORE the stack comes up.
+  const filesDir = join(STACK_DIR, "files", slug);
+  if (project.mounts?.length) {
+    await writeMountFiles(filesDir, project.mounts, depId);
+  }
+
+  const stackYaml = buildComposeStack({
+    compose: project.compose ?? "",
+    name,
+    slug,
+    projectId: project.id,
+    domain,
+    expose: project.expose ?? null,
+    filesDir,
+  });
+  await writeFile(stackFile, stackYaml);
+
+  // Env-file for ${VAR} interpolation. Written 0600 since it holds secrets.
+  const env = projectEnv(project.id);
+  const envFile = join(STACK_DIR, `${slug}.env`);
+  await writeFile(envFile, renderEnvFile(env), { mode: 0o600 });
+
+  log(depId, "command", "docker compose up -d");
+  await streamDocker(
+    [
+      "compose",
+      "-p",
+      name,
+      "-f",
+      stackFile,
+      "--env-file",
+      envFile,
+      "up",
+      "-d",
+      "--remove-orphans",
+    ],
+    depId,
+    600_000,
+  );
+
+  log(depId, "info", "Waiting for the stack to become healthy…");
+  const running = await waitStackRunning(slug, 90_000);
+  const buildDurationMs = Date.now() - started;
+  const url = `https://${domain}`;
+
+  if (running) {
+    setDep(depId, { status: "ready", readyAt: nowIso(), buildDurationMs });
+    setProject(project.id, {
+      status: "active",
+      ...(environment === "production" ? { productionUrl: url } : {}),
+    });
+    log(depId, "info", `Deployment ready at ${url}`);
+  } else {
+    setDep(depId, { status: "error", buildDurationMs });
+    setProject(project.id, { status: "error" });
+    log(depId, "error", "Stack did not reach a running state");
+  }
+}
+
+/**
+ * Write template config files into the project's files dir, guarding against
+ * path escape. Each filePath is treated as relative to filesDir; any `..`
+ * segment or absolute path is rejected.
+ */
+async function writeMountFiles(
+  filesDir: string,
+  mounts: { filePath: string; content: string }[],
+  depId: string,
+): Promise<void> {
+  for (const mount of mounts) {
+    const rel = mount.filePath.replace(/^\.\/+/, "").replace(/^\/+/, "");
+    if (rel.split(/[\\/]/).includes("..") || rel === "") {
+      log(depId, "warn", `Skipping unsafe mount path: ${mount.filePath}`);
+      continue;
+    }
+    const target = join(filesDir, rel);
+    await mkdir(dirname(target), { recursive: true });
+    // 0644: these are bind-mounted into the app container, which may run as a
+    // non-root user and must be able to read its own config.
+    await writeFile(target, mount.content, { mode: 0o644 });
+  }
+}
+
+/** Serialize env to docker-compose env-file lines (KEY=VALUE, no quoting). */
+function renderEnvFile(env: Record<string, string>): string {
+  return (
+    Object.entries(env)
+      // env-file values are literal; strip newlines that would break the format.
+      .map(([k, v]) => `${k}=${String(v).replace(/\r?\n/g, " ")}`)
+      .join("\n") + "\n"
+  );
+}
+
+/** Wait for a compose stack's exposed (Traefik-labelled) service to be running. */
+async function waitStackRunning(slug: string, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    try {
+      const { stdout } = await docker(
+        [
+          "ps",
+          "-q",
+          "--filter",
+          `label=deplo.slug=${slug}`,
+          "--filter",
+          "status=running",
+        ],
+        { timeout: 5_000 },
+      );
+      if (stdout.trim()) return true;
+    } catch {
+      /* not up yet */
+    }
+    await sleep(2_000);
+  }
+  return false;
+}
+
+function stackFilePath(slug: string): string {
+  return join(STACK_DIR, `${slug}.yml`);
+}
+
+/** Stop a project's stack (compose-managed; falls back to the single container). */
 export async function stopContainer(slug: string): Promise<void> {
+  const stackFile = stackFilePath(slug);
+  if (await fileExists(stackFile)) {
+    await docker(["compose", "-p", `deplo-${slug}`, "-f", stackFile, "stop"], {
+      timeout: 60_000,
+    });
+    return;
+  }
   await docker(["stop", `deplo-${slug}`], { timeout: 30_000 });
 }
 
-/** Start a previously stopped container. */
+/** Start a previously stopped stack. */
 export async function startContainer(slug: string): Promise<void> {
+  const stackFile = stackFilePath(slug);
+  if (await fileExists(stackFile)) {
+    await docker(["compose", "-p", `deplo-${slug}`, "-f", stackFile, "start"], {
+      timeout: 60_000,
+    });
+    return;
+  }
   await docker(["start", `deplo-${slug}`], { timeout: 30_000 });
 }
 
 /** Stop and remove a project's stack. */
 export async function destroyStack(slug: string): Promise<void> {
-  const stackFile = join(STACK_DIR, `${slug}.yml`);
+  const stackFile = stackFilePath(slug);
+  const envFile = join(STACK_DIR, `${slug}.env`);
+  const args = ["compose", "-p", `deplo-${slug}`, "-f", stackFile];
+  if (await fileExists(envFile)) args.push("--env-file", envFile);
   try {
-    await docker(["compose", "-p", `deplo-${slug}`, "-f", stackFile, "down"], {
-      timeout: 60_000,
-    });
+    await docker([...args, "down", "--remove-orphans"], { timeout: 90_000 });
   } catch {
-    // Fall back to removing the container directly.
+    // Fall back to removing a single labelled container directly.
     await docker(["rm", "-f", `deplo-${slug}`], { timeout: 30_000 }).catch(
       () => {},
     );
   }
+  await rm(stackFile, { force: true }).catch(() => {});
+  await rm(envFile, { force: true }).catch(() => {});
+  await rm(join(STACK_DIR, "files", slug), {
+    recursive: true,
+    force: true,
+  }).catch(() => {});
 }

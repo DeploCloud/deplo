@@ -232,3 +232,7 @@ else
   echo "  $ENV_FILE (and ACME_EMAIL) and re-run this script."
 fi
 echo ""
+echo "  GitHub: connect a repo from Settings > Git. GitHub must be able to"
+echo "  reach $PUBLIC_URL for the App callback and webhooks (open the port or"
+echo "  use a domain). A real domain is recommended for private-repo deploys."
+echo ""

@@ -6,6 +6,8 @@ import { NewProjectWizard } from "@/components/projects/new-project-wizard";
 import { getTemplate } from "@/lib/templates";
 import { getTemplateBlueprint } from "@/lib/templates-blueprint";
 import { listServers } from "@/lib/data/servers";
+import { listGithubInstallations } from "@/lib/data/github";
+import { instanceHost, sslipDomain } from "@/lib/deploy/domains";
 
 export const metadata = { title: "New Project" };
 
@@ -15,12 +17,25 @@ export default async function NewProjectPage(props: PageProps<"/new">) {
   const repoParam = Array.isArray(sp.repo) ? sp.repo[0] : sp.repo;
 
   const template = templateId ? getTemplate(templateId) : undefined;
-  const blueprint = template ? getTemplateBlueprint(template.id) : null;
+  const presetName = template?.name
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  // Generate the template's public hostname up front and bake it into the
+  // blueprint env so the value the app sees matches the domain Traefik routes
+  // and the one shown in the project's Domains section.
+  const autoDomain = template
+    ? sslipDomain(presetName || template.id, instanceHost())
+    : null;
+  const blueprint = template
+    ? getTemplateBlueprint(template.id, { domain: autoDomain ?? undefined })
+    : null;
   const servers = (await listServers()).map((s) => ({
     id: s.id,
     name: s.name,
     type: s.type,
   }));
+  const installations = await listGithubInstallations();
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -48,6 +63,7 @@ export default async function NewProjectPage(props: PageProps<"/new">) {
 
       <NewProjectWizard
         servers={servers}
+        installations={installations}
         template={
           template
             ? {
@@ -57,11 +73,14 @@ export default async function NewProjectPage(props: PageProps<"/new">) {
                 logo: template.logo,
                 compose: blueprint?.compose ?? "",
                 env: blueprint?.env ?? [],
+                expose: blueprint?.expose ?? null,
+                autoDomain,
+                mounts: blueprint?.mounts ?? [],
               }
             : undefined
         }
         presetRepo={repoParam}
-        presetName={template?.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-")}
+        presetName={presetName}
       />
     </div>
   );

@@ -46,7 +46,9 @@ export function proxy(request: NextRequest) {
     `connect-src 'self'`,
     `object-src 'none'`,
     `base-uri 'self'`,
-    `form-action 'self'`,
+    // github.com is allowed so the one-click GitHub App manifest flow can POST
+    // the app manifest to GitHub from the browser.
+    `form-action 'self' https://github.com`,
     `frame-ancestors 'none'`,
     isHttps ? `upgrade-insecure-requests` : ``,
   ]

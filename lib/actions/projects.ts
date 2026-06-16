@@ -41,6 +41,7 @@ const repoSchema = z.object({
   url: z.string().url(),
   repo: z.string().min(1),
   branch: z.string().min(1),
+  installationId: z.string().min(1).nullable().optional(),
 });
 
 const createSchema = z.object({
@@ -72,6 +73,19 @@ const createSchema = z.object({
     })
     .optional(),
   autoDeploy: z.boolean().optional(),
+  composeService: z.string().max(120).nullable().optional(),
+  composePort: z.number().int().min(1).max(65535).nullable().optional(),
+  autoDomain: z.string().max(253).nullable().optional(),
+  mounts: z
+    .array(
+      z.object({
+        filePath: z.string().min(1).max(256),
+        content: z.string().max(100000),
+      })
+    )
+    .max(20)
+    .nullable()
+    .optional(),
 });
 
 export async function createProjectAction(
@@ -93,6 +107,10 @@ export async function createProjectAction(
       repo: parsed.data.repo,
       build: parsed.data.build,
       autoDeploy: parsed.data.autoDeploy,
+      composeService: parsed.data.composeService,
+      composePort: parsed.data.composePort,
+      autoDomain: parsed.data.autoDomain,
+      mounts: parsed.data.mounts,
     });
     return { slug: project.slug };
   });

@@ -2,13 +2,6 @@ import "server-only";
 
 import type { DeploData } from "./types";
 
-/**
- * A fresh Deplo store is EMPTY. There is no demo/mock data anywhere: every
- * project, server, database, domain, deployment and log is created only by real
- * user actions and real infrastructure. On first run the store has no users, so
- * the app routes to the setup wizard, which provisions the master server from
- * the real host (see `completeSetup` in lib/auth.ts).
- */
 export function buildSeed(): DeploData {
   return {
     users: [],
@@ -41,5 +34,7 @@ export function buildSeed(): DeploData {
     },
     sharedEnvGroups: [],
     registries: [],
+    githubApps: [],
+    githubInstallations: [],
   };
 }
