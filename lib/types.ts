@@ -202,7 +202,8 @@ export type DevImagePreset = "node" | "python" | "go" | "rust" | "php" | "java";
 /**
  * The runtime a port belongs to — a two-valued narrowing of `EnvTarget`
  * (`preview` reuses the production port). Each target has exactly one port;
- * read through `portFor(project, target)`.
+ * read through `portFor(project, target)` in `lib/deploy/ports.ts` (and
+ * `effectivePortFor` to fold in a per-domain override).
  */
 export type PortTarget = "production" | "development";
 

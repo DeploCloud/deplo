@@ -124,5 +124,7 @@ The runtime a port belongs to: `production` or `development` (a two-valued narro
 of env target — preview reuses the production port). Each target has exactly one port;
 this is a per-target *map*, not a list, so two ports can never claim the same target.
 Realized as `build.port` (production, image-baked) + `dev.port` (development), read
-through a single `portFor(project, target)` accessor.
+through a single `portFor(project, target)` accessor in `lib/deploy/ports.ts`. A
+hostname's *effective port* — its per-domain override (single-image projects only)
+folded onto the target default — comes from `effectivePortFor` in the same module.
 _Avoid_: container port (ambiguous about which runtime), exposed port.

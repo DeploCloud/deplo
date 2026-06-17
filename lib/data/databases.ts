@@ -8,7 +8,7 @@ import { assertUser } from "../auth";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
 import { ensureNetwork, docker } from "../infra/docker";
-import { generateDatabaseCompose } from "../deploy/compose";
+import { generateDatabaseCompose } from "../deploy/database-compose";
 import type { Database, DatabaseType } from "../types";
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";

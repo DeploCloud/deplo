@@ -15,7 +15,9 @@ import { installationCloneUrl } from "../github/app";
 import { extractArchive, rejectSymlinks } from "./upload";
 import { ensureGateway } from "../infra/ssh-gateway";
 import { certResolver, instanceHost, sslipDomain } from "./domains";
-import type { DevConfig, PortTarget, Project } from "../types";
+import { portFor } from "./ports";
+import { traefikRouterLabels } from "./routing";
+import type { DevConfig, Project } from "../types";
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 const STACK_DIR = join(DATA_DIR, "stacks");
@@ -62,17 +64,9 @@ function depsVolume(slug: string): string {
   return `deplo-dev-${slug}-deps`;
 }
 
-/**
- * The single port read choke-point (ADR-0001). `production`/`preview` read the
- * image-baked `build.port`; `development` reads `dev.port` (default build.port).
- * The port map is realized as two scalars in two runtimes, not a Record.
- */
-export function portFor(project: Project, target: PortTarget): number {
-  if (target === "development") {
-    return project.dev?.port || project.build.port;
-  }
-  return project.build.port;
-}
+// `portFor` (the ADR-0001 port choke-point) now lives in ./ports and is
+// re-exported here for the existing call sites that import it from this module.
+export { portFor } from "./ports";
 
 /** The computed (label-only) preview URL of a dev container. Never a Domain. */
 export function devPreviewUrl(slug: string, ip = instanceHost()): string {
@@ -340,19 +334,21 @@ export async function renderDevCompose(project: Project): Promise<string> {
     "deplo.role=dev",
   ];
   if (project.dev?.previewEnabled !== false) {
-    // LABEL-only preview route. Distinct router key + distinct host from the
-    // production router, so the two never share a Host() rule.
+    // LABEL-only preview route, via the shared routing module. Distinct router
+    // key + distinct host from the production router, so the two never share a
+    // Host() rule. Dev pins the deplo `docker.network` and always names its
+    // service (it's a single router on its own host).
     const host = sslipDomain(`dev-${slug}`, instanceHost());
     const router = `deplo-dev-${slug}`;
     labels.push(
-      "traefik.enable=true",
-      `traefik.docker.network=deplo`,
-      `traefik.http.routers.${router}.rule=Host(\`${host}\`)`,
-      `traefik.http.routers.${router}.entrypoints=websecure`,
-      `traefik.http.routers.${router}.tls=true`,
-      `traefik.http.routers.${router}.tls.certresolver=${certResolver()}`,
-      `traefik.http.routers.${router}.service=${router}`,
-      `traefik.http.services.${router}.loadbalancer.server.port=${port}`,
+      ...traefikRouterLabels({
+        baseKey: router,
+        routes: [{ name: host, port: null }],
+        defaultPort: port,
+        certResolver: certResolver(),
+        dockerNetwork: "deplo",
+        alwaysService: true,
+      }),
     );
   }
   const labelsYaml = labels.map((l) => `      - "${l}"`).join("\n");

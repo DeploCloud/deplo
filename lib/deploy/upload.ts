@@ -1,11 +1,11 @@
 import "server-only";
 
-import { mkdir, rm, readdir, stat, realpath } from "node:fs/promises";
+import { mkdir, rm, readdir, stat } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { Readable, Transform } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { pipeline as streamPipeline } from "node:stream/promises";
-import { join, basename, relative, sep } from "node:path";
+import { join, basename, relative } from "node:path";
 import { newId, nowIso } from "../ids";
 import { spawnStream } from "../infra/exec";
 import { MAX_UPLOAD_BYTES, archiveExt } from "./upload-shared";
@@ -218,29 +218,8 @@ async function collapseSingleRoot(dir: string): Promise<string> {
   return dir;
 }
 
-/**
- * Canonicalise `candidate` (a path that joins a user-supplied rootDirectory
- * onto an extracted root) and confirm it is `base` itself or a real descendant
- * of it — defeating symlink escapes that a string-prefix check would miss.
- * Returns the canonical contained directory, else the canonical `base`. Always
- * returns `realpath(base)` on any fallback, so callers can detect a fallback by
- * comparing the result to `realpath(base)` (a typo'd rootDirectory). Uses a
- * path-separator boundary so a sibling like `<base>-evil` can't match.
- */
-export async function safeBuildDir(
-  base: string,
-  candidate: string,
-): Promise<string> {
-  // `base` is always a temp dir we created, so realpath(base) won't throw.
-  const realBase = await realpath(base).catch(() => base);
-  try {
-    const realCandidate = await realpath(candidate);
-    const contained =
-      realCandidate === realBase || realCandidate.startsWith(realBase + sep);
-    if (!contained) return realBase;
-    const st = await stat(realCandidate);
-    return st.isDirectory() ? realCandidate : realBase;
-  } catch {
-    return realBase;
-  }
-}
+// `safeBuildDir` (the rootDirectory containment guard) now lives in
+// ./path-safety — its own concern, separate from archive streaming, and free of
+// `server-only` so the source seam and tests can use it. Re-exported here for
+// callers that still import it from this module.
+export { safeBuildDir } from "./path-safety";

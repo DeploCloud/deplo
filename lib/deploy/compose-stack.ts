@@ -3,6 +3,7 @@ import "server-only";
 import yaml from "js-yaml";
 
 import { certResolver } from "./domains";
+import { traefikRouterLabels } from "./routing";
 
 /**
  * Turn a raw template/user docker-compose file into a Deplo-deployable stack.
@@ -113,9 +114,11 @@ function deploLabels(projectId: string, slug: string): string[] {
 }
 
 /**
- * Traefik routing labels for one exposed service. `router` is the unique
- * router/service key (a service exposed on several hosts/ports gets one set per
- * route, so the key must differ); `enable`+`network` are emitted once via the
+ * Traefik routing labels for one exposed service, via the shared routing module
+ * (compose-stack flavour: a fixed per-route key, the deplo `docker.network`
+ * pin, and an always-explicit `.service` label). `router` is the unique
+ * router/service key — a service exposed on several hosts/ports gets one set per
+ * route, so the key must differ; `enable`+`network` are emitted once via the
  * first route's labels but are harmless if repeated.
  */
 function traefikLabels(opts: {
@@ -124,17 +127,18 @@ function traefikLabels(opts: {
   port: number;
 }): string[] {
   const { router, domains, port } = opts;
-  const rule = domains.map((d) => `Host(\`${d}\`)`).join(" || ");
-  return [
-    "traefik.enable=true",
-    `traefik.docker.network=${NETWORK}`,
-    `traefik.http.routers.${router}.rule=${rule}`,
-    `traefik.http.routers.${router}.entrypoints=websecure`,
-    `traefik.http.routers.${router}.tls=true`,
-    `traefik.http.routers.${router}.tls.certresolver=${certResolver()}`,
-    `traefik.http.routers.${router}.service=${router}`,
-    `traefik.http.services.${router}.loadbalancer.server.port=${port}`,
-  ];
+  // One router named `router`, serving every host in `domains` on `port` (a
+  // single OR-rule). Default grouping with all hosts at the default port folds
+  // them into the one `baseKey` router — `alwaysService` forces the explicit
+  // `.service` label this path has always emitted.
+  return traefikRouterLabels({
+    baseKey: router,
+    routes: domains.map((name) => ({ name, port: null })),
+    defaultPort: port,
+    certResolver: certResolver(),
+    dockerNetwork: NETWORK,
+    alwaysService: true,
+  });
 }
 
 /**
