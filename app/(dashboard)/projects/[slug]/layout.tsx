@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExternalLink, ArrowLeft } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
+import { isDevEligible } from "@/lib/data/dev";
 import { Button } from "@/components/ui/button";
 import { FrameworkIcon } from "@/components/shared/framework-icon";
 import { StatusDot } from "@/components/shared/status-badge";
@@ -68,7 +69,11 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
         </div>
       </div>
 
-      <ProjectTabs slug={slug} running={project.status === "active"} />
+      <ProjectTabs
+        slug={slug}
+        running={project.status === "active"}
+        devEligible={isDevEligible(project.source)}
+      />
 
       {props.children}
     </div>

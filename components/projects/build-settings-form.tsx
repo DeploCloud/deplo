@@ -7,7 +7,7 @@ import {
   Trash2,
   GitBranch,
   Container,
-  FileCode2,
+  FileText,
   Upload,
   Server as ServerIcon,
 } from "lucide-react";
@@ -23,6 +23,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ComposeEditor } from "@/components/projects/compose-editor";
+import { ComposeLintSummary } from "@/components/projects/compose-lint-summary";
+import { ImageInput } from "@/components/projects/image-input";
+import {
+  GithubRepoPicker,
+  type GithubSelection,
+} from "@/components/projects/github-repo-picker";
+import { GithubConnectButton } from "@/components/projects/github-connect-button";
+import { UploadInput, type CurrentUpload } from "@/components/projects/upload-input";
+import { hasBlockingErrors, type LintDiagnostic } from "@/lib/deploy/compose-lint";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -33,10 +43,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { FrameworkGlyph } from "@/components/shared/framework-icon";
-import { FRAMEWORK_LIST, buildConfigFor } from "@/lib/frameworks";
-import type { BuildConfig, DeploySource, FrameworkId, GitRepo } from "@/lib/types";
-import { serverLabel } from "@/lib/utils";
+import {
+  BuildConfigFields,
+  applyFrameworkToBuild,
+} from "@/components/projects/build-config-fields";
+import type { GithubInstallationDTO } from "@/lib/data/github";
+import type {
+  BuildConfig,
+  DeploySource,
+  FrameworkId,
+  GitRepo,
+} from "@/lib/types";
+import { serverLabel, usesComposeStack } from "@/lib/utils";
 import {
   updateBuildAction,
   setAutoDeployAction,
@@ -59,12 +77,13 @@ const SOURCE_TABS: {
   { id: "github", label: "GitHub", icon: GitHubIcon },
   { id: "git", label: "Git", icon: GitBranch },
   { id: "docker-image", label: "Docker Image", icon: Container },
-  { id: "dockerfile", label: "Dockerfile", icon: FileCode2 },
   { id: "upload", label: "Upload", icon: Upload },
+  { id: "compose", label: "Compose", icon: FileText },
 ];
 
 export function BuildSettingsForm({
   projectId,
+  slug,
   name: initialName,
   framework: initialFramework,
   build: initialBuild,
@@ -72,10 +91,16 @@ export function BuildSettingsForm({
   source: initialSource,
   repo: initialRepo,
   dockerImage: initialDockerImage,
+  upload: initialUpload,
+  compose: initialCompose,
+  expose,
+  exposes,
   serverId: initialServerId,
   servers,
+  installations,
 }: {
   projectId: string;
+  slug: string;
   name: string;
   framework: FrameworkId;
   build: BuildConfig;
@@ -83,8 +108,13 @@ export function BuildSettingsForm({
   source: DeploySource;
   repo: GitRepo | null;
   dockerImage: string | null;
+  upload: CurrentUpload | null;
+  compose: string | null;
+  expose: { service: string; port: number } | null;
+  exposes: { service: string; port: number; host?: string }[] | null;
   serverId: string;
   servers: SettingsServer[];
+  installations: GithubInstallationDTO[];
 }) {
   const [name, setName] = React.useState(initialName);
   const [framework, setFramework] = React.useState<FrameworkId>(initialFramework);
@@ -92,18 +122,48 @@ export function BuildSettingsForm({
   const [autoDeploy, setAutoDeploy] = React.useState(initialAutoDeploy);
   const [pending, startTransition] = React.useTransition();
 
-  // Source state
-  const [source, setSource] = React.useState<DeploySource>(initialSource);
+  // Compose stack (template / multi-service deploys). Lives as a source tab.
+  const [compose, setCompose] = React.useState(initialCompose ?? "");
+  const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>([]);
+
+  // Source state. Legacy template projects were stored as `docker-image` with a
+  // compose attached; surface those on the Compose tab by default too. An upload
+  // project keeps its own tab even if a stale compose lingers (usesComposeStack).
+  const [source, setSource] = React.useState<DeploySource>(
+    usesComposeStack({
+      source: initialSource,
+      compose: initialCompose,
+      repo: initialRepo,
+      dockerImage: initialDockerImage,
+    })
+      ? "compose"
+      : initialSource,
+  );
   const [serverId, setServerId] = React.useState(initialServerId);
   const [repoUrl, setRepoUrl] = React.useState(initialRepo?.url ?? "");
   const [branch, setBranch] = React.useState(initialRepo?.branch ?? "main");
   const [dockerImage, setDockerImage] = React.useState(initialDockerImage ?? "");
 
-  const usesGit = source === "github" || source === "git" || source === "dockerfile";
+  // GitHub App repo picker selection. Seeded from the existing project repo so
+  // a save that doesn't touch the picker keeps the current repo + branch.
+  const [ghSelection, setGhSelection] = React.useState<GithubSelection | null>(
+    initialSource === "github" && initialRepo
+      ? {
+          installationId: initialRepo.installationId ?? installations[0]?.id ?? "",
+          fullName: initialRepo.repo,
+          branch: initialRepo.branch,
+        }
+      : null,
+  );
+
+  // The "GitHub" source clones through a connected App (repo picker); plain
+  // "Git" still takes a raw URL + branch.
+  const usesGithubApp = source === "github";
+  const usesGitUrl = source === "git";
 
   function applyFramework(fw: FrameworkId) {
     setFramework(fw);
-    setBuild((b) => ({ ...buildConfigFor(fw), rootDirectory: b.rootDirectory }));
+    setBuild((b) => applyFrameworkToBuild(b, fw));
   }
 
   function saveName() {
@@ -115,8 +175,31 @@ export function BuildSettingsForm({
   }
 
   function saveSource() {
+    // The Upload source is committed by the upload control (its own route),
+    // not by this form — and saving source=upload with no archive would break
+    // the next deploy. Block it here so the button can't strand the project.
+    if (source === "upload") {
+      if (!initialUpload) {
+        toast.error("Upload an archive above before saving");
+        return;
+      }
+      toast.info("Your uploaded archive is already saved");
+      return;
+    }
     let repo: GitRepo | null = null;
-    if (usesGit) {
+    if (usesGithubApp) {
+      if (!ghSelection) {
+        toast.error("Select a repository to deploy");
+        return;
+      }
+      repo = {
+        provider: "github",
+        url: `https://github.com/${ghSelection.fullName}`,
+        repo: ghSelection.fullName,
+        branch: ghSelection.branch || "main",
+        installationId: ghSelection.installationId,
+      };
+    } else if (usesGitUrl) {
       if (!repoUrl.trim()) {
         toast.error("Enter a repository URL");
         return;
@@ -142,12 +225,26 @@ export function BuildSettingsForm({
       }
       image = dockerImage.trim();
     }
+    if (source === "compose") {
+      if (!compose.trim()) {
+        toast.error("Compose file cannot be empty");
+        return;
+      }
+      if (hasBlockingErrors(composeDiags)) {
+        toast.error("Fix the compose errors before saving");
+        return;
+      }
+    }
     startTransition(async () => {
       const res = await updateSourceAction(projectId, {
         source,
         serverId,
         dockerImage: image,
         repo,
+        compose: source === "compose" ? compose : null,
+        composeService: expose?.service ?? null,
+        composePort: expose?.port ?? null,
+        exposes: exposes ?? null,
       });
       if (res.ok) toast.success("Deploy source saved");
       else toast.error(res.error);
@@ -158,12 +255,14 @@ export function BuildSettingsForm({
     startTransition(async () => {
       const res = await updateBuildAction(projectId, {
         framework,
+        buildMethod: build.buildMethod,
+        methodSettings: build.methodSettings,
         installCommand: build.installCommand,
         buildCommand: build.buildCommand,
         outputDirectory: build.outputDirectory,
         startCommand: build.startCommand,
         rootDirectory: build.rootDirectory,
-        nodeVersion: build.nodeVersion,
+        runtimeVersion: build.runtimeVersion,
         port: build.port,
       });
       if (res.ok) toast.success("Build settings saved");
@@ -221,9 +320,7 @@ export function BuildSettingsForm({
                   size="sm"
                   onClick={() => {
                     setSource(tab.id);
-                    if (tab.id === "docker-image" || tab.id === "dockerfile") {
-                      applyFramework("docker");
-                    }
+                    if (tab.id === "docker-image") applyFramework("docker");
                   }}
                 >
                   <Icon className="size-4" />
@@ -233,14 +330,41 @@ export function BuildSettingsForm({
             })}
           </div>
 
-          {usesGit && (
+          {usesGithubApp &&
+            (installations.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
+                <GitHubIcon className="size-6 text-muted-foreground" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">
+                    Connect GitHub to pick a repo
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Deplo creates a GitHub App with only the permissions it
+                    needs, then you pick which repositories it can access.
+                  </p>
+                </div>
+                <GithubConnectButton size="sm" />
+              </div>
+            ) : (
+              <GithubRepoPicker
+                installations={installations}
+                initial={
+                  initialSource === "github" && initialRepo
+                    ? {
+                        installationId: initialRepo.installationId,
+                        fullName: initialRepo.repo,
+                        branch: initialRepo.branch,
+                      }
+                    : undefined
+                }
+                onChange={setGhSelection}
+              />
+            ))}
+
+          {usesGitUrl && (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>
-                  {source === "dockerfile"
-                    ? "Repository (with Dockerfile)"
-                    : "Repository URL"}
-                </Label>
+                <Label>Repository URL</Label>
                 <div className="relative">
                   <GitHubIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -268,23 +392,37 @@ export function BuildSettingsForm({
           {source === "docker-image" && (
             <div className="space-y-2">
               <Label>Docker image</Label>
-              <div className="relative">
-                <Container className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={dockerImage}
-                  onChange={(e) => setDockerImage(e.target.value)}
-                  placeholder="ghcr.io/acme/app:latest"
-                  className="pl-9 font-mono text-sm"
-                />
-              </div>
+              <ImageInput value={dockerImage} onChange={setDockerImage} />
+              <p className="text-xs text-muted-foreground">
+                Start typing to search registries; add{" "}
+                <code className="font-mono">:</code> to pick a tag. A green check
+                confirms the image exists.
+              </p>
             </div>
           )}
 
           {source === "upload" && (
-            <p className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
-              This project deploys from uploaded archives. Upload a new build from
-              the project page.
-            </p>
+            <UploadInput
+              projectId={projectId}
+              slug={slug}
+              current={initialUpload}
+            />
+          )}
+
+          {source === "compose" && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <FileText className="size-3.5" />
+                docker-compose.yml
+              </Label>
+              <ComposeEditor
+                value={compose}
+                onChange={setCompose}
+                onDiagnostics={setComposeDiags}
+                minHeight={340}
+              />
+              <ComposeLintSummary diagnostics={composeDiags} />
+            </div>
           )}
 
           <div className="max-w-md space-y-2">
@@ -330,41 +468,13 @@ export function BuildSettingsForm({
             How Deplo installs, builds and runs your app inside Docker.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Framework Preset</Label>
-              <Select value={framework} onValueChange={(v) => applyFramework(v as FrameworkId)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FRAMEWORK_LIST.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      <span className="flex items-center gap-2">
-                        <FrameworkGlyph framework={f.id} />
-                        {f.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Field label="Root Directory" value={build.rootDirectory} onChange={(v) => setBuild((b) => ({ ...b, rootDirectory: v }))} />
-            <Field label="Install Command" value={build.installCommand} onChange={(v) => setBuild((b) => ({ ...b, installCommand: v }))} />
-            <Field label="Build Command" value={build.buildCommand} onChange={(v) => setBuild((b) => ({ ...b, buildCommand: v }))} />
-            <Field label="Output Directory" value={build.outputDirectory} onChange={(v) => setBuild((b) => ({ ...b, outputDirectory: v }))} />
-            <Field label="Start Command" value={build.startCommand} onChange={(v) => setBuild((b) => ({ ...b, startCommand: v }))} />
-            <Field label="Node.js Version" value={build.nodeVersion} onChange={(v) => setBuild((b) => ({ ...b, nodeVersion: v }))} />
-            <div className="space-y-2">
-              <Label>Container Port</Label>
-              <Input
-                type="number"
-                value={build.port}
-                onChange={(e) => setBuild((b) => ({ ...b, port: Number(e.target.value) || 3000 }))}
-              />
-            </div>
-          </div>
+        <CardContent>
+          <BuildConfigFields
+            build={build}
+            framework={framework}
+            onBuildChange={setBuild}
+            onFrameworkChange={applyFramework}
+          />
         </CardContent>
         <CardFooter className="justify-end border-t border-border pt-4">
           <Button size="sm" onClick={saveBuild} disabled={pending}>
@@ -416,27 +526,6 @@ export function BuildSettingsForm({
           />
         </CardFooter>
       </Card>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="font-mono text-xs"
-      />
     </div>
   );
 }

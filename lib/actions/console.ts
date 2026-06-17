@@ -7,6 +7,7 @@ import { execInContainer } from "@/lib/data/console";
 const schema = z.object({
   projectId: z.string().min(1),
   command: z.string().min(1).max(2000),
+  containerName: z.string().min(1).max(255).optional(),
 });
 
 export async function execConsoleAction(
@@ -15,5 +16,11 @@ export async function execConsoleAction(
   const parsed = schema.safeParse(input);
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  return run(() => execInContainer(parsed.data.projectId, parsed.data.command));
+  return run(() =>
+    execInContainer(
+      parsed.data.projectId,
+      parsed.data.command,
+      parsed.data.containerName
+    )
+  );
 }

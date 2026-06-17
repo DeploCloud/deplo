@@ -1,0 +1,311 @@
+import "server-only";
+
+import { read, mutate } from "../store";
+import { nowIso } from "../ids";
+import { assertUser } from "../auth";
+import { recordActivity } from "./activity";
+import {
+  startDev,
+  stopDev,
+  resetDevWorkspace as resetDevWorkspace_,
+  defaultDevConfig,
+  devImage,
+  devPreviewUrl,
+  startVscodeTunnel,
+  stopVscodeTunnel,
+  getVscodeTunnel,
+  workspaceHasSource,
+  type VscodeTunnelInfo,
+} from "../deploy/dev";
+import { startDeployment } from "../deploy/build";
+import { usesComposeStack } from "../utils";
+import type {
+  DevConfig,
+  DevStatus,
+  DeploySource,
+  Project,
+  Deployment,
+} from "../types";
+
+/** Sources that put an editable source tree on the server (CONTEXT.md). */
+const SOURCE_BEARING: DeploySource[] = ["github", "git", "upload"];
+
+/** Whether dev mode is eligible for a project (source-bearing only). */
+export function isDevEligible(source: DeploySource): boolean {
+  return SOURCE_BEARING.includes(source);
+}
+
+function requireProject(id: string): Project {
+  const p = read().projects.find((x) => x.id === id);
+  if (!p) throw new Error("Project not found");
+  return p;
+}
+
+/** A client-safe view of a project's dev config + the computed preview URL. */
+export interface DevInfo {
+  enabled: boolean;
+  status: DevStatus;
+  imageKind: "preset" | "custom";
+  image: string;
+  /** The OFFICIAL base image the container actually runs on. */
+  resolvedImage: string;
+  devCommand: string;
+  port: number;
+  previewEnabled: boolean;
+  previewUrl: string;
+  latestStartAt: string | null;
+  eligible: boolean;
+}
+
+export async function getDevInfo(projectId: string): Promise<DevInfo | null> {
+  await assertUser();
+  const p = read().projects.find((x) => x.id === projectId);
+  if (!p) return null;
+  const dev = p.dev ?? defaultDevConfig(p);
+  return {
+    enabled: p.dev?.enabled ?? false,
+    status: p.dev?.status ?? "off",
+    imageKind: dev.imageKind,
+    image: dev.image,
+    resolvedImage: devImage({ ...p, dev }),
+    devCommand: dev.devCommand,
+    port: dev.port,
+    previewEnabled: dev.previewEnabled,
+    previewUrl: devPreviewUrl(p.slug),
+    latestStartAt: dev.latestStartAt,
+    eligible: isDevEligible(p.source),
+  };
+}
+
+/** Set the push-only dev status (mirrors setProject in build.ts). */
+export function setDevStatus(projectId: string, status: DevStatus): void {
+  mutate((d) => {
+    const p = d.projects.find((x) => x.id === projectId);
+    if (!p || !p.dev) return;
+    p.dev.status = status;
+    if (status === "starting") p.dev.latestStartAt = nowIso();
+    p.updatedAt = nowIso();
+  });
+}
+
+/**
+ * Enable dev mode for a source-bearing project. Seeds a default DevConfig
+ * (preset derived from framework, dev command from the framework, port =
+ * build.port, preview on). Refuses non-source-bearing projects. Does NOT start
+ * the container — that is startDevContainer().
+ */
+export async function enableDev(projectId: string): Promise<void> {
+  const user = await assertUser();
+  const p = requireProject(projectId);
+  if (!isDevEligible(p.source)) {
+    throw new Error("Dev mode is only available for git or upload projects");
+  }
+  mutate((d) => {
+    const proj = d.projects.find((x) => x.id === projectId);
+    if (!proj) throw new Error("Project not found");
+    proj.dev = proj.dev
+      ? { ...proj.dev, enabled: true }
+      : defaultDevConfig(proj);
+    proj.dev.enabled = true;
+    proj.updatedAt = nowIso();
+  });
+  recordActivity("project", "Enabled dev mode", user.name, projectId);
+}
+
+/** Patch a project's dev config (image/command/port/preview). */
+export async function updateDev(
+  projectId: string,
+  patch: Partial<
+    Pick<
+      DevConfig,
+      "imageKind" | "image" | "devCommand" | "port" | "previewEnabled"
+    >
+  >,
+): Promise<void> {
+  const user = await assertUser();
+  const proj = requireProject(projectId);
+  // Enforce eligibility at the data layer, not just the UI — updateDevAction is
+  // a directly-callable server action.
+  if (!isDevEligible(proj.source)) {
+    throw new Error("Dev mode is only available for git or upload projects");
+  }
+  mutate((d) => {
+    const p = d.projects.find((x) => x.id === projectId);
+    if (!p) throw new Error("Project not found");
+    if (!p.dev) p.dev = defaultDevConfig(p);
+    Object.assign(p.dev, patch);
+    p.updatedAt = nowIso();
+  });
+  recordActivity("project", "Updated dev settings", user.name, projectId);
+}
+
+/**
+ * Disable dev mode: stop the container but KEEP the workspace (disable is
+ * reversible — re-enabling resumes the edited tree). The gateway and the
+ * project's SSH users are untouched.
+ */
+export async function disableDev(projectId: string): Promise<void> {
+  const user = await assertUser();
+  const p = requireProject(projectId);
+  await stopDev(p.slug).catch(() => {});
+  mutate((d) => {
+    const proj = d.projects.find((x) => x.id === projectId);
+    if (proj?.dev) {
+      proj.dev.enabled = false;
+      proj.dev.status = "off";
+      proj.updatedAt = nowIso();
+    }
+  });
+  recordActivity("project", "Disabled dev mode", user.name, projectId);
+}
+
+/** Start (or restart) the dev container. Sets status push-only. */
+export async function startDevContainer(projectId: string): Promise<void> {
+  const user = await assertUser();
+  const p = requireProject(projectId);
+  if (!isDevEligible(p.source)) {
+    throw new Error("Dev mode is only available for git or upload projects");
+  }
+  if (!p.dev?.enabled) await enableDev(projectId);
+  setDevStatus(projectId, "starting");
+  try {
+    const fresh = requireProject(projectId);
+    await startDev(fresh);
+    setDevStatus(projectId, "running");
+  } catch (e) {
+    setDevStatus(projectId, "error");
+    throw e;
+  }
+  recordActivity("project", "Started dev container", user.name, projectId);
+}
+
+/** Stop the dev container (reversible; workspace kept). */
+export async function stopDevContainer(projectId: string): Promise<void> {
+  const user = await assertUser();
+  const p = requireProject(projectId);
+  await stopDev(p.slug);
+  setDevStatus(projectId, "stopped");
+  recordActivity("project", "Stopped dev container", user.name, projectId);
+}
+
+/**
+ * DESTRUCTIVE: replace the workspace with a fresh copy of the CURRENT deploy
+ * source (used after changing the source, or to discard the working tree).
+ * Wipes all files — including uncommitted edits — then reseeds and restarts.
+ */
+export async function resetDevWorkspace(projectId: string): Promise<void> {
+  const user = await assertUser();
+  const p = requireProject(projectId);
+  if (!isDevEligible(p.source)) {
+    throw new Error("Dev mode is only available for git or upload projects");
+  }
+  if (!p.dev?.enabled) {
+    throw new Error("Enable dev mode before resetting the workspace");
+  }
+  setDevStatus(projectId, "starting");
+  try {
+    await resetDevWorkspace_(p);
+    setDevStatus(projectId, "running");
+  } catch (e) {
+    setDevStatus(projectId, "error");
+    throw e;
+  }
+  recordActivity(
+    "project",
+    "Reset dev workspace from source",
+    user.name,
+    projectId,
+  );
+}
+
+/**
+ * Deploy the CURRENT files in the dev workspace to PRODUCTION — the developer's
+ * live, edited tree at /data/dev/<slug> — WITHOUT committing, pushing, or
+ * re-cloning the source. CONTEXT.md's explicit exception to "deploy never
+ * touches the dev workspace": here we deploy FROM it.
+ *
+ * The dev container need NOT be running — the build reads the files on disk, not
+ * the live process. The real gate is that the workspace HAS source (start dev
+ * mode at least once). Recorded as a normal production, image-based Deployment
+ * labelled "Deploy from dev workspace" so it's distinguishable in history.
+ */
+export async function deployDevWorkspace(
+  projectId: string,
+): Promise<Deployment> {
+  const user = await assertUser();
+  const p = requireProject(projectId);
+  if (!isDevEligible(p.source)) {
+    throw new Error("Dev mode is only available for git or upload projects");
+  }
+  // A dev-eligible source is never a compose/docker-image stack, so a workspace
+  // deploy is always a single-image build. Guard anyway so a future source
+  // change can't silently route a stack through the image path.
+  if (usesComposeStack(p)) {
+    throw new Error("Cannot deploy a compose stack from the dev workspace");
+  }
+  // The real precondition: files on disk. Not "enabled", not "running" — a
+  // workspace seeded once and then stopped still has the edited tree to deploy.
+  if (!(await workspaceHasSource(p.slug))) {
+    throw new Error(
+      "No files to deploy yet. Start dev mode at least once so the workspace has source.",
+    );
+  }
+
+  const depId = startDeployment(projectId, {
+    environment: "production",
+    creator: user.name,
+    commitMessage: "Deploy from dev workspace",
+    buildSource: "dev-workspace",
+  });
+
+  // Present tense: the deploy is queued/fire-and-forget — it may still fail
+  // during the build, so don't claim past-tense success here. (startDeployment
+  // also logs its own "Deploying <name>" row; this adds the provenance.)
+  recordActivity(
+    "deployment",
+    "Deploying from dev workspace",
+    user.name,
+    projectId,
+  );
+
+  const dep = read().deployments.find((x) => x.id === depId);
+  if (!dep) throw new Error("Deployment was not created");
+  return dep;
+}
+
+// ---- VS Code Remote Tunnel (the editor integration; see deploy/dev.ts) -------
+
+export type { VscodeTunnelInfo } from "../deploy/dev";
+
+/**
+ * Start the VS Code tunnel inside the project's dev container and return the
+ * device-login link the user must authorize. Requires a running dev container.
+ */
+export async function startTunnel(projectId: string): Promise<VscodeTunnelInfo> {
+  const user = await assertUser();
+  const p = requireProject(projectId);
+  if (!isDevEligible(p.source)) {
+    throw new Error("Dev mode is only available for git or upload projects");
+  }
+  if (p.dev?.status !== "running") {
+    throw new Error("Start the dev container before opening it in VS Code");
+  }
+  const info = await startVscodeTunnel(p.slug);
+  recordActivity("project", "Opened dev container in VS Code", user.name, projectId);
+  return info;
+}
+
+/** Current tunnel status (device link / connected URL / running). */
+export async function getTunnel(projectId: string): Promise<VscodeTunnelInfo> {
+  await assertUser();
+  const p = requireProject(projectId);
+  return getVscodeTunnel(p.slug);
+}
+
+/** Stop the VS Code tunnel (the dev container keeps running). */
+export async function stopTunnel(projectId: string): Promise<void> {
+  const user = await assertUser();
+  const p = requireProject(projectId);
+  await stopVscodeTunnel(p.slug);
+  recordActivity("project", "Closed VS Code tunnel", user.name, projectId);
+}

@@ -10,7 +10,6 @@ import {
   Rocket,
   Check,
   Container,
-  FileCode2,
   Upload,
   Server as ServerIcon,
   Pencil,
@@ -29,8 +28,12 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+// Textarea no longer used here — the compose editor replaces it.
 import { Label } from "@/components/ui/label";
+import { ComposeEditor } from "@/components/projects/compose-editor";
+import { ComposeLintSummary } from "@/components/projects/compose-lint-summary";
+import { ImageInput } from "@/components/projects/image-input";
+import { hasBlockingErrors, type LintDiagnostic } from "@/lib/deploy/compose-lint";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -41,8 +44,11 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { FrameworkGlyph } from "@/components/shared/framework-icon";
-import { SimpleTooltip } from "@/components/ui/tooltip";
-import { FRAMEWORK_LIST, FRAMEWORKS, buildConfigFor } from "@/lib/frameworks";
+import {
+  BuildConfigFields,
+  applyFrameworkToBuild,
+} from "@/components/projects/build-config-fields";
+import { FRAMEWORKS, buildConfigFor } from "@/lib/frameworks";
 import type { DeploySource, FrameworkId } from "@/lib/types";
 import { createProjectAction } from "@/lib/actions/projects";
 import { cn, serverLabel } from "@/lib/utils";
@@ -63,8 +69,10 @@ export interface WizardTemplate {
   logo: string | null;
   compose: string;
   env: { key: string; value: string }[];
-  /** Which compose service + port Traefik exposes for this template. */
+  /** Which compose service + port Traefik exposes for this template (first). */
   expose: { service: string; port: number } | null;
+  /** Every publicly-routed service (multi-domain templates expose 2+). */
+  exposes: { service: string; port: number; host?: string }[];
   /** Pre-generated sslip.io domain baked into the template's env. */
   autoDomain: string | null;
   /** Template config files to materialise at deploy time. */
@@ -133,8 +141,8 @@ const SOURCE_TABS: {
   { id: "github", label: "GitHub", icon: GitHubIcon },
   { id: "git", label: "Git", icon: GitBranch },
   { id: "docker-image", label: "Docker Image", icon: Container },
-  { id: "dockerfile", label: "Dockerfile", icon: FileCode2 },
   { id: "upload", label: "Upload", icon: Upload },
+  { id: "compose", label: "Compose", icon: FileText },
 ];
 
 export function NewProjectWizard({
@@ -184,50 +192,52 @@ export function NewProjectWizard({
     buildConfigFor(isTemplate ? "docker" : "nextjs"),
   );
 
-  // Template-only: editable docker-compose and environment variables.
+  // The compose editor is shared by templates (their baked stack) and the
+  // non-template Compose source tab; env rows stay template-only.
   const [compose, setCompose] = React.useState(template?.compose ?? "");
+  const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>([]);
   const [envRows, setEnvRows] = React.useState<{ key: string; value: string }[]>(
     template?.env ?? [],
   );
 
-  const preset = FRAMEWORKS[framework];
-  const usesGit =
-    source === "github" || source === "git" || source === "dockerfile";
+  const usesGit = source === "github" || source === "git";
+  // Build & output settings only apply when Deplo turns code into an image. A
+  // prebuilt docker image and a compose stack are deployed as-is.
+  const buildsImage = source !== "docker-image" && source !== "compose";
 
   function onRepoChange(value: string) {
     setRepoUrl(value);
     const parsed = parseRepo(value);
-    if (parsed && source !== "dockerfile") {
+    if (parsed) {
       const guessed = guessFramework(parsed.repo);
       setDetected(guessed);
       applyFramework(guessed);
       if (!name) setName(parsed.repo.split("/")[1] ?? "");
     } else {
       setDetected(null);
-      if (parsed && !name) setName(parsed.repo.split("/")[1] ?? "");
     }
   }
 
   function applyFramework(fw: FrameworkId) {
     setFramework(fw);
-    setBuild((b) => ({
-      ...buildConfigFor(fw),
-      rootDirectory: b.rootDirectory,
-    }));
+    setBuild((b) => applyFrameworkToBuild(b, fw));
   }
 
   function onSourceChange(next: DeploySource) {
     setSource(next);
     setDetected(null);
-    if (next === "docker-image" || next === "dockerfile") {
-      applyFramework("docker");
-    }
+    if (next === "docker-image") applyFramework("docker");
   }
 
-  // Deploy the template's compose stack only while the source is still the
-  // template's own (docker-image). If the user edited the template and switched
-  // to a real repo/image source, that source wins and no compose is sent.
-  const useCompose = isTemplate && source === "docker-image";
+  // Whether this deploy ships a docker-compose stack. Two ways in:
+  //  - a template still on its own source (docker-image) deploys its baked stack
+  //    with the template's expose/exposes/mounts/autoDomain metadata;
+  //  - a non-template project that picks the Compose source tab and writes its
+  //    own stack — the deploy engine auto-detects the service to expose. The
+  //    Compose tab is hidden for templates (it would drop their routing/mount
+  //    metadata), so source === "compose" only ever fires for non-templates.
+  const templateCompose = isTemplate && source === "docker-image";
+  const useCompose = templateCompose || source === "compose";
 
   function deploy() {
     if (!name.trim()) {
@@ -236,6 +246,14 @@ export function NewProjectWizard({
     }
     if (!serverId) {
       toast.error("Select a server to deploy to");
+      return;
+    }
+    if (useCompose && hasBlockingErrors(composeDiags)) {
+      toast.error("Fix the compose errors before deploying");
+      return;
+    }
+    if (source === "compose" && !compose.trim()) {
+      toast.error("Write a docker-compose stack to deploy");
       return;
     }
 
@@ -275,21 +293,6 @@ export function NewProjectWizard({
         repo: parsed.repo,
         branch: branch || "main",
       };
-    } else if (source === "dockerfile") {
-      const parsed = parseRepo(repoUrl);
-      if (!parsed) {
-        toast.error("Enter the repository that contains your Dockerfile");
-        return;
-      }
-      projectFramework = "docker";
-      repo = {
-        provider: parsed.provider,
-        url: repoUrl.startsWith("http")
-          ? repoUrl
-          : `https://github.com/${parsed.repo}`,
-        repo: parsed.repo,
-        branch: branch || "main",
-      };
     } else if (source === "docker-image") {
       projectFramework = "docker";
       if (!isTemplate && !dockerImage.trim()) {
@@ -297,15 +300,27 @@ export function NewProjectWizard({
         return;
       }
       image = isTemplate ? null : dockerImage.trim();
+    } else if (source === "compose") {
+      // Hand-written stack: the engine auto-detects the service to expose, so no
+      // expose/exposes metadata is sent (templates supply theirs separately).
+      projectFramework = "docker";
     } else if (source === "upload") {
       // Upload: a code archive is attached after creation; no repo/image.
     }
+
+    // The build config only matters when Deplo builds an image. For a prebuilt
+    // image or a compose stack the build section is hidden, so persisting the
+    // editor's seed (e.g. nixpacks/bun) would land a misleading build method on
+    // the project; send docker defaults instead so settings reflects reality.
+    const payloadBuild = buildsImage ? build : buildConfigFor("docker");
 
     startTransition(async () => {
       const res = await createProjectAction({
         name: name.trim(),
         framework: projectFramework,
-        source,
+        // A template deploying its own stack is stored as the `compose` source so
+        // settings opens on the Compose tab and the deploy engine is unambiguous.
+        source: useCompose ? "compose" : source,
         serverId,
         dockerImage: image,
         compose: useCompose ? compose : null,
@@ -314,22 +329,33 @@ export function NewProjectWizard({
           : undefined,
         repo,
         build: {
-          installCommand: build.installCommand,
-          buildCommand: build.buildCommand,
-          outputDirectory: build.outputDirectory,
-          startCommand: build.startCommand,
-          rootDirectory: build.rootDirectory,
-          nodeVersion: build.nodeVersion,
-          port: build.port,
+          buildMethod: payloadBuild.buildMethod,
+          methodSettings: payloadBuild.methodSettings,
+          installCommand: payloadBuild.installCommand,
+          buildCommand: payloadBuild.buildCommand,
+          outputDirectory: payloadBuild.outputDirectory,
+          startCommand: payloadBuild.startCommand,
+          rootDirectory: payloadBuild.rootDirectory,
+          runtimeVersion: payloadBuild.runtimeVersion,
+          port: payloadBuild.port,
         },
         autoDeploy: usesGit ? autoDeploy : false,
-        composeService: useCompose ? template!.expose?.service ?? null : null,
-        composePort: useCompose ? template!.expose?.port ?? null : null,
-        autoDomain: useCompose ? template!.autoDomain : null,
-        mounts: useCompose ? template!.mounts : null,
+        // Routing metadata is template-only; a hand-written compose stack lets the
+        // engine auto-detect which service to expose.
+        composeService: templateCompose ? template!.expose?.service ?? null : null,
+        composePort: templateCompose ? template!.expose?.port ?? null : null,
+        exposes: templateCompose ? template!.exposes : null,
+        autoDomain: templateCompose ? template!.autoDomain : null,
+        mounts: templateCompose ? template!.mounts : null,
       });
       if (res.ok && res.data) {
-        toast.success("Project created  deploying…");
+        // An upload project has no archive yet, so nothing deploys until the
+        // user uploads one from Settings — don't claim it's deploying.
+        toast.success(
+          source === "upload"
+            ? "Project created — upload an archive from Settings to deploy"
+            : "Project created — deploying…",
+        );
         router.push(`/projects/${res.data.slug}`);
       } else if (!res.ok) {
         toast.error(res.error);
@@ -376,35 +402,11 @@ export function NewProjectWizard({
             )}
           </div>
 
-          {!locked && source !== "docker-image" && (
-            <div className="space-y-2">
-              <Label>Framework Preset</Label>
-              <Select
-                value={framework}
-                onValueChange={(v) => applyFramework(v as FrameworkId)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FRAMEWORK_LIST.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      <span className="flex items-center gap-2">
-                        <FrameworkGlyph framework={f.id} />
-                        {f.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {preset.description}
-              </p>
-            </div>
-          )}
-
-          {/* Advanced build settings  only relevant when Deplo builds the app. */}
-          {!locked && source !== "docker-image" && (
+          {/* Build & output settings — the same method-aware controls the
+              project settings page shows, kept inside a collapse so creation
+              stays lean. Only relevant when Deplo builds an image (not for a
+              prebuilt docker image or a compose stack). */}
+          {!locked && buildsImage && (
             <>
               <button
                 type="button"
@@ -421,68 +423,13 @@ export function NewProjectWizard({
               </button>
 
               {advanced && (
-                <div className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-2">
-                  <BuildField
-                    label="Root Directory"
-                    tooltip="Directory in the repo where your app lives."
-                    value={build.rootDirectory}
-                    onChange={(v) =>
-                      setBuild((b) => ({ ...b, rootDirectory: v }))
-                    }
+                <div className="rounded-lg border border-border p-4">
+                  <BuildConfigFields
+                    build={build}
+                    framework={framework}
+                    onBuildChange={setBuild}
+                    onFrameworkChange={applyFramework}
                   />
-                  <BuildField
-                    label="Node.js Version"
-                    tooltip="Runtime version used for the build container."
-                    value={build.nodeVersion}
-                    onChange={(v) =>
-                      setBuild((b) => ({ ...b, nodeVersion: v }))
-                    }
-                  />
-                  <BuildField
-                    label="Install Command"
-                    tooltip="Command to install dependencies."
-                    value={build.installCommand}
-                    onChange={(v) =>
-                      setBuild((b) => ({ ...b, installCommand: v }))
-                    }
-                  />
-                  <BuildField
-                    label="Build Command"
-                    tooltip="Command that produces the production build."
-                    value={build.buildCommand}
-                    onChange={(v) =>
-                      setBuild((b) => ({ ...b, buildCommand: v }))
-                    }
-                  />
-                  <BuildField
-                    label="Output Directory"
-                    tooltip="Directory containing the build output."
-                    value={build.outputDirectory}
-                    onChange={(v) =>
-                      setBuild((b) => ({ ...b, outputDirectory: v }))
-                    }
-                  />
-                  <BuildField
-                    label="Start Command"
-                    tooltip="Command to run the server (leave empty for static)."
-                    value={build.startCommand}
-                    onChange={(v) =>
-                      setBuild((b) => ({ ...b, startCommand: v }))
-                    }
-                  />
-                  <div className="space-y-2">
-                    <Label>Container Port</Label>
-                    <Input
-                      type="number"
-                      value={build.port}
-                      onChange={(e) =>
-                        setBuild((b) => ({
-                          ...b,
-                          port: Number(e.target.value) || 3000,
-                        }))
-                      }
-                    />
-                  </div>
                 </div>
               )}
             </>
@@ -578,7 +525,12 @@ export function NewProjectWizard({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap items-center gap-2">
-              {SOURCE_TABS.map((tab) => {
+              {SOURCE_TABS.filter(
+                // Templates edit their baked stack inline in the Docker Compose
+                // card below; a raw Compose source tab would only discard the
+                // template's expose/exposes/mounts/autoDomain metadata.
+                (tab) => tab.id !== "compose" || !isTemplate,
+              ).map((tab) => {
                 const Icon = tab.icon;
                 return (
                   <Button
@@ -621,13 +573,9 @@ export function NewProjectWizard({
                 />
               ))}
 
-            {(source === "git" || source === "dockerfile") && (
+            {source === "git" && (
               <div className="space-y-2">
-                <Label htmlFor="repo">
-                  {source === "dockerfile"
-                    ? "Repository containing the Dockerfile"
-                    : "Repository URL"}
-                </Label>
+                <Label htmlFor="repo">Repository URL</Label>
                 <div className="relative">
                   <GitHubIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -638,7 +586,7 @@ export function NewProjectWizard({
                     className="pl-9 font-mono text-sm"
                   />
                 </div>
-                {detected && source !== "dockerfile" && (
+                {detected && (
                   <div className="flex items-center gap-1.5 text-xs text-[var(--success)]">
                     <Sparkles className="size-3.5" />
                     Detected framework: {FRAMEWORKS[detected].name}
@@ -650,18 +598,15 @@ export function NewProjectWizard({
             {source === "docker-image" && (
               <div className="space-y-2">
                 <Label htmlFor="image">Docker image</Label>
-                <div className="relative">
-                  <Container className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    id="image"
-                    value={dockerImage}
-                    onChange={(e) => setDockerImage(e.target.value)}
-                    placeholder="ghcr.io/acme/app:latest"
-                    className="pl-9 font-mono text-sm"
-                  />
-                </div>
+                <ImageInput
+                  id="image"
+                  value={dockerImage}
+                  onChange={setDockerImage}
+                />
                 <p className="text-xs text-muted-foreground">
                   Pulls a prebuilt image from any registry. No build step runs.
+                  Start typing to search; add <code className="font-mono">:</code>{" "}
+                  for tags.
                 </p>
               </div>
             )}
@@ -670,10 +615,17 @@ export function NewProjectWizard({
               <div className="rounded-lg border border-dashed border-border p-6 text-center">
                 <Upload className="mx-auto mb-2 size-6 text-muted-foreground" />
                 <p className="text-sm">
-                  Create the project, then upload a code archive from the
-                  project page to trigger the first build.
+                  Create the project, then upload a code archive from its
+                  Settings page to trigger the first build.
                 </p>
               </div>
+            )}
+
+            {source === "compose" && (
+              <p className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
+                Write your docker-compose stack in the Docker Compose editor
+                below. Deplo deploys it as-is and routes it through Traefik.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -716,7 +668,7 @@ export function NewProjectWizard({
         </CardContent>
       </Card>
 
-      {isTemplate && (
+      {useCompose && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -724,19 +676,19 @@ export function NewProjectWizard({
               Docker Compose
             </CardTitle>
             <CardDescription>
-              The stack Deplo will deploy. Edit it directly to customise images,
-              ports, volumes or services before deploying.
+              {isTemplate
+                ? "The stack Deplo will deploy. Edit it directly to customise images, ports, volumes or services before deploying."
+                : "The stack Deplo will deploy. Deplo routes the first service that publishes a port through Traefik with automatic HTTPS."}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Textarea
+          <CardContent className="space-y-2">
+            <ComposeEditor
               value={compose}
-              onChange={(e) => setCompose(e.target.value)}
-              spellCheck={false}
-              rows={14}
-              className="font-mono text-xs leading-relaxed"
-              placeholder="services:&#10;  app:&#10;    image: ..."
+              onChange={setCompose}
+              onDiagnostics={setComposeDiags}
+              minHeight={300}
             />
+            <ComposeLintSummary diagnostics={composeDiags} />
           </CardContent>
         </Card>
       )}
@@ -831,33 +783,6 @@ export function NewProjectWizard({
           {pending ? "Deploying…" : "Deploy"}
         </Button>
       </div>
-    </div>
-  );
-}
-
-function BuildField({
-  label,
-  tooltip,
-  value,
-  onChange,
-}: {
-  label: string;
-  tooltip: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <SimpleTooltip content={tooltip}>
-        <Label className="cursor-help underline decoration-dotted underline-offset-4">
-          {label}
-        </Label>
-      </SimpleTooltip>
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="font-mono text-xs"
-      />
     </div>
   );
 }

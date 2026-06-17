@@ -12,19 +12,31 @@ import {
 } from "@/components/ui/table";
 import { AddDomain } from "@/components/domains/add-domain";
 import { DomainRow } from "@/components/domains/domain-row";
+import { usesComposeStack } from "@/lib/utils";
 
 export const metadata = { title: "Domains" };
 
 export default async function DomainsPage() {
   const [domains, projects] = await Promise.all([listDomains(), listProjects()]);
   const projectOptions = projects.map((p) => ({ id: p.id, name: p.name }));
+  // Projects that route via a compose stack — per-domain ports don't apply to
+  // them, so hide the port control for their domains and in the add dialog.
+  const composeProjectIds = projects
+    .filter((p) => usesComposeStack(p))
+    .map((p) => p.id);
+  const composeSet = new Set(composeProjectIds);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Domains"
         description="Custom domains and automatic TLS certificates across your projects."
-        actions={<AddDomain projects={projectOptions} />}
+        actions={
+          <AddDomain
+            projects={projectOptions}
+            composeProjectIds={composeProjectIds}
+          />
+        }
       />
 
       {domains.length === 0 ? (
@@ -32,7 +44,12 @@ export default async function DomainsPage() {
           icon={Globe}
           title="No domains yet"
           description="Add a custom domain to one of your projects. Deplo issues SSL automatically."
-          action={<AddDomain projects={projectOptions} />}
+          action={
+            <AddDomain
+              projects={projectOptions}
+              composeProjectIds={composeProjectIds}
+            />
+          }
         />
       ) : (
         <div className="rounded-xl border border-border">
@@ -47,7 +64,11 @@ export default async function DomainsPage() {
             </TableHeader>
             <TableBody>
               {domains.map((d) => (
-                <DomainRow key={d.id} domain={d} />
+                <DomainRow
+                  key={d.id}
+                  domain={d}
+                  portConfigurable={!composeSet.has(d.projectId)}
+                />
               ))}
             </TableBody>
           </Table>

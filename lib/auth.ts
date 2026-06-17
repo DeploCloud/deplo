@@ -11,6 +11,7 @@ import {
   verifySession,
 } from "./crypto";
 import type { PublicUser, Server, Team, User } from "./types";
+import { instanceHost } from "./deploy/domains";
 import { randomBytes } from "node:crypto";
 import os from "node:os";
 import { serverVersion } from "./infra/docker";
@@ -181,7 +182,7 @@ export async function completeSetup(input: {
     host: "localhost",
     type: "localhost",
     status: "online",
-    ip: process.env.DEPLO_SERVER_IP?.trim() || "127.0.0.1",
+    ip: instanceHost(),
     dockerVersion,
     traefikEnabled: true,
     cpuCores: os.cpus().length || 1,

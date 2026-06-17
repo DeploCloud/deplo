@@ -34,13 +34,23 @@ export interface GithubSelection {
  */
 export function GithubRepoPicker({
   installations,
+  initial,
   onChange,
 }: {
   installations: GithubInstallationDTO[];
+  /**
+   * Pre-select a repo/branch already attached to the project (settings flow).
+   * The installation is matched by id; when it isn't among the connected
+   * installations (e.g. the App was reinstalled) the first one is used.
+   */
+  initial?: { installationId?: string | null; fullName: string; branch: string };
   onChange: (value: GithubSelection | null) => void;
 }) {
   const [installationId, setInstallationId] = React.useState(
-    installations[0]?.id ?? "",
+    (initial?.installationId &&
+      installations.some((i) => i.id === initial.installationId)
+      ? initial.installationId
+      : installations[0]?.id) ?? "",
   );
   const [repos, setRepos] = React.useState<GithubRepoSummary[]>([]);
   const [loadingRepos, setLoadingRepos] = React.useState(false);
@@ -48,21 +58,58 @@ export function GithubRepoPicker({
   const [selected, setSelected] = React.useState<GithubRepoSummary | null>(null);
   const [branches, setBranches] = React.useState<string[]>([]);
   const [branch, setBranch] = React.useState("");
+  // Apply the initial selection only against the first repo list we load for
+  // the installation it belongs to; afterwards the user is in control.
+  const seededRef = React.useRef(false);
 
-  const loadRepos = React.useCallback(async (instId: string) => {
-    if (!instId) return;
-    setLoadingRepos(true);
-    setSelected(null);
-    setBranches([]);
-    setBranch("");
-    const res = await listGithubReposAction(instId);
-    setLoadingRepos(false);
-    if (res.ok && res.data) setRepos(res.data);
-    else {
-      setRepos([]);
-      if (!res.ok) toast.error(res.error);
+  const loadRepos = React.useCallback(
+    async (instId: string) => {
+      if (!instId) return;
+      setLoadingRepos(true);
+      setSelected(null);
+      setBranches([]);
+      setBranch("");
+      const res = await listGithubReposAction(instId);
+      setLoadingRepos(false);
+      if (res.ok && res.data) {
+        setRepos(res.data);
+        // Seed the existing project repo once it's in the fetched list.
+        if (!seededRef.current && initial) {
+          const match = res.data.find((r) => r.fullName === initial.fullName);
+          if (match) {
+            seededRef.current = true;
+            setSelected(match);
+            setBranch(initial.branch || match.defaultBranch);
+            setBranches([initial.branch || match.defaultBranch]);
+            void hydrateBranches(instId, match, initial.branch);
+          }
+        }
+      } else {
+        setRepos([]);
+        if (!res.ok) toast.error(res.error);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [initial?.fullName, initial?.branch],
+  );
+
+  async function hydrateBranches(
+    instId: string,
+    repo: GithubRepoSummary,
+    preferred?: string,
+  ) {
+    const res = await listGithubBranchesAction(instId, repo.fullName);
+    if (res.ok && res.data && res.data.length) {
+      setBranches(res.data);
+      const want = preferred && res.data.includes(preferred) ? preferred : null;
+      setBranch(
+        want ??
+          (res.data.includes(repo.defaultBranch)
+            ? repo.defaultBranch
+            : res.data[0]),
+      );
     }
-  }, []);
+  }
 
   React.useEffect(() => {
     // Fetch repos for the active installation (sync with GitHub, an external
@@ -85,11 +132,7 @@ export function GithubRepoPicker({
     setSelected(repo);
     setBranch(repo.defaultBranch);
     setBranches([repo.defaultBranch]);
-    const res = await listGithubBranchesAction(installationId, repo.fullName);
-    if (res.ok && res.data && res.data.length) {
-      setBranches(res.data);
-      if (!res.data.includes(repo.defaultBranch)) setBranch(res.data[0]);
-    }
+    await hydrateBranches(installationId, repo);
   }
 
   const filtered = query

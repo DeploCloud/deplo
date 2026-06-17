@@ -1,8 +1,17 @@
 import "server-only";
 
-import { mkdtemp, mkdir, rm, writeFile, access } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  rm,
+  writeFile,
+  readFile,
+  access,
+  realpath,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
+import yaml from "js-yaml";
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
 import { decryptSecret } from "../crypto";
@@ -10,22 +19,26 @@ import { recordActivity } from "../data/activity";
 import { docker, ensureNetwork } from "../infra/docker";
 import { spawnStream } from "../infra/exec";
 import { cloneStream, revParse } from "../infra/git";
-import { generateDockerfile } from "./dockerfile";
-import { previewDomain, instanceHost } from "./domains";
+import { buildImage } from "./builders";
+import { extractArchive, safeBuildDir } from "./upload";
+import { normalizeBuildConfig } from "../frameworks";
+import { usesComposeStack } from "../utils";
+import { certResolver, previewDomain, resolveServerIp } from "./domains";
 import { buildComposeStack } from "./compose-stack";
-import { ensureAutoDomain } from "../data/domains";
+import { copyWorkspaceForBuild } from "./dev";
+import {
+  ensureAutoDomain,
+  ensureExtraDomain,
+  routableRoutes,
+  type RoutableDomain,
+} from "../data/domains";
 import { installationCloneUrl } from "../github/app";
-import type { Deployment, DeploymentEnvironment, LogLine, Server } from "../types";
+import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 const STACK_DIR = join(DATA_DIR, "stacks");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-function serverIp(server: Server | undefined): string {
-  if (!server || server.type === "localhost") return instanceHost();
-  return server.ip || instanceHost();
-}
 
 function log(depId: string, level: LogLine["level"], text: string): void {
   mutate((d) => {
@@ -64,25 +77,90 @@ function projectEnv(projectId: string): Record<string, string> {
   return out;
 }
 
+/**
+ * Group routable hostnames by the container port they target and emit Traefik
+ * router + service labels — one router per distinct port. A domain with no port
+ * override (`port: null`) falls into the project's `defaultPort` group, which
+ * reuses `baseKey` as its router/service key so a single-port project produces
+ * the exact labels it always did (preserving the no-op reroute detection).
+ * Per-port groups beyond the default get a `<baseKey>-<port>` suffix so each
+ * Traefik router/service key on the same container is unique.
+ *
+ * Order is deterministic (default-port group first, then the rest by ascending
+ * port) so re-rendering an unchanged routing set yields a byte-identical file.
+ */
+function traefikRouterLabels(opts: {
+  baseKey: string;
+  routes: RoutableDomain[];
+  defaultPort: number;
+}): string[] {
+  const { baseKey, routes, defaultPort } = opts;
+  // Effective port per host: its override, else the project default.
+  const byPort = new Map<number, string[]>();
+  for (const r of routes) {
+    const p = r.port ?? defaultPort;
+    const hosts = byPort.get(p) ?? [];
+    hosts.push(r.name);
+    byPort.set(p, hosts);
+  }
+  // Default-port group first, then remaining ports ascending — stable output.
+  const ports = [
+    ...(byPort.has(defaultPort) ? [defaultPort] : []),
+    ...[...byPort.keys()].filter((p) => p !== defaultPort).sort((a, b) => a - b),
+  ];
+  // With a single router, Traefik auto-binds the same-named service, so the
+  // explicit `.service` label is omitted — this keeps the labels byte-identical
+  // to the long-standing single-port output, so existing stacks don't see a
+  // spurious "changed" file (and pointless restart) on their first reroute.
+  // Multiple routers MUST name their service explicitly to disambiguate.
+  const multi = ports.length > 1;
+  const labels: string[] = ["traefik.enable=true"];
+  for (const p of ports) {
+    // Non-default port groups suffix the port with `__` — a separator that
+    // CANNOT appear in a slug (slugs are [a-z0-9-], see createProject), so
+    // `deplo-<slug>__<port>` can never byte-collide with another project's base
+    // key `deplo-<otherslug>`. Traefik router/service names are global across
+    // every container on the host, so a `-`-only suffix (e.g. `deplo-app-8080`)
+    // could equal a sibling project whose slug is literally `app-8080` and
+    // cross-route their traffic. The default-port group keeps the bare baseKey
+    // (no suffix) to stay byte-identical to the long-standing single-port output.
+    const key = p === defaultPort ? baseKey : `${baseKey}__${p}`;
+    const rule = (byPort.get(p) ?? [])
+      .map((d) => `Host(\`${d}\`)`)
+      .join(" || ");
+    labels.push(
+      `traefik.http.routers.${key}.rule=${rule}`,
+      `traefik.http.routers.${key}.entrypoints=websecure`,
+      `traefik.http.routers.${key}.tls=true`,
+      `traefik.http.routers.${key}.tls.certresolver=${certResolver()}`,
+      ...(multi ? [`traefik.http.routers.${key}.service=${key}`] : []),
+      `traefik.http.services.${key}.loadbalancer.server.port=${p}`,
+    );
+  }
+  return labels;
+}
+
 function renderCompose(opts: {
   name: string;
   image: string;
   port: number;
   projectId: string;
   slug: string;
-  domain: string;
+  /** Public hostnames + per-domain port overrides, primary first. */
+  routes: RoutableDomain[];
   env: Record<string, string>;
 }): string {
-  const { name, image, port, projectId, slug, domain, env } = opts;
-  // Traefik routing (TLS via Let's Encrypt). The global web->websecure redirect
-  // is configured on the proxy, so no per-router middleware is needed here.
+  const { name, image, port, projectId, slug, routes } = opts;
+  // Default PORT to the project's default container port so 12-factor apps
+  // (buildpacks, Nixpacks, Railpack) bind where Traefik forwards. A user-set
+  // PORT wins. Per-domain port overrides only change Traefik's target, not the
+  // single PORT the container is told to listen on.
+  const env = { PORT: String(port), ...opts.env };
+  // Traefik routing (TLS via Let's Encrypt), one router per distinct target
+  // port. The global web->websecure redirect is configured on the proxy, so no
+  // per-router middleware is needed here.
   const labels = [
-    "traefik.enable=true",
-    `traefik.http.routers.${name}.rule=Host(\`${domain}\`)`,
-    `traefik.http.routers.${name}.entrypoints=websecure`,
-    `traefik.http.routers.${name}.tls=true`,
-    `traefik.http.routers.${name}.tls.certresolver=letsencrypt`,
-    `traefik.http.services.${name}.loadbalancer.server.port=${port}`,
+    ...traefikRouterLabels({ baseKey: name, routes, defaultPort: port }),
     "deplo.managed=true",
     `deplo.project=${projectId}`,
     `deplo.slug=${slug}`,
@@ -165,12 +243,14 @@ export function startDeployment(
     creator: string;
     commitMessage?: string;
     branch?: string;
+    /** Build PRODUCTION from the dev workspace tree instead of the source. */
+    buildSource?: "dev-workspace";
   },
 ): string {
   const project = read().projects.find((p) => p.id === projectId);
   if (!project) throw new Error("Project not found");
   const server = read().servers.find((s) => s.id === project.serverId);
-  const ip = serverIp(server);
+  const ip = resolveServerIp(server);
   const environment = opts.environment ?? "production";
   const branch = opts.branch ?? project.repo?.branch ?? "main";
   // Production routes through the project's registered primary domain (created
@@ -197,6 +277,7 @@ export function startDeployment(
     readyAt: null,
     buildDurationMs: null,
     creator: opts.creator,
+    ...(opts.buildSource ? { buildSource: opts.buildSource } : {}),
   };
 
   mutate((d) => {
@@ -233,11 +314,15 @@ async function runDeployment(depId: string): Promise<void> {
   const name = `deplo-${slug}`;
   const stackFile = join(STACK_DIR, `${slug}.yml`);
   const server = read().servers.find((s) => s.id === project.serverId);
-  const ip = serverIp(server);
+  const ip = resolveServerIp(server);
   const domain =
     dep.environment === "production"
       ? ensureAutoDomain(project.id, { slug, ip })
       : dep.url.replace(/^https?:\/\//, "");
+  // Production routes to every verified domain (primary first); a preview uses
+  // only its ephemeral host (not a registered domain). `domain` is always the
+  // canonical primary and the fallback when nothing is verified yet.
+  const routeDomains = routableForDeploy(project.id, dep.environment, domain);
 
   setDep(depId, { status: "building" });
   setProject(project.id, { status: "building" });
@@ -248,10 +333,16 @@ async function runDeployment(depId: string): Promise<void> {
 
     // Multi-service compose / one-click template deploy: deploy the project's
     // own compose stack, wired to Traefik on the generated domain. The compose
-    // interpolates its ${VARS} from an env-file we write alongside it. A real
-    // repo/image source takes precedence over a stale compose (e.g. a template
-    // edited and switched to GitHub).
-    if (project.compose && project.compose.trim() && !project.repo && !project.dockerImage) {
+    // interpolates its ${VARS} from an env-file we write alongside it. Selecting
+    // any other source (git, docker-image, …) switches away from the stack even
+    // though the compose is kept for switching back; `source` is authoritative.
+    // Legacy template projects predate the `compose` source, so fall back to the
+    // old heuristic for them (compose present, no repo/image). An "upload" source
+    // is explicit and must build the archive, so the heuristic never claims it —
+    // even if a stale compose lingers from a previous source. See usesComposeStack.
+    const hasCompose = Boolean(project.compose && project.compose.trim());
+    const useCompose = usesComposeStack(project);
+    if (useCompose && hasCompose) {
       await deployComposeStack({
         depId,
         project,
@@ -259,6 +350,10 @@ async function runDeployment(depId: string): Promise<void> {
         slug,
         stackFile,
         domain,
+        // Compose stacks route via their own service/port model (expose/exposes
+        // + host pins); per-domain port overrides apply only to single-image
+        // projects, so pass bare hostnames here.
+        domains: routeDomains.map((d) => d.name),
         environment: dep.environment,
         started,
       });
@@ -268,7 +363,63 @@ async function runDeployment(depId: string): Promise<void> {
     let imageRef: string;
     let commitSha = "";
 
-    if (project.source === "docker-image" && project.dockerImage) {
+    if (dep.buildSource === "dev-workspace") {
+      // EXPLICIT exception to "deploy never touches the dev workspace"
+      // (CONTEXT.md): build production from the developer's live, edited tree at
+      // /data/dev/<slug> — no git clone, no re-extract, no commit. This intent
+      // OVERRIDES the project's own source (a git/upload project deploys its
+      // workspace here, NOT a fresh clone), so it is checked FIRST. Dev is
+      // source-bearing only, so this is always a single-image build; guard
+      // against a future source change silently routing a stack through here.
+      if (usesComposeStack(project) || project.source === "docker-image") {
+        throw new Error(
+          "Deploy from dev workspace is only available for built (git/upload) projects",
+        );
+      }
+      const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
+      try {
+        log(depId, "command", "copy dev workspace");
+        // copyWorkspaceForBuild excludes node_modules/.deplo/.deplo-home/.git
+        // and rejects any planted symlink (the tree is UID-1000-controlled —
+        // same threat model as an upload archive). Dependencies are reinstalled
+        // by the build, exactly like a normal deploy.
+        const root = await copyWorkspaceForBuild(slug, work, (line) =>
+          log(depId, "info", line),
+        );
+
+        // Resolve rootDirectory against the copied tree, contained via realpath.
+        // Mirror the git arm's explicit hard-fail: this is a user-initiated
+        // deploy-to-PRODUCTION, so a typo'd rootDirectory must error loudly
+        // rather than silently shipping the workspace root.
+        const rootRel = (project.build.rootDirectory || ".")
+          .replace(/\\/g, "/")
+          .replace(/^\.?\/?/, "");
+        const explicitRoot = Boolean(rootRel && rootRel !== ".");
+        const candidate = explicitRoot ? join(root, rootRel) : root;
+        const buildDir = await safeBuildDir(root, candidate);
+        if (
+          explicitRoot &&
+          buildDir === (await realpath(root).catch(() => root))
+        ) {
+          throw new Error(
+            `rootDirectory "${project.build.rootDirectory}" was not found in the dev workspace`,
+          );
+        }
+
+        imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
+        await buildImage({
+          build: normalizeBuildConfig(project.build),
+          workDir: work,
+          buildDir,
+          slug,
+          projectId: project.id,
+          imageRef,
+          log: (level, text) => log(depId, level, text),
+        });
+      } finally {
+        await rm(work, { recursive: true, force: true }).catch(() => {});
+      }
+    } else if (project.source === "docker-image" && project.dockerImage) {
       log(depId, "command", `docker pull ${project.dockerImage}`);
       await streamDocker(["pull", project.dockerImage], depId, 600_000);
       imageRef = project.dockerImage;
@@ -289,44 +440,71 @@ async function runDeployment(depId: string): Promise<void> {
         commitSha = await revParse(work);
         if (commitSha) setDep(depId, { commitSha });
 
-        // Resolve the build dir, guarding against `..` escaping the clone.
+        // Resolve the build dir, guarding against `rootDirectory` escaping the
+        // clone — via realpath, so a symlinked dir can't slip past a string
+        // prefix check (see safeBuildDir).
         const rootRel = (project.build.rootDirectory || ".")
           .replace(/\\/g, "/")
           .replace(/^\.?\/?/, "");
-        const candidate =
-          rootRel && rootRel !== "." ? join(work, rootRel) : work;
-        const buildDir = candidate.startsWith(work) ? candidate : work;
-
-        if (!(await fileExists(join(buildDir, "Dockerfile")))) {
-          log(
-            depId,
-            "info",
-            "No Dockerfile found  generating one from build settings",
-          );
-          await writeFile(
-            join(buildDir, "Dockerfile"),
-            generateDockerfile(project.build),
+        const explicitRoot = Boolean(rootRel && rootRel !== ".");
+        const candidate = explicitRoot ? join(work, rootRel) : work;
+        const buildDir = await safeBuildDir(work, candidate);
+        // safeBuildDir falls back to the (canonical) clone root when the
+        // candidate doesn't exist or escapes. For an explicitly-set
+        // rootDirectory that's a misconfiguration — fail loudly rather than
+        // silently building the wrong tree from the repo root.
+        if (explicitRoot && buildDir === (await realpath(work).catch(() => work))) {
+          throw new Error(
+            `rootDirectory "${project.build.rootDirectory}" was not found in the repository`,
           );
         }
 
         imageRef = `deplo/${slug}:${(commitSha || depId).slice(0, 12)}`;
-        log(depId, "command", `docker build -t ${imageRef}`);
-        await streamDocker(
-          [
-            "build",
-            "-t",
-            imageRef,
-            "--label",
-            "deplo.managed=true",
-            "--label",
-            `deplo.project=${project.id}`,
-            "--label",
-            `deplo.slug=${slug}`,
-            buildDir,
-          ],
-          depId,
-          900_000,
+        // Dispatch to the selected build method (Dockerfile / Nixpacks /
+        // Railpack / Heroku|Paketo buildpacks / Static). Each produces imageRef
+        // in the local store with the deplo.* labels, listening on build.port.
+        await buildImage({
+          build: normalizeBuildConfig(project.build),
+          workDir: work,
+          buildDir,
+          slug,
+          projectId: project.id,
+          imageRef,
+          log: (level, text) => log(depId, level, text),
+        });
+      } finally {
+        await rm(work, { recursive: true, force: true }).catch(() => {});
+      }
+    } else if (project.source === "upload" && project.upload) {
+      // Uploaded archive: extract it into a temp dir, then build it through the
+      // exact same path as a git clone. extractArchive rejects any symlink in
+      // the archive (so none can be followed out of the temp dir) and may
+      // return a subdir (a tarball wrapped in one top-level folder). Resolve
+      // `rootDirectory` against THAT root, contained via realpath.
+      const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
+      try {
+        log(depId, "command", `extract ${project.upload.filename}`);
+        const root = await extractArchive(project.upload, work, (line) =>
+          log(depId, "info", line),
         );
+
+        const rootRel = (project.build.rootDirectory || ".")
+          .replace(/\\/g, "/")
+          .replace(/^\.?\/?/, "");
+        const candidate =
+          rootRel && rootRel !== "." ? join(root, rootRel) : root;
+        const buildDir = await safeBuildDir(root, candidate);
+
+        imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
+        await buildImage({
+          build: normalizeBuildConfig(project.build),
+          workDir: work,
+          buildDir,
+          slug,
+          projectId: project.id,
+          imageRef,
+          log: (level, text) => log(depId, level, text),
+        });
       } finally {
         await rm(work, { recursive: true, force: true }).catch(() => {});
       }
@@ -341,7 +519,7 @@ async function runDeployment(depId: string): Promise<void> {
       port: project.build.port,
       projectId: project.id,
       slug,
-      domain,
+      routes: routeDomains,
       env,
     });
     await writeFile(stackFile, composeYaml);
@@ -392,17 +570,39 @@ async function deployComposeStack(opts: {
     id: string;
     compose: string | null;
     expose: { service: string; port: number } | null;
+    exposes?: { service: string; port: number; host?: string }[] | null;
     mounts?: { filePath: string; content: string }[] | null;
   };
   name: string;
   slug: string;
   stackFile: string;
   domain: string;
+  /** Public hostnames to route, primary first (no-host routes answer on all). */
+  domains: string[];
   environment: DeploymentEnvironment;
   started: number;
 }): Promise<void> {
-  const { depId, project, name, slug, stackFile, domain, environment, started } =
-    opts;
+  const {
+    depId,
+    project,
+    name,
+    slug,
+    stackFile,
+    domain,
+    domains,
+    environment,
+    started,
+  } = opts;
+
+  // Register every extra hostname a multi-domain template exposes (the primary
+  // domain is already registered by the caller) so each shows up in the project's
+  // Domains section and Traefik gets a router per host. Production only.
+  if (environment === "production") {
+    for (const ex of project.exposes ?? []) {
+      const host = ex.host?.trim();
+      if (host && host !== domain) ensureExtraDomain(project.id, host);
+    }
+  }
 
   // Materialise any template config files into the project's isolated files dir
   // (referenced by the compose as ../files/<x>) BEFORE the stack comes up.
@@ -416,8 +616,9 @@ async function deployComposeStack(opts: {
     name,
     slug,
     projectId: project.id,
-    domain,
+    domains,
     expose: project.expose ?? null,
+    exposes: project.exposes ?? undefined,
     filesDir,
   });
   await writeFile(stackFile, stackYaml);
@@ -525,6 +726,170 @@ async function waitStackRunning(slug: string, ms: number): Promise<boolean> {
 
 function stackFilePath(slug: string): string {
   return join(STACK_DIR, `${slug}.yml`);
+}
+
+/**
+ * Hostnames to bake into a deploy's Traefik rule. Production routes to every
+ * verified domain (primary first) so a later primary-switch / new domain takes
+ * effect via a reroute; a preview routes only to its ephemeral host (which is
+ * not a registered domain). `primary` is always included as the fallback when
+ * the project has no verified domain yet (e.g. the freshly-created auto domain
+ * hasn't been marked `valid` on a brand-new project — never emit an empty rule).
+ */
+function routableForDeploy(
+  projectId: string,
+  environment: DeploymentEnvironment,
+  primary: string,
+): RoutableDomain[] {
+  // A preview routes only to its ephemeral host, on the project default port.
+  if (environment !== "production") return [{ name: primary, port: null }];
+  const valid = routableRoutes(projectId);
+  if (valid.length === 0) return [{ name: primary, port: null }];
+  // Keep the canonical primary first even if it isn't flagged `valid` yet (it
+  // carries its own port override if it has one; else the project default).
+  const primaryRoute =
+    valid.find((d) => d.name === primary) ?? { name: primary, port: null };
+  return [primaryRoute, ...valid.filter((d) => d.name !== primary)];
+}
+
+/** The `image:` baked into a single-image stack file, so a reroute reuses the
+ * exact running image instead of rebuilding. Null if unreadable. */
+async function readStackImage(
+  stackFile: string,
+  service: string,
+): Promise<string | null> {
+  try {
+    const doc = yaml.load(await readFile(stackFile, "utf8")) as {
+      services?: Record<string, { image?: unknown }>;
+    } | null;
+    const svc = doc?.services?.[service];
+    return typeof svc?.image === "string" ? svc.image : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The `environment:` baked into a single-image stack file (map form, as
+ * renderCompose writes it). Lets a reroute preserve the env the container is
+ * actually running with instead of shipping pending edits from the store. */
+async function readStackEnv(
+  stackFile: string,
+  service: string,
+): Promise<Record<string, string> | null> {
+  try {
+    const doc = yaml.load(await readFile(stackFile, "utf8")) as {
+      services?: Record<string, { environment?: unknown }>;
+    } | null;
+    const env = doc?.services?.[service]?.environment;
+    if (env && typeof env === "object" && !Array.isArray(env)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(env as Record<string, unknown>)) {
+        out[k] = String(v);
+      }
+      return out;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Re-apply a project's Traefik routing to its already-running stack, instantly
+ * and without rebuilding. The router's `Host()` rule is baked into the
+ * container's labels at deploy time, so switching the primary domain (or adding
+ * / removing / verifying one) otherwise needs a full redeploy. This re-renders
+ * the on-disk stack file with the project's current verified domains (primary
+ * first) and runs `docker compose up -d`, which recreates only the routed
+ * service in place; Traefik's Docker provider picks up the new labels within a
+ * second or two. No image build, no git clone, no env regeneration.
+ *
+ * Returns a short status the caller surfaces to the user:
+ *  - "rerouted"   — routing was re-applied to the running container
+ *  - "unchanged"  — labels already matched; nothing to do (no restart)
+ *  - "deferred"   — saved, but routing applies on the next deploy/start because
+ *                   the project isn't currently active (idle/building/error) or
+ *                   was never deployed; the stack file is still updated so the
+ *                   correct labels are in place when it next comes up
+ *
+ * Throws only on an actual docker failure for an active project, so the caller's
+ * toast reflects success/failure. Never starts a stopped (idle) project and
+ * never races a deploy in progress (it re-renders the file but skips docker).
+ */
+export async function rerouteProject(
+  projectId: string,
+): Promise<"rerouted" | "unchanged" | "deferred"> {
+  const project = read().projects.find((p) => p.id === projectId);
+  if (!project) return "deferred";
+  const slug = project.slug;
+  const name = `deplo-${slug}`;
+  const stackFile = stackFilePath(slug);
+
+  // Never deployed (or torn down): nothing running to reroute. The domain change
+  // is already saved; the next deploy bakes the right labels.
+  if (!(await fileExists(stackFile))) return "deferred";
+
+  const routes = routableRoutes(projectId);
+  if (routes.length === 0) return "deferred"; // never write an empty Host() rule
+
+  const hasCompose = Boolean(project.compose && project.compose.trim());
+  const useCompose = usesComposeStack(project);
+
+  // Re-render the stack file with the new domain set (so the labels are correct
+  // whenever the stack next comes up), reusing the running image and env.
+  let rendered: string;
+  if (useCompose && hasCompose) {
+    rendered = buildComposeStack({
+      compose: project.compose ?? "",
+      name,
+      slug,
+      projectId,
+      // Compose stacks route via their own service/port model; per-domain port
+      // overrides apply only to single-image projects.
+      domains: routes.map((d) => d.name),
+      expose: project.expose ?? null,
+      exposes: project.exposes ?? undefined,
+      filesDir: join(STACK_DIR, "files", slug),
+    });
+  } else {
+    // Single-image / built path: the image ref and env live only in the stack
+    // file (not on the project), so read them back to keep this a pure routing
+    // change — never a rebuild or a silent env/image change.
+    const image = await readStackImage(stackFile, name);
+    if (!image) return "deferred"; // can't safely reroute without the running image
+    const env = (await readStackEnv(stackFile, name)) ?? projectEnv(projectId);
+    rendered = renderCompose({
+      name,
+      image,
+      port: project.build.port,
+      projectId,
+      slug,
+      routes,
+      env,
+    });
+  }
+
+  // No-op when the labels already match — avoids a pointless container restart
+  // (e.g. re-verifying an already-valid domain, or toggling primary back).
+  const current = await readFile(stackFile, "utf8").catch(() => "");
+  if (current === rendered) return "unchanged";
+
+  await writeFile(stackFile, rendered);
+
+  // Only an active project may be recreated. Recreating an idle (deliberately
+  // stopped) project would silently restart it; recreating mid-deploy races the
+  // deploy on the same compose project. In both cases the file is now correct
+  // and the labels apply on the next start/deploy.
+  if (project.status !== "active") return "deferred";
+
+  await ensureNetwork("deplo");
+  const args = ["compose", "-p", name, "-f", stackFile];
+  if (useCompose && hasCompose) {
+    const envFile = join(STACK_DIR, `${slug}.env`);
+    if (await fileExists(envFile)) args.push("--env-file", envFile);
+  }
+  await docker([...args, "up", "-d", "--remove-orphans"], { timeout: 120_000 });
+  return "rerouted";
 }
 
 /** Stop a project's stack (compose-managed; falls back to the single container). */
