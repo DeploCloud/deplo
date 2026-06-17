@@ -1,11 +1,10 @@
 "use server";
 
-import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { run, type ActionResult } from "./result";
 import { assertUser } from "../auth";
 import { signState } from "../crypto";
-import { resolvePublicBaseUrl } from "../public-url";
+import { resolveManifestBaseUrl, PUBLIC_URL_PLACEHOLDER } from "../public-url";
 import { buildManifest, manifestCreateUrl } from "../github/manifest";
 import {
   listInstallationRepos,
@@ -32,10 +31,12 @@ export async function startGithubConnectAction(
 ): Promise<ActionResult<GithubConnectStart>> {
   return run(async () => {
     const user = await assertUser();
-    const base = resolvePublicBaseUrl(await headers());
-    if (/your-deplo-host/.test(base)) {
+    // The manifest base is baked permanently into the App on GitHub, so it must
+    // be an explicit, externally-reachable URL — never a request-host guess.
+    const base = resolveManifestBaseUrl();
+    if (base === PUBLIC_URL_PLACEHOLDER) {
       throw new Error(
-        "Set DEPLO_PUBLIC_URL (or a domain) so GitHub can reach this instance before connecting.",
+        "Set DEPLO_PUBLIC_URL to a public, externally-reachable URL (not localhost) so GitHub can reach this instance before connecting.",
       );
     }
     const manifest = buildManifest(base);

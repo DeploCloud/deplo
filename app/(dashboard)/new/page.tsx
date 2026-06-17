@@ -74,6 +74,7 @@ export default async function NewProjectPage(props: PageProps<"/new">) {
                 compose: blueprint?.compose ?? "",
                 env: blueprint?.env ?? [],
                 expose: blueprint?.expose ?? null,
+                exposes: blueprint?.exposes ?? [],
                 autoDomain,
                 mounts: blueprint?.mounts ?? [],
               }

@@ -2,6 +2,8 @@ import "server-only";
 
 import yaml from "js-yaml";
 
+import { certResolver } from "./domains";
+
 /**
  * Turn a raw template/user docker-compose file into a Deplo-deployable stack.
  *
@@ -24,16 +26,34 @@ import yaml from "js-yaml";
 
 const NETWORK = "deplo";
 
+/** One publicly-routed service: its name, container port, and the hostname
+ * Traefik routes to it. `host` falls back to the stack's primary domain. */
+export interface StackExpose {
+  service: string;
+  port: number;
+  host?: string;
+}
+
 export interface ComposeStackInput {
   compose: string;
   /** Router/service name + label namespace, e.g. `deplo-<slug>`. */
   name: string;
   slug: string;
   projectId: string;
-  /** Generated public hostname Traefik routes to this stack. */
-  domain: string;
+  /**
+   * Public hostnames Traefik routes to this stack, primary first. A route with
+   * no explicit `host` answers on all of these (so secondary verified domains
+   * route to the app instantly); `domains[0]` is the primary canonical host.
+   */
+  domains: string[];
   /** Which service + container port to expose; auto-detected when null. */
   expose: { service: string; port: number } | null;
+  /**
+   * Every service to route publicly, each on its own host. Multi-domain
+   * templates (e.g. garage-with-ui) declare two. When empty, falls back to the
+   * single `expose` (or auto-detection) on the primary domain.
+   */
+  exposes?: StackExpose[];
   /**
    * Absolute host directory holding this project's mount files. Template
    * bind-mounts that reference `../files/<x>` (Dokploy convention) are rewritten
@@ -85,26 +105,58 @@ function detectExpose(
   return { service: names[0], port: 80 };
 }
 
+/** Labels that mark a container as Deplo-owned. Applied to EVERY service so the
+ * whole stack is discoverable by `label=deplo.project=<id>` / `deplo.slug=<slug>`
+ * — container counts, the console, health waits and teardown all rely on this. */
+function deploLabels(projectId: string, slug: string): string[] {
+  return ["deplo.managed=true", `deplo.project=${projectId}`, `deplo.slug=${slug}`];
+}
+
+/**
+ * Traefik routing labels for one exposed service. `router` is the unique
+ * router/service key (a service exposed on several hosts/ports gets one set per
+ * route, so the key must differ); `enable`+`network` are emitted once via the
+ * first route's labels but are harmless if repeated.
+ */
 function traefikLabels(opts: {
-  name: string;
-  domain: string;
+  router: string;
+  domains: string[];
   port: number;
-  projectId: string;
-  slug: string;
 }): string[] {
-  const { name, domain, port, projectId, slug } = opts;
+  const { router, domains, port } = opts;
+  const rule = domains.map((d) => `Host(\`${d}\`)`).join(" || ");
   return [
     "traefik.enable=true",
     `traefik.docker.network=${NETWORK}`,
-    `traefik.http.routers.${name}.rule=Host(\`${domain}\`)`,
-    `traefik.http.routers.${name}.entrypoints=websecure`,
-    `traefik.http.routers.${name}.tls=true`,
-    `traefik.http.routers.${name}.tls.certresolver=letsencrypt`,
-    `traefik.http.services.${name}.loadbalancer.server.port=${port}`,
-    "deplo.managed=true",
-    `deplo.project=${projectId}`,
-    `deplo.slug=${slug}`,
+    `traefik.http.routers.${router}.rule=${rule}`,
+    `traefik.http.routers.${router}.entrypoints=websecure`,
+    `traefik.http.routers.${router}.tls=true`,
+    `traefik.http.routers.${router}.tls.certresolver=${certResolver()}`,
+    `traefik.http.routers.${router}.service=${router}`,
+    `traefik.http.services.${router}.loadbalancer.server.port=${port}`,
   ];
+}
+
+/**
+ * Merge new label strings into a service's existing `labels`, dropping any
+ * existing entry whose `KEY` collides (so re-deploys don't accumulate stale
+ * routing/tracking labels). Compose accepts list OR map form; we normalise the
+ * map form to a list before merging.
+ */
+function mergeLabels(svc: Service, add: string[]): void {
+  const keyOf = (l: string): string => l.split("=")[0];
+  const incoming = new Set(add.map(keyOf));
+  const existing: string[] = [];
+  if (Array.isArray(svc.labels)) {
+    for (const l of svc.labels) {
+      if (typeof l === "string" && !incoming.has(keyOf(l))) existing.push(l);
+    }
+  } else if (svc.labels && typeof svc.labels === "object") {
+    for (const [k, v] of Object.entries(svc.labels as Record<string, unknown>)) {
+      if (!incoming.has(k)) existing.push(`${k}=${String(v)}`);
+    }
+  }
+  svc.labels = [...existing, ...add];
 }
 
 /** Rewrite a `../files/<x>` bind-mount source to the project's files dir. */
@@ -143,7 +195,7 @@ function serviceNetworks(svc: Service): string[] {
 }
 
 export function buildComposeStack(input: ComposeStackInput): string {
-  const { compose, name, slug, projectId, domain } = input;
+  const { compose, name, slug, projectId, domains } = input;
 
   let doc: ComposeDoc;
   try {
@@ -161,43 +213,99 @@ export function buildComposeStack(input: ComposeStackInput): string {
   delete doc.version;
 
   const services = doc.services;
-  const expose =
-    (input.expose && services[input.expose.service] ? input.expose : null) ??
-    detectExpose(services);
-  if (!expose) throw new Error("Compose file has no services to deploy");
 
-  // Strip globally-unique container names everywhere, and point template file
-  // mounts at this project's isolated files directory.
+  // The list of services to route publicly. Prefer the explicit multi-expose
+  // list (templates with several config.domains), fall back to the single
+  // expose, then to auto-detection. Drop any that name a service not present.
+  const requested =
+    input.exposes && input.exposes.length
+      ? input.exposes
+      : input.expose
+        ? [input.expose]
+        : [];
+  let routes: StackExpose[] = requested.filter((e) => services[e.service]);
+  if (routes.length === 0) {
+    const auto = detectExpose(services);
+    if (!auto) throw new Error("Compose file has no services to deploy");
+    routes = [auto];
+  }
+
+  // Strip globally-unique container names everywhere, point template file mounts
+  // at this project's isolated files dir, and stamp Deplo tracking labels on
+  // EVERY service so the whole stack (not just the exposed one) is discoverable
+  // by label — otherwise sidecars/databases are invisible to the container
+  // count, console, health wait and teardown.
+  const tracking = deploLabels(projectId, slug);
   for (const svc of Object.values(services)) {
     if (svc && typeof svc === "object") {
       delete (svc as Service).container_name;
       if (input.filesDir) rewriteServiceVolumes(svc as Service, input.filesDir);
+      mergeLabels(svc as Service, tracking);
     }
   }
 
-  const target = services[expose.service];
-  // Join the exposed service to the deplo network on top of its own networks
-  // (default to Compose's `default` when it declared none) so connectivity to
-  // sibling services is preserved.
-  const existing = serviceNetworks(target);
-  const base = existing.length ? existing : ["default"];
-  target.networks = Array.from(new Set([...base, NETWORK]));
+  // A single route reuses the stack name as its router key (stable, matches the
+  // legacy single-service behaviour); multiple routes get a per-route suffix so
+  // each Traefik router/service key is unique even on the same container.
+  const single = routes.length === 1;
+  const routerKey = (e: StackExpose): string =>
+    single ? name : `${name}-${e.service}-${e.port}`.replace(/[^a-zA-Z0-9_-]/g, "-");
 
-  // Traefik fronts the exposed service; drop its published host ports.
-  delete target.ports;
+  // Hosts a route pins explicitly (multi-domain templates like garage-with-ui
+  // route a specific service to a specific hostname). A no-host route falls back
+  // to the project's domain list, but MUST NOT swallow another route's pinned
+  // host — two routers answering on the same Host() collide nondeterministically.
+  const pinned = new Set(
+    routes.map((r) => r.host?.trim()).filter((h): h is string => Boolean(h)),
+  );
+  const fallback = domains.filter((d) => !pinned.has(d));
+  // Only the FIRST no-host route may claim the shared fallback domains; a second
+  // no-host route claiming them too would emit a duplicate Host() rule on a
+  // different router → nondeterministic routing. Subsequent no-host routes get
+  // nothing routable (their router is skipped), so multi-domain templates must
+  // pin each service's host explicitly.
+  let fallbackClaimed = false;
+  // The host(s) a route serves: its own pin if set, else every project domain
+  // not pinned elsewhere (so a primary switch / new verified domain routes here
+  // with no redeploy). Guard against an empty rule with the primary domain.
+  const hostsFor = (route: StackExpose): string[] => {
+    const host = route.host?.trim();
+    if (host) return [host];
+    if (fallbackClaimed) return [];
+    fallbackClaimed = true;
+    return fallback.length ? fallback : domains.slice(0, 1);
+  };
 
-  // Attach routing labels (merge with any the template already declared).
-  const labels = traefikLabels({ name, domain, port: expose.port, projectId, slug });
-  const existingLabels = target.labels;
-  if (Array.isArray(existingLabels)) {
-    target.labels = [
-      ...existingLabels.filter(
-        (l) => typeof l === "string" && !l.startsWith("traefik."),
-      ),
-      ...labels,
-    ];
-  } else {
-    target.labels = labels;
+  // Services we've already joined to the network / stripped ports for, so a
+  // service exposed on two ports is only network-wired once.
+  const wired = new Set<string>();
+  for (const route of routes) {
+    const target = services[route.service];
+    if (!target) continue;
+    if (!wired.has(route.service)) {
+      // Join the exposed service to the deplo network on top of its own networks
+      // (default to Compose's `default` when it declared none) so connectivity
+      // to sibling services is preserved, and drop its published host ports —
+      // Traefik fronts it.
+      const existing = serviceNetworks(target);
+      const base = existing.length ? existing : ["default"];
+      target.networks = Array.from(new Set([...base, NETWORK]));
+      delete target.ports;
+      wired.add(route.service);
+    }
+    // Each route adds its own router on its own host(s). A no-host route after
+    // the first has no hosts left to claim — skip its router rather than emit an
+    // empty rule. Labels merge over the tracking labels.
+    const hosts = hostsFor(route);
+    if (hosts.length === 0) continue;
+    mergeLabels(
+      target,
+      traefikLabels({
+        router: routerKey(route),
+        domains: hosts,
+        port: route.port,
+      }),
+    );
   }
 
   // Declare the external deplo network at the top level.

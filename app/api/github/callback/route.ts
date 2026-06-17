@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { verifyState } from "@/lib/crypto";
 import { exchangeManifestCode } from "@/lib/github/manifest";
 import { createGithubApp } from "@/lib/data/github";
+import { resolvePublicBaseUrl } from "@/lib/public-url";
 
 /**
  * GitHub App manifest callback. GitHub redirects here after the user creates
@@ -11,7 +12,10 @@ import { createGithubApp } from "@/lib/data/github";
  * send the user on to install the App on their account.
  */
 export async function GET(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  // Public base URL, not request.nextUrl.origin: behind a reverse proxy the
+  // latter is the internal origin (e.g. http://localhost:3000), which would
+  // send the browser to the wrong host on the error/login redirects.
+  const origin = resolvePublicBaseUrl(request.headers);
   const settings = new URL("/settings?tab=git", origin);
 
   const user = await getCurrentUser();

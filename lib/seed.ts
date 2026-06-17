@@ -36,5 +36,6 @@ export function buildSeed(): DeploData {
     registries: [],
     githubApps: [],
     githubInstallations: [],
+    devSshUsers: [],
   };
 }

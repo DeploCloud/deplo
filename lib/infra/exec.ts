@@ -6,6 +6,8 @@ export interface StreamOpts {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   timeout?: number;
+  /** Written to the child's stdin, which is then closed (e.g. a Dockerfile). */
+  input?: string;
 }
 
 /**
@@ -25,6 +27,13 @@ export function spawnStream(
       env: opts.env ?? process.env,
       windowsHide: true,
     });
+
+    if (opts.input != null) {
+      child.stdin?.on("error", () => {}); // ignore EPIPE if the child exits early
+      child.stdin?.end(opts.input);
+    } else {
+      child.stdin?.end(); // close stdin so children waiting on it don't hang
+    }
 
     let buf = "";
     const flush = (chunk: Buffer) => {

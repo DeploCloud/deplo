@@ -44,13 +44,40 @@ export function deploySourceLabel(source: string): string {
       return "Git repository";
     case "docker-image":
       return "Docker image";
-    case "dockerfile":
-      return "Dockerfile";
     case "upload":
       return "Upload";
+    case "compose":
+      return "Docker Compose";
     default:
       return titleCase(source);
   }
+}
+
+/**
+ * Whether a project deploys its own docker-compose stack rather than a single
+ * built/pulled image. `compose` is authoritative; the legacy heuristic (a
+ * stored compose with no repo/image) catches template projects created before
+ * the `compose` source existed. An "upload" source is always a single-image
+ * build, so it is excluded even if a stale compose lingers from a former source
+ * (setProjectUpload nulls repo/image but keeps compose for switching back).
+ *
+ * One source of truth so the deploy pipeline (runDeployment, rerouteProject)
+ * and the settings UI can never disagree about whether a project is a stack.
+ */
+export function usesComposeStack(project: {
+  source: string;
+  compose: string | null;
+  repo: unknown | null;
+  dockerImage: string | null;
+}): boolean {
+  const hasCompose = Boolean(project.compose && project.compose.trim());
+  return (
+    project.source === "compose" ||
+    (project.source !== "upload" &&
+      hasCompose &&
+      !project.repo &&
+      !project.dockerImage)
+  );
 }
 
 /** Deterministic short id for client-only keys (not for security). */

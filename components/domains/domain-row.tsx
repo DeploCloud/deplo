@@ -10,10 +10,21 @@ import {
   Trash2,
   ExternalLink,
   RefreshCw,
+  Network,
 } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,20 +38,57 @@ import {
   verifyDomainAction,
   setPrimaryDomainAction,
   removeDomainAction,
+  setDomainPortAction,
 } from "@/lib/actions/domains";
 import type { Domain } from "@/lib/types";
 
 type Row = Domain & { projectName: string; projectSlug: string };
 
-export function DomainRow({ domain }: { domain: Row }) {
+export function DomainRow({
+  domain,
+  portConfigurable = true,
+}: {
+  domain: Row;
+  /** Whether per-domain port overrides apply to this domain's project. False
+   * for compose/template stacks, which route per-service via the compose file —
+   * the port control is hidden there to avoid promising a no-op. */
+  portConfigurable?: boolean;
+}) {
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [portOpen, setPortOpen] = React.useState(false);
+  const [portValue, setPortValue] = React.useState(
+    domain.port != null ? String(domain.port) : "",
+  );
 
-  function call(fn: () => Promise<{ ok: boolean; error?: string }>, ok: string) {
+  function call(
+    fn: () => Promise<{ ok: boolean; error?: string; data?: string }>,
+    ok: string,
+  ) {
     startTransition(async () => {
       const res = await fn();
-      if (res.ok) toast.success(ok);
+      // Prefer the action's own message (it reports whether routing was applied
+      // instantly or deferred to the next deploy), falling back to the caller's.
+      if (res.ok) toast.success(res.data ?? ok);
       else toast.error(res.error);
+    });
+  }
+
+  function savePort() {
+    const trimmed = portValue.trim();
+    const portNum = trimmed ? Number(trimmed) : null;
+    if (trimmed && (!Number.isInteger(portNum) || portNum! < 1 || portNum! > 65535)) {
+      toast.error("Port must be between 1 and 65535");
+      return;
+    }
+    startTransition(async () => {
+      const res = await setDomainPortAction({ id: domain.id, port: portNum });
+      if (res.ok) {
+        toast.success(res.data ?? "Port updated");
+        setPortOpen(false);
+      } else {
+        toast.error(res.error);
+      }
     });
   }
 
@@ -60,6 +108,11 @@ export function DomainRow({ domain }: { domain: Row }) {
             <Badge variant="secondary" className="gap-1">
               <Star className="size-3" />
               Primary
+            </Badge>
+          )}
+          {domain.port != null && (
+            <Badge variant="outline" className="gap-1 font-mono">
+              <Network className="size-3" />:{domain.port}
             </Badge>
           )}
           {domain.ssl && (
@@ -120,6 +173,18 @@ export function DomainRow({ domain }: { domain: Row }) {
                 Set as primary
               </DropdownMenuItem>
             )}
+            {portConfigurable && (
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setPortValue(domain.port != null ? String(domain.port) : "");
+                  setPortOpen(true);
+                }}
+              >
+                <Network className="size-4" />
+                {domain.port != null ? "Change port" : "Set port"}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
@@ -142,6 +207,43 @@ export function DomainRow({ domain }: { domain: Row }) {
           successMessage="Domain removed"
           onConfirm={() => removeDomainAction(domain.id)}
         />
+        <Dialog open={portOpen} onOpenChange={setPortOpen}>
+          <DialogContent className="text-left">
+            <DialogHeader>
+              <DialogTitle>Service port for {domain.name}</DialogTitle>
+              <DialogDescription>
+                The container port this domain routes to. Leave blank to use the
+                project&apos;s default port. Applies instantly when the project
+                is running.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor={`port-${domain.id}`}>Port</Label>
+              <Input
+                id={`port-${domain.id}`}
+                type="number"
+                min={1}
+                max={65535}
+                value={portValue}
+                onChange={(e) => setPortValue(e.target.value)}
+                placeholder="Default port"
+                className="font-mono text-sm"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setPortOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button onClick={savePort} disabled={pending}>
+                {pending ? "Saving…" : "Save port"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </TableCell>
     </TableRow>
   );

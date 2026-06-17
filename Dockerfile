@@ -22,7 +22,24 @@ ENV DEPLO_DATA_DIR=/data
 
 # Real infrastructure tooling: the control plane shells out to these to clone
 # repos, build images and orchestrate containers over the mounted Docker socket.
-RUN apk add --no-cache docker-cli docker-cli-compose git curl
+# tar/unzip extract uploaded code archives (the "upload" deploy source).
+RUN apk add --no-cache docker-cli docker-cli-compose git curl bash tar unzip
+
+# node-pty is a native module with NO linux prebuild, so it must be compiled
+# from source against THIS runtime (Node 22 + musl). The app build runs under
+# Bun and Next's standalone tracer doesn't reliably carry a serverExternalPackage's
+# native .node, so we install + build node-pty here and drop it into node_modules
+# below. python3/make/g++ are the node-gyp toolchain; removed after the build so
+# they don't bloat the final image.
+RUN apk add --no-cache --virtual .pty-build python3 make g++ \
+ && npm install --no-save --build-from-source node-pty@1.1.0 --prefix /pty-build \
+ && apk del .pty-build
+
+# Nixpacks build method: the control plane runs the host `nixpacks` binary to
+# generate a Dockerfile (the daemon-free step), then builds it over the socket.
+# Other build methods (buildpacks, railpack) run entirely in helper containers.
+RUN curl -sSL https://nixpacks.com/install.sh | bash \
+ && nixpacks --version
 
 RUN addgroup -g 1001 -S nodejs \
  && adduser -S deplo -u 1001 \
@@ -31,6 +48,16 @@ RUN addgroup -g 1001 -S nodejs \
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+
+# Replace the standalone tracer's node-pty (JS only — Next doesn't trace the
+# native .node) with the runtime-compiled one built above against Node 22/musl,
+# which carries build/Release/pty.node. node-addon-api is build-time-only
+# (header-only; no runtime require), so it isn't copied. The load check fails the
+# build loudly if the native module can't resolve.
+RUN rm -rf ./node_modules/node-pty \
+ && cp -R /pty-build/node_modules/node-pty ./node_modules/node-pty \
+ && node -e "require('node-pty'); console.log('node-pty native loads OK')" \
+ && rm -rf /pty-build
 
 # Runs as root: the control plane needs access to the mounted Docker socket to
 # build images and orchestrate containers on the host.

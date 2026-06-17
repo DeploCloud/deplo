@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { resolveInstallationAccount } from "@/lib/github/app";
 import { upsertInstallation } from "@/lib/data/github";
+import { resolvePublicBaseUrl } from "@/lib/public-url";
 
 /**
  * Post-install redirect. GitHub sends the user here after they install (or
@@ -10,7 +11,10 @@ import { upsertInstallation } from "@/lib/data/github";
  * repositories become available as deploy sources.
  */
 export async function GET(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  // Build redirects against the public base URL, NOT request.nextUrl.origin:
+  // behind a reverse proxy the latter is the internal origin (e.g.
+  // http://localhost:3000), which would send the browser to the wrong host.
+  const origin = resolvePublicBaseUrl(request.headers);
   const settings = new URL("/settings?tab=git", origin);
 
   const user = await getCurrentUser();

@@ -7,9 +7,12 @@ import { cn } from "@/lib/utils";
 export function ProjectTabs({
   slug,
   running = false,
+  devEligible = false,
 }: {
   slug: string;
   running?: boolean;
+  /** Source-bearing projects get a Dev Mode tab (live container + SSH access). */
+  devEligible?: boolean;
 }) {
   const pathname = usePathname();
   const base = `/projects/${slug}`;
@@ -44,6 +47,16 @@ export function ProjectTabs({
             label: "Console",
             href: `${base}/console`,
             active: matchSub("/console"),
+          },
+        ]
+      : []),
+    // Dev Mode (live editable container + SSH) — only for source-bearing projects.
+    ...(devEligible
+      ? [
+          {
+            label: "Dev Mode",
+            href: `${base}/dev`,
+            active: matchSub("/dev"),
           },
         ]
       : []),

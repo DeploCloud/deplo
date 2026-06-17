@@ -77,19 +77,37 @@ export type ProjectStatus = "active" | "building" | "error" | "queued" | "idle";
 
 /**
  * Where a project's code/image comes from. Mirrors the choices offered by
- * Coolify / Dokploy / Easypanel:
+ * Coolify / Dokploy / Easypanel. How the code is turned into an image is a
+ * separate axis — see BuildConfig.buildMethod (which includes "dockerfile").
  *  - github      a connected GitHub repository (auto-deploy on push)
  *  - git         any public/private Git URL
  *  - docker-image a prebuilt image from a registry (no build step)
- *  - dockerfile  build from a Dockerfile in the repo
  *  - upload      a code archive uploaded from the dashboard
+ *  - compose     a multi-service docker-compose stack (template / hand-written)
  */
 export type DeploySource =
   | "github"
   | "git"
   | "docker-image"
-  | "dockerfile"
-  | "upload";
+  | "upload"
+  | "compose";
+
+/**
+ * A code archive uploaded from the dashboard, backing an "upload" source. The
+ * tarball/zip is written to DATA_DIR/uploads/<projectId>/<id><ext> and built
+ * exactly like a git clone (extract → resolve rootDirectory → build method).
+ */
+export interface UploadArchive {
+  /** Opaque id, also the on-disk basename (minus extension). */
+  id: ID;
+  /** Original filename as uploaded, for display (e.g. "my-app.tar.gz"). */
+  filename: string;
+  /** Absolute path to the stored archive on the host running Deplo. */
+  path: string;
+  /** Size in bytes, for display. */
+  size: number;
+  uploadedAt: string;
+}
 
 export interface GitRepo {
   provider: "github" | "gitlab" | "bitbucket" | "git";
@@ -104,15 +122,150 @@ export interface GitRepo {
   installationId?: string | null;
 }
 
+/**
+ * How Deplo turns a repository into a runnable image — orthogonal to the
+ * framework preset (which only seeds the install/build/output commands). Mirrors
+ * the "build pack" choice in Coolify/Dokploy/Railway. Each method runs entirely
+ * inside Docker (the only build tool guaranteed present on the host):
+ *  - dockerfile  build straight from a Dockerfile in the repo
+ *  - railpack    Railway's BuildKit-based builder (Nixpacks' successor)
+ *  - nixpacks    Nixpacks auto-detects and builds an OCI image
+ *  - heroku      Cloud Native Buildpacks with the Heroku builder
+ *  - paketo      Cloud Native Buildpacks with the Paketo builder
+ *  - static      build (if needed) then serve the output dir with nginx
+ */
+export type BuildMethod =
+  | "dockerfile"
+  | "railpack"
+  | "nixpacks"
+  | "heroku"
+  | "paketo"
+  | "static";
+
+/**
+ * Per-method build settings. All optional/defaulted; only the fields relevant to
+ * the active `buildMethod` are surfaced in the UI and consumed at deploy time.
+ */
+export interface BuildMethodSettings {
+  /** dockerfile: path to the Dockerfile, relative to the repo root. */
+  dockerfilePath?: string;
+  /** dockerfile: build context dir, relative to the repo root. */
+  dockerContextPath?: string;
+  /** dockerfile: optional `--target` build stage in a multi-stage Dockerfile. */
+  dockerBuildStage?: string;
+  /** railpack: builder image tag (e.g. "latest", "0.7"). */
+  railpackVersion?: string;
+  /** nixpacks: directory the build publishes / serves (informational + static). */
+  nixpacksPublishDirectory?: string;
+  /** heroku: builder image tag mapped to heroku/builder:<version> (e.g. "24"). */
+  herokuVersion?: string;
+  /** static: serve as a single-page app (SPA history-API fallback to index.html). */
+  staticSinglePageApp?: boolean;
+}
+
 export interface BuildConfig {
   framework: FrameworkId;
+  /** Which builder turns the repo into an image. Defaults to "nixpacks". */
+  buildMethod: BuildMethod;
+  /** Settings scoped to the active build method (see BuildMethodSettings). */
+  methodSettings: BuildMethodSettings;
   rootDirectory: string;
   installCommand: string;
   buildCommand: string;
   outputDirectory: string;
   startCommand: string;
-  nodeVersion: string;
+  /**
+   * Pinned runtime version for the framework's language (Node, Python, Go, …).
+   * Interpreted per language by the builder; empty means "use the builder's
+   * default". The UI labels it per language (see runtimeFor).
+   */
+  runtimeVersion: string;
   port: number;
+}
+
+/**
+ * Push-only lifecycle state of a project's dev container. Never reconciled
+ * against live docker (there is no monitor loop) — exactly like
+ * `ProjectStatus`, with the same known consequence that a manually-stopped
+ * container can show a stale status.
+ */
+export type DevStatus = "off" | "starting" | "running" | "stopped" | "error";
+
+/**
+ * Coarse base-language image a dev container runs on. A *different, coarser*
+ * axis than `FrameworkId` (app type) and `runtimeVersion` (language version):
+ * a Next.js project's preset is `node`. Derived by default from `framework`;
+ * resolves to an OFFICIAL base image (node:22, python:3.12, …) used directly.
+ */
+export type DevImagePreset = "node" | "python" | "go" | "rust" | "php" | "java";
+
+/**
+ * The runtime a port belongs to — a two-valued narrowing of `EnvTarget`
+ * (`preview` reuses the production port). Each target has exactly one port;
+ * read through `portFor(project, target)`.
+ */
+export type PortTarget = "production" | "development";
+
+/**
+ * A project's dev-mode configuration. Absent (`null`/`undefined`) ⇒ dev mode
+ * was never enabled (back-compat). Offered only for source-bearing projects
+ * (`github`/`git`/`upload`). State lives here, never in a `Deployment` row.
+ */
+export interface DevConfig {
+  enabled: boolean;
+  /** Push-only, like project.status — not reconciled against live docker. */
+  status: DevStatus;
+  /** "preset" → `image` is a DevImagePreset id; "custom" → `image` is raw. */
+  imageKind: "preset" | "custom";
+  /** Preset id (resolved to an official base) or a raw custom image string. */
+  image: string;
+  /** Dev command; default from the framework's `dev` command (e.g. "next dev"). */
+  devCommand: string;
+  /** The development PortTarget. Defaults to build.port. */
+  port: number;
+  /**
+   * Preview route on by default → dev-<slug>.<ip>.sslip.io. A LABEL-only route,
+   * never a Domain row; the URL is computed from slug+IP, not stored/managed.
+   */
+  previewEnabled: boolean;
+  latestStartAt: string | null;
+}
+
+/**
+ * A Linux account on the SSH gateway, scoped to exactly one project. The
+ * password is stored REVERSIBLY (encrypted, not scrypt-hashed like
+ * `User.passwordHash`) only because `chpasswd` needs the cleartext — and is
+ * write-only from the dashboard (masked in the DTO, no reveal path). At least
+ * one credential (key or password) is required; "neither" is rejected at both
+ * the action and data layers.
+ */
+export interface DevSshUser {
+  id: ID; // newId("ssh")
+  /** The ONE project this user may reach. */
+  projectId: ID;
+  /** Gateway-global login, namespaced `<slug>-<name>` to keep it unique. */
+  username: string;
+  /** authorized_keys line(s); plaintext (public). Null when password-only. */
+  publicKey: string | null;
+  /**
+   * encryptSecret(password). Reversible ONLY because chpasswd needs cleartext.
+   * Write-only: masked in the DTO with no reveal path. Null when key-only.
+   */
+  passwordEnc: string | null;
+  // NOTE: no targetUser — the gateway always execs as `devuser` (UID 1000).
+  // A configurable exec target is a privilege-escalation footgun (ADR-0003).
+  createdAt: string;
+}
+
+/** DTO sent to the client: the password is masked with NO reveal path. */
+export interface DevSshUserDTO {
+  id: ID;
+  username: string;
+  /** The public key, shown verbatim (it is public). Null when password-only. */
+  publicKey: string | null;
+  /** Whether a password is set. The password itself is never sent. */
+  hasPassword: boolean;
+  createdAt: string;
 }
 
 export interface Project {
@@ -127,14 +280,27 @@ export interface Project {
   repo: GitRepo | null;
   /** Image reference when source is "docker-image" (e.g. ghcr.io/org/app:tag). */
   dockerImage: string | null;
+  /**
+   * The code archive currently backing an "upload" source (else null). The file
+   * lives on disk under DATA_DIR/uploads/<projectId>/; this is the pointer the
+   * deploy pipeline extracts and builds. Re-uploading replaces it.
+   */
+  upload: UploadArchive | null;
   /** Editable docker-compose stack for template/compose deploys (else null). */
   compose: string | null;
   /**
    * For multi-service compose/template deploys: which service Traefik exposes
    * and on which container port. Null for single-image/built projects (the
-   * build config's port is used instead).
+   * build config's port is used instead). The first of `exposes`.
    */
   expose: { service: string; port: number } | null;
+  /**
+   * Every publicly-routed service in a compose/template stack, each on its own
+   * hostname. Templates like garage-with-ui expose two (an API and a web UI).
+   * `host` is the registered domain Traefik routes to that service; empty/absent
+   * means "the project's primary domain". Null/empty for single-service deploys.
+   */
+  exposes?: { service: string; port: number; host?: string }[] | null;
   /**
    * Config files a template bind-mounts into its stack (e.g. an app's
    * configuration.yml). Written next to the stack at deploy time with the same
@@ -142,6 +308,12 @@ export interface Project {
    */
   mounts?: { filePath: string; content: string }[] | null;
   build: BuildConfig;
+  /**
+   * Dev-mode configuration. Absent ⇒ dev mode was never enabled (back-compat).
+   * A sibling of the production stack with an independent lifecycle; never a
+   * `Deployment`. Offered only for source-bearing sources.
+   */
+  dev?: DevConfig | null;
   productionUrl: string | null;
   status: ProjectStatus;
   autoDeploy: boolean;
@@ -173,6 +345,16 @@ export interface Deployment {
   readyAt: string | null;
   buildDurationMs: number | null;
   creator: string;
+  /**
+   * Where this deployment's image is built FROM. Absent ⇒ the project's own
+   * `source` (git clone / upload archive / docker pull) — the normal path.
+   * "dev-workspace" is the explicit exception (CONTEXT.md): build PRODUCTION
+   * from the developer's live, edited tree at /data/dev/<slug> instead of
+   * re-cloning the source. Persisted on the row because runDeployment re-reads
+   * the deployment by id across the fire-and-forget boundary and must recover
+   * the intent (a side map would not survive a process restart).
+   */
+  buildSource?: "dev-workspace";
 }
 
 export type LogLevel = "info" | "warn" | "error" | "debug" | "command";
@@ -224,6 +406,14 @@ export interface Domain {
    * added and must point at this server. Defaults to "custom" when absent.
    */
   source?: "auto" | "custom";
+  /**
+   * Container port this hostname's Traefik router targets. Null/absent ⇒ route
+   * to the project's default port (single-image `build.port`, or the compose
+   * stack's exposed port) — the long-standing behaviour where every domain hits
+   * the same service. When set, this host gets its own router on that port, so
+   * one container can expose different services on different domains.
+   */
+  port?: number | null;
   createdAt: string;
 }
 
@@ -444,4 +634,6 @@ export interface DeploData {
   registries: Registry[];
   githubApps: GithubApp[];
   githubInstallations: GithubInstallation[];
+  /** Dev SSH users — the sole source of truth for the SSH gateway projection. */
+  devSshUsers: DevSshUser[];
 }

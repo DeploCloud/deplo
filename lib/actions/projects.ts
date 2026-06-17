@@ -32,9 +32,30 @@ const DEPLOY_SOURCES = [
   "github",
   "git",
   "docker-image",
-  "dockerfile",
   "upload",
+  "compose",
 ] as const;
+
+const BUILD_METHODS = [
+  "dockerfile",
+  "railpack",
+  "nixpacks",
+  "heroku",
+  "paketo",
+  "static",
+] as const;
+
+const methodSettingsSchema = z
+  .object({
+    dockerfilePath: z.string().max(300).optional(),
+    dockerContextPath: z.string().max(300).optional(),
+    dockerBuildStage: z.string().max(120).optional(),
+    railpackVersion: z.string().max(40).optional(),
+    nixpacksPublishDirectory: z.string().max(300).optional(),
+    herokuVersion: z.string().max(40).optional(),
+    staticSinglePageApp: z.boolean().optional(),
+  })
+  .optional();
 
 const repoSchema = z.object({
   provider: z.enum(["github", "gitlab", "bitbucket", "git"]),
@@ -43,6 +64,13 @@ const repoSchema = z.object({
   branch: z.string().min(1),
   installationId: z.string().min(1).nullable().optional(),
 });
+
+const exposeSchema = z.object({
+  service: z.string().min(1).max(120),
+  port: z.number().int().min(1).max(65535),
+  host: z.string().max(253).optional(),
+});
+const exposesSchema = z.array(exposeSchema).max(20).nullable().optional();
 
 const createSchema = z.object({
   name: z.string().min(1).max(64),
@@ -63,18 +91,21 @@ const createSchema = z.object({
   repo: repoSchema.nullable(),
   build: z
     .object({
+      buildMethod: z.enum(BUILD_METHODS).optional(),
+      methodSettings: methodSettingsSchema,
       installCommand: z.string().max(500).optional(),
       buildCommand: z.string().max(500).optional(),
       outputDirectory: z.string().max(200).optional(),
       startCommand: z.string().max(500).optional(),
       rootDirectory: z.string().max(200).optional(),
       port: z.number().int().min(1).max(65535).optional(),
-      nodeVersion: z.string().max(20).optional(),
+      runtimeVersion: z.string().max(20).optional(),
     })
     .optional(),
   autoDeploy: z.boolean().optional(),
   composeService: z.string().max(120).nullable().optional(),
   composePort: z.number().int().min(1).max(65535).nullable().optional(),
+  exposes: exposesSchema,
   autoDomain: z.string().max(253).nullable().optional(),
   mounts: z
     .array(
@@ -109,6 +140,7 @@ export async function createProjectAction(
       autoDeploy: parsed.data.autoDeploy,
       composeService: parsed.data.composeService,
       composePort: parsed.data.composePort,
+      exposes: parsed.data.exposes,
       autoDomain: parsed.data.autoDomain,
       mounts: parsed.data.mounts,
     });
@@ -178,12 +210,14 @@ export async function setAutoDeployAction(
 
 const buildSchema = z.object({
   framework: z.enum(FRAMEWORK_IDS).optional(),
+  buildMethod: z.enum(BUILD_METHODS).optional(),
+  methodSettings: methodSettingsSchema,
   installCommand: z.string().max(500).optional(),
   buildCommand: z.string().max(500).optional(),
   outputDirectory: z.string().max(200).optional(),
   startCommand: z.string().max(500).optional(),
   rootDirectory: z.string().max(200).optional(),
-  nodeVersion: z.string().max(20).optional(),
+  runtimeVersion: z.string().max(20).optional(),
   port: z.number().int().min(1).max(65535).optional(),
 });
 
@@ -206,6 +240,10 @@ const sourceSchema = z.object({
   serverId: z.string().min(1).optional(),
   dockerImage: z.string().max(300).nullable(),
   repo: repoSchema.nullable(),
+  compose: z.string().max(50000).nullable().optional(),
+  composeService: z.string().max(120).nullable().optional(),
+  composePort: z.number().int().min(1).max(65535).nullable().optional(),
+  exposes: exposesSchema,
 });
 
 export async function updateSourceAction(
@@ -215,17 +253,39 @@ export async function updateSourceAction(
   const parsed = sourceSchema.safeParse(input);
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const {
+    source,
+    serverId,
+    dockerImage,
+    repo,
+    compose,
+    composeService,
+    composePort,
+    exposes,
+  } = parsed.data;
+  if (source === "compose" && !compose?.trim())
+    return { ok: false, error: "Compose file cannot be empty" };
   const res = await run(() =>
     updateProjectSource(id, {
-      source: parsed.data.source,
-      serverId: parsed.data.serverId,
-      dockerImage: parsed.data.dockerImage,
-      repo: parsed.data.repo,
+      source,
+      serverId,
+      dockerImage,
+      repo,
+      // Only persist compose when the Compose source is active; switching to a
+      // different source leaves the stored stack untouched (kept for switching
+      // back), so we pass undefined rather than null there.
+      compose: source === "compose" ? (compose ?? "") : undefined,
+      expose:
+        source === "compose" && composeService && composePort
+          ? { service: composeService, port: composePort }
+          : undefined,
+      exposes: source === "compose" ? (exposes ?? null) : undefined,
     })
   );
   if (res.ok) revalidatePath("/");
   return res as ActionResult;
 }
+
 
 export async function renameProjectAction(
   id: string,

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { BuildConfig } from "../types";
+import { runtimeFor } from "../frameworks";
 
 /**
  * Generate a Dockerfile from a project's build settings when the repository
@@ -8,7 +9,11 @@ import type { BuildConfig } from "../types";
  * frameworks); projects in other languages should provide their own Dockerfile.
  */
 export function generateDockerfile(build: BuildConfig): string {
-  const node = (build.nodeVersion || "20").replace(/[^\d.]/g, "").split(".")[0] || "20";
+  // runtimeVersion only names the Node version for Node-language frameworks;
+  // for anything else fall back to a sane Node default (this path is Node-only).
+  const nodeVersion =
+    runtimeFor(build.framework).language === "node" ? build.runtimeVersion : "";
+  const node = (nodeVersion || "20").replace(/[^\d.]/g, "").split(".")[0] || "20";
   const root = (build.rootDirectory || ".").replace(/^\.?\/?/, "") || ".";
   const workdir = root === "." || root === "" ? "/app" : `/app/${root}`;
   const install = build.installCommand?.trim() || "npm install";

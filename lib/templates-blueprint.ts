@@ -39,6 +39,8 @@ export interface BlueprintEnv {
 export interface BlueprintExpose {
   service: string;
   port: number;
+  /** Resolved public hostname this service is routed on (from config.domains). */
+  host?: string;
 }
 
 export interface BlueprintMount {
@@ -52,6 +54,12 @@ export interface TemplateBlueprint {
   env: BlueprintEnv[];
   /** Which service + container port Traefik should route to (first domain). */
   expose: BlueprintExpose | null;
+  /**
+   * Every service the template exposes publicly (one per config.domains entry),
+   * each on its own resolved hostname. Templates like garage-with-ui expose two
+   * (the API and the web UI); `expose` is just the first of these.
+   */
+  exposes: BlueprintExpose[];
   /** Config files to write next to the stack and bind-mount (resolved). */
   mounts: BlueprintMount[];
 }
@@ -112,6 +120,26 @@ function stripQuotes(value: string): string {
   return v;
 }
 
+/**
+ * Drop a trailing `# comment` from a TOML scalar/array entry, ignoring any `#`
+ * that sits inside a quoted string (so `KEY = "a#b"` and URLs keep their hash).
+ * Returns the text up to the first unquoted `#`, trimmed.
+ */
+function stripComment(input: string): string {
+  let q: string | null = null;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (q) {
+      if (ch === q) q = null;
+    } else if (ch === '"' || ch === "'") {
+      q = ch;
+    } else if (ch === "#") {
+      return input.slice(0, i).trim();
+    }
+  }
+  return input.trim();
+}
+
 /** TOML integers allow `_` digit separators (e.g. 5_006). */
 function parseTomlInt(value: string): number {
   return Number(stripQuotes(value).replace(/_/g, ""));
@@ -161,11 +189,13 @@ function parseToml(toml: string): ParsedToml {
       continue;
     }
 
-    // Collect entries of an open inline `env = [ ... ]` array.
+    // Collect entries of an open inline `env = [ ... ]` array. Skip whole-line
+    // comments and blank padding entries the template author left for humans.
     if (envArrayOpen) {
       if (line.includes("]")) envArrayOpen = false;
-      const entry = stripQuotes(line.replace(/[\],]+$/g, "").trim());
-      if (entry) pushKeyValEntry(configEnv, entry);
+      const raw = line.replace(/[\],]+$/g, "").trim();
+      const entry = stripQuotes(raw);
+      if (entry && !entry.startsWith("#")) pushKeyValEntry(configEnv, entry);
       continue;
     }
 
@@ -189,7 +219,7 @@ function parseToml(toml: string): ParsedToml {
       const body = inline.replace(/\].*$/, "");
       for (const part of splitTopLevel(body)) {
         const entry = stripQuotes(part.trim());
-        if (entry) pushKeyValEntry(configEnv, entry);
+        if (entry && !entry.startsWith("#")) pushKeyValEntry(configEnv, entry);
       }
       continue;
     }
@@ -213,7 +243,9 @@ function parseToml(toml: string): ParsedToml {
       continue;
     }
 
-    const value = stripQuotes(rhs);
+    // Single-line scalar: drop any trailing `# comment` (the multi-line mount
+    // `content = """..."""` case is handled above and never reaches here).
+    const value = stripQuotes(stripComment(rhs));
     if (section === "[variables]") {
       variables.push({ key, value });
     } else if (section === "[config.env]") {
@@ -328,6 +360,7 @@ export function getTemplateBlueprint(
 
   let env: BlueprintEnv[] = [];
   let expose: BlueprintExpose | null = null;
+  let exposes: BlueprintExpose[] = [];
   let mounts: BlueprintMount[] = [];
 
   const tomlPath = join(dir, "template.toml");
@@ -342,8 +375,17 @@ export function getTemplateBlueprint(
         value: substituteRefs(value, vars, domain),
       }));
 
-      const first = parsed.domains.find((d) => d.serviceName && d.port);
-      if (first) expose = { service: first.serviceName, port: first.port };
+      // One expose per declared domain, each on its own resolved hostname. The
+      // host pattern (e.g. `web-ui.${domain}`) is resolved against the template
+      // variables so secondary services get the subdomain the author intended.
+      exposes = parsed.domains
+        .filter((d) => d.serviceName && d.port)
+        .map((d) => ({
+          service: d.serviceName,
+          port: d.port,
+          host: d.host ? substituteRefs(d.host, vars, domain) : undefined,
+        }));
+      expose = exposes[0] ?? null;
 
       mounts = parsed.mounts
         .filter((mt) => mt.filePath)
@@ -355,11 +397,12 @@ export function getTemplateBlueprint(
       warnUnresolved(id, env, mounts);
     } catch {
       env = [];
+      exposes = [];
       mounts = [];
     }
   }
 
-  return { compose, env, expose, mounts };
+  return { compose, env, expose, exposes, mounts };
 }
 
 /** Surface any token a template references that we could not resolve. */

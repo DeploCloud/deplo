@@ -6,6 +6,8 @@
  * (ACME, HTTP-01). This module renders the labels we attach to containers.
  */
 
+import { certResolver as defaultCertResolver } from "./domains";
+
 export interface TraefikRouteOptions {
   /** Service/router name, e.g. project slug. */
   name: string;
@@ -29,7 +31,7 @@ export function traefikLabels(opts: TraefikRouteOptions): Record<string, string>
     port,
     tls = true,
     pathPrefix,
-    certResolver = "letsencrypt",
+    certResolver = defaultCertResolver(),
   } = opts;
   const host = domains.map((d) => `Host(\`${d}\`)`).join(" || ");
   const rule = pathPrefix

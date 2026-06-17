@@ -21,7 +21,7 @@ export default async function ProjectConsolePage(
     <div className="space-y-5">
       <PageHeader
         title="Console"
-        description="Attach an interactive shell to the running container (docker attach)."
+        description="Run commands in the running container (docker exec)."
       />
 
       {info?.running ? (
@@ -29,7 +29,8 @@ export default async function ProjectConsolePage(
           projectId={project.id}
           containerName={info.containerName}
           image={info.image}
-          user={info.user}
+          shell={info.shell}
+          instances={info.instances}
         />
       ) : (
         <EmptyState

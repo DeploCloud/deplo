@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { listServers } from "@/lib/data/servers";
+import { listGithubInstallations } from "@/lib/data/github";
 import { BuildSettingsForm } from "@/components/projects/build-settings-form";
 
 export const metadata = { title: "Project Settings" };
@@ -17,17 +18,32 @@ export default async function ProjectSettingsPage(
     name: s.name,
     type: s.type,
   }));
+  const installations = await listGithubInstallations();
 
   return (
     <BuildSettingsForm
       projectId={project.id}
+      slug={project.slug}
       name={project.name}
       framework={project.framework}
       build={project.build}
       autoDeploy={project.autoDeploy}
       source={project.source}
       repo={project.repo}
+      installations={installations}
       dockerImage={project.dockerImage}
+      upload={
+        project.upload
+          ? {
+              filename: project.upload.filename,
+              size: project.upload.size,
+              uploadedAt: project.upload.uploadedAt,
+            }
+          : null
+      }
+      compose={project.compose}
+      expose={project.expose}
+      exposes={project.exposes ?? null}
       serverId={project.serverId}
       servers={servers}
     />
