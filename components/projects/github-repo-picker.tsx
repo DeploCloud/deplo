@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Search, Lock, RefreshCw, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -25,6 +26,17 @@ export interface GithubSelection {
   fullName: string;
   branch: string;
 }
+
+// Varied bar widths so the loading placeholder reads like a real repo list
+// instead of an even grid of identical lines.
+const REPO_SKELETON_WIDTHS = [
+  "w-1/2",
+  "w-2/3",
+  "w-2/5",
+  "w-3/5",
+  "w-1/3",
+  "w-1/2",
+];
 
 /**
  * Repo source picker for the new-project wizard: choose an installation, search
@@ -178,9 +190,14 @@ export function GithubRepoPicker({
 
       <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
         {loadingRepos ? (
-          <p className="p-4 text-center text-sm text-muted-foreground">
-            Loading repositories…
-          </p>
+          REPO_SKELETON_WIDTHS.map((width, i) => (
+            <div
+              key={i}
+              className="flex w-full items-center gap-2 px-3 py-2"
+            >
+              <Skeleton className={cn("h-3.5", width)} />
+            </div>
+          ))
         ) : filtered.length === 0 ? (
           <p className="p-4 text-center text-sm text-muted-foreground">
             {repos.length === 0
