@@ -7,7 +7,6 @@ import {
   writeFile,
   readFile,
   access,
-  realpath,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -20,10 +19,16 @@ import { docker, ensureNetwork } from "../infra/docker";
 import { spawnStream } from "../infra/exec";
 import { cloneStream, revParse } from "../infra/git";
 import { buildImage } from "./builders";
-import { extractArchive, safeBuildDir } from "./upload";
+import { extractArchive } from "./upload";
+import {
+  planDeploySource,
+  resolveBuildDir,
+  devWorkspaceDeployAllowed,
+} from "./source";
 import { normalizeBuildConfig } from "../frameworks";
 import { usesComposeStack } from "../utils";
 import { certResolver, previewDomain, resolveServerIp } from "./domains";
+import { traefikRouterLabels } from "./routing";
 import { buildComposeStack } from "./compose-stack";
 import { copyWorkspaceForBuild } from "./dev";
 import {
@@ -77,69 +82,6 @@ function projectEnv(projectId: string): Record<string, string> {
   return out;
 }
 
-/**
- * Group routable hostnames by the container port they target and emit Traefik
- * router + service labels — one router per distinct port. A domain with no port
- * override (`port: null`) falls into the project's `defaultPort` group, which
- * reuses `baseKey` as its router/service key so a single-port project produces
- * the exact labels it always did (preserving the no-op reroute detection).
- * Per-port groups beyond the default get a `<baseKey>-<port>` suffix so each
- * Traefik router/service key on the same container is unique.
- *
- * Order is deterministic (default-port group first, then the rest by ascending
- * port) so re-rendering an unchanged routing set yields a byte-identical file.
- */
-function traefikRouterLabels(opts: {
-  baseKey: string;
-  routes: RoutableDomain[];
-  defaultPort: number;
-}): string[] {
-  const { baseKey, routes, defaultPort } = opts;
-  // Effective port per host: its override, else the project default.
-  const byPort = new Map<number, string[]>();
-  for (const r of routes) {
-    const p = r.port ?? defaultPort;
-    const hosts = byPort.get(p) ?? [];
-    hosts.push(r.name);
-    byPort.set(p, hosts);
-  }
-  // Default-port group first, then remaining ports ascending — stable output.
-  const ports = [
-    ...(byPort.has(defaultPort) ? [defaultPort] : []),
-    ...[...byPort.keys()].filter((p) => p !== defaultPort).sort((a, b) => a - b),
-  ];
-  // With a single router, Traefik auto-binds the same-named service, so the
-  // explicit `.service` label is omitted — this keeps the labels byte-identical
-  // to the long-standing single-port output, so existing stacks don't see a
-  // spurious "changed" file (and pointless restart) on their first reroute.
-  // Multiple routers MUST name their service explicitly to disambiguate.
-  const multi = ports.length > 1;
-  const labels: string[] = ["traefik.enable=true"];
-  for (const p of ports) {
-    // Non-default port groups suffix the port with `__` — a separator that
-    // CANNOT appear in a slug (slugs are [a-z0-9-], see createProject), so
-    // `deplo-<slug>__<port>` can never byte-collide with another project's base
-    // key `deplo-<otherslug>`. Traefik router/service names are global across
-    // every container on the host, so a `-`-only suffix (e.g. `deplo-app-8080`)
-    // could equal a sibling project whose slug is literally `app-8080` and
-    // cross-route their traffic. The default-port group keeps the bare baseKey
-    // (no suffix) to stay byte-identical to the long-standing single-port output.
-    const key = p === defaultPort ? baseKey : `${baseKey}__${p}`;
-    const rule = (byPort.get(p) ?? [])
-      .map((d) => `Host(\`${d}\`)`)
-      .join(" || ");
-    labels.push(
-      `traefik.http.routers.${key}.rule=${rule}`,
-      `traefik.http.routers.${key}.entrypoints=websecure`,
-      `traefik.http.routers.${key}.tls=true`,
-      `traefik.http.routers.${key}.tls.certresolver=${certResolver()}`,
-      ...(multi ? [`traefik.http.routers.${key}.service=${key}`] : []),
-      `traefik.http.services.${key}.loadbalancer.server.port=${p}`,
-    );
-  }
-  return labels;
-}
-
 function renderCompose(opts: {
   name: string;
   image: string;
@@ -160,7 +102,17 @@ function renderCompose(opts: {
   // port. The global web->websecure redirect is configured on the proxy, so no
   // per-router middleware is needed here.
   const labels = [
-    ...traefikRouterLabels({ baseKey: name, routes, defaultPort: port }),
+    // Single-image production flavour: per-port grouping under the bare baseKey,
+    // the explicit `.service` label only when there's more than one router, and
+    // no `traefik.docker.network` label (the stack joins only `deplo`). This is
+    // the long-standing output — kept byte-identical so a reroute of an
+    // unchanged routing set never restarts the container.
+    ...traefikRouterLabels({
+      baseKey: name,
+      routes,
+      defaultPort: port,
+      certResolver: certResolver(),
+    }),
     "deplo.managed=true",
     `deplo.project=${projectId}`,
     `deplo.slug=${slug}`,
@@ -301,6 +253,44 @@ export function startDeployment(
   return depId;
 }
 
+/**
+ * Build an image from a materialised source tree: resolve rootDirectory the one
+ * shared way ({@link resolveBuildDir}) and dispatch to the selected build method.
+ * The git / upload / dev-workspace arms all funnel through here, so the
+ * rootDirectory containment + the buildImage call live in exactly one place.
+ */
+async function buildImageFromTree(opts: {
+  depId: string;
+  project: { id: string; build: Parameters<typeof normalizeBuildConfig>[0] };
+  slug: string;
+  workDir: string;
+  root: string;
+  imageRef: string;
+  /** Hard-fail on an explicit-but-missing rootDirectory (git/dev); upload doesn't. */
+  failOnMissing: boolean;
+  notFoundMessage?: string;
+}): Promise<void> {
+  const { depId, project, slug, workDir, root, imageRef } = opts;
+  const buildDir = await resolveBuildDir({
+    root,
+    rootDirectory: project.build.rootDirectory,
+    failOnMissing: opts.failOnMissing,
+    notFoundMessage: opts.notFoundMessage,
+  });
+  // Dispatch to the selected build method (Dockerfile / Nixpacks / Railpack /
+  // Heroku|Paketo buildpacks / Static). Each produces imageRef in the local
+  // store with the deplo.* labels, listening on build.port.
+  await buildImage({
+    build: normalizeBuildConfig(project.build),
+    workDir,
+    buildDir,
+    slug,
+    projectId: project.id,
+    imageRef,
+    log: (level, text) => log(depId, level, text),
+  });
+}
+
 async function runDeployment(depId: string): Promise<void> {
   const started = Date.now();
   const dep = read().deployments.find((x) => x.id === depId);
@@ -363,153 +353,126 @@ async function runDeployment(depId: string): Promise<void> {
     let imageRef: string;
     let commitSha = "";
 
-    if (dep.buildSource === "dev-workspace") {
-      // EXPLICIT exception to "deploy never touches the dev workspace"
-      // (CONTEXT.md): build production from the developer's live, edited tree at
-      // /data/dev/<slug> — no git clone, no re-extract, no commit. This intent
-      // OVERRIDES the project's own source (a git/upload project deploys its
-      // workspace here, NOT a fresh clone), so it is checked FIRST. Dev is
-      // source-bearing only, so this is always a single-image build; guard
-      // against a future source change silently routing a stack through here.
-      if (usesComposeStack(project) || project.source === "docker-image") {
-        throw new Error(
-          "Deploy from dev workspace is only available for built (git/upload) projects",
-        );
-      }
-      const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
-      try {
-        log(depId, "command", "copy dev workspace");
-        // copyWorkspaceForBuild excludes node_modules/.deplo/.deplo-home/.git
-        // and rejects any planted symlink (the tree is UID-1000-controlled —
-        // same threat model as an upload archive). Dependencies are reinstalled
-        // by the build, exactly like a normal deploy.
-        const root = await copyWorkspaceForBuild(slug, work, (line) =>
-          log(depId, "info", line),
-        );
-
-        // Resolve rootDirectory against the copied tree, contained via realpath.
-        // Mirror the git arm's explicit hard-fail: this is a user-initiated
-        // deploy-to-PRODUCTION, so a typo'd rootDirectory must error loudly
-        // rather than silently shipping the workspace root.
-        const rootRel = (project.build.rootDirectory || ".")
-          .replace(/\\/g, "/")
-          .replace(/^\.?\/?/, "");
-        const explicitRoot = Boolean(rootRel && rootRel !== ".");
-        const candidate = explicitRoot ? join(root, rootRel) : root;
-        const buildDir = await safeBuildDir(root, candidate);
+    // Decide which source this deployment builds from (dev-workspace intent
+    // overrides the project's own source; see planDeploySource). Each arm
+    // materialises a tree (or pulls an image) then funnels through the shared
+    // buildImageFromTree, so the rootDirectory containment + build dispatch live
+    // in one place.
+    const plan = planDeploySource(project, { buildSource: dep.buildSource });
+    switch (plan.kind) {
+      case "dev-workspace": {
+        // EXPLICIT exception to "deploy never touches the dev workspace"
+        // (CONTEXT.md): build production from the developer's live, edited tree
+        // at /data/dev/<slug> — no git clone, no re-extract, no commit. Dev is
+        // source-bearing only, so this is always a single-image build; guard
+        // against a future source change silently routing a stack through here.
         if (
-          explicitRoot &&
-          buildDir === (await realpath(root).catch(() => root))
+          !devWorkspaceDeployAllowed({
+            usesComposeStack: usesComposeStack(project),
+            source: project.source,
+          })
         ) {
           throw new Error(
-            `rootDirectory "${project.build.rootDirectory}" was not found in the dev workspace`,
+            "Deploy from dev workspace is only available for built (git/upload) projects",
           );
         }
-
-        imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
-        await buildImage({
-          build: normalizeBuildConfig(project.build),
-          workDir: work,
-          buildDir,
-          slug,
-          projectId: project.id,
-          imageRef,
-          log: (level, text) => log(depId, level, text),
-        });
-      } finally {
-        await rm(work, { recursive: true, force: true }).catch(() => {});
-      }
-    } else if (project.source === "docker-image" && project.dockerImage) {
-      log(depId, "command", `docker pull ${project.dockerImage}`);
-      await streamDocker(["pull", project.dockerImage], depId, 600_000);
-      imageRef = project.dockerImage;
-    } else if (project.repo) {
-      const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
-      try {
-        // Private GitHub repos clone through the connected App's short-lived
-        // installation token; everything else uses the URL as-is. The token is
-        // never logged.
-        const cloneUrl = await installationCloneUrl(
-          project.repo.url,
-          project.repo.installationId ?? null,
-        );
-        log(depId, "command", `git clone ${project.repo.url} (${dep.branch})`);
-        await cloneStream(cloneUrl, dep.branch, work, (line) =>
-          log(depId, "info", line),
-        );
-        commitSha = await revParse(work);
-        if (commitSha) setDep(depId, { commitSha });
-
-        // Resolve the build dir, guarding against `rootDirectory` escaping the
-        // clone — via realpath, so a symlinked dir can't slip past a string
-        // prefix check (see safeBuildDir).
-        const rootRel = (project.build.rootDirectory || ".")
-          .replace(/\\/g, "/")
-          .replace(/^\.?\/?/, "");
-        const explicitRoot = Boolean(rootRel && rootRel !== ".");
-        const candidate = explicitRoot ? join(work, rootRel) : work;
-        const buildDir = await safeBuildDir(work, candidate);
-        // safeBuildDir falls back to the (canonical) clone root when the
-        // candidate doesn't exist or escapes. For an explicitly-set
-        // rootDirectory that's a misconfiguration — fail loudly rather than
-        // silently building the wrong tree from the repo root.
-        if (explicitRoot && buildDir === (await realpath(work).catch(() => work))) {
-          throw new Error(
-            `rootDirectory "${project.build.rootDirectory}" was not found in the repository`,
+        const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
+        try {
+          log(depId, "command", "copy dev workspace");
+          // copyWorkspaceForBuild excludes node_modules/.deplo/.deplo-home/.git
+          // and rejects any planted symlink (the tree is UID-1000-controlled —
+          // same threat model as an upload archive). Dependencies are
+          // reinstalled by the build, exactly like a normal deploy.
+          const root = await copyWorkspaceForBuild(slug, work, (line) =>
+            log(depId, "info", line),
           );
+          imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
+          await buildImageFromTree({
+            depId,
+            project,
+            slug,
+            workDir: work,
+            root,
+            imageRef,
+            // Mirror the git arm: a typo'd rootDirectory on a deploy-to-
+            // PRODUCTION must error loudly, not silently ship the workspace root.
+            failOnMissing: true,
+            notFoundMessage: `rootDirectory "${project.build.rootDirectory}" was not found in the dev workspace`,
+          });
+        } finally {
+          await rm(work, { recursive: true, force: true }).catch(() => {});
         }
-
-        imageRef = `deplo/${slug}:${(commitSha || depId).slice(0, 12)}`;
-        // Dispatch to the selected build method (Dockerfile / Nixpacks /
-        // Railpack / Heroku|Paketo buildpacks / Static). Each produces imageRef
-        // in the local store with the deplo.* labels, listening on build.port.
-        await buildImage({
-          build: normalizeBuildConfig(project.build),
-          workDir: work,
-          buildDir,
-          slug,
-          projectId: project.id,
-          imageRef,
-          log: (level, text) => log(depId, level, text),
-        });
-      } finally {
-        await rm(work, { recursive: true, force: true }).catch(() => {});
+        break;
       }
-    } else if (project.source === "upload" && project.upload) {
-      // Uploaded archive: extract it into a temp dir, then build it through the
-      // exact same path as a git clone. extractArchive rejects any symlink in
-      // the archive (so none can be followed out of the temp dir) and may
-      // return a subdir (a tarball wrapped in one top-level folder). Resolve
-      // `rootDirectory` against THAT root, contained via realpath.
-      const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
-      try {
-        log(depId, "command", `extract ${project.upload.filename}`);
-        const root = await extractArchive(project.upload, work, (line) =>
-          log(depId, "info", line),
-        );
-
-        const rootRel = (project.build.rootDirectory || ".")
-          .replace(/\\/g, "/")
-          .replace(/^\.?\/?/, "");
-        const candidate =
-          rootRel && rootRel !== "." ? join(root, rootRel) : root;
-        const buildDir = await safeBuildDir(root, candidate);
-
-        imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
-        await buildImage({
-          build: normalizeBuildConfig(project.build),
-          workDir: work,
-          buildDir,
-          slug,
-          projectId: project.id,
-          imageRef,
-          log: (level, text) => log(depId, level, text),
-        });
-      } finally {
-        await rm(work, { recursive: true, force: true }).catch(() => {});
+      case "docker-image": {
+        log(depId, "command", `docker pull ${plan.image}`);
+        await streamDocker(["pull", plan.image], depId, 600_000);
+        imageRef = plan.image;
+        break;
       }
-    } else {
-      throw new Error("Nothing to deploy: no Docker image or repository set");
+      case "git": {
+        const repo = plan.repo;
+        const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
+        try {
+          // Private GitHub repos clone through the connected App's short-lived
+          // installation token; everything else uses the URL as-is. The token
+          // is never logged.
+          const cloneUrl = await installationCloneUrl(
+            repo.url,
+            repo.installationId ?? null,
+          );
+          log(depId, "command", `git clone ${repo.url} (${dep.branch})`);
+          await cloneStream(cloneUrl, dep.branch, work, (line) =>
+            log(depId, "info", line),
+          );
+          commitSha = await revParse(work);
+          if (commitSha) setDep(depId, { commitSha });
+          imageRef = `deplo/${slug}:${(commitSha || depId).slice(0, 12)}`;
+          await buildImageFromTree({
+            depId,
+            project,
+            slug,
+            workDir: work,
+            root: work,
+            imageRef,
+            failOnMissing: true,
+            notFoundMessage: `rootDirectory "${project.build.rootDirectory}" was not found in the repository`,
+          });
+        } finally {
+          await rm(work, { recursive: true, force: true }).catch(() => {});
+        }
+        break;
+      }
+      case "upload": {
+        // Uploaded archive: extract into a temp dir, then build through the same
+        // path as a git clone. extractArchive rejects any symlink in the archive
+        // (so none can be followed out of the temp dir) and may return a subdir
+        // (a tarball wrapped in one top-level folder). Upload historically does
+        // NOT hard-fail an explicit-but-missing rootDirectory.
+        const upload = plan.upload;
+        const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
+        try {
+          log(depId, "command", `extract ${upload.filename}`);
+          const root = await extractArchive(upload, work, (line) =>
+            log(depId, "info", line),
+          );
+          imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
+          await buildImageFromTree({
+            depId,
+            project,
+            slug,
+            workDir: work,
+            root,
+            imageRef,
+            failOnMissing: false,
+          });
+        } finally {
+          await rm(work, { recursive: true, force: true }).catch(() => {});
+        }
+        break;
+      }
+      default:
+        throw new Error("Nothing to deploy: no Docker image or repository set");
     }
 
     const env = projectEnv(project.id);
