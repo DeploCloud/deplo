@@ -1,6 +1,7 @@
 import "server-only";
 
 import { networkInterfaces } from "node:os";
+import type { CertProvider, DomainEntrypoint } from "../types";
 
 /**
  * Default domains via sslip.io — a public wildcard DNS where
@@ -122,6 +123,44 @@ export function instanceHost(): string {
  */
 export function certResolver(): string {
   return process.env.DEPLO_CERT_RESOLVER?.trim() || "letsencrypt";
+}
+
+/**
+ * Name of the Traefik DNS-01 cert resolver used when a domain picks the
+ * `cloudflare` certificate provider. A real domain whose DNS lives on
+ * Cloudflare validates via DNS-01 (a `_acme-challenge` TXT record) rather than
+ * HTTP-01 — the proxy must define a resolver by this name with the Cloudflare
+ * DNS provider configured. Overridable so an operator can name it whatever their
+ * Traefik static config uses; defaults to `cloudflare`.
+ */
+export function cloudflareCertResolver(): string {
+  return process.env.DEPLO_CLOUDFLARE_CERT_RESOLVER?.trim() || "cloudflare";
+}
+
+/**
+ * The router TLS triplet for a domain's certificate-provider choice — the one
+ * place that maps the user-facing {@link CertProvider} enum onto the concrete
+ * Traefik resolver/entrypoint a router needs. `entrypoint` is the host's own
+ * choice (defaulting to `websecure`), but a `none` provider forces plain HTTP on
+ * `web` regardless. Absent fields default to the long-standing HTTPS behaviour
+ * (letsencrypt over websecure), so domains created before these fields existed
+ * route exactly as they always did.
+ */
+export function domainTlsConfig(domain: {
+  entrypoint?: DomainEntrypoint;
+  certProvider?: CertProvider;
+}): { entrypoint: string; tls: boolean; certResolver: string } {
+  const provider = domain.certProvider ?? "letsencrypt";
+  if (provider === "none") {
+    return { entrypoint: "web", tls: false, certResolver: "" };
+  }
+  const resolver =
+    provider === "cloudflare" ? cloudflareCertResolver() : certResolver();
+  return {
+    entrypoint: domain.entrypoint ?? "websecure",
+    tls: true,
+    certResolver: resolver,
+  };
 }
 
 /**

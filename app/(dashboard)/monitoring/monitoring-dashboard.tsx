@@ -30,9 +30,9 @@ interface ServerLite {
   dockerVersion: string;
 }
 
-/** How long the live charts look back (samples). At 2s/sample ~80s window. */
+/** How long the live charts look back (samples). At 1s/sample ~40s window. */
 const MAX_POINTS = 40;
-const POLL_MS = 2000;
+const POLL_MS = 1000;
 
 export function MonitoringDashboard({
   servers,
@@ -50,18 +50,28 @@ export function MonitoringDashboard({
   const online = selected?.status === "online";
 
   // Poll the selected server while it is online; append to its rolling buffer.
+  // A single measurement takes ~1.2s (network sampling window), longer than the
+  // 1s tick, so guard against overlapping requests stacking up: skip a tick if
+  // the previous one is still in flight.
   React.useEffect(() => {
     if (!selectedId || !online) return;
     let active = true;
+    let busy = false;
 
     async function tick() {
-      const res = await serverMetricsAction(selectedId);
-      if (!active || !res.ok || !res.data) return;
-      const sample = res.data;
-      setHistory((h) => {
-        const prev = h[selectedId] ?? [];
-        return { ...h, [selectedId]: [...prev, sample].slice(-MAX_POINTS) };
-      });
+      if (busy) return;
+      busy = true;
+      try {
+        const res = await serverMetricsAction(selectedId);
+        if (!active || !res.ok || !res.data) return;
+        const sample = res.data;
+        setHistory((h) => {
+          const prev = h[selectedId] ?? [];
+          return { ...h, [selectedId]: [...prev, sample].slice(-MAX_POINTS) };
+        });
+      } finally {
+        busy = false;
+      }
     }
 
     const iv = setInterval(tick, POLL_MS);

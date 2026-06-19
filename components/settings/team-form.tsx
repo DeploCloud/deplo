@@ -10,9 +10,11 @@ import { updateTeamAction } from "@/lib/actions/teams";
 export function TeamForm({
   name: initialName,
   slug: initialSlug,
+  canManage = true,
 }: {
   name: string;
   slug: string;
+  canManage?: boolean;
 }) {
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState(initialName);
@@ -38,6 +40,7 @@ export function TeamForm({
             id="team-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            disabled={!canManage}
           />
         </div>
         <div className="space-y-2">
@@ -47,18 +50,21 @@ export function TeamForm({
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             className="font-mono text-sm"
+            disabled={!canManage}
           />
         </div>
       </div>
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          onClick={save}
-          disabled={pending || !dirty || !name.trim() || !slug.trim()}
-        >
-          {pending ? "Saving…" : "Save changes"}
-        </Button>
-      </div>
+      {canManage && (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            onClick={save}
+            disabled={pending || !dirty || !name.trim() || !slug.trim()}
+          >
+            {pending ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import yaml from "js-yaml";
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
 import { decryptSecret } from "../crypto";
+import { resolveEnvEntries } from "./env-resolve";
 import { recordActivity } from "../data/activity";
 import { docker, ensureNetwork } from "../infra/docker";
 import { spawnStream } from "../infra/exec";
@@ -35,6 +36,7 @@ import {
   ensureAutoDomain,
   ensureExtraDomain,
   routableRoutes,
+  defaultRoute,
   type RoutableDomain,
 } from "../data/domains";
 import { installationCloneUrl } from "../github/app";
@@ -65,19 +67,21 @@ function setProject(projectId: string, patch: Record<string, unknown>): void {
   });
 }
 
-/** Decrypted env (project vars targeting production + attached shared groups). */
+/**
+ * Decrypted env for the production stack: per-project vars targeting
+ * `production`, plus attached shared groups that also target `production`.
+ * Selection lives in the shared `resolveEnvEntries` seam; we only decrypt here.
+ */
 function projectEnv(projectId: string): Record<string, string> {
   const d = read();
   const out: Record<string, string> = {};
-  for (const e of d.envVars) {
-    if (e.projectId === projectId && e.targets.includes("production")) {
-      out[e.key] = decryptSecret(e.valueEnc);
-    }
-  }
-  for (const g of d.sharedEnvGroups ?? []) {
-    if (g.projectIds.includes(projectId)) {
-      for (const v of g.variables) out[v.key] = decryptSecret(v.valueEnc);
-    }
+  for (const e of resolveEnvEntries(
+    "production",
+    projectId,
+    d.envVars,
+    d.sharedEnvGroups ?? [],
+  )) {
+    out[e.key] = decryptSecret(e.valueEnc);
   }
   return out;
 }
@@ -341,9 +345,11 @@ async function runDeployment(depId: string): Promise<void> {
         stackFile,
         domain,
         // Compose stacks route via their own service/port model (expose/exposes
-        // + host pins); per-domain port overrides apply only to single-image
-        // projects, so pass bare hostnames here.
+        // + host pins). Per-domain ports don't apply, but a domain CAN pick a
+        // service and/or a path prefix — pass the full routes so those become
+        // per-route routers (the bare hostnames still drive the default expose).
         domains: routeDomains.map((d) => d.name),
+        domainRoutes: routeDomains,
         environment: dep.environment,
         started,
       });
@@ -542,6 +548,9 @@ async function deployComposeStack(opts: {
   domain: string;
   /** Public hostnames to route, primary first (no-host routes answer on all). */
   domains: string[];
+  /** Per-domain service/path overrides (routes that target a chosen compose
+   * service and/or a path prefix); empty ⇒ default expose routing only. */
+  domainRoutes: RoutableDomain[];
   environment: DeploymentEnvironment;
   started: number;
 }): Promise<void> {
@@ -553,6 +562,7 @@ async function deployComposeStack(opts: {
     stackFile,
     domain,
     domains,
+    domainRoutes,
     environment,
     started,
   } = opts;
@@ -580,6 +590,7 @@ async function deployComposeStack(opts: {
     slug,
     projectId: project.id,
     domains,
+    domainRoutes,
     expose: project.expose ?? null,
     exposes: project.exposes ?? undefined,
     filesDir,
@@ -705,13 +716,13 @@ function routableForDeploy(
   primary: string,
 ): RoutableDomain[] {
   // A preview routes only to its ephemeral host, on the project default port.
-  if (environment !== "production") return [{ name: primary, port: null }];
+  if (environment !== "production") return [defaultRoute(primary)];
   const valid = routableRoutes(projectId);
-  if (valid.length === 0) return [{ name: primary, port: null }];
+  if (valid.length === 0) return [defaultRoute(primary)];
   // Keep the canonical primary first even if it isn't flagged `valid` yet (it
-  // carries its own port override if it has one; else the project default).
+  // carries its own port override + TLS choice if it has one; else the defaults).
   const primaryRoute =
-    valid.find((d) => d.name === primary) ?? { name: primary, port: null };
+    valid.find((d) => d.name === primary) ?? defaultRoute(primary);
   return [primaryRoute, ...valid.filter((d) => d.name !== primary)];
 }
 
@@ -808,8 +819,10 @@ export async function rerouteProject(
       slug,
       projectId,
       // Compose stacks route via their own service/port model; per-domain port
-      // overrides apply only to single-image projects.
+      // overrides apply only to single-image projects, but a domain can pick a
+      // service and/or path prefix (per-route routers).
       domains: routes.map((d) => d.name),
+      domainRoutes: routes,
       expose: project.expose ?? null,
       exposes: project.exposes ?? undefined,
       filesDir: join(STACK_DIR, "files", slug),
@@ -853,6 +866,64 @@ export async function rerouteProject(
   }
   await docker([...args, "up", "-d", "--remove-orphans"], { timeout: 120_000 });
   return "rerouted";
+}
+
+/**
+ * Render the full Deplo-generated stack for a project, for read-only display
+ * (the "View full compose" button). This is the augmented YAML — Traefik +
+ * deplo labels, the injected `deplo` network, absolute file-mount paths — i.e.
+ * what `docker compose` actually runs, as opposed to the clean compose the user
+ * authored and sees in the editor.
+ *
+ * Compose stacks are rendered live from the saved compose + current routable
+ * domains, so the preview matches the NEXT deploy/reroute even before the
+ * project is deployed. Single-image / built projects keep their image ref and
+ * env only in the on-disk stack file (not on the project), so those are read
+ * back from `/data/stacks/<slug>.yml`; that file exists only after a first
+ * deploy. Returns `null` when there's nothing to show yet.
+ */
+export async function renderProjectStack(
+  projectId: string,
+): Promise<string | null> {
+  const store = read();
+  const project = store.projects.find((p) => p.id === projectId);
+  if (!project) return null;
+  const slug = project.slug;
+  const name = `deplo-${slug}`;
+
+  const hasCompose = Boolean(project.compose && project.compose.trim());
+  if (usesComposeStack(project) && hasCompose) {
+    // Mirror the deploy/reroute call exactly so the preview is byte-faithful to
+    // what would be written. A never-deployed compose project still previews:
+    // fall back to ALL of the project's domains (not just routable ones) so the
+    // Host() rule isn't empty before any domain is verified.
+    const routes = routableRoutes(projectId);
+    const domains = routes.length
+      ? routes.map((d) => d.name)
+      : store.domains
+          .filter((d) => d.projectId === projectId)
+          .sort((a, b) => Number(b.primary) - Number(a.primary))
+          .map((d) => d.name);
+    return buildComposeStack({
+      compose: project.compose ?? "",
+      name,
+      slug,
+      projectId,
+      domains,
+      // Mirror the deploy/reroute call so the preview is byte-faithful. Only
+      // `valid` routes carry per-domain overrides; the all-domains fallback (for
+      // a never-deployed stack) routes via the default expose, no overrides.
+      domainRoutes: routes,
+      expose: project.expose ?? null,
+      exposes: project.exposes ?? undefined,
+      filesDir: join(STACK_DIR, "files", slug),
+    });
+  }
+
+  // Single-image / built: the rendered stack only exists on disk after a deploy.
+  const stackFile = stackFilePath(slug);
+  if (!(await fileExists(stackFile))) return null;
+  return readFile(stackFile, "utf8").catch(() => null);
 }
 
 /** Stop a project's stack (compose-managed; falls back to the single container). */

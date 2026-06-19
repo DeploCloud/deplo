@@ -48,13 +48,30 @@ export function SetupForm() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="name">Your name</Label>
+            <Label htmlFor="username">Username</Label>
+            <Input
+              id="username"
+              name="username"
+              autoComplete="username"
+              placeholder="ada"
+              required
+              minLength={3}
+              maxLength={32}
+              pattern="[A-Za-z0-9_\-]+"
+            />
+            <p className="text-xs text-muted-foreground">
+              Your public handle. Lowercase letters, numbers, - and _.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="name">Display name</Label>
             <Input
               id="name"
               name="name"
               autoComplete="name"
               placeholder="Ada Lovelace"
               required
+              maxLength={80}
             />
           </div>
           <div className="space-y-2">

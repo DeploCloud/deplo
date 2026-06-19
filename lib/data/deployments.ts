@@ -2,7 +2,7 @@ import "server-only";
 
 import { read, mutate } from "../store";
 import { nowIso } from "../ids";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { startDeployment, destroyStack } from "../deploy/build";
 import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
@@ -12,33 +12,51 @@ export async function listDeployments(filter?: {
   environment?: DeploymentEnvironment;
   status?: Deployment["status"];
 }): Promise<(Deployment & { projectName: string; projectSlug: string })[]> {
-  await assertUser();
+  const teamId = await requireActiveTeamId();
   const d = read();
+  const teamProjects = new Map(
+    d.projects.filter((p) => p.teamId === teamId).map((p) => [p.id, p]),
+  );
   return d.deployments
+    .filter((x) => teamProjects.has(x.projectId))
     .filter((x) => !filter?.projectId || x.projectId === filter.projectId)
     .filter((x) => !filter?.environment || x.environment === filter.environment)
     .filter((x) => !filter?.status || x.status === filter.status)
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .map((x) => {
-      const p = d.projects.find((pp) => pp.id === x.projectId);
+      const p = teamProjects.get(x.projectId);
       return { ...x, projectName: p?.name ?? "", projectSlug: p?.slug ?? "" };
     });
 }
 
 export async function getDeployment(id: string): Promise<Deployment | null> {
-  await assertUser();
-  return read().deployments.find((x) => x.id === id) || null;
+  const teamId = await requireActiveTeamId();
+  const dep = read().deployments.find((x) => x.id === id);
+  if (!dep) return null;
+  const inTeam = read().projects.some(
+    (p) => p.id === dep.projectId && p.teamId === teamId,
+  );
+  return inTeam ? dep : null;
 }
 
 export async function getLogs(deploymentId: string): Promise<LogLine[]> {
-  await assertUser();
+  const teamId = await requireActiveTeamId();
+  const dep = read().deployments.find((x) => x.id === deploymentId);
+  if (!dep) return [];
+  const inTeam = read().projects.some(
+    (p) => p.id === dep.projectId && p.teamId === teamId,
+  );
+  if (!inTeam) return [];
   return read().logs[deploymentId] || [];
 }
 
 /** Trigger a fresh production build + deploy of the latest commit. */
 export async function redeploy(projectId: string): Promise<Deployment> {
-  const user = await assertUser();
-  const project = read().projects.find((x) => x.id === projectId);
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const project = read().projects.find(
+    (x) => x.id === projectId && x.teamId === membership.teamId,
+  );
   if (!project) throw new Error("Project not found");
   const depId = startDeployment(projectId, {
     environment: "production",
@@ -49,17 +67,30 @@ export async function redeploy(projectId: string): Promise<Deployment> {
 }
 
 export async function cancelDeployment(id: string): Promise<void> {
-  await assertUser();
+  const { membership } = await requireCapability("deploy");
+  const dep = read().deployments.find((x) => x.id === id);
+  if (!dep) throw new Error("Deployment not found");
+  const inTeam = read().projects.some(
+    (p) => p.id === dep.projectId && p.teamId === membership.teamId,
+  );
+  if (!inTeam) throw new Error("Deployment not found");
   mutate((d) => {
-    const dep = d.deployments.find((x) => x.id === id);
-    if (!dep) throw new Error("Deployment not found");
-    if (dep.status === "building" || dep.status === "queued")
-      dep.status = "canceled";
+    const target = d.deployments.find((x) => x.id === id);
+    if (!target) throw new Error("Deployment not found");
+    if (target.status === "building" || target.status === "queued")
+      target.status = "canceled";
   });
 }
 
 export async function promoteToProduction(id: string): Promise<void> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const existing = read().deployments.find((x) => x.id === id);
+  if (!existing) throw new Error("Deployment not found");
+  const inTeam = read().projects.some(
+    (p) => p.id === existing.projectId && p.teamId === membership.teamId,
+  );
+  if (!inTeam) throw new Error("Deployment not found");
   mutate((d) => {
     const dep = d.deployments.find((x) => x.id === id);
     if (!dep) throw new Error("Deployment not found");
@@ -71,7 +102,7 @@ export async function promoteToProduction(id: string): Promise<void> {
       p.updatedAt = nowIso();
     }
   });
-  recordActivity("deployment", `Promoted deployment to production`, user.name, null);
+  recordActivity("deployment", `Promoted deployment to production`, user.name, null, membership.teamId);
 }
 
 /** Tear down a project's running stack (used when deleting the project). */

@@ -15,12 +15,7 @@ import { logoutAction } from "@/lib/actions/auth";
 import type { PublicUser } from "@/lib/types";
 
 export function UserMenu({ user }: { user: PublicUser }) {
-  const initials = user.name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  const initials = user.username.slice(0, 2).toUpperCase();
 
   return (
     <DropdownMenu>
@@ -41,17 +36,19 @@ export function UserMenu({ user }: { user: PublicUser }) {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>
           <div className="flex flex-col">
-            <span className="text-sm font-medium text-foreground">
-              {user.name}
+            <span className="truncate text-sm font-medium text-foreground">
+              {user.name || `@${user.username}`}
             </span>
-            <span className="truncate text-xs text-muted-foreground">
-              {user.email}
-            </span>
+            {user.name && user.name !== user.username && (
+              <span className="truncate text-xs text-muted-foreground">
+                @{user.username}
+              </span>
+            )}
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/settings" className="cursor-pointer">
+          <Link href="/settings?tab=account" className="cursor-pointer">
             <UserIcon className="size-4" />
             Account
           </Link>
@@ -59,7 +56,7 @@ export function UserMenu({ user }: { user: PublicUser }) {
         <DropdownMenuItem asChild>
           <Link href="/settings" className="cursor-pointer">
             <Settings className="size-4" />
-            Settings
+            Team settings
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

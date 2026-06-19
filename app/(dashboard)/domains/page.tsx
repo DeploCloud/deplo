@@ -10,46 +10,29 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AddDomain } from "@/components/domains/add-domain";
 import { DomainRow } from "@/components/domains/domain-row";
-import { usesComposeStack } from "@/lib/utils";
 
 export const metadata = { title: "Domains" };
 
 export default async function DomainsPage() {
   const [domains, projects] = await Promise.all([listDomains(), listProjects()]);
-  const projectOptions = projects.map((p) => ({ id: p.id, name: p.name }));
-  // Projects that route via a compose stack — per-domain ports don't apply to
-  // them, so hide the port control for their domains and in the add dialog.
-  const composeProjectIds = projects
-    .filter((p) => usesComposeStack(p))
-    .map((p) => p.id);
-  const composeSet = new Set(composeProjectIds);
+  // Carry each project's compose YAML so the Edit dialog can offer a service
+  // selector. Domains are ADDED from each project's own Domains tab (this is a
+  // read-only cross-project overview — there is no single project to attach to).
+  const composeById = new Map(projects.map((p) => [p.id, p.compose]));
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Domains"
         description="Custom domains and automatic TLS certificates across your projects."
-        actions={
-          <AddDomain
-            projects={projectOptions}
-            composeProjectIds={composeProjectIds}
-          />
-        }
       />
 
       {domains.length === 0 ? (
         <EmptyState
           icon={Globe}
           title="No domains yet"
-          description="Add a custom domain to one of your projects. Deplo issues SSL automatically."
-          action={
-            <AddDomain
-              projects={projectOptions}
-              composeProjectIds={composeProjectIds}
-            />
-          }
+          description="Add a custom domain from a project's Domains tab. Deplo issues SSL automatically."
         />
       ) : (
         <div className="rounded-xl border border-border">
@@ -67,7 +50,7 @@ export default async function DomainsPage() {
                 <DomainRow
                   key={d.id}
                   domain={d}
-                  portConfigurable={!composeSet.has(d.projectId)}
+                  compose={composeById.get(d.projectId)}
                 />
               ))}
             </TableBody>

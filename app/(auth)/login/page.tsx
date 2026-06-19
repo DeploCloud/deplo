@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useActionState } from "react";
+import { useSearchParams } from "next/navigation";
 import { loginAction, type AuthState } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ export default function LoginPage() {
     loginAction,
     {}
   );
+  const next = useSearchParams().get("next") ?? "";
 
   return (
     <Card>
@@ -31,6 +32,7 @@ export default function LoginPage() {
       </CardHeader>
       <CardContent>
         <form action={action} className="space-y-4">
+          <input type="hidden" name="next" value={next} />
           {state.error && (
             <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               <AlertCircle className="size-4 shrink-0" />
@@ -63,15 +65,6 @@ export default function LoginPage() {
             {pending ? "Signing in…" : "Sign in"}
           </Button>
         </form>
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link
-            href="/signup"
-            className="cursor-pointer font-medium text-foreground hover:underline"
-          >
-            Create one
-          </Link>
-        </p>
       </CardContent>
     </Card>
   );

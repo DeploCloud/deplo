@@ -2,7 +2,7 @@ import "server-only";
 
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret } from "../crypto";
 import type { Registry, RegistryType } from "../types";
@@ -40,8 +40,9 @@ function toDTO(r: Registry): RegistryDTO {
 }
 
 export async function listRegistries(): Promise<RegistryDTO[]> {
-  await assertUser();
-  return [...registries()]
+  const teamId = await requireActiveTeamId();
+  return registries()
+    .filter((r) => r.teamId === teamId)
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .map(toDTO);
 }
@@ -53,7 +54,8 @@ export async function addRegistry(input: {
   username: string;
   password: string;
 }): Promise<void> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   const name = input.name.trim();
   if (!name) throw new Error("Enter a name");
   const registryUrl = (input.registryUrl?.trim() || REGISTRY_HOSTS[input.type]).trim();
@@ -63,6 +65,7 @@ export async function addRegistry(input: {
 
   const registry: Registry = {
     id: newId("reg"),
+    teamId: membership.teamId,
     name,
     type: input.type,
     registryUrl,
@@ -74,15 +77,16 @@ export async function addRegistry(input: {
     d.registries ??= [];
     d.registries.push(registry);
   });
-  recordActivity("member", `Added registry ${name}`, user.name, null);
+  recordActivity("member", `Added registry ${name}`, user.name, null, membership.teamId);
 }
 
 export async function deleteRegistry(id: string): Promise<void> {
-  const user = await assertUser();
-  const r = registries().find((x) => x.id === id);
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const r = registries().find((x) => x.id === id && x.teamId === membership.teamId);
   if (!r) throw new Error("Registry not found");
   mutate((d) => {
     d.registries = (d.registries ?? []).filter((x) => x.id !== id);
   });
-  recordActivity("member", `Removed registry ${r.name}`, user.name, null);
+  recordActivity("member", `Removed registry ${r.name}`, user.name, null, membership.teamId);
 }

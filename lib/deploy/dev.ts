@@ -4,6 +4,7 @@ import { mkdir, rm, writeFile, chmod, readdir, cp } from "node:fs/promises";
 import { join } from "node:path";
 import { read } from "../store";
 import { decryptSecret } from "../crypto";
+import { resolveEnvEntries } from "./env-resolve";
 import { docker } from "../infra/docker";
 import { dataVolumeHostMountpoint } from "./builders";
 import {
@@ -106,20 +107,22 @@ export function defaultDevConfig(project: Project): DevConfig {
 }
 
 /**
- * Decrypted env for a dev container. STRICTER than `projectEnv`: only
- * per-project vars tagged `development`, and explicitly NO shared env groups
- * (those have no target axis and flow only to the production stack). Empty by
- * default — the user adds `development` vars by hand.
+ * Decrypted env for a dev container: per-project vars tagged `development`,
+ * plus attached shared groups that target `development`. Shares the exact
+ * `resolveEnvEntries` seam with the production stack — only the target differs —
+ * so the two runtimes can never drift on what `development` inherits.
  */
 function devEnv(projectId: string): Record<string, string> {
   const d = read();
   const out: Record<string, string> = {};
-  for (const e of d.envVars) {
-    if (e.projectId === projectId && e.targets.includes("development")) {
-      out[e.key] = decryptSecret(e.valueEnc);
-    }
+  for (const e of resolveEnvEntries(
+    "development",
+    projectId,
+    d.envVars,
+    d.sharedEnvGroups ?? [],
+  )) {
+    out[e.key] = decryptSecret(e.valueEnc);
   }
-  // Deliberately NO sharedEnvGroups — see CONTEXT.md "Shared env group".
   return out;
 }
 

@@ -494,6 +494,51 @@ export function attachContainer(name: string): AttachHandle {
 }
 
 /**
+ * Stream a container's live runtime logs (`docker logs -f`) as an output-only
+ * AttachHandle, so the logs viewer reuses the same session/SSE plumbing as
+ * attach. Unlike attach this never touches PID 1's stdin — `write` is a no-op
+ * and there is no `--sig-proxy` concern — so detaching/closing the viewer only
+ * kills our local `docker logs` client, never the container.
+ *
+ * `--tail` seeds the stream with the last N lines (a snapshot of recent output)
+ * before `-f` follows new lines live. Works on stopped containers too: the tail
+ * is delivered and the follow ends when there is nothing more to stream.
+ */
+export function followLogs(name: string, tail = 500): AttachHandle {
+  const child = spawn(
+    "docker",
+    ["logs", "-f", "--tail", String(tail), name],
+    { windowsHide: true },
+  ) as ChildProcessWithoutNullStreams;
+
+  let closed = false;
+  return {
+    onData(cb) {
+      // Apps log to both stdout and stderr; merge them into one stream in the
+      // order Docker emits them, same as the one-shot containerLogs tail.
+      child.stdout.on("data", cb);
+      child.stderr.on("data", cb);
+      return () => {
+        child.stdout.off("data", cb);
+        child.stderr.off("data", cb);
+      };
+    },
+    onExit(cb) {
+      child.on("close", cb);
+      child.on("error", cb);
+    },
+    // Logs are read-only — there is no stdin to write to.
+    write() {},
+    close() {
+      if (closed) return;
+      closed = true;
+      // Kills the local `docker logs -f` client only; the container is untouched.
+      child.kill("SIGKILL");
+    },
+  };
+}
+
+/**
  * PTY-backed attach for containers WITH a TTY (Tty:true). `docker attach`
  * refuses such a container unless ITS OWN stdin is a terminal, printing
  * "the input device is not a TTY" and exiting — which is exactly what the

@@ -1,4 +1,4 @@
-import { Cpu, MemoryStick, HardDrive, Network, Server as ServerIcon } from "lucide-react";
+import { Network, Server as ServerIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusDot } from "@/components/shared/status-badge";
@@ -13,45 +13,14 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { listServers } from "@/lib/data/servers";
+import { getAllServerMetrics } from "@/lib/data/monitoring";
 import { installOneLiner } from "@/lib/install-script";
 import { serverLabel } from "@/lib/utils";
 import type { Server } from "@/lib/types";
+import { ServerMetricsProvider, LiveServerMetrics } from "./server-metrics";
 
 export const metadata = { title: "Servers" };
-
-function usageTone(value: number): string | undefined {
-  if (value >= 90) return "bg-destructive";
-  if (value >= 75) return "bg-[var(--warning)]";
-  return undefined;
-}
-
-function Metric({
-  icon: Icon,
-  label,
-  value,
-  caption,
-}: {
-  icon: typeof Cpu;
-  label: string;
-  value: number;
-  caption: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-sm">
-        <span className="flex items-center gap-2 text-muted-foreground">
-          <Icon className="size-4" />
-          {label}
-        </span>
-        <span className="font-mono tabular-nums">{value}%</span>
-      </div>
-      <Progress value={value} indicatorClassName={usageTone(value)} />
-      <p className="text-xs text-muted-foreground">{caption}</p>
-    </div>
-  );
-}
 
 function ServerCard({ server }: { server: Server }) {
   return (
@@ -76,23 +45,16 @@ function ServerCard({ server }: { server: Server }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Metric
-          icon={Cpu}
-          label="CPU"
-          value={server.cpuUsage}
-          caption={`${server.cpuCores} cores`}
-        />
-        <Metric
-          icon={MemoryStick}
-          label="Memory"
-          value={server.memoryUsage}
-          caption={`${(server.memoryMb / 1024).toFixed(0)} GB RAM`}
-        />
-        <Metric
-          icon={HardDrive}
-          label="Disk"
-          value={server.diskUsage}
-          caption={`${server.diskGb} GB disk`}
+        <LiveServerMetrics
+          serverId={server.id}
+          fallback={{
+            cpu: server.cpuUsage,
+            memPct: server.memoryUsage,
+            diskPct: server.diskUsage,
+          }}
+          cpuCores={server.cpuCores}
+          memoryGb={Number((server.memoryMb / 1024).toFixed(0))}
+          diskGb={server.diskGb}
         />
       </CardContent>
     </Card>
@@ -100,7 +62,10 @@ function ServerCard({ server }: { server: Server }) {
 }
 
 export default async function ServersPage() {
-  const servers = await listServers();
+  const [servers, allMetrics] = await Promise.all([
+    listServers(),
+    getAllServerMetrics(),
+  ]);
 
   const installCommand = installOneLiner();
 
@@ -135,11 +100,13 @@ export default async function ServersPage() {
           description="Run the install command above on a Linux host to add your first server."
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {servers.map((server) => (
-            <ServerCard key={server.id} server={server} />
-          ))}
-        </div>
+        <ServerMetricsProvider initialMetrics={allMetrics}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {servers.map((server) => (
+              <ServerCard key={server.id} server={server} />
+            ))}
+          </div>
+        </ServerMetricsProvider>
       )}
     </div>
   );

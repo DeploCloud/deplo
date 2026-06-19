@@ -14,13 +14,17 @@ import {
   rebuildProject,
   updateProjectBuild,
   updateProjectSource,
+  updateProjectLogo,
 } from "@/lib/data/projects";
 import {
   redeploy,
   cancelDeployment,
   promoteToProduction,
 } from "@/lib/data/deployments";
+import { renderProjectStack } from "@/lib/deploy/build";
+import { assertUser } from "@/lib/auth";
 import type { FrameworkId } from "@/lib/types";
+import { MAX_LOGO_STRING_LEN } from "@/lib/projects/logo-shared";
 
 const FRAMEWORK_IDS = [
   "nextjs", "svelte", "sveltekit", "astro", "vite", "remix", "nuxt", "react",
@@ -78,6 +82,7 @@ const createSchema = z.object({
   source: z.enum(DEPLOY_SOURCES),
   serverId: z.string().min(1).optional(),
   dockerImage: z.string().max(300).nullable().optional(),
+  logo: z.string().max(MAX_LOGO_STRING_LEN).nullable().optional(),
   compose: z.string().max(50000).nullable().optional(),
   env: z
     .array(
@@ -133,6 +138,7 @@ export async function createProjectAction(
       source: parsed.data.source,
       serverId: parsed.data.serverId,
       dockerImage: parsed.data.dockerImage ?? null,
+      logo: parsed.data.logo ?? null,
       compose: parsed.data.compose ?? null,
       env: parsed.data.env,
       repo: parsed.data.repo,
@@ -148,6 +154,21 @@ export async function createProjectAction(
   });
   if (res.ok) revalidatePath("/");
   return res;
+}
+
+/**
+ * Render the full Deplo-generated compose stack (Traefik + deplo labels, the
+ * injected network, absolute mount paths) for read-only display in settings.
+ * Returns `null` data when there's nothing to show yet (e.g. a single-image
+ * project that was never deployed). Read-only — auth-gated, no revalidation.
+ */
+export async function renderComposeStackAction(
+  projectId: string,
+): Promise<ActionResult<string | null>> {
+  return run(async () => {
+    await assertUser();
+    return renderProjectStack(projectId);
+  });
 }
 
 export async function redeployAction(projectId: string): Promise<ActionResult> {
@@ -294,6 +315,25 @@ export async function renameProjectAction(
   if (!name.trim()) return { ok: false, error: "Name is required" };
   const res = await run(() => renameProject(id, name));
   if (res.ok) revalidatePath("/");
+  return res as ActionResult;
+}
+
+const logoSchema = z.string().max(MAX_LOGO_STRING_LEN).nullable();
+
+export async function updateLogoAction(
+  id: string,
+  logo: z.input<typeof logoSchema>
+): Promise<ActionResult> {
+  const parsed = logoSchema.safeParse(logo);
+  if (!parsed.success)
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid logo" };
+  const res = await run(() => updateProjectLogo(id, parsed.data));
+  if (res.ok) {
+    // Refresh both the dashboard cards (/) and the project header, which lives
+    // in the [slug] layout that wraps the settings page the user is on.
+    revalidatePath("/");
+    revalidatePath("/(dashboard)/projects/[slug]", "layout");
+  }
   return res as ActionResult;
 }
 

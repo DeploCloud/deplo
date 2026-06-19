@@ -2,13 +2,68 @@ export type ID = string;
 
 export type Role = "owner" | "member" | "viewer";
 
+/**
+ * A single thing a member is allowed to do within a team. Roles
+ * (owner/member/viewer) are presets over this set; an admin can additionally
+ * grant/revoke individual capabilities per member (see {@link Membership}).
+ *  - deploy          create/redeploy/stop/start projects & dev environments
+ *  - manage_domains  add/verify/route/remove custom domains
+ *  - manage_env      edit project & shared environment variables
+ *  - manage_infra    servers, databases, S3, registries, backups, GitHub apps
+ *  - manage_members  invite/create/remove members, change their roles
+ *  - manage_team     rename the team, edit team settings, delete the team
+ *  - view            read-only access to the dashboard (always implied)
+ */
+export type Capability =
+  | "deploy"
+  | "manage_domains"
+  | "manage_env"
+  | "manage_infra"
+  | "manage_members"
+  | "manage_team"
+  | "view";
+
+/** Canonical ordered list of every capability (drives the settings UI). */
+export const ALL_CAPABILITIES: Capability[] = [
+  "view",
+  "deploy",
+  "manage_domains",
+  "manage_env",
+  "manage_infra",
+  "manage_members",
+  "manage_team",
+];
+
 export interface User {
   id: ID;
   email: string;
+  /**
+   * Unique, instance-wide handle — the public identity. Shown (with no email)
+   * in the member picker and the global users list, and used to add an existing
+   * user to a team. Lowercased, `[a-z0-9_-]`, unique across the instance.
+   */
+  username: string;
   name: string;
   /** scrypt hash, never leaves the server */
   passwordHash: string;
+  /**
+   * Legacy instance-wide role. Retained for back-compat with documents written
+   * before per-team memberships; the source of truth for what a user can do is
+   * now their {@link Membership} in the active team.
+   */
   role: Role;
+  /**
+   * Global-scoped admin. Instance admins manage all users platform-wide: the
+   * Settings → Users list, minting registration links, and the per-user admin
+   * editor. The first account (setup) is an instance admin. Distinct from
+   * per-team capabilities (which only ever scope to one team).
+   */
+  isInstanceAdmin?: boolean;
+  /**
+   * Globally suspended: cannot sign in and is treated as having no access until
+   * re-activated. Does not delete the account or its memberships.
+   */
+  suspended?: boolean;
   avatarColor: string;
   createdAt: string;
 }
@@ -17,17 +72,87 @@ export interface User {
 export interface PublicUser {
   id: ID;
   email: string;
+  username: string;
   name: string;
   role: Role;
+  isInstanceAdmin: boolean;
   avatarColor: string;
+}
+
+/**
+ * A user's membership of a team — the join row that makes the app multi-tenant.
+ * `capabilities` is the *effective* set the member has in that team; on
+ * create/invite it is seeded from the role preset (see CAPABILITY_PRESETS) but
+ * can then be edited per member. `role` is kept as a human label / default.
+ */
+export interface Membership {
+  id: ID;
+  userId: ID;
+  teamId: ID;
+  role: Role;
+  capabilities: Capability[];
+  createdAt: string;
+}
+
+export type InviteStatus = "pending" | "accepted" | "revoked";
+
+/**
+ * An invitation to join a team. The raw token is embedded in the invite link
+ * (and email) and only its sha256 hash is stored, exactly like an API token.
+ * Accepting an invite creates the User (if new) and the {@link Membership}.
+ */
+export interface Invite {
+  id: ID;
+  teamId: ID;
+  email: string;
+  role: Role;
+  capabilities: Capability[];
+  /** sha256 of the raw invite token; the raw token is never stored. */
+  tokenHash: string;
+  status: InviteStatus;
+  /** Name of the member who created the invite (for display). */
+  invitedBy: string;
+  expiresAt: string;
+  createdAt: string;
+  acceptedAt: string | null;
+}
+
+export type RegistrationLinkStatus = "pending" | "used" | "revoked";
+
+/**
+ * A single-use link that lets a new person self-register a brand-new account
+ * AND their own team (like the first-run setup, not a team invite). Minted by a
+ * member with `manage_members`; only the token hash is stored. Using it creates
+ * a User + a Team (the registrant picks a unique team name) + an owner
+ * Membership, then signs them in. Distinct from {@link Invite}, which adds
+ * someone to an EXISTING team.
+ */
+export interface RegistrationLink {
+  id: ID;
+  /** sha256 of the raw token; the raw token lives only in the link. */
+  tokenHash: string;
+  status: RegistrationLinkStatus;
+  /** Username of the member who minted it (for display). */
+  createdBy: string;
+  /** Set once used: the username that registered through it. */
+  usedByUsername: string | null;
+  expiresAt: string;
+  createdAt: string;
+  usedAt: string | null;
 }
 
 export interface Team {
   id: ID;
   name: string;
   slug: string;
-  plan: "hobby" | "pro" | "enterprise";
+  plan: "pro" | "enterprise";
   createdAt: string;
+}
+
+/** A team as shown in the switcher: the user's role in it + its size. */
+export interface TeamSummary extends Team {
+  role: string;
+  memberCount: number;
 }
 
 export type ServerStatus = "online" | "offline" | "provisioning" | "error";
@@ -276,6 +401,12 @@ export interface Project {
   teamId: ID;
   serverId: ID;
   framework: FrameworkId;
+  /**
+   * Display logo for the project (a URL or local /templates/<x> path). Defaulted
+   * from the template's logo when deployed from one, editable from settings.
+   * Null ⇒ fall back to the framework icon. NOT the Docker image (`dockerImage`).
+   */
+  logo: string | null;
   /** How this project is deployed (git, docker image, dockerfile, upload). */
   source: DeploySource;
   repo: GitRepo | null;
@@ -368,6 +499,13 @@ export interface LogLine {
 
 export type EnvTarget = "production" | "preview" | "development";
 
+/** Canonical ordered list of every env target. */
+export const ALL_ENV_TARGETS: EnvTarget[] = [
+  "production",
+  "preview",
+  "development",
+];
+
 export interface EnvVar {
   id: ID;
   projectId: ID;
@@ -393,6 +531,27 @@ export interface EnvVarDTO {
 
 export type DomainStatus = "valid" | "pending" | "misconfigured" | "error";
 
+/**
+ * The Traefik entrypoint a domain's router binds to. Mirrors the two entrypoints
+ * defined in the proxy's static config (install.sh): `websecure` (:443, TLS) and
+ * `web` (:80, plain HTTP). Defaults to `websecure` when absent — the
+ * long-standing behaviour where every router served HTTPS.
+ */
+export type DomainEntrypoint = "websecure" | "web";
+
+/**
+ * How a domain's TLS certificate is issued — the user's *choice*, distinct from
+ * `ssl` (whether a cert is currently active, derived from DNS verification):
+ *  - letsencrypt  the HTTP-01 ACME resolver baked into the proxy (the default,
+ *                 resolved via `certResolver()` / `DEPLO_CERT_RESOLVER`).
+ *  - cloudflare   a DNS-01 resolver named `cloudflare` for real domains whose
+ *                 DNS is on Cloudflare (the proxy must define this resolver).
+ *  - none         no certificate — serve plain HTTP on the `web` entrypoint, no
+ *                 TLS labels, no forced upgrade.
+ * Absent ⇒ `letsencrypt` (back-compat with domains created before this field).
+ */
+export type CertProvider = "letsencrypt" | "cloudflare" | "none";
+
 export interface Domain {
   id: ID;
   projectId: ID;
@@ -415,6 +574,54 @@ export interface Domain {
    * one container can expose different services on different domains.
    */
   port?: number | null;
+  /**
+   * Traefik entrypoint this host's router binds to. Absent ⇒ `websecure` (the
+   * long-standing default). `web` serves plain HTTP on :80.
+   */
+  entrypoint?: DomainEntrypoint;
+  /**
+   * How TLS is issued for this host (see {@link CertProvider}). Absent ⇒
+   * `letsencrypt`. `none` means no certificate — the router serves plain HTTP
+   * and is forced onto the `web` entrypoint regardless of `entrypoint`.
+   */
+  certProvider?: CertProvider;
+  /**
+   * Traefik middlewares applied to this host's router, in order, emitted as
+   * `traefik.http.routers.<key>.middlewares=<m1>,<m2>,…`. Each entry is a
+   * middleware reference the proxy already defines (e.g. `redirect-https` or a
+   * provider-qualified `auth@file`). Absent/empty ⇒ no middleware label, the
+   * long-standing behaviour. Two hosts with different chains can't share a
+   * router, so the chain is part of the router-grouping signature.
+   */
+  middlewares?: string[];
+  /**
+   * Path prefix this host's router matches, e.g. `/api`. The router rule becomes
+   * `Host(`name`) && PathPrefix(`/api`)`, so one hostname can route different
+   * paths to different services/ports (each is its own `Domain` row). Stored
+   * normalised: a single leading slash, no trailing slash, never a scheme/host,
+   * never a backtick (it is interpolated into a Traefik backtick literal).
+   * Absent/empty ⇒ a `Host()`-only rule, the long-standing behaviour. Two hosts
+   * with different prefixes can't share a router, so it is part of the router
+   * signature; a longer prefix gets a higher router `priority` so it wins.
+   */
+  pathPrefix?: string;
+  /**
+   * Strip {@link pathPrefix} from the request path before forwarding to the app,
+   * via a generated Traefik `stripprefix` middleware prepended to {@link
+   * middlewares} (so user middlewares see the already-stripped path the app
+   * sees). Meaningless without a `pathPrefix` and dropped when absent. Absent/
+   * false ⇒ forward the path unchanged, the long-standing behaviour.
+   */
+  stripPrefix?: boolean;
+  /**
+   * COMPOSE/template stacks only: which compose service this host's router
+   * targets. The container port comes from that service's compose definition
+   * (the compose file owns the port — there is no per-domain `port` override on
+   * a stack), so `service` is the compose analogue of `port`. Absent ⇒ the
+   * stack's default exposed service (`expose`/`exposes`), the long-standing
+   * behaviour. Ignored for single-image projects (which use `port`).
+   */
+  service?: string;
   createdAt: string;
 }
 
@@ -430,6 +637,8 @@ export type DatabaseStatus = "running" | "stopped" | "provisioning" | "error";
 
 export interface Database {
   id: ID;
+  /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
+  teamId: ID;
   name: string;
   type: DatabaseType;
   version: string;
@@ -457,6 +666,8 @@ export type S3Status = "connected" | "error" | "unverified";
 
 export interface S3Destination {
   id: ID;
+  /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
+  teamId: ID;
   name: string;
   provider: S3Provider;
   endpoint: string;
@@ -471,6 +682,8 @@ export interface S3Destination {
 
 export interface Backup {
   id: ID;
+  /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
+  teamId: ID;
   name: string;
   databaseId: ID | null;
   destinationId: ID;
@@ -484,6 +697,8 @@ export interface Backup {
 
 export interface ApiToken {
   id: ID;
+  /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
+  teamId: ID;
   name: string;
   /** sha256 of the token; raw is shown once on creation */
   tokenHash: string;
@@ -504,6 +719,8 @@ export type ActivityType =
 
 export interface Activity {
   id: ID;
+  /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
+  teamId: ID;
   type: ActivityType;
   message: string;
   actor: string;
@@ -525,11 +742,19 @@ export interface SharedEnvVar {
  */
 export interface SharedEnvGroup {
   id: ID;
+  /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
+  teamId: ID;
   name: string;
   description: string;
   variables: SharedEnvVar[];
   /** ids of the projects this group is attached to */
   projectIds: ID[];
+  /**
+   * The runtimes this group reaches, same axis as a per-project var. A group
+   * flows into a project's dev container only if it includes `development`.
+   * Legacy groups persisted before this field default to all three targets.
+   */
+  targets: EnvTarget[];
   createdAt: string;
   updatedAt: string;
 }
@@ -539,6 +764,8 @@ export type RegistryType = "ghcr" | "dockerhub" | "gitlab" | "generic";
 /** A container image registry used to pull/push images for deployments. */
 export interface Registry {
   id: ID;
+  /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
+  teamId: ID;
   name: string;
   type: RegistryType;
   /** registry host, e.g. ghcr.io, docker.io, registry.gitlab.com */
@@ -581,6 +808,8 @@ export interface NotificationSettings {
  */
 export interface GithubApp {
   id: ID;
+  /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
+  teamId: ID;
   /** Numeric GitHub App id (used as the JWT issuer). */
   appId: number;
   /** URL slug, e.g. used to build the install URL github.com/apps/<slug>. */
@@ -619,6 +848,12 @@ export interface GithubInstallation {
 export interface DeploData {
   users: User[];
   teams: Team[];
+  /** Per-team membership join rows — who belongs to which team and with what capabilities. */
+  memberships: Membership[];
+  /** Outstanding & historical team invitations. */
+  invites: Invite[];
+  /** Single-use new-account registration links (account + own team). */
+  registrationLinks: RegistrationLink[];
   servers: Server[];
   projects: Project[];
   deployments: Deployment[];
@@ -630,11 +865,34 @@ export interface DeploData {
   backups: Backup[];
   apiTokens: ApiToken[];
   activities: Activity[];
-  notificationSettings: NotificationSettings;
+  /**
+   * Notification settings, keyed by team id. A team with no entry yet falls
+   * back to the default settings (see `defaultNotificationSettings`).
+   */
+  notificationSettings: Record<ID, NotificationSettings>;
   sharedEnvGroups: SharedEnvGroup[];
   registries: Registry[];
   githubApps: GithubApp[];
   githubInstallations: GithubInstallation[];
   /** Dev SSH users — the sole source of truth for the SSH gateway projection. */
   devSshUsers: DevSshUser[];
+}
+
+/** Default notification settings for a team that has none persisted yet. */
+export function defaultNotificationSettings(): NotificationSettings {
+  return {
+    channels: {
+      push: { enabled: false },
+      email: { enabled: false, address: "" },
+      discord: { enabled: false, webhookUrl: "" },
+      webhook: { enabled: false, url: "" },
+    },
+    events: {
+      deployment_failed: true,
+      deployment_succeeded: false,
+      server_offline: true,
+      high_resource_usage: true,
+      update_available: true,
+    },
+  };
 }

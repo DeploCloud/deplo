@@ -2,7 +2,7 @@ import "server-only";
 
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret } from "../crypto";
 import type { S3Destination, S3Provider } from "../types";
@@ -29,9 +29,10 @@ export const S3_PROVIDERS: { id: S3Provider; name: string; endpointHint: string 
 ];
 
 export async function listS3(): Promise<S3DestinationDTO[]> {
-  await assertUser();
+  const teamId = await requireActiveTeamId();
   return read()
-    .s3Destinations.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .s3Destinations.filter((s) => s.teamId === teamId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .map(toDTO);
 }
 
@@ -44,7 +45,8 @@ export async function createS3(input: {
   accessKey: string;
   secretKey: string;
 }): Promise<S3DestinationDTO> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   if (!input.name.trim()) throw new Error("Name is required");
   if (!input.bucket.trim()) throw new Error("Bucket is required");
   if (!input.accessKey || !input.secretKey)
@@ -52,6 +54,7 @@ export async function createS3(input: {
 
   const s: S3Destination = {
     id: newId("s3"),
+    teamId: membership.teamId,
     name: input.name.trim(),
     provider: input.provider,
     endpoint: input.endpoint.trim(),
@@ -69,10 +72,10 @@ export async function createS3(input: {
 
 /** Simulate a connectivity check (HEAD bucket). */
 export async function testS3(id: string): Promise<S3DestinationDTO> {
-  await assertUser();
+  const teamId = (await requireCapability("manage_infra")).teamId;
   return toDTO(
     mutate((d) => {
-      const s = d.s3Destinations.find((x) => x.id === id);
+      const s = d.s3Destinations.find((x) => x.id === id && x.teamId === teamId);
       if (!s) throw new Error("Not found");
       s.status = "connected";
       return s;
@@ -81,8 +84,11 @@ export async function testS3(id: string): Promise<S3DestinationDTO> {
 }
 
 export async function deleteS3(id: string): Promise<void> {
-  const user = await assertUser();
-  const s = read().s3Destinations.find((x) => x.id === id);
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const s = read().s3Destinations.find(
+    (x) => x.id === id && x.teamId === membership.teamId,
+  );
   if (!s) throw new Error("Not found");
   mutate((d) => {
     d.s3Destinations = d.s3Destinations.filter((x) => x.id !== id);

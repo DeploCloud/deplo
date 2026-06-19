@@ -1,7 +1,7 @@
 import "server-only";
 
 import { read } from "../store";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import {
   execInContainer as dockerExec,
   isDockerLevelStderr,
@@ -133,8 +133,8 @@ export async function listInstances(p: Project): Promise<ConsoleInstance[]> {
 }
 
 export async function getAttachInfo(projectId: string): Promise<AttachInfo | null> {
-  await assertUser();
-  const p = read().projects.find((x) => x.id === projectId);
+  const teamId = await requireActiveTeamId();
+  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
   if (!p) return null;
   const instances = await listInstances(p);
   // Default target: exposed/running first thanks to listInstances ordering.
@@ -165,8 +165,10 @@ export async function resolveAttachTarget(
   | { ok: true; instance: ConsoleInstance }
   | { ok: false; reason: "not-found" | "no-instance" | "stopped" }
 > {
-  await assertUser();
-  const p = read().projects.find((x) => x.id === projectId);
+  // Attaching to PID 1 (full-duplex, stdin to the live container) is a
+  // deploy-class operation — never available to a view-only member.
+  const { teamId } = await requireCapability("deploy");
+  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
   if (!p) return { ok: false, reason: "not-found" };
 
   const instances = await listInstances(p);
@@ -179,13 +181,41 @@ export async function resolveAttachTarget(
   return { ok: true, instance: pick };
 }
 
+/**
+ * Authorise a logs request and resolve the real container to stream. Like
+ * resolveAttachTarget but does NOT refuse a stopped container — `docker logs`
+ * still returns a stopped container's recorded output, so the viewer can show
+ * the tail of a crashed/exited container. The target must belong to this
+ * project; an unknown raw name from the client is rejected.
+ */
+export async function resolveLogsTarget(
+  projectId: string,
+  target?: string,
+): Promise<
+  | { ok: true; instance: ConsoleInstance }
+  | { ok: false; reason: "not-found" | "no-instance" }
+> {
+  const teamId = await requireActiveTeamId();
+  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  if (!p) return { ok: false, reason: "not-found" };
+
+  const instances = await listInstances(p);
+  const pick = target
+    ? instances.find((i) => i.name === target)
+    : instances.find((i) => i.running) ?? instances[0];
+  if (!pick) return { ok: false, reason: "no-instance" };
+  return { ok: true, instance: pick };
+}
+
 export async function execInContainer(
   projectId: string,
   rawCommand: string,
   target?: string,
 ): Promise<{ output: string; detach?: boolean }> {
-  await assertUser();
-  const p = read().projects.find((x) => x.id === projectId);
+  // Running arbitrary commands in the live container is RCE — gate on deploy,
+  // never bare team membership (a viewer must never reach this).
+  const { teamId } = await requireCapability("deploy");
+  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
   if (!p) return { output: "Error: project not found" };
 
   const command = rawCommand.trim();

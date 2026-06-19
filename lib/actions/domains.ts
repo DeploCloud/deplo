@@ -8,16 +8,42 @@ import {
   removeDomain,
   verifyDomain,
   setPrimaryDomain,
-  setDomainPort,
+  updateDomain,
   syncProductionUrl,
 } from "@/lib/data/domains";
 import { rerouteProject } from "@/lib/deploy/build";
+
+/** The per-domain routing knobs shared by the add and update schemas: entrypoint,
+ * certificate provider, and the middleware chain. `port` is declared separately
+ * (optional on add, nullable-required on update) so it isn't repeated here. */
+const routingFields = {
+  entrypoint: z.enum(["websecure", "web"]),
+  certProvider: z.enum(["letsencrypt", "cloudflare", "none"]),
+  // Already split + trimmed client-side; the data layer normalises again.
+  middlewares: z.array(z.string().max(200)).max(20),
+  // A Traefik PathPrefix this host routes; normalised/validated by the data
+  // layer (normalizePath drops backticks, forces a single leading slash).
+  pathPrefix: z.string().max(2000),
+  stripPrefix: z.boolean(),
+  // The compose service this host targets (compose stacks only); validated
+  // against the project's compose file by the data layer.
+  service: z.string().max(200),
+} as const;
 
 const addSchema = z.object({
   projectId: z.string().min(1),
   name: z.string().min(3).max(253),
   // Container port this host routes to. Omitted ⇒ the project's default port.
   port: z.number().int().min(1).max(65535).nullable().optional(),
+  // The routing knobs are optional on add (the dialog can omit them to take the
+  // HTTPS/letsencrypt defaults); the data layer fills the gaps. `entrypoint`
+  // omitted ⇒ auto (derived from the cert provider).
+  entrypoint: routingFields.entrypoint.optional(),
+  certProvider: routingFields.certProvider.optional(),
+  middlewares: routingFields.middlewares.optional(),
+  pathPrefix: routingFields.pathPrefix.optional(),
+  stripPrefix: routingFields.stripPrefix.optional(),
+  service: routingFields.service.optional(),
 });
 
 export async function addDomainAction(
@@ -26,9 +52,8 @@ export async function addDomainAction(
   const parsed = addSchema.safeParse(input);
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid" };
-  const res = await run(() =>
-    addDomain(parsed.data.projectId, parsed.data.name, parsed.data.port ?? null)
-  );
+  const { projectId, name, ...config } = parsed.data;
+  const res = await run(() => addDomain(projectId, name, config));
   // A new domain is `pending` (no DNS yet), so it doesn't route and doesn't
   // become the canonical productionUrl until it's verified — just refresh the
   // tables so it shows up.
@@ -36,25 +61,42 @@ export async function addDomainAction(
   return res as ActionResult;
 }
 
-const portSchema = z.object({
+const updateSchema = z.object({
   id: z.string().min(1),
-  // null clears the override (revert to the project's default port).
+  name: z.string().min(3).max(253),
+  // null clears the port override (revert to the project's default port).
   port: z.number().int().min(1).max(65535).nullable(),
+  // null ⇒ auto entrypoint (the data layer deletes the field so domainTlsConfig
+  // derives it); a concrete value ⇒ manual mode. The Edit dialog always sends
+  // one or the other (never omitted) because it edits the full routing config.
+  entrypoint: routingFields.entrypoint.nullable(),
+  certProvider: routingFields.certProvider,
+  middlewares: routingFields.middlewares,
+  pathPrefix: routingFields.pathPrefix,
+  stripPrefix: routingFields.stripPrefix,
+  service: routingFields.service,
 });
 
-export async function setDomainPortAction(
-  input: z.input<typeof portSchema>
+/**
+ * Edit every per-domain value at once (the Edit dialog): name, port override,
+ * entrypoint, certificate provider and the middleware chain. Persists the patch,
+ * then re-applies routing so the running stack picks up the new Traefik labels
+ * instantly (no redeploy) when the project is active — deferred otherwise.
+ * `syncProductionUrl` runs because a rename can move the canonical URL for the
+ * primary domain.
+ */
+export async function updateDomainAction(
+  input: z.input<typeof updateSchema>,
 ): Promise<ActionResult<string>> {
-  const parsed = portSchema.safeParse(input);
+  const parsed = updateSchema.safeParse(input);
   if (!parsed.success)
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid" };
-  // Persist the port, then re-apply routing so the running stack picks up the
-  // new Traefik target port instantly (no redeploy) when the project is active;
-  // deferred otherwise.
+  const { id, ...patch } = parsed.data;
   const res = await run(async () => {
-    const projectId = await setDomainPort(parsed.data.id, parsed.data.port);
+    const projectId = await updateDomain(id, patch);
     const status = await rerouteProject(projectId);
-    return rerouteMessage(status, "Port updated");
+    syncProductionUrl(projectId);
+    return rerouteMessage(status, "Domain updated");
   });
   if (res.ok) revalidateProjectViews();
   return res;

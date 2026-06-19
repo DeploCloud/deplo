@@ -2,7 +2,7 @@ import "server-only";
 
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
@@ -27,6 +27,7 @@ import { teardownProject } from "./deployments";
 import { teardownDev } from "../deploy/dev";
 import { removeUploads } from "../deploy/upload";
 import { removeProjectDevSshUsers } from "./dev-ssh";
+import { isValidLogoValue } from "../projects/logo-shared";
 
 /** Heuristic: treat secret-looking keys as masked secrets. */
 function isSecretKey(key: string): boolean {
@@ -68,30 +69,34 @@ function summarize(p: Project): ProjectSummary {
     : null;
   return {
     ...np,
+    // Projects created before the logo field have it absent; surface an explicit
+    // null so every consumer reads a defined `string | null`.
+    logo: np.logo ?? null,
     latestDeployment: latest,
     domainCount: d.domains.filter((x) => x.projectId === np.id).length,
   };
 }
 
 export async function listProjects(): Promise<ProjectSummary[]> {
-  await assertUser();
+  const teamId = await requireActiveTeamId();
   return read()
-    .projects.map(summarize)
+    .projects.filter((p) => p.teamId === teamId)
+    .map(summarize)
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
 }
 
 export async function getProjectBySlug(
   slug: string
 ): Promise<ProjectSummary | null> {
-  await assertUser();
+  const teamId = await requireActiveTeamId();
   const p = read().projects.find((x) => x.slug === slug);
-  return p ? summarize(p) : null;
+  return p && p.teamId === teamId ? summarize(p) : null;
 }
 
 export async function getProjectById(id: string): Promise<Project | null> {
-  await assertUser();
+  const teamId = await requireActiveTeamId();
   const p = read().projects.find((x) => x.id === id);
-  return p ? normalizeProject(p) : null;
+  return p && p.teamId === teamId ? normalizeProject(p) : null;
 }
 
 export interface CreateProjectInput {
@@ -100,6 +105,8 @@ export interface CreateProjectInput {
   source: DeploySource;
   repo: GitRepo | null;
   dockerImage?: string | null;
+  /** Display logo (URL/path), defaulted from a template's logo on deploy. */
+  logo?: string | null;
   compose?: string | null;
   env?: { key: string; value: string }[];
   serverId?: string;
@@ -119,7 +126,8 @@ export interface CreateProjectInput {
 export async function createProject(
   input: CreateProjectInput
 ): Promise<ProjectSummary> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   const slugBase = input.name
     .toLowerCase()
     .trim()
@@ -130,7 +138,6 @@ export async function createProject(
   let i = 1;
   while (existing.has(slug)) slug = `${slugBase}-${i++}`;
 
-  const team = read().teams[0];
   const servers = read().servers;
   // Default to the master (localhost) server; honour an explicit, existing pick.
   const server =
@@ -141,9 +148,12 @@ export async function createProject(
     id: newId("prj"),
     name: input.name.trim(),
     slug,
-    teamId: team.id,
+    teamId: membership.teamId,
     serverId: server.id,
     framework: input.framework,
+    // Defaulted from a template's logo (a /templates path); ignore anything that
+    // isn't a valid inline logo so a crafted create payload can't store a URL.
+    logo: input.logo && isValidLogoValue(input.logo) ? input.logo : null,
     source: input.source,
     repo: input.repo,
     dockerImage: input.dockerImage ?? null,
@@ -221,9 +231,10 @@ export async function updateProjectBuild(
   id: string,
   build: Partial<BuildConfig>
 ): Promise<void> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   mutate((d) => {
-    const p = d.projects.find((x) => x.id === id);
+    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
     p.build = { ...p.build, ...build };
     p.framework = build.framework ?? p.framework;
@@ -249,9 +260,10 @@ export async function updateProjectSource(
   id: string,
   input: UpdateSourceInput
 ): Promise<void> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   mutate((d) => {
-    const p = d.projects.find((x) => x.id === id);
+    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
     if (input.serverId) {
       const server = d.servers.find((s) => s.id === input.serverId);
@@ -281,9 +293,10 @@ export async function setProjectUpload(
   id: string,
   upload: UploadArchive,
 ): Promise<void> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   mutate((d) => {
-    const p = d.projects.find((x) => x.id === id);
+    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
     p.source = "upload";
     p.upload = upload;
@@ -295,9 +308,9 @@ export async function setProjectUpload(
 }
 
 export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
-  await assertUser();
+  const { membership } = await requireCapability("deploy");
   mutate((d) => {
-    const p = d.projects.find((x) => x.id === id);
+    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
     p.autoDeploy = value;
     p.updatedAt = nowIso();
@@ -305,9 +318,10 @@ export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
 }
 
 export async function renameProject(id: string, name: string): Promise<void> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   mutate((d) => {
-    const p = d.projects.find((x) => x.id === id);
+    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
     p.name = name.trim();
     p.updatedAt = nowIso();
@@ -315,10 +329,46 @@ export async function renameProject(id: string, name: string): Promise<void> {
   recordActivity("project", `Renamed project to ${name}`, user.name, id);
 }
 
+/**
+ * Set (or clear) the project's display logo. An empty value clears it, falling
+ * the UI back to the framework icon. The logo is stored INLINE on the project
+ * as a base64 image data-URI (uploaded image) or a local /templates path
+ * (template default) — never a remote URL, so it renders under the strict CSP
+ * with no cross-origin fetch (see {@link isValidLogoValue}). Purely cosmetic:
+ * it never touches the deploy source or the Docker image the stack runs.
+ *
+ * No-op (no updatedAt bump, no activity record) when the value is unchanged, so
+ * an idle Save doesn't reorder the dashboard or write a spurious log line.
+ */
+export async function updateProjectLogo(
+  id: string,
+  logo: string | null,
+): Promise<void> {
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const next = logo?.trim() ? logo.trim() : null;
+  if (next && !isValidLogoValue(next)) {
+    throw new Error("Unsupported logo image");
+  }
+  let changed = false;
+  mutate((d) => {
+    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
+    if (!p) throw new Error("Project not found");
+    if ((p.logo ?? null) === next) return;
+    p.logo = next;
+    p.updatedAt = nowIso();
+    changed = true;
+  });
+  if (changed) recordActivity("project", `Updated project logo`, user.name, id);
+}
+
 /** Stop the project's running container. */
 export async function stopProject(id: string): Promise<void> {
-  const user = await assertUser();
-  const project = read().projects.find((x) => x.id === id);
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const project = read().projects.find(
+    (x) => x.id === id && x.teamId === membership.teamId,
+  );
   if (!project) throw new Error("Project not found");
   await stopContainer(project.slug).catch(() => {});
   mutate((d) => {
@@ -331,8 +381,11 @@ export async function stopProject(id: string): Promise<void> {
 
 /** Start a previously stopped project's container. */
 export async function startProject(id: string): Promise<void> {
-  const user = await assertUser();
-  const project = read().projects.find((x) => x.id === id);
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const project = read().projects.find(
+    (x) => x.id === id && x.teamId === membership.teamId,
+  );
   if (!project) throw new Error("Project not found");
   await startContainer(project.slug).catch(() => {});
   mutate((d) => {
@@ -345,8 +398,11 @@ export async function startProject(id: string): Promise<void> {
 
 /** Rebuild the image from the current source and redeploy (real build). */
 export async function rebuildProject(id: string): Promise<void> {
-  const user = await assertUser();
-  const project = read().projects.find((x) => x.id === id);
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const project = read().projects.find(
+    (x) => x.id === id && x.teamId === membership.teamId,
+  );
   if (!project) throw new Error("Project not found");
   startDeployment(id, {
     environment: "production",
@@ -356,8 +412,11 @@ export async function rebuildProject(id: string): Promise<void> {
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const user = await assertUser();
-  const project = read().projects.find((x) => x.id === id);
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const project = read().projects.find(
+    (x) => x.id === id && x.teamId === membership.teamId,
+  );
   if (!project) throw new Error("Project not found");
   // Tear down the running container/stack before dropping the records.
   await teardownProject(project.slug);

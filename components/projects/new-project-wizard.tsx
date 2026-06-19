@@ -323,6 +323,9 @@ export function NewProjectWizard({
         source: useCompose ? "compose" : source,
         serverId,
         dockerImage: image,
+        // Seed the project's display logo from the template so a deployed
+        // template carries its icon; editable later from project settings.
+        logo: isTemplate ? template!.logo : null,
         compose: useCompose ? compose : null,
         env: isTemplate
           ? envRows.filter((e) => e.key.trim())

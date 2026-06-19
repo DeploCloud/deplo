@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { login, signup, logout, completeSetup } from "@/lib/auth";
+import { login, logout, completeSetup } from "@/lib/auth";
 import { rateLimit } from "@/lib/security";
 
 /**
@@ -42,6 +42,15 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+/**
+ * Only allow returning to a safe, in-app path (no open redirect). We accept
+ * exactly the invite-accept path, which is the only post-login return target.
+ */
+function safeNext(raw: FormDataEntryValue | null): string {
+  const v = typeof raw === "string" ? raw : "";
+  return /^\/invite\/[A-Za-z0-9_-]+$/.test(v) ? v : "/";
+}
+
 export async function loginAction(
   _prev: AuthState,
   formData: FormData,
@@ -66,50 +75,13 @@ export async function loginAction(
 
   const res = await login(email, parsed.data.password);
   if (!res.ok) return { error: res.error };
-  redirect("/");
-}
-
-const signupSchema = z.object({
-  name: z.string().min(1, "Name is required").max(80),
-  email: z.string().email("Enter a valid email"),
-  password: z
-    .string()
-    .min(8, "Password must be at least 8 characters")
-    .max(200),
-});
-
-export async function signupAction(
-  _prev: AuthState,
-  formData: FormData,
-): Promise<AuthState> {
-  const parsed = signupSchema.safeParse({
-    name: formData.get("name"),
-    email: formData.get("email"),
-    password: formData.get("password"),
-  });
-  if (!parsed.success)
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
-
-  const email = parsed.data.email.toLowerCase().trim();
-  const limited = checkLimits([
-    { key: `signup:email:${email}`, limit: 3, windowMs: 60_000 },
-    { key: "signup:global", limit: 20, windowMs: 60_000 },
-    { key: await clientKey("signup"), limit: 10, windowMs: 60_000 },
-  ]);
-  if (limited) return { error: limited };
-
-  const res = await signup(
-    parsed.data.name,
-    parsed.data.email,
-    parsed.data.password,
-  );
-  if (!res.ok) return { error: res.error };
-  redirect("/");
+  redirect(safeNext(formData.get("next")));
 }
 
 const setupSchema = z.object({
+  username: z.string().min(3, "Username is required").max(32),
   teamName: z.string().min(1, "Workspace name is required").max(80),
-  name: z.string().min(1, "Your name is required").max(80),
+  name: z.string().trim().min(1, "Your name is required").max(80),
   email: z.string().email("Enter a valid email"),
   password: z
     .string()
@@ -122,6 +94,7 @@ export async function setupAction(
   formData: FormData,
 ): Promise<AuthState> {
   const parsed = setupSchema.safeParse({
+    username: formData.get("username"),
     teamName: formData.get("teamName"),
     name: formData.get("name"),
     email: formData.get("email"),

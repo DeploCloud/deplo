@@ -2,11 +2,20 @@ import "server-only";
 
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import type { GithubApp, GithubInstallation } from "../types";
 import type { ManifestConversion } from "../github/manifest";
+
+/** Ids of GitHub apps owned by the active team (for installation scoping). */
+function teamAppIds(teamId: string): Set<string> {
+  return new Set(
+    (read().githubApps ?? [])
+      .filter((a) => a.teamId === teamId)
+      .map((a) => a.id),
+  );
+}
 
 /** Client-safe view of a connected App and its installations (no secrets). */
 export interface GithubInstallationDTO {
@@ -52,26 +61,31 @@ function toAppDTO(app: GithubApp, installs: GithubInstallation[]): GithubAppDTO 
 }
 
 export async function listGithubApps(): Promise<GithubAppDTO[]> {
-  await assertUser();
+  const teamId = await requireActiveTeamId();
   const d = read();
-  return (d.githubApps ?? []).map((a) =>
-    toAppDTO(a, d.githubInstallations ?? []),
-  );
+  return (d.githubApps ?? [])
+    .filter((a) => a.teamId === teamId)
+    .map((a) => toAppDTO(a, d.githubInstallations ?? []));
 }
 
-/** All installations across all connected Apps (for repo source pickers). */
+/** Installations of the active team's connected Apps (for repo source pickers). */
 export async function listGithubInstallations(): Promise<GithubInstallationDTO[]> {
-  await assertUser();
-  return (read().githubInstallations ?? []).map(toInstallationDTO);
+  const teamId = await requireActiveTeamId();
+  const appIds = teamAppIds(teamId);
+  return (read().githubInstallations ?? [])
+    .filter((i) => appIds.has(i.appId))
+    .map(toInstallationDTO);
 }
 
 /** Persist a newly-created App from its manifest conversion. Secrets encrypted. */
 export async function createGithubApp(
   conversion: ManifestConversion,
 ): Promise<GithubApp> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   const app: GithubApp = {
     id: newId("gha"),
+    teamId: membership.teamId,
     appId: conversion.id,
     slug: conversion.slug,
     name: conversion.name,
@@ -85,14 +99,14 @@ export async function createGithubApp(
   mutate((d) => {
     (d.githubApps ??= []).push(app);
   });
-  recordActivity("member", `Connected GitHub App ${app.name}`, user.name, null);
+  recordActivity("member", `Connected GitHub App ${app.name}`, user.name, null, membership.teamId);
   return app;
 }
 
-/** True once at least one App is connected; used to gate the GitHub source. */
+/** True once the active team has at least one App connected. */
 export async function hasGithubApp(): Promise<boolean> {
-  await assertUser();
-  return (read().githubApps ?? []).length > 0;
+  const teamId = await requireActiveTeamId();
+  return (read().githubApps ?? []).some((a) => a.teamId === teamId);
 }
 
 /**
@@ -106,7 +120,15 @@ export async function upsertInstallation(input: {
   accountType: "User" | "Organization";
   avatarUrl: string;
 }): Promise<GithubInstallation> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  // The App this installation attaches to must belong to the caller's active
+  // team — otherwise a member of team B could refresh/repoint an installation
+  // of team A's GitHub App (cross-tenant write).
+  const app = (read().githubApps ?? []).find(
+    (a) => a.id === input.appDbId && a.teamId === membership.teamId,
+  );
+  if (!app) throw new Error("GitHub App not found");
   let result: GithubInstallation | null = null;
   mutate((d) => {
     d.githubInstallations ??= [];
@@ -138,20 +160,24 @@ export async function upsertInstallation(input: {
     `Installed GitHub App on ${input.accountLogin}`,
     user.name,
     null,
+    membership.teamId,
   );
   return result!;
 }
 
-/** Most-recently-created connected App (the one a fresh install just made). */
+/** Most-recently-created connected App owned by the active team. */
 export async function latestGithubApp(): Promise<GithubApp | null> {
-  await assertUser();
-  const apps = read().githubApps ?? [];
+  const teamId = await requireActiveTeamId();
+  const apps = (read().githubApps ?? []).filter((a) => a.teamId === teamId);
   return apps[apps.length - 1] ?? null;
 }
 
 export async function removeGithubApp(id: string): Promise<void> {
-  const user = await assertUser();
-  const app = (read().githubApps ?? []).find((a) => a.id === id);
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const app = (read().githubApps ?? []).find(
+    (a) => a.id === id && a.teamId === membership.teamId,
+  );
   if (!app) throw new Error("GitHub App not found");
   mutate((d) => {
     d.githubApps = (d.githubApps ?? []).filter((a) => a.id !== id);
@@ -159,5 +185,5 @@ export async function removeGithubApp(id: string): Promise<void> {
       (i) => i.appId !== id,
     );
   });
-  recordActivity("member", `Removed GitHub App ${app.name}`, user.name, null);
+  recordActivity("member", `Removed GitHub App ${app.name}`, user.name, null, membership.teamId);
 }

@@ -14,10 +14,53 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { serverMetricsAction } from "@/lib/actions/monitoring";
 import { cn } from "@/lib/utils";
 import type { Server } from "@/lib/types";
 
 const COLLAPSE_KEY = "deplo:sidebar-collapsed";
+/** How often the sidebar refreshes the server's CPU readout. The collector
+ *  itself takes ~1.2s, so the poll is in-flight guarded to skip overlapping
+ *  ticks rather than stack requests. */
+const CPU_POLL_MS = 1000;
+
+/**
+ * Live CPU usage (0-100, rounded) for one server, polled every second. Falls
+ * back to the server's last stored value until the first sample lands and while
+ * the server is offline (no live data to fetch).
+ */
+function useLiveCpu(server: Server | null): number {
+  const [cpu, setCpu] = React.useState(server?.cpuUsage ?? 0);
+  const serverId = server?.id;
+  const online = server?.status === "online";
+
+  React.useEffect(() => {
+    if (!serverId || !online) return;
+    let active = true;
+    let busy = false;
+
+    async function tick() {
+      if (busy) return; // previous ~1.2s call still running — skip this tick
+      busy = true;
+      try {
+        const res = await serverMetricsAction(serverId!);
+        if (!active || !res.ok || !res.data) return;
+        setCpu(Math.round(res.data.cpu));
+      } finally {
+        busy = false;
+      }
+    }
+
+    const iv = setInterval(tick, CPU_POLL_MS);
+    tick();
+    return () => {
+      active = false;
+      clearInterval(iv);
+    };
+  }, [serverId, online]);
+
+  return cpu;
+}
 const WIDTH_KEY = "deplo:sidebar-width";
 const MIN_WIDTH = 200;
 const MAX_WIDTH = 420;
@@ -32,7 +75,13 @@ const clampWidth = (n: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, n));
  * in localStorage; the width transition is suppressed during a drag and on
  * first paint so neither animates unexpectedly.
  */
-export function Sidebar({ server }: { server: Server | null }) {
+export function Sidebar({
+  server,
+  capabilities = [],
+}: {
+  server: Server | null;
+  capabilities?: string[];
+}) {
   const router = useRouter();
   const [state, setState] = React.useState({
     collapsed: false,
@@ -44,6 +93,7 @@ export function Sidebar({ server }: { server: Server | null }) {
   const widthRef = React.useRef(DEFAULT_WIDTH);
   const [query, setQuery] = React.useState("");
   const searchRef = React.useRef<HTMLInputElement>(null);
+  const cpuUsage = useLiveCpu(server);
 
   React.useEffect(() => {
     let storedCollapsed = false;
@@ -159,7 +209,7 @@ export function Sidebar({ server }: { server: Server | null }) {
         </div>
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
-          <SidebarNav collapsed={collapsed} />
+          <SidebarNav collapsed={collapsed} capabilities={capabilities} />
         </div>
 
         {server && (
@@ -173,12 +223,12 @@ export function Sidebar({ server }: { server: Server | null }) {
                   <StatusDot status={server.status} />
                   <span className="truncate">{server.name}</span>
                   <span className="ml-auto tabular-nums">
-                    {server.cpuUsage}% CPU
+                    {cpuUsage}% CPU
                   </span>
                 </Link>
               </TooltipTrigger>
               <TooltipContent side="right">
-                {server.name} {server.cpuUsage}% CPU
+                {server.name} {cpuUsage}% CPU
               </TooltipContent>
             </Tooltip>
           </div>

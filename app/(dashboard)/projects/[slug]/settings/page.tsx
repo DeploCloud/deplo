@@ -25,6 +25,7 @@ export default async function ProjectSettingsPage(
       projectId={project.id}
       slug={project.slug}
       name={project.name}
+      logo={project.logo}
       framework={project.framework}
       build={project.build}
       autoDeploy={project.autoDeploy}

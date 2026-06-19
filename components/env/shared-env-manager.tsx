@@ -26,6 +26,8 @@ import {
   revealSharedEnvBlobAction,
 } from "@/lib/actions/shared-env";
 import type { SharedEnvGroupDTO } from "@/lib/data/shared-env";
+import { ALL_ENV_TARGETS } from "@/lib/types";
+import type { EnvTarget } from "@/lib/types";
 
 interface ProjectLite {
   id: string;
@@ -125,6 +127,17 @@ export function SharedEnvManager({
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>Targets:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {g.targets.map((t) => (
+                      <Badge key={t} variant="muted" className="text-[10px] capitalize">
+                        {t}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span>Attached to:</span>
                   {g.projects.length === 0 ? (
                     <span>no projects</span>
@@ -181,6 +194,9 @@ function SharedEnvDialog({
   const [projectIds, setProjectIds] = React.useState<string[]>(
     editing?.projectIds ?? [],
   );
+  const [targets, setTargets] = React.useState<EnvTarget[]>(
+    editing?.targets ?? ALL_ENV_TARGETS,
+  );
   const [pending, startTransition] = React.useTransition();
 
   // When editing, fetch the decrypted .env so the user can amend it. setState
@@ -202,6 +218,12 @@ function SharedEnvDialog({
     );
   }
 
+  function toggleTarget(t: EnvTarget) {
+    setTargets((cur) =>
+      cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t],
+    );
+  }
+
   function submit() {
     startTransition(async () => {
       const res = await saveSharedEnvGroupAction({
@@ -210,6 +232,7 @@ function SharedEnvDialog({
         description,
         blob,
         projectIds,
+        targets,
       });
       if (res.ok) {
         toast.success(editing ? "Shared group updated" : "Shared group created");
@@ -265,6 +288,28 @@ function SharedEnvDialog({
             </p>
           </div>
           <div className="space-y-2">
+            <Label>Targets</Label>
+            <div className="flex flex-wrap gap-4">
+              {ALL_ENV_TARGETS.map((t) => (
+                <label
+                  key={t}
+                  className="flex cursor-pointer items-center gap-2 text-sm capitalize"
+                >
+                  <Checkbox
+                    checked={targets.includes(t)}
+                    onCheckedChange={() => toggleTarget(t)}
+                  />
+                  {t}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The runtimes these variables reach. Include{" "}
+              <code className="font-mono">development</code> to inject them into
+              attached projects&apos; dev containers.
+            </p>
+          </div>
+          <div className="space-y-2">
             <Label>Attach to projects</Label>
             {projects.length === 0 ? (
               <p className="text-xs text-muted-foreground">No projects yet.</p>
@@ -290,7 +335,10 @@ function SharedEnvDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending || !name.trim()}>
+          <Button
+            onClick={submit}
+            disabled={pending || !name.trim() || targets.length === 0}
+          >
             {pending ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

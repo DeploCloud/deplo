@@ -12,28 +12,30 @@ import {
   Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DeploLogo } from "@/components/logo";
 import { SidebarNav } from "./sidebar-nav";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
-import type { PublicUser, Team } from "@/lib/types";
+import { TeamSwitcher } from "./team-switcher";
+import type { PublicUser, Team, TeamSummary } from "@/lib/types";
 
 export function Topbar({
   user,
   team,
+  teams,
+  capabilities = [],
 }: {
   user: PublicUser;
   team: Team;
+  teams: TeamSummary[];
+  capabilities?: string[];
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -52,41 +54,15 @@ export function Topbar({
           <div className="flex h-14 items-center border-b border-border px-5">
             <DeploLogo />
           </div>
-          <SidebarNav onNavigate={() => setMobileOpen(false)} />
+          <SidebarNav
+            onNavigate={() => setMobileOpen(false)}
+            capabilities={capabilities}
+          />
         </SheetContent>
       </Sheet>
 
       {/* Team switcher */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent">
-            <Avatar className="size-6">
-              <AvatarFallback className="bg-foreground text-[10px] text-background">
-                {team.name.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <span className="font-medium">{team.name}</span>
-            <Badge variant="secondary" className="hidden capitalize sm:inline-flex">
-              {team.plan}
-            </Badge>
-            <ChevronDown className="size-3.5 text-muted-foreground" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-60">
-          <DropdownMenuLabel>Teams</DropdownMenuLabel>
-          <DropdownMenuItem className="cursor-pointer">
-            <Avatar className="size-5">
-              <AvatarFallback className="bg-foreground text-[9px] text-background">
-                {team.name.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            {team.name}
-            <Badge variant="secondary" className="ml-auto capitalize">
-              {team.plan}
-            </Badge>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <TeamSwitcher team={team} teams={teams} />
 
       <span className="hidden text-muted-foreground/40 sm:inline">/</span>
       <span className="hidden text-sm text-muted-foreground sm:inline">

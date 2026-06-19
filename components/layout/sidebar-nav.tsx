@@ -13,11 +13,15 @@ import {
 export function SidebarNav({
   onNavigate,
   collapsed = false,
+  capabilities = [],
 }: {
   onNavigate?: () => void;
   collapsed?: boolean;
+  /** The current member's capabilities; items whose `requires` isn't held are hidden. */
+  capabilities?: string[];
 }) {
   const pathname = usePathname();
+  const caps = new Set(capabilities);
 
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href;
@@ -26,7 +30,12 @@ export function SidebarNav({
 
   return (
     <nav className={cn("flex flex-col py-3", collapsed ? "px-2" : "px-3")}>
-      {NAV.map((section, i) => (
+      {NAV.map((section, i) => {
+        const items = section.items.filter(
+          (item) => !item.requires || caps.has(item.requires),
+        );
+        if (items.length === 0) return null;
+        return (
         <div key={i} className="flex flex-col gap-0.5">
           {/* Divider between groups (Vercel-style), in place of section titles. */}
           {i > 0 && (
@@ -37,7 +46,7 @@ export function SidebarNav({
               )}
             />
           )}
-          {section.items.map((item) => {
+          {items.map((item) => {
             const active = isActive(item.href, item.exact);
             const Icon = item.icon;
             return (
@@ -73,7 +82,8 @@ export function SidebarNav({
             );
           })}
         </div>
-      ))}
+        );
+      })}
     </nav>
   );
 }

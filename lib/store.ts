@@ -10,6 +10,7 @@ import {
 import { join } from "node:path";
 import type { DeploData } from "./types";
 import { buildSeed } from "./seed";
+import { migrate } from "./migrate";
 import { isPostgresEnabled } from "./db/pg";
 import { loadDocument, saveDocument } from "./db/document-store";
 
@@ -44,7 +45,9 @@ function normalize(data: DeploData): DeploData {
       d[key] = seed[key] as unknown;
     }
   }
-  return data;
+  // Forward-migrate to the multi-team model (memberships, teamId stamping,
+  // per-team notification settings, dropped "hobby" plan). Idempotent.
+  return migrate(data);
 }
 
 /**

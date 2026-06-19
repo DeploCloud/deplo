@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { FrameworkIcon } from "@/components/shared/framework-icon";
+import { ProjectLogo } from "@/components/shared/project-logo";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { timeAgo } from "@/lib/utils";
@@ -135,7 +135,7 @@ export function ProjectCard({
           className="absolute inset-0 z-0 cursor-pointer rounded-xl"
         />
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
-          <FrameworkIcon framework={project.framework} size={36} />
+          <ProjectLogo logo={project.logo} framework={project.framework} size={36} />
           <div className="min-w-0 flex-1">
             <span className="truncate font-medium">{project.name}</span>
             {project.productionUrl ? (
@@ -188,7 +188,7 @@ export function ProjectCard({
       <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <FrameworkIcon framework={project.framework} size={36} />
+            <ProjectLogo logo={project.logo} framework={project.framework} size={36} />
             <div className="min-w-0">
               <span className="truncate font-medium">{project.name}</span>
               {project.productionUrl ? (

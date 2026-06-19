@@ -2,6 +2,7 @@ import "server-only";
 
 import { read, mutate } from "../store";
 import { assertUser } from "../auth";
+import { requireCapability } from "../membership";
 import { newId, nowIso } from "../ids";
 import { recordActivity } from "./activity";
 import type { Server } from "../types";
@@ -40,7 +41,8 @@ export interface AddServerInput {
  * "provisioning" state until the agent reports back.
  */
 export async function addServer(input: AddServerInput): Promise<Server> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   const host = input.host.trim();
   const server: Server = {
     id: newId("srv"),
@@ -60,12 +62,13 @@ export async function addServer(input: AddServerInput): Promise<Server> {
     createdAt: nowIso(),
   };
   mutate((d) => d.servers.push(server));
-  recordActivity("member", `Connected server ${server.name}`, user.name, null);
+  recordActivity("member", `Connected server ${server.name}`, user.name, null, membership.teamId);
   return server;
 }
 
 export async function removeServer(id: string): Promise<void> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   const server = read().servers.find((s) => s.id === id);
   if (!server) throw new Error("Server not found");
   if (server.type === "localhost")
@@ -75,5 +78,5 @@ export async function removeServer(id: string): Promise<void> {
   mutate((d) => {
     d.servers = d.servers.filter((s) => s.id !== id);
   });
-  recordActivity("member", `Removed server ${server.name}`, user.name, null);
+  recordActivity("member", `Removed server ${server.name}`, user.name, null, membership.teamId);
 }

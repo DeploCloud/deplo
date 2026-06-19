@@ -2,7 +2,7 @@ import "server-only";
 
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import type { Backup } from "../types";
 
@@ -24,9 +24,10 @@ function toDTO(b: Backup): BackupDTO {
 }
 
 export async function listBackups(): Promise<BackupDTO[]> {
-  await assertUser();
+  const teamId = await requireActiveTeamId();
   return read()
-    .backups.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .backups.filter((b) => b.teamId === teamId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .map(toDTO);
 }
 
@@ -37,11 +38,23 @@ export async function createBackup(input: {
   schedule: string;
   retentionDays: number;
 }): Promise<BackupDTO> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("manage_infra");
+  const teamId = membership.teamId;
+  const user = read().users.find((u) => u.id === membership.userId)!;
   if (!input.name.trim()) throw new Error("Name is required");
   if (!input.destinationId) throw new Error("Select a destination");
+  // The chosen destination (and database, if any) must belong to this team.
+  const d0 = read();
+  if (!d0.s3Destinations.some((x) => x.id === input.destinationId && x.teamId === teamId))
+    throw new Error("Select a destination");
+  if (
+    input.databaseId &&
+    !d0.databases.some((x) => x.id === input.databaseId && x.teamId === teamId)
+  )
+    throw new Error("Database not found");
   const b: Backup = {
     id: newId("bkp"),
+    teamId,
     name: input.name.trim(),
     databaseId: input.databaseId,
     destinationId: input.destinationId,
@@ -58,36 +71,38 @@ export async function createBackup(input: {
     `Created backup schedule ${b.name}`,
     user.name,
     null,
+    teamId,
   );
   return toDTO(b);
 }
 
 export async function runBackup(id: string): Promise<void> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   mutate((d) => {
-    const b = d.backups.find((x) => x.id === id);
+    const b = d.backups.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!b) throw new Error("Not found");
     b.lastRunAt = nowIso();
     b.lastStatus = "success";
   });
-  recordActivity("backup", `Ran backup manually`, user.name, null);
+  recordActivity("backup", `Ran backup manually`, user.name, null, membership.teamId);
 }
 
 export async function toggleBackup(
   id: string,
   enabled: boolean,
 ): Promise<void> {
-  await assertUser();
+  const teamId = (await requireCapability("manage_infra")).teamId;
   mutate((d) => {
-    const b = d.backups.find((x) => x.id === id);
+    const b = d.backups.find((x) => x.id === id && x.teamId === teamId);
     if (!b) throw new Error("Not found");
     b.enabled = enabled;
   });
 }
 
 export async function deleteBackup(id: string): Promise<void> {
-  await assertUser();
+  const teamId = (await requireCapability("manage_infra")).teamId;
   mutate((d) => {
-    d.backups = d.backups.filter((x) => x.id !== id);
+    d.backups = d.backups.filter((x) => !(x.id === id && x.teamId === teamId));
   });
 }

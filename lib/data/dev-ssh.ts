@@ -2,7 +2,7 @@ import "server-only";
 
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import {
@@ -47,7 +47,11 @@ function toDTO(u: DevSshUser): DevSshUserDTO {
 export async function listDevSshUsers(
   projectId: string,
 ): Promise<DevSshUserDTO[]> {
-  await assertUser();
+  const teamId = await requireActiveTeamId();
+  const inTeam = read().projects.some(
+    (p) => p.id === projectId && p.teamId === teamId,
+  );
+  if (!inTeam) return [];
   return read()
     .devSshUsers.filter((u) => u.projectId === projectId)
     .map(toDTO);
@@ -66,8 +70,11 @@ export async function createDevSshUser(input: {
   publicKey?: string | null;
   password?: string | null;
 }): Promise<DevSshUserDTO> {
-  const user = await assertUser();
-  const project = read().projects.find((p) => p.id === input.projectId);
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const project = read().projects.find(
+    (p) => p.id === input.projectId && p.teamId === membership.teamId,
+  );
   if (!project) throw new Error("Project not found");
 
   const publicKey = input.publicKey?.trim() || null;
@@ -125,9 +132,14 @@ export async function createDevSshUser(input: {
  * does NOT tear down the gateway — it is a platform singleton (ADR-0002).
  */
 export async function removeDevSshUser(id: string): Promise<void> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
   const record = read().devSshUsers.find((u) => u.id === id);
   if (!record) throw new Error("SSH user not found");
+  const inTeam = read().projects.some(
+    (p) => p.id === record.projectId && p.teamId === membership.teamId,
+  );
+  if (!inTeam) throw new Error("SSH user not found");
 
   mutate((d) => {
     d.devSshUsers = d.devSshUsers.filter((u) => u.id !== id);

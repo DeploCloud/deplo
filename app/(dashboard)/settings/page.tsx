@@ -1,6 +1,8 @@
-import { ShieldCheck, Lock, KeyRound, Users } from "lucide-react";
+import { ShieldCheck, Lock, KeyRound } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
-import { read } from "@/lib/store";
+import { hasCapability, isInstanceAdmin } from "@/lib/membership";
+import { getTeam } from "@/lib/data/teams";
+import { listAllUsers, listRegistrationLinks } from "@/lib/data/members";
 import { listTokens } from "@/lib/data/tokens";
 import { getNotificationSettings } from "@/lib/data/notifications";
 import { DEPLO_VERSION } from "@/lib/version";
@@ -18,11 +20,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { TokensPanel } from "@/components/settings/tokens-panel";
 import { TeamForm } from "@/components/settings/team-form";
+import { UsersPanel } from "@/components/settings/users-panel";
+import { AccountPanel } from "@/components/settings/account-panel";
 import { NotificationsPanel } from "@/components/settings/notifications-panel";
 import { UpdateCard } from "@/components/settings/update-card";
 import { RegistriesPanel } from "@/components/settings/registries-panel";
@@ -34,7 +36,8 @@ export const metadata = { title: "Settings" };
 
 const TABS = [
   "general",
-  "members",
+  "account",
+  "users",
   "tokens",
   "notifications",
   "registries",
@@ -49,25 +52,36 @@ export default async function SettingsPage(props: PageProps<"/settings">) {
   const gitStatus = Array.isArray(sp.git) ? sp.git[0] : sp.git;
 
   const user = await getCurrentUser();
-  const data = read();
-  const team = data.teams[0];
-  const tokens = await listTokens();
-  const members = data.users;
-  const notifications = await getNotificationSettings();
-  const registries = await listRegistries();
-  const githubApps = await listGithubApps();
+  const team = await getTeam();
+  const [tokens, notifications, registries, githubApps, admin, canManageTeam] =
+    await Promise.all([
+      listTokens(),
+      getNotificationSettings(),
+      listRegistries(),
+      listGithubApps(),
+      isInstanceAdmin(),
+      hasCapability("manage_team"),
+    ]);
+
+  // The global Users list + registration links are instance-admin only.
+  const [users, registrationLinks] = admin
+    ? await Promise.all([listAllUsers(), listRegistrationLinks()])
+    : [[], []];
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Manage your team, members, API tokens and security."
+        description="Manage your account, team, members, API tokens and security."
       />
 
       <Tabs defaultValue={defaultTab}>
         <UnderlineTabsList>
           <UnderlineTabsTrigger value="general">General</UnderlineTabsTrigger>
-          <UnderlineTabsTrigger value="members">Members</UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="account">Account</UnderlineTabsTrigger>
+          {admin && (
+            <UnderlineTabsTrigger value="users">Users</UnderlineTabsTrigger>
+          )}
           <UnderlineTabsTrigger value="tokens">API Tokens</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="notifications">
             Notifications
@@ -87,13 +101,11 @@ export default async function SettingsPage(props: PageProps<"/settings">) {
               <CardDescription>Your workspace details.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <TeamForm name={team.name} slug={team.slug} />
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Plan:</span>
-                <Badge variant="secondary" className="capitalize">
-                  {team.plan}
-                </Badge>
-              </div>
+              <TeamForm
+                name={team.name}
+                slug={team.slug}
+                canManage={canManageTeam}
+              />
             </CardContent>
           </Card>
 
@@ -118,50 +130,21 @@ export default async function SettingsPage(props: PageProps<"/settings">) {
           <UpdateCard current={DEPLO_VERSION} />
         </TabsContent>
 
-        {/* Members */}
-        <TabsContent value="members" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Users className="size-4" />
-                Members
-              </CardTitle>
-              <CardDescription>People with access to this team.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {members.map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center justify-between rounded-lg border border-border p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <AvatarFallback
-                        style={{ backgroundColor: m.avatarColor, color: "#000" }}
-                      >
-                        {m.name.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium">
-                        {m.name}
-                        {m.id === user?.id && (
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            (you)
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{m.email}</p>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="capitalize">
-                    {m.role}
-                  </Badge>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+        {/* Account */}
+        <TabsContent value="account">
+          {user && <AccountPanel user={user} />}
         </TabsContent>
+
+        {/* Users (global, instance-admin only) */}
+        {admin && (
+          <TabsContent value="users">
+            <UsersPanel
+              users={users}
+              links={registrationLinks}
+              currentUserId={user?.id ?? ""}
+            />
+          </TabsContent>
+        )}
 
         {/* Tokens */}
         <TabsContent value="tokens">

@@ -6,6 +6,9 @@ export function buildSeed(): DeploData {
   return {
     users: [],
     teams: [],
+    memberships: [],
+    invites: [],
+    registrationLinks: [],
     servers: [],
     projects: [],
     deployments: [],
@@ -17,21 +20,8 @@ export function buildSeed(): DeploData {
     backups: [],
     apiTokens: [],
     activities: [],
-    notificationSettings: {
-      channels: {
-        push: { enabled: false },
-        email: { enabled: false, address: "" },
-        discord: { enabled: false, webhookUrl: "" },
-        webhook: { enabled: false, url: "" },
-      },
-      events: {
-        deployment_failed: true,
-        deployment_succeeded: false,
-        server_offline: true,
-        high_resource_usage: true,
-        update_available: true,
-      },
-    },
+    // Per-team, keyed by team id. Empty until a team saves its first settings.
+    notificationSettings: {},
     sharedEnvGroups: [],
     registries: [],
     githubApps: [],

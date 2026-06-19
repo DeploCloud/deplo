@@ -4,7 +4,7 @@ import { mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
 import { ensureNetwork, docker } from "../infra/docker";
@@ -53,21 +53,22 @@ function toDTO(db: Database): DatabaseDTO {
 }
 
 export async function listDatabases(): Promise<DatabaseDTO[]> {
-  await assertUser();
+  const teamId = await requireActiveTeamId();
   return read()
-    .databases.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .databases.filter((d) => d.teamId === teamId)
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .map(toDTO);
 }
 
 export async function getDatabase(id: string): Promise<DatabaseDTO | null> {
-  await assertUser();
-  const db = read().databases.find((x) => x.id === id);
+  const teamId = await requireActiveTeamId();
+  const db = read().databases.find((x) => x.id === id && x.teamId === teamId);
   return db ? toDTO(db) : null;
 }
 
 export async function getConnectionString(id: string): Promise<string> {
-  await assertUser();
-  const db = read().databases.find((x) => x.id === id);
+  const teamId = await requireActiveTeamId();
+  const db = read().databases.find((x) => x.id === id && x.teamId === teamId);
   if (!db) throw new Error("Not found");
   return decryptSecret(db.connectionStringEnc);
 }
@@ -78,7 +79,9 @@ export async function createDatabase(input: {
   version: string;
   exposedPublicly?: boolean;
 }): Promise<DatabaseDTO> {
-  const user = await assertUser();
+  const { membership } = await requireCapability("manage_infra");
+  const teamId = membership.teamId;
+  const user = read().users.find((u) => u.id === membership.userId)!;
   const name = input.name.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
   if (!name) throw new Error("Name is required");
   const server = read().servers[0];
@@ -97,6 +100,7 @@ export async function createDatabase(input: {
 
   const db: Database = {
     id: newId("db"),
+    teamId,
     name,
     type: input.type,
     version: input.version,
@@ -164,8 +168,8 @@ export async function setDatabaseRunning(
   id: string,
   running: boolean
 ): Promise<void> {
-  await assertUser();
-  const db = read().databases.find((x) => x.id === id);
+  const teamId = (await requireCapability("manage_infra")).teamId;
+  const db = read().databases.find((x) => x.id === id && x.teamId === teamId);
   if (!db) throw new Error("Not found");
   const file = dbStackFile(db.host);
   // Let a real docker failure surface to the caller; only update state on success.
@@ -180,8 +184,11 @@ export async function setDatabaseRunning(
 }
 
 export async function deleteDatabase(id: string): Promise<void> {
-  const user = await assertUser();
-  const db = read().databases.find((x) => x.id === id);
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const db = read().databases.find(
+    (x) => x.id === id && x.teamId === membership.teamId,
+  );
   if (!db) throw new Error("Not found");
   // Tear down the real container + volume.
   const file = dbStackFile(db.host);

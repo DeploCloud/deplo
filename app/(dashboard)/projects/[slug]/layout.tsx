@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { ExternalLink, ArrowLeft } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { isDevEligible } from "@/lib/data/dev";
+import { hasCapability } from "@/lib/membership";
 import { Button } from "@/components/ui/button";
-import { FrameworkIcon } from "@/components/shared/framework-icon";
+import { ProjectLogo } from "@/components/shared/project-logo";
 import { StatusDot } from "@/components/shared/status-badge";
 import { RedeployButton } from "@/components/projects/redeploy-button";
 import { ProjectControls } from "@/components/projects/project-controls";
@@ -14,6 +15,7 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
   const { slug } = await props.params;
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
+  const canManageEnv = await hasCapability("manage_env");
 
   return (
     <div className="space-y-6">
@@ -32,7 +34,11 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <FrameworkIcon framework={project.framework} size={44} />
+            <ProjectLogo
+              logo={project.logo}
+              framework={project.framework}
+              size={44}
+            />
             <div>
               <h1 className="text-xl font-semibold tracking-tight">
                 {project.name}
@@ -73,6 +79,7 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
         slug={slug}
         running={project.status === "active"}
         devEligible={isDevEligible(project.source)}
+        canManageEnv={canManageEnv}
       />
 
       {props.children}

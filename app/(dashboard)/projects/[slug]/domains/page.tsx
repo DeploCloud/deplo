@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import { Globe } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { listDomains } from "@/lib/data/domains";
-import { usesComposeStack } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Table,
@@ -23,9 +22,6 @@ export default async function ProjectDomainsPage(
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
   const domains = await listDomains(project.id);
-  // Per-domain port overrides apply only to single-image / built projects; a
-  // compose stack routes per-service via its compose file.
-  const portConfigurable = !usesComposeStack(project);
 
   return (
     <div className="space-y-4">
@@ -37,9 +33,11 @@ export default async function ProjectDomainsPage(
           </p>
         </div>
         <AddDomain
-          projects={[{ id: project.id, name: project.name }]}
-          defaultProjectId={project.id}
-          composeProjectIds={portConfigurable ? [] : [project.id]}
+          project={{
+            id: project.id,
+            name: project.name,
+            compose: project.compose,
+          }}
         />
       </div>
 
@@ -62,11 +60,7 @@ export default async function ProjectDomainsPage(
             </TableHeader>
             <TableBody>
               {domains.map((d) => (
-                <DomainRow
-                  key={d.id}
-                  domain={d}
-                  portConfigurable={portConfigurable}
-                />
+                <DomainRow key={d.id} domain={d} compose={project.compose} />
               ))}
             </TableBody>
           </Table>

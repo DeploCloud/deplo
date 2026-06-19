@@ -20,8 +20,6 @@ services:
       - DEPLO_SECRET=${DEPLO_SECRET:?set DEPLO_SECRET}
       - DEPLO_PUBLIC_URL=https://${DEPLO_DOMAIN:?set DEPLO_DOMAIN}
       - DEPLO_DATABASE_URL=postgres://deplo:${DEPLO_DB_PASSWORD:?set DEPLO_DB_PASSWORD}@postgres:5432/deplo
-      - DEPLO_ADMIN_EMAIL=${DEPLO_ADMIN_EMAIL:-}
-      - DEPLO_ADMIN_PASSWORD=${DEPLO_ADMIN_PASSWORD:-}
     volumes:
       - deplo-data:/data
       - /var/run/docker.sock:/var/run/docker.sock

@@ -8,11 +8,14 @@ export function ProjectTabs({
   slug,
   running = false,
   devEligible = false,
+  canManageEnv = true,
 }: {
   slug: string;
   running?: boolean;
   /** Source-bearing projects get a Dev Mode tab (live container + SSH access). */
   devEligible?: boolean;
+  /** The Environment tab is only shown to members with the manage_env capability. */
+  canManageEnv?: boolean;
 }) {
   const pathname = usePathname();
   const base = `/projects/${slug}`;
@@ -30,23 +33,35 @@ export function ProjectTabs({
       href: `${base}/deployments`,
       active: matchSub("/deployments"),
     },
-    {
-      label: "Environment",
-      href: `${base}/environment`,
-      active: matchSub("/environment"),
-    },
+    // Environment is hidden from members without the manage_env capability —
+    // env values are sensitive (the page guards server-side too).
+    ...(canManageEnv
+      ? [
+          {
+            label: "Environment",
+            href: `${base}/environment`,
+            active: matchSub("/environment"),
+          },
+        ]
+      : []),
     {
       label: "Domains",
       href: `${base}/domains`,
       active: matchSub("/domains"),
     },
-    // Container console (docker attach) is only meaningful while running.
+    // Console (docker exec/attach) and Logs (docker logs -f) both stream from a
+    // live container, so they only appear while the project is running.
     ...(running
       ? [
           {
             label: "Console",
             href: `${base}/console`,
             active: matchSub("/console"),
+          },
+          {
+            label: "Logs",
+            href: `${base}/logs`,
+            active: matchSub("/logs"),
           },
         ]
       : []),

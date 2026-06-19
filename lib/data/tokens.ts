@@ -2,7 +2,7 @@ import "server-only";
 
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { sha256Hex, randomToken } from "../crypto";
 import type { ApiToken } from "../types";
 
@@ -25,17 +25,20 @@ function toDTO(t: ApiToken): ApiTokenDTO {
 }
 
 export async function listTokens(): Promise<ApiTokenDTO[]> {
-  await assertUser();
-  return read().apiTokens.map(toDTO);
+  const teamId = await requireActiveTeamId();
+  return read()
+    .apiTokens.filter((t) => t.teamId === teamId)
+    .map(toDTO);
 }
 
 /** Returns the raw token ONCE; only the hash is persisted. */
 export async function createToken(name: string): Promise<{ raw: string; token: ApiTokenDTO }> {
-  await assertUser();
+  const teamId = (await requireCapability("manage_infra")).teamId;
   if (!name.trim()) throw new Error("Name is required");
   const raw = `deplo_${randomToken(24)}`;
   const t: ApiToken = {
     id: newId("tok"),
+    teamId,
     name: name.trim(),
     tokenHash: sha256Hex(raw),
     prefix: raw.slice(0, 12),
@@ -47,8 +50,8 @@ export async function createToken(name: string): Promise<{ raw: string; token: A
 }
 
 export async function revokeToken(id: string): Promise<void> {
-  await assertUser();
+  const teamId = (await requireCapability("manage_infra")).teamId;
   mutate((d) => {
-    d.apiTokens = d.apiTokens.filter((x) => x.id !== id);
+    d.apiTokens = d.apiTokens.filter((x) => !(x.id === id && x.teamId === teamId));
   });
 }

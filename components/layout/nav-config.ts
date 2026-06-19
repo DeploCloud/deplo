@@ -10,6 +10,7 @@ import {
   Activity,
   LineChart,
   Braces,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -20,6 +21,12 @@ export interface NavItem {
   tooltip: string;
   /** exact match for active state (default: startsWith) */
   exact?: boolean;
+  /**
+   * Per-team capability required to SEE this item. Absent ⇒ always visible.
+   * The sidebar filters items the current member lacks (the destination page
+   * also guards server-side). Matches the Capability strings in lib/types.ts.
+   */
+  requires?: string;
 }
 
 export interface NavSection {
@@ -71,6 +78,7 @@ export const NAV: NavSection[] = [
         href: "/variables",
         icon: Braces,
         tooltip: "Project & shared environment variables",
+        requires: "manage_env",
       },
       {
         label: "Servers",
@@ -90,6 +98,12 @@ export const NAV: NavSection[] = [
     title: "Workspace",
     items: [
       {
+        label: "Members",
+        href: "/members",
+        icon: Users,
+        tooltip: "People in this team",
+      },
+      {
         label: "Activity",
         href: "/activity",
         icon: Activity,
@@ -105,7 +119,7 @@ export const NAV: NavSection[] = [
         label: "Settings",
         href: "/settings",
         icon: Settings,
-        tooltip: "Team, members, tokens & security",
+        tooltip: "Account, users, tokens & security",
       },
     ],
   },

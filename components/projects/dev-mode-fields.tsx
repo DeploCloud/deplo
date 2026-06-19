@@ -730,10 +730,11 @@ export function DevModeFields({
               {/* Env cliff note */}
               <p className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
                 <strong>Heads up:</strong> the dev container inherits only env
-                vars tagged <code className="font-mono">development</code> — not
-                your production/preview vars, and not shared env groups. It
-                starts empty; add{" "}
-                <code className="font-mono">development</code> vars by hand.
+                entries tagged <code className="font-mono">development</code> —
+                its own <code className="font-mono">development</code> vars plus
+                any attached shared group that targets{" "}
+                <code className="font-mono">development</code>. Production and
+                preview-only entries are not included.
               </p>
             </CardContent>
             <CardFooter className="justify-end border-t border-border pt-4">

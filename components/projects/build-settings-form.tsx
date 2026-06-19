@@ -9,6 +9,7 @@ import {
   Container,
   FileText,
   Upload,
+  Image as ImageIcon,
   Server as ServerIcon,
 } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
@@ -25,7 +26,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ComposeEditor } from "@/components/projects/compose-editor";
 import { ComposeLintSummary } from "@/components/projects/compose-lint-summary";
+import { FullComposeDialog } from "@/components/projects/full-compose-dialog";
 import { ImageInput } from "@/components/projects/image-input";
+import { ProjectLogo } from "@/components/shared/project-logo";
+import {
+  LOGO_ACCEPT_ATTR,
+  LOGO_IMAGE_TYPES,
+  MAX_LOGO_BYTES,
+} from "@/lib/projects/logo-shared";
 import {
   GithubRepoPicker,
   type GithubSelection,
@@ -54,13 +62,14 @@ import type {
   FrameworkId,
   GitRepo,
 } from "@/lib/types";
-import { serverLabel, usesComposeStack } from "@/lib/utils";
+import { formatBytes, serverLabel, usesComposeStack } from "@/lib/utils";
 import {
   updateBuildAction,
   setAutoDeployAction,
   renameProjectAction,
   deleteProjectAction,
   updateSourceAction,
+  updateLogoAction,
 } from "@/lib/actions/projects";
 
 export interface SettingsServer {
@@ -85,6 +94,7 @@ export function BuildSettingsForm({
   projectId,
   slug,
   name: initialName,
+  logo: initialLogo,
   framework: initialFramework,
   build: initialBuild,
   autoDeploy: initialAutoDeploy,
@@ -102,6 +112,7 @@ export function BuildSettingsForm({
   projectId: string;
   slug: string;
   name: string;
+  logo: string | null;
   framework: FrameworkId;
   build: BuildConfig;
   autoDeploy: boolean;
@@ -117,6 +128,11 @@ export function BuildSettingsForm({
   installations: GithubInstallationDTO[];
 }) {
   const [name, setName] = React.useState(initialName);
+  // Logo is stored inline as a base64 image data-URI (or a template's local
+  // /templates path). `null` ⇒ no logo (framework icon). The picker reads a file
+  // and converts it to a data-URI before saving, so nothing is fetched remotely.
+  const [logo, setLogo] = React.useState<string | null>(initialLogo);
+  const logoInputRef = React.useRef<HTMLInputElement>(null);
   const [framework, setFramework] = React.useState<FrameworkId>(initialFramework);
   const [build, setBuild] = React.useState<BuildConfig>(initialBuild);
   const [autoDeploy, setAutoDeploy] = React.useState(initialAutoDeploy);
@@ -170,6 +186,45 @@ export function BuildSettingsForm({
     startTransition(async () => {
       const res = await renameProjectAction(projectId, name);
       if (res.ok) toast.success("Project renamed");
+      else toast.error(res.error);
+    });
+  }
+
+  // Read a picked image into a base64 data-URI and persist it as the logo. The
+  // image is validated (type + size) before reading so we never inline an
+  // oversized blob into the project document.
+  function pickLogo(file: File) {
+    if (!LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])) {
+      toast.error("Unsupported image — use PNG, JPEG, WebP, GIF or SVG");
+      return;
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      toast.error(`Image too large (max ${formatBytes(MAX_LOGO_BYTES)})`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUri = typeof reader.result === "string" ? reader.result : "";
+      if (!dataUri) {
+        toast.error("Could not read image");
+        return;
+      }
+      setLogo(dataUri);
+      startTransition(async () => {
+        const res = await updateLogoAction(projectId, dataUri);
+        if (res.ok) toast.success("Logo updated");
+        else toast.error(res.error);
+      });
+    };
+    reader.onerror = () => toast.error("Could not read image");
+    reader.readAsDataURL(file);
+  }
+
+  function clearLogo() {
+    setLogo(null);
+    startTransition(async () => {
+      const res = await updateLogoAction(projectId, null);
+      if (res.ok) toast.success("Logo cleared");
       else toast.error(res.error);
     });
   }
@@ -300,6 +355,60 @@ export function BuildSettingsForm({
         </CardFooter>
       </Card>
 
+      {/* Branding / logo */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Logo</CardTitle>
+          <CardDescription>
+            The image shown for this project on the dashboard. Deployed from a
+            template? It defaults to the template&apos;s logo. Upload an image to
+            change it, or remove it to fall back to the framework icon.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <ProjectLogo logo={logo} framework={framework} size={48} />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => logoInputRef.current?.click()}
+                disabled={pending}
+              >
+                <ImageIcon className="size-4" />
+                {logo ? "Replace image" : "Upload image"}
+              </Button>
+              {logo && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={clearLogo}
+                  disabled={pending}
+                >
+                  Remove
+                </Button>
+              )}
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            PNG, JPEG, WebP, GIF or SVG · up to {formatBytes(MAX_LOGO_BYTES)}.
+            Saved as soon as you pick a file.
+          </p>
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept={LOGO_ACCEPT_ATTR}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) pickLogo(file);
+              e.target.value = "";
+            }}
+          />
+        </CardContent>
+      </Card>
+
       {/* Deploy source */}
       <Card>
         <CardHeader>
@@ -411,10 +520,13 @@ export function BuildSettingsForm({
 
           {source === "compose" && (
             <div className="space-y-2">
-              <Label className="flex items-center gap-1.5">
-                <FileText className="size-3.5" />
-                docker-compose.yml
-              </Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label className="flex items-center gap-1.5">
+                  <FileText className="size-3.5" />
+                  docker-compose.yml
+                </Label>
+                <FullComposeDialog projectId={projectId} />
+              </div>
               <ComposeEditor
                 value={compose}
                 onChange={setCompose}

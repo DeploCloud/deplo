@@ -1,44 +1,27 @@
 import "server-only";
 
 import { read, mutate } from "../store";
-import { assertUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
+import { defaultNotificationSettings } from "../types";
 import type { NotificationChannel, NotificationSettings } from "../types";
 
 /** Default config, also used to backfill stores seeded before this feature. */
-export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
-  channels: {
-    push: { enabled: false },
-    email: { enabled: false, address: "" },
-    discord: { enabled: false, webhookUrl: "" },
-    webhook: { enabled: false, url: "" },
-  },
-  events: {
-    deployment_failed: true,
-    deployment_succeeded: false,
-    server_offline: true,
-    high_resource_usage: true,
-    update_available: true,
-  },
-};
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings =
+  defaultNotificationSettings();
 
 export async function getNotificationSettings(): Promise<NotificationSettings> {
-  await assertUser();
-  const existing = read().notificationSettings;
-  if (existing) return existing;
-  // Backfill stores created before notifications existed.
-  return mutate((d) => {
-    d.notificationSettings ??= DEFAULT_NOTIFICATION_SETTINGS;
-    return d.notificationSettings;
-  });
+  const teamId = await requireActiveTeamId();
+  return read().notificationSettings[teamId] ?? defaultNotificationSettings();
 }
 
 export async function updateNotificationSettings(
   next: NotificationSettings,
 ): Promise<NotificationSettings> {
-  await assertUser();
+  // Notifications are an infra-level team setting.
+  const teamId = (await requireCapability("manage_infra")).teamId;
   return mutate((d) => {
-    d.notificationSettings = next;
-    return d.notificationSettings;
+    d.notificationSettings[teamId] = next;
+    return d.notificationSettings[teamId];
   });
 }
 
@@ -51,8 +34,12 @@ export async function updateNotificationSettings(
 export async function sendTestNotification(
   channel: Exclude<NotificationChannel, "push">,
 ): Promise<void> {
-  await assertUser();
-  const c = read().notificationSettings?.channels ??
+  // Sending a real outbound POST is a side-effecting infra action — gate it the
+  // same way as editing the settings, so a view-only member can't drive traffic
+  // to the team's configured Discord/webhook endpoints.
+  const teamId = (await requireCapability("manage_infra")).teamId;
+  const c =
+    read().notificationSettings[teamId]?.channels ??
     DEFAULT_NOTIFICATION_SETTINGS.channels;
 
   const title = "Deplo test alert";

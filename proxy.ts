@@ -15,7 +15,10 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 
 const SESSION_COOKIE = "deplo_session";
-const PUBLIC_PATHS = ["/login", "/signup", "/setup"];
+// Paths reachable WITHOUT a session. `/register/<token>` is how a brand-new
+// person self-registers an account + team from a single-use link, so it must be
+// public — otherwise the proxy bounces them to /login before the page renders.
+const PUBLIC_PATHS = ["/login", "/signup", "/setup", "/register"];
 
 function generateNonce(): string {
   const arr = new Uint8Array(16);
