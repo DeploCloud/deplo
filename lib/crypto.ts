@@ -29,9 +29,25 @@ function rootSecret(): string {
   return "deplo-dev-insecure-secret-change-me-please-0000";
 }
 
-/** Derive a 32-byte key for a given purpose from the root secret. */
+/**
+ * Derive a 32-byte key for a given purpose from the root secret.
+ *
+ * `scryptSync` is a deliberately-slow KDF; deriving the same purpose key on
+ * every call dominated hot paths that touch many secrets (e.g. decrypting
+ * every env var to render the Variables page). The root secret is fixed for
+ * the process lifetime, so the derived key is stable too — memoize per purpose.
+ * Keyed by `rootSecret()` as well so a mid-process secret change (tests) still
+ * derives fresh material rather than serving a stale key.
+ */
+const keyCache = new Map<string, Buffer>();
 function deriveKey(purpose: string): Buffer {
-  return scryptSync(rootSecret(), `deplo:${purpose}`, 32);
+  const cacheKey = `${rootSecret()} ${purpose}`;
+  let key = keyCache.get(cacheKey);
+  if (!key) {
+    key = scryptSync(rootSecret(), `deplo:${purpose}`, 32);
+    keyCache.set(cacheKey, key);
+  }
+  return key;
 }
 
 /* ------------------------------------------------------------------ */

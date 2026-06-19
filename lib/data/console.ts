@@ -132,6 +132,75 @@ export async function listInstances(p: Project): Promise<ConsoleInstance[]> {
   }
 }
 
+/**
+ * Container discovery without the shell probe. `getAttachInfo` adds the
+ * `shellLabel` probe on top (≤4 `docker exec` calls into the container), which
+ * is only needed by the console's "no shell" banner. The Logs page needs just
+ * the instance list + running flag, so it uses this lighter call and avoids
+ * those exec probes on its render path.
+ */
+export interface LogsInfo {
+  running: boolean;
+  instances: ConsoleInstance[];
+}
+
+export async function getLogsInfo(projectId: string): Promise<LogsInfo | null> {
+  const teamId = await requireActiveTeamId();
+  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  if (!p) return null;
+  const instances = await listInstances(p);
+  return { running: instances.some((i) => i.running), instances };
+}
+
+/**
+ * Console attach info WITHOUT the shell probe. Like `getAttachInfo` but omits
+ * the `shellLabel` step (≤4 `docker exec` probes), so the console page renders
+ * immediately. The client fetches the shell label after mount via
+ * `shellLabelAction` and appends the distroless notice lazily if needed.
+ */
+export interface ConsoleInfo {
+  containerName: string;
+  image: string;
+  running: boolean;
+  instances: ConsoleInstance[];
+}
+
+export async function getConsoleInfo(projectId: string): Promise<ConsoleInfo | null> {
+  const teamId = await requireActiveTeamId();
+  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  if (!p) return null;
+  const instances = await listInstances(p);
+  const def = instances[0];
+  return {
+    containerName: def.name,
+    image: def.image,
+    running: instances.some((i) => i.running),
+    instances,
+  };
+}
+
+/**
+ * Probe the default (running) container's shell label on demand. Authorised
+ * like a read of the project's console; returns "raw exec (no shell)" when the
+ * container has no shell or isn't running. Backed by the same 5-minute per-
+ * container cache as `getAttachInfo`'s probe, so the first call after a deploy
+ * pays the probe and later calls are instant.
+ */
+export async function getShellLabel(
+  projectId: string,
+  target?: string,
+): Promise<string> {
+  const teamId = await requireActiveTeamId();
+  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  if (!p) return "raw exec (no shell)";
+  const instances = await listInstances(p);
+  const pick = target
+    ? instances.find((i) => i.name === target)
+    : instances.find((i) => i.running) ?? instances[0];
+  if (!pick || !pick.running) return "raw exec (no shell)";
+  return shellLabel(pick.name, pick.image);
+}
+
 export async function getAttachInfo(projectId: string): Promise<AttachInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
@@ -139,15 +208,14 @@ export async function getAttachInfo(projectId: string): Promise<AttachInfo | nul
   const instances = await listInstances(p);
   // Default target: exposed/running first thanks to listInstances ordering.
   const def = instances[0];
+  const running = instances.some((i) => i.running);
   return {
     containerName: def.name,
     image: def.image,
-    running: instances.some((i) => i.running),
+    running,
     // Probe the default instance's real shell (or lack of one). Only meaningful
     // when running; a stopped container can't be probed, so report raw.
-    shell: instances.some((i) => i.running)
-      ? await shellLabel(def.name, def.image)
-      : "raw exec (no shell)",
+    shell: running ? await shellLabel(def.name, def.image) : "raw exec (no shell)",
     instances,
   };
 }

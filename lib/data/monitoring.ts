@@ -101,3 +101,37 @@ export async function getAllServerMetrics(): Promise<ServerMetrics[]> {
   await assertUser();
   return Promise.all(read().servers.map((s) => metricsFor(s)));
 }
+
+/**
+ * Cheap, instant metrics for the initial server render. measureLocal() takes
+ * ~1.2s (a 1s network-delta window + a 200ms CPU sample + docker calls), which
+ * would block the Monitoring and Servers pages on every load. The client polls
+ * the real metrics every second (see ServerMetricsProvider), so the server only
+ * needs to supply a sensible hydration fallback: each server's last-known usage
+ * from the store. No sampling, no docker, no sleep — the live values arrive on
+ * the first client poll and replace these within ~1s.
+ */
+export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
+  await assertUser();
+  const facts = hostFacts();
+  return read().servers.map((s) => ({
+    serverId: s.id,
+    // Remote servers have no agent yet, so they report no live data — mark them
+    // offline exactly as metricsFor() would, to keep the card UI consistent.
+    online: s.type === "localhost",
+    cpu: s.cpuUsage,
+    cpuCores: s.cpuCores || facts.cpuCores,
+    memUsed: 0,
+    memTotal: s.memoryMb * 1024 * 1024,
+    memPct: s.memoryUsage,
+    diskUsed: 0,
+    diskTotal: s.diskGb * 1024 * 1024 * 1024,
+    diskPct: s.diskUsage,
+    netRx: 0,
+    netTx: 0,
+    load: [0, 0, 0],
+    uptimeSec: 0,
+    containers: 0,
+    ts: Date.now(),
+  }));
+}

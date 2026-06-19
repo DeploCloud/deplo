@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { TerminalSquare } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
-import { getAttachInfo } from "@/lib/data/console";
+import { getConsoleInfo } from "@/lib/data/console";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ContainerConsole } from "@/components/projects/container-console";
@@ -15,7 +15,10 @@ export default async function ProjectConsolePage(
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
 
-  const info = await getAttachInfo(project.id);
+  // No shell probe here — getConsoleInfo skips it so the console renders
+  // instantly. ContainerConsole resolves the shell label after mount and
+  // appends the distroless notice lazily if the container has no shell.
+  const info = await getConsoleInfo(project.id);
 
   return (
     <div className="space-y-5">
@@ -29,7 +32,6 @@ export default async function ProjectConsolePage(
           projectId={project.id}
           containerName={info.containerName}
           image={info.image}
-          shell={info.shell}
           instances={info.instances}
         />
       ) : (

@@ -51,17 +51,25 @@ export default async function SettingsPage(props: PageProps<"/settings">) {
   const defaultTab = tabParam && TABS.includes(tabParam) ? tabParam : "general";
   const gitStatus = Array.isArray(sp.git) ? sp.git[0] : sp.git;
 
-  const user = await getCurrentUser();
-  const team = await getTeam();
-  const [tokens, notifications, registries, githubApps, admin, canManageTeam] =
-    await Promise.all([
-      listTokens(),
-      getNotificationSettings(),
-      listRegistries(),
-      listGithubApps(),
-      isInstanceAdmin(),
-      hasCapability("manage_team"),
-    ]);
+  const [
+    user,
+    team,
+    tokens,
+    notifications,
+    registries,
+    githubApps,
+    admin,
+    canManageTeam,
+  ] = await Promise.all([
+    getCurrentUser(),
+    getTeam(),
+    listTokens(),
+    getNotificationSettings(),
+    listRegistries(),
+    listGithubApps(),
+    isInstanceAdmin(),
+    hasCapability("manage_team"),
+  ]);
 
   // The global Users list + registration links are instance-admin only.
   const [users, registrationLinks] = admin

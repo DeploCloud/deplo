@@ -10,12 +10,15 @@ import type { EnvTarget, EnvVar, EnvVarDTO } from "../types";
 const MASK = "••••••••••••";
 
 function toDTO(e: EnvVar): EnvVarDTO {
-  const decrypted = decryptSecret(e.valueEnc);
+  const isSecret = e.type === "secret";
   return {
     id: e.id,
     key: e.key,
-    value: e.type === "secret" ? MASK : decrypted,
-    masked: e.type === "secret",
+    // Secret values are always masked in the DTO, so don't pay to decrypt them.
+    // Only plain vars need their stored value back. Revealing a secret goes
+    // through revealEnv(), which decrypts the single requested var on demand.
+    value: isSecret ? MASK : decryptSecret(e.valueEnc),
+    masked: isSecret,
     targets: e.targets,
     type: e.type,
     updatedAt: e.updatedAt,

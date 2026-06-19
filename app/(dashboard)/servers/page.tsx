@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { listServers } from "@/lib/data/servers";
-import { getAllServerMetrics } from "@/lib/data/monitoring";
+import { getInitialServerMetrics } from "@/lib/data/monitoring";
 import { installOneLiner } from "@/lib/install-script";
 import { serverLabel } from "@/lib/utils";
 import type { Server } from "@/lib/types";
@@ -62,9 +62,11 @@ function ServerCard({ server }: { server: Server }) {
 }
 
 export default async function ServersPage() {
+  // Cheap last-known metrics so the page renders instantly; the cards poll live
+  // values every second and replace these (see ServerMetricsProvider).
   const [servers, allMetrics] = await Promise.all([
     listServers(),
-    getAllServerMetrics(),
+    getInitialServerMetrics(),
   ]);
 
   const installCommand = installOneLiner();

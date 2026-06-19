@@ -1,14 +1,16 @@
 import { listServers } from "@/lib/data/servers";
-import { getAllServerMetrics } from "@/lib/data/monitoring";
+import { getInitialServerMetrics } from "@/lib/data/monitoring";
 import { PageHeader } from "@/components/shared/page-header";
 import { MonitoringDashboard } from "./monitoring-dashboard";
 
 export const metadata = { title: "Monitoring" };
 
 export default async function MonitoringPage() {
+  // Cheap last-known metrics so the page renders instantly; the dashboard polls
+  // live values every second and replaces these (see ServerMetricsProvider).
   const [servers, initialMetrics] = await Promise.all([
     listServers(),
-    getAllServerMetrics(),
+    getInitialServerMetrics(),
   ]);
 
   return (

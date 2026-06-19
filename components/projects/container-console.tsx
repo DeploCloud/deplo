@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { execConsoleAction } from "@/lib/actions/console";
+import { execConsoleAction, shellLabelAction } from "@/lib/actions/console";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { ContainerAttach } from "@/components/projects/container-attach";
 import { cn } from "@/lib/utils";
@@ -21,19 +21,24 @@ interface Line {
   text: string;
 }
 
+const DISTROLESS_NOTE =
+  "! No shell in this container (distroless). Commands run as raw exec: first word is the binary, the rest are literal arguments — no pipes, globbing, redirects, or shell builtins.";
+
 export function ContainerConsole({
   projectId,
   containerName,
   image,
-  shell,
   instances,
 }: {
   projectId: string;
   containerName: string;
   image: string;
-  shell: string;
   instances: ConsoleInstance[];
 }) {
+  // The shell label is resolved after mount (the page no longer blocks on the
+  // ≤4 docker-exec shell probe). null = not yet known; once it resolves to
+  // "raw exec (no shell)" the distroless notice is shown.
+  const [shell, setShell] = React.useState<string | null>(null);
   // Active instance — defaults to the container the server picked. Switching
   // opens an exec session on a different container in the same stack.
   const [active, setActive] = React.useState(() => {
@@ -66,10 +71,7 @@ export function ContainerConsole({
       // The probed shell label reflects the default instance; only flag the
       // raw-exec caveat there (switching to another instance won't re-probe).
       if (shell === "raw exec (no shell)" && inst.name === containerName) {
-        out.push({
-          kind: "sys",
-          text: "! No shell in this container (distroless). Commands run as raw exec: first word is the binary, the rest are literal arguments — no pipes, globbing, redirects, or shell builtins.",
-        });
+        out.push({ kind: "sys", text: DISTROLESS_NOTE });
       }
       return out;
     },
@@ -80,6 +82,40 @@ export function ContainerConsole({
   // stream to PID 1. Switching instance returns to exec (attach is per-active).
   const [mode, setMode] = React.useState<"exec" | "attach">("exec");
   const [lines, setLines] = React.useState<Line[]>(() => banner(active));
+
+  // Latest active instance name, for use inside the async shell-probe callback
+  // below without re-running the probe when the user switches instances. Synced
+  // in an effect (not during render) per the refs rule.
+  const activeNameRef = React.useRef(active.name);
+  React.useEffect(() => {
+    activeNameRef.current = active.name;
+  }, [active.name]);
+
+  // Resolve the default container's shell label after mount. The page renders
+  // without waiting on the probe; if the container turns out to be shell-less,
+  // append the raw-exec notice to the current session (so it appears even though
+  // the opening banner was rendered before the label was known). The setState
+  // calls run in the async callback — a response to the probe completing, not a
+  // synchronous effect-body update.
+  React.useEffect(() => {
+    let live = true;
+    shellLabelAction({ projectId, containerName }).then((res) => {
+      if (!live || !res.ok || !res.data) return;
+      const label = res.data.shell;
+      setShell(label);
+      // Annotate only the default container's current session, and only once.
+      if (label === "raw exec (no shell)" && activeNameRef.current === containerName) {
+        setLines((prev) =>
+          prev.some((l) => l.text === DISTROLESS_NOTE)
+            ? prev
+            : [...prev, { kind: "sys", text: DISTROLESS_NOTE }],
+        );
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [projectId, containerName]);
   const [value, setValue] = React.useState("");
   const [pending, startTransition] = React.useTransition();
   // Whether the exec prompt is open. This console is a `docker exec`

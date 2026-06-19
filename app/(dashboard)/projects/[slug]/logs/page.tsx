@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { ScrollText } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
-import { getAttachInfo } from "@/lib/data/console";
+import { getLogsInfo } from "@/lib/data/console";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ContainerLogs } from "@/components/projects/container-logs";
@@ -16,8 +16,10 @@ export default async function ProjectLogsPage(
   if (!project) notFound();
 
   // Reuse the console's instance discovery: the same containers, default
-  // (exposed/running) first, so the logs picker matches the console's.
-  const info = await getAttachInfo(project.id);
+  // (exposed/running) first, so the logs picker matches the console's. Logs
+  // doesn't use the shell label, so skip that probe (getLogsInfo, not
+  // getAttachInfo) to keep this render path off the ≤4 extra docker exec calls.
+  const info = await getLogsInfo(project.id);
 
   return (
     <div className="space-y-5">
