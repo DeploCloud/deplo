@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, KeyRound, Trash2, Check } from "lucide-react";
+import { Plus, KeyRound, Trash2, Check, BookOpen, ArrowRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -108,6 +109,23 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Link
+        href="/api-docs"
+        className="group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-primary/40 hover:bg-secondary/40"
+      >
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-secondary">
+          <BookOpen className="size-4 text-muted-foreground" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">API reference & playground</p>
+          <p className="text-xs text-muted-foreground">
+            Browse every GraphQL query and mutation, and try read-only calls
+            live — mutations run as a safe dry run.
+          </p>
+        </div>
+        <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      </Link>
 
       {tokens.length === 0 ? (
         <EmptyState
