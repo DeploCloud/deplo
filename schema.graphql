@@ -60,6 +60,18 @@ type ApiToken {
   prefix: String
 }
 
+"""
+An installable app from the remote app repository (read-only catalog). Distinct from a Template, which ships inside Deplo.
+"""
+type AppListing {
+  description: String
+  id: String
+  logo: String
+  name: String
+  tags: [String!]
+  version: String
+}
+
 type AuthPayload {
   viewer: Viewer
 }
@@ -480,6 +492,18 @@ type GlobalUser {
 }
 
 """
+An app a team installed from the app repository — a host-managed container, not a project. Status is read live from the container; the URL is the app path under Deplo's own host.
+"""
+type InstalledApp {
+  catalogId: String
+  createdAt: String
+  id: ID
+  status: String
+  url: String
+  version: String
+}
+
+"""
 The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
 scalar JSON
@@ -587,6 +611,11 @@ type Mutation {
   """Bulk-import a .env-style blob; returns the number of vars imported."""
   importEnv(blob: String!, projectId: String!, targets: [EnvTarget!]!): Int
 
+  """
+  Install an app from the catalog (one per app per team; recreates the container in place if already installed). Mints no token — the caller supplies their own from Settings → API Tokens.
+  """
+  installApp(catalogId: String!): InstalledApp
+
   """Sign in with email + password. Sets the session cookie."""
   login(email: String!, password: String!): AuthPayload
 
@@ -663,6 +692,9 @@ type Mutation {
 
   """Attach or detach a shared group to one project. Returns true."""
   setSharedEnvGroupAttachment(attached: Boolean!, groupId: String!, projectId: String!): Boolean
+
+  """Start a stopped app's container. Returns true."""
+  startApp(id: String!): Boolean
   startDev(projectId: String!): DevInfo
 
   """
@@ -673,6 +705,9 @@ type Mutation {
 
   """Start the VS Code tunnel and return the device-login link."""
   startTunnel(projectId: String!): VscodeTunnelInfo
+
+  """Stop a running app's container. Returns true."""
+  stopApp(id: String!): Boolean
   stopDev(projectId: String!): DevInfo
   stopProject(id: String!): Project
 
@@ -690,6 +725,11 @@ type Mutation {
 
   """Enable or disable a backup schedule. Returns true."""
   toggleBackup(enabled: Boolean!, id: String!): Boolean
+
+  """
+  Uninstall an app: destroy its container + Traefik router and drop the row. Revokes nothing (the app held no token). Returns true.
+  """
+  uninstallApp(id: String!): Boolean
   updateDev(patch: UpdateDevInput!, projectId: String!): DevInfo
 
   """
@@ -816,6 +856,9 @@ type Query {
   """All API tokens in the active team."""
   apiTokens: [ApiToken!]
 
+  """The remote catalog of installable apps."""
+  appCatalog: [AppListing!]
+
   """All backup schedules in the active team, newest first."""
   backups: [Backup!]
 
@@ -856,6 +899,9 @@ type Query {
 
   """Repositories accessible to a GitHub App installation."""
   githubRepos(installationId: String!): [GithubRepo!]
+
+  """Apps the active team has installed, newest first, with live status."""
+  installedApps: [InstalledApp!]
 
   """Lighter instance list for the logs viewer."""
   logsInfo(projectId: String!): LogsInfo

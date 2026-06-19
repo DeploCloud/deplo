@@ -15,8 +15,13 @@ import { traefikRouterLabels } from "./routing";
  *     lives) *in addition to* whatever networks it already used, so inter-service
  *     DNS keeps working and Traefik can reach it.
  *  2. Add Traefik routing labels on that service for the generated domain.
- *  3. Strip the exposed service's published host ports  Traefik fronts it, and
- *     fixed host ports would collide between stacks on the same host.
+ *  3. Leave the service's published host `ports:` intact. Traefik fronts the
+ *     routed port over the `deplo` network purely via the labels in (2), so HTTP
+ *     routing works regardless of host publishing; a user who publishes a port
+ *     (a TCP game server, a database, an admin port) keeps it reachable at that
+ *     host port. (Two stacks that pin the SAME fixed host port will collide at
+ *     `compose up` — that's the user's explicit mapping, surfaced loudly rather
+ *     than silently dropped.)
  *  4. Strip `container_name` everywhere  it is globally unique on the host and
  *     would collide between projects; Compose's project-prefixed names are safe
  *     and services still reach each other by service name on the shared network.
@@ -367,11 +372,16 @@ export function buildComposeStack(input: ComposeStackInput): string {
     return primary ? [primary] : [];
   };
 
-  // Services we've already joined to the network / stripped ports for, so a
-  // service exposed on two ports is only network-wired once.
+  // Services we've already joined to the network, so a service exposed on two
+  // ports is only network-wired once.
   const wired = new Set<string>();
-  // Join a service to the deplo network (on top of its own networks) and drop
-  // its published host ports — Traefik fronts it. Idempotent per service.
+  // Join a service to the deplo network (on top of its own networks) so Traefik
+  // can reach it and inter-service DNS keeps working. Traefik fronts the routed
+  // port over this network purely via the labels below — host publishing is
+  // orthogonal to routing, so the service's own `ports:` are LEFT INTACT: a
+  // user who publishes a port (a TCP game server, a database, an admin port)
+  // keeps it reachable at that host port, AND still gets the HTTP router labels.
+  // Idempotent per service.
   const wireService = (service: string): void => {
     if (wired.has(service)) return;
     const target = services[service] as Service | undefined;
@@ -379,7 +389,6 @@ export function buildComposeStack(input: ComposeStackInput): string {
     const existing = serviceNetworks(target);
     const base = existing.length ? existing : ["default"];
     target.networks = Array.from(new Set([...base, NETWORK]));
-    delete target.ports;
     wired.add(service);
   };
 

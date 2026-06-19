@@ -3,8 +3,8 @@
  *
  * Deplo post-processes every compose file before it deploys it (see
  * `compose-stack.ts`): it joins the exposed service to the external `deplo`
- * network, adds Traefik routing labels, strips published host ports on the
- * exposed service, and strips `container_name`. The linter's job is to catch the
+ * network, adds Traefik routing labels (leaving published `ports:` intact), and
+ * strips `container_name`. The linter's job is to catch the
  * mistakes that break that pipeline — and the everyday compose mistakes users
  * make — BEFORE they hit save, with a line number for each.
  *

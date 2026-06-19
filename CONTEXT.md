@@ -51,6 +51,65 @@ Adding an **existing** user to a team is a separate flow: the team-members page 
 registered users by username and attaches a `Membership` directly.
 _Avoid_: invite (reserved for adding an existing user to a team), email invite (removed).
 
+### Apps
+
+**App**:
+An optional, self-contained feature a team **installs** from the **app repository** to
+extend the platform. An installed app is a **host-managed container** (Deplo owns the Docker
+socket → real start/stop/restart + true status) — but it is
+**not a "project"**: it never appears in the Projects tab, the project count, or the
+`projects` API. It is platform infrastructure that happens to run a container, like the
+**SSH gateway**. It is **not** deployed through the project pipeline and gets **no per-app
+domain, sslip.io, or TLS cert**; when an app needs to be reached it is served on the **app
+path** under Deplo's own public URL. The first app is the **MCP app** — a **stateless relay**
+that serves MCP over that path and **holds no credential of its own**: it forwards the
+caller's `deplo_` token verbatim to Deplo's GraphQL API, so a caller can only ever do what
+*their own* token's team capabilities allow. Its **status is never stored** — it is read
+**live** from the container
+at query time and exposed through the GraphQL API, like the Preview route's URL is "computed,
+not managed." The UI never touches Docker: status and start/stop flow **UI → GraphQL → data
+layer → socket**, never UI → socket.
+_Avoid_: project (an app runs on host container machinery but is never a Project), plugin
+(implies in-process code in Deplo itself — an app is its own container), extension, add-on.
+
+**App repository**:
+The remote, online catalog of installable apps (`catalog.json` + per-app manifests),
+served over HTTP at `devrepo.pixelfederico.com`. Deplo fetches it read-only and treats a
+manifest's compose as **opaque text** handed to the deploy pipeline — never evaluated. The
+source of every app's image and manifest. Distinct from **Templates**, which ship inside
+Deplo; apps are fetched from outside.
+_Avoid_: app store, marketplace, registry (that is a container-image credential).
+
+**Caller token**:
+The plain team-scoped `deplo_` API token a **user** mints from Settings → API Tokens and
+pastes into their own MCP client. It is the **only** credential in the MCP flow: the client
+sends it to the **app path**, the app forwards it **verbatim** to Deplo's GraphQL API, and
+Deplo authenticates it on every call. There is **no separate app-held secret and no
+`MCP_BEARER`** — *reaching* the app and *doing* something through it collapse into one
+capability check on this token. Per-user, per-client: revoking one user's token cuts off only
+that user; the same app container serves many callers, each as their own principal.
+_Avoid_: secret key / app token (the app holds no token of its own), MCP_BEARER (removed —
+there is no separate door key), API key (reserve for third-party provider keys in env).
+
+**App path**:
+The route under Deplo's **own public URL** at which a reachable app is served (e.g.
+`https://<deplo>/apps/mcp-<slug>/…`), reusing Deplo's existing TLS. Deliberately **not** a
+per-app domain, sslip.io name, or `Domain` row — an app never gets its own cert. The app
+authenticates **nothing** at this path itself; it relays the **caller token** through to
+Deplo's API, which performs the real auth.
+_Avoid_: app domain, app URL (it is a path on Deplo's domain, not a domain of its own),
+route (reserved for Traefik project routes).
+
+**Event**:
+Something that happened at a known Deplo lifecycle point (e.g. a deployment succeeded or
+failed), emitted by the control plane and delivered **observe-only** to subscriber apps —
+fire-and-forget with retries, never blocking. An app reacts by calling the capability-scoped
+API back; it can *observe and then act*, but it can **never veto or pause** a pipeline. This
+is how an app "does things when something happens." Blocking gates (a true pre-deploy veto)
+are deliberately **out of scope** and reserved for a future ADR. *(Phase 2 — not yet built.)*
+_Avoid_: hook (implies blocking/in-process), webhook (that is the delivery mechanism, not
+the event), trigger.
+
 ### Runtimes
 
 **Production stack**:

@@ -783,6 +783,34 @@ export interface Registry {
 }
 
 /**
+ * An app a team installed from the app repository (ADR-0005). An installed app
+ * is a host-managed container — NOT a project — so this row is deliberately
+ * minimal: no `status`, `url`, `projectId`, or token reference. Status is read
+ * live from the container at query time; the URL is computed from the stored
+ * `slug`; the (MCP) app holds no credential of its own — it relays the caller's
+ * `deplo_` token.
+ *
+ * The `slug` is the FROZEN physical identity of the container — its name,
+ * compose project, stack file, and Traefik path router all key off it. It is
+ * computed once at install (`appSlug(catalogId, teamSlug)`) and persisted, so a
+ * later team rename never orphans the running container/router — exactly as a
+ * project's slug is frozen and `renameProject` never touches it.
+ */
+export interface InstalledApp {
+  id: ID;
+  /** Owning team. Everything is team-scoped, like registries. */
+  teamId: ID;
+  /** The catalog app id, e.g. "mcp". */
+  catalogId: string;
+  /** Frozen physical identity (container/project/stack-file/router). Computed
+   * at install from `appSlug(catalogId, teamSlug)`; never re-derived after. */
+  slug: string;
+  /** The installed manifest version, e.g. "1.0.0". */
+  version: string;
+  createdAt: string;
+}
+
+/**
  * Notification / anomaly-alert configuration. Deplo can deliver alerts through
  * browser push, email, a Discord webhook and a generic outbound webhook; the
  * `events` map decides which conditions actually fire an alert.
@@ -882,6 +910,9 @@ export interface DeploData {
   githubInstallations: GithubInstallation[];
   /** Dev SSH users — the sole source of truth for the SSH gateway projection. */
   devSshUsers: DevSshUser[];
+  /** Apps a team installed from the app repository (ADR-0005). Host-managed
+   * containers, never projects; status is live, never stored here. */
+  installedApps: InstalledApp[];
 }
 
 /** Default notification settings for a team that has none persisted yet. */

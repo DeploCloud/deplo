@@ -10,6 +10,7 @@ import {
   Activity,
   LineChart,
   Braces,
+  Blocks,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -91,6 +92,13 @@ export const NAV: NavSection[] = [
         href: "/templates",
         icon: LayoutTemplate,
         tooltip: "One-click deploy templates",
+      },
+      {
+        label: "Apps",
+        href: "/apps",
+        icon: Blocks,
+        tooltip: "Install apps to extend Deplo",
+        requires: "manage_infra",
       },
     ],
   },

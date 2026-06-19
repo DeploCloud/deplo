@@ -27,5 +27,6 @@ export function buildSeed(): DeploData {
     githubApps: [],
     githubInstallations: [],
     devSshUsers: [],
+    installedApps: [],
   };
 }
