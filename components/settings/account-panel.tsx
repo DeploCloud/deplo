@@ -14,11 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  updateProfileAction,
-  updateEmailAction,
-  changePasswordAction,
-} from "@/lib/actions/account";
+import { gqlAction } from "@/lib/graphql-client";
 import type { PublicUser } from "@/lib/types";
 
 export function AccountPanel({ user }: { user: PublicUser }) {
@@ -39,7 +35,10 @@ function ProfileCard({ user }: { user: PublicUser }) {
 
   function save() {
     startTransition(async () => {
-      const res = await updateProfileAction({ name });
+      const res = await gqlAction(
+        `mutation ($name: String!) { updateProfile(name: $name) }`,
+        { name },
+      );
       if (res.ok) {
         toast.success("Profile updated");
         router.refresh();
@@ -96,7 +95,10 @@ function EmailCard({ user }: { user: PublicUser }) {
 
   function save() {
     startTransition(async () => {
-      const res = await updateEmailAction({ email, currentPassword: password });
+      const res = await gqlAction(
+        `mutation ($email: String!, $currentPassword: String!) { updateEmail(email: $email, currentPassword: $currentPassword) }`,
+        { email, currentPassword: password },
+      );
       if (res.ok) {
         toast.success("Email updated");
         setPassword("");
@@ -162,10 +164,10 @@ function PasswordCard() {
       return;
     }
     startTransition(async () => {
-      const res = await changePasswordAction({
-        currentPassword: current,
-        newPassword: next,
-      });
+      const res = await gqlAction(
+        `mutation ($currentPassword: String!, $newPassword: String!) { changePassword(currentPassword: $currentPassword, newPassword: $newPassword) }`,
+        { currentPassword: current, newPassword: next },
+      );
       if (res.ok) {
         toast.success("Password changed");
         setCurrent("");

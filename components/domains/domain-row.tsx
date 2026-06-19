@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import yaml from "js-yaml";
 import { toast } from "sonner";
 import {
@@ -45,12 +46,7 @@ import {
   resolveDomainConfig,
   type DomainConfigState,
 } from "@/components/domains/domain-config-fields";
-import {
-  verifyDomainAction,
-  setPrimaryDomainAction,
-  removeDomainAction,
-  updateDomainAction,
-} from "@/lib/actions/domains";
+import { gqlAction } from "@/lib/graphql-client";
 import type { Domain } from "@/lib/types";
 
 type Row = Domain & { projectName: string; projectSlug: string };
@@ -77,6 +73,7 @@ export function DomainRow({
    * offer the service selector. Absent/null ⇒ a single-image project. */
   compose?: string | null;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
@@ -98,10 +95,14 @@ export function DomainRow({
   ) {
     startTransition(async () => {
       const res = await fn();
-      // Prefer the action's own message (it reports whether routing was applied
+      // Prefer the mutation's own message (it reports whether routing was applied
       // instantly or deferred to the next deploy), falling back to the caller's.
-      if (res.ok) toast.success(res.data ?? ok);
-      else toast.error(res.error);
+      if (res.ok) {
+        toast.success(res.data ?? ok);
+        // No revalidatePath on the GraphQL API — refresh the RSC tree so the
+        // page re-reads the mutated domain/routing state.
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 
@@ -125,21 +126,32 @@ export function DomainRow({
       return;
     }
     startTransition(async () => {
-      const res = await updateDomainAction({
-        id: domain.id,
-        name: trimmedName,
-        port: resolved.port,
-        // null ⇒ auto entrypoint (the data layer derives it); a value ⇒ manual.
-        entrypoint: resolved.entrypoint,
-        certProvider: resolved.certProvider,
-        middlewares: resolved.middlewares,
-        pathPrefix: resolved.pathPrefix,
-        stripPrefix: resolved.stripPrefix,
-        service: resolved.service,
-      });
+      const res = await gqlAction<{ updateDomain: { id: string } }, undefined>(
+        `mutation($id: String!, $patch: DomainPatchInput!) {
+          updateDomain(id: $id, patch: $patch) { id }
+        }`,
+        {
+          id: domain.id,
+          patch: {
+            name: trimmedName,
+            port: resolved.port,
+            // null ⇒ auto entrypoint (the data layer derives it); a value ⇒ manual.
+            entrypoint: resolved.entrypoint,
+            certProvider: resolved.certProvider,
+            middlewares: resolved.middlewares,
+            pathPrefix: resolved.pathPrefix,
+            stripPrefix: resolved.stripPrefix,
+            service: resolved.service,
+          },
+        },
+        () => undefined,
+      );
       if (res.ok) {
-        toast.success(res.data ?? "Domain updated");
+        toast.success("Domain updated");
         setEditOpen(false);
+        // No revalidatePath on the GraphQL API — refresh so the edited row
+        // reflects the new routing config.
+        router.refresh();
       } else {
         toast.error(res.error);
       }
@@ -252,7 +264,17 @@ export function DomainRow({
             </DropdownMenuItem>
             {domain.status !== "valid" && (
               <DropdownMenuItem
-                onClick={() => call(() => verifyDomainAction(domain.id), "Domain verified")}
+                onClick={() =>
+                  call(
+                    () =>
+                      gqlAction<{ verifyDomain: { id: string } }, undefined>(
+                        `mutation($id: String!) { verifyDomain(id: $id) { id } }`,
+                        { id: domain.id },
+                        () => undefined,
+                      ),
+                    "Domain verified",
+                  )
+                }
                 disabled={pending}
               >
                 <RefreshCw className="size-4" />
@@ -262,7 +284,15 @@ export function DomainRow({
             {!domain.primary && (
               <DropdownMenuItem
                 onClick={() =>
-                  call(() => setPrimaryDomainAction(domain.id), "Set as primary")
+                  call(
+                    () =>
+                      gqlAction<{ setPrimaryDomain: boolean }, undefined>(
+                        `mutation($id: String!) { setPrimaryDomain(id: $id) }`,
+                        { id: domain.id },
+                        () => undefined,
+                      ),
+                    "Set as primary",
+                  )
                 }
                 disabled={pending}
               >
@@ -290,7 +320,16 @@ export function DomainRow({
           description="The domain will stop routing to this project. You can re-add it later."
           confirmLabel="Remove domain"
           successMessage="Domain removed"
-          onConfirm={() => removeDomainAction(domain.id)}
+          onConfirm={async () => {
+            const res = await gqlAction<{ removeDomain: boolean }>(
+              `mutation($id: String!) { removeDomain(id: $id) }`,
+              { id: domain.id },
+            );
+            // No revalidatePath on the GraphQL API — refresh so the removed row
+            // disappears from the RSC-rendered list.
+            if (res.ok) router.refresh();
+            return res;
+          }}
         />
         <Dialog open={editOpen} onOpenChange={setEditOpen}>
           <DialogContent className="max-h-[85vh] overflow-y-auto text-left">

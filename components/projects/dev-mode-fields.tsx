@@ -53,20 +53,8 @@ import {
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import {
-  enableDevAction,
-  disableDevAction,
-  updateDevAction,
-  startDevAction,
-  stopDevAction,
-  addDevSshUserAction,
-  removeDevSshUserAction,
-  startTunnelAction,
-  getTunnelAction,
-  stopTunnelAction,
-  resetDevWorkspaceAction,
-  deployDevWorkspaceAction,
-} from "@/lib/actions/dev";
+import { useRouter } from "next/navigation";
+import { gqlAction } from "@/lib/graphql-client";
 import type { VscodeTunnelInfo } from "@/lib/data/dev";
 import type { DevImagePreset, DevSshUserDTO, DevStatus } from "@/lib/types";
 
@@ -115,6 +103,7 @@ export function DevModeFields({
   dev: DevInfoProps;
   sshUsers: DevSshUserDTO[];
 }) {
+  const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [enabled, setEnabled] = React.useState(dev.enabled);
   const [imageKind, setImageKind] = React.useState(dev.imageKind);
@@ -147,7 +136,11 @@ export function DevModeFields({
     if (dev.status !== "running") return;
     let cancelled = false;
     (async () => {
-      const res = await getTunnelAction(projectId);
+      const res = await gqlAction(
+        `query($projectId: String!) { tunnel(projectId: $projectId) { running connected loginUrl loginCode tunnelUrl } }`,
+        { projectId },
+        (d: { tunnel: VscodeTunnelInfo | null }) => d.tunnel,
+      );
       if (cancelled) return;
       // Adopt the live state only if a tunnel process is actually running; a
       // dead/never-started tunnel leaves the "Open in VS Code" button as-is.
@@ -165,7 +158,11 @@ export function DevModeFields({
   function openInVscode() {
     setTunnelBusy(true);
     startTransition(async () => {
-      const res = await startTunnelAction(projectId);
+      const res = await gqlAction(
+        `mutation($projectId: String!) { startTunnel(projectId: $projectId) { running connected loginUrl loginCode tunnelUrl } }`,
+        { projectId },
+        (d: { startTunnel: VscodeTunnelInfo | null }) => d.startTunnel,
+      );
       setTunnelBusy(false);
       if (res.ok && res.data) {
         setTunnel(res.data);
@@ -182,7 +179,11 @@ export function DevModeFields({
   React.useEffect(() => {
     if (!tunnel?.loginUrl || tunnel?.connected) return;
     const t = setInterval(async () => {
-      const res = await getTunnelAction(projectId);
+      const res = await gqlAction(
+        `query($projectId: String!) { tunnel(projectId: $projectId) { running connected loginUrl loginCode tunnelUrl } }`,
+        { projectId },
+        (d: { tunnel: VscodeTunnelInfo | null }) => d.tunnel,
+      );
       if (res.ok && res.data) {
         setTunnel(res.data);
         if (res.data.connected) {
@@ -196,7 +197,10 @@ export function DevModeFields({
 
   function closeTunnel() {
     startTransition(async () => {
-      const res = await stopTunnelAction(projectId);
+      const res = await gqlAction(
+        `mutation($projectId: String!) { stopTunnel(projectId: $projectId) }`,
+        { projectId },
+      );
       if (res.ok) {
         setTunnel(null);
         toast.success("VS Code tunnel closed");
@@ -229,10 +233,18 @@ export function DevModeFields({
     setEnabled(next);
     startTransition(async () => {
       const res = next
-        ? await enableDevAction(projectId)
-        : await disableDevAction(projectId);
-      if (res.ok) toast.success(next ? "Dev mode enabled" : "Dev mode disabled");
-      else {
+        ? await gqlAction(
+            `mutation($projectId: String!) { enableDev(projectId: $projectId) { enabled } }`,
+            { projectId },
+          )
+        : await gqlAction(
+            `mutation($projectId: String!) { disableDev(projectId: $projectId) { enabled } }`,
+            { projectId },
+          );
+      if (res.ok) {
+        toast.success(next ? "Dev mode enabled" : "Dev mode disabled");
+        router.refresh();
+      } else {
         toast.error(res.error);
         setEnabled(!next);
       }
@@ -241,58 +253,87 @@ export function DevModeFields({
 
   function saveContainerConfig() {
     startTransition(async () => {
-      const res = await updateDevAction(projectId, { imageKind, image, port });
-      if (res.ok) toast.success("Container settings saved");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($projectId: String!, $patch: UpdateDevInput!) { updateDev(projectId: $projectId, patch: $patch) { enabled } }`,
+        { projectId, patch: { imageKind, image, port } },
+      );
+      if (res.ok) {
+        toast.success("Container settings saved");
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 
   function savePreview() {
     startTransition(async () => {
-      const res = await updateDevAction(projectId, { previewEnabled });
-      if (res.ok) toast.success("Preview settings saved");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($projectId: String!, $patch: UpdateDevInput!) { updateDev(projectId: $projectId, patch: $patch) { enabled } }`,
+        { projectId, patch: { previewEnabled } },
+      );
+      if (res.ok) {
+        toast.success("Preview settings saved");
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 
   function start() {
     startTransition(async () => {
-      const res = await startDevAction(projectId);
+      const res = await gqlAction(
+        `mutation($projectId: String!) { startDev(projectId: $projectId) { status } }`,
+        { projectId },
+      );
       if (res.ok) {
         // A (re)start recreates the container, so any previous tunnel process is
         // gone and not auto-relaunched — clear the stale state. The login token
         // persists, so re-opening VS Code won't re-prompt for GitHub.
         setTunnel(null);
         toast.success("Dev container starting…");
+        router.refresh();
       } else toast.error(res.error);
     });
   }
 
   function stop() {
     startTransition(async () => {
-      const res = await stopDevAction(projectId);
+      const res = await gqlAction(
+        `mutation($projectId: String!) { stopDev(projectId: $projectId) { status } }`,
+        { projectId },
+      );
       if (res.ok) {
         // Stopping the container also stops the VS Code tunnel (server-side, via
         // stopDev → stopVscodeTunnel). Clear the local tunnel state so the panel
         // drops back to "Open in VS Code" instead of showing a stale connection.
         setTunnel(null);
         toast.success("Dev container stopped");
+        router.refresh();
       } else toast.error(res.error);
     });
   }
 
   async function resetWorkspace() {
-    const res = await resetDevWorkspaceAction(projectId);
-    if (res.ok) toast.success("Workspace reset from source");
-    else toast.error(res.error);
+    const res = await gqlAction(
+      `mutation($projectId: String!) { resetDevWorkspace(projectId: $projectId) { status } }`,
+      { projectId },
+    );
+    if (res.ok) {
+      toast.success("Workspace reset from source");
+      router.refresh();
+    } else toast.error(res.error);
     return res;
   }
 
   async function deployFromWorkspace() {
-    const res = await deployDevWorkspaceAction(projectId);
+    const res = await gqlAction(
+      `mutation($projectId: String!) { deployDevWorkspace(projectId: $projectId) }`,
+      { projectId },
+    );
     // Success toast only — ConfirmAction already toasts res.error on failure,
     // so we do NOT re-toast the error here (that would double it).
-    if (res.ok) toast.success("Deploy from dev files started");
+    if (res.ok) {
+      toast.success("Deploy from dev files started");
+      router.refresh();
+    }
     return res;
   }
 
@@ -306,18 +347,25 @@ export function DevModeFields({
       return;
     }
     startTransition(async () => {
-      const res = await addDevSshUserAction({
-        projectId,
-        name: newName.trim(),
-        publicKey: newKey.trim() || null,
-        password: newPassword.trim() || null,
-      });
+      const res = await gqlAction(
+        `mutation($input: AddDevSshUserInput!) { addDevSshUser(input: $input) { id username publicKey hasPassword createdAt } }`,
+        {
+          input: {
+            projectId,
+            name: newName.trim(),
+            publicKey: newKey.trim() || null,
+            password: newPassword.trim() || null,
+          },
+        },
+        (d: { addDevSshUser: DevSshUserDTO }) => d.addDevSshUser,
+      );
       if (res.ok && res.data) {
         setUsers((u) => [...u, res.data!]);
         setNewName("");
         setNewKey("");
         setNewPassword("");
         toast.success(`SSH user ${res.data.username} added`);
+        router.refresh();
       } else if (!res.ok) {
         toast.error(res.error);
       }
@@ -325,10 +373,14 @@ export function DevModeFields({
   }
 
   async function removeUser(id: string, username: string) {
-    const res = await removeDevSshUserAction(id);
+    const res = await gqlAction(
+      `mutation($id: String!) { removeDevSshUser(id: $id) }`,
+      { id },
+    );
     if (res.ok) {
       setUsers((u) => u.filter((x) => x.id !== id));
       toast.success(`Removed ${username}`);
+      router.refresh();
     } else {
       toast.error(res.error);
     }

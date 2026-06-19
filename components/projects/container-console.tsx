@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { execConsoleAction, shellLabelAction } from "@/lib/actions/console";
+import { gqlAction } from "@/lib/graphql-client";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { ContainerAttach } from "@/components/projects/container-attach";
 import { cn } from "@/lib/utils";
@@ -99,8 +99,12 @@ export function ContainerConsole({
   // synchronous effect-body update.
   React.useEffect(() => {
     let live = true;
-    shellLabelAction({ projectId, containerName }).then((res) => {
-      if (!live || !res.ok || !res.data) return;
+    gqlAction(
+      `query($input: ShellLabelInput!){ shellLabel(input: $input) }`,
+      { input: { projectId, containerName } },
+      (d: { shellLabel: string | null }) => ({ shell: d.shellLabel }),
+    ).then((res) => {
+      if (!live || !res.ok || !res.data?.shell) return;
       const label = res.data.shell;
       setShell(label);
       // Annotate only the default container's current session, and only once.
@@ -168,11 +172,12 @@ export function ContainerConsole({
     setLines((prev) => [...prev, { kind: "in", text: `${prompt} ${command}` }]);
 
     startTransition(async () => {
-      const res = await execConsoleAction({
-        projectId,
-        command,
-        containerName: active.name,
-      });
+      const res = await gqlAction(
+        `mutation($input: ExecConsoleInput!){ execConsole(input: $input) { output detach } }`,
+        { input: { projectId, command, containerName: active.name } },
+        (d: { execConsole: { output: string; detach?: boolean } }) =>
+          d.execConsole,
+      );
       if (!res.ok) {
         setLines((prev) => [...prev, { kind: "sys", text: res.error }]);
         return;

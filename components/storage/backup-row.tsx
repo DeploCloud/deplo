@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Play, Trash2, MoreHorizontal } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -17,29 +18,35 @@ import {
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { timeAgo } from "@/lib/utils";
-import {
-  runBackupAction,
-  toggleBackupAction,
-  deleteBackupAction,
-} from "@/lib/actions/backups";
+import { gqlAction } from "@/lib/graphql-client";
 import type { BackupDTO } from "@/lib/data/backups";
 
 export function BackupRow({ backup }: { backup: BackupDTO }) {
+  const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   function run() {
     startTransition(async () => {
-      const res = await runBackupAction(backup.id);
-      if (res.ok) toast.success("Backup started");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($id: String!) { runBackup(id: $id) }`,
+        { id: backup.id }
+      );
+      if (res.ok) {
+        toast.success("Backup started");
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 
   function toggle(enabled: boolean) {
     startTransition(async () => {
-      const res = await toggleBackupAction(backup.id, enabled);
+      const res = await gqlAction(
+        `mutation($id: String!, $enabled: Boolean!) { toggleBackup(id: $id, enabled: $enabled) }`,
+        { id: backup.id, enabled }
+      );
       if (!res.ok) toast.error(res.error);
+      else router.refresh();
     });
   }
 
@@ -107,7 +114,14 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
           description="This removes the backup schedule. Existing backup files in your bucket are not deleted."
           confirmLabel="Delete schedule"
           successMessage="Backup schedule deleted"
-          onConfirm={() => deleteBackupAction(backup.id)}
+          onConfirm={async () => {
+            const res = await gqlAction(
+              `mutation($id: String!) { deleteBackup(id: $id) }`,
+              { id: backup.id }
+            );
+            if (res.ok) router.refresh();
+            return res;
+          }}
         />
       </TableCell>
     </TableRow>

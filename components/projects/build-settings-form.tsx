@@ -63,14 +63,8 @@ import type {
   GitRepo,
 } from "@/lib/types";
 import { formatBytes, serverLabel, usesComposeStack } from "@/lib/utils";
-import {
-  updateBuildAction,
-  setAutoDeployAction,
-  renameProjectAction,
-  deleteProjectAction,
-  updateSourceAction,
-  updateLogoAction,
-} from "@/lib/actions/projects";
+import { useRouter } from "next/navigation";
+import { gqlAction } from "@/lib/graphql-client";
 
 export interface SettingsServer {
   id: string;
@@ -127,6 +121,7 @@ export function BuildSettingsForm({
   servers: SettingsServer[];
   installations: GithubInstallationDTO[];
 }) {
+  const router = useRouter();
   const [name, setName] = React.useState(initialName);
   // Logo is stored inline as a base64 image data-URI (or a template's local
   // /templates path). `null` ⇒ no logo (framework icon). The picker reads a file
@@ -184,9 +179,14 @@ export function BuildSettingsForm({
 
   function saveName() {
     startTransition(async () => {
-      const res = await renameProjectAction(projectId, name);
-      if (res.ok) toast.success("Project renamed");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($id: String!, $name: String!) { renameProject(id: $id, name: $name) { id } }`,
+        { id: projectId, name },
+      );
+      if (res.ok) {
+        router.refresh();
+        toast.success("Project renamed");
+      } else toast.error(res.error);
     });
   }
 
@@ -211,9 +211,14 @@ export function BuildSettingsForm({
       }
       setLogo(dataUri);
       startTransition(async () => {
-        const res = await updateLogoAction(projectId, dataUri);
-        if (res.ok) toast.success("Logo updated");
-        else toast.error(res.error);
+        const res = await gqlAction(
+          `mutation($id: String!, $logo: String) { updateProjectLogo(id: $id, logo: $logo) { id } }`,
+          { id: projectId, logo: dataUri },
+        );
+        if (res.ok) {
+          router.refresh();
+          toast.success("Logo updated");
+        } else toast.error(res.error);
       });
     };
     reader.onerror = () => toast.error("Could not read image");
@@ -223,9 +228,14 @@ export function BuildSettingsForm({
   function clearLogo() {
     setLogo(null);
     startTransition(async () => {
-      const res = await updateLogoAction(projectId, null);
-      if (res.ok) toast.success("Logo cleared");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($id: String!, $logo: String) { updateProjectLogo(id: $id, logo: $logo) { id } }`,
+        { id: projectId, logo: null },
+      );
+      if (res.ok) {
+        router.refresh();
+        toast.success("Logo cleared");
+      } else toast.error(res.error);
     });
   }
 
@@ -291,45 +301,66 @@ export function BuildSettingsForm({
       }
     }
     startTransition(async () => {
-      const res = await updateSourceAction(projectId, {
-        source,
-        serverId,
-        dockerImage: image,
-        repo,
-        compose: source === "compose" ? compose : null,
-        composeService: expose?.service ?? null,
-        composePort: expose?.port ?? null,
-        exposes: exposes ?? null,
-      });
-      if (res.ok) toast.success("Deploy source saved");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($id: String!, $input: UpdateSourceInput!) { updateProjectSource(id: $id, input: $input) { id } }`,
+        {
+          id: projectId,
+          input: {
+            source,
+            serverId,
+            dockerImage: image,
+            repo,
+            compose: source === "compose" ? compose : undefined,
+            expose: expose
+              ? { service: expose.service, port: expose.port }
+              : null,
+            exposes: exposes ?? null,
+          },
+        },
+      );
+      if (res.ok) {
+        router.refresh();
+        toast.success("Deploy source saved");
+      } else toast.error(res.error);
     });
   }
 
   function saveBuild() {
     startTransition(async () => {
-      const res = await updateBuildAction(projectId, {
-        framework,
-        buildMethod: build.buildMethod,
-        methodSettings: build.methodSettings,
-        installCommand: build.installCommand,
-        buildCommand: build.buildCommand,
-        outputDirectory: build.outputDirectory,
-        startCommand: build.startCommand,
-        rootDirectory: build.rootDirectory,
-        runtimeVersion: build.runtimeVersion,
-        port: build.port,
-      });
-      if (res.ok) toast.success("Build settings saved");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($id: String!, $build: BuildConfigInput!) { updateProjectBuild(id: $id, build: $build) { id } }`,
+        {
+          id: projectId,
+          build: {
+            framework,
+            buildMethod: build.buildMethod,
+            settings: build.methodSettings,
+            installCommand: build.installCommand,
+            buildCommand: build.buildCommand,
+            outputDir: build.outputDirectory,
+            startCommand: build.startCommand,
+            rootDir: build.rootDirectory,
+            runtimeVersion: build.runtimeVersion,
+            port: build.port,
+          },
+        },
+      );
+      if (res.ok) {
+        router.refresh();
+        toast.success("Build settings saved");
+      } else toast.error(res.error);
     });
   }
 
   function toggleAuto(v: boolean) {
     setAutoDeploy(v);
     startTransition(async () => {
-      const res = await setAutoDeployAction(projectId, v);
-      if (!res.ok) toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($id: String!, $value: Boolean!) { setProjectAutoDeploy(id: $id, value: $value) { id } }`,
+        { id: projectId, value: v },
+      );
+      if (res.ok) router.refresh();
+      else toast.error(res.error);
     });
   }
 
@@ -634,7 +665,14 @@ export function BuildSettingsForm({
             title={`Delete ${initialName}?`}
             description="This permanently removes the project, deployments, domains and environment variables. This cannot be undone."
             confirmLabel="Delete project"
-            onConfirm={() => deleteProjectAction(projectId)}
+            onConfirm={async () => {
+              const res = await gqlAction(
+                `mutation($id: String!) { deleteProject(id: $id) }`,
+                { id: projectId },
+              );
+              if (res.ok) router.push("/");
+              return res;
+            }}
           />
         </CardFooter>
       </Card>

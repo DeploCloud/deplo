@@ -22,7 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createS3Action } from "@/lib/actions/s3";
+import { useRouter } from "next/navigation";
+import { gqlAction } from "@/lib/graphql-client";
 import type { S3Provider } from "@/lib/types";
 
 // Inlined (lib/data/s3 is server-only and cannot be imported on the client).
@@ -37,6 +38,7 @@ const PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
 ];
 
 export function CreateS3() {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [provider, setProvider] = React.useState<S3Provider>("cloudflare-r2");
@@ -55,19 +57,25 @@ export function CreateS3() {
 
   function submit() {
     startTransition(async () => {
-      const res = await createS3Action({
-        name: form.name,
-        provider,
-        endpoint: form.endpoint || hint,
-        region: form.region,
-        bucket: form.bucket,
-        accessKey: form.accessKey,
-        secretKey: form.secretKey,
-      });
+      const res = await gqlAction(
+        `mutation($input: CreateS3Input!) { createS3(input: $input) { id } }`,
+        {
+          input: {
+            name: form.name,
+            provider: provider.toUpperCase().replace(/-/g, "_"),
+            endpoint: form.endpoint || hint,
+            region: form.region,
+            bucket: form.bucket,
+            accessKey: form.accessKey,
+            secretKey: form.secretKey,
+          },
+        },
+      );
       if (res.ok) {
         toast.success("S3 destination connected");
         setOpen(false);
         setForm({ name: "", endpoint: "", region: "auto", bucket: "", accessKey: "", secretKey: "" });
+        router.refresh();
       } else {
         toast.error(res.error);
       }

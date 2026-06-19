@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, KeyRound, Trash2, Check } from "lucide-react";
 import {
@@ -27,10 +28,11 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { timeAgo } from "@/lib/utils";
-import { createTokenAction, revokeTokenAction } from "@/lib/actions/tokens";
+import { gqlAction } from "@/lib/graphql-client";
 import type { ApiTokenDTO } from "@/lib/data/tokens";
 
 export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
+  const router = useRouter();
   const [createOpen, setCreateOpen] = React.useState(false);
   const [name, setName] = React.useState("");
   const [pending, startTransition] = React.useTransition();
@@ -39,11 +41,19 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
 
   function create() {
     startTransition(async () => {
-      const res = await createTokenAction(name);
+      const res = await gqlAction<
+        { createToken: { raw: string } },
+        { raw: string }
+      >(
+        `mutation($name: String!) { createToken(name: $name) { raw } }`,
+        { name },
+        (d) => d.createToken,
+      );
       if (res.ok && res.data) {
         setCreatedToken(res.data.raw);
         setCreateOpen(false);
         setName("");
+        router.refresh();
       } else if (!res.ok) {
         toast.error(res.error);
       }
@@ -184,7 +194,14 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
         description="Any client using this token will immediately lose access."
         confirmLabel="Revoke token"
         successMessage="Token revoked"
-        onConfirm={() => revokeTokenAction(revokeId!)}
+        onConfirm={async () => {
+          const res = await gqlAction(
+            `mutation($id: String!) { revokeToken(id: $id) }`,
+            { id: revokeId! },
+          );
+          if (res.ok) router.refresh();
+          return res;
+        }}
       />
     </div>
   );

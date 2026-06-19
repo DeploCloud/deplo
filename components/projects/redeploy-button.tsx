@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { redeployAction } from "@/lib/actions/projects";
+import { gqlAction } from "@/lib/graphql-client";
 
 export function RedeployButton({
   projectId,
@@ -16,12 +17,22 @@ export function RedeployButton({
   size?: "sm" | "default";
 }) {
   const [pending, startTransition] = React.useTransition();
+  const router = useRouter();
 
   function redeploy() {
     startTransition(async () => {
-      const res = await redeployAction(projectId);
-      if (res.ok) toast.success("Redeploy started");
-      else toast.error(res.error);
+      const res = await gqlAction<
+        { redeploy: { id: string | null } | null },
+        { id: string | null } | null
+      >(
+        `mutation($projectId: String!) { redeploy(projectId: $projectId) { id } }`,
+        { projectId },
+        (d) => d.redeploy,
+      );
+      if (res.ok) {
+        toast.success("Redeploy started");
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 

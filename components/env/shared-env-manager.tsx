@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Boxes, Share2 } from "lucide-react";
 import {
@@ -20,11 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import {
-  saveSharedEnvGroupAction,
-  deleteSharedEnvGroupAction,
-  revealSharedEnvBlobAction,
-} from "@/lib/actions/shared-env";
+import { gql, gqlAction } from "@/lib/graphql-client";
 import type { SharedEnvGroupDTO } from "@/lib/data/shared-env";
 import { ALL_ENV_TARGETS } from "@/lib/types";
 import type { EnvTarget } from "@/lib/types";
@@ -42,6 +39,7 @@ export function SharedEnvManager({
   groups: SharedEnvGroupDTO[];
   projects: ProjectLite[];
 }) {
+  const router = useRouter();
   const [editing, setEditing] = React.useState<SharedEnvGroupDTO | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
@@ -171,7 +169,14 @@ export function SharedEnvManager({
         description="Projects attached to this group lose these variables on their next deploy."
         confirmLabel="Delete"
         successMessage="Shared group deleted"
-        onConfirm={() => deleteSharedEnvGroupAction(deleteId!)}
+        onConfirm={async () => {
+          const res = await gqlAction(
+            `mutation($id: String!) { deleteSharedEnvGroup(id: $id) }`,
+            { id: deleteId! },
+          );
+          if (res.ok) router.refresh();
+          return res;
+        }}
       />
     </div>
   );
@@ -188,6 +193,7 @@ function SharedEnvDialog({
   editing: SharedEnvGroupDTO | null;
   projects: ProjectLite[];
 }) {
+  const router = useRouter();
   const [name, setName] = React.useState(editing?.name ?? "");
   const [description, setDescription] = React.useState(editing?.description ?? "");
   const [blob, setBlob] = React.useState("");
@@ -204,9 +210,15 @@ function SharedEnvDialog({
   React.useEffect(() => {
     if (!open || !editing) return;
     let active = true;
-    revealSharedEnvBlobAction(editing.id).then((res) => {
-      if (active && res.ok && res.data) setBlob(res.data.blob);
-    });
+    gql<{ revealSharedEnvBlob: string | null }>(
+      `mutation($id: String!) { revealSharedEnvBlob(id: $id) }`,
+      { id: editing.id },
+    )
+      .then((data) => {
+        if (active && data.revealSharedEnvBlob)
+          setBlob(data.revealSharedEnvBlob);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -226,17 +238,23 @@ function SharedEnvDialog({
 
   function submit() {
     startTransition(async () => {
-      const res = await saveSharedEnvGroupAction({
-        id: editing?.id,
-        name,
-        description,
-        blob,
-        projectIds,
-        targets,
-      });
+      const res = await gqlAction(
+        `mutation($input: SaveSharedEnvGroupInput!) { saveSharedEnvGroup(input: $input) { id } }`,
+        {
+          input: {
+            id: editing?.id,
+            name,
+            description,
+            blob,
+            projectIds,
+            targets,
+          },
+        },
+      );
       if (res.ok) {
         toast.success(editing ? "Shared group updated" : "Shared group created");
         onOpenChange(false);
+        router.refresh();
       } else {
         toast.error(res.error);
       }

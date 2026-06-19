@@ -24,7 +24,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { switchTeamAction, createTeamAction } from "@/lib/actions/teams";
+import { gqlAction } from "@/lib/graphql-client";
 import type { Team, TeamSummary } from "@/lib/types";
 
 export function TeamSwitcher({
@@ -42,7 +42,10 @@ export function TeamSwitcher({
   function switchTo(teamId: string) {
     if (teamId === team.id) return;
     startTransition(async () => {
-      const res = await switchTeamAction(teamId);
+      const res = await gqlAction(
+        `mutation($teamId: String!) { switchTeam(teamId: $teamId) }`,
+        { teamId },
+      );
       if (res.ok) {
         router.refresh();
       } else {
@@ -53,7 +56,11 @@ export function TeamSwitcher({
 
   function create() {
     startTransition(async () => {
-      const res = await createTeamAction({ name: newName });
+      const res = await gqlAction<{ createTeam: Team }, Team>(
+        `mutation($name: String!) { createTeam(name: $name) { id } }`,
+        { name: newName },
+        (d) => d.createTeam,
+      );
       if (res.ok) {
         toast.success("Team created");
         setCreateOpen(false);

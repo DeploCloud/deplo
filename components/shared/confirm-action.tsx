@@ -12,7 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import type { ActionResult } from "@/lib/actions/result";
+import type { ActionResult } from "@/lib/result";
 
 export function ConfirmAction({
   trigger,

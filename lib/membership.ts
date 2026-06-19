@@ -6,6 +6,7 @@ import { read, ensureStoreReady } from "./store";
 import { assertUser, getCurrentUser } from "./auth";
 import type { Capability, Membership, Team } from "./types";
 import { CAPABILITY_META } from "./membership-shared";
+import { currentIdentity } from "./auth/request-context";
 
 export {
   CAPABILITY_PRESETS,
@@ -57,6 +58,14 @@ export const getActiveTeamId = cache(async (): Promise<string | null> => {
   if (!user) return null;
   const teams = teamsForUser(user.id);
   if (teams.length === 0) return null;
+  // A bearer-token request is scoped to the token's team — provided it is one
+  // the principal actually belongs to (defense-in-depth against a stale token).
+  const override = currentIdentity();
+  if (override) {
+    return teams.some((t) => t.id === override.teamId)
+      ? override.teamId
+      : teams[0].id;
+  }
   const store = await cookies();
   const cookieTeam = store.get(ACTIVE_TEAM_COOKIE)?.value;
   if (cookieTeam && teams.some((t) => t.id === cookieTeam)) return cookieTeam;

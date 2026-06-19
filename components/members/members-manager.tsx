@@ -37,12 +37,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CapabilityPicker } from "@/components/settings/capability-picker";
-import {
-  searchUsersAction,
-  addExistingMemberAction,
-  updateMemberAction,
-  removeMemberAction,
-} from "@/lib/actions/members";
+import { gqlAction } from "@/lib/graphql-client";
 import { capabilitiesForRole } from "@/lib/membership-shared";
 import type { Capability, Role } from "@/lib/types";
 import type { MemberDTO, UserSearchResult } from "@/lib/data/members";
@@ -96,7 +91,10 @@ function MemberRow({
 
   function remove() {
     startTransition(async () => {
-      const res = await removeMemberAction(member.userId);
+      const res = await gqlAction(
+        `mutation($userId: String!) { removeMember(userId: $userId) }`,
+        { userId: member.userId },
+      );
       if (res.ok) {
         toast.success("Member removed");
         router.refresh();
@@ -211,7 +209,22 @@ function AddMemberDialog() {
         return;
       }
       setSearching(true);
-      const res = await searchUsersAction(q);
+      const res = await gqlAction<
+        { searchUsers: UserSearchResult[] },
+        UserSearchResult[]
+      >(
+        `query($query: String!) {
+          searchUsers(query: $query) {
+            userId
+            username
+            name
+            avatarColor
+            teamName
+          }
+        }`,
+        { query: q },
+        (d) => d.searchUsers,
+      );
       if (!cancelled) {
         setResults(res.ok && res.data ? res.data : []);
         setSearching(false);
@@ -234,11 +247,12 @@ function AddMemberDialog() {
   function add() {
     if (!picked) return;
     startTransition(async () => {
-      const res = await addExistingMemberAction({
-        userId: picked.userId,
-        role,
-        capabilities: caps,
-      });
+      const res = await gqlAction(
+        `mutation($input: AddMemberInput!) {
+          addExistingMember(input: $input) { userId }
+        }`,
+        { input: { userId: picked.userId, role, capabilities: caps } },
+      );
       if (res.ok) {
         toast.success(`Added @${picked.username} to the team`);
         setOpen(false);
@@ -396,11 +410,12 @@ function EditMemberDialog({
 
   function submit() {
     startTransition(async () => {
-      const res = await updateMemberAction({
-        userId: member.userId,
-        role,
-        capabilities: caps,
-      });
+      const res = await gqlAction(
+        `mutation($input: UpdateMemberInput!) {
+          updateMember(input: $input) { userId }
+        }`,
+        { input: { userId: member.userId, role, capabilities: caps } },
+      );
       if (res.ok) {
         toast.success("Permissions updated");
         onOpenChange(false);

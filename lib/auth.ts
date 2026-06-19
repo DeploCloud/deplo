@@ -26,6 +26,7 @@ import { randomBytes } from "node:crypto";
 import os from "node:os";
 import { serverVersion } from "./infra/docker";
 import { hostMetrics } from "./infra/host";
+import { currentIdentity } from "./auth/request-context";
 
 const SESSION_COOKIE = "deplo_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
@@ -172,11 +173,14 @@ export function createAccountWithTeam(
  */
 export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   await ensureStoreReady();
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-  const payload = verifySession(token);
-  if (!payload) return null;
-  const user = read().users.find((u) => u.id === payload.uid);
+  // A bearer-token request (the public GraphQL API) supplies its principal via
+  // the request-context override and carries no session cookie.
+  const override = currentIdentity();
+  const uid = override
+    ? override.userId
+    : verifySession((await cookies()).get(SESSION_COOKIE)?.value)?.uid;
+  if (!uid) return null;
+  const user = read().users.find((u) => u.id === uid);
   // A suspended account loses access immediately, even with a live session.
   if (!user || user.suspended) return null;
   return toPublic(user);

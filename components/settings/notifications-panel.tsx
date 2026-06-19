@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Bell, Mail, Webhook, MonitorSmartphone, Send } from "lucide-react";
 import { DiscordIcon } from "@/components/shared/brand-icons";
@@ -16,10 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  saveNotificationSettingsAction,
-  testNotificationAction,
-} from "@/lib/actions/notifications";
+import { gqlAction } from "@/lib/graphql-client";
 import type { NotificationEvent, NotificationSettings } from "@/lib/types";
 
 const EVENT_LABELS: Record<NotificationEvent, string> = {
@@ -43,6 +41,7 @@ export function NotificationsPanel({
 }: {
   initial: NotificationSettings;
 }) {
+  const router = useRouter();
   const [settings, setSettings] = React.useState<NotificationSettings>(initial);
   const [saving, startSave] = React.useTransition();
   const [testing, setTesting] = React.useState<string | null>(null);
@@ -65,16 +64,24 @@ export function NotificationsPanel({
 
   function save() {
     startSave(async () => {
-      const res = await saveNotificationSettingsAction(settings);
-      if (res.ok) toast.success("Notification settings saved");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($input: JSON!) { saveNotificationSettings(input: $input) { __typename } }`,
+        { input: settings },
+      );
+      if (res.ok) {
+        toast.success("Notification settings saved");
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 
   async function testServerChannel(channel: "email" | "discord" | "webhook") {
     setTesting(channel);
     try {
-      const res = await testNotificationAction(channel);
+      const res = await gqlAction(
+        `mutation($channel: TestNotificationChannel!) { testNotification(channel: $channel) }`,
+        { channel },
+      );
       if (res.ok) toast.success(`Test alert sent via ${channel}`);
       else toast.error(res.error);
     } finally {

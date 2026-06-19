@@ -699,6 +699,12 @@ export interface ApiToken {
   id: ID;
   /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
   teamId: ID;
+  /**
+   * The user the token acts as. A bearer request authenticated with this token
+   * resolves to this principal for user-scoped fields (account, instance-admin
+   * checks). Legacy rows are backfilled to the team's owner on hydrate.
+   */
+  userId: ID;
   name: string;
   /** sha256 of the token; raw is shown once on creation */
   tokenHash: string;

@@ -50,7 +50,7 @@ import {
 } from "@/components/projects/build-config-fields";
 import { FRAMEWORKS, buildConfigFor } from "@/lib/frameworks";
 import type { DeploySource, FrameworkId } from "@/lib/types";
-import { createProjectAction } from "@/lib/actions/projects";
+import { gqlAction } from "@/lib/graphql-client";
 import { cn, serverLabel } from "@/lib/utils";
 import { GithubRepoPicker, type GithubSelection } from "@/components/projects/github-repo-picker";
 import { GithubConnectButton } from "@/components/projects/github-connect-button";
@@ -315,42 +315,53 @@ export function NewProjectWizard({
     const payloadBuild = buildsImage ? build : buildConfigFor("docker");
 
     startTransition(async () => {
-      const res = await createProjectAction({
-        name: name.trim(),
-        framework: projectFramework,
-        // A template deploying its own stack is stored as the `compose` source so
-        // settings opens on the Compose tab and the deploy engine is unambiguous.
-        source: useCompose ? "compose" : source,
-        serverId,
-        dockerImage: image,
-        // Seed the project's display logo from the template so a deployed
-        // template carries its icon; editable later from project settings.
-        logo: isTemplate ? template!.logo : null,
-        compose: useCompose ? compose : null,
-        env: isTemplate
-          ? envRows.filter((e) => e.key.trim())
-          : undefined,
-        repo,
-        build: {
-          buildMethod: payloadBuild.buildMethod,
-          methodSettings: payloadBuild.methodSettings,
-          installCommand: payloadBuild.installCommand,
-          buildCommand: payloadBuild.buildCommand,
-          outputDirectory: payloadBuild.outputDirectory,
-          startCommand: payloadBuild.startCommand,
-          rootDirectory: payloadBuild.rootDirectory,
-          runtimeVersion: payloadBuild.runtimeVersion,
-          port: payloadBuild.port,
+      const res = await gqlAction(
+        `mutation($input: CreateProjectInput!) {
+          createProject(input: $input) { slug }
+        }`,
+        {
+          input: {
+            name: name.trim(),
+            framework: projectFramework,
+            // A template deploying its own stack is stored as the `compose` source
+            // so settings opens on the Compose tab and the deploy engine is
+            // unambiguous.
+            source: useCompose ? "compose" : source,
+            serverId,
+            dockerImage: image,
+            // Seed the project's display logo from the template so a deployed
+            // template carries its icon; editable later from project settings.
+            logo: isTemplate ? template!.logo : null,
+            compose: useCompose ? compose : null,
+            env: isTemplate
+              ? envRows.filter((e) => e.key.trim())
+              : undefined,
+            repo,
+            build: {
+              buildMethod: payloadBuild.buildMethod,
+              settings: payloadBuild.methodSettings,
+              installCommand: payloadBuild.installCommand,
+              buildCommand: payloadBuild.buildCommand,
+              outputDir: payloadBuild.outputDirectory,
+              startCommand: payloadBuild.startCommand,
+              rootDir: payloadBuild.rootDirectory,
+              runtimeVersion: payloadBuild.runtimeVersion,
+              port: payloadBuild.port,
+            },
+            autoDeploy: usesGit ? autoDeploy : false,
+            // Routing metadata is template-only; a hand-written compose stack lets
+            // the engine auto-detect which service to expose.
+            composeService: templateCompose
+              ? template!.expose?.service ?? null
+              : null,
+            composePort: templateCompose ? template!.expose?.port ?? null : null,
+            exposes: templateCompose ? template!.exposes : null,
+            autoDomain: templateCompose ? template!.autoDomain : null,
+            mounts: templateCompose ? template!.mounts : null,
+          },
         },
-        autoDeploy: usesGit ? autoDeploy : false,
-        // Routing metadata is template-only; a hand-written compose stack lets the
-        // engine auto-detect which service to expose.
-        composeService: templateCompose ? template!.expose?.service ?? null : null,
-        composePort: templateCompose ? template!.expose?.port ?? null : null,
-        exposes: templateCompose ? template!.exposes : null,
-        autoDomain: templateCompose ? template!.autoDomain : null,
-        mounts: templateCompose ? template!.mounts : null,
-      });
+        (d: { createProject: { slug: string } }) => d.createProject,
+      );
       if (res.ok && res.data) {
         // An upload project has no archive yet, so nothing deploys until the
         // user uploads one from Settings — don't claim it's deploying.

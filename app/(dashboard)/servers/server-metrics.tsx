@@ -4,7 +4,7 @@ import * as React from "react";
 import { Cpu, MemoryStick, HardDrive } from "lucide-react";
 
 import { Progress } from "@/components/ui/progress";
-import { allServerMetricsAction } from "@/lib/actions/monitoring";
+import { gql } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
 
 /** Poll cadence. The collector itself takes ~1.2s, so ticks may overlap; the
@@ -58,9 +58,9 @@ type MetricsMap = Record<string, ServerMetrics>;
 const MetricsContext = React.createContext<MetricsMap>({});
 
 /** Single poll loop for the whole grid. Mounted once at page level, it polls
- *  allServerMetricsAction every second (skipping a tick while one is still in
- *  flight) and publishes a serverId -> ServerMetrics map through context. The
- *  map is expected to be exhaustive: getAllServerMetrics covers every server. */
+ *  the allServerMetrics query every second (skipping a tick while one is still
+ *  in flight) and publishes a serverId -> ServerMetrics map through context. The
+ *  map is expected to be exhaustive: allServerMetrics covers every server. */
 export function ServerMetricsProvider({
   initialMetrics,
   children,
@@ -80,9 +80,17 @@ export function ServerMetricsProvider({
       if (busy) return; // previous ~1.2s call still running — skip this tick
       busy = true;
       try {
-        const res = await allServerMetricsAction();
-        if (!active || !res.ok || !res.data) return;
-        setMetrics(Object.fromEntries(res.data.map((m) => [m.serverId, m])));
+        const data = await gql<{ allServerMetrics: ServerMetrics[] }>(
+          `query { allServerMetrics { serverId online cpu memPct diskPct } }`,
+        );
+        if (!active || !data.allServerMetrics) return;
+        setMetrics(
+          Object.fromEntries(
+            data.allServerMetrics.map((m) => [m.serverId, m]),
+          ),
+        );
+      } catch {
+        // a failed poll just skips this tick — the next one tries again
       } finally {
         busy = false;
       }

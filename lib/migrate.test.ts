@@ -153,6 +153,20 @@ test("migrate: stamps teamId on legacy per-team collections", () => {
   assert.equal(d.githubApps[0].teamId, "team_1");
 });
 
+test("migrate: backfills API-token userId to the team's owner", () => {
+  const d = legacyDoc() as unknown as DeploData;
+  migrate(d);
+  // tok_1 is stamped to team_1; its principal becomes that team's owner (usr_1).
+  assert.equal(d.apiTokens[0].userId, "usr_1");
+});
+
+test("migrate: does not overwrite an existing API-token userId", () => {
+  const d = legacyDoc() as unknown as DeploData;
+  d.apiTokens[0].userId = "usr_2";
+  migrate(d);
+  assert.equal(d.apiTokens[0].userId, "usr_2");
+});
+
 test("migrate: converts the singleton notificationSettings into a per-team map", () => {
   const d = legacyDoc() as unknown as DeploData;
   migrate(d);

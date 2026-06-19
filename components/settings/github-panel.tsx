@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { GithubConnectButton } from "@/components/projects/github-connect-button";
-import { removeGithubAppAction } from "@/lib/actions/github";
+import { gqlAction } from "@/lib/graphql-client";
 import type { GithubAppDTO } from "@/lib/data/github";
 
 const GIT_FEEDBACK: Record<string, { ok: boolean; msg: string }> = {
@@ -138,7 +138,14 @@ export function GithubPanel({
         description="Projects importing from this App will stop auto-deploying and private clones will fail until you reconnect."
         confirmLabel="Remove"
         successMessage="GitHub App removed"
-        onConfirm={() => removeGithubAppAction(deleteId!)}
+        onConfirm={async () => {
+          const res = await gqlAction(
+            `mutation ($id: String!) { removeGithubApp(id: $id) }`,
+            { id: deleteId! },
+          );
+          if (res.ok) router.refresh();
+          return res;
+        }}
       />
     </Card>
   );

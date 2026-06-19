@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { checkForUpdatesAction } from "@/lib/actions/updates";
+import { gqlAction } from "@/lib/graphql-client";
 import type { UpdateInfo } from "@/lib/data/updates";
+
+const UPDATE_INFO_FIELDS = "{ updateAvailable latest url error }";
 
 export function UpdateCard({ current }: { current: string }) {
   const [info, setInfo] = React.useState<UpdateInfo | null>(null);
@@ -21,7 +23,14 @@ export function UpdateCard({ current }: { current: string }) {
   const check = React.useCallback(async () => {
     setChecking(true);
     try {
-      const res = await checkForUpdatesAction();
+      const res = await gqlAction<
+        { checkForUpdates: UpdateInfo | null },
+        UpdateInfo | null
+      >(
+        `mutation { checkForUpdates ${UPDATE_INFO_FIELDS} }`,
+        undefined,
+        (d) => d.checkForUpdates,
+      );
       if (res.ok && res.data) setInfo(res.data);
     } finally {
       setChecking(false);
@@ -32,7 +41,11 @@ export function UpdateCard({ current }: { current: string }) {
   // synchronously in the effect body), so it does not cascade renders.
   React.useEffect(() => {
     let active = true;
-    checkForUpdatesAction().then((res) => {
+    gqlAction<{ updateInfo: UpdateInfo | null }, UpdateInfo | null>(
+      `query { updateInfo ${UPDATE_INFO_FIELDS} }`,
+      undefined,
+      (d) => d.updateInfo,
+    ).then((res) => {
       if (active && res.ok && res.data) setInfo(res.data);
     });
     return () => {

@@ -14,7 +14,29 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { registerThroughLinkAction } from "@/lib/actions/register";
+import { gqlAction } from "@/lib/graphql-client";
+
+const REGISTER = /* GraphQL */ `
+  mutation Register(
+    $token: String!
+    $username: String!
+    $name: String!
+    $email: String!
+    $password: String!
+    $teamName: String!
+  ) {
+    registerThroughLink(
+      token: $token
+      username: $username
+      name: $name
+      email: $email
+      password: $password
+      teamName: $teamName
+    ) {
+      viewer { id }
+    }
+  }
+`;
 
 export function RegisterForm({ token }: { token: string }) {
   const router = useRouter();
@@ -33,10 +55,11 @@ export function RegisterForm({ token }: { token: string }) {
 
   function submit() {
     startTransition(async () => {
-      const res = await registerThroughLinkAction({ token, ...form });
+      const res = await gqlAction(REGISTER, { token, ...form });
       if (res.ok) {
         toast.success("Welcome to Deplo");
         router.push("/");
+        router.refresh();
       } else {
         toast.error(res.error);
       }

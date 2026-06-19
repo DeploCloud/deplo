@@ -101,6 +101,19 @@ export function migrate(data: DeploData): DeploData {
     stamp(data.githubApps, firstTeamId);
   }
 
+  // 2b. Backfill `userId` on API tokens written before tokens carried a
+  //     principal. A bearer request now resolves to a user; legacy tokens act
+  //     as their team's owner (the de-facto creator). Idempotent.
+  for (const t of data.apiTokens) {
+    if (!t.userId) {
+      const owner = data.memberships.find(
+        (m) => m.teamId === t.teamId && m.role === "owner",
+      );
+      const fallback = data.memberships.find((m) => m.teamId === t.teamId);
+      t.userId = owner?.userId ?? fallback?.userId ?? data.users[0]?.id ?? "";
+    }
+  }
+
   // 3. Migrate a legacy singleton notificationSettings object into the map.
   const ns = data.notificationSettings as
     | NotificationSettings

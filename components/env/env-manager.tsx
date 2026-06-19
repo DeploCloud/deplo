@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Upload, Eye, EyeOff, Trash2, Pencil } from "lucide-react";
 import {
@@ -30,12 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/shared/copy-button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import {
-  upsertEnvAction,
-  deleteEnvAction,
-  importEnvAction,
-  revealEnvAction,
-} from "@/lib/actions/env";
+import { gqlAction } from "@/lib/graphql-client";
 import type { EnvTarget, EnvVarDTO } from "@/lib/types";
 
 const ALL_TARGETS: EnvTarget[] = ["production", "preview", "development"];
@@ -53,6 +49,7 @@ export function EnvManager({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const [revealed, setRevealed] = React.useState<Record<string, string>>({});
   const [pending, startTransition] = React.useTransition();
+  const router = useRouter();
 
   function reveal(v: EnvVarDTO) {
     if (revealed[v.id]) {
@@ -64,8 +61,12 @@ export function EnvManager({
       return;
     }
     startTransition(async () => {
-      const res = await revealEnvAction(v.id);
-      if (res.ok && res.data) setRevealed((r) => ({ ...r, [v.id]: res.data!.value }));
+      const res = await gqlAction<{ revealEnv: string }, string>(
+        `mutation($id: String!) { revealEnv(id: $id) }`,
+        { id: v.id },
+        (d) => d.revealEnv,
+      );
+      if (res.ok && res.data) setRevealed((r) => ({ ...r, [v.id]: res.data! }));
       else if (!res.ok) toast.error(res.error);
     });
   }
@@ -194,7 +195,14 @@ export function EnvManager({
         description="This removes the variable. It will no longer be available to new deployments."
         confirmLabel="Delete"
         successMessage="Variable deleted"
-        onConfirm={() => deleteEnvAction(deleteId!)}
+        onConfirm={async () => {
+          const res = await gqlAction<{ deleteEnv: boolean }>(
+            `mutation($id: String!) { deleteEnv(id: $id) }`,
+            { id: deleteId! },
+          );
+          if (res.ok) router.refresh();
+          return res;
+        }}
       />
     </div>
   );
@@ -218,6 +226,7 @@ function EnvDialog({
     editing?.targets ?? ["production", "preview", "development"]
   );
   const [pending, startTransition] = React.useTransition();
+  const router = useRouter();
 
   function toggleTarget(t: EnvTarget) {
     setTargets((cur) =>
@@ -227,16 +236,22 @@ function EnvDialog({
 
   function submit() {
     startTransition(async () => {
-      const res = await upsertEnvAction({
-        projectId,
-        key,
-        value,
-        targets,
-        type: secret ? "secret" : "plain",
-      });
+      const res = await gqlAction<{ upsertEnv: { id: string } }>(
+        `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
+        {
+          input: {
+            projectId,
+            key,
+            value,
+            targets,
+            type: secret ? "secret" : "plain",
+          },
+        },
+      );
       if (res.ok) {
         toast.success(editing ? "Variable updated" : "Variable added");
         onOpenChange(false);
+        router.refresh();
       } else {
         toast.error(res.error);
       }
@@ -327,6 +342,7 @@ function ImportDialog({
     "development",
   ]);
   const [pending, startTransition] = React.useTransition();
+  const router = useRouter();
 
   function toggleTarget(t: EnvTarget) {
     setTargets((cur) =>
@@ -336,11 +352,18 @@ function ImportDialog({
 
   function submit() {
     startTransition(async () => {
-      const res = await importEnvAction({ projectId, blob, targets });
-      if (res.ok && res.data) {
-        toast.success(`Imported ${res.data.count} variable(s)`);
+      const res = await gqlAction<{ importEnv: number }, number>(
+        `mutation($projectId: String!, $blob: String!, $targets: [EnvTarget!]!) {
+          importEnv(projectId: $projectId, blob: $blob, targets: $targets)
+        }`,
+        { projectId, blob, targets },
+        (d) => d.importEnv,
+      );
+      if (res.ok && res.data != null) {
+        toast.success(`Imported ${res.data} variable(s)`);
         onOpenChange(false);
         setBlob("");
+        router.refresh();
       } else if (!res.ok) {
         toast.error(res.error);
       }

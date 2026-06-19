@@ -33,12 +33,14 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 
 /** Returns the raw token ONCE; only the hash is persisted. */
 export async function createToken(name: string): Promise<{ raw: string; token: ApiTokenDTO }> {
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const { teamId, userId } = await requireCapability("manage_infra");
   if (!name.trim()) throw new Error("Name is required");
   const raw = `deplo_${randomToken(24)}`;
   const t: ApiToken = {
     id: newId("tok"),
     teamId,
+    // The token acts as its creator for user-scoped fields on bearer requests.
+    userId,
     name: name.trim(),
     tokenHash: sha256Hex(raw),
     prefix: raw.slice(0, 12),
@@ -47,6 +49,30 @@ export async function createToken(name: string): Promise<{ raw: string; token: A
   };
   mutate((d) => d.apiTokens.push(t));
   return { raw, token: toDTO(t) };
+}
+
+/**
+ * Resolve an incoming `deplo_…` bearer token to its principal, or null if it
+ * does not match a live token. Bumps `lastUsedAt`. The GraphQL request context
+ * uses this to authenticate external API clients. Never throws.
+ */
+export function authenticateToken(
+  raw: string,
+): { userId: string; teamId: string } | null {
+  if (!raw.startsWith("deplo_")) return null;
+  const hash = sha256Hex(raw);
+  const match = read().apiTokens.find((t) => t.tokenHash === hash);
+  if (!match) return null;
+  // Fire-and-forget usage stamp; a failed write must not block the request.
+  try {
+    mutate((d) => {
+      const t = d.apiTokens.find((x) => x.id === match.id);
+      if (t) t.lastUsedAt = nowIso();
+    });
+  } catch {
+    /* usage tracking is best-effort */
+  }
+  return { userId: match.userId, teamId: match.teamId };
 }
 
 export async function revokeToken(id: string): Promise<void> {

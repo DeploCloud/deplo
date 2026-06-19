@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Share2, ArrowUpRight } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -9,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
-import { setSharedEnvGroupAttachmentAction } from "@/lib/actions/shared-env";
+import { gqlAction } from "@/lib/graphql-client";
 import type { ProjectSharedEnvGroupDTO } from "@/lib/data/shared-env";
 
 export function ProjectSharedEnv({
@@ -61,21 +62,24 @@ function SharedGroupRow({
   projectId: string;
   group: ProjectSharedEnvGroupDTO;
 }) {
-  // Optimistic so the switch tracks instantly; the action revalidates the page,
-  // which reconciles this to the durable value on the next render.
+  // Optimistic so the switch tracks instantly; refreshing the route
+  // reconciles this to the durable value on the next render.
+  const router = useRouter();
   const [attached, setAttached] = React.useState(group.attached);
   const [pending, startTransition] = React.useTransition();
 
   function toggle(next: boolean) {
     setAttached(next);
     startTransition(async () => {
-      const res = await setSharedEnvGroupAttachmentAction({
-        groupId: group.id,
-        projectId,
-        attached: next,
-      });
+      const res = await gqlAction(
+        `mutation($groupId: String!, $projectId: String!, $attached: Boolean!) {
+          setSharedEnvGroupAttachment(groupId: $groupId, projectId: $projectId, attached: $attached)
+        }`,
+        { groupId: group.id, projectId, attached: next },
+      );
       if (res.ok) {
         toast.success(next ? "Group attached" : "Group detached");
+        router.refresh();
       } else {
         setAttached(!next);
         toast.error(res.error);

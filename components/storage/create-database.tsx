@@ -30,7 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createDatabaseAction } from "@/lib/actions/databases";
+import { useRouter } from "next/navigation";
+import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseType } from "@/lib/types";
 
 const TYPES: {
@@ -48,6 +49,7 @@ const TYPES: {
 ];
 
 export function CreateDatabase() {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
@@ -65,16 +67,18 @@ export function CreateDatabase() {
 
   function submit() {
     startTransition(async () => {
-      const res = await createDatabaseAction({
-        name,
-        type,
-        version,
-        exposedPublicly: exposed,
-      });
+      const res = await gqlAction<{ createDatabase: { id: string } }, { id: string }>(
+        `mutation($input: CreateDatabaseInput!) {
+          createDatabase(input: $input) { id }
+        }`,
+        { input: { name, type, version, exposedPublicly: exposed } },
+        (d) => d.createDatabase,
+      );
       if (res.ok) {
         toast.success(`Database ${name} is provisioning`);
         setOpen(false);
         setName("");
+        router.refresh();
       } else {
         toast.error(res.error);
       }

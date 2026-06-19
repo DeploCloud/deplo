@@ -5,11 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Play, Square, Hammer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  stopProjectAction,
-  startProjectAction,
-  rebuildProjectAction,
-} from "@/lib/actions/projects";
+import { gqlAction } from "@/lib/graphql-client";
 import type { ProjectStatus } from "@/lib/types";
 
 export function ProjectControls({
@@ -24,12 +20,9 @@ export function ProjectControls({
   // Anything other than an explicitly stopped (idle) project counts as running.
   const stopped = status === "idle";
 
-  function act(
-    fn: (id: string) => Promise<{ ok: boolean; error?: string }>,
-    success: string,
-  ) {
+  function act(mutation: string, success: string) {
     startTransition(async () => {
-      const res = await fn(projectId);
+      const res = await gqlAction(mutation, { id: projectId });
       if (res.ok) {
         toast.success(success);
         router.refresh();
@@ -45,7 +38,12 @@ export function ProjectControls({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => act(startProjectAction, "Container started")}
+          onClick={() =>
+            act(
+              `mutation($id: String!) { startProject(id: $id) { id } }`,
+              "Container started",
+            )
+          }
           disabled={pending}
         >
           <Play className="size-4" />
@@ -55,7 +53,12 @@ export function ProjectControls({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => act(stopProjectAction, "Container stopped")}
+          onClick={() =>
+            act(
+              `mutation($id: String!) { stopProject(id: $id) { id } }`,
+              "Container stopped",
+            )
+          }
           disabled={pending}
         >
           <Square className="size-4" />
@@ -65,7 +68,12 @@ export function ProjectControls({
       <Button
         variant="outline"
         size="sm"
-        onClick={() => act(rebuildProjectAction, "Rebuild started")}
+        onClick={() =>
+          act(
+            `mutation($id: String!) { rebuildProject(id: $id) { id } }`,
+            "Rebuild started",
+          )
+        }
         disabled={pending}
       >
         <Hammer className="size-4" />

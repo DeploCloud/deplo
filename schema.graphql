@@ -1,0 +1,1249 @@
+"""A single audit-log event in the active team's timeline."""
+type Activity {
+  actor: String
+  createdAt: String
+  id: ID
+  message: String
+  projectId: ID
+  teamId: ID
+  type: ActivityType
+}
+
+enum ActivityType {
+  backup
+  database
+  deployment
+  domain
+  env
+  member
+  project
+  s3
+}
+
+input AddDevSshUserInput {
+  name: String!
+  password: String
+  projectId: String!
+  publicKey: String
+}
+
+input AddMemberInput {
+  capabilities: [Capability!]
+  role: Role!
+  userId: String!
+}
+
+input AddRegistryInput {
+  name: String!
+  password: String!
+  registryUrl: String
+  type: RegistryType!
+  username: String!
+}
+
+"""Register a remote server (provisioned via SSH)."""
+input AddServerInput {
+  host: String!
+  name: String!
+  sshPort: Int
+  sshUser: String
+}
+
+"""
+A team API token. Only the prefix is ever exposed — the raw token is shown once at creation and only its hash is persisted.
+"""
+type ApiToken {
+  createdAt: String
+  id: ID
+  lastUsedAt: String
+  name: String
+  prefix: String
+}
+
+type AuthPayload {
+  viewer: Viewer
+}
+
+"""A scheduled database backup to an S3 destination."""
+type Backup {
+  createdAt: String
+  databaseId: ID
+  databaseName: String
+  destinationId: ID
+  destinationName: String
+  enabled: Boolean
+  id: ID
+  lastRunAt: String
+  lastStatus: BackupStatus
+  name: String
+  retentionDays: Int
+
+  """Cron expression."""
+  schedule: String
+  teamId: ID
+}
+
+enum BackupStatus {
+  failed
+  never
+  running
+  success
+}
+
+"""Partial build configuration; only the provided fields are changed."""
+input BuildConfigInput {
+  buildCommand: String
+  buildMethod: String
+  framework: String
+  installCommand: String
+  outputDir: String
+  port: Int
+  rootDir: String
+  runtimeVersion: String
+  settings: JSON
+  startCommand: String
+}
+
+enum Capability {
+  deploy
+  manage_domains
+  manage_env
+  manage_infra
+  manage_members
+  manage_team
+  view
+}
+
+enum CertProvider {
+  cloudflare
+  letsencrypt
+  none
+}
+
+"""
+Console attach info for a project (no shell probe — fetch the shell label separately via shellLabel).
+"""
+type ConsoleInfo {
+  containerName: String
+  image: String
+  instances: [ConsoleInstance!]
+  running: Boolean
+}
+
+"""A single attachable container in a project's stack."""
+type ConsoleInstance {
+  exposed: Boolean
+  image: String
+  name: String
+  openStdin: Boolean
+  running: Boolean
+  service: String
+  tty: Boolean
+  user: String
+  workdir: String
+}
+
+input CreateBackupInput {
+  databaseId: String
+  destinationId: String!
+  name: String!
+  retentionDays: Int!
+  schedule: String!
+}
+
+input CreateDatabaseInput {
+  exposedPublicly: Boolean
+  name: String!
+  type: DatabaseType!
+  version: String!
+}
+
+input CreateProjectInput {
+  autoDeploy: Boolean
+  autoDomain: String
+  build: BuildConfigInput
+  compose: String
+  composePort: Int
+  composeService: String
+  dockerImage: String
+  env: [ProjectEnvInput!]
+  exposes: [ExposeInput!]
+  framework: String!
+  logo: String
+  mounts: [MountInput!]
+  name: String!
+  repo: GitRepoInput
+  serverId: String
+  source: DeploySource!
+}
+
+input CreateS3Input {
+  accessKey: String!
+  bucket: String!
+  endpoint: String!
+  name: String!
+  provider: S3Provider!
+  region: String
+  secretKey: String!
+}
+
+"""
+Result of creating a token. `raw` is the full secret and is returned only here, once — store it now, it cannot be recovered later.
+"""
+type CreateTokenPayload {
+  """The full token secret. Shown once and never again."""
+  raw: String
+  token: ApiToken
+}
+
+"""
+A provisioned database container owned by a team. The connection string is masked; reveal it with the revealConnection mutation.
+"""
+type Database {
+  connectionStringMasked: String
+  createdAt: String
+  exposedPublicly: Boolean
+  host: String
+  id: ID
+  name: String
+  port: Int
+  serverId: ID
+  sizeMb: Int
+  status: DatabaseStatus
+  teamId: ID
+  type: DatabaseType
+  version: String
+}
+
+enum DatabaseStatus {
+  error
+  provisioning
+  running
+  stopped
+}
+
+enum DatabaseType {
+  clickhouse
+  mariadb
+  mongodb
+  mysql
+  postgres
+  redis
+}
+
+"""
+A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar.
+"""
+scalar DateTime
+
+enum DeploySource {
+  COMPOSE
+  DOCKER_IMAGE
+  GIT
+  GITHUB
+  UPLOAD
+}
+
+"""A single build + release of a project."""
+type Deployment {
+  branch: String
+  buildDurationMs: Int
+  commitAuthor: String
+  commitMessage: String
+  commitSha: String
+  createdAt: String
+  creator: String
+  environment: DeploymentEnvironment
+  id: ID
+
+  """Build logs for this deployment."""
+  logs: [LogLine!]
+  projectId: ID
+  readyAt: String
+  status: DeploymentStatus
+  url: String
+}
+
+enum DeploymentEnvironment {
+  preview
+  production
+}
+
+enum DeploymentStatus {
+  building
+  canceled
+  error
+  queued
+  ready
+}
+
+enum DevImageKind {
+  custom
+  preset
+}
+
+"""A client-safe view of a project's dev config + preview URL."""
+type DevInfo {
+  devCommand: String
+  eligible: Boolean
+  enabled: Boolean
+  image: String
+  imageKind: DevImageKind
+  latestStartAt: String
+  port: Int
+  previewEnabled: Boolean
+  previewUrl: String
+  resolvedImage: String
+  status: DevStatus
+}
+
+"""An SSH credential for a project's dev container."""
+type DevSshUser {
+  createdAt: String
+  hasPassword: Boolean
+  id: ID
+  publicKey: String
+  username: String
+}
+
+enum DevStatus {
+  error
+  off
+  running
+  starting
+  stopped
+}
+
+"""A routable hostname attached to a project (Traefik router)."""
+type Domain {
+  certProvider: CertProvider
+  createdAt: String
+  entrypoint: DomainEntrypoint
+  id: ID
+  middlewares: [String!]
+  name: String
+  pathPrefix: String
+  port: Int
+  primary: Boolean
+  projectId: ID
+  projectName: String
+  projectSlug: String
+  redirectTo: String
+  service: String
+  source: String
+  ssl: Boolean
+  status: DomainStatus
+  stripPrefix: Boolean
+}
+
+"""
+Per-domain routing config; omitted fields take the HTTPS/letsencrypt defaults.
+"""
+input DomainConfigInput {
+  certProvider: CertProvider
+  entrypoint: DomainEntrypoint
+  middlewares: [String!]
+  pathPrefix: String
+  port: Int
+  service: String
+  stripPrefix: Boolean
+}
+
+enum DomainEntrypoint {
+  web
+  websecure
+}
+
+"""
+Partial domain edit; only the provided fields are changed. Null clears an override.
+"""
+input DomainPatchInput {
+  certProvider: CertProvider
+  entrypoint: DomainEntrypoint
+  middlewares: [String!]
+  name: String
+  pathPrefix: String
+  port: Int
+  service: String
+  stripPrefix: Boolean
+}
+
+enum DomainStatus {
+  error
+  misconfigured
+  pending
+  valid
+}
+
+enum EnvTarget {
+  development
+  preview
+  production
+}
+
+"""
+A single environment variable. Secret values are masked unless revealed.
+"""
+type EnvVar {
+  id: ID
+  isMasked: Boolean
+  key: String
+  targets: [EnvTarget!]
+  type: EnvVarType
+  updatedAt: String
+  value: String
+}
+
+enum EnvVarType {
+  plain
+  secret
+}
+
+input ExecConsoleInput {
+  command: String!
+  containerName: String
+  projectId: String!
+}
+
+"""Output of an exec'd console command."""
+type ExecResult {
+  detach: Boolean
+  output: String
+}
+
+"""Which compose service + port Traefik exposes."""
+input ExposeInput {
+  host: String
+  port: Int!
+  service: String!
+}
+
+input GitRepoInput {
+  branch: String!
+  installationId: String
+  provider: String!
+  repo: String!
+  url: String!
+}
+
+"""A GitHub App connected to a team (no secrets exposed)."""
+type GithubApp {
+  appId: Int
+  createdAt: String
+  htmlUrl: String
+  id: ID
+
+  """Installations of this App."""
+  installations: [GithubInstallation!]
+  name: String
+  slug: String
+}
+
+"""
+Inputs for the browser's self-submitting form that creates a GitHub App.
+"""
+type GithubConnectStart {
+  actionUrl: String
+  manifest: String
+  state: String
+}
+
+"""An installation of a connected GitHub App on a user or org."""
+type GithubInstallation {
+  accountLogin: String
+  accountType: String
+  avatarUrl: String
+  id: ID
+  installationId: Int
+}
+
+"""A repository the installation can list and clone."""
+type GithubRepo {
+  defaultBranch: String
+  fullName: String
+  name: String
+  private: Boolean
+  updatedAt: String
+  url: String
+}
+
+"""A registered user in the instance-wide Users list (no email exposed)."""
+type GlobalUser {
+  avatarColor: String
+  createdAt: String
+  isInstanceAdmin: Boolean
+  name: String
+  suspended: Boolean
+  teamCount: Int
+  userId: ID
+  username: String
+}
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+type LogLine {
+  level: String
+  text: String
+  ts: String
+}
+
+"""Lighter container list for the logs viewer (no shell probe)."""
+type LogsInfo {
+  instances: [ConsoleInstance!]
+  running: Boolean
+}
+
+"""A user's membership in the active team (no email exposed)."""
+type Member {
+  avatarColor: String
+  capabilities: [Capability!]
+  createdAt: String
+  membershipId: ID
+  name: String
+  role: Role
+  userId: ID
+  username: String
+}
+
+"""A config file a template materialises into its stack at deploy."""
+input MountInput {
+  content: String!
+  filePath: String!
+}
+
+type Mutation {
+  addDevSshUser(input: AddDevSshUserInput!): DevSshUser
+  addDomain(config: DomainConfigInput, name: String!, projectId: String!): Domain
+
+  """Add an already-registered user to the active team."""
+  addExistingMember(input: AddMemberInput!): Member
+
+  """Add a registry credential to the active team. Returns true."""
+  addRegistry(input: AddRegistryInput!): Boolean
+  addServer(input: AddServerInput!): Server
+  cancelDeployment(id: String!): Boolean
+
+  """
+  Change the current user's password after verifying the current one. Returns true.
+  """
+  changePassword(currentPassword: String!, newPassword: String!): Boolean
+
+  """Re-run the upstream release check and return the latest update info."""
+  checkForUpdates: UpdateInfo
+
+  """First-run setup: create the first account + team. Signs in."""
+  completeSetup(email: String!, name: String!, password: String!, teamName: String!, username: String!): AuthPayload
+
+  """Create a backup schedule. Returns true."""
+  createBackup(input: CreateBackupInput!): Boolean
+  createDatabase(input: CreateDatabaseInput!): Database
+  createProject(input: CreateProjectInput!): Project
+  createS3(input: CreateS3Input!): S3Destination
+
+  """Create a new team; the viewer becomes its owner and it is made active."""
+  createTeam(name: String!): Team
+
+  """
+  Create a new API token. The raw secret is returned once in the payload.
+  """
+  createToken(name: String!): CreateTokenPayload
+
+  """Delete a backup schedule. Returns true."""
+  deleteBackup(id: String!): Boolean
+
+  """Tear down the database container + volume. Returns true."""
+  deleteDatabase(id: String!): Boolean
+
+  """Delete an env var. Returns true."""
+  deleteEnv(id: String!): Boolean
+
+  """Delete the project and tear down its stack. Returns true."""
+  deleteProject(id: String!): Boolean
+
+  """Delete a registry credential. Returns true."""
+  deleteRegistry(id: String!): Boolean
+
+  """Delete the S3 destination and its backups. Returns true."""
+  deleteS3(id: String!): Boolean
+
+  """Delete a shared env group. Returns true."""
+  deleteSharedEnvGroup(id: String!): Boolean
+
+  """
+  Deploy the current dev workspace files to production. Returns the deployment id.
+  """
+  deployDevWorkspace(projectId: String!): String
+  disableDev(projectId: String!): DevInfo
+  enableDev(projectId: String!): DevInfo
+
+  """
+  Run a command in the project's live container (docker exec). Gated on the deploy capability — this is arbitrary code execution.
+  """
+  execConsole(input: ExecConsoleInput!): ExecResult
+
+  """Bulk-import a .env-style blob; returns the number of vars imported."""
+  importEnv(blob: String!, projectId: String!, targets: [EnvTarget!]!): Int
+
+  """Sign in with email + password. Sets the session cookie."""
+  login(email: String!, password: String!): AuthPayload
+
+  """Clear the session + active-team cookies."""
+  logout: Boolean
+
+  """
+  Mint a single-use registration link. Returns the absolute /register URL.
+  """
+  mintRegistrationLink: String
+
+  """Promote a preview deployment to production."""
+  promoteDeployment(id: String!): Boolean
+  rebuildProject(id: String!): Project
+  redeploy(projectId: String!): Deployment
+
+  """
+  Create a new account + team via a single-use registration link. Signs in.
+  """
+  registerThroughLink(email: String!, name: String!, password: String!, teamName: String!, token: String!, username: String!): AuthPayload
+
+  """Remove a dev SSH user. Returns true."""
+  removeDevSshUser(id: String!): Boolean
+
+  """Remove the domain so it stops routing. Returns true."""
+  removeDomain(id: String!): Boolean
+
+  """Disconnect a GitHub App and its installations. Returns true."""
+  removeGithubApp(id: String!): Boolean
+
+  """Remove a member from the active team. Returns true."""
+  removeMember(userId: String!): Boolean
+
+  """Disconnect and remove a remote server. Returns true."""
+  removeServer(id: String!): Boolean
+  renameProject(id: String!, name: String!): Project
+
+  """Render the docker-compose stack a project would deploy."""
+  renderComposeStack(projectId: String!): String
+
+  """DESTRUCTIVE: replace the workspace with a fresh copy of the source."""
+  resetDevWorkspace(projectId: String!): DevInfo
+
+  """Reveal the full (unmasked) connection string for a database."""
+  revealConnection(id: String!): String
+
+  """Reveal a single secret's plaintext value."""
+  revealEnv(id: String!): String
+
+  """
+  Reveal the decrypted `.env` text for one shared group (prefills edits).
+  """
+  revealSharedEnvBlob(id: String!): String
+
+  """Revoke a pending registration link. Returns true."""
+  revokeRegistrationLink(id: String!): Boolean
+
+  """Revoke (delete) an API token. Returns true."""
+  revokeToken(id: String!): Boolean
+
+  """Run a backup schedule manually now. Returns true."""
+  runBackup(id: String!): Boolean
+
+  """Replace the active team's notification settings."""
+  saveNotificationSettings(input: JSON!): NotificationSettings
+
+  """Create or update a shared env group; returns the saved group."""
+  saveSharedEnvGroup(input: SaveSharedEnvGroupInput!): SharedEnvGroup
+  setDatabaseRunning(id: String!, running: Boolean!): Database
+
+  """Make this domain its project's primary (canonical) host. Returns true."""
+  setPrimaryDomain(id: String!): Boolean
+  setProjectAutoDeploy(id: String!, value: Boolean!): Project
+
+  """Attach or detach a shared group to one project. Returns true."""
+  setSharedEnvGroupAttachment(attached: Boolean!, groupId: String!, projectId: String!): Boolean
+  startDev(projectId: String!): DevInfo
+
+  """
+  Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.
+  """
+  startGithubConnect(org: String): GithubConnectStart
+  startProject(id: String!): Project
+
+  """Start the VS Code tunnel and return the device-login link."""
+  startTunnel(projectId: String!): VscodeTunnelInfo
+  stopDev(projectId: String!): DevInfo
+  stopProject(id: String!): Project
+
+  """Stop the VS Code tunnel (dev container keeps running). Returns true."""
+  stopTunnel(projectId: String!): Boolean
+
+  """Switch the active team (sets a cookie server-side). Returns true."""
+  switchTeam(teamId: String!): Boolean
+
+  """Send a one-off test alert through a single channel. Returns true."""
+  testNotification(channel: TestNotificationChannel!): Boolean
+
+  """Run a connectivity check (HEAD bucket) and return the dest."""
+  testS3(id: String!): S3Destination
+
+  """Enable or disable a backup schedule. Returns true."""
+  toggleBackup(enabled: Boolean!, id: String!): Boolean
+  updateDev(patch: UpdateDevInput!, projectId: String!): DevInfo
+
+  """
+  Apply a full edit to a domain and return the updated domain (reloaded).
+  """
+  updateDomain(id: String!, patch: DomainPatchInput!): Domain
+
+  """
+  Change the current user's email after re-checking their password. Returns true.
+  """
+  updateEmail(currentPassword: String!, email: String!): Boolean
+
+  """Change a member's role and/or capabilities."""
+  updateMember(input: UpdateMemberInput!): Member
+
+  """Update the current user's display name. Returns true."""
+  updateProfile(name: String!): Boolean
+  updateProjectBuild(build: BuildConfigInput!, id: String!): Project
+  updateProjectLogo(id: String!, logo: String): Project
+  updateProjectSource(id: String!, input: UpdateSourceInput!): Project
+  updateTeam(input: UpdateTeamInput!): Team
+
+  """Edit a user's instance-admin flag, suspended state, and password."""
+  updateUserAdmin(input: UpdateUserAdminInput!): UserDetail
+
+  """Create or update an env var, then return the stored entity."""
+  upsertEnv(input: UpsertEnvInput!): EnvVar
+
+  """Re-check the domain's DNS and (re)issue its certificate."""
+  verifyDomain(id: String!): Domain
+}
+
+"""Per-team notification channels + per-event delivery toggles."""
+type NotificationSettings {
+  """
+  Channel config map: push/email/discord/webhook enable flags + endpoints.
+  """
+  channels: JSON
+
+  """
+  Per-event delivery map (deployment_failed, server_offline, …) -> boolean.
+  """
+  events: JSON
+}
+
+"""A deployable application owned by a team."""
+type Project {
+  autoDeploy: Boolean
+  compose: String
+  createdAt: String
+
+  """All deployments of this project, newest first."""
+  deployments: [Deployment!]
+  dockerImage: String
+  domainCount: Int
+  framework: String
+  id: ID
+  latestDeployment: Deployment
+  logo: String
+  name: String
+  productionUrl: String
+  serverId: ID
+  slug: String
+  source: DeploySource
+  status: ProjectStatus
+  teamId: ID
+  updatedAt: String
+}
+
+"""One project together with all of its env vars."""
+type ProjectEnvGroup {
+  project: ProjectEnvGroupProject
+  vars: [EnvVar!]
+}
+
+type ProjectEnvGroupProject {
+  id: ID
+  name: String
+  slug: String
+}
+
+"""An initial environment variable for a new project."""
+input ProjectEnvInput {
+  key: String!
+  value: String!
+}
+
+"""A shared env group as seen from one project, with attachment state."""
+type ProjectSharedEnvGroup {
+  attached: Boolean
+  description: String
+  id: ID
+  keys: [String!]
+  name: String
+  targets: [EnvTarget!]
+}
+
+enum ProjectStatus {
+  active
+  building
+  error
+  idle
+  queued
+}
+
+type Query {
+  """Recent activity in the active team, newest first."""
+  activity(limit: Int): [Activity!]
+
+  """Every project's env vars in the active team, grouped by project."""
+  allProjectEnv: [ProjectEnvGroup!]
+
+  """Fresh live metrics snapshots for every server."""
+  allServerMetrics: [ServerMetrics!]
+
+  """Every registered user on the instance (no email)."""
+  allUsers: [GlobalUser!]
+
+  """
+  Diagnostic: how the request authenticated and the active team. Useful when testing token auth.
+  """
+  apiContext: JSON
+
+  """All API tokens in the active team."""
+  apiTokens: [ApiToken!]
+
+  """All backup schedules in the active team, newest first."""
+  backups: [Backup!]
+
+  """Attachable instances + default target for a project's console."""
+  consoleInfo(projectId: String!): ConsoleInfo
+  database(id: String!): Database
+
+  """All databases in the active team, newest first."""
+  databases: [Database!]
+  deployment(id: String!): Deployment
+  deployments(environment: DeploymentEnvironment, projectId: String, status: DeploymentStatus): [Deployment!]
+
+  """Whether dev mode is available for a given deploy source."""
+  devEligible(source: DeploySource!): Boolean
+
+  """Dev config + computed preview URL for a project."""
+  devInfo(projectId: String!): DevInfo
+
+  """SSH credentials for a project's dev container."""
+  devSshUsers(projectId: String!): [DevSshUser!]
+
+  """
+  Domains in the active team, primary first. Optionally filtered to one project.
+  """
+  domains(projectId: String): [Domain!]
+
+  """Env vars of a single project (requires manage_env)."""
+  env(projectId: String!): [EnvVar!]
+
+  """Connected GitHub Apps in the active team."""
+  githubApps: [GithubApp!]
+
+  """Branch names for a repo accessible to an installation."""
+  githubBranches(fullName: String!, installationId: String!): [String!]
+
+  """Installations of the active team's connected Apps."""
+  githubInstallations: [GithubInstallation!]
+
+  """Repositories accessible to a GitHub App installation."""
+  githubRepos(installationId: String!): [GithubRepo!]
+
+  """Lighter instance list for the logs viewer."""
+  logsInfo(projectId: String!): LogsInfo
+
+  """
+  The authenticated viewer, or null when unauthenticated. Works with a session cookie or an API token.
+  """
+  me: Viewer
+
+  """Members of the active team, oldest first."""
+  members: [Member!]
+
+  """Every team the viewer belongs to, for the team switcher."""
+  myTeams: [TeamMembership!]
+
+  """The active team's notification settings (defaults if unset)."""
+  notificationSettings: NotificationSettings
+
+  """The master (localhost) server, or the first one available."""
+  primaryServer: Server
+  project(slug: String!): Project
+
+  """All projects in the active team, newest first."""
+  projects: [Project!]
+
+  """Pending + recent registration links, newest first."""
+  registrationLinks: [RegistrationLink!]
+
+  """All registry credentials in the active team, newest first."""
+  registries: [Registry!]
+
+  """All S3 destinations in the active team, newest first."""
+  s3Destinations: [S3Destination!]
+
+  """Search registered users (by username/display name) to add to the team."""
+  searchUsers(query: String!): [UserSearchResult!]
+  server(id: String!): Server
+
+  """A fresh live metrics snapshot for one server."""
+  serverMetrics(serverId: String!): ServerMetrics
+
+  """All servers, master first then remotes by creation order."""
+  servers: [Server!]
+
+  """All shared env groups in the active team, A→Z."""
+  sharedEnvGroups: [SharedEnvGroup!]
+
+  """Shared env groups annotated with whether they attach to one project."""
+  sharedEnvGroupsForProject(projectId: String!): [ProjectSharedEnvGroup!]
+
+  """
+  The default (or chosen) container's shell label, e.g. "/bin/sh" or "raw exec (no shell)".
+  """
+  shellLabel(input: ShellLabelInput!): String
+
+  """Current VS Code tunnel status for a project."""
+  tunnel(projectId: String!): VscodeTunnelInfo
+
+  """
+  Check the upstream repository for a newer Deplo release; cached for an hour.
+  """
+  updateInfo: UpdateInfo
+
+  """Full detail (incl. email) for one user."""
+  userDetail(userId: String!): UserDetail
+
+  """The active team."""
+  viewerTeam: Team
+}
+
+"""A single-use link to register a new account + owner team."""
+type RegistrationLink {
+  createdAt: String
+  createdBy: String
+  expiresAt: String
+  id: ID
+  status: RegistrationLinkStatus
+  usedByUsername: String
+}
+
+enum RegistrationLinkStatus {
+  pending
+  revoked
+  used
+}
+
+"""
+A container-image registry credential owned by a team. The password / access token is never exposed — only the connection metadata.
+"""
+type Registry {
+  createdAt: String
+  id: ID
+  name: String
+  registryUrl: String
+  type: RegistryType
+  username: String
+}
+
+enum RegistryType {
+  dockerhub
+  generic
+  ghcr
+  gitlab
+}
+
+enum Role {
+  member
+  owner
+  viewer
+}
+
+"""An S3-compatible storage destination owned by a team (secrets masked)."""
+type S3Destination {
+  accessKeyMasked: String
+  bucket: String
+  createdAt: String
+  endpoint: String
+  id: ID
+  name: String
+  provider: S3Provider
+  region: String
+  status: S3Status
+  teamId: ID
+}
+
+enum S3Provider {
+  AWS
+  BACKBLAZE_B2
+  CLOUDFLARE_R2
+  DIGITALOCEAN
+  MINIO
+  OTHER
+  WASABI
+}
+
+enum S3Status {
+  connected
+  error
+  unverified
+}
+
+"""
+Create (omit id) or update (provide id) a shared env group. The blob is raw `.env` text; secret-looking keys are masked automatically.
+"""
+input SaveSharedEnvGroupInput {
+  blob: String!
+  description: String!
+  id: String
+  name: String!
+  projectIds: [ID!]!
+  targets: [EnvTarget!]!
+}
+
+"""A host (the master or a connected remote) running deployments."""
+type Server {
+  cpuCores: Int
+  cpuUsage: Int
+  createdAt: String
+  diskGb: Int
+  diskUsage: Int
+  dockerVersion: String
+  host: String
+  id: ID
+  ip: String
+  memoryMb: Int
+  memoryUsage: Int
+  name: String
+  status: ServerStatus
+  traefikEnabled: Boolean
+  type: ServerType
+}
+
+"""
+A live resource-usage snapshot for one server (CPU, memory, disk, network, load and running-container count).
+"""
+type ServerMetrics {
+  containers: Int
+  cpu: Float
+  cpuCores: Int
+  diskPct: Float
+  diskTotal: Float
+  diskUsed: Float
+
+  """Load averages over [1m, 5m, 15m]."""
+  load: [Float!]
+  memPct: Float
+  memTotal: Float
+  memUsed: Float
+  netRx: Float
+  netTx: Float
+  online: Boolean
+  serverId: ID
+  ts: Float
+  uptimeSec: Int
+}
+
+enum ServerStatus {
+  error
+  offline
+  online
+  provisioning
+}
+
+enum ServerType {
+  localhost
+  remote
+}
+
+"""A reusable group of environment variables shared across projects."""
+type SharedEnvGroup {
+  description: String
+  id: ID
+  name: String
+  projectIds: [ID!]
+
+  """Projects this group is attached to."""
+  projects: [SharedEnvGroupProject!]
+
+  """Deploy environments this group applies to."""
+  targets: [EnvTarget!]
+  updatedAt: String
+  variables: [SharedEnvVar!]
+}
+
+type SharedEnvGroupProject {
+  id: ID
+  name: String
+  slug: String
+}
+
+"""A single shared environment variable; secret values are masked."""
+type SharedEnvVar {
+  key: String
+  masked: Boolean
+  type: String
+  value: String
+}
+
+input ShellLabelInput {
+  containerName: String
+  projectId: String!
+}
+
+"""A team that owns projects, infra and members."""
+type Team {
+  createdAt: String
+  id: ID
+  name: String
+  plan: TeamPlan
+  slug: String
+}
+
+"""A team the viewer belongs to, carrying their role and the team size."""
+type TeamMembership {
+  createdAt: String
+  id: ID
+  memberCount: Int
+  name: String
+  plan: TeamPlan
+  role: String
+  slug: String
+}
+
+enum TeamPlan {
+  enterprise
+  pro
+}
+
+enum TestNotificationChannel {
+  discord
+  email
+  webhook
+}
+
+"""Partial dev config patch; only the provided fields are changed."""
+input UpdateDevInput {
+  devCommand: String
+  image: String
+  imageKind: DevImageKind
+  port: Int
+  previewEnabled: Boolean
+}
+
+"""
+Result of checking the upstream GitHub repository for a newer Deplo release.
+"""
+type UpdateInfo {
+  checkedAt: String
+  current: String
+  error: String
+  latest: String
+  name: String
+  publishedAt: String
+  updateAvailable: Boolean
+  url: String
+}
+
+input UpdateMemberInput {
+  capabilities: [Capability!]
+  role: Role!
+  userId: String!
+}
+
+input UpdateSourceInput {
+  compose: String
+  dockerImage: String
+  expose: ExposeInput
+  exposes: [ExposeInput!]
+  repo: GitRepoInput
+  serverId: String
+  source: DeploySource!
+}
+
+input UpdateTeamInput {
+  name: String!
+  slug: String!
+}
+
+input UpdateUserAdminInput {
+  isInstanceAdmin: Boolean!
+  newPassword: String
+  suspended: Boolean!
+  userId: String!
+}
+
+input UpsertEnvInput {
+  key: String!
+  projectId: String!
+  targets: [EnvTarget!]!
+  type: EnvVarType!
+  value: String!
+}
+
+type UserActivity {
+  createdAt: String
+  message: String
+}
+
+"""
+Full per-user detail for the admin editor — the email IS included here.
+"""
+type UserDetail {
+  avatarColor: String
+  createdAt: String
+  email: String
+  isInstanceAdmin: Boolean
+  name: String
+  recentActivity: [UserActivity!]
+  suspended: Boolean
+  teams: [UserDetailTeam!]
+  userId: ID
+  username: String
+}
+
+type UserDetailTeam {
+  role: Role
+  teamId: ID
+  teamName: String
+}
+
+"""
+A registered user matched by username/display name when adding members.
+"""
+type UserSearchResult {
+  avatarColor: String
+  name: String
+  teamName: String
+  userId: ID
+  username: String
+}
+
+"""The authenticated principal for the current request."""
+type Viewer {
+  avatarColor: String
+  email: String
+  id: ID
+  isInstanceAdmin: Boolean
+  name: String
+  role: String
+  username: String
+}
+
+"""VS Code Remote Tunnel status for a project's dev container."""
+type VscodeTunnelInfo {
+  connected: Boolean
+  log: String
+  loginCode: String
+  loginUrl: String
+  running: Boolean
+  tunnelUrl: String
+}

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   MoreHorizontal,
@@ -26,7 +27,7 @@ import { ProjectLogo } from "@/components/shared/project-logo";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { timeAgo } from "@/lib/utils";
-import { redeployAction, deleteProjectAction } from "@/lib/actions/projects";
+import { gqlAction } from "@/lib/graphql-client";
 import type { ProjectSummary } from "@/lib/data/projects";
 
 export function ProjectCard({
@@ -36,6 +37,7 @@ export function ProjectCard({
   project: ProjectSummary;
   view?: "grid" | "list";
 }) {
+  const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const dep = project.latestDeployment;
@@ -46,9 +48,14 @@ export function ProjectCard({
 
   function redeploy() {
     startTransition(async () => {
-      const res = await redeployAction(project.id);
-      if (res.ok) toast.success(`Redeploying ${project.name}…`);
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($projectId: String!) { redeploy(projectId: $projectId) { id } }`,
+        { projectId: project.id },
+      );
+      if (res.ok) {
+        toast.success(`Redeploying ${project.name}…`);
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 
@@ -122,7 +129,14 @@ export function ProjectCard({
       description="This permanently removes the project, its deployments, domains and environment variables. This action cannot be undone."
       confirmLabel="Delete project"
       successMessage="Project deleted"
-      onConfirm={() => deleteProjectAction(project.id)}
+      onConfirm={async () => {
+        const res = await gqlAction(
+          `mutation($id: String!) { deleteProject(id: $id) }`,
+          { id: project.id },
+        );
+        if (res.ok) router.push("/");
+        return res;
+      }}
     />
   );
 

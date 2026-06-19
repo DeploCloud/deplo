@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Sparkles, ArrowUpRight, X } from "lucide-react";
-import { checkForUpdatesAction } from "@/lib/actions/updates";
+import { gqlAction } from "@/lib/graphql-client";
 import type { UpdateInfo } from "@/lib/data/updates";
 
 const DISMISS_KEY = "deplo:update-dismissed";
@@ -17,7 +17,11 @@ export function UpdateBanner() {
 
   React.useEffect(() => {
     let active = true;
-    checkForUpdatesAction().then((res) => {
+    gqlAction<{ updateInfo: UpdateInfo | null }, UpdateInfo | null>(
+      `query { updateInfo { updateAvailable latest current url } }`,
+      undefined,
+      (d) => d.updateInfo,
+    ).then((res) => {
       if (!active || !res.ok || !res.data) return;
       const d = res.data;
       if (!d.updateAvailable || !d.latest) return;

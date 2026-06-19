@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, Rocket } from "lucide-react";
-import { setupAction, type AuthState } from "@/lib/actions/auth";
+import { gql } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,11 +15,52 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+const COMPLETE_SETUP = /* GraphQL */ `
+  mutation CompleteSetup(
+    $username: String!
+    $teamName: String!
+    $name: String!
+    $email: String!
+    $password: String!
+  ) {
+    completeSetup(
+      username: $username
+      teamName: $teamName
+      name: $name
+      email: $email
+      password: $password
+    ) {
+      viewer { id }
+    }
+  }
+`;
+
 export function SetupForm() {
-  const [state, action, pending] = useActionState<AuthState, FormData>(
-    setupAction,
-    {},
-  );
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const vars = {
+      username: String(form.get("username") ?? ""),
+      teamName: String(form.get("teamName") ?? ""),
+      name: String(form.get("name") ?? ""),
+      email: String(form.get("email") ?? ""),
+      password: String(form.get("password") ?? ""),
+    };
+    setError(null);
+    startTransition(async () => {
+      try {
+        await gql(COMPLETE_SETUP, vars);
+        router.push("/");
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Setup failed");
+      }
+    });
+  }
 
   return (
     <Card>
@@ -30,11 +72,11 @@ export function SetupForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={action} className="space-y-4">
-          {state.error && (
+        <form onSubmit={onSubmit} className="space-y-4">
+          {error && (
             <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               <AlertCircle className="size-4 shrink-0" />
-              {state.error}
+              {error}
             </div>
           )}
           <div className="space-y-2">

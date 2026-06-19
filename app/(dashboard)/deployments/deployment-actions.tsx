@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   MoreHorizontal,
@@ -17,11 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  redeployAction,
-  cancelDeploymentAction,
-  promoteAction,
-} from "@/lib/actions/projects";
+import { gqlAction } from "@/lib/graphql-client";
 import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
 
 export function DeploymentActions({
@@ -37,6 +34,7 @@ export function DeploymentActions({
   status: DeploymentStatus;
   environment: DeploymentEnvironment;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = React.useTransition();
 
   const isPreview = environment === "preview";
@@ -44,25 +42,40 @@ export function DeploymentActions({
 
   function redeploy() {
     startTransition(async () => {
-      const res = await redeployAction(projectId);
-      if (res.ok) toast.success("Redeploy started");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation ($projectId: String!) { redeploy(projectId: $projectId) { id } }`,
+        { projectId },
+      );
+      if (res.ok) {
+        toast.success("Redeploy started");
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 
   function promote() {
     startTransition(async () => {
-      const res = await promoteAction(id);
-      if (res.ok) toast.success("Promoted to production");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation ($id: String!) { promoteDeployment(id: $id) }`,
+        { id },
+      );
+      if (res.ok) {
+        toast.success("Promoted to production");
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 
   function cancel() {
     startTransition(async () => {
-      const res = await cancelDeploymentAction(id);
-      if (res.ok) toast.success("Deployment canceled");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation ($id: String!) { cancelDeployment(id: $id) }`,
+        { id },
+      );
+      if (res.ok) {
+        toast.success("Deployment canceled");
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { LogOut, Settings, User as UserIcon, LifeBuoy } from "lucide-react";
 import {
   DropdownMenu,
@@ -11,11 +12,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { logoutAction } from "@/lib/actions/auth";
+import { gqlAction } from "@/lib/graphql-client";
 import type { PublicUser } from "@/lib/types";
 
 export function UserMenu({ user }: { user: PublicUser }) {
+  const router = useRouter();
   const initials = user.username.slice(0, 2).toUpperCase();
+
+  async function handleLogout() {
+    await gqlAction(`mutation { logout }`);
+    router.push("/login");
+  }
 
   return (
     <DropdownMenu>
@@ -66,14 +73,17 @@ export function UserMenu({ user }: { user: PublicUser }) {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <form action={logoutAction}>
-          <DropdownMenuItem variant="destructive" asChild>
-            <button type="submit" className="w-full cursor-pointer">
-              <LogOut className="size-4" />
-              Log out
-            </button>
-          </DropdownMenuItem>
-        </form>
+        <DropdownMenuItem
+          variant="destructive"
+          className="cursor-pointer"
+          onSelect={(e) => {
+            e.preventDefault();
+            void handleLogout();
+          }}
+        >
+          <LogOut className="size-4" />
+          Log out
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

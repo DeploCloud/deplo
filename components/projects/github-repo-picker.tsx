@@ -14,10 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import {
-  listGithubReposAction,
-  listGithubBranchesAction,
-} from "@/lib/actions/github";
+import { gqlAction } from "@/lib/graphql-client";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 import type { GithubRepoSummary } from "@/lib/github/app";
 
@@ -81,7 +78,23 @@ export function GithubRepoPicker({
       setSelected(null);
       setBranches([]);
       setBranch("");
-      const res = await listGithubReposAction(instId);
+      const res = await gqlAction<
+        { githubRepos: GithubRepoSummary[] },
+        GithubRepoSummary[]
+      >(
+        `query($installationId: String!) {
+          githubRepos(installationId: $installationId) {
+            fullName
+            name
+            private
+            defaultBranch
+            url
+            updatedAt
+          }
+        }`,
+        { installationId: instId },
+        (d) => d.githubRepos,
+      );
       setLoadingRepos(false);
       if (res.ok && res.data) {
         setRepos(res.data);
@@ -110,7 +123,13 @@ export function GithubRepoPicker({
     repo: GithubRepoSummary,
     preferred?: string,
   ) {
-    const res = await listGithubBranchesAction(instId, repo.fullName);
+    const res = await gqlAction<{ githubBranches: string[] }, string[]>(
+      `query($installationId: String!, $fullName: String!) {
+        githubBranches(installationId: $installationId, fullName: $fullName)
+      }`,
+      { installationId: instId, fullName: repo.fullName },
+      (d) => d.githubBranches,
+    );
     if (res.ok && res.data && res.data.length) {
       setBranches(res.data);
       const want = preferred && res.data.includes(preferred) ? preferred : null;

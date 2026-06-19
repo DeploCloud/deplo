@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { updateTeamAction } from "@/lib/actions/teams";
+import { gqlAction } from "@/lib/graphql-client";
 
 export function TeamForm({
   name: initialName,
@@ -16,6 +17,7 @@ export function TeamForm({
   slug: string;
   canManage?: boolean;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState(initialName);
   const [slug, setSlug] = React.useState(initialSlug);
@@ -25,9 +27,14 @@ export function TeamForm({
 
   function save() {
     startTransition(async () => {
-      const res = await updateTeamAction({ name, slug });
-      if (res.ok) toast.success("Team updated");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation($input: UpdateTeamInput!) { updateTeam(input: $input) { id } }`,
+        { input: { name, slug } }
+      );
+      if (res.ok) {
+        toast.success("Team updated");
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 

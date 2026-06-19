@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
-import { renderComposeStackAction } from "@/lib/actions/projects";
+import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * Shows the full Deplo-generated compose stack — the augmented YAML that
@@ -32,7 +32,11 @@ export function FullComposeDialog({ projectId }: { projectId: string }) {
     if (!next) return;
     setLoading(true);
     setError(null);
-    renderComposeStackAction(projectId)
+    gqlAction(
+      `mutation($projectId: String!) { renderComposeStack(projectId: $projectId) }`,
+      { projectId },
+      (d: { renderComposeStack: string | null }) => d.renderComposeStack,
+    )
       .then((res) => {
         if (res.ok) setYaml(res.data ?? null);
         else setError(res.error);

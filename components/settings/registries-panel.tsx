@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Trash2, Boxes } from "lucide-react";
 import {
@@ -32,10 +33,7 @@ import {
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import {
-  addRegistryAction,
-  deleteRegistryAction,
-} from "@/lib/actions/registries";
+import { gqlAction } from "@/lib/graphql-client";
 import type { RegistryDTO } from "@/lib/data/registries";
 import type { RegistryType } from "@/lib/types";
 
@@ -50,6 +48,7 @@ const TYPE_META: Record<
 };
 
 export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
+  const router = useRouter();
   const [addOpen, setAddOpen] = React.useState(false);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
 
@@ -123,13 +122,21 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
         description="Deployments using private images from this registry will no longer authenticate."
         confirmLabel="Remove"
         successMessage="Registry removed"
-        onConfirm={() => deleteRegistryAction(deleteId!)}
+        onConfirm={async () => {
+          const res = await gqlAction(
+            `mutation($id: String!) { deleteRegistry(id: $id) }`,
+            { id: deleteId! },
+          );
+          if (res.ok) router.refresh();
+          return res;
+        }}
       />
     </Card>
   );
 }
 
 function AddRegistryDialog({ onDone }: { onDone: () => void }) {
+  const router = useRouter();
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState<RegistryType>("ghcr");
   const [registryUrl, setRegistryUrl] = React.useState("");
@@ -141,15 +148,21 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
 
   function submit() {
     startTransition(async () => {
-      const res = await addRegistryAction({
-        name,
-        type,
-        registryUrl: registryUrl.trim() || undefined,
-        username,
-        password,
-      });
+      const res = await gqlAction(
+        `mutation($input: AddRegistryInput!) { addRegistry(input: $input) }`,
+        {
+          input: {
+            name,
+            type,
+            registryUrl: registryUrl.trim() || undefined,
+            username,
+            password,
+          },
+        },
+      );
       if (res.ok) {
         toast.success("Registry added");
+        router.refresh();
         onDone();
       } else {
         toast.error(res.error);

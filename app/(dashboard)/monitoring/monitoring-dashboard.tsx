@@ -16,7 +16,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
-import { serverMetricsAction } from "@/lib/actions/monitoring";
+import { gqlAction } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
 import type { ServerStatus } from "@/lib/types";
 import { cn, formatBytes, serverLabel } from "@/lib/utils";
@@ -62,7 +62,28 @@ export function MonitoringDashboard({
       if (busy) return;
       busy = true;
       try {
-        const res = await serverMetricsAction(selectedId);
+        const res = await gqlAction<{ serverMetrics: ServerMetrics }, ServerMetrics>(
+          `query ServerMetrics($serverId: String!) {
+            serverMetrics(serverId: $serverId) {
+              serverId
+              cpu
+              cpuCores
+              memUsed
+              memTotal
+              memPct
+              diskUsed
+              diskTotal
+              diskPct
+              netRx
+              netTx
+              load
+              uptimeSec
+              containers
+            }
+          }`,
+          { serverId: selectedId },
+          (d) => d.serverMetrics,
+        );
         if (!active || !res.ok || !res.data) return;
         const sample = res.data;
         setHistory((h) => {

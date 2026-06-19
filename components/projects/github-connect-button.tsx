@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import type { VariantProps } from "class-variance-authority";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { GitHubIcon } from "@/components/shared/brand-icons";
-import { startGithubConnectAction } from "@/lib/actions/github";
+import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * Kicks off GitHub's App Manifest flow: asks the server for a manifest + signed
@@ -28,7 +28,20 @@ export function GithubConnectButton({
 
   function connect() {
     startTransition(async () => {
-      const res = await startGithubConnectAction();
+      const res = await gqlAction<
+        {
+          startGithubConnect: {
+            actionUrl: string;
+            manifest: string;
+            state: string;
+          } | null;
+        },
+        { actionUrl: string; manifest: string; state: string } | null
+      >(
+        `mutation { startGithubConnect { actionUrl manifest state } }`,
+        undefined,
+        (d) => d.startGithubConnect,
+      );
       if (!res.ok || !res.data) {
         toast.error(res.ok ? "Could not start GitHub connect" : res.error);
         return;

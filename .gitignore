@@ -44,3 +44,4 @@ next-env.d.ts
 # deplo control-plane data store (local JSON persistence)
 /.deplo/
 /docs
+.claude

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import {
@@ -28,7 +29,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { createBackupAction } from "@/lib/actions/backups";
+import { gqlAction } from "@/lib/graphql-client";
 
 export function CreateBackup({
   databases,
@@ -37,6 +38,7 @@ export function CreateBackup({
   databases: { id: string; name: string }[];
   destinations: { id: string; name: string }[];
 }) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
@@ -53,17 +55,23 @@ export function CreateBackup({
 
   function submit() {
     startTransition(async () => {
-      const res = await createBackupAction({
-        name,
-        databaseId: databaseId || null,
-        destinationId,
-        schedule,
-        retentionDays: retention,
-      });
+      const res = await gqlAction(
+        `mutation($input: CreateBackupInput!) { createBackup(input: $input) }`,
+        {
+          input: {
+            name,
+            databaseId: databaseId || null,
+            destinationId,
+            schedule,
+            retentionDays: retention,
+          },
+        }
+      );
       if (res.ok) {
         toast.success("Backup schedule created");
         setOpen(false);
         setName("");
+        router.refresh();
       } else {
         toast.error(res.error);
       }

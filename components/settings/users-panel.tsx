@@ -33,12 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import {
-  mintRegistrationLinkAction,
-  revokeRegistrationLinkAction,
-  getUserDetailAction,
-  updateUserAdminAction,
-} from "@/lib/actions/members";
+import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
 import type {
   GlobalUserDTO,
@@ -162,7 +157,10 @@ function LinkRow({ link }: { link: RegistrationLinkDTO }) {
   const [pending, startTransition] = React.useTransition();
   function revoke() {
     startTransition(async () => {
-      const res = await revokeRegistrationLinkAction(link.id);
+      const res = await gqlAction(
+        `mutation ($id: String!) { revokeRegistrationLink(id: $id) }`,
+        { id: link.id },
+      );
       if (res.ok) {
         toast.success("Link revoked");
         router.refresh();
@@ -217,7 +215,24 @@ function EditUserDialog({
 
   React.useEffect(() => {
     let cancelled = false;
-    getUserDetailAction(userId).then((res) => {
+    gqlAction<{ userDetail: UserDetailDTO }, UserDetailDTO>(
+      `query ($userId: String!) {
+        userDetail(userId: $userId) {
+          userId
+          username
+          name
+          email
+          avatarColor
+          createdAt
+          isInstanceAdmin
+          suspended
+          teams { teamId teamName role }
+          recentActivity { message createdAt }
+        }
+      }`,
+      { userId },
+      (d) => d.userDetail,
+    ).then((res) => {
       if (cancelled) return;
       if (res.ok && res.data) {
         setDetail(res.data);
@@ -234,12 +249,23 @@ function EditUserDialog({
 
   function save() {
     startTransition(async () => {
-      const res = await updateUserAdminAction({
-        userId,
-        isInstanceAdmin: admin,
-        suspended,
-        newPassword: password || undefined,
-      });
+      const res = await gqlAction<
+        { updateUserAdmin: { userId: string } },
+        { userId: string }
+      >(
+        `mutation ($input: UpdateUserAdminInput!) {
+          updateUserAdmin(input: $input) { userId }
+        }`,
+        {
+          input: {
+            userId,
+            isInstanceAdmin: admin,
+            suspended,
+            newPassword: password || undefined,
+          },
+        },
+        (d) => d.updateUserAdmin,
+      );
       if (res.ok) {
         toast.success("User updated");
         onOpenChange(false);
@@ -436,7 +462,14 @@ function RegisterUserDialog() {
 
   function mint() {
     startTransition(async () => {
-      const res = await mintRegistrationLinkAction();
+      const res = await gqlAction<
+        { mintRegistrationLink: string },
+        { link: string }
+      >(
+        `mutation { mintRegistrationLink }`,
+        {},
+        (d) => ({ link: d.mintRegistrationLink }),
+      );
       if (res.ok && res.data) {
         setLink(res.data.link);
         router.refresh();

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { MoreHorizontal, PlugZap, Trash2, Cloud } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,7 +16,7 @@ import {
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { timeAgo } from "@/lib/utils";
-import { testS3Action, deleteS3Action } from "@/lib/actions/s3";
+import { gqlAction } from "@/lib/graphql-client";
 import type { S3DestinationDTO } from "@/lib/data/s3";
 
 const PROVIDER_LABEL: Record<string, string> = {
@@ -29,14 +30,20 @@ const PROVIDER_LABEL: Record<string, string> = {
 };
 
 export function S3Card({ dest }: { dest: S3DestinationDTO }) {
+  const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   function test() {
     startTransition(async () => {
-      const res = await testS3Action(dest.id);
-      if (res.ok) toast.success("Connection verified");
-      else toast.error(res.error);
+      const res = await gqlAction(
+        `mutation ($id: String!) { testS3(id: $id) { id } }`,
+        { id: dest.id },
+      );
+      if (res.ok) {
+        toast.success("Connection verified");
+        router.refresh();
+      } else toast.error(res.error);
     });
   }
 
@@ -115,7 +122,14 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
         description="Backups configured to use this destination will stop running. Your bucket contents are not affected."
         confirmLabel="Remove destination"
         successMessage="Destination removed"
-        onConfirm={() => deleteS3Action(dest.id)}
+        onConfirm={async () => {
+          const res = await gqlAction(
+            `mutation ($id: String!) { deleteS3(id: $id) }`,
+            { id: dest.id },
+          );
+          if (res.ok) router.refresh();
+          return res;
+        }}
       />
     </Card>
   );

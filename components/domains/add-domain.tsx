@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import yaml from "js-yaml";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
@@ -22,7 +23,7 @@ import {
   resolveDomainConfig,
   type DomainConfigState,
 } from "@/components/domains/domain-config-fields";
-import { addDomainAction } from "@/lib/actions/domains";
+import { gqlAction } from "@/lib/graphql-client";
 
 /** A project as the dialog needs it: id, name, and its compose YAML (when it is
  * a compose stack) so the service selector can be populated client-side. */
@@ -47,6 +48,7 @@ function composeServices(compose?: string | null): string[] {
 }
 
 export function AddDomain({ project }: { project: AddDomainProject }) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
@@ -73,22 +75,30 @@ export function AddDomain({ project }: { project: AddDomainProject }) {
       return;
     }
     startTransition(async () => {
-      const res = await addDomainAction({
-        projectId: project.id,
-        name,
-        port: resolved.port,
-        // Add takes the auto entrypoint by omitting it (null ⇒ undefined).
-        entrypoint: resolved.entrypoint ?? undefined,
-        certProvider: resolved.certProvider,
-        middlewares: resolved.middlewares,
-        pathPrefix: resolved.pathPrefix,
-        stripPrefix: resolved.stripPrefix,
-        service: resolved.service,
-      });
+      const res = await gqlAction(
+        `mutation AddDomain($projectId: String!, $name: String!, $config: DomainConfigInput) {
+          addDomain(projectId: $projectId, name: $name, config: $config) { id }
+        }`,
+        {
+          projectId: project.id,
+          name,
+          config: {
+            port: resolved.port,
+            // Add takes the auto entrypoint by omitting it (null ⇒ undefined).
+            entrypoint: resolved.entrypoint ?? undefined,
+            certProvider: resolved.certProvider,
+            middlewares: resolved.middlewares,
+            pathPrefix: resolved.pathPrefix,
+            stripPrefix: resolved.stripPrefix,
+            service: resolved.service,
+          },
+        },
+      );
       if (res.ok) {
         toast.success("Domain added — configure DNS to verify");
         setOpen(false);
         reset();
+        router.refresh();
       } else {
         toast.error(res.error);
       }

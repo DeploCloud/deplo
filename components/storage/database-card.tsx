@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   MoreHorizontal,
@@ -30,11 +31,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { CopyButton } from "@/components/shared/copy-button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { formatBytes, timeAgo } from "@/lib/utils";
-import {
-  revealConnectionAction,
-  toggleDatabaseAction,
-  deleteDatabaseAction,
-} from "@/lib/actions/databases";
+import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 const DB_ICONS: Record<string, LucideIcon> = {
@@ -47,6 +44,7 @@ const DB_ICONS: Record<string, LucideIcon> = {
 };
 
 export function DatabaseCard({ db }: { db: DatabaseDTO }) {
+  const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [revealed, setRevealed] = React.useState<string | null>(null);
@@ -55,9 +53,15 @@ export function DatabaseCard({ db }: { db: DatabaseDTO }) {
 
   function toggleRunning() {
     startTransition(async () => {
-      const res = await toggleDatabaseAction(db.id, !running);
+      const res = await gqlAction(
+        `mutation($id: String!, $running: Boolean!) { setDatabaseRunning(id: $id, running: $running) { id } }`,
+        { id: db.id, running: !running },
+      );
       if (!res.ok) toast.error(res.error);
-      else toast.success(running ? "Database stopped" : "Database started");
+      else {
+        toast.success(running ? "Database stopped" : "Database started");
+        router.refresh();
+      }
     });
   }
 
@@ -67,8 +71,12 @@ export function DatabaseCard({ db }: { db: DatabaseDTO }) {
       return;
     }
     startTransition(async () => {
-      const res = await revealConnectionAction(db.id);
-      if (res.ok && res.data) setRevealed(res.data.value);
+      const res = await gqlAction<{ revealConnection: string }, string>(
+        `mutation($id: String!) { revealConnection(id: $id) }`,
+        { id: db.id },
+        (d) => d.revealConnection,
+      );
+      if (res.ok && res.data) setRevealed(res.data);
       else if (!res.ok) toast.error(res.error);
     });
   }
@@ -153,7 +161,14 @@ export function DatabaseCard({ db }: { db: DatabaseDTO }) {
         description="This permanently destroys the database container and all its data, including any backups schedules attached to it."
         confirmLabel="Delete database"
         successMessage="Database deleted"
-        onConfirm={() => deleteDatabaseAction(db.id)}
+        onConfirm={async () => {
+          const res = await gqlAction(
+            `mutation($id: String!) { deleteDatabase(id: $id) }`,
+            { id: db.id },
+          );
+          if (res.ok) router.refresh();
+          return res;
+        }}
       />
     </Card>
   );

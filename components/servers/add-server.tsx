@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CommandLine } from "@/components/shared/code-block";
-import { addServerAction } from "@/lib/actions/servers";
+import { gqlAction } from "@/lib/graphql-client";
 
 export function AddServer({ installCommand }: { installCommand: string }) {
   const router = useRouter();
@@ -30,12 +30,19 @@ export function AddServer({ installCommand }: { installCommand: string }) {
 
   function submit() {
     startTransition(async () => {
-      const res = await addServerAction({
-        name,
-        host,
-        sshUser: sshUser || undefined,
-        sshPort: Number(sshPort) || 22,
-      });
+      const res = await gqlAction<{ addServer: { id: string } }, undefined>(
+        `mutation AddServer($input: AddServerInput!) {
+          addServer(input: $input) { id }
+        }`,
+        {
+          input: {
+            name,
+            host,
+            sshUser: sshUser || undefined,
+            sshPort: Number(sshPort) || 22,
+          },
+        }
+      );
       if (res.ok) {
         toast.success(`Connecting to ${name || host}…`);
         setOpen(false);

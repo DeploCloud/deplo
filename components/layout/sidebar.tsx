@@ -14,7 +14,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { serverMetricsAction } from "@/lib/actions/monitoring";
+import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { Server } from "@/lib/types";
 
@@ -43,7 +43,11 @@ function useLiveCpu(server: Server | null): number {
       if (busy) return; // previous ~1.2s call still running — skip this tick
       busy = true;
       try {
-        const res = await serverMetricsAction(serverId!);
+        const res = await gqlAction(
+          `query($serverId: String!) { serverMetrics(serverId: $serverId) { cpu } }`,
+          { serverId: serverId! },
+          (d: { serverMetrics: { cpu: number } | null }) => d.serverMetrics,
+        );
         if (!active || !res.ok || !res.data) return;
         setCpu(Math.round(res.data.cpu));
       } finally {
