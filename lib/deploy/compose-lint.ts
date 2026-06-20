@@ -308,7 +308,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
       for (const v of svc.volumes) {
         const src = volumeSource(v);
         if (!src) continue;
-        if (/^(?:\.\.?\/)*files\//.test(src)) {
+        if (isFilesConventionSource(src)) {
           diags.push({
             severity: "info",
             rule: "bind-mount-files-note",
@@ -434,7 +434,7 @@ function checkListOrMap(
 }
 
 /** Source side of a volume entry (short `src:dst` form or long `{source}`). */
-function volumeSource(v: unknown): string | null {
+export function volumeSource(v: unknown): string | null {
   if (typeof v === "string") {
     const idx = v.indexOf(":");
     return idx > 0 ? v.slice(0, idx) : null; // no ":" → a named/anonymous volume
@@ -445,6 +445,53 @@ function volumeSource(v: unknown): string | null {
     if (typeof rec.source === "string" && rec.source.includes("/")) return rec.source;
   }
   return null;
+}
+
+/** The `../files/<x>` convention is rewritten to the project's isolated files
+ * directory at deploy time — NOT a host bind mount the user picked a path for. */
+function isFilesConventionSource(src: string): boolean {
+  return /^(?:\.\.?\/)*files\//.test(src);
+}
+
+/**
+ * True if a single compose volume entry bind-mounts a real HOST path — i.e. an
+ * absolute source that is NOT the project-isolated `../files/...` convention.
+ * Shared by the editor lint (warning) and the server-side permission gate so
+ * the two never disagree about what counts as a host mount.
+ */
+export function isHostBindSource(src: string | null | undefined): boolean {
+  return Boolean(src && src.startsWith("/") && !isFilesConventionSource(src));
+}
+
+/** A docker-compose document, just the slice we read for host-bind detection. */
+interface ComposeDocShape {
+  services?: Record<string, { volumes?: unknown } | null | undefined>;
+}
+
+/**
+ * Parse a compose YAML string and report whether ANY service bind-mounts a host
+ * path (see {@link isHostBindSource}). Used server-side to gate compose edits
+ * behind the `canMountHostVolumes` grant. Tolerant of malformed input: a YAML it
+ * can't parse, or a doc with no services, simply has no detectable host mount
+ * (the real deploy-time parse/validate is the authoritative check).
+ */
+export function composeHasHostBindMount(composeYaml: string): boolean {
+  let doc: ComposeDocShape | null;
+  try {
+    doc = yaml.load(composeYaml) as ComposeDocShape | null;
+  } catch {
+    return false;
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object") return false;
+  for (const svc of Object.values(services)) {
+    const vols = svc?.volumes;
+    if (!Array.isArray(vols)) continue;
+    for (const v of vols) {
+      if (isHostBindSource(volumeSource(v))) return true;
+    }
+  }
+  return false;
 }
 
 function hasExplicitTagOrDigest(image: string): boolean {

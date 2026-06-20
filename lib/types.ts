@@ -64,6 +64,19 @@ export interface User {
    * re-activated. Does not delete the account or its memberships.
    */
   suspended?: boolean;
+  /**
+   * Instance-wide grant: may expose/publish container ports on a deployment.
+   * Security-sensitive, so it is opt-in per user (granted from Settings → Users)
+   * rather than implied by a team capability. Instance admins hold it implicitly.
+   */
+  canExposePorts?: boolean;
+  /**
+   * Instance-wide grant: may bind-mount a real HOST filesystem path into a
+   * container (NOT docker-managed named/anonymous volumes). A host path is a
+   * cross-tenant footgun on the shared docker host, so it is opt-in per user
+   * (granted from Settings → Users). Instance admins hold it implicitly.
+   */
+  canMountHostVolumes?: boolean;
   avatarColor: string;
   createdAt: string;
 }
@@ -394,6 +407,53 @@ export interface DevSshUserDTO {
   createdAt: string;
 }
 
+/**
+ * A persistent volume mounted into a SINGLE-CONTAINER project's one service (the
+ * renderCompose path — github/git/docker-image/upload, never compose-stack
+ * projects, which declare volumes in their own YAML). Gated in the UI by
+ * !usesComposeStack(project). Distinct from `Project.mounts`, which writes
+ * template CONFIG FILES to disk and bind-mounts them (content-bearing); a
+ * VolumeMount carries no content — it is data that survives redeploys.
+ *
+ * Two kinds, discriminated by `type` (absent ⇒ "named", for back-compat):
+ *  - "named": a docker-MANAGED volume. The on-host volume name is NOT `name` —
+ *    it is namespaced per-project at render time (deplo-<slug>-<name>, see
+ *    `hostVolumeName`) so it can never collide with or leak into another team's
+ *    project on the shared host (the same isolation reason compose strips
+ *    container_name). Deriving from the slug at render time (never storing the
+ *    host name) means a rename can't orphan data and `name` stays a label.
+ *  - "host": a bind mount of a real HOST filesystem path (`hostPath`). The host
+ *    is docker-only and shared across teams, so a user-typed host path is a
+ *    cross-tenant footgun — only users with the `canMountHostVolumes` grant (or
+ *    instance admins) may add one. Enforced server-side in setProjectVolumes.
+ */
+export interface VolumeMount {
+  /**
+   * Stable id (server: newId("vol"); client draft rows: vol_<shortId>). Lets the
+   * UI key rows and lets a rename of `name` not look like delete+create.
+   */
+  id: ID;
+  /**
+   * Kind of mount. Absent ⇒ "named" (docker-managed) so documents written before
+   * host bind mounts existed keep rendering identically.
+   */
+  type?: "named" | "host";
+  /**
+   * Human label, lowercase-kebab, UNIQUE PER PROJECT. Namespaced on the host.
+   * Named volumes only (ignored for "host" mounts).
+   */
+  name: string;
+  /**
+   * Absolute HOST path to bind-mount, e.g. "/srv/data". Host mounts only
+   * (type === "host"); absent/ignored for named volumes.
+   */
+  hostPath?: string;
+  /** Absolute in-container mount path, e.g. "/data". UNIQUE PER PROJECT. */
+  mountPath: string;
+  /** Mount read-only (`:ro`). Defaults to false (read-write). */
+  readOnly: boolean;
+}
+
 export interface Project {
   id: ID;
   name: string;
@@ -439,6 +499,14 @@ export interface Project {
    * generated secrets the env uses. Null/empty for most projects.
    */
   mounts?: { filePath: string; content: string }[] | null;
+  /**
+   * User-managed persistent volumes for the SINGLE-CONTAINER deploy path
+   * (renderCompose) — docker-managed named volumes and (for privileged users)
+   * host bind mounts. null/absent for compose-stack projects and projects that
+   * never added one — so renderCompose emits no `volumes:` keys and the stack
+   * stays byte-identical (no reroute churn). See {@link VolumeMount}.
+   */
+  volumes?: VolumeMount[] | null;
   build: BuildConfig;
   /**
    * Dev-mode configuration. Absent ⇒ dev mode was never enabled (back-compat).

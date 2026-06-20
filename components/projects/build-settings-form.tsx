@@ -11,6 +11,7 @@ import {
   Upload,
   Image as ImageIcon,
   Server as ServerIcon,
+  HardDrive,
 } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import {
@@ -55,12 +56,14 @@ import {
   BuildConfigFields,
   applyFrameworkToBuild,
 } from "@/components/projects/build-config-fields";
+import { VolumeFields } from "@/components/projects/volume-fields";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 import type {
   BuildConfig,
   DeploySource,
   FrameworkId,
   GitRepo,
+  VolumeMount,
 } from "@/lib/types";
 import { formatBytes, serverLabel, usesComposeStack } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -99,6 +102,7 @@ export function BuildSettingsForm({
   compose: initialCompose,
   expose,
   exposes,
+  volumes: initialVolumes,
   serverId: initialServerId,
   servers,
   installations,
@@ -117,6 +121,7 @@ export function BuildSettingsForm({
   compose: string | null;
   expose: { service: string; port: number } | null;
   exposes: { service: string; port: number; host?: string }[] | null;
+  volumes: VolumeMount[];
   serverId: string;
   servers: SettingsServer[];
   installations: GithubInstallationDTO[];
@@ -136,6 +141,10 @@ export function BuildSettingsForm({
   // Compose stack (template / multi-service deploys). Lives as a source tab.
   const [compose, setCompose] = React.useState(initialCompose ?? "");
   const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>([]);
+
+  // Persistent named volumes (single-container projects only — see the gated
+  // Volumes card below). Saved on its own, applied on the next deploy.
+  const [volumes, setVolumes] = React.useState<VolumeMount[]>(initialVolumes);
 
   // Source state. Legacy template projects were stored as `docker-image` with a
   // compose attached; surface those on the Compose tab by default too. An upload
@@ -171,6 +180,17 @@ export function BuildSettingsForm({
   // "Git" still takes a raw URL + branch.
   const usesGithubApp = source === "github";
   const usesGitUrl = source === "git";
+
+  // Volumes are a SINGLE-CONTAINER feature: a compose stack declares its own
+  // volumes in its YAML. Derive the gate from the LIVE form state (not the
+  // initial props) so flipping the source tab shows/hides the card immediately,
+  // mirroring lib/utils.usesComposeStack's inputs.
+  const isComposeStack = usesComposeStack({
+    source,
+    compose,
+    repo: usesGithubApp ? ghSelection : usesGitUrl && repoUrl.trim() ? { url: repoUrl } : null,
+    dockerImage: dockerImage.trim() || null,
+  });
 
   function applyFramework(fw: FrameworkId) {
     setFramework(fw);
@@ -348,6 +368,69 @@ export function BuildSettingsForm({
       if (res.ok) {
         router.refresh();
         toast.success("Build settings saved");
+      } else toast.error(res.error);
+    });
+  }
+
+  function saveVolumes() {
+    // Client-side mirror of the server validation (the server is authoritative).
+    // Catch the obvious mistakes before the round-trip for a snappier UX.
+    const seenPath = new Set<string>();
+    const seenName = new Set<string>();
+    for (const v of volumes) {
+      const path = v.mountPath.trim();
+      if (!path.startsWith("/") || path.length < 2 || /[\s:]/.test(path)) {
+        toast.error(`Mount path must be an absolute path with no spaces or ":"`);
+        return;
+      }
+      if (seenPath.has(path)) {
+        toast.error(`Duplicate mount path: ${path}`);
+        return;
+      }
+      seenPath.add(path);
+      if (v.type === "host") {
+        const hostPath = (v.hostPath ?? "").trim();
+        if (
+          !hostPath.startsWith("/") ||
+          hostPath.length < 2 ||
+          /[\s:]/.test(hostPath)
+        ) {
+          toast.error(`Host path must be an absolute path with no spaces or ":"`);
+          return;
+        }
+        continue; // host mounts have no docker name to validate
+      }
+      const name = v.name.trim().toLowerCase();
+      if (name && !/^[a-z0-9][a-z0-9_-]*$/.test(name)) {
+        toast.error(`Volume name "${name}" must be lowercase letters, digits, "-"/"_"`);
+        return;
+      }
+      if (name) {
+        if (seenName.has(name)) {
+          toast.error(`Duplicate volume name: ${name}`);
+          return;
+        }
+        seenName.add(name);
+      }
+    }
+    startTransition(async () => {
+      const res = await gqlAction(
+        `mutation($id: String!, $volumes: [VolumeInput!]!) { setProjectVolumes(id: $id, volumes: $volumes) { id } }`,
+        {
+          id: projectId,
+          volumes: volumes.map((v) => ({
+            id: v.id,
+            type: v.type === "host" ? "host" : "named",
+            name: v.name.trim(),
+            hostPath: v.type === "host" ? (v.hostPath ?? "").trim() : undefined,
+            mountPath: v.mountPath.trim(),
+            readOnly: v.readOnly,
+          })),
+        },
+      );
+      if (res.ok) {
+        router.refresh();
+        toast.success("Volumes saved — applied on the next production deploy");
       } else toast.error(res.error);
     });
   }
@@ -603,28 +686,72 @@ export function BuildSettingsForm({
         </CardFooter>
       </Card>
 
-      {/* Build & Output */}
+      {/* Build & Output — single-image builds only. A compose stack builds/pulls
+          its own images per its YAML, and a Docker image is pulled prebuilt, so
+          neither has install/build/run settings to configure. Gated off the live
+          form state so flipping the source tab shows/hides the card immediately. */}
+      {!isComposeStack && source !== "docker-image" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Build &amp; Output Settings</CardTitle>
+            <CardDescription>
+              How Deplo installs, builds and runs your app inside Docker.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BuildConfigFields
+              build={build}
+              framework={framework}
+              onBuildChange={setBuild}
+              onFrameworkChange={applyFramework}
+            />
+          </CardContent>
+          <CardFooter className="justify-end border-t border-border pt-4">
+            <Button size="sm" onClick={saveBuild} disabled={pending}>
+              <Save className="size-4" />
+              Save build settings
+            </Button>
+          </CardFooter>
+        </Card>
+      )}
+
+      {/* Volumes — single-container projects only. A compose stack declares its
+          own volumes inside the compose file, so we show a note there instead. */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Build &amp; Output Settings</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <HardDrive className="size-4" />
+            Volumes
+          </CardTitle>
           <CardDescription>
-            How Deplo installs, builds and runs your app inside Docker.
+            Persistent named volumes mounted into your container. Data survives
+            redeploys.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <BuildConfigFields
-            build={build}
-            framework={framework}
-            onBuildChange={setBuild}
-            onFrameworkChange={applyFramework}
-          />
-        </CardContent>
-        <CardFooter className="justify-end border-t border-border pt-4">
-          <Button size="sm" onClick={saveBuild} disabled={pending}>
-            <Save className="size-4" />
-            Save build settings
-          </Button>
-        </CardFooter>
+        {isComposeStack ? (
+          <CardContent>
+            <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+              This project deploys a compose stack — declare volumes directly in
+              your <code className="font-mono">docker-compose.yml</code>.
+            </p>
+          </CardContent>
+        ) : (
+          <>
+            <CardContent>
+              <VolumeFields slug={slug} volumes={volumes} onChange={setVolumes} />
+              <p className="mt-3 text-xs text-muted-foreground">
+                Applied on the next production deploy. Removing a row stops
+                mounting that volume — its data is never deleted automatically.
+              </p>
+            </CardContent>
+            <CardFooter className="justify-end border-t border-border pt-4">
+              <Button size="sm" onClick={saveVolumes} disabled={pending}>
+                <Save className="size-4" />
+                Save volumes
+              </Button>
+            </CardFooter>
+          </>
+        )}
       </Card>
 
       {/* Git / auto deploy */}

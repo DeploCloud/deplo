@@ -211,6 +211,8 @@ function EditUserDialog({
 
   const [admin, setAdmin] = React.useState(false);
   const [suspended, setSuspended] = React.useState(false);
+  const [exposePorts, setExposePorts] = React.useState(false);
+  const [mountHostVolumes, setMountHostVolumes] = React.useState(false);
   const [password, setPassword] = React.useState("");
 
   React.useEffect(() => {
@@ -226,6 +228,8 @@ function EditUserDialog({
           createdAt
           isInstanceAdmin
           suspended
+          canExposePorts
+          canMountHostVolumes
           teams { teamId teamName role }
           recentActivity { message createdAt }
         }
@@ -238,6 +242,8 @@ function EditUserDialog({
         setDetail(res.data);
         setAdmin(res.data.isInstanceAdmin);
         setSuspended(res.data.suspended);
+        setExposePorts(res.data.canExposePorts);
+        setMountHostVolumes(res.data.canMountHostVolumes);
       } else if (!res.ok) {
         setError(res.error);
       }
@@ -261,6 +267,8 @@ function EditUserDialog({
             userId,
             isInstanceAdmin: admin,
             suspended,
+            canExposePorts: exposePorts,
+            canMountHostVolumes: mountHostVolumes,
             newPassword: password || undefined,
           },
         },
@@ -385,6 +393,26 @@ function EditUserDialog({
               {isSelf && (
                 <p className="text-xs text-muted-foreground">
                   You can&apos;t change your own admin status or suspend yourself.
+                </p>
+              )}
+              <ToggleRow
+                title="Expose ports"
+                detail="Publish container ports on a deployment. Instance admins always can."
+                checked={admin || exposePorts}
+                disabled={admin}
+                onChange={setExposePorts}
+              />
+              <ToggleRow
+                title="Mount host volumes"
+                detail="Bind-mount host filesystem paths into containers (compose and single-container). Instance admins always can."
+                checked={admin || mountHostVolumes}
+                disabled={admin}
+                onChange={setMountHostVolumes}
+              />
+              {admin && (
+                <p className="text-xs text-muted-foreground">
+                  Instance admins hold the expose-ports and host-volume grants
+                  implicitly.
                 </p>
               )}
               <div className="space-y-2">

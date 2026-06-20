@@ -1,0 +1,143 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import { renderCompose, parseStackVolumes } from "./build";
+import type { RoutableDomain } from "../data/domains";
+
+/**
+ * Volumes injection into the single-container stack. The load-bearing contract:
+ *  1. NO volumes ⇒ output byte-identical to the long-standing stack (so a
+ *     reroute of an unchanged routing set never restarts the container).
+ *  2. Named volumes ⇒ a service `- alias:/path[:ro]` list + a top-level
+ *     `volumes.<alias>.name: deplo-<slug>-<alias>` (host name namespaced).
+ *  3. A render→parse round-trip recovers the same {name, mountPath, readOnly}
+ *     (the reroute path reads volumes back from the on-disk stack).
+ */
+
+const route: RoutableDomain = {
+  name: "demo.example.com",
+  port: null,
+  entrypoint: "websecure",
+  tls: true,
+  certResolver: "letsencrypt",
+  middlewares: [],
+  pathPrefix: "",
+  stripPrefix: false,
+  service: null,
+};
+
+const base = {
+  name: "deplo-demo",
+  image: "deplo/demo:abc123",
+  port: 3000,
+  projectId: "p1",
+  slug: "demo",
+  routes: [route],
+  env: { FOO: "bar" },
+};
+
+test("no volumes: output is byte-identical with [], undefined, and missing key", () => {
+  const withMissing = renderCompose(base);
+  const withEmpty = renderCompose({ ...base, volumes: [] });
+  assert.equal(withEmpty, withMissing);
+  // The no-volumes stack must contain no `volumes:` key at all.
+  assert.ok(!/\bvolumes:/.test(withMissing), "no volumes: key when empty");
+});
+
+test("named volumes: emits service list + namespaced top-level volume", () => {
+  const yaml = renderCompose({
+    ...base,
+    volumes: [
+      { name: "data", mountPath: "/data", readOnly: false },
+      { name: "cache", mountPath: "/var/cache", readOnly: true },
+    ],
+  });
+  assert.match(yaml, /\n {6}- data:\/data\n/);
+  assert.match(yaml, /\n {6}- cache:\/var\/cache:ro\n/);
+  // Top-level volumes block with per-project namespaced host names.
+  assert.match(yaml, /\nvolumes:\n {2}data:\n {4}name: deplo-demo-data\n/);
+  assert.match(yaml, /\n {2}cache:\n {4}name: deplo-demo-cache\n/);
+});
+
+test("read-only flag emits :ro on the mount and not otherwise", () => {
+  const ro = renderCompose({
+    ...base,
+    volumes: [{ name: "ro", mountPath: "/ro", readOnly: true }],
+  });
+  assert.match(ro, /- ro:\/ro:ro/);
+  const rw = renderCompose({
+    ...base,
+    volumes: [{ name: "rw", mountPath: "/rw", readOnly: false }],
+  });
+  assert.ok(!/- rw:\/rw:ro/.test(rw));
+});
+
+test("render → parseStackVolumes round-trips the mount set", () => {
+  const volumes = [
+    { name: "data", mountPath: "/data", readOnly: false },
+    { name: "cache", mountPath: "/var/cache", readOnly: true },
+  ];
+  const yaml = renderCompose({ ...base, volumes });
+  const parsed = parseStackVolumes(yaml, base.name);
+  assert.deepEqual(parsed, [
+    { name: "data", mountPath: "/data", readOnly: false },
+    { name: "cache", mountPath: "/var/cache", readOnly: true },
+  ]);
+});
+
+test("parseStackVolumes: empty / missing-service stacks yield []", () => {
+  assert.deepEqual(parseStackVolumes("services:\n  deplo-demo:\n    image: x\n", "deplo-demo"), []);
+  assert.deepEqual(parseStackVolumes("services: {}", "missing"), []);
+});
+
+test("host bind mount: emits hostPath source and NO top-level volumes entry", () => {
+  const yaml = renderCompose({
+    ...base,
+    volumes: [
+      { type: "host", name: "", hostPath: "/srv/data", mountPath: "/data", readOnly: false },
+    ],
+  });
+  // Service line binds the host path directly.
+  assert.match(yaml, /\n {6}- \/srv\/data:\/data\n/);
+  // A host bind is NOT a named volume, so no TOP-LEVEL (column-0) volumes: key is
+  // emitted (the service-level `    volumes:` list is still present).
+  assert.ok(!/\nvolumes:/.test(yaml), "no top-level volumes block for a pure host bind");
+});
+
+test("host bind read-only flag emits :ro", () => {
+  const yaml = renderCompose({
+    ...base,
+    volumes: [
+      { type: "host", name: "", hostPath: "/srv/ro", mountPath: "/ro", readOnly: true },
+    ],
+  });
+  assert.match(yaml, /- \/srv\/ro:\/ro:ro/);
+});
+
+test("mixed named + host: named gets a top-level entry, host does not", () => {
+  const yaml = renderCompose({
+    ...base,
+    volumes: [
+      { name: "data", mountPath: "/data", readOnly: false },
+      { type: "host", name: "", hostPath: "/srv/h", mountPath: "/h", readOnly: false },
+    ],
+  });
+  assert.match(yaml, /\n {6}- data:\/data\n/);
+  assert.match(yaml, /\n {6}- \/srv\/h:\/h\n/);
+  // Exactly one named volume in the top-level block.
+  assert.match(yaml, /\nvolumes:\n {2}data:\n {4}name: deplo-demo-data\n/);
+  assert.ok(!/name: deplo-demo-h\b/.test(yaml), "host bind has no namespaced volume name");
+});
+
+test("host bind round-trips through parseStackVolumes as type: host", () => {
+  const volumes = [
+    { name: "data", mountPath: "/data", readOnly: false },
+    { type: "host" as const, name: "", hostPath: "/srv/h", mountPath: "/h", readOnly: true },
+  ];
+  const yaml = renderCompose({ ...base, volumes });
+  const parsed = parseStackVolumes(yaml, base.name);
+  assert.deepEqual(parsed, [
+    { name: "data", mountPath: "/data", readOnly: false },
+    { type: "host", name: "", hostPath: "/srv/h", mountPath: "/h", readOnly: true },
+  ]);
+});

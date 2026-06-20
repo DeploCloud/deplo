@@ -156,6 +156,50 @@ export async function requireInstanceAdmin(): Promise<{ userId: string }> {
   return { userId: user.id };
 }
 
+/* ------------------------------------------------------------------ */
+/* Instance-wide grants (global scope, orthogonal to teams)            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The two grant flags don't ride on {@link PublicUser} (they're server-enforced
+ * only), so resolve them from the raw stored user. Instance admins hold every
+ * grant implicitly. Returns `false` for an unauthenticated caller.
+ */
+function hasGrant(
+  user: { id: string } | null,
+  flag: "canExposePorts" | "canMountHostVolumes",
+): boolean {
+  if (!user) return false;
+  const raw = read().users.find((u) => u.id === user.id);
+  return Boolean(raw && (raw.isInstanceAdmin || raw[flag]));
+}
+
+/** True if the current user may expose/publish container ports. */
+export async function canExposePorts(): Promise<boolean> {
+  return hasGrant(await getCurrentUser(), "canExposePorts");
+}
+
+/** Throwing variant — gate any action that exposes a port behind this. */
+export async function requireExposePorts(): Promise<{ userId: string }> {
+  const user = await assertUser();
+  if (!hasGrant(user, "canExposePorts"))
+    throw new Error("You don't have permission to expose ports");
+  return { userId: user.id };
+}
+
+/** True if the current user may bind-mount a host filesystem path. */
+export async function canMountHostVolumes(): Promise<boolean> {
+  return hasGrant(await getCurrentUser(), "canMountHostVolumes");
+}
+
+/** Throwing variant — gate any host bind mount behind this. */
+export async function requireMountHostVolumes(): Promise<{ userId: string }> {
+  const user = await assertUser();
+  if (!hasGrant(user, "canMountHostVolumes"))
+    throw new Error("You don't have permission to mount host volumes");
+  return { userId: user.id };
+}
+
 /** Set the active-team cookie. Validates membership before writing. */
 export async function setActiveTeam(teamId: string): Promise<void> {
   const user = await assertUser();

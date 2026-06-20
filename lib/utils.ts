@@ -80,6 +80,17 @@ export function usesComposeStack(project: {
   );
 }
 
+/**
+ * The host-global docker volume name for a single-container project's named
+ * volume. A volume name is GLOBAL on the daemon (like container_name was —
+ * compose strips it to avoid collisions) and the host is shared across teams,
+ * so it MUST be namespaced per project. Derived from the slug at render time
+ * (never stored) so a rename can't orphan data and `name` stays a label.
+ */
+export function hostVolumeName(slug: string, name: string): string {
+  return `deplo-${slug}-${name}`;
+}
+
 /** Deterministic short id for client-only keys (not for security). */
 export function shortId(length = 8): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";

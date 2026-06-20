@@ -55,6 +55,8 @@ export interface GlobalUserDTO {
   teamCount: number;
   isInstanceAdmin: boolean;
   suspended: boolean;
+  canExposePorts: boolean;
+  canMountHostVolumes: boolean;
   createdAt: string;
 }
 
@@ -68,6 +70,8 @@ export interface UserDetailDTO {
   avatarColor: string;
   isInstanceAdmin: boolean;
   suspended: boolean;
+  canExposePorts: boolean;
+  canMountHostVolumes: boolean;
   createdAt: string;
   teams: { teamId: string; teamName: string; role: Role }[];
   recentActivity: { message: string; createdAt: string }[];
@@ -311,6 +315,8 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
       teamCount: d.memberships.filter((m) => m.userId === u.id).length,
       isInstanceAdmin: u.isInstanceAdmin ?? false,
       suspended: u.suspended ?? false,
+      canExposePorts: u.canExposePorts ?? false,
+      canMountHostVolumes: u.canMountHostVolumes ?? false,
       createdAt: u.createdAt,
     }))
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
@@ -347,6 +353,8 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     avatarColor: u.avatarColor,
     isInstanceAdmin: u.isInstanceAdmin ?? false,
     suspended: u.suspended ?? false,
+    canExposePorts: u.canExposePorts ?? false,
+    canMountHostVolumes: u.canMountHostVolumes ?? false,
     createdAt: u.createdAt,
     teams,
     recentActivity,
@@ -365,6 +373,8 @@ export async function updateUserAdmin(input: {
   userId: string;
   isInstanceAdmin: boolean;
   suspended: boolean;
+  canExposePorts: boolean;
+  canMountHostVolumes: boolean;
   newPassword?: string;
 }): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
@@ -394,6 +404,8 @@ export async function updateUserAdmin(input: {
 
     u.isInstanceAdmin = input.isInstanceAdmin;
     u.suspended = input.suspended;
+    u.canExposePorts = input.canExposePorts;
+    u.canMountHostVolumes = input.canMountHostVolumes;
     if (newPassword) u.passwordHash = hashPassword(newPassword);
   });
 

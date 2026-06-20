@@ -237,3 +237,20 @@ through a single `portFor(project, target)` accessor in `lib/deploy/ports.ts`. A
 hostname's *effective port* — its per-domain override (single-image projects only)
 folded onto the target default — comes from `effectivePortFor` in the same module.
 _Avoid_: container port (ambiguous about which runtime), exposed port.
+
+**Volume**:
+A persistent **docker-managed named volume** a user mounts into a **single-container**
+project's one service (the `renderCompose` path — github/git/docker-image/upload), edited
+from project settings and gated by `usesComposeStack` (a **compose** project declares its
+own volumes inside its YAML, so the settings card hides there). Stored on the project as
+`{ name, mountPath, readOnly }`; the **on-host** name is namespaced per project at render
+time (`deplo-<slug>-<name>`, via `hostVolumeName`) so it can never collide with or leak
+into another team's project on the shared daemon — the same isolation reason compose
+strips `container_name`. **Named only** (no user-typed bind mounts: a host path handed to
+the shared docker socket is a cross-tenant footgun). Data survives redeploys and is never
+auto-deleted; removing a row just stops mounting it. A reroute reads volumes back from the
+on-disk stack (like image/env), so a domain-only change never silently applies a pending
+volume edit.
+_Avoid_: **mount** (reserve for a template's bind-mounted **config files**, `project.mounts`
+— content-bearing, written next to the stack at deploy; a Volume carries no content);
+bind mount (deliberately unsupported); the `deplo-data` volume (Deplo's own data store).

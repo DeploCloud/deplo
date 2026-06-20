@@ -2,7 +2,13 @@ import "server-only";
 
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import {
+  requireActiveTeamId,
+  requireCapability,
+  requireExposePorts,
+  requireMountHostVolumes,
+} from "../membership";
+import { composeHasHostBindMount } from "../deploy/compose-lint";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
@@ -15,7 +21,9 @@ import type {
   GitRepo,
   Project,
   UploadArchive,
+  VolumeMount,
 } from "../types";
+import { usesComposeStack } from "../utils";
 import {
   startDeployment,
   stopContainer,
@@ -39,6 +47,58 @@ export interface ProjectSummary extends Project {
   domainCount: number;
 }
 
+/** A docker-volume-safe name derived from a mount path when the user left the
+ *  name blank (e.g. "/var/data" → "var-data", "/" → "data"). Exported for tests. */
+export function deriveVolumeName(mountPath: string): string {
+  const s = mountPath
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || "data";
+}
+
+/**
+ * Backfill/sanitize a project's named volumes on read. Absent ⇒ null (so
+ * renderCompose emits nothing and the stack stays byte-identical). Returns the
+ * SAME reference when nothing changes so `normalizeProject`'s early-return still
+ * fires for the common (modern) row. Entries with no mountPath are dropped;
+ * missing id/name are backfilled.
+ */
+function normalizeVolumes(
+  raw: VolumeMount[] | null | undefined,
+): VolumeMount[] | null {
+  if (!raw || raw.length === 0) return raw == null ? null : raw;
+  let changed = false;
+  const out: VolumeMount[] = [];
+  for (const v of raw) {
+    const mountPath = (v?.mountPath ?? "").trim();
+    if (!mountPath) {
+      changed = true;
+      continue;
+    }
+    const isHost = v?.type === "host";
+    const name = (v?.name ?? "").trim() || deriveVolumeName(mountPath);
+    const id = v?.id || newId("vol");
+    const readOnly = Boolean(v?.readOnly);
+    const hostPath = (v?.hostPath ?? "").trim();
+    if (
+      v.id !== id ||
+      v.mountPath !== mountPath ||
+      v.name !== name ||
+      v.readOnly !== readOnly ||
+      (isHost && v.hostPath !== hostPath)
+    ) {
+      changed = true;
+    }
+    out.push(
+      isHost
+        ? { id, type: "host", name, hostPath, mountPath, readOnly }
+        : { id, name, mountPath, readOnly },
+    );
+  }
+  return changed ? (out.length ? out : null) : raw;
+}
+
 /**
  * Backfill a project read from the store to the current model. The legacy
  * "dockerfile" deploy source was folded into the "dockerfile" build method
@@ -48,8 +108,9 @@ export interface ProjectSummary extends Project {
  */
 function normalizeProject<T extends Project>(p: T): T {
   const build = normalizeBuildConfig(p.build);
+  const volumes = normalizeVolumes(p.volumes);
   const legacySource = (p.source as string) === "dockerfile";
-  if (!legacySource && build === p.build) return p;
+  if (!legacySource && build === p.build && volumes === p.volumes) return p;
   return {
     ...p,
     source: legacySource
@@ -58,6 +119,7 @@ function normalizeProject<T extends Project>(p: T): T {
         : "git"
       : p.source,
     build: legacySource ? { ...build, buildMethod: "dockerfile" } : build,
+    volumes,
   };
 }
 
@@ -127,6 +189,16 @@ export async function createProject(
   input: CreateProjectInput
 ): Promise<ProjectSummary> {
   const { membership } = await requireCapability("deploy");
+  // Publishing a compose service port is a port-exposure action; a single-image
+  // project's build.port is the intrinsic route Traefik targets, not an extra
+  // published port, so it isn't gated here.
+  if ((input.composeService && input.composePort) || input.exposes?.length) {
+    await requireExposePorts();
+  }
+  // A host bind mount baked into the initial compose needs the host-volume grant.
+  if (input.compose != null && composeHasHostBindMount(input.compose)) {
+    await requireMountHostVolumes();
+  }
   const user = read().users.find((u) => u.id === membership.userId)!;
   const slugBase = input.name
     .toLowerCase()
@@ -232,6 +304,19 @@ export async function updateProjectBuild(
   build: Partial<BuildConfig>
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
+  // Changing which container port Traefik routes to is a port-exposure action;
+  // gate only on an actual change so ordinary build-setting edits (commands,
+  // build method, …) stay open to anyone who can deploy.
+  const target = read().projects.find(
+    (x) => x.id === id && x.teamId === membership.teamId,
+  );
+  if (
+    target &&
+    build.port !== undefined &&
+    build.port !== target.build.port
+  ) {
+    await requireExposePorts();
+  }
   const user = read().users.find((u) => u.id === membership.userId)!;
   mutate((d) => {
     const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
@@ -261,6 +346,17 @@ export async function updateProjectSource(
   input: UpdateSourceInput
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
+  // Setting a compose service to publish a port requires the expose-ports grant.
+  if (
+    (input.expose !== undefined && input.expose !== null) ||
+    (input.exposes !== undefined && (input.exposes?.length ?? 0) > 0)
+  ) {
+    await requireExposePorts();
+  }
+  // Saving compose YAML that bind-mounts a host path requires the host grant.
+  if (input.compose != null && composeHasHostBindMount(input.compose)) {
+    await requireMountHostVolumes();
+  }
   const user = read().users.find((u) => u.id === membership.userId)!;
   mutate((d) => {
     const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
@@ -281,6 +377,164 @@ export async function updateProjectSource(
     p.updatedAt = nowIso();
   });
   recordActivity("project", `Updated deploy source`, user.name, id);
+}
+
+/**
+ * Container paths the runtime owns; mounting a user volume over them would break
+ * or compromise the container. Rejected (exact match or as a parent prefix).
+ */
+const RESERVED_MOUNT_PREFIXES = [
+  "/proc",
+  "/sys",
+  "/dev",
+  "/etc",
+  "/usr",
+  "/bin",
+  "/sbin",
+  "/lib",
+  "/lib64",
+  "/var/run",
+];
+
+/**
+ * Validate + canonicalize the full volume set for a single-container project.
+ * The renderer trusts its input, so EVERY safety rule lives here:
+ *  - mountPath absolute, no spaces, no ":" (would smuggle a `:ro`/extra field
+ *    into the compose `- name:path` string), no "..", not a reserved path.
+ *  - no mountPath collision with a template `mounts[].filePath` (those are
+ *    bind-mounted config files written next to the stack).
+ *  - name lowercased, `[a-z0-9][a-z0-9_-]*`, ≤40 (blocks YAML key injection into
+ *    the top-level `  <name>:` map), derived from the path when blank.
+ *  - mountPath AND name unique within the project.
+ * For a HOST bind mount (`type: "host"`) the `hostPath` SOURCE is validated to be
+ * an absolute path with no spaces/":"/".." (so it can't smuggle extra compose
+ * fields) — but it is intentionally NOT subject to RESERVED_MOUNT_PREFIXES (those
+ * guard the in-container target; a privileged user picks the host source on
+ * purpose). The grant check that authorizes host mounts lives in the CALLER
+ * (setProjectVolumes), not here, so this stays a pure validator usable in tests.
+ * Empty result ⇒ null so renderCompose stays byte-identical. Exported for tests.
+ */
+export function validateVolumes(
+  raw: VolumeMount[],
+  existingMounts: { filePath: string }[] | null | undefined,
+): VolumeMount[] | null {
+  const seenPath = new Set<string>();
+  const seenName = new Set<string>();
+  const mountFilePaths = (existingMounts ?? []).map((m) => m.filePath);
+  const out: VolumeMount[] = [];
+  for (const v of raw) {
+    const mountPath = (v.mountPath ?? "").trim().replace(/\/+$/, "") || "/";
+    if (!/^\/[^\s:]*$/.test(mountPath) || mountPath.length < 2) {
+      throw new Error(
+        `Mount path must be an absolute path with no spaces or ":": "${v.mountPath}"`,
+      );
+    }
+    if (mountPath.split("/").includes("..")) {
+      throw new Error(`Mount path must not contain "..": "${v.mountPath}"`);
+    }
+    if (
+      RESERVED_MOUNT_PREFIXES.some(
+        (r) => mountPath === r || mountPath.startsWith(r + "/"),
+      )
+    ) {
+      throw new Error(`Mount path "${mountPath}" is reserved by the system.`);
+    }
+    // A volume conflicts with a template config file when their paths are equal,
+    // when the volume is INSIDE a config file's dir, OR when the volume's dir
+    // would SHADOW (contain) a config file — any of which breaks the bind-mount.
+    if (
+      mountFilePaths.some((raw) => {
+        const f = raw.replace(/\/+$/, "");
+        return (
+          f === mountPath ||
+          mountPath.startsWith(f + "/") ||
+          f.startsWith(mountPath + "/")
+        );
+      })
+    ) {
+      throw new Error(
+        `Mount path "${mountPath}" conflicts with a template config file.`,
+      );
+    }
+    if (seenPath.has(mountPath)) {
+      throw new Error(`Duplicate mount path: "${mountPath}"`);
+    }
+    seenPath.add(mountPath);
+
+    const name = ((v.name ?? "").trim() || deriveVolumeName(mountPath)).toLowerCase();
+
+    if (v.type === "host") {
+      // Host bind mount: validate the host SOURCE path the same way as the
+      // target (absolute, no spaces/":"/".."), but it is NOT reserved-prefix
+      // checked — the source is a deliberate host path. No top-level volumes
+      // entry is emitted, so docker-name rules don't apply.
+      const hostPath = (v.hostPath ?? "").trim().replace(/\/+$/, "");
+      if (!/^\/[^\s:]*$/.test(hostPath) || hostPath.length < 2) {
+        throw new Error(
+          `Host path must be an absolute path with no spaces or ":": "${v.hostPath}"`,
+        );
+      }
+      if (hostPath.split("/").includes("..")) {
+        throw new Error(`Host path must not contain "..": "${v.hostPath}"`);
+      }
+      out.push({
+        id: v.id || newId("vol"),
+        type: "host",
+        name,
+        hostPath,
+        mountPath,
+        readOnly: Boolean(v.readOnly),
+      });
+      continue;
+    }
+
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(name) || name.length > 40) {
+      throw new Error(
+        `Volume name "${name}" must be lowercase letters, digits, "-"/"_" (max 40).`,
+      );
+    }
+    if (seenName.has(name)) {
+      throw new Error(`Duplicate volume name: "${name}"`);
+    }
+    seenName.add(name);
+
+    out.push({ id: v.id || newId("vol"), name, mountPath, readOnly: Boolean(v.readOnly) });
+  }
+  return out.length ? out : null;
+}
+
+/**
+ * Replace a single-container project's volumes (full set) — docker-managed named
+ * volumes and (for privileged users) host bind mounts. Rejected for compose-stack
+ * projects — they declare volumes inside their own YAML. An empty set is stored
+ * as null so renderCompose stays byte-identical. Persists only; the new mounts
+ * take effect on the next production deploy (consistent with the other per-card
+ * settings mutations).
+ */
+export async function setProjectVolumes(
+  id: string,
+  volumes: VolumeMount[],
+): Promise<void> {
+  const { membership } = await requireCapability("deploy");
+  // A host bind mount escapes the per-project sandbox, so it needs the dedicated
+  // grant on top of `deploy` (instance admins hold it implicitly).
+  if (volumes.some((v) => v.type === "host")) {
+    await requireMountHostVolumes();
+  }
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  mutate((d) => {
+    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
+    if (!p) throw new Error("Project not found");
+    if (usesComposeStack(p)) {
+      throw new Error(
+        "Volumes are managed inside the compose file for this project.",
+      );
+    }
+    // Validate here (inside mutate) so the conflict check can read p.mounts.
+    p.volumes = validateVolumes(volumes, p.mounts);
+    p.updatedAt = nowIso();
+  });
+  recordActivity("project", `Updated volumes`, user.name, id);
 }
 
 /**

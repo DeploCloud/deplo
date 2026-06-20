@@ -77,6 +77,8 @@ export const GlobalUserRef = builder
       teamCount: t.exposeInt("teamCount"),
       isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
       suspended: t.exposeBoolean("suspended"),
+      canExposePorts: t.exposeBoolean("canExposePorts"),
+      canMountHostVolumes: t.exposeBoolean("canMountHostVolumes"),
       createdAt: t.exposeString("createdAt"),
     }),
   });
@@ -115,6 +117,8 @@ export const UserDetailRef = builder
       avatarColor: t.exposeString("avatarColor"),
       isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
       suspended: t.exposeBoolean("suspended"),
+      canExposePorts: t.exposeBoolean("canExposePorts"),
+      canMountHostVolumes: t.exposeBoolean("canMountHostVolumes"),
       createdAt: t.exposeString("createdAt"),
       teams: t.field({ type: [UserDetailTeamRef], resolve: (u) => u.teams }),
       recentActivity: t.field({
@@ -166,6 +170,10 @@ const UpdateUserAdminInputType = builder.inputType("UpdateUserAdminInput", {
     userId: t.string({ required: true }),
     isInstanceAdmin: t.boolean({ required: true }),
     suspended: t.boolean({ required: true }),
+    // Instance-wide grants. Optional so older clients keep working; omitted ⇒
+    // the user's current value is preserved (resolved in the resolver).
+    canExposePorts: t.boolean({ required: false }),
+    canMountHostVolumes: t.boolean({ required: false }),
     newPassword: t.string({ required: false }),
   }),
 });
@@ -278,10 +286,16 @@ builder.mutationFields((t) => ({
       "Edit a user's instance-admin flag, suspended state, and password.",
     args: { input: t.arg({ type: UpdateUserAdminInputType, required: true }) },
     resolve: async (_r, { input }) => {
+      // Grants are optional in the input; an omitted (null) flag preserves the
+      // user's current value rather than silently clearing it.
+      const current = await getUserDetail(input.userId);
       await updateUserAdmin({
         userId: input.userId,
         isInstanceAdmin: input.isInstanceAdmin,
         suspended: input.suspended,
+        canExposePorts: input.canExposePorts ?? current.canExposePorts,
+        canMountHostVolumes:
+          input.canMountHostVolumes ?? current.canMountHostVolumes,
         newPassword: input.newPassword ?? undefined,
       });
       return getUserDetail(input.userId);

@@ -19,6 +19,7 @@ import {
   startProject,
   rebuildProject,
   deleteProject,
+  setProjectVolumes,
   type ProjectSummary,
 } from "@/lib/data/projects";
 import {
@@ -30,7 +31,7 @@ import {
   promoteToProduction,
 } from "@/lib/data/deployments";
 import { renderProjectStack } from "@/lib/deploy/build";
-import type { Deployment, LogLine } from "@/lib/types";
+import type { Deployment, LogLine, VolumeMount } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /* Object types                                                        */
@@ -73,6 +74,17 @@ export const DeploymentRef = builder
     }),
   });
 
+const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
+  description:
+    "A persistent docker named volume mounted into a single-container project.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    name: t.exposeString("name"),
+    mountPath: t.exposeString("mountPath"),
+    readOnly: t.exposeBoolean("readOnly"),
+  }),
+});
+
 export const ProjectRef = builder
   .objectRef<ProjectSummary>("Project")
   .implement({
@@ -88,6 +100,12 @@ export const ProjectRef = builder
       source: t.field({ type: DeploySourceEnum, resolve: (p) => p.source }),
       dockerImage: t.exposeString("dockerImage", { nullable: true }),
       compose: t.exposeString("compose", { nullable: true }),
+      volumes: t.field({
+        type: [VolumeRef],
+        description:
+          "Persistent named volumes (single-container projects only).",
+        resolve: (p) => p.volumes ?? [],
+      }),
       productionUrl: t.exposeString("productionUrl", { nullable: true }),
       status: t.field({ type: ProjectStatusEnum, resolve: (p) => p.status }),
       autoDeploy: t.exposeBoolean("autoDeploy"),
@@ -160,6 +178,20 @@ const MountInput = builder.inputType("MountInput", {
   fields: (t) => ({
     filePath: t.string({ required: true }),
     content: t.string({ required: true }),
+  }),
+});
+
+const VolumeInput = builder.inputType("VolumeInput", {
+  description: "A persistent volume for a single-container project.",
+  fields: (t) => ({
+    id: t.string({ required: false }),
+    /** "named" (docker-managed, default) or "host" (bind a host path). */
+    type: t.string({ required: false }),
+    name: t.string({ required: false }),
+    /** Absolute host path to bind-mount (host mounts only). */
+    hostPath: t.string({ required: false }),
+    mountPath: t.string({ required: true }),
+    readOnly: t.boolean({ required: false }),
   }),
 });
 
@@ -347,6 +379,30 @@ builder.mutationFields((t) => ({
             }))
           : undefined,
       });
+      return reloadProject(id);
+    },
+  }),
+  setProjectVolumes: t.field({
+    type: ProjectRef,
+    authScopes: { capability: "deploy" },
+    description:
+      "Replace a single-container project's volumes (named + host bind mounts).",
+    args: {
+      id: t.arg.string({ required: true }),
+      volumes: t.arg({ type: [VolumeInput], required: true }),
+    },
+    resolve: async (_r, { id, volumes }) => {
+      await setProjectVolumes(
+        id,
+        volumes.map((v) => ({
+          id: v.id ?? "",
+          type: v.type === "host" ? ("host" as const) : ("named" as const),
+          name: v.name ?? "",
+          hostPath: v.hostPath ?? undefined,
+          mountPath: v.mountPath,
+          readOnly: v.readOnly ?? false,
+        })),
+      );
       return reloadProject(id);
     },
   }),
