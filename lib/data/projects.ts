@@ -34,7 +34,13 @@ import {
   startContainer,
 } from "../deploy/build";
 import { ensureAutoDomain } from "./domains";
-import { resolveServerIp } from "../deploy/domains";
+import {
+  resolveServerIp,
+  instanceHost,
+  rehostSslip,
+  rehostBlueprintHosts,
+  sslipEmbeddedIp,
+} from "../deploy/domains";
 import { teardownProject } from "./deployments";
 import { teardownDev } from "../deploy/dev";
 import { removeUploads } from "../deploy/upload";
@@ -282,6 +288,25 @@ export async function createProject(
     (input.serverId && servers.find((s) => s.id === input.serverId)) ||
     servers.find((s) => s.type === "localhost") ||
     servers[0];
+
+  // A template's generated sslip.io hosts (the primary autoDomain + every
+  // exposes[].host, and any env value that embedded ${domain}) are baked in the
+  // /new page against the MASTER's IP (instanceHost), because the server isn't
+  // known until submit. If this project targets a DIFFERENT server, those hosts
+  // would route to (and display) the wrong IP — re-host them onto the target
+  // server's IP. A no-op for a master-targeted project (same IP) and non-sslip
+  // hosts. resolveServerIp falls back to instanceHost for a remote with no known
+  // IP yet, so that case also no-ops rather than rehosting toward a bad address.
+  const serverIp = resolveServerIp(server);
+  const hosts = rehostBlueprintHosts(
+    { autoDomain: input.autoDomain, exposes: input.exposes, env: input.env },
+    instanceHost(),
+    serverIp,
+  );
+  input.autoDomain = hosts.autoDomain;
+  input.exposes = hosts.exposes;
+  input.env = hosts.env;
+
   const project: Project = {
     id: newId("prj"),
     name: input.name.trim(),
@@ -421,6 +446,9 @@ export async function updateProjectSource(
   mutate((d) => {
     const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
+    // Capture the OLD server IP before p.serverId is reassigned, so a move can
+    // re-host the project's auto sslip.io domains onto the new server's IP below.
+    const oldIp = resolveServerIp(d.servers.find((s) => s.id === p.serverId));
     if (input.serverId) {
       const server = d.servers.find((s) => s.id === input.serverId);
       if (!server) throw new Error("Server not found");
@@ -434,6 +462,35 @@ export async function updateProjectSource(
     if (input.compose != null) p.compose = input.compose;
     if (input.expose !== undefined) p.expose = input.expose;
     if (input.exposes !== undefined) p.exposes = input.exposes;
+
+    // MOVING the project to a different server: its auto sslip.io hosts encode
+    // the OLD server's IP, so re-host them onto the new server's IP — otherwise
+    // the Domains section (and Traefik's routing target) keeps pointing at the
+    // old host. Covers the primary + every extra (web-ui.*) auto domain and the
+    // stored exposes[].host. Applied AFTER input.exposes lands so the final stored
+    // value is rehosted. A no-op when the IP is unchanged or the host isn't sslip.
+    // (Env vars are NOT rewritten here — they live encrypted in d.envVars and a
+    // template's env uses internal service DNS, not the public host; the create
+    // path rehosts env because the values are still plaintext there.)
+    const newIp = resolveServerIp(d.servers.find((s) => s.id === p.serverId));
+    if (newIp !== oldIp) {
+      for (const dom of d.domains) {
+        if (
+          dom.projectId === p.id &&
+          dom.source === "auto" &&
+          sslipEmbeddedIp(dom.name) === oldIp
+        ) {
+          dom.name = rehostSslip(dom.name, newIp);
+        }
+      }
+      if (p.exposes?.length) {
+        p.exposes = p.exposes.map((e) =>
+          e.host && sslipEmbeddedIp(e.host) === oldIp
+            ? { ...e, host: rehostSslip(e.host, newIp) }
+            : e,
+        );
+      }
+    }
     p.updatedAt = nowIso();
   });
   recordActivity("project", `Updated deploy source`, user.name, id);

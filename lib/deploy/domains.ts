@@ -195,6 +195,63 @@ export function rehostSslip(name: string, ip: string): string {
   return name.replace(SSLIP_IP_RE, `.${ip}.sslip.io`);
 }
 
+/**
+ * Rewrite every `*.<fromIp>.sslip.io` occurrence inside a free-text string (e.g.
+ * an env value like `https://app.<ip>.sslip.io/path`) to `<toIp>`, leaving the
+ * label and any surrounding text intact. Unlike {@link rehostSslip} this is not
+ * anchored to the end of the string — env values embed the host mid-text. Only
+ * the exact `fromIp` is touched, so it's a no-op when the value carries no such
+ * host (or a different IP). `fromIp` is escaped for the regex (literal dots).
+ */
+export function rehostEmbeddedSslip(
+  value: string,
+  fromIp: string,
+  toIp: string,
+): string {
+  const esc = fromIp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(
+    new RegExp(`\\.${esc}\\.sslip\\.io`, "gi"),
+    `.${toIp}.sslip.io`,
+  );
+}
+
+/** The subset of a template's CreateProjectInput whose sslip.io hosts are baked
+ * against the master IP and must follow the project to its target server. */
+export interface BlueprintHosts {
+  autoDomain?: string | null;
+  exposes?: { service: string; port: number; host?: string }[] | null;
+  env?: { key: string; value: string }[];
+}
+
+/**
+ * Re-host a template's generated sslip.io hosts from `fromIp` (the master IP the
+ * /new page baked them against) onto `toIp` (the IP of the server the project
+ * actually targets). Rewrites the primary autoDomain, every `exposes[].host`, and
+ * any env value that embedded a `*.<fromIp>.sslip.io` host — leaving non-sslip
+ * hosts, hosts on a different IP, and all other env text untouched. Pure: returns
+ * a NEW object, never mutates its input. A no-op (returns input as-is fields)
+ * when `fromIp === toIp`, so callers can call it unconditionally.
+ */
+export function rehostBlueprintHosts<T extends BlueprintHosts>(
+  input: T,
+  fromIp: string,
+  toIp: string,
+): T {
+  if (fromIp === toIp) return input;
+  const rehostHost = (host: string): string =>
+    sslipEmbeddedIp(host) === fromIp ? rehostSslip(host, toIp) : host;
+  return {
+    ...input,
+    autoDomain: input.autoDomain ? rehostHost(input.autoDomain) : input.autoDomain,
+    exposes: input.exposes?.length
+      ? input.exposes.map((e) => (e.host ? { ...e, host: rehostHost(e.host) } : e))
+      : input.exposes,
+    env: input.env?.length
+      ? input.env.map((e) => ({ ...e, value: rehostEmbeddedSslip(e.value, fromIp, toIp) }))
+      : input.env,
+  };
+}
+
 /** An sslip.io hostname that resolves to `ip` with no DNS setup. */
 export function sslipDomain(label: string, ip = instanceHost()): string {
   const clean = label
