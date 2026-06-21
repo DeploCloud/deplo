@@ -99,6 +99,22 @@ ok "Agent installed at $AGENT_BIN (checksum verified)"
 mkdir -p "$AGENT_DATA"
 chmod 700 "$AGENT_DATA"
 
+# Re-provisioning: running this installer means a FRESH bootstrap is intended (you
+# pasted a one-time token from the dashboard). But the agent skips bootstrap when
+# it finds existing mTLS materials on disk — so a reinstall over a previous one
+# (e.g. after removing + re-adding the server) would serve the STALE cert and
+# never call home, and the control plane — which pinned a new fingerprint at
+# re-add — would reject every dial (no metrics, never "online"). Clear the old
+# materials here so the agent genuinely re-bootstraps against the current pin.
+# (A plain `systemctl restart deplo-agent` carries no token through this script,
+# so it still reuses materials and serves straight away, as intended.)
+if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AGENT_DATA/ca.crt" ]; then
+  step "Existing agent materials found — clearing them for a fresh bootstrap..."
+  systemctl stop deplo-agent 2>/dev/null || true
+  rm -f "$AGENT_DATA/agent.crt" "$AGENT_DATA/agent.key" "$AGENT_DATA/ca.crt"
+  ok "Old materials cleared (the agent will re-provision with the new token)"
+fi
+
 # 3b. Traefik reverse proxy (idempotent) ------------------------------------
 # Deplo's deploys emit `traefik.*` labels and join the shared `deplo` network, but
 # something must READ those labels and route traffic — that is Traefik. The master
