@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AddServer } from "@/components/servers/add-server";
+import { ServerActions } from "@/components/servers/server-actions";
 import {
   Card,
   CardHeader,
@@ -30,6 +31,17 @@ function ServerCard({ server }: { server: Server }) {
           <Badge variant={server.type === "localhost" ? "default" : "secondary"}>
             {server.type === "localhost" ? "master" : "remote"}
           </Badge>
+          {/* Management actions for remote servers only — the master isn't
+              provisioned via bootstrap and can't be removed. Pushed to the right. */}
+          {server.type === "remote" && (
+            <div className="ml-auto">
+              <ServerActions
+                serverId={server.id}
+                serverName={serverLabel(server)}
+                provisioning={server.status === "provisioning"}
+              />
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
           <span className="font-mono text-muted-foreground">{server.ip}</span>
