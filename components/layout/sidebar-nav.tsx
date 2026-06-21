@@ -10,6 +10,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  useSlidingRect,
+  SlidingBackground,
+} from "@/components/ui/sliding-underline";
 
 export function SidebarNav({
   onNavigate,
@@ -44,13 +48,31 @@ export function SidebarNav({
     setSlide(inSettings ? "animate-slide-in-right" : "animate-slide-in-left");
   }
 
+  // Single background "pill" that slides to the active item — only its
+  // background moves between entries (the font weight stays constant). Measured
+  // on navigation; the ResizeObserver also catches sidebar width changes.
+  const navRef = React.useRef<HTMLElement | null>(null);
+  const bgRect = useSlidingRect(
+    navRef,
+    () => navRef.current?.querySelector<HTMLElement>('[data-active="true"]') ?? null,
+    [pathname],
+  );
+
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href;
     return pathname === href || pathname.startsWith(href + "/");
   }
 
   return (
-    <nav className={cn("flex flex-col py-3", collapsed ? "px-2" : "px-3", slide)}>
+    <nav
+      ref={navRef}
+      className={cn(
+        "relative isolate flex flex-col py-3",
+        collapsed ? "px-2" : "px-3",
+        slide,
+      )}
+    >
+      <SlidingBackground rect={bgRect} />
       {sections.map((section, i) => {
         const items = section.items.filter(
           (item) =>
@@ -79,12 +101,14 @@ export function SidebarNav({
                     href={item.href}
                     onClick={onNavigate}
                     aria-label={item.label}
+                    data-active={active ? "true" : undefined}
                     className={cn(
-                      "group flex cursor-pointer items-center gap-2.5 rounded-md text-sm transition-colors",
+                      // relative z-10 keeps the label/icon above the sliding pill.
+                      "group relative z-10 flex cursor-pointer items-center gap-2.5 rounded-md text-sm transition-colors",
                       collapsed ? "h-9 w-9 justify-center" : "px-3 py-1.5",
                       active
-                        ? "bg-sidebar-accent font-medium text-foreground"
-                        : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground"
+                        ? "text-foreground"
+                        : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5"
                     )}
                   >
                     <Icon

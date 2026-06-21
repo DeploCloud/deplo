@@ -4,7 +4,7 @@ import * as React from "react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { cn } from "@/lib/utils";
 import {
-  useSlidingUnderline,
+  useSlidingRect,
   SlidingUnderline,
 } from "@/components/ui/sliding-underline";
 
@@ -66,7 +66,7 @@ function UnderlineTabsList({
   ...props
 }: React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>) {
   const listRef = React.useRef<React.ElementRef<typeof TabsPrimitive.List>>(null);
-  const rect = useSlidingUnderline(
+  const rect = useSlidingRect(
     listRef,
     () =>
       listRef.current?.querySelector<HTMLElement>('[data-state="active"]') ??

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useLiveRunning } from "@/components/projects/project-live-status";
 import {
-  useSlidingUnderline,
+  useSlidingRect,
   SlidingUnderline,
 } from "@/components/ui/sliding-underline";
 
@@ -115,7 +115,7 @@ export function ProjectTabs({
   const tabRefs = React.useRef(new Map<string, HTMLAnchorElement | null>());
   const activeLabel = tabs.find((t) => t.active)?.label ?? null;
   const signature = tabs.map((t) => t.label).join("|");
-  const rect = useSlidingUnderline(
+  const rect = useSlidingRect(
     containerRef,
     () => (activeLabel ? (tabRefs.current.get(activeLabel) ?? null) : null),
     [activeLabel, signature],
