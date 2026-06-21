@@ -105,35 +105,54 @@ func (s *Service) Attach(stream pb.Agent_AttachServer) error {
 		}
 	}()
 
-	// Input pump: client -> container. Runs until the client half-closes the
-	// stream (io.EOF), the context is cancelled, or the container exits.
+	// Input pump: client -> container. Recv() blocks, so it runs in its own
+	// goroutine feeding a channel; the select below can then react to a container
+	// exit (outDone) or ctx cancel EVEN WHILE a Recv() is parked waiting for the
+	// next keystroke. Without this, an idle attach to a container that exits would
+	// stay blocked in Recv() and defer client.close() would not run until the
+	// client eventually tore the stream down — leaking the docker attach child.
+	type frameOrErr struct {
+		in  *pb.AttachInput
+		err error
+	}
+	recvCh := make(chan frameOrErr, 1)
+	go func() {
+		for {
+			in, err := stream.Recv()
+			recvCh <- frameOrErr{in, err}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-outDone:
-			// Container exited / output stream closed: stop reading input.
+			// Container exited / output stream closed: stop. defer client.close()
+			// tears down the backing, which unblocks the recv goroutine's Recv().
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
-		}
-		in, rerr := stream.Recv()
-		if rerr == io.EOF {
-			// The browser closed the input direction; keep streaming output until
-			// the container exits (outDone), then return.
-			<-outDone
-			return nil
-		}
-		if rerr != nil {
-			return rerr
-		}
-		switch f := in.GetFrame().(type) {
-		case *pb.AttachInput_Data:
-			client.write(f.Data)
-		case *pb.AttachInput_Resize:
-			client.resize(int(f.Resize.GetCols()), int(f.Resize.GetRows()))
-		case *pb.AttachInput_Open:
-			// A second open frame is a protocol error; ignore it (the first one
-			// already selected the container).
+		case fe := <-recvCh:
+			if fe.err == io.EOF {
+				// Browser closed the input direction; keep streaming output until
+				// the container exits (outDone), then return.
+				<-outDone
+				return nil
+			}
+			if fe.err != nil {
+				return fe.err
+			}
+			switch f := fe.in.GetFrame().(type) {
+			case *pb.AttachInput_Data:
+				client.write(f.Data)
+			case *pb.AttachInput_Resize:
+				client.resize(int(f.Resize.GetCols()), int(f.Resize.GetRows()))
+			case *pb.AttachInput_Open:
+				// A second open frame is a protocol error; ignore it (the first
+				// one already selected the container).
+			}
 		}
 	}
 }

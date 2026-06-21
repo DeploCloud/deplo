@@ -33,7 +33,6 @@ import {
   stopContainer,
   startContainer,
 } from "../deploy/build";
-import { AgentUnreachableError } from "../infra/agent-client";
 import { ensureAutoDomain } from "./domains";
 import { resolveServerIp } from "../deploy/domains";
 import { teardownProject } from "./deployments";
@@ -46,6 +45,15 @@ import { publishProjectChanged } from "../graphql/pubsub";
 /** Heuristic: treat secret-looking keys as masked secrets. */
 function isSecretKey(key: string): boolean {
   return /pass|secret|token|key|api|private|credential|dsn|url/i.test(key);
+}
+
+/** Whether a project runs on a remote server (its lifecycle hits an agent). */
+function projectIsRemote(p: Project): boolean {
+  return read().servers.find((s) => s.id === p.serverId)?.type === "remote";
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 export interface ProjectSummary extends Project {
@@ -734,12 +742,16 @@ export async function stopProject(id: string): Promise<void> {
   try {
     await stopContainer(project.slug);
   } catch (e) {
-    // A REMOTE whose agent is unreachable must FAIL CLEARLY (PLAN Part C): the
-    // container may still be running there, so settling to "idle" would lie.
-    // Revert the optimistic "stopping" and surface the error.
-    if (e instanceof AgentUnreachableError) {
+    // A REMOTE failure must FAIL CLEARLY (PLAN Part C): the container may still
+    // be running there, so settling to "idle" would lie. This covers BOTH an
+    // unreachable agent (AgentUnreachableError) AND a reachable agent that
+    // reported the stop failed (build.ts throws a plain Error on ok:false).
+    // Only a LOCALHOST stop stays best-effort (the old behaviour).
+    if (projectIsRemote(project)) {
       setProjectStatus(id, "active");
-      throw new Error(`Server unreachable — the stack was not stopped: ${e.message}`);
+      throw new Error(
+        `The stack on ${project.name}'s server was not stopped: ${errMsg(e)}`,
+      );
     }
     // Localhost / best-effort: ignore (the project settles to "idle" below).
   }
@@ -757,9 +769,12 @@ export async function startProject(id: string): Promise<void> {
   try {
     await startContainer(project.slug);
   } catch (e) {
-    // Remote unreachable: fail clearly rather than marking it "active" falsely.
-    if (e instanceof AgentUnreachableError) {
-      throw new Error(`Server unreachable — the stack was not started: ${e.message}`);
+    // Remote failure (unreachable, or agent reported start failed): fail clearly
+    // rather than marking it "active" falsely. Localhost stays best-effort.
+    if (projectIsRemote(project)) {
+      throw new Error(
+        `The stack on ${project.name}'s server was not started: ${errMsg(e)}`,
+      );
     }
     // Localhost: best-effort (a missing container surfaces on next status read).
   }

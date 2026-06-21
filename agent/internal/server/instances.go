@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	pb "github.com/idradev/deplo/agent/gen"
 	"github.com/idradev/deplo/agent/internal/dockercli"
 )
@@ -26,6 +29,13 @@ import (
 // ListInstances enumerates a project's attachable containers.
 func (s *Service) ListInstances(ctx context.Context, req *pb.ListInstancesRequest) (*pb.ListInstancesResponse, error) {
 	projectID := req.GetProjectId()
+	// An empty project_id would drop the label filter and list EVERY container on
+	// the host (cross-tenant enumeration). Reject it: ListInstances is always
+	// scoped to one project, mirroring assertOwned's empty-projectID refusal on
+	// the other container RPCs.
+	if projectID == "" {
+		return nil, status.Error(codes.InvalidArgument, "project_id is required")
+	}
 	cs, err := listProjectContainers(ctx, projectID)
 	if err != nil {
 		return nil, err

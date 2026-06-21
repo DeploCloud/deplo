@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -31,9 +32,24 @@ const (
 	maxWriteBytes = 1024 * 1024 // 1 MiB
 )
 
+// slugPattern is the shape a Deplo project slug always has (the control plane
+// sanitises to [a-z0-9-] at creation). The `slug` arrives off the wire and is
+// JOINED INTO the files root, so — exactly like the relative `path` — it must be
+// validated where the I/O runs and never trusted: a slug like "../../etc" would
+// otherwise escape <stack-dir>/files entirely. Defence in depth behind the
+// control plane's own sanitisation.
+var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+func validateSlug(slug string) error {
+	if !slugPattern.MatchString(slug) {
+		return status.Errorf(codes.InvalidArgument, "invalid slug %q", slug)
+	}
+	return nil
+}
+
 // filesRoot is the host path of a project's files root. The agent's --stack-dir
 // is the equivalent of the control plane's /data/stacks, so files/<slug> mirrors
-// lib/data/project-files.ts filesRoot exactly.
+// lib/data/project-files.ts filesRoot exactly. The caller MUST validateSlug first.
 func (s *Service) filesRoot(slug string) string {
 	return filepath.Join(s.stackDir, "files", slug)
 }
@@ -141,12 +157,18 @@ func canonicalRoot(root string) string {
 }
 
 func (s *Service) FilesExist(ctx context.Context, req *pb.FilesExistRequest) (*pb.FilesExistResponse, error) {
+	if err := validateSlug(req.GetSlug()); err != nil {
+		return nil, err
+	}
 	st, err := os.Stat(s.filesRoot(req.GetSlug()))
 	exists := err == nil && st.IsDir()
 	return &pb.FilesExistResponse{Exists: exists}, nil
 }
 
 func (s *Service) ListFiles(ctx context.Context, req *pb.ListFilesRequest) (*pb.ListFilesResponse, error) {
+	if err := validateSlug(req.GetSlug()); err != nil {
+		return nil, err
+	}
 	root := s.filesRoot(req.GetSlug())
 	abs, err := resolveInside(root, req.GetPath())
 	if err != nil {
@@ -201,6 +223,9 @@ func (s *Service) ListFiles(ctx context.Context, req *pb.ListFilesRequest) (*pb.
 }
 
 func (s *Service) ReadFile(ctx context.Context, req *pb.ReadFileRequest) (*pb.ReadFileResponse, error) {
+	if err := validateSlug(req.GetSlug()); err != nil {
+		return nil, err
+	}
 	root := s.filesRoot(req.GetSlug())
 	abs, err := resolveInside(root, req.GetPath())
 	if err != nil {
@@ -249,6 +274,9 @@ func (s *Service) UploadFile(ctx context.Context, req *pb.UploadFileRequest) (*p
 // writeBytes is the shared body of WriteFile/UploadFile: create parent dirs,
 // refuse to clobber a directory, write 0644, return fresh metadata.
 func (s *Service) writeBytes(slug, p string, data []byte) (*pb.FileEntryResult, error) {
+	if err := validateSlug(slug); err != nil {
+		return nil, err
+	}
 	root := s.filesRoot(slug)
 	abs, rel, err := resolveParentInside(root, p)
 	if err != nil {
@@ -268,6 +296,9 @@ func (s *Service) writeBytes(slug, p string, data []byte) (*pb.FileEntryResult, 
 }
 
 func (s *Service) CreateDir(ctx context.Context, req *pb.CreateDirRequest) (*pb.FileEntryResult, error) {
+	if err := validateSlug(req.GetSlug()); err != nil {
+		return nil, err
+	}
 	root := s.filesRoot(req.GetSlug())
 	abs, rel, err := resolveParentInside(root, req.GetPath())
 	if err != nil {
@@ -283,6 +314,9 @@ func (s *Service) CreateDir(ctx context.Context, req *pb.CreateDirRequest) (*pb.
 }
 
 func (s *Service) DeleteFile(ctx context.Context, req *pb.DeleteFileRequest) (*pb.DeleteFileResult, error) {
+	if err := validateSlug(req.GetSlug()); err != nil {
+		return nil, err
+	}
 	root := s.filesRoot(req.GetSlug())
 	abs, err := resolveInside(root, req.GetPath())
 	if err != nil {
@@ -298,6 +332,9 @@ func (s *Service) DeleteFile(ctx context.Context, req *pb.DeleteFileRequest) (*p
 }
 
 func (s *Service) RenameFile(ctx context.Context, req *pb.RenameFileRequest) (*pb.FileEntryResult, error) {
+	if err := validateSlug(req.GetSlug()); err != nil {
+		return nil, err
+	}
 	root := s.filesRoot(req.GetSlug())
 	from, err := resolveInside(root, req.GetPath())
 	if err != nil {

@@ -3,8 +3,10 @@ import "server-only";
 import {
   credentials,
   Metadata,
+  status as GrpcStatus,
   type ClientReadableStream,
   type ClientDuplexStream,
+  type ServiceError,
 } from "@grpc/grpc-js";
 import type { PeerCertificate } from "node:tls";
 import {
@@ -153,6 +155,39 @@ interface DialTarget {
 
 /** A typed availability error: the agent could not be reached (caller falls back). */
 export class AgentUnreachableError extends Error {}
+
+/**
+ * gRPC status codes that mean "the agent is down / not answering" rather than
+ * "the agent answered with an application error". A provisioned-but-offline agent
+ * (process dead, host down, network partition) rejects RPCs with one of these,
+ * NOT with AgentUnreachableError — so without this mapping every "is the agent
+ * unreachable?" guard in the data layer would miss the common case and either
+ * 500 a page or lie about status. We normalise them to AgentUnreachableError at
+ * the client boundary so the locked rule ("remote unreachable → fail clearly,
+ * report offline, never fall back / lie") holds for down agents too, not just
+ * never-provisioned ones.
+ */
+const TRANSPORT_DOWN_CODES = new Set<number>([
+  GrpcStatus.UNAVAILABLE, // connection refused / TLS / keepalive / agent gone
+  GrpcStatus.DEADLINE_EXCEEDED, // dialed but never answered within the deadline
+  GrpcStatus.UNAUTHENTICATED, // mTLS handshake failed (revoked / wrong cert)
+]);
+
+/**
+ * Normalise an RPC error: a transport-down gRPC error becomes an
+ * AgentUnreachableError (so the data-layer guards catch it); anything else (an
+ * application error the agent deliberately returned — NOT_FOUND, PERMISSION_DENIED,
+ * INVALID_ARGUMENT, FAILED_PRECONDITION) passes through unchanged.
+ */
+function toAgentError(err: unknown): Error {
+  if (err instanceof AgentUnreachableError) return err;
+  const code = (err as Partial<ServiceError> | null)?.code;
+  if (typeof code === "number" && TRANSPORT_DOWN_CODES.has(code)) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return new AgentUnreachableError(msg);
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
 
 /**
  * Resolve a server to a dial target. `localhost` → the supervised local agent
@@ -448,14 +483,17 @@ function dial(target: DialTarget): AgentConnection {
           { contractVersion: ContractVersion.CONTRACT_VERSION_V1, controlPlaneVersion: "" },
           new Metadata(),
           { deadline },
-          (err, resp) => (err ? reject(err) : resolve(resp)),
+          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp)),
         );
       });
     },
     metrics(dataDir = "") {
       return new Promise<HostMetrics>((resolve, reject) => {
-        client.metrics({ dataDir }, (err, resp) =>
-          err ? reject(err) : resolve(resp),
+        // A deadline is mandatory: the dashboard polls metrics ~1s, so a remote
+        // agent that accepts the connection but never replies must time out (and
+        // be classified unreachable) rather than hang the poll + leak the client.
+        client.metrics({ dataDir }, new Metadata(), consoleDeadline(), (err, resp) =>
+          err ? reject(toAgentError(err)) : resolve(resp),
         );
       });
     },
@@ -474,21 +512,21 @@ function dial(target: DialTarget): AgentConnection {
     stopStack(slug: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.stopStack({ slug }, (err, resp) =>
-          err ? reject(err) : resolve({ ok: resp.ok, error: resp.error }),
+          err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },
     startStack(slug: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.startStack({ slug }, (err, resp) =>
-          err ? reject(err) : resolve({ ok: resp.ok, error: resp.error }),
+          err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },
     destroyStack(slug: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.destroyStack({ slug }, (err, resp) =>
-          err ? reject(err) : resolve({ ok: resp.ok, error: resp.error }),
+          err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },
@@ -523,7 +561,7 @@ function dial(target: DialTarget): AgentConnection {
           new Metadata(),
           consoleDeadline(),
           (err, resp) =>
-            err ? reject(err) : resolve(resp.instances.map(mapInstance)),
+            err ? reject(toAgentError(err)) : resolve(resp.instances.map(mapInstance)),
         );
       });
     },
@@ -535,7 +573,7 @@ function dial(target: DialTarget): AgentConnection {
           consoleDeadline(),
           (err, resp) =>
             err
-              ? reject(err)
+              ? reject(toAgentError(err))
               : resolve({
                   stdout: resp.stdout,
                   stderr: resp.stderr,
@@ -551,7 +589,7 @@ function dial(target: DialTarget): AgentConnection {
           { projectId, container, image },
           new Metadata(),
           consoleDeadline(),
-          (err, resp) => (err ? reject(err) : resolve(resp.label)),
+          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.label)),
         );
       });
     },
@@ -560,7 +598,7 @@ function dial(target: DialTarget): AgentConnection {
     listFiles(slug: string, path: string) {
       return new Promise<AgentFileEntry[]>((resolve, reject) => {
         client.listFiles({ slug, path }, new Metadata(), filesDeadline(), (err, resp) =>
-          err ? reject(err) : resolve(resp.entries.map(mapEntry)),
+          err ? reject(toAgentError(err)) : resolve(resp.entries.map(mapEntry)),
         );
       });
     },
@@ -568,7 +606,7 @@ function dial(target: DialTarget): AgentConnection {
       return new Promise<AgentFileContent>((resolve, reject) => {
         client.readFile({ slug, path }, new Metadata(), filesDeadline(), (err, resp) =>
           err
-            ? reject(err)
+            ? reject(toAgentError(err))
             : resolve({
                 path: resp.path,
                 text: resp.reason ? null : resp.text,
@@ -581,42 +619,42 @@ function dial(target: DialTarget): AgentConnection {
     writeFile(slug: string, path: string, content: string) {
       return new Promise<AgentFileEntry>((resolve, reject) => {
         client.writeFile({ slug, path, content }, new Metadata(), filesDeadline(), (err, resp) =>
-          err || !resp.entry ? reject(err ?? new Error("no entry")) : resolve(mapEntry(resp.entry)),
+          err || !resp.entry ? reject(toAgentError(err ?? new Error("no entry"))) : resolve(mapEntry(resp.entry)),
         );
       });
     },
     uploadFile(slug: string, path: string, data: Buffer) {
       return new Promise<AgentFileEntry>((resolve, reject) => {
         client.uploadFile({ slug, path, data }, new Metadata(), filesDeadline(), (err, resp) =>
-          err || !resp.entry ? reject(err ?? new Error("no entry")) : resolve(mapEntry(resp.entry)),
+          err || !resp.entry ? reject(toAgentError(err ?? new Error("no entry"))) : resolve(mapEntry(resp.entry)),
         );
       });
     },
     createDir(slug: string, path: string) {
       return new Promise<AgentFileEntry>((resolve, reject) => {
         client.createDir({ slug, path }, new Metadata(), filesDeadline(), (err, resp) =>
-          err || !resp.entry ? reject(err ?? new Error("no entry")) : resolve(mapEntry(resp.entry)),
+          err || !resp.entry ? reject(toAgentError(err ?? new Error("no entry"))) : resolve(mapEntry(resp.entry)),
         );
       });
     },
     deleteFile(slug: string, path: string) {
       return new Promise<boolean>((resolve, reject) => {
         client.deleteFile({ slug, path }, new Metadata(), filesDeadline(), (err, resp) =>
-          err ? reject(err) : resolve(resp.ok),
+          err ? reject(toAgentError(err)) : resolve(resp.ok),
         );
       });
     },
     renameFile(slug: string, path: string, newPath: string) {
       return new Promise<AgentFileEntry>((resolve, reject) => {
         client.renameFile({ slug, path, newPath }, new Metadata(), filesDeadline(), (err, resp) =>
-          err || !resp.entry ? reject(err ?? new Error("no entry")) : resolve(mapEntry(resp.entry)),
+          err || !resp.entry ? reject(toAgentError(err ?? new Error("no entry"))) : resolve(mapEntry(resp.entry)),
         );
       });
     },
     filesExist(slug: string) {
       return new Promise<boolean>((resolve, reject) => {
         client.filesExist({ slug }, new Metadata(), filesDeadline(), (err, resp) =>
-          err ? reject(err) : resolve(resp.exists),
+          err ? reject(toAgentError(err)) : resolve(resp.exists),
         );
       });
     },

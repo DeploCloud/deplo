@@ -185,6 +185,31 @@ func TestFiles_RenameContainment(t *testing.T) {
 	}
 }
 
+func TestFiles_RejectBadSlug(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newFilesService(t, "app")
+	// A slug that would escape <stack-dir>/files if joined unguarded.
+	bad := []string{"../../../etc", "..", "a/b", "App", "x..y/../..", ""}
+	for _, slug := range bad {
+		if _, err := s.ReadFile(ctx, &pb.ReadFileRequest{Slug: slug, Path: "hostname"}); err == nil {
+			t.Errorf("ReadFile(slug=%q) = nil error, want invalid-slug rejection", slug)
+		}
+		if _, err := s.WriteFile(ctx, &pb.WriteFileRequest{Slug: slug, Path: "x", Content: "y"}); err == nil {
+			t.Errorf("WriteFile(slug=%q) = nil error, want invalid-slug rejection", slug)
+		}
+		if _, err := s.FilesExist(ctx, &pb.FilesExistRequest{Slug: slug}); err == nil {
+			t.Errorf("FilesExist(slug=%q) = nil error, want invalid-slug rejection", slug)
+		}
+	}
+	// A valid slug still works.
+	good := []string{"app", "my-app", "a1-b2-c3"}
+	for _, slug := range good {
+		if err := validateSlug(slug); err != nil {
+			t.Errorf("validateSlug(%q) = %v, want nil", slug, err)
+		}
+	}
+}
+
 func TestFiles_Exist(t *testing.T) {
 	ctx := context.Background()
 	s, _ := newFilesService(t, "app")
