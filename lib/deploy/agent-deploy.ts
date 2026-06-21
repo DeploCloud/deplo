@@ -45,6 +45,21 @@ export type AgentBuildPlan =
       /** The agent runs a prebuilt image as-is (source: docker-image). */
       kind: "image";
       image: string;
+    }
+  | {
+      /**
+       * The agent clones a git repo ITSELF (D3, Part B) — used for a REMOTE
+       * server so the whole repo never crosses the wire, only the descriptor.
+       * The control plane has already resolved the authenticated clone URL (a
+       * short-lived token baked in for private GitHub) and the branch + subdir.
+       */
+      kind: "git";
+      url: string;
+      branch: string;
+      /** rootDirectory within the repo (validated against the clone on the agent). */
+      subdir: string;
+      /** Build config (drives the Dockerfile dispatch, same as the dockerfile plan). */
+      build: BuildConfig;
     };
 
 /**
@@ -102,13 +117,21 @@ export interface AgentDeploySink {
   phase?: (phase: DeployPhase) => void;
 }
 
+/** The outcome of an agent deploy: readiness + any commit sha the agent resolved. */
+export interface AgentDeployResult {
+  ready: boolean;
+  /** Set when the agent materialised a GIT source and resolved the commit. */
+  commitSha: string;
+}
+
 /**
  * Run a deploy through the agent. Performs the mandatory Hello pre-flight (P5),
- * builds the DeployRequest (taring the context for a Dockerfile build, or an
- * IMAGE source), streams events into `sink`, and resolves true on a ready
- * result. Throws on agent-unreachable / transport errors so the caller can fall
- * back to the local path; returns false on a clean BUILD failure reported by the
- * agent (the deploy genuinely failed — do NOT silently retry locally).
+ * builds the DeployRequest (taring the context for a Dockerfile build, a GIT
+ * source the agent clones itself, or an IMAGE source), streams events into
+ * `sink`, and resolves `ready: true` on a ready result. Throws on
+ * agent-unreachable / transport errors so the caller can fall back to the local
+ * path; returns `ready: false` on a clean BUILD failure reported by the agent
+ * (the deploy genuinely failed — do NOT silently retry locally).
  */
 export async function runAgentDeploy(opts: {
   serverId: string;
@@ -121,7 +144,7 @@ export async function runAgentDeploy(opts: {
   plan: AgentBuildPlan;
   readyTimeoutMs?: number;
   sink: AgentDeploySink;
-}): Promise<boolean> {
+}): Promise<AgentDeployResult> {
   // P5: fail fast if the agent doesn't answer, rather than hanging a deploy.
   const hello = await agentPreflight(opts.serverId);
   if (!hello.dockerAvailable) {
@@ -141,27 +164,29 @@ export async function runAgentDeploy(opts: {
   try {
     for await (const ev of conn.deploy(req)) {
       started = true;
-      const result = handleEvent(ev, opts.sink);
-      if (result !== undefined) return result;
+      const terminal = handleEvent(ev, opts.sink);
+      if (terminal !== undefined) {
+        return { ready: terminal.ready, commitSha: terminal.commitSha };
+      }
     }
     // Stream ended cleanly but with no terminal result. If work had begun, the
     // agent's state is unknown — fail rather than silently rebuilding locally.
     if (started) {
       opts.sink.log("error", "Agent stream ended without a result.");
-      return false;
+      return { ready: false, commitSha: "" };
     }
     throw new AgentUnavailableError("agent stream produced no events");
   } catch (e) {
     if (e instanceof AgentUnavailableError) throw e;
-    // A mid-stream transport error AFTER work began: do not fall back (Part A is
-    // fire-and-forget — reconnect/replay is Part B). Surface it as a deploy
-    // failure so we never double-build over an in-flight agent deploy.
+    // A mid-stream transport error AFTER work began: do not fall back (reconnect/
+    // replay would re-attach to the SAME deploy; we surface it as a failure here
+    // so we never double-build over an in-flight agent deploy).
     if (started) {
       opts.sink.log(
         "error",
         `Agent deploy interrupted: ${e instanceof Error ? e.message : String(e)}`,
       );
-      return false;
+      return { ready: false, commitSha: "" };
     }
     // Failure before any work began == agent unavailable: safe to fall back.
     throw new AgentUnavailableError(
@@ -180,12 +205,12 @@ export async function runAgentDeploy(opts: {
  */
 export class AgentUnavailableError extends Error {}
 
-/** Translate one DeployEvent into the sink; return a boolean only for the
- * terminal result, else undefined. */
+/** Translate one DeployEvent into the sink; return the terminal result (ready +
+ * commit sha) only for the result event, else undefined. */
 function handleEvent(
   ev: DeployEvent,
   sink: AgentDeploySink,
-): boolean | undefined {
+): { ready: boolean; commitSha: string } | undefined {
   if (ev.log) {
     sink.log(coerceLevel(ev.log.level), ev.log.text);
     return undefined;
@@ -198,7 +223,7 @@ function handleEvent(
     if (!ev.result.ready && ev.result.error) {
       sink.log("error", ev.result.error);
     }
-    return ev.result.ready;
+    return { ready: ev.result.ready, commitSha: ev.result.commitSha || "" };
   }
   return undefined;
 }
@@ -247,8 +272,41 @@ async function buildDeployRequest(opts: {
     };
   }
 
-  // Dockerfile build. The dispatch MUST mirror lib/deploy/builders.ts so the
-  // agent builds byte-identically to the old local path:
+  if (opts.plan.kind === "git") {
+    // GIT source (D3): the agent clones the repo itself, so no context is tarred
+    // here — only the descriptor crosses the wire. We can't probe the (not-yet-
+    // cloned) tree for a root Dockerfile, so for the generated/auto method we
+    // send generated:true with the body; the agent's buildImage writes it ONLY
+    // when the clone has no Dockerfile — the same prefer-repo-Dockerfile
+    // semantics as the local buildGenerated path, decided where the tree lives.
+    const normalized = normalizeBuildConfig(opts.plan.build);
+    const dockerfile =
+      normalized.buildMethod === "dockerfile"
+        ? explicitDockerfileDescriptor(normalized)
+        : {
+            dockerfilePath: "",
+            contextPath: ".",
+            targetStage: "",
+            generated: true,
+            generatedDockerfile: generateDockerfile(normalized),
+          };
+    return {
+      ...base,
+      sourceKind: SourceKind.SOURCE_KIND_GIT,
+      buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
+      dockerfile,
+      git: {
+        url: opts.plan.url,
+        branch: opts.plan.branch,
+        subdir: opts.plan.subdir,
+        token: "", // the url is already authenticated by the control plane
+      },
+    };
+  }
+
+  // Dockerfile build from a materialised local context (UPLOAD). The dispatch
+  // MUST mirror lib/deploy/builders.ts so the agent builds byte-identically to
+  // the old local path:
   //   - buildMethod "dockerfile" → buildFromDockerfile: honour the explicit
   //     dockerfilePath / dockerContextPath / dockerBuildStage from methodSettings;
   //     the Dockerfile is REQUIRED (the agent errors loudly if it is missing),

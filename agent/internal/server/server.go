@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	pb "github.com/idradev/deplo/agent/gen"
 	"github.com/idradev/deplo/agent/internal/dockercli"
 	"github.com/idradev/deplo/agent/internal/hostmetrics"
@@ -30,13 +33,10 @@ var Capabilities = []string{
 // AgentVersion is stamped at build time via -ldflags; "dev" by default.
 var AgentVersion = "dev"
 
-// inflight records a deploy the agent is currently running, keyed by its stable
-// deploy id. Part A groundwork for D5: the record exists so a future re-attach
-// RPC can find an in-progress deploy. Part A itself stays fire-and-forget.
-type inflight struct {
-	startedAt time.Time
-	phase     pb.DeployPhase
-}
+// retainFinished is how long a finished deploy's event buffer is kept so a
+// control plane that dropped just before the terminal result can still reattach
+// and fetch it (PLAN D5). After this it is evicted to bound memory.
+const retainFinished = 10 * time.Minute
 
 // Service is the gRPC Agent implementation.
 type Service struct {
@@ -48,8 +48,8 @@ type Service struct {
 	buildTmpDir string
 	dataDir     string
 
-	mu        sync.Mutex
-	deploys   map[string]*inflight
+	mu      sync.Mutex
+	deploys map[string]*inflight
 }
 
 // New builds the service. stackDir/buildTmpDir are created lazily by the deploy
@@ -111,34 +111,74 @@ func (s *Service) Metrics(ctx context.Context, req *pb.MetricsRequest) (*pb.Host
 // Deploy runs a deployment and streams its events. The stream is the live build
 // log + phase transitions + a terminal result; the control plane writes these
 // into the Deployment row and republishes over its existing SSE subscriptions.
+//
+// PART B (D5): the deploy itself runs in a BACKGROUND goroutine on a
+// deploy-scoped context, NOT the stream's — so if the control plane disconnects
+// mid-build, the build KEEPS GOING and the control plane can reattach
+// (ReattachDeploy) to replay what it missed and follow it to completion. Every
+// event is buffered (seq-stamped) so a reconnect loses nothing. A repeat Deploy
+// for an already-running id attaches to it instead of starting a second build.
 func (s *Service) Deploy(req *pb.DeployRequest, stream pb.Agent_DeployServer) error {
 	id := req.GetDeployId()
+	if id == "" {
+		return status.Error(codes.InvalidArgument, "deploy_id is required")
+	}
+
 	s.mu.Lock()
-	s.deploys[id] = &inflight{startedAt: time.Now(), phase: pb.DeployPhase_DEPLOY_PHASE_UNSPECIFIED}
-	s.mu.Unlock()
-	defer func() {
-		s.mu.Lock()
-		delete(s.deploys, id)
+	existing := s.deploys[id]
+	if existing != nil {
+		// Already running (or finished + retained): attach instead of re-running.
 		s.mu.Unlock()
-	}()
+		return existing.subscribe(stream.Context(), 0, stream.Send)
+	}
+	// Start a fresh deploy on a background, deploy-scoped context so a stream
+	// disconnect does not abort the build.
+	deployCtx, cancel := context.WithCancel(context.Background())
+	f := newInflight(cancel)
+	s.deploys[id] = f
+	s.mu.Unlock()
 
+	go s.driveDeploy(deployCtx, id, req, f)
+
+	// The caller's stream subscribes from the start; its context cancelling just
+	// detaches this reader (the build continues for a reattacher).
+	return f.subscribe(stream.Context(), 0, stream.Send)
+}
+
+// ReattachDeploy reconnects to an in-flight or recently-finished deploy and
+// replays events past from_seq, then follows it live to completion (D5).
+// Returns NOT_FOUND if the agent has no record of the deploy (it never ran here,
+// or its retention window elapsed) — the control plane then reconciles it.
+func (s *Service) ReattachDeploy(req *pb.ReattachRequest, stream pb.Agent_ReattachDeployServer) error {
+	id := req.GetDeployId()
+	s.mu.Lock()
+	f := s.deploys[id]
+	s.mu.Unlock()
+	if f == nil {
+		return status.Errorf(codes.NotFound, "no record of deploy %q", id)
+	}
+	return f.subscribe(stream.Context(), req.GetFromSeq(), stream.Send)
+}
+
+// driveDeploy runs the deploy body, appending every emitted event to the
+// inflight buffer (which fans out to all subscribers), then schedules the
+// record's eviction after the retention window so a late reattacher can still
+// fetch the terminal result.
+func (s *Service) driveDeploy(ctx context.Context, id string, req *pb.DeployRequest, f *inflight) {
+	defer f.cancel() // release the deploy context when the body returns
 	e := &emitter{send: func(ev *pb.DeployEvent) error {
-		if p := ev.GetPhase(); p != nil {
-			s.mu.Lock()
-			if d := s.deploys[id]; d != nil {
-				d.phase = p.GetPhase()
-			}
-			s.mu.Unlock()
-		}
-		return stream.Send(ev)
+		f.append(ev)
+		return nil
 	}}
-
-	// The deploy runs to completion bound to the stream's context: if the
-	// control plane disconnects, the context cancels and the deploy stops. (Part
-	// B keeps building through a disconnect and replays on re-attach; Part A is
-	// fire-and-forget, matching today's behaviour.)
-	s.runDeploy(stream.Context(), req, e)
-	return nil
+	s.runDeploy(ctx, req, e)
+	// Retain briefly for reconnection, then evict.
+	time.AfterFunc(retainFinished, func() {
+		s.mu.Lock()
+		if s.deploys[id] == f {
+			delete(s.deploys, id)
+		}
+		s.mu.Unlock()
+	})
 }
 
 // StopStack stops a compose-managed stack (falls back to the bare container).

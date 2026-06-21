@@ -4,7 +4,12 @@ import tls from "node:tls";
 import { X509Certificate } from "node:crypto";
 
 import * as x509 from "@peculiar/x509";
-import { webcrypto } from "node:crypto";
+import {
+  webcrypto,
+  generateKeyPairSync,
+  createPrivateKey,
+  createPublicKey,
+} from "node:crypto";
 
 import {
   caCertPem,
@@ -167,13 +172,12 @@ test("the CSR-signed agent cert completes a real mTLS handshake with the control
   // End-to-end trust inversion: the agent serves TLS with a cert the control
   // plane signed from the agent's OWN key (which the control plane never saw),
   // and the control-plane client authenticates against the shared CA.
-  const agentKeyPem = (() => {
-    const { privateKey } = require("node:crypto").generateKeyPairSync("ed25519");
-    return privateKey.export({ format: "pem", type: "pkcs8" }).toString();
-  })();
+  const agentKeyPem = generateKeyPairSync("ed25519")
+    .privateKey.export({ format: "pem", type: "pkcs8" })
+    .toString();
   // Build a CSR from that exact private key so the issued cert matches it.
-  const priv = require("node:crypto").createPrivateKey(agentKeyPem);
-  const pub = require("node:crypto").createPublicKey(priv);
+  const priv = createPrivateKey(agentKeyPem);
+  const pub = createPublicKey(priv);
   const keys = {
     privateKey: await webcrypto.subtle.importKey(
       "pkcs8",

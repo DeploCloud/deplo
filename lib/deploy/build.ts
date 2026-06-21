@@ -447,18 +447,26 @@ async function buildImageFromTree(opts: {
  * proving the contract with zero remote risk. Anything the agent can't handle
  * (heavy builders, compose stacks, agent down) takes the unchanged local path.
  */
-async function tryAgentSingleImage(opts: {
+/** The agent attempt's outcome + any commit sha the agent resolved (git source). */
+interface AgentAttempt {
+  outcome: "agent" | "local" | "failed";
+  commitSha: string;
+}
+
+async function tryAgent(opts: {
   depId: string;
   serverId: string;
   project: { id: string; slug: string };
-  name: string;
   imageRef: string;
   composeYaml: string;
   env: Record<string, string>;
   plan: AgentBuildPlan;
-}): Promise<"agent" | "local" | "failed"> {
+  /** When true a transport failure is NOT a local fallback (remote has no local
+   * path); it is a hard deploy failure. Set for remote servers. */
+  noLocalFallback?: boolean;
+}): Promise<AgentAttempt> {
   try {
-    const ready = await runAgentDeploy({
+    const { ready, commitSha } = await runAgentDeploy({
       serverId: opts.serverId,
       deployId: opts.depId,
       slug: opts.project.slug,
@@ -470,15 +478,25 @@ async function tryAgentSingleImage(opts: {
       readyTimeoutMs: 60_000,
       sink: { log: (level, text) => log(opts.depId, level, text) },
     });
-    return ready ? "agent" : "failed";
+    return { outcome: ready ? "agent" : "failed", commitSha };
   } catch (e) {
     if (e instanceof AgentUnavailableError) {
+      if (opts.noLocalFallback) {
+        // A remote server has no local build path to fall back to: surface the
+        // unreachable agent as a clear deploy failure (P5 — no hung deploys).
+        log(
+          opts.depId,
+          "error",
+          `Remote agent unavailable: ${e.message}`,
+        );
+        return { outcome: "failed", commitSha: "" };
+      }
       log(
         opts.depId,
         "warn",
         `Agent unavailable (${e.message}); falling back to local build.`,
       );
-      return "local";
+      return { outcome: "local", commitSha: "" };
     }
     throw e;
   }
@@ -519,6 +537,25 @@ async function runDeployment(depId: string): Promise<void> {
     await mkdir(STACK_DIR, { recursive: true });
     await ensureNetwork("deplo");
 
+    // A REMOTE server can ONLY deploy what the agent supports — everything else
+    // would silently build/run on the WRONG host (localhost's Docker). The heavy
+    // builders (Nixpacks/Buildpacks/Railpack/static) aren't agent capabilities
+    // yet, so a remote project using one fails clearly here rather than deploying
+    // to the master. (Image + Dockerfile/auto + single-image compose go through
+    // the agent below.) An unprovisioned remote also fails fast (P5).
+    if (server?.type === "remote" && !agentCanHandle(project.build)) {
+      log(
+        depId,
+        "error",
+        "This build method can't yet deploy to a remote server (only Dockerfile/" +
+          "auto builds and prebuilt images can). Switch the build method, or move " +
+          "the project to the master server.",
+      );
+      setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
+      setProject(project.id, { status: "error" });
+      return;
+    }
+
     // Multi-service compose / one-click template deploy: deploy the project's
     // own compose stack, wired to Traefik on the generated domain. The compose
     // interpolates its ${VARS} from an env-file we write alongside it. Selecting
@@ -531,6 +568,21 @@ async function runDeployment(depId: string): Promise<void> {
     const hasCompose = Boolean(project.compose && project.compose.trim());
     const useCompose = usesComposeStack(project);
     if (useCompose && hasCompose) {
+      // A multi-service compose stack is not yet an agent capability (the agent
+      // does single-image compose-up only). On a REMOTE server, running it here
+      // would silently deploy to the WRONG host (localhost's Docker), so fail
+      // clearly instead — multi-service-on-remote is a later phase.
+      if (server?.type === "remote") {
+        log(
+          depId,
+          "error",
+          "Multi-service compose stacks can't yet deploy to a remote server. " +
+            "Move this project to the master server, or split it into single-image services.",
+        );
+        setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
+        setProject(project.id, { status: "error" });
+        return;
+      }
       await deployComposeStack({
         depId,
         project,
@@ -552,12 +604,16 @@ async function runDeployment(depId: string): Promise<void> {
 
     let imageRef: string;
     let commitSha = "";
-    // Set by the agent path (PLAN Part A) when the agent fully built + ran this
+    // Set by the agent path (PLAN Part A/B) when the agent fully built + ran this
     // deploy, so the post-switch LOCAL build + compose-up is skipped. "failed"
     // means the agent reported a real build failure (do NOT silently rebuild
     // locally); "agent" means it succeeded; null means the local path runs.
     let agentOutcome: "agent" | "failed" | null = null;
     const serverId = project.serverId;
+    // A REMOTE server has no local build path: the agent is the ONLY way to
+    // deploy there, so an unreachable agent is a hard failure, not a fallback
+    // (P5). For localhost the legacy local path remains the fallback (Part A).
+    const isRemote = server?.type === "remote";
 
     // Render the single-image stack the agent (or the local path) brings up. The
     // control plane stays the single source of truth for the compose (D2) and
@@ -600,15 +656,15 @@ async function runDeployment(depId: string): Promise<void> {
           skipBuild: true, // the agent builds; we only resolve the dir
         });
         const { composeYaml, env } = renderStack(treeOpts.imageRef);
-        const outcome = await tryAgentSingleImage({
+        const { outcome } = await tryAgent({
           depId,
           serverId,
           project: { id: project.id, slug },
-          name,
           imageRef: treeOpts.imageRef,
           composeYaml,
           env,
           plan: { kind: "dockerfile", buildDir, build: normalizeBuildConfig(project.build) },
+          noLocalFallback: isRemote,
         });
         if (outcome !== "local") {
           agentOutcome = outcome;
@@ -618,6 +674,7 @@ async function runDeployment(depId: string): Promise<void> {
       }
       // Local fallback (or an ineligible build method): build the image in the
       // local store, exactly as before; the post-switch block runs the stack.
+      // Unreachable for a remote server (noLocalFallback short-circuits above).
       await buildImageFromTree({ depId, project, slug, ...treeOpts });
     };
 
@@ -674,15 +731,15 @@ async function runDeployment(depId: string): Promise<void> {
         // A prebuilt image: the agent pulls + runs it (no local pull/build).
         if (agentCanHandle(null)) {
           const { composeYaml, env } = renderStack(imageRef);
-          const outcome = await tryAgentSingleImage({
+          const { outcome } = await tryAgent({
             depId,
             serverId,
             project: { id: project.id, slug },
-            name,
             imageRef,
             composeYaml,
             env,
             plan: { kind: "image", image: plan.image },
+            noLocalFallback: isRemote,
           });
           if (outcome !== "local") {
             agentOutcome = outcome;
@@ -696,6 +753,49 @@ async function runDeployment(depId: string): Promise<void> {
       }
       case "git": {
         const repo = plan.repo;
+
+        // REMOTE server (PLAN Part B, D3): the AGENT clones the repo itself, so
+        // the whole tree never crosses the wire — only the descriptor does. The
+        // control plane resolves the authenticated clone URL (short-lived token
+        // baked in for private GitHub) and hands the agent the branch + subdir;
+        // the agent reports back the commit sha it checked out.
+        if (isRemote && agentCanHandle(project.build)) {
+          const cloneUrl = await installationCloneUrl(
+            repo.url,
+            repo.installationId ?? null,
+          );
+          // The agent tags the image by the sha IT resolves; until then use the
+          // deploy id as a placeholder tag (the agent renames are not needed —
+          // the rendered compose references this same imageRef).
+          imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
+          const { composeYaml, env } = renderStack(imageRef);
+          log(depId, "command", `git clone ${repo.url} (${dep.branch}) [on agent]`);
+          const attempt = await tryAgent({
+            depId,
+            serverId,
+            project: { id: project.id, slug },
+            imageRef,
+            composeYaml,
+            env,
+            plan: {
+              kind: "git",
+              url: cloneUrl,
+              branch: dep.branch,
+              subdir: project.build.rootDirectory ?? "",
+              build: normalizeBuildConfig(project.build),
+            },
+            noLocalFallback: true, // remote has no local clone path
+          });
+          if (attempt.commitSha) {
+            commitSha = attempt.commitSha;
+            setDep(depId, { commitSha });
+          }
+          agentOutcome = attempt.outcome === "agent" ? "agent" : "failed";
+          break;
+        }
+
+        // LOCALHOST (or an agent-ineligible build): the control plane clones,
+        // then builds locally or hands the materialised tree to the local agent.
         const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
         try {
           // Private GitHub repos clone through the connected App's short-lived
