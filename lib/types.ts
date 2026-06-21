@@ -651,7 +651,13 @@ export interface Deployment {
   buildSource?: "dev-workspace";
 }
 
-export type LogLevel = "info" | "warn" | "error" | "debug" | "command";
+export type LogLevel =
+  | "info"
+  | "warn"
+  | "error"
+  | "debug"
+  | "command"
+  | "success";
 
 export interface LogLine {
   ts: string;

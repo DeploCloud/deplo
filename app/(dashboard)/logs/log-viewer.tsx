@@ -4,9 +4,16 @@ import * as React from "react";
 import { Search, ScrollText, FileSearch } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { CopyButton } from "@/components/shared/copy-button";
+import { DownloadButton } from "@/components/shared/download-button";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, timeAgo } from "@/lib/utils";
+import {
+  LEVEL_BADGE_CLASS,
+  LEVEL_LABEL,
+  LEVEL_TEXT_CLASS,
+  levelLabelPadded,
+} from "@/lib/log-levels";
 import type { DeploymentStatus, LogLevel, LogLine } from "@/lib/types";
 
 export type DeploymentSummary = {
@@ -24,16 +31,9 @@ const LEVELS: { value: LogLevel; label: string }[] = [
   { value: "info", label: "Info" },
   { value: "warn", label: "Warn" },
   { value: "error", label: "Error" },
+  { value: "success", label: "Success" },
   { value: "debug", label: "Debug" },
 ];
-
-const LEVEL_TEXT: Record<LogLevel, string> = {
-  command: "font-semibold text-white",
-  info: "text-zinc-300",
-  warn: "text-[var(--warning)]",
-  error: "text-destructive",
-  debug: "text-muted-foreground",
-};
 
 function fmtTime(ts: string): string {
   const d = new Date(ts);
@@ -77,10 +77,14 @@ export function LogViewer({
   const copyValue = React.useMemo(
     () =>
       filteredLines
-        .map((l) => `[${fmtTime(l.ts)}] ${l.text}`)
+        .map((l) => `[${fmtTime(l.ts)}] ${levelLabelPadded(l.level)} ${l.text}`)
         .join("\n"),
     [filteredLines]
   );
+
+  const downloadName = selected
+    ? `${selected.projectSlug}-${selected.id}.log`
+    : "deployment.log";
 
   function toggleLevel(level: LogLevel) {
     setActiveLevels((prev) => {
@@ -150,6 +154,11 @@ export function LogViewer({
               />
             </div>
             <CopyButton value={copyValue} label="Copy logs" />
+            <DownloadButton
+              value={copyValue}
+              filename={downloadName}
+              label="Download"
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
@@ -195,7 +204,20 @@ export function LogViewer({
                 <span className="shrink-0 select-none text-zinc-600">
                   [{fmtTime(line.ts)}]
                 </span>
-                <span className={cn("min-w-0 flex-1", LEVEL_TEXT[line.level])}>
+                <span
+                  className={cn(
+                    "shrink-0 select-none self-start rounded px-1.5 text-[10px] font-semibold uppercase leading-5 tracking-wide",
+                    LEVEL_BADGE_CLASS[line.level] ?? "bg-zinc-700/30 text-zinc-300",
+                  )}
+                >
+                  {LEVEL_LABEL[line.level] ?? line.level}
+                </span>
+                <span
+                  className={cn(
+                    "min-w-0 flex-1",
+                    LEVEL_TEXT_CLASS[line.level] ?? "text-zinc-300",
+                  )}
+                >
                   {line.text}
                 </span>
               </div>

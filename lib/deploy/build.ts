@@ -904,7 +904,7 @@ async function runDeployment(depId: string): Promise<void> {
           status: "active",
           ...(dep.environment === "production" ? { productionUrl: dep.url } : {}),
         });
-        log(depId, "info", `Deployment ready at ${dep.url}`);
+        log(depId, "success", `Deployment ready at ${dep.url}`);
       } else {
         setDep(depId, { status: "error", buildDurationMs });
         setProject(project.id, { status: "error" });
@@ -937,7 +937,7 @@ async function runDeployment(depId: string): Promise<void> {
         status: "active",
         ...(dep.environment === "production" ? { productionUrl: dep.url } : {}),
       });
-      log(depId, "info", `Deployment ready at ${dep.url}`);
+      log(depId, "success", `Deployment ready at ${dep.url}`);
     } else {
       setDep(depId, { status: "error", buildDurationMs });
       setProject(project.id, { status: "error" });
@@ -1052,7 +1052,7 @@ function finishComposeStack(
       status: "active",
       ...(environment === "production" ? { productionUrl: url } : {}),
     });
-    log(depId, "info", `Deployment ready at ${url}`);
+    log(depId, "success", `Deployment ready at ${url}`);
   } else {
     setDep(depId, { status: "error", buildDurationMs });
     setProject(project.id, { status: "error" });

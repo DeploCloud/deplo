@@ -326,7 +326,14 @@ function handleEvent(
   return undefined;
 }
 
-const LEVELS = new Set<LogLevel>(["info", "warn", "error", "debug", "command"]);
+const LEVELS = new Set<LogLevel>([
+  "info",
+  "warn",
+  "error",
+  "debug",
+  "command",
+  "success",
+]);
 function coerceLevel(s: string): LogLevel {
   return LEVELS.has(s as LogLevel) ? (s as LogLevel) : "info";
 }

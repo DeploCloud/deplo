@@ -19,8 +19,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CopyButton } from "@/components/shared/copy-button";
+import { DownloadButton } from "@/components/shared/download-button";
 import type { ConsoleInstance } from "@/lib/data/console";
-import { parseAnsi } from "@/lib/ansi";
+import { stripAnsi } from "@/lib/ansi";
+import { detectLogLevel } from "@/lib/log-level-detect";
+import {
+  LEVEL_BADGE_CLASS,
+  LEVEL_LABEL,
+  LEVEL_TEXT_CLASS,
+} from "@/lib/log-levels";
 import { cn } from "@/lib/utils";
 
 type Status = "connecting" | "live" | "ended" | "error";
@@ -111,9 +118,20 @@ export function ContainerLogs({
     el.scrollTop = el.scrollHeight;
   }, [output, follow]);
 
-  // Logs carry ANSI color/control codes; render them as styled runs instead of
-  // leaking raw escape sequences into the pane.
-  const segments = React.useMemo(() => parseAnsi(output), [output]);
+  // Container logs arrive as a raw byte stream with no severity (Docker keeps
+  // none), so we split the buffer into lines, strip ANSI to get the plain text,
+  // and infer a level per line — letting the runtime pane render the same level
+  // pills/tints as the build-log stream. A trailing partial line (no newline
+  // yet) is still shown; it just reclassifies as more bytes arrive.
+  const lines = React.useMemo(() => {
+    const stripped = stripAnsi(output);
+    if (!stripped) return [];
+    // Keep a trailing empty entry out (split on "\n" yields one after a final
+    // newline); blank interior lines are preserved so spacing survives.
+    const raw = stripped.split("\n");
+    if (raw[raw.length - 1] === "") raw.pop();
+    return raw.map((text) => ({ level: detectLogLevel(text), text }));
+  }, [output]);
 
   function onScroll() {
     const el = scrollRef.current;
@@ -254,6 +272,11 @@ export function ContainerLogs({
             <Trash2 className="size-3.5" />
           </Button>
           <CopyButton value={output} className="size-7" />
+          <DownloadButton
+            value={output}
+            filename={`${active.name}.log`}
+            className="size-7"
+          />
         </div>
       </div>
 
@@ -262,17 +285,26 @@ export function ContainerLogs({
         onScroll={onScroll}
         className="h-[520px] overflow-y-auto bg-black/90 p-3 font-mono text-[13px] leading-relaxed text-zinc-200"
       >
-        <pre className="whitespace-pre-wrap break-words text-zinc-300">
-          {segments.map((s, i) =>
-            s.className ? (
-              <span key={i} className={s.className}>
-                {s.text}
-              </span>
-            ) : (
-              s.text
-            ),
-          )}
-        </pre>
+        {lines.map((l, i) => (
+          <div key={i} className="flex gap-3">
+            <span
+              className={cn(
+                "shrink-0 select-none rounded px-1.5 text-[10px] font-semibold uppercase leading-5 tracking-wide",
+                LEVEL_BADGE_CLASS[l.level] ?? "bg-zinc-700/30 text-zinc-300",
+              )}
+            >
+              {LEVEL_LABEL[l.level] ?? l.level}
+            </span>
+            <span
+              className={cn(
+                "min-w-0 flex-1 whitespace-pre-wrap break-words",
+                LEVEL_TEXT_CLASS[l.level] ?? "text-zinc-300",
+              )}
+            >
+              {l.text}
+            </span>
+          </div>
+        ))}
 
         {status === "connecting" && !output ? (
           <p className="text-[11px] text-zinc-500">Connecting to log stream…</p>

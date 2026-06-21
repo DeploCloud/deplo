@@ -3,16 +3,15 @@
 import * as React from "react";
 import { gql } from "@/lib/graphql-client";
 import { CopyButton } from "@/components/shared/copy-button";
+import { DownloadButton } from "@/components/shared/download-button";
 import { cn } from "@/lib/utils";
+import {
+  LEVEL_BADGE_CLASS,
+  LEVEL_LABEL,
+  LEVEL_TEXT_CLASS,
+  levelLabelPadded,
+} from "@/lib/log-levels";
 import type { DeploymentStatus, LogLine } from "@/lib/types";
-
-const LEVEL_CLASS: Record<string, string> = {
-  command: "text-zinc-100 font-medium",
-  info: "text-zinc-400",
-  warn: "text-[var(--warning)]",
-  error: "text-destructive",
-  debug: "text-muted-foreground",
-};
 
 /** A deployment is finished once it leaves the queued/building states. */
 const TERMINAL: ReadonlySet<DeploymentStatus> = new Set<DeploymentStatus>([
@@ -160,7 +159,10 @@ export function BuildLogStream({
   const logText = React.useMemo(
     () =>
       logs
-        .map((l) => `[${formatLogTime(l.ts)}] ${l.text}`)
+        .map(
+          (l) =>
+            `[${formatLogTime(l.ts)}] ${levelLabelPadded(l.level)} ${l.text}`,
+        )
         .join("\n"),
     [logs],
   );
@@ -180,7 +182,14 @@ export function BuildLogStream({
             </span>
           )}
         </span>
-        <CopyButton value={logText} label="Copy logs" />
+        <div className="flex items-center gap-2">
+          <CopyButton value={logText} label="Copy logs" />
+          <DownloadButton
+            value={logText}
+            filename={`build-${deploymentId}.log`}
+            label="Download"
+          />
+        </div>
       </div>
       <div
         ref={scrollRef}
@@ -192,7 +201,20 @@ export function BuildLogStream({
             <span className="shrink-0 select-none text-zinc-600">
               {formatLogTime(l.ts)}
             </span>
-            <span className={cn(LEVEL_CLASS[l.level] ?? "text-zinc-300")}>
+            <span
+              className={cn(
+                "shrink-0 select-none rounded px-1.5 text-[10px] font-semibold uppercase leading-5 tracking-wide",
+                LEVEL_BADGE_CLASS[l.level] ?? "bg-zinc-700/30 text-zinc-300",
+              )}
+            >
+              {LEVEL_LABEL[l.level] ?? l.level}
+            </span>
+            <span
+              className={cn(
+                "min-w-0 flex-1",
+                LEVEL_TEXT_CLASS[l.level] ?? "text-zinc-300",
+              )}
+            >
               {l.text}
             </span>
           </div>

@@ -105,6 +105,15 @@ const SGR = /^\x1b\[([0-9;]*)m$/;
 const STRAY = /[\x00-\x08\x0b-\x1f\x7f]/g;
 
 /**
+ * Strip every ANSI/CSI/OSC escape and stray control char, returning the plain
+ * visible text. Used where we need the *content* of a line (e.g. to classify a
+ * container log line by keyword) rather than its styling. `\n`/`\t` are kept.
+ */
+export function stripAnsi(input: string): string {
+  return input.replace(CSI_OR_OSC, "").replace(STRAY, "");
+}
+
+/**
  * Parse a raw terminal string into styled segments. Stateless across calls:
  * pass the full accumulated buffer (styles don't carry between invocations),
  * which is how the attach pane uses it.
