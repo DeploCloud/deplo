@@ -3,6 +3,8 @@ import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth";
 import { resolveAttachTarget } from "@/lib/data/console";
 import * as attach from "@/lib/attach/session";
+import { attachContainer, attachContainerPty } from "@/lib/infra/docker";
+import { connectAgent } from "@/lib/infra/agent-client";
 
 /**
  * Interactive `docker attach` to a project's running container, over plain HTTP.
@@ -33,17 +35,37 @@ export async function GET(
 
   const resolved = await resolveAttachTarget(projectId, target);
   if (!resolved.ok) {
-    const status = resolved.reason === "not-found" ? 404 : 409;
+    const status =
+      resolved.reason === "not-found"
+        ? 404
+        : resolved.reason === "unreachable"
+          ? 503
+          : 409;
     return Response.json({ error: resolved.reason }, { status });
   }
 
-  // tty:true containers need a real PTY behind the docker CLI; tty:false attach
-  // over plain pipes. The instance already carries this from inspectStdio.
-  const session = attach.open(
-    projectId,
-    resolved.instance.name,
-    resolved.instance.tty,
-  );
+  // tty:true containers need a real PTY (local node-pty, or the agent's Go pty);
+  // tty:false attach over plain pipes. Build the backing against the OWNING
+  // server: localhost taps the local docker socket; remote opens the agent's bidi
+  // Attach (cleanup closes the gRPC client). A remote dial failure fails clearly.
+  const tty = resolved.instance.tty;
+  let session;
+  try {
+    if (resolved.server?.type === "remote") {
+      const conn = await connectAgent(resolved.server.id);
+      const handle = conn.attach(projectId, resolved.instance.name, tty, 80, 24);
+      session = attach.open(projectId, resolved.instance.name, handle, () =>
+        conn.close(),
+      );
+    } else {
+      const handle = tty
+        ? attachContainerPty(resolved.instance.name)
+        : attachContainer(resolved.instance.name);
+      session = attach.open(projectId, resolved.instance.name, handle);
+    }
+  } catch {
+    return Response.json({ error: "unreachable" }, { status: 503 });
+  }
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
