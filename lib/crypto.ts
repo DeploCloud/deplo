@@ -73,6 +73,22 @@ export function verifyPassword(password: string, stored: string): boolean {
   }
 }
 
+/**
+ * Deterministic 32-byte seed for the agent mTLS CA (PLAN P4 / ADR-0006). The
+ * control plane is the CA for the agent PKI; its private key is DERIVED from
+ * `DEPLO_SECRET` via this dedicated purpose — one cryptographic source of truth
+ * for both secret encryption and the agent PKI, so there is no second critical
+ * secret to store or rotate independently. Stable for the process/secret
+ * lifetime (memoized in `deriveKey`), so the CA is reconstructed identically on
+ * every restart with no stored CA key. **Known debt (P4): rotating
+ * `DEPLO_SECRET` re-mints the CA and invalidates every issued agent cert —
+ * rotation means re-provisioning every agent.** The seed never leaves the
+ * server; only minted certificates (and the agent's leaf key) cross the wire.
+ */
+export function agentCaSeed(): Buffer {
+  return deriveKey("agent-mtls-ca");
+}
+
 /* ------------------------------------------------------------------ */
 /* Symmetric encryption for stored secrets (AES-256-GCM)              */
 /* ------------------------------------------------------------------ */

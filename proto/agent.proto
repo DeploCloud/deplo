@@ -1,0 +1,274 @@
+syntax = "proto3";
+
+// The Deplo server-agent contract: the second system boundary, alongside
+// GraphQL (UI <-> control plane). This is control plane <-> server. The agent
+// is a single-purpose Go binary, one per server, that owns the host-coupled
+// half of the platform (Docker, the build pipeline, host metrics) and exposes
+// it over this typed RPC. See docs/research/server-agent/PLAN.md and
+// docs/adr/0006-server-agent-is-a-per-host-go-binary.md.
+//
+// PART A SUBSET. This file is the versioned boundary for the whole A-D arc, but
+// only Hello / Metrics / Deploy / Inspect / control verbs are implemented in
+// Part A (localhost agent, deploy-only). FollowLogs / Attach / file RPCs land in
+// Part C; the source descriptor's git/image cases land in Part B. Messages are
+// designed forward-compatible so adding those is new fields/enum cases, never a
+// redesign (D6: "image from registry" is one more SourceKind, not a rewrite).
+package deplo.agent.v1;
+
+option go_package = "github.com/idradev/deplo/agent/gen;agentpb";
+
+// CONTRACT VERSION. Bumped when the wire contract changes incompatibly. The
+// control plane sends its version in HelloRequest and the agent echoes its own
+// in HelloResponse; a mismatch is surfaced, never silently tolerated.
+enum ContractVersion {
+  CONTRACT_VERSION_UNSPECIFIED = 0;
+  CONTRACT_VERSION_V1 = 1;
+}
+
+service Agent {
+  // Health + identity handshake. The control plane calls this as a mandatory
+  // pre-flight before every deploy (PLAN P5): if the agent does not answer, the
+  // deploy fails immediately with "server unreachable" rather than hanging.
+  rpc Hello(HelloRequest) returns (HelloResponse);
+
+  // Host CPU/mem/disk/net snapshot. Replaces lib/infra/host.ts per server.
+  // (Wired into getServerMetrics in Part C; defined now so the contract is whole.)
+  rpc Metrics(MetricsRequest) returns (HostMetrics);
+
+  // Deploy lifecycle. Server-streaming so build/run logs flow live, in one
+  // connection, into the control plane's existing per-deployment log + status
+  // writes (which republish over the GraphQL SSE subscriptions unchanged).
+  rpc Deploy(DeployRequest) returns (stream DeployEvent);
+
+  // Lifecycle control over an already-deployed stack. These replace the direct
+  // stop/start/destroy docker calls in lib/deploy/build.ts for agent-owned
+  // stacks. (Wired in a later step; defined now so the boundary is complete.)
+  rpc StopStack(StackRef) returns (StackResult);
+  rpc StartStack(StackRef) returns (StackResult);
+  rpc DestroyStack(StackRef) returns (StackResult);
+
+  // Container introspection (status/running) for the live-status subscriptions.
+  rpc Inspect(InspectRequest) returns (InspectResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Hello / identity
+// ---------------------------------------------------------------------------
+
+message HelloRequest {
+  // The contract version the control plane speaks.
+  ContractVersion contract_version = 1;
+  // Opaque control-plane build string, for the agent's logs (not a trust input).
+  string control_plane_version = 2;
+}
+
+message HelloResponse {
+  // The contract version the agent speaks. Compared against the request's.
+  ContractVersion contract_version = 1;
+  // Agent binary version (e.g. a git describe), for diagnostics.
+  string agent_version = 2;
+  // Whether a Docker daemon is reachable from the agent. A false here is a
+  // clear, early "server can't deploy" signal.
+  bool docker_available = 3;
+  // Docker server engine version, or "" if unreachable.
+  string docker_version = 4;
+  // Coarse capability flags so the control plane can route only what this agent
+  // supports (Part A: a localhost agent that handles the Dockerfile build +
+  // single-image compose-up path). Absent capability => control plane keeps the
+  // local fallback path. Forward-compatible: new capabilities are new entries.
+  repeated string capabilities = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Metrics
+// ---------------------------------------------------------------------------
+
+message MetricsRequest {
+  // The path whose filesystem to measure for disk usage (the agent's data dir).
+  // Empty => the agent's default ("/").
+  string data_dir = 1;
+}
+
+message HostMetrics {
+  double cpu = 1;        // 0-100
+  int32 cpu_cores = 2;
+  int64 mem_used = 3;    // bytes
+  int64 mem_total = 4;
+  double mem_pct = 5;
+  int64 disk_used = 6;   // bytes
+  int64 disk_total = 7;
+  double disk_pct = 8;
+  int64 net_rx = 9;      // bytes/sec
+  int64 net_tx = 10;     // bytes/sec
+  double load1 = 11;
+  double load5 = 12;
+  double load15 = 13;
+  int64 uptime_sec = 14;
+  int32 running_containers = 15;
+}
+
+// ---------------------------------------------------------------------------
+// Deploy
+// ---------------------------------------------------------------------------
+
+// Where the agent gets the bytes it builds/runs. Part A implements UPLOAD
+// (archive streamed inside the Deploy RPC) and IMAGE (an already-built image ref
+// the agent runs as-is). GIT (agent clones with a short-lived token) lands in
+// Part B (D3). New sources (e.g. registry pull) are new enum cases — not a
+// redesign (D6).
+enum SourceKind {
+  SOURCE_KIND_UNSPECIFIED = 0;
+  // The control plane streams a tar archive of the materialised build context
+  // inside this Deploy call (see DeployRequest.context_chunk). One direction of
+  // traffic, one mTLS channel, no second control-plane endpoint (D3).
+  SOURCE_KIND_UPLOAD = 1;
+  // The agent runs a prebuilt image as-is (source: docker-image). No build.
+  SOURCE_KIND_IMAGE = 2;
+  // The agent clones a git URL itself with a short-lived token. PART B.
+  SOURCE_KIND_GIT = 3;
+}
+
+// How the agent turns the build context into an image. Part A implements the
+// DOCKERFILE family (an explicit or generated Dockerfile, the most common path);
+// the heavier builders (Nixpacks/Buildpacks/Railpack/static) stay on the control
+// plane's local path in Part A and migrate agent-side later. NONE means "no
+// build, run the IMAGE source directly".
+enum BuildKind {
+  BUILD_KIND_UNSPECIFIED = 0;
+  BUILD_KIND_NONE = 1;        // SOURCE_KIND_IMAGE: run as-is, no build
+  BUILD_KIND_DOCKERFILE = 2;  // build from a Dockerfile in the context
+}
+
+message DockerfileBuild {
+  // Path to the Dockerfile, relative to the build context root. Empty =>
+  // "Dockerfile". Re-validated against the context root inside the agent (the
+  // anti-escape check is re-ported to Go — path validation runs where the I/O
+  // runs, never trusting a path off the wire).
+  string dockerfile_path = 1;
+  // Build context dir, relative to the context root. Empty => ".".
+  string context_path = 2;
+  // Optional --target stage in a multi-stage Dockerfile.
+  string target_stage = 3;
+  // When true the agent has no Dockerfile in the context and must build the
+  // provided generated_dockerfile content instead (the legacy/auto path).
+  bool generated = 4;
+  // The generated Dockerfile body (only when `generated` is true). Rendered by
+  // the control plane (generateDockerfile) so the agent stays dumb about
+  // framework presets — same single-source-of-truth principle as the compose.
+  string generated_dockerfile = 5;
+}
+
+message DeployRequest {
+  // A stable id for this deploy, minted by the control plane (the Deployment
+  // row id). Carried from day one so the agent can key an in-flight record and a
+  // future re-attach RPC can replay by it (D5). The control plane reconciles a
+  // still-"building" deploy to error on restart even though Part A is otherwise
+  // fire-and-forget.
+  string deploy_id = 1;
+
+  // Project identity. `slug` keys the stack file, compose project, container
+  // name and labels on the agent; `project_id` goes into the deplo.* labels.
+  string slug = 2;
+  string project_id = 3;
+
+  // The target image tag the agent builds/runs, e.g. deplo/<slug>:<sha12>.
+  string image_ref = 4;
+
+  SourceKind source_kind = 5;
+  BuildKind build_kind = 6;
+  // Present iff build_kind == DOCKERFILE.
+  DockerfileBuild dockerfile = 7;
+
+  // The fully-rendered compose YAML (D2): renderCompose stays the single TS
+  // source of truth; the agent receives opaque YAML and never re-implements
+  // routing/label logic in Go. The agent writes it to <stack_dir>/<slug>.yml and
+  // `docker compose up`s it.
+  string compose_yaml = 8;
+
+  // The resolved, DECRYPTED env map (D4). The control plane decrypts via
+  // revealEnv and sends plaintext over mTLS; the agent writes it to a 0600
+  // env-file and never holds the encryption key. For the single-image path this
+  // is already baked into compose_yaml's `environment:`; it is sent separately
+  // too so a future compose-stack path can use it as the --env-file.
+  map<string, string> env = 9;
+
+  // How long to wait for the container to report running before declaring the
+  // deploy errored, in milliseconds. 0 => the agent's default.
+  int64 ready_timeout_ms = 10;
+
+  // The streamed build context, used iff source_kind == UPLOAD. The FIRST
+  // DeployRequest on the stream carries all the fields above; SUBSEQUENT
+  // messages on the stream carry ONLY context_chunk frames (every other field
+  // empty) until an empty/final marker. (Deploy is currently a unary request +
+  // server stream; the upload is chunked via repeated client messages once the
+  // RPC is made client-streaming in Part B. For Part A the archive is small
+  // enough to ride in a single bytes field.)
+  bytes context_tar = 11;
+
+  // True when image_ref must be pulled before running (SOURCE_KIND_IMAGE with a
+  // remote registry ref). The agent `docker pull`s it, streaming progress.
+  bool pull_image = 12;
+}
+
+// One event in the deploy stream. Exactly one of the oneof arms is set.
+message DeployEvent {
+  oneof event {
+    LogLine log = 1;
+    PhaseChange phase = 2;
+    DeployResult result = 3;
+  }
+}
+
+message LogLine {
+  // info | warn | error | debug | command — mirrors lib/types.ts LogLevel so the
+  // control plane writes it straight into the deployment log.
+  string level = 1;
+  string text = 2;
+}
+
+enum DeployPhase {
+  DEPLOY_PHASE_UNSPECIFIED = 0;
+  DEPLOY_PHASE_PREPARING = 1;   // materialising context / pulling
+  DEPLOY_PHASE_BUILDING = 2;    // docker build
+  DEPLOY_PHASE_STARTING = 3;    // docker compose up
+  DEPLOY_PHASE_WAITING = 4;     // waiting for running
+}
+
+message PhaseChange {
+  DeployPhase phase = 1;
+}
+
+message DeployResult {
+  // Terminal status: true => the stack reached a running state; false => failed.
+  bool ready = 1;
+  // A human-readable reason on failure (empty on success).
+  string error = 2;
+  // The git commit sha the agent resolved, when it materialised a git source
+  // (Part B). Empty in Part A (the control plane resolves it before sending).
+  string commit_sha = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Stack lifecycle + introspection
+// ---------------------------------------------------------------------------
+
+message StackRef {
+  string slug = 1;
+}
+
+message StackResult {
+  bool ok = 1;
+  string error = 2;
+}
+
+message InspectRequest {
+  // Inspect by container/stack name (the agent maps slug -> deplo-<slug>).
+  string slug = 1;
+}
+
+message InspectResponse {
+  bool exists = 1;
+  bool running = 2;
+  // Raw docker state string (running, exited, ...).
+  string state = 3;
+}

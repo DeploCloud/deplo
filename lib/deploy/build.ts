@@ -41,6 +41,12 @@ import {
 } from "../data/domains";
 import { installationCloneUrl } from "../github/app";
 import { publishProjectChanged } from "../graphql/pubsub";
+import {
+  agentCanHandle,
+  runAgentDeploy,
+  AgentUnavailableError,
+  type AgentBuildPlan,
+} from "./agent-deploy";
 import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
@@ -253,6 +259,56 @@ async function fileExists(p: string): Promise<boolean> {
   }
 }
 
+/** A deployment status that is non-terminal — a build was in flight. */
+export function isInFlightStatus(s: Deployment["status"]): boolean {
+  return s === "queued" || s === "building";
+}
+
+/**
+ * Reconcile deployments orphaned by a control-plane restart (PLAN D5, Part-A
+ * half). A deploy is fire-and-forget in Part A: its `runDeployment` job lives
+ * only in the process that started it, so a restart mid-build leaves the row
+ * stuck in `queued`/`building` forever with no job to finish it. On boot we mark
+ * every such row `error` (and settle its project off `building`/`queued`),
+ * cleanly, rather than letting a stale "building" lie indefinitely. Real
+ * reconnection/replay — keeping the agent's build alive across a restart — is
+ * Part B; Part A just refuses to leave a hung deploy that lies.
+ *
+ * Idempotent and safe to run once at startup. Returns the number reconciled.
+ */
+export function reconcileInFlightDeployments(): number {
+  let reconciled = 0;
+  const affectedProjects = new Set<string>();
+  mutate((d) => {
+    for (const dep of d.deployments) {
+      if (isInFlightStatus(dep.status)) {
+        dep.status = "error";
+        reconciled++;
+        affectedProjects.add(dep.projectId);
+        (d.logs[dep.id] ??= []).push({
+          ts: nowIso(),
+          level: "error",
+          text: "Deployment interrupted by a control-plane restart and marked failed.",
+        });
+      }
+    }
+    // A project left mid-deploy settles off the transient build state.
+    for (const p of d.projects) {
+      if ((p.status === "building" || p.status === "queued") && affectedProjects.has(p.id)) {
+        p.status = "error";
+        p.updatedAt = nowIso();
+      }
+    }
+  });
+  for (const projectId of affectedProjects) publishProjectChanged(projectId);
+  if (reconciled > 0) {
+    console.warn(
+      `[deplo] reconciled ${reconciled} interrupted deployment(s) to error on startup`,
+    );
+  }
+  return reconciled;
+}
+
 /**
  * Create a deployment record (queued) and kick off the real build in the
  * background. Returns the deployment id immediately; the job updates status and
@@ -349,7 +405,13 @@ async function buildImageFromTree(opts: {
   /** Hard-fail on an explicit-but-missing rootDirectory (git/dev); upload doesn't. */
   failOnMissing: boolean;
   notFoundMessage?: string;
-}): Promise<void> {
+  /**
+   * When set, resolve rootDirectory but DO NOT build locally — the agent will
+   * build from the returned `buildDir` instead (Part A: the build moves
+   * agent-side). The rootDirectory containment still runs here, in one place.
+   */
+  skipBuild?: boolean;
+}): Promise<{ buildDir: string }> {
   const { depId, project, slug, workDir, root, imageRef } = opts;
   const buildDir = await resolveBuildDir({
     root,
@@ -357,6 +419,7 @@ async function buildImageFromTree(opts: {
     failOnMissing: opts.failOnMissing,
     notFoundMessage: opts.notFoundMessage,
   });
+  if (opts.skipBuild) return { buildDir };
   // Dispatch to the selected build method (Dockerfile / Nixpacks / Railpack /
   // Heroku|Paketo buildpacks / Static). Each produces imageRef in the local
   // store with the deplo.* labels, listening on build.port.
@@ -369,6 +432,56 @@ async function buildImageFromTree(opts: {
     imageRef,
     log: (level, text) => log(depId, level, text),
   });
+  return { buildDir };
+}
+
+/**
+ * Render the single-image stack and stream it through the agent (PLAN Part A).
+ * Returns "agent" when the agent fully built + ran the deploy, "local" when the
+ * agent was unavailable (so the caller builds + runs locally as before). A clean
+ * BUILD failure reported by the agent is NOT a fallback — it returns "failed",
+ * and the caller marks the deploy errored without silently rebuilding locally.
+ *
+ * This is the choke point Part A introduces: the localhost server's deploy now
+ * flows agent → control plane → pubsub for the Dockerfile/single-image path,
+ * proving the contract with zero remote risk. Anything the agent can't handle
+ * (heavy builders, compose stacks, agent down) takes the unchanged local path.
+ */
+async function tryAgentSingleImage(opts: {
+  depId: string;
+  serverId: string;
+  project: { id: string; slug: string };
+  name: string;
+  imageRef: string;
+  composeYaml: string;
+  env: Record<string, string>;
+  plan: AgentBuildPlan;
+}): Promise<"agent" | "local" | "failed"> {
+  try {
+    const ready = await runAgentDeploy({
+      serverId: opts.serverId,
+      deployId: opts.depId,
+      slug: opts.project.slug,
+      projectId: opts.project.id,
+      imageRef: opts.imageRef,
+      composeYaml: opts.composeYaml,
+      env: opts.env,
+      plan: opts.plan,
+      readyTimeoutMs: 60_000,
+      sink: { log: (level, text) => log(opts.depId, level, text) },
+    });
+    return ready ? "agent" : "failed";
+  } catch (e) {
+    if (e instanceof AgentUnavailableError) {
+      log(
+        opts.depId,
+        "warn",
+        `Agent unavailable (${e.message}); falling back to local build.`,
+      );
+      return "local";
+    }
+    throw e;
+  }
 }
 
 async function runDeployment(depId: string): Promise<void> {
@@ -439,6 +552,74 @@ async function runDeployment(depId: string): Promise<void> {
 
     let imageRef: string;
     let commitSha = "";
+    // Set by the agent path (PLAN Part A) when the agent fully built + ran this
+    // deploy, so the post-switch LOCAL build + compose-up is skipped. "failed"
+    // means the agent reported a real build failure (do NOT silently rebuild
+    // locally); "agent" means it succeeded; null means the local path runs.
+    let agentOutcome: "agent" | "failed" | null = null;
+    const serverId = project.serverId;
+
+    // Render the single-image stack the agent (or the local path) brings up. The
+    // control plane stays the single source of truth for the compose (D2) and
+    // env decryption (D4); both are computed here, once, and reused by whichever
+    // path runs.
+    const renderStack = (image: string): { composeYaml: string; env: Record<string, string> } => {
+      const env = projectEnv(project.id);
+      const composeYaml = renderCompose({
+        name,
+        image,
+        port: project.build.port,
+        projectId: project.id,
+        slug,
+        routes: routeDomains,
+        env,
+        // The deploy path is the only writer of volumes into the stack — sourced
+        // from the project. A reroute reads them back from the file instead.
+        volumes: project.volumes ?? [],
+      });
+      return { composeYaml, env };
+    };
+
+    // For a BUILT source (git/upload/dev-workspace): resolve the build dir (one
+    // shared rootDirectory containment), then try the agent — building + running
+    // from the materialised tree while it still exists. On agent-unavailable,
+    // build locally HERE (tree alive) and let the post-switch compose-up run.
+    const buildAndMaybeAgent = async (treeOpts: {
+      workDir: string;
+      root: string;
+      imageRef: string;
+      failOnMissing: boolean;
+      notFoundMessage?: string;
+    }): Promise<void> => {
+      if (agentCanHandle(project.build)) {
+        const { buildDir } = await buildImageFromTree({
+          depId,
+          project,
+          slug,
+          ...treeOpts,
+          skipBuild: true, // the agent builds; we only resolve the dir
+        });
+        const { composeYaml, env } = renderStack(treeOpts.imageRef);
+        const outcome = await tryAgentSingleImage({
+          depId,
+          serverId,
+          project: { id: project.id, slug },
+          name,
+          imageRef: treeOpts.imageRef,
+          composeYaml,
+          env,
+          plan: { kind: "dockerfile", buildDir, build: normalizeBuildConfig(project.build) },
+        });
+        if (outcome !== "local") {
+          agentOutcome = outcome;
+          return;
+        }
+        log(depId, "info", "Building locally instead.");
+      }
+      // Local fallback (or an ineligible build method): build the image in the
+      // local store, exactly as before; the post-switch block runs the stack.
+      await buildImageFromTree({ depId, project, slug, ...treeOpts });
+    };
 
     // Decide which source this deployment builds from (dev-workspace intent
     // overrides the project's own source; see planDeploySource). Each arm
@@ -474,10 +655,7 @@ async function runDeployment(depId: string): Promise<void> {
             log(depId, "info", line),
           );
           imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
-          await buildImageFromTree({
-            depId,
-            project,
-            slug,
+          await buildAndMaybeAgent({
             workDir: work,
             root,
             imageRef,
@@ -492,9 +670,28 @@ async function runDeployment(depId: string): Promise<void> {
         break;
       }
       case "docker-image": {
+        imageRef = plan.image;
+        // A prebuilt image: the agent pulls + runs it (no local pull/build).
+        if (agentCanHandle(null)) {
+          const { composeYaml, env } = renderStack(imageRef);
+          const outcome = await tryAgentSingleImage({
+            depId,
+            serverId,
+            project: { id: project.id, slug },
+            name,
+            imageRef,
+            composeYaml,
+            env,
+            plan: { kind: "image", image: plan.image },
+          });
+          if (outcome !== "local") {
+            agentOutcome = outcome;
+            break;
+          }
+          log(depId, "info", "Pulling locally instead.");
+        }
         log(depId, "command", `docker pull ${plan.image}`);
         await streamDocker(["pull", plan.image], depId, 600_000);
-        imageRef = plan.image;
         break;
       }
       case "git": {
@@ -515,10 +712,7 @@ async function runDeployment(depId: string): Promise<void> {
           commitSha = await revParse(work);
           if (commitSha) setDep(depId, { commitSha });
           imageRef = `deplo/${slug}:${(commitSha || depId).slice(0, 12)}`;
-          await buildImageFromTree({
-            depId,
-            project,
-            slug,
+          await buildAndMaybeAgent({
             workDir: work,
             root: work,
             imageRef,
@@ -544,10 +738,7 @@ async function runDeployment(depId: string): Promise<void> {
             log(depId, "info", line),
           );
           imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
-          await buildImageFromTree({
-            depId,
-            project,
-            slug,
+          await buildAndMaybeAgent({
             workDir: work,
             root,
             imageRef,
@@ -562,19 +753,30 @@ async function runDeployment(depId: string): Promise<void> {
         throw new Error("Nothing to deploy: no Docker image or repository set");
     }
 
-    const env = projectEnv(project.id);
-    const composeYaml = renderCompose({
-      name,
-      image: imageRef,
-      port: project.build.port,
-      projectId: project.id,
-      slug,
-      routes: routeDomains,
-      env,
-      // The deploy path is the only writer of volumes into the stack — sourced
-      // from the project. A reroute reads them back from the file instead.
-      volumes: project.volumes ?? [],
-    });
+    // The agent already built, rendered, ran, and waited — settle the deploy
+    // from its terminal result without touching the local Docker path.
+    if (agentOutcome !== null) {
+      const buildDurationMs = Date.now() - started;
+      if (agentOutcome === "agent") {
+        setDep(depId, {
+          status: "ready",
+          readyAt: nowIso(),
+          buildDurationMs,
+          commitSha: commitSha || dep.commitSha,
+        });
+        setProject(project.id, {
+          status: "active",
+          ...(dep.environment === "production" ? { productionUrl: dep.url } : {}),
+        });
+        log(depId, "info", `Deployment ready at ${dep.url}`);
+      } else {
+        setDep(depId, { status: "error", buildDurationMs });
+        setProject(project.id, { status: "error" });
+      }
+      return;
+    }
+
+    const { composeYaml } = renderStack(imageRef);
     await writeFile(stackFile, composeYaml);
 
     log(depId, "command", "docker compose up -d");
