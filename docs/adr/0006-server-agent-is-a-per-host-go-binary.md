@@ -19,6 +19,32 @@ seam falls*. The full design and phasing live in
 [`docs/research/server-agent/PLAN.md`](../research/server-agent/PLAN.md); the eight decisions
 below are referenced there as D1–D8.
 
+## Implementation status
+
+**Parts A and B are implemented.** Part A routed the localhost deploy through the agent; Part B
+makes a remote agent real: call-home provisioning, remote `agent-client` routing with cert
+fingerprint pinning, the GIT source (the agent clones itself, D3), and reconnection/replay (D5).
+Two refinements emerged while building Part B and are recorded here:
+
+- **The trust direction inverts for a remote agent.** Part A's control plane minted the agent's
+  cert *and key* and wrote both to the agent's disk — possible only because the agent was local.
+  A remote agent's private key must never leave the remote, so the agent **generates its own key
+  and sends a CSR** during call-home; the control plane CA **signs the CSR** (`signAgentCsr`,
+  [`lib/agent/pki.ts`](../../lib/agent/pki.ts)) and pins the resulting cert's fingerprint. The
+  agent's key is never on the wire. Cross-language verified (Node mints, Go serves) by the Part B
+  e2e (`scripts/agent-part-b-e2e.mts`).
+- **Bootstrap trust degrades safely without TLS.** P2/P3 want the agent to verify the control
+  plane by cert fingerprint before sending the token, but the control plane is plain HTTP on
+  :3000 unless a domain is configured (Traefik adds TLS only then). So: over **HTTPS** the agent
+  pins the fingerprint (P3, unchanged); over **plain HTTP** (the bare-IP case) the one-time token
+  doubles as a shared secret — the control plane **HMAC-signs the bootstrap response with the
+  token**, and the agent refuses a response whose HMAC it cannot reproduce, so a network attacker
+  who never had the token cannot forge the CA it hands back. The `Server` row stores only the
+  token's sha256 (+ expiry), never the raw token.
+
+Out of scope here and deferred to later phases: per-server logs/console/metrics (Part C), the
+config-file editor repoint (D9), dev mode + SSH gateway on remotes (Part D).
+
 ## Decision
 
 1. **The unit of remote execution is a single-purpose Go agent, one per server** — not
