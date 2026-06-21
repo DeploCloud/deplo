@@ -3,6 +3,23 @@ import assert from "node:assert/strict";
 
 import { buildDeployRequest } from "./agent-deploy";
 import { SourceKind, BuildKind } from "../agent/gen/agent";
+import type { BuildConfig } from "../types";
+
+function devBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
+  return {
+    framework: "node",
+    buildMethod: "dockerfile",
+    methodSettings: {},
+    rootDirectory: "",
+    installCommand: "",
+    buildCommand: "",
+    outputDirectory: "",
+    startCommand: "",
+    runtimeVersion: "",
+    port: 3000,
+    ...overrides,
+  };
+}
 
 /**
  * A multi-service compose stack deploys to a REMOTE server through the agent
@@ -68,4 +85,48 @@ test("compose plan with no mounts sends an empty mounts list", async () => {
     plan: { kind: "compose", mounts: [] },
   });
   assert.deepEqual(req.mounts, []);
+});
+
+/**
+ * "Deploy from dev workspace" on a REMOTE server (Part D). The agent builds from
+ * its OWN <dev-dir>/<slug> (SOURCE_KIND_DEV_WORKSPACE) — no tree crosses the wire.
+ * These pin the request mapping: source kind, Dockerfile dispatch, and the
+ * rootDirectory subdir the agent re-validates against its build dir.
+ */
+test("dev-workspace plan → SOURCE_KIND_DEV_WORKSPACE, Dockerfile build, no tar", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    imageRef: "deplo/myapp:dep_1",
+    plan: { kind: "dev-workspace", build: devBuild(), subdir: "" },
+  });
+  assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_DEV_WORKSPACE);
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_DOCKERFILE);
+  // The workspace lives on the agent — no context is tarred here.
+  assert.equal(req.contextTar.length, 0);
+  assert.equal(req.devWorkspaceSubdir, "");
+});
+
+test("dev-workspace plan carries the rootDirectory as the subdir", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    plan: { kind: "dev-workspace", build: devBuild(), subdir: "packages/api" },
+  });
+  assert.equal(req.devWorkspaceSubdir, "packages/api");
+});
+
+test("dev-workspace plan with the explicit dockerfile method honours methodSettings", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    plan: {
+      kind: "dev-workspace",
+      build: devBuild({
+        buildMethod: "dockerfile",
+        methodSettings: { dockerfilePath: "ops/Dockerfile", dockerBuildStage: "prod" },
+      }),
+      subdir: "",
+    },
+  });
+  assert.equal(req.dockerfile?.dockerfilePath, "ops/Dockerfile");
+  assert.equal(req.dockerfile?.targetStage, "prod");
+  assert.equal(req.dockerfile?.generated, false);
 });

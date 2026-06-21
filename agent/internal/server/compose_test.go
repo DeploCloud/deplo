@@ -49,7 +49,7 @@ func TestRenderEnvFile_empty(t *testing.T) {
 
 func TestWriteMountFiles_writesUnderFilesDir(t *testing.T) {
 	stackDir := t.TempDir()
-	s := New(stackDir, t.TempDir(), "/")
+	s := New(stackDir, t.TempDir(), "/", "")
 	e, _ := collectEmitter()
 
 	mounts := []*pb.MountFile{
@@ -79,7 +79,7 @@ func TestWriteMountFiles_writesUnderFilesDir(t *testing.T) {
 
 func TestWriteMountFiles_rejectsEscape(t *testing.T) {
 	stackDir := t.TempDir()
-	s := New(stackDir, t.TempDir(), "/")
+	s := New(stackDir, t.TempDir(), "/", "")
 	e, events := collectEmitter()
 
 	mounts := []*pb.MountFile{
@@ -112,7 +112,7 @@ func TestWriteMountFiles_rejectsEscape(t *testing.T) {
 
 func TestWriteMountFiles_noMountsIsNoop(t *testing.T) {
 	stackDir := t.TempDir()
-	s := New(stackDir, t.TempDir(), "/")
+	s := New(stackDir, t.TempDir(), "/", "")
 	e, _ := collectEmitter()
 	if err := s.writeMountFiles("myapp", nil, e); err != nil {
 		t.Fatalf("writeMountFiles(nil): %v", err)

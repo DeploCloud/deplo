@@ -43,6 +43,7 @@ func main() {
 		stackDir    = flag.String("stack-dir", envOr("DEPLO_AGENT_STACK_DIR", "/data/stacks"), "where rendered stack files are written")
 		buildTmpDir = flag.String("build-tmp", envOr("DEPLO_AGENT_BUILD_TMP", os.TempDir()), "where upload build contexts are extracted")
 		dataDir     = flag.String("data-dir", envOr("DEPLO_AGENT_DATA_DIR", "/"), "filesystem measured for disk metrics")
+		dataBase    = flag.String("data-base", envOr("DEPLO_AGENT_DATA_BASE", ""), "host data root for dev workspaces + the SSH gateway (empty => parent of --stack-dir)")
 		insecure    = flag.Bool("insecure", os.Getenv("DEPLO_AGENT_INSECURE") == "1", "DANGEROUS: serve without mTLS (tests/local only)")
 
 		// Call-home bootstrap (PLAN Part B). Set by the install command on a remote
@@ -101,7 +102,7 @@ func main() {
 	opts = append(opts, grpc.MaxRecvMsgSize(256*1024*1024))
 
 	srv := grpc.NewServer(opts...)
-	pb.RegisterAgentServer(srv, server.New(*stackDir, *buildTmpDir, *dataDir))
+	pb.RegisterAgentServer(srv, server.New(*stackDir, *buildTmpDir, *dataDir, *dataBase))
 
 	lis, err := net.Listen("tcp", *addr)
 	if err != nil {

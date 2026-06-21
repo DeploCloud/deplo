@@ -19,7 +19,7 @@ func TestDestroyStack_missingContainerReportsOk(t *testing.T) {
 	if !dockercli.Available(ctx) {
 		t.Skip("docker not available")
 	}
-	s := New(t.TempDir(), t.TempDir(), "/")
+	s := New(t.TempDir(), t.TempDir(), "/", "")
 	// No such stack/container exists: compose down has no file, rm -f is
 	// idempotent (exit 0) → Ok:true, not a false failure.
 	res, err := s.DestroyStack(ctx, &pb.StackRef{Slug: "definitely-not-a-real-stack-xyz"})

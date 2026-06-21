@@ -42,7 +42,7 @@ import {
   sslipEmbeddedIp,
 } from "../deploy/domains";
 import { teardownProject } from "./deployments";
-import { teardownDev } from "../deploy/dev";
+import { agentTeardownDev } from "../deploy/agent-dev";
 import { removeUploads } from "../deploy/upload";
 import { removeProjectDevSshUsers } from "./dev-ssh";
 import { isValidLogoValue } from "../projects/logo-shared";
@@ -879,7 +879,7 @@ export async function deleteProject(id: string): Promise<void> {
   // Dev mode: tear down the dev container + deps volume + WIPE the workspace
   // (the project is gone), and remove this project's SSH users from the gateway
   // (which stays up — it is a platform singleton).
-  await teardownDev(project.slug).catch(() => {});
+  await agentTeardownDev(project).catch(() => {});
   await removeProjectDevSshUsers(id).catch(() => {});
   // Drop any uploaded archive backing an "upload" source.
   await removeUploads(id).catch(() => {});

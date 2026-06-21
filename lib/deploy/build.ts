@@ -713,6 +713,31 @@ async function runDeployment(depId: string): Promise<void> {
             "Deploy from dev workspace is only available for built (git/upload) projects",
           );
         }
+        imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
+        // REMOTE: the dev workspace lives on the AGENT's host, not here. The agent
+        // builds from its OWN <dev-dir>/<slug> via SOURCE_KIND_DEV_WORKSPACE (same
+        // exclude-set + symlink-reject guard copyWorkspaceForBuild applies). No
+        // workspace bytes cross the wire; there is no local copy to make.
+        if (isRemote && agentCanHandle(project.build)) {
+          const { composeYaml, env } = renderStack(imageRef);
+          const { outcome } = await tryAgent({
+            depId,
+            serverId,
+            project: { id: project.id, slug },
+            imageRef,
+            composeYaml,
+            env,
+            plan: {
+              kind: "dev-workspace",
+              build: normalizeBuildConfig(project.build),
+              subdir: project.build.rootDirectory ?? "",
+            },
+            noLocalFallback: true, // the workspace is on the agent, not here
+          });
+          agentOutcome = outcome === "agent" ? "agent" : "failed";
+          break;
+        }
+        // LOCALHOST: the workspace is on this host — copy it into a build context.
         const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
         try {
           log(depId, "command", "copy dev workspace");
@@ -723,7 +748,6 @@ async function runDeployment(depId: string): Promise<void> {
           const root = await copyWorkspaceForBuild(slug, work, (line) =>
             log(depId, "info", line),
           );
-          imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
           await buildAndMaybeAgent({
             workDir: work,
             root,

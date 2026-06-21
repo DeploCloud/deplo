@@ -9,6 +9,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -29,6 +30,9 @@ var Capabilities = []string{
 	"deploy.compose.single", // single-image compose-up
 	"deploy.compose.multi",  // multi-service compose stack (env-file + label-wait)
 	"metrics",
+	"dev",         // dev container lifecycle (StartDev/StopDev/Reset/Teardown) — Part D
+	"ssh-gateway", // the per-host SSH gateway singleton (Ensure/Provision/Deprovision)
+	"tunnel",      // the VS Code remote tunnel (Start/Get/Stop)
 }
 
 // AgentVersion is stamped at build time via -ldflags; "dev" by default.
@@ -48,18 +52,30 @@ type Service struct {
 	stackDir    string
 	buildTmpDir string
 	dataDir     string
+	// dataBase is the host data root (the control plane's DEPLO_DATA_DIR, e.g.
+	// /data), under which dev workspaces (<dataBase>/dev) and the SSH gateway
+	// (<dataBase>/ssh-gateway) live — the Part D per-host singletons. Defaults to
+	// the parent of stackDir, since the control plane's STACK_DIR is <dataBase>/
+	// stacks; the bind paths inside the rendered dev/gateway compose line up
+	// because the agent uses the SAME layout the control plane assumed.
+	dataBase string
 
 	mu      sync.Mutex
 	deploys map[string]*inflight
 }
 
 // New builds the service. stackDir/buildTmpDir are created lazily by the deploy
-// path; dataDir is the filesystem measured for disk metrics.
-func New(stackDir, buildTmpDir, dataDir string) *Service {
+// path; dataDir is the filesystem measured for disk metrics; dataBase is the host
+// data root for the Part D dev/gateway singletons (empty => parent of stackDir).
+func New(stackDir, buildTmpDir, dataDir, dataBase string) *Service {
+	if dataBase == "" {
+		dataBase = filepath.Dir(stackDir)
+	}
 	return &Service{
 		stackDir:    stackDir,
 		buildTmpDir: buildTmpDir,
 		dataDir:     dataDir,
+		dataBase:    dataBase,
 		deploys:     map[string]*inflight{},
 	}
 }

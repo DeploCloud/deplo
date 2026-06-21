@@ -114,6 +114,21 @@ func (s *Service) runDeploy(ctx context.Context, req *pb.DeployRequest, e *emitt
 		if !s.buildImage(ctx, req, buildDir, e) {
 			return // buildImage already emitted the failure result
 		}
+	case pb.SourceKind_SOURCE_KIND_DEV_WORKSPACE:
+		// Part D: "deploy from dev workspace". The build context is the developer's
+		// live tree already on THIS host (<dataBase>/dev/<slug>). Copy it into a
+		// fresh build dir excluding the non-source entries and rejecting symlinks
+		// (the tree is attacker-controlled), then build like UPLOAD. No bytes cross
+		// the wire — the build stays on the owning host.
+		buildDir, cleanup, err := s.materializeDevWorkspace(slug, req.GetDevWorkspaceSubdir(), e)
+		if err != nil {
+			e.result(false, err.Error(), "")
+			return
+		}
+		defer cleanup()
+		if !s.buildImage(ctx, req, buildDir, e) {
+			return // buildImage already emitted the failure result
+		}
 	case pb.SourceKind_SOURCE_KIND_COMPOSE:
 		// Part C: a multi-service compose stack. There is NO agent build and NO
 		// image to pull — each service's image comes up via `docker compose up`

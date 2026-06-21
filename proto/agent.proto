@@ -17,8 +17,15 @@ syntax = "proto3";
 // (the console introspection that was direct-Docker in lib/data/console.ts), and
 // the file RPCs (List/Read/Write/Upload/CreateDir/Delete/Rename/FilesExist) that
 // repoint lib/data/project-files.ts off the control plane's local fs onto the
-// project's host. Every addition is new RPCs/messages — the contract version stays
-// V1 (additive, never a redesign; D6's forward-compat principle holds).
+// project's host. PART D adds the DEV-MODE + SSH-GATEWAY surface (the last
+// per-host singletons, ADR-0002): StartDev/StopDev/ResetDevWorkspace/TeardownDev
+// (the dev container lifecycle, repointing lib/deploy/dev.ts), EnsureGateway/
+// ProvisionSshUser/DeprovisionSshUser (the SSH gateway, repointing
+// lib/infra/ssh-gateway.ts — the control plane renders config + steps, the agent
+// applies them), StartTunnel/GetTunnel/StopTunnel (the VS Code tunnel), and a new
+// SOURCE_KIND_DEV_WORKSPACE so "deploy from dev workspace" builds on the owning
+// host. Every addition is new RPCs/messages — the contract version stays V1
+// (additive, never a redesign; D6's forward-compat principle holds).
 //
 // The agent's CALL-HOME BOOTSTRAP (PLAN P1-P4) is deliberately NOT a method on
 // this service: it travels agent -> control plane (the opposite direction of
@@ -124,6 +131,64 @@ service Agent {
   rpc RenameFile(RenameFileRequest) returns (FileEntryResult);
   // Whether a project's files root exists on this host (drives the Files tab).
   rpc FilesExist(FilesExistRequest) returns (FilesExistResponse);
+
+  // ---- PART D: dev containers + SSH gateway per server (repoints
+  // lib/deploy/dev.ts + lib/infra/ssh-gateway.ts off the control plane's local
+  // Docker/fs onto the project's host). Dev containers + the SSH gateway are
+  // per-host singletons (ADR-0002); once a project can live on a remote server,
+  // its dev container + gateway must run THERE. The control plane stays the
+  // source of truth: it renders the dev compose (renderDevCompose), the dev
+  // entrypoint script, the gateway config files, and the per-user provision/
+  // deprovision exec-steps (same D2 single-renderer principle as the production
+  // compose) and ships them opaque; the agent writes files + drives Docker. The
+  // store's DevSshUser[] / Project.dev remain authoritative (ADR-0002). ----
+
+  // Start (or restart) a project's dev container. Server-streaming like Deploy
+  // (it materialises the workspace, ensures the gateway, pre-chowns, writes the
+  // stack, `compose up`s) so progress logs flow live into the same SSE plumbing.
+  // The control plane sends the rendered dev compose + entrypoint + (for git) the
+  // tokenized clone URL + (for upload) the archive; the agent stays dumb.
+  rpc StartDev(StartDevRequest) returns (stream DeployEvent);
+  // Stop a project's dev container (reversible — KEEPS the workspace + deps
+  // volume so a later StartDev resumes the edited tree). Also stops the tunnel.
+  rpc StopDev(StopDevRequest) returns (StackResult);
+  // DESTRUCTIVE: wipe the workspace + deps volume, then reseed via StartDev's
+  // body. The request carries the same StartDevRequest payload used to reseed.
+  rpc ResetDevWorkspace(StartDevRequest) returns (stream DeployEvent);
+  // Fully tear down on PROJECT DELETE: stop the stack, remove the stack file +
+  // deps volume, WIPE the workspace dir. The gateway singleton is NOT torn down
+  // (its per-project users are removed via DeprovisionSshUser).
+  rpc TeardownDev(TeardownDevRequest) returns (StackResult);
+
+  // ---- SSH gateway (the per-host singleton, ADR-0002) ----
+
+  // Lazily ensure the 2-service SSH gateway stack is up on this host (idempotent;
+  // ensureNetwork + write the rendered config files + `compose up` + wait for
+  // sshd + reconcile every supplied user). The control plane sends the rendered
+  // files (sshd_config / wrapper / socket-filter / compose / entrypoint) and the
+  // full provision step-list for every stored DevSshUser of this server so the
+  // agent rebuilds the projection from the store's truth (ADR-0002).
+  rpc EnsureGateway(EnsureGatewayRequest) returns (StackResult);
+  // Provision one user inside the running gateway by running the control-plane-
+  // computed exec steps (the password, if any, rides in a step's stdin — never
+  // argv/env). Ensures the gateway first (carries the same gateway payload).
+  rpc ProvisionSshUser(ProvisionSshUserRequest) returns (StackResult);
+  // Remove one user from the gateway (account + key + map files). No-op if the
+  // gateway isn't running. Runs the control-plane-computed deprovision steps.
+  rpc DeprovisionSshUser(DeprovisionSshUserRequest) returns (StackResult);
+
+  // ---- VS Code Remote Tunnel (the editor integration for an exec-only gateway).
+  // `code tunnel` runs INSIDE the dev container and dials OUT to Microsoft's
+  // relay over HTTPS — no inbound port, no gateway change. These RPCs are thin
+  // `docker exec` wrappers; the LOG PARSING (device-login link, connected URL)
+  // stays pure in the control plane (parseTunnelLog). ----
+
+  // Launch the tunnel (idempotent) and return the current raw log + running flag.
+  rpc StartTunnel(TunnelRequest) returns (TunnelStatus);
+  // Read the current tunnel log + running flag (no side effects).
+  rpc GetTunnel(TunnelRequest) returns (TunnelStatus);
+  // Stop the tunnel process (the CLI download + auth token are kept).
+  rpc StopTunnel(TunnelRequest) returns (StackResult);
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +284,16 @@ enum SourceKind {
   // waits for the stack by LABEL (deplo.slug), since the containers are
   // compose-prefixed, not named deplo-<slug>. PART C.
   SOURCE_KIND_COMPOSE = 4;
+  // PART D: "deploy from dev workspace". The build context is the project's
+  // PERSISTENT dev workspace already on THIS agent's host (<dev-dir>/<slug>) —
+  // the developer's live, edited tree. The agent copies it into a fresh build
+  // dir EXCLUDING the non-source entries (node_modules / .deplo / .deplo-home /
+  // .git — same WORKSPACE_BUILD_EXCLUDE the control plane's copyWorkspaceForBuild
+  // applies) and rejects symlinks (the tree is attacker-controlled, UID-1000
+  // shell/SSH access), then builds it exactly like UPLOAD. No workspace bytes
+  // cross the wire — the build stays on the owning host. Only the Dockerfile
+  // descriptor + image_ref travel in the request, like GIT.
+  SOURCE_KIND_DEV_WORKSPACE = 5;
 }
 
 // How the agent turns the build context into an image. Part A implements the
@@ -347,6 +422,13 @@ message DeployRequest {
   // (SOURCE_KIND_COMPOSE). Written under <stack_dir>/files/<slug>/ before
   // `compose up`. Empty for every other source kind.
   repeated MountFile mounts = 14;
+
+  // The rootDirectory subdir within the dev workspace to build from, relative to
+  // the workspace root (SOURCE_KIND_DEV_WORKSPACE, Part D). Empty => the workspace
+  // root. Re-validated against the materialised build dir inside the agent
+  // (anti-escape, like the GIT subdir). Mirrors how the git arm passes
+  // project.build.rootDirectory as GitSource.subdir.
+  string dev_workspace_subdir = 15;
 }
 
 // One event in the deploy stream. Exactly one of the oneof arms is set.
@@ -640,4 +722,135 @@ message FilesExistRequest {
 
 message FilesExistResponse {
   bool exists = 1;
+}
+
+// ---------------------------------------------------------------------------
+// PART D — dev containers + SSH gateway per server
+// ---------------------------------------------------------------------------
+
+// Everything the agent needs to start a project's dev container, all rendered by
+// the control plane (D2: one renderer, opaque artifacts on the wire). The agent
+// neither resolves the image nor renders labels — it writes files and runs Docker.
+message StartDevRequest {
+  // Project identity. `slug` keys the dev compose project / container name
+  // (deplo-dev-<slug>), the stack file, the workspace dir, and the deps volume;
+  // `project_id` goes into the deplo.* labels (already baked into compose_yaml).
+  string slug = 1;
+  string project_id = 2;
+
+  // The fully-rendered dev compose YAML (renderDevCompose) — opaque to the agent,
+  // written to <stack-dir>/dev-<slug>.yml (0600: it holds decrypted `development`
+  // env). The bind sources inside already point at the agent's <dev-dir>/<slug>,
+  // the entry script, and the clone-secret path (the agent uses the SAME data dir
+  // layout as the control plane did, so the host paths line up).
+  string compose_yaml = 3;
+
+  // The dev entrypoint script (DEV_ENTRY_SCRIPT) the compose bind-mounts. Written
+  // 0755 to <dev-dir>/_entry/deplo-dev-entry, idempotently (rewritten each start
+  // so a Deplo upgrade ships a new entrypoint without a rebuild). Rendered by the
+  // control plane so the agent stays dumb about its contents.
+  string entry_script = 4;
+
+  // Source seeding (mirrors lib/deploy/dev.ts). Exactly one applies:
+  //  - GIT: the control plane minted a tokenized clone URL; the agent stages it
+  //    to a root-owned 0600 file the compose bind-mounts at /run/deplo/clone-url
+  //    (never env / inspect-able). Empty => not a git source (clear any stale one).
+  //  - UPLOAD: the archive is streamed in `upload_tar` and the agent extracts it
+  //    into the (empty) workspace host-side before the container starts (the
+  //    archive isn't mounted in the container). Empty => nothing to seed.
+  string clone_secret_url = 5;
+  bytes upload_tar = 6;
+
+  // The `-v <host>:/workspace` source for the pre-chown helper container, already
+  // host-path-translated by the control plane (its container's data mount differs
+  // from the in-container /data path; renderDevCompose does the same translation
+  // for the compose binds). For a bare-host remote agent this equals the plain
+  // workspace path (no translation), since the agent's own /data IS the host
+  // path. Empty => the agent pre-chowns its plain <dev-dir>/<slug>.
+  string workspace_host_path = 7;
+}
+
+message StopDevRequest {
+  string slug = 1;
+}
+
+message TeardownDevRequest {
+  string slug = 1;
+}
+
+// The rendered SSH-gateway config files + the user projection. The control plane
+// keeps gateway-config.ts / gateway-projection.ts as the single source of truth
+// (snapshot-tested) and ships the rendered strings here; the agent writes them to
+// <data-dir>/ssh-gateway/ and brings the 2-service stack up. The agent never
+// re-implements the security-critical wrapper / sshd_config / allowlist in Go.
+message GatewayConfig {
+  // The rendered docker-compose for the 2-service gateway (proxy + gateway),
+  // already host-path-translated by the control plane (renderGatewayCompose) so
+  // the bind mount works whatever the agent's data layout is. NOTE: the control
+  // plane translates against ITS OWN data mount; for a remote agent the agent's
+  // own GW dir is used (the agent owns the path), so the agent re-renders the
+  // compose's bind path locally — see the agent impl. Carried for localhost parity.
+  string compose_yaml = 1;
+  string sshd_config = 2;        // -> ssh-gateway/sshd_config
+  string wrapper_script = 3;     // -> ssh-gateway/deplo-dev-shell (0755)
+  string entrypoint_script = 4;  // -> ssh-gateway/gateway-entrypoint (0755)
+  string socket_filter_cfg = 5;  // -> ssh-gateway/socket-filter.cfg
+}
+
+// One control-plane-computed gateway exec step the agent runs verbatim inside the
+// gateway container: `docker exec -i <gateway> <argv...>`, optionally piping
+// `input` to the command's stdin (chpasswd / file writes — the secret never hits
+// argv/env that `docker inspect` could surface). Mirrors GatewayStep in
+// lib/infra/gateway-projection.ts; the control plane decrypts the password
+// just-in-time and bakes the cleartext into the right step's `input`.
+message GatewayStep {
+  repeated string argv = 1;
+  string input = 2;
+}
+
+// Ensure the gateway is up, then reconcile EVERY supplied user into it (the
+// store is the sole source of truth — ADR-0002; the control plane sends the full
+// provision plan for every DevSshUser of this server so a fresh gateway rebuilds
+// its whole projection).
+message EnsureGatewayRequest {
+  GatewayConfig config = 1;
+  // The provision steps for every stored user of this server, in order. Each
+  // inner step-list provisions one account/key/map. Replayed on first boot and
+  // after drift — provisioning is idempotent.
+  repeated UserSteps users = 2;
+}
+
+// The ordered provision (or deprovision) steps for ONE user.
+message UserSteps {
+  repeated GatewayStep steps = 1;
+}
+
+message ProvisionSshUserRequest {
+  // Ensure the gateway first (a user can be the first SSH user → lazy create).
+  GatewayConfig config = 1;
+  // The full user reconcile set (every stored user) so a just-created gateway is
+  // rebuilt from the store, exactly like EnsureGateway. The agent provisions all.
+  repeated UserSteps users = 2;
+}
+
+message DeprovisionSshUserRequest {
+  // The deprovision steps for the one user being removed (pkill / deluser / rm).
+  repeated GatewayStep steps = 1;
+}
+
+// ---- VS Code tunnel ----
+
+message TunnelRequest {
+  string slug = 1;
+  // The launch script (tunnelLaunchScript) — only set on StartTunnel; rendered by
+  // the control plane so the CLI download URL / tunnel name stay one source.
+  string launch_script = 2;
+}
+
+// The agent returns the RAW tunnel log + running flag; the control plane parses
+// it (parseTunnelLog) into the device-login link / connected URL — that logic
+// stays pure and testable in TS, not duplicated in Go.
+message TunnelStatus {
+  bool running = 1;
+  string log = 2;
 }

@@ -95,6 +95,18 @@ export enum SourceKind {
    * compose-prefixed, not named deplo-<slug>. PART C.
    */
   SOURCE_KIND_COMPOSE = 4,
+  /**
+   * SOURCE_KIND_DEV_WORKSPACE - PART D: "deploy from dev workspace". The build context is the project's
+   * PERSISTENT dev workspace already on THIS agent's host (<dev-dir>/<slug>) —
+   * the developer's live, edited tree. The agent copies it into a fresh build
+   * dir EXCLUDING the non-source entries (node_modules / .deplo / .deplo-home /
+   * .git — same WORKSPACE_BUILD_EXCLUDE the control plane's copyWorkspaceForBuild
+   * applies) and rejects symlinks (the tree is attacker-controlled, UID-1000
+   * shell/SSH access), then builds it exactly like UPLOAD. No workspace bytes
+   * cross the wire — the build stays on the owning host. Only the Dockerfile
+   * descriptor + image_ref travel in the request, like GIT.
+   */
+  SOURCE_KIND_DEV_WORKSPACE = 5,
   UNRECOGNIZED = -1,
 }
 
@@ -115,6 +127,9 @@ export function sourceKindFromJSON(object: any): SourceKind {
     case 4:
     case "SOURCE_KIND_COMPOSE":
       return SourceKind.SOURCE_KIND_COMPOSE;
+    case 5:
+    case "SOURCE_KIND_DEV_WORKSPACE":
+      return SourceKind.SOURCE_KIND_DEV_WORKSPACE;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -134,6 +149,8 @@ export function sourceKindToJSON(object: SourceKind): string {
       return "SOURCE_KIND_GIT";
     case SourceKind.SOURCE_KIND_COMPOSE:
       return "SOURCE_KIND_COMPOSE";
+    case SourceKind.SOURCE_KIND_DEV_WORKSPACE:
+      return "SOURCE_KIND_DEV_WORKSPACE";
     case SourceKind.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -454,6 +471,14 @@ export interface DeployRequest {
    * `compose up`. Empty for every other source kind.
    */
   mounts: MountFile[];
+  /**
+   * The rootDirectory subdir within the dev workspace to build from, relative to
+   * the workspace root (SOURCE_KIND_DEV_WORKSPACE, Part D). Empty => the workspace
+   * root. Re-validated against the materialised build dir inside the agent
+   * (anti-escape, like the GIT subdir). Mirrors how the git arm passes
+   * project.build.rootDirectory as GitSource.subdir.
+   */
+  devWorkspaceSubdir: string;
 }
 
 export interface DeployRequest_EnvEntry {
@@ -767,6 +792,163 @@ export interface FilesExistRequest {
 
 export interface FilesExistResponse {
   exists: boolean;
+}
+
+/**
+ * Everything the agent needs to start a project's dev container, all rendered by
+ * the control plane (D2: one renderer, opaque artifacts on the wire). The agent
+ * neither resolves the image nor renders labels — it writes files and runs Docker.
+ */
+export interface StartDevRequest {
+  /**
+   * Project identity. `slug` keys the dev compose project / container name
+   * (deplo-dev-<slug>), the stack file, the workspace dir, and the deps volume;
+   * `project_id` goes into the deplo.* labels (already baked into compose_yaml).
+   */
+  slug: string;
+  projectId: string;
+  /**
+   * The fully-rendered dev compose YAML (renderDevCompose) — opaque to the agent,
+   * written to <stack-dir>/dev-<slug>.yml (0600: it holds decrypted `development`
+   * env). The bind sources inside already point at the agent's <dev-dir>/<slug>,
+   * the entry script, and the clone-secret path (the agent uses the SAME data dir
+   * layout as the control plane did, so the host paths line up).
+   */
+  composeYaml: string;
+  /**
+   * The dev entrypoint script (DEV_ENTRY_SCRIPT) the compose bind-mounts. Written
+   * 0755 to <dev-dir>/_entry/deplo-dev-entry, idempotently (rewritten each start
+   * so a Deplo upgrade ships a new entrypoint without a rebuild). Rendered by the
+   * control plane so the agent stays dumb about its contents.
+   */
+  entryScript: string;
+  /**
+   * Source seeding (mirrors lib/deploy/dev.ts). Exactly one applies:
+   *  - GIT: the control plane minted a tokenized clone URL; the agent stages it
+   *    to a root-owned 0600 file the compose bind-mounts at /run/deplo/clone-url
+   *    (never env / inspect-able). Empty => not a git source (clear any stale one).
+   *  - UPLOAD: the archive is streamed in `upload_tar` and the agent extracts it
+   *    into the (empty) workspace host-side before the container starts (the
+   *    archive isn't mounted in the container). Empty => nothing to seed.
+   */
+  cloneSecretUrl: string;
+  uploadTar: Uint8Array;
+  /**
+   * The `-v <host>:/workspace` source for the pre-chown helper container, already
+   * host-path-translated by the control plane (its container's data mount differs
+   * from the in-container /data path; renderDevCompose does the same translation
+   * for the compose binds). For a bare-host remote agent this equals the plain
+   * workspace path (no translation), since the agent's own /data IS the host
+   * path. Empty => the agent pre-chowns its plain <dev-dir>/<slug>.
+   */
+  workspaceHostPath: string;
+}
+
+export interface StopDevRequest {
+  slug: string;
+}
+
+export interface TeardownDevRequest {
+  slug: string;
+}
+
+/**
+ * The rendered SSH-gateway config files + the user projection. The control plane
+ * keeps gateway-config.ts / gateway-projection.ts as the single source of truth
+ * (snapshot-tested) and ships the rendered strings here; the agent writes them to
+ * <data-dir>/ssh-gateway/ and brings the 2-service stack up. The agent never
+ * re-implements the security-critical wrapper / sshd_config / allowlist in Go.
+ */
+export interface GatewayConfig {
+  /**
+   * The rendered docker-compose for the 2-service gateway (proxy + gateway),
+   * already host-path-translated by the control plane (renderGatewayCompose) so
+   * the bind mount works whatever the agent's data layout is. NOTE: the control
+   * plane translates against ITS OWN data mount; for a remote agent the agent's
+   * own GW dir is used (the agent owns the path), so the agent re-renders the
+   * compose's bind path locally — see the agent impl. Carried for localhost parity.
+   */
+  composeYaml: string;
+  /** -> ssh-gateway/sshd_config */
+  sshdConfig: string;
+  /** -> ssh-gateway/deplo-dev-shell (0755) */
+  wrapperScript: string;
+  /** -> ssh-gateway/gateway-entrypoint (0755) */
+  entrypointScript: string;
+  /** -> ssh-gateway/socket-filter.cfg */
+  socketFilterCfg: string;
+}
+
+/**
+ * One control-plane-computed gateway exec step the agent runs verbatim inside the
+ * gateway container: `docker exec -i <gateway> <argv...>`, optionally piping
+ * `input` to the command's stdin (chpasswd / file writes — the secret never hits
+ * argv/env that `docker inspect` could surface). Mirrors GatewayStep in
+ * lib/infra/gateway-projection.ts; the control plane decrypts the password
+ * just-in-time and bakes the cleartext into the right step's `input`.
+ */
+export interface GatewayStep {
+  argv: string[];
+  input: string;
+}
+
+/**
+ * Ensure the gateway is up, then reconcile EVERY supplied user into it (the
+ * store is the sole source of truth — ADR-0002; the control plane sends the full
+ * provision plan for every DevSshUser of this server so a fresh gateway rebuilds
+ * its whole projection).
+ */
+export interface EnsureGatewayRequest {
+  config?:
+    | GatewayConfig
+    | undefined;
+  /**
+   * The provision steps for every stored user of this server, in order. Each
+   * inner step-list provisions one account/key/map. Replayed on first boot and
+   * after drift — provisioning is idempotent.
+   */
+  users: UserSteps[];
+}
+
+/** The ordered provision (or deprovision) steps for ONE user. */
+export interface UserSteps {
+  steps: GatewayStep[];
+}
+
+export interface ProvisionSshUserRequest {
+  /** Ensure the gateway first (a user can be the first SSH user → lazy create). */
+  config?:
+    | GatewayConfig
+    | undefined;
+  /**
+   * The full user reconcile set (every stored user) so a just-created gateway is
+   * rebuilt from the store, exactly like EnsureGateway. The agent provisions all.
+   */
+  users: UserSteps[];
+}
+
+export interface DeprovisionSshUserRequest {
+  /** The deprovision steps for the one user being removed (pkill / deluser / rm). */
+  steps: GatewayStep[];
+}
+
+export interface TunnelRequest {
+  slug: string;
+  /**
+   * The launch script (tunnelLaunchScript) — only set on StartTunnel; rendered by
+   * the control plane so the CLI download URL / tunnel name stay one source.
+   */
+  launchScript: string;
+}
+
+/**
+ * The agent returns the RAW tunnel log + running flag; the control plane parses
+ * it (parseTunnelLog) into the device-login link / connected URL — that logic
+ * stays pure and testable in TS, not duplicated in Go.
+ */
+export interface TunnelStatus {
+  running: boolean;
+  log: string;
 }
 
 function createBaseHelloRequest(): HelloRequest {
@@ -1770,6 +1952,7 @@ function createBaseDeployRequest(): DeployRequest {
     contextTar: new Uint8Array(0),
     pullImage: false,
     mounts: [],
+    devWorkspaceSubdir: "",
   };
 }
 
@@ -1816,6 +1999,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     for (const v of message.mounts) {
       MountFile.encode(v!, writer.uint32(114).fork()).join();
+    }
+    if (message.devWorkspaceSubdir !== "") {
+      writer.uint32(122).string(message.devWorkspaceSubdir);
     }
     return writer;
   },
@@ -1942,6 +2128,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
           message.mounts.push(MountFile.decode(reader, reader.uint32()));
           continue;
         }
+        case 15: {
+          if (tag !== 122) {
+            break;
+          }
+
+          message.devWorkspaceSubdir = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2013,6 +2207,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
       mounts: globalThis.Array.isArray(object?.mounts)
         ? object.mounts.map((e: any) => MountFile.fromJSON(e))
         : [],
+      devWorkspaceSubdir: isSet(object.devWorkspaceSubdir)
+        ? globalThis.String(object.devWorkspaceSubdir)
+        : isSet(object.dev_workspace_subdir)
+        ? globalThis.String(object.dev_workspace_subdir)
+        : "",
     };
   },
 
@@ -2066,6 +2265,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.mounts?.length) {
       obj.mounts = message.mounts.map((e) => MountFile.toJSON(e));
     }
+    if (message.devWorkspaceSubdir !== "") {
+      obj.devWorkspaceSubdir = message.devWorkspaceSubdir;
+    }
     return obj;
   },
 
@@ -2098,6 +2300,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.contextTar = object.contextTar ?? new Uint8Array(0);
     message.pullImage = object.pullImage ?? false;
     message.mounts = object.mounts?.map((e) => MountFile.fromPartial(e)) || [];
+    message.devWorkspaceSubdir = object.devWorkspaceSubdir ?? "";
     return message;
   },
 };
@@ -5334,6 +5537,962 @@ export const FilesExistResponse: MessageFns<FilesExistResponse> = {
   },
 };
 
+function createBaseStartDevRequest(): StartDevRequest {
+  return {
+    slug: "",
+    projectId: "",
+    composeYaml: "",
+    entryScript: "",
+    cloneSecretUrl: "",
+    uploadTar: new Uint8Array(0),
+    workspaceHostPath: "",
+  };
+}
+
+export const StartDevRequest: MessageFns<StartDevRequest> = {
+  encode(message: StartDevRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.projectId !== "") {
+      writer.uint32(18).string(message.projectId);
+    }
+    if (message.composeYaml !== "") {
+      writer.uint32(26).string(message.composeYaml);
+    }
+    if (message.entryScript !== "") {
+      writer.uint32(34).string(message.entryScript);
+    }
+    if (message.cloneSecretUrl !== "") {
+      writer.uint32(42).string(message.cloneSecretUrl);
+    }
+    if (message.uploadTar.length !== 0) {
+      writer.uint32(50).bytes(message.uploadTar);
+    }
+    if (message.workspaceHostPath !== "") {
+      writer.uint32(58).string(message.workspaceHostPath);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StartDevRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStartDevRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.projectId = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.composeYaml = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.entryScript = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.cloneSecretUrl = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.uploadTar = reader.bytes();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.workspaceHostPath = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StartDevRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      composeYaml: isSet(object.composeYaml)
+        ? globalThis.String(object.composeYaml)
+        : isSet(object.compose_yaml)
+        ? globalThis.String(object.compose_yaml)
+        : "",
+      entryScript: isSet(object.entryScript)
+        ? globalThis.String(object.entryScript)
+        : isSet(object.entry_script)
+        ? globalThis.String(object.entry_script)
+        : "",
+      cloneSecretUrl: isSet(object.cloneSecretUrl)
+        ? globalThis.String(object.cloneSecretUrl)
+        : isSet(object.clone_secret_url)
+        ? globalThis.String(object.clone_secret_url)
+        : "",
+      uploadTar: isSet(object.uploadTar)
+        ? bytesFromBase64(object.uploadTar)
+        : isSet(object.upload_tar)
+        ? bytesFromBase64(object.upload_tar)
+        : new Uint8Array(0),
+      workspaceHostPath: isSet(object.workspaceHostPath)
+        ? globalThis.String(object.workspaceHostPath)
+        : isSet(object.workspace_host_path)
+        ? globalThis.String(object.workspace_host_path)
+        : "",
+    };
+  },
+
+  toJSON(message: StartDevRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.composeYaml !== "") {
+      obj.composeYaml = message.composeYaml;
+    }
+    if (message.entryScript !== "") {
+      obj.entryScript = message.entryScript;
+    }
+    if (message.cloneSecretUrl !== "") {
+      obj.cloneSecretUrl = message.cloneSecretUrl;
+    }
+    if (message.uploadTar.length !== 0) {
+      obj.uploadTar = base64FromBytes(message.uploadTar);
+    }
+    if (message.workspaceHostPath !== "") {
+      obj.workspaceHostPath = message.workspaceHostPath;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StartDevRequest>, I>>(base?: I): StartDevRequest {
+    return StartDevRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StartDevRequest>, I>>(object: I): StartDevRequest {
+    const message = createBaseStartDevRequest();
+    message.slug = object.slug ?? "";
+    message.projectId = object.projectId ?? "";
+    message.composeYaml = object.composeYaml ?? "";
+    message.entryScript = object.entryScript ?? "";
+    message.cloneSecretUrl = object.cloneSecretUrl ?? "";
+    message.uploadTar = object.uploadTar ?? new Uint8Array(0);
+    message.workspaceHostPath = object.workspaceHostPath ?? "";
+    return message;
+  },
+};
+
+function createBaseStopDevRequest(): StopDevRequest {
+  return { slug: "" };
+}
+
+export const StopDevRequest: MessageFns<StopDevRequest> = {
+  encode(message: StopDevRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StopDevRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStopDevRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StopDevRequest {
+    return { slug: isSet(object.slug) ? globalThis.String(object.slug) : "" };
+  },
+
+  toJSON(message: StopDevRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StopDevRequest>, I>>(base?: I): StopDevRequest {
+    return StopDevRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StopDevRequest>, I>>(object: I): StopDevRequest {
+    const message = createBaseStopDevRequest();
+    message.slug = object.slug ?? "";
+    return message;
+  },
+};
+
+function createBaseTeardownDevRequest(): TeardownDevRequest {
+  return { slug: "" };
+}
+
+export const TeardownDevRequest: MessageFns<TeardownDevRequest> = {
+  encode(message: TeardownDevRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): TeardownDevRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTeardownDevRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): TeardownDevRequest {
+    return { slug: isSet(object.slug) ? globalThis.String(object.slug) : "" };
+  },
+
+  toJSON(message: TeardownDevRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TeardownDevRequest>, I>>(base?: I): TeardownDevRequest {
+    return TeardownDevRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TeardownDevRequest>, I>>(object: I): TeardownDevRequest {
+    const message = createBaseTeardownDevRequest();
+    message.slug = object.slug ?? "";
+    return message;
+  },
+};
+
+function createBaseGatewayConfig(): GatewayConfig {
+  return { composeYaml: "", sshdConfig: "", wrapperScript: "", entrypointScript: "", socketFilterCfg: "" };
+}
+
+export const GatewayConfig: MessageFns<GatewayConfig> = {
+  encode(message: GatewayConfig, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.composeYaml !== "") {
+      writer.uint32(10).string(message.composeYaml);
+    }
+    if (message.sshdConfig !== "") {
+      writer.uint32(18).string(message.sshdConfig);
+    }
+    if (message.wrapperScript !== "") {
+      writer.uint32(26).string(message.wrapperScript);
+    }
+    if (message.entrypointScript !== "") {
+      writer.uint32(34).string(message.entrypointScript);
+    }
+    if (message.socketFilterCfg !== "") {
+      writer.uint32(42).string(message.socketFilterCfg);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GatewayConfig {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGatewayConfig();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.composeYaml = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.sshdConfig = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.wrapperScript = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.entrypointScript = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.socketFilterCfg = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GatewayConfig {
+    return {
+      composeYaml: isSet(object.composeYaml)
+        ? globalThis.String(object.composeYaml)
+        : isSet(object.compose_yaml)
+        ? globalThis.String(object.compose_yaml)
+        : "",
+      sshdConfig: isSet(object.sshdConfig)
+        ? globalThis.String(object.sshdConfig)
+        : isSet(object.sshd_config)
+        ? globalThis.String(object.sshd_config)
+        : "",
+      wrapperScript: isSet(object.wrapperScript)
+        ? globalThis.String(object.wrapperScript)
+        : isSet(object.wrapper_script)
+        ? globalThis.String(object.wrapper_script)
+        : "",
+      entrypointScript: isSet(object.entrypointScript)
+        ? globalThis.String(object.entrypointScript)
+        : isSet(object.entrypoint_script)
+        ? globalThis.String(object.entrypoint_script)
+        : "",
+      socketFilterCfg: isSet(object.socketFilterCfg)
+        ? globalThis.String(object.socketFilterCfg)
+        : isSet(object.socket_filter_cfg)
+        ? globalThis.String(object.socket_filter_cfg)
+        : "",
+    };
+  },
+
+  toJSON(message: GatewayConfig): unknown {
+    const obj: any = {};
+    if (message.composeYaml !== "") {
+      obj.composeYaml = message.composeYaml;
+    }
+    if (message.sshdConfig !== "") {
+      obj.sshdConfig = message.sshdConfig;
+    }
+    if (message.wrapperScript !== "") {
+      obj.wrapperScript = message.wrapperScript;
+    }
+    if (message.entrypointScript !== "") {
+      obj.entrypointScript = message.entrypointScript;
+    }
+    if (message.socketFilterCfg !== "") {
+      obj.socketFilterCfg = message.socketFilterCfg;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GatewayConfig>, I>>(base?: I): GatewayConfig {
+    return GatewayConfig.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GatewayConfig>, I>>(object: I): GatewayConfig {
+    const message = createBaseGatewayConfig();
+    message.composeYaml = object.composeYaml ?? "";
+    message.sshdConfig = object.sshdConfig ?? "";
+    message.wrapperScript = object.wrapperScript ?? "";
+    message.entrypointScript = object.entrypointScript ?? "";
+    message.socketFilterCfg = object.socketFilterCfg ?? "";
+    return message;
+  },
+};
+
+function createBaseGatewayStep(): GatewayStep {
+  return { argv: [], input: "" };
+}
+
+export const GatewayStep: MessageFns<GatewayStep> = {
+  encode(message: GatewayStep, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.argv) {
+      writer.uint32(10).string(v!);
+    }
+    if (message.input !== "") {
+      writer.uint32(18).string(message.input);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GatewayStep {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGatewayStep();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.argv.push(reader.string());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.input = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GatewayStep {
+    return {
+      argv: globalThis.Array.isArray(object?.argv) ? object.argv.map((e: any) => globalThis.String(e)) : [],
+      input: isSet(object.input) ? globalThis.String(object.input) : "",
+    };
+  },
+
+  toJSON(message: GatewayStep): unknown {
+    const obj: any = {};
+    if (message.argv?.length) {
+      obj.argv = message.argv;
+    }
+    if (message.input !== "") {
+      obj.input = message.input;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GatewayStep>, I>>(base?: I): GatewayStep {
+    return GatewayStep.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GatewayStep>, I>>(object: I): GatewayStep {
+    const message = createBaseGatewayStep();
+    message.argv = object.argv?.map((e) => e) || [];
+    message.input = object.input ?? "";
+    return message;
+  },
+};
+
+function createBaseEnsureGatewayRequest(): EnsureGatewayRequest {
+  return { config: undefined, users: [] };
+}
+
+export const EnsureGatewayRequest: MessageFns<EnsureGatewayRequest> = {
+  encode(message: EnsureGatewayRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.config !== undefined) {
+      GatewayConfig.encode(message.config, writer.uint32(10).fork()).join();
+    }
+    for (const v of message.users) {
+      UserSteps.encode(v!, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): EnsureGatewayRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseEnsureGatewayRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.config = GatewayConfig.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.users.push(UserSteps.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): EnsureGatewayRequest {
+    return {
+      config: isSet(object.config) ? GatewayConfig.fromJSON(object.config) : undefined,
+      users: globalThis.Array.isArray(object?.users) ? object.users.map((e: any) => UserSteps.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: EnsureGatewayRequest): unknown {
+    const obj: any = {};
+    if (message.config !== undefined) {
+      obj.config = GatewayConfig.toJSON(message.config);
+    }
+    if (message.users?.length) {
+      obj.users = message.users.map((e) => UserSteps.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<EnsureGatewayRequest>, I>>(base?: I): EnsureGatewayRequest {
+    return EnsureGatewayRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<EnsureGatewayRequest>, I>>(object: I): EnsureGatewayRequest {
+    const message = createBaseEnsureGatewayRequest();
+    message.config = (object.config !== undefined && object.config !== null)
+      ? GatewayConfig.fromPartial(object.config)
+      : undefined;
+    message.users = object.users?.map((e) => UserSteps.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseUserSteps(): UserSteps {
+  return { steps: [] };
+}
+
+export const UserSteps: MessageFns<UserSteps> = {
+  encode(message: UserSteps, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.steps) {
+      GatewayStep.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): UserSteps {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseUserSteps();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.steps.push(GatewayStep.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): UserSteps {
+    return {
+      steps: globalThis.Array.isArray(object?.steps) ? object.steps.map((e: any) => GatewayStep.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: UserSteps): unknown {
+    const obj: any = {};
+    if (message.steps?.length) {
+      obj.steps = message.steps.map((e) => GatewayStep.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<UserSteps>, I>>(base?: I): UserSteps {
+    return UserSteps.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<UserSteps>, I>>(object: I): UserSteps {
+    const message = createBaseUserSteps();
+    message.steps = object.steps?.map((e) => GatewayStep.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseProvisionSshUserRequest(): ProvisionSshUserRequest {
+  return { config: undefined, users: [] };
+}
+
+export const ProvisionSshUserRequest: MessageFns<ProvisionSshUserRequest> = {
+  encode(message: ProvisionSshUserRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.config !== undefined) {
+      GatewayConfig.encode(message.config, writer.uint32(10).fork()).join();
+    }
+    for (const v of message.users) {
+      UserSteps.encode(v!, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ProvisionSshUserRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseProvisionSshUserRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.config = GatewayConfig.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.users.push(UserSteps.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ProvisionSshUserRequest {
+    return {
+      config: isSet(object.config) ? GatewayConfig.fromJSON(object.config) : undefined,
+      users: globalThis.Array.isArray(object?.users) ? object.users.map((e: any) => UserSteps.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: ProvisionSshUserRequest): unknown {
+    const obj: any = {};
+    if (message.config !== undefined) {
+      obj.config = GatewayConfig.toJSON(message.config);
+    }
+    if (message.users?.length) {
+      obj.users = message.users.map((e) => UserSteps.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ProvisionSshUserRequest>, I>>(base?: I): ProvisionSshUserRequest {
+    return ProvisionSshUserRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ProvisionSshUserRequest>, I>>(object: I): ProvisionSshUserRequest {
+    const message = createBaseProvisionSshUserRequest();
+    message.config = (object.config !== undefined && object.config !== null)
+      ? GatewayConfig.fromPartial(object.config)
+      : undefined;
+    message.users = object.users?.map((e) => UserSteps.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseDeprovisionSshUserRequest(): DeprovisionSshUserRequest {
+  return { steps: [] };
+}
+
+export const DeprovisionSshUserRequest: MessageFns<DeprovisionSshUserRequest> = {
+  encode(message: DeprovisionSshUserRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.steps) {
+      GatewayStep.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DeprovisionSshUserRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDeprovisionSshUserRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.steps.push(GatewayStep.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DeprovisionSshUserRequest {
+    return {
+      steps: globalThis.Array.isArray(object?.steps) ? object.steps.map((e: any) => GatewayStep.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: DeprovisionSshUserRequest): unknown {
+    const obj: any = {};
+    if (message.steps?.length) {
+      obj.steps = message.steps.map((e) => GatewayStep.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<DeprovisionSshUserRequest>, I>>(base?: I): DeprovisionSshUserRequest {
+    return DeprovisionSshUserRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<DeprovisionSshUserRequest>, I>>(object: I): DeprovisionSshUserRequest {
+    const message = createBaseDeprovisionSshUserRequest();
+    message.steps = object.steps?.map((e) => GatewayStep.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseTunnelRequest(): TunnelRequest {
+  return { slug: "", launchScript: "" };
+}
+
+export const TunnelRequest: MessageFns<TunnelRequest> = {
+  encode(message: TunnelRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.launchScript !== "") {
+      writer.uint32(18).string(message.launchScript);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): TunnelRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTunnelRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.launchScript = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): TunnelRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      launchScript: isSet(object.launchScript)
+        ? globalThis.String(object.launchScript)
+        : isSet(object.launch_script)
+        ? globalThis.String(object.launch_script)
+        : "",
+    };
+  },
+
+  toJSON(message: TunnelRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.launchScript !== "") {
+      obj.launchScript = message.launchScript;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TunnelRequest>, I>>(base?: I): TunnelRequest {
+    return TunnelRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TunnelRequest>, I>>(object: I): TunnelRequest {
+    const message = createBaseTunnelRequest();
+    message.slug = object.slug ?? "";
+    message.launchScript = object.launchScript ?? "";
+    return message;
+  },
+};
+
+function createBaseTunnelStatus(): TunnelStatus {
+  return { running: false, log: "" };
+}
+
+export const TunnelStatus: MessageFns<TunnelStatus> = {
+  encode(message: TunnelStatus, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.running !== false) {
+      writer.uint32(8).bool(message.running);
+    }
+    if (message.log !== "") {
+      writer.uint32(18).string(message.log);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): TunnelStatus {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTunnelStatus();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.running = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.log = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): TunnelStatus {
+    return {
+      running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
+      log: isSet(object.log) ? globalThis.String(object.log) : "",
+    };
+  },
+
+  toJSON(message: TunnelStatus): unknown {
+    const obj: any = {};
+    if (message.running !== false) {
+      obj.running = message.running;
+    }
+    if (message.log !== "") {
+      obj.log = message.log;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TunnelStatus>, I>>(base?: I): TunnelStatus {
+    return TunnelStatus.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TunnelStatus>, I>>(object: I): TunnelStatus {
+    const message = createBaseTunnelStatus();
+    message.running = object.running ?? false;
+    message.log = object.log ?? "";
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -5591,6 +6750,138 @@ export const AgentService = {
     responseSerialize: (value: FilesExistResponse): Buffer => Buffer.from(FilesExistResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): FilesExistResponse => FilesExistResponse.decode(value),
   },
+  /**
+   * Start (or restart) a project's dev container. Server-streaming like Deploy
+   * (it materialises the workspace, ensures the gateway, pre-chowns, writes the
+   * stack, `compose up`s) so progress logs flow live into the same SSE plumbing.
+   * The control plane sends the rendered dev compose + entrypoint + (for git) the
+   * tokenized clone URL + (for upload) the archive; the agent stays dumb.
+   */
+  startDev: {
+    path: "/deplo.agent.v1.Agent/StartDev" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: StartDevRequest): Buffer => Buffer.from(StartDevRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): StartDevRequest => StartDevRequest.decode(value),
+    responseSerialize: (value: DeployEvent): Buffer => Buffer.from(DeployEvent.encode(value).finish()),
+    responseDeserialize: (value: Buffer): DeployEvent => DeployEvent.decode(value),
+  },
+  /**
+   * Stop a project's dev container (reversible — KEEPS the workspace + deps
+   * volume so a later StartDev resumes the edited tree). Also stops the tunnel.
+   */
+  stopDev: {
+    path: "/deplo.agent.v1.Agent/StopDev" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: StopDevRequest): Buffer => Buffer.from(StopDevRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): StopDevRequest => StopDevRequest.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
+  /**
+   * DESTRUCTIVE: wipe the workspace + deps volume, then reseed via StartDev's
+   * body. The request carries the same StartDevRequest payload used to reseed.
+   */
+  resetDevWorkspace: {
+    path: "/deplo.agent.v1.Agent/ResetDevWorkspace" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: StartDevRequest): Buffer => Buffer.from(StartDevRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): StartDevRequest => StartDevRequest.decode(value),
+    responseSerialize: (value: DeployEvent): Buffer => Buffer.from(DeployEvent.encode(value).finish()),
+    responseDeserialize: (value: Buffer): DeployEvent => DeployEvent.decode(value),
+  },
+  /**
+   * Fully tear down on PROJECT DELETE: stop the stack, remove the stack file +
+   * deps volume, WIPE the workspace dir. The gateway singleton is NOT torn down
+   * (its per-project users are removed via DeprovisionSshUser).
+   */
+  teardownDev: {
+    path: "/deplo.agent.v1.Agent/TeardownDev" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: TeardownDevRequest): Buffer => Buffer.from(TeardownDevRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): TeardownDevRequest => TeardownDevRequest.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
+  /**
+   * Lazily ensure the 2-service SSH gateway stack is up on this host (idempotent;
+   * ensureNetwork + write the rendered config files + `compose up` + wait for
+   * sshd + reconcile every supplied user). The control plane sends the rendered
+   * files (sshd_config / wrapper / socket-filter / compose / entrypoint) and the
+   * full provision step-list for every stored DevSshUser of this server so the
+   * agent rebuilds the projection from the store's truth (ADR-0002).
+   */
+  ensureGateway: {
+    path: "/deplo.agent.v1.Agent/EnsureGateway" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: EnsureGatewayRequest): Buffer => Buffer.from(EnsureGatewayRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): EnsureGatewayRequest => EnsureGatewayRequest.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
+  /**
+   * Provision one user inside the running gateway by running the control-plane-
+   * computed exec steps (the password, if any, rides in a step's stdin — never
+   * argv/env). Ensures the gateway first (carries the same gateway payload).
+   */
+  provisionSshUser: {
+    path: "/deplo.agent.v1.Agent/ProvisionSshUser" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ProvisionSshUserRequest): Buffer =>
+      Buffer.from(ProvisionSshUserRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ProvisionSshUserRequest => ProvisionSshUserRequest.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
+  /**
+   * Remove one user from the gateway (account + key + map files). No-op if the
+   * gateway isn't running. Runs the control-plane-computed deprovision steps.
+   */
+  deprovisionSshUser: {
+    path: "/deplo.agent.v1.Agent/DeprovisionSshUser" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: DeprovisionSshUserRequest): Buffer =>
+      Buffer.from(DeprovisionSshUserRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): DeprovisionSshUserRequest => DeprovisionSshUserRequest.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
+  /** Launch the tunnel (idempotent) and return the current raw log + running flag. */
+  startTunnel: {
+    path: "/deplo.agent.v1.Agent/StartTunnel" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: TunnelRequest): Buffer => Buffer.from(TunnelRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): TunnelRequest => TunnelRequest.decode(value),
+    responseSerialize: (value: TunnelStatus): Buffer => Buffer.from(TunnelStatus.encode(value).finish()),
+    responseDeserialize: (value: Buffer): TunnelStatus => TunnelStatus.decode(value),
+  },
+  /** Read the current tunnel log + running flag (no side effects). */
+  getTunnel: {
+    path: "/deplo.agent.v1.Agent/GetTunnel" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: TunnelRequest): Buffer => Buffer.from(TunnelRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): TunnelRequest => TunnelRequest.decode(value),
+    responseSerialize: (value: TunnelStatus): Buffer => Buffer.from(TunnelStatus.encode(value).finish()),
+    responseDeserialize: (value: Buffer): TunnelStatus => TunnelStatus.decode(value),
+  },
+  /** Stop the tunnel process (the CLI download + auth token are kept). */
+  stopTunnel: {
+    path: "/deplo.agent.v1.Agent/StopTunnel" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: TunnelRequest): Buffer => Buffer.from(TunnelRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): TunnelRequest => TunnelRequest.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
@@ -5680,6 +6971,56 @@ export interface AgentServer extends UntypedServiceImplementation {
   renameFile: handleUnaryCall<RenameFileRequest, FileEntryResult>;
   /** Whether a project's files root exists on this host (drives the Files tab). */
   filesExist: handleUnaryCall<FilesExistRequest, FilesExistResponse>;
+  /**
+   * Start (or restart) a project's dev container. Server-streaming like Deploy
+   * (it materialises the workspace, ensures the gateway, pre-chowns, writes the
+   * stack, `compose up`s) so progress logs flow live into the same SSE plumbing.
+   * The control plane sends the rendered dev compose + entrypoint + (for git) the
+   * tokenized clone URL + (for upload) the archive; the agent stays dumb.
+   */
+  startDev: handleServerStreamingCall<StartDevRequest, DeployEvent>;
+  /**
+   * Stop a project's dev container (reversible — KEEPS the workspace + deps
+   * volume so a later StartDev resumes the edited tree). Also stops the tunnel.
+   */
+  stopDev: handleUnaryCall<StopDevRequest, StackResult>;
+  /**
+   * DESTRUCTIVE: wipe the workspace + deps volume, then reseed via StartDev's
+   * body. The request carries the same StartDevRequest payload used to reseed.
+   */
+  resetDevWorkspace: handleServerStreamingCall<StartDevRequest, DeployEvent>;
+  /**
+   * Fully tear down on PROJECT DELETE: stop the stack, remove the stack file +
+   * deps volume, WIPE the workspace dir. The gateway singleton is NOT torn down
+   * (its per-project users are removed via DeprovisionSshUser).
+   */
+  teardownDev: handleUnaryCall<TeardownDevRequest, StackResult>;
+  /**
+   * Lazily ensure the 2-service SSH gateway stack is up on this host (idempotent;
+   * ensureNetwork + write the rendered config files + `compose up` + wait for
+   * sshd + reconcile every supplied user). The control plane sends the rendered
+   * files (sshd_config / wrapper / socket-filter / compose / entrypoint) and the
+   * full provision step-list for every stored DevSshUser of this server so the
+   * agent rebuilds the projection from the store's truth (ADR-0002).
+   */
+  ensureGateway: handleUnaryCall<EnsureGatewayRequest, StackResult>;
+  /**
+   * Provision one user inside the running gateway by running the control-plane-
+   * computed exec steps (the password, if any, rides in a step's stdin — never
+   * argv/env). Ensures the gateway first (carries the same gateway payload).
+   */
+  provisionSshUser: handleUnaryCall<ProvisionSshUserRequest, StackResult>;
+  /**
+   * Remove one user from the gateway (account + key + map files). No-op if the
+   * gateway isn't running. Runs the control-plane-computed deprovision steps.
+   */
+  deprovisionSshUser: handleUnaryCall<DeprovisionSshUserRequest, StackResult>;
+  /** Launch the tunnel (idempotent) and return the current raw log + running flag. */
+  startTunnel: handleUnaryCall<TunnelRequest, TunnelStatus>;
+  /** Read the current tunnel log + running flag (no side effects). */
+  getTunnel: handleUnaryCall<TunnelRequest, TunnelStatus>;
+  /** Stop the tunnel process (the CLI download + auth token are kept). */
+  stopTunnel: handleUnaryCall<TunnelRequest, StackResult>;
 }
 
 export interface AgentClient extends Client {
@@ -6014,6 +7355,178 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: FilesExistResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Start (or restart) a project's dev container. Server-streaming like Deploy
+   * (it materialises the workspace, ensures the gateway, pre-chowns, writes the
+   * stack, `compose up`s) so progress logs flow live into the same SSE plumbing.
+   * The control plane sends the rendered dev compose + entrypoint + (for git) the
+   * tokenized clone URL + (for upload) the archive; the agent stays dumb.
+   */
+  startDev(request: StartDevRequest, options?: Partial<CallOptions>): ClientReadableStream<DeployEvent>;
+  startDev(
+    request: StartDevRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<DeployEvent>;
+  /**
+   * Stop a project's dev container (reversible — KEEPS the workspace + deps
+   * volume so a later StartDev resumes the edited tree). Also stops the tunnel.
+   */
+  stopDev(
+    request: StopDevRequest,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  stopDev(
+    request: StopDevRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  stopDev(
+    request: StopDevRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  /**
+   * DESTRUCTIVE: wipe the workspace + deps volume, then reseed via StartDev's
+   * body. The request carries the same StartDevRequest payload used to reseed.
+   */
+  resetDevWorkspace(request: StartDevRequest, options?: Partial<CallOptions>): ClientReadableStream<DeployEvent>;
+  resetDevWorkspace(
+    request: StartDevRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<DeployEvent>;
+  /**
+   * Fully tear down on PROJECT DELETE: stop the stack, remove the stack file +
+   * deps volume, WIPE the workspace dir. The gateway singleton is NOT torn down
+   * (its per-project users are removed via DeprovisionSshUser).
+   */
+  teardownDev(
+    request: TeardownDevRequest,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  teardownDev(
+    request: TeardownDevRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  teardownDev(
+    request: TeardownDevRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  /**
+   * Lazily ensure the 2-service SSH gateway stack is up on this host (idempotent;
+   * ensureNetwork + write the rendered config files + `compose up` + wait for
+   * sshd + reconcile every supplied user). The control plane sends the rendered
+   * files (sshd_config / wrapper / socket-filter / compose / entrypoint) and the
+   * full provision step-list for every stored DevSshUser of this server so the
+   * agent rebuilds the projection from the store's truth (ADR-0002).
+   */
+  ensureGateway(
+    request: EnsureGatewayRequest,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  ensureGateway(
+    request: EnsureGatewayRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  ensureGateway(
+    request: EnsureGatewayRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  /**
+   * Provision one user inside the running gateway by running the control-plane-
+   * computed exec steps (the password, if any, rides in a step's stdin — never
+   * argv/env). Ensures the gateway first (carries the same gateway payload).
+   */
+  provisionSshUser(
+    request: ProvisionSshUserRequest,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  provisionSshUser(
+    request: ProvisionSshUserRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  provisionSshUser(
+    request: ProvisionSshUserRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  /**
+   * Remove one user from the gateway (account + key + map files). No-op if the
+   * gateway isn't running. Runs the control-plane-computed deprovision steps.
+   */
+  deprovisionSshUser(
+    request: DeprovisionSshUserRequest,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  deprovisionSshUser(
+    request: DeprovisionSshUserRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  deprovisionSshUser(
+    request: DeprovisionSshUserRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  /** Launch the tunnel (idempotent) and return the current raw log + running flag. */
+  startTunnel(
+    request: TunnelRequest,
+    callback: (error: ServiceError | null, response: TunnelStatus) => void,
+  ): ClientUnaryCall;
+  startTunnel(
+    request: TunnelRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: TunnelStatus) => void,
+  ): ClientUnaryCall;
+  startTunnel(
+    request: TunnelRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: TunnelStatus) => void,
+  ): ClientUnaryCall;
+  /** Read the current tunnel log + running flag (no side effects). */
+  getTunnel(
+    request: TunnelRequest,
+    callback: (error: ServiceError | null, response: TunnelStatus) => void,
+  ): ClientUnaryCall;
+  getTunnel(
+    request: TunnelRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: TunnelStatus) => void,
+  ): ClientUnaryCall;
+  getTunnel(
+    request: TunnelRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: TunnelStatus) => void,
+  ): ClientUnaryCall;
+  /** Stop the tunnel process (the CLI download + auth token are kept). */
+  stopTunnel(
+    request: TunnelRequest,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  stopTunnel(
+    request: TunnelRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  stopTunnel(
+    request: TunnelRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
   ): ClientUnaryCall;
 }
 

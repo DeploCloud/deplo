@@ -11,26 +11,35 @@ moral sibling of the local Docker socket. See
 and the full design in
 [`docs/research/server-agent/PLAN.md`](../docs/research/server-agent/PLAN.md).
 
-## Status: Part A + Part B
+## Status: Parts A–D complete
 
-Part A routed the **localhost** server's *deploy execution* through the agent.
-**Part B makes a remote agent real** — provisioning, remote routing, the GIT
-source, and reconnection. The agent implements:
+Part A routed the **localhost** server's *deploy execution* through the agent;
+**Part B makes a remote agent real** (provisioning, remote routing, the GIT
+source, reconnection); **Part C** moves the per-server observability + files
+surface; **Part D** moves the last per-host singletons (dev containers + SSH
+gateway + VS Code tunnel). The agent implements:
 
 - `Hello` — health + identity handshake; the mandatory deploy pre-flight (P5).
+  Advertises capabilities incl. `dev` / `ssh-gateway` / `tunnel` (Part D).
 - `Metrics` — host CPU/mem/disk/net snapshot (replaces `lib/infra/host.ts`).
 - `Deploy` — server-streaming build + run for the **Dockerfile build + single-
-  image compose-up** path, from an UPLOAD context, an IMAGE ref, or **(Part B) a
-  GIT source the agent clones itself** with a short-lived token (D3). Heavy
-  builders (Nixpacks/Buildpacks/Railpack/static) and multi-service compose stacks
-  stay on the control plane's local path and migrate later.
+  image compose-up** path, from an UPLOAD context, an IMAGE ref, **(Part B) a
+  GIT source the agent clones itself**, a **(Part C) multi-service COMPOSE stack**,
+  or a **(Part D) DEV_WORKSPACE** source (the agent builds from its own
+  `<dev-dir>/<slug>`). Heavy builders (Nixpacks/Buildpacks/Railpack/static) stay
+  on the control plane's local path and migrate later.
 - `ReattachDeploy` — **(Part B, D5)** reconnect to an in-flight deploy and replay
   missed events; the deploy runs on a background context so a control-plane drop
   never aborts the build.
 - `StopStack` / `StartStack` / `DestroyStack` / `Inspect` — stack lifecycle.
-
-`FollowLogs` / `Attach` / file RPCs (Part C) are defined in the proto but not yet
-wired.
+- `FollowLogs` / `Attach` / `Exec` / `ListInstances` / `ShellLabel` + the file
+  RPCs — **(Part C)** the observability + Files surface.
+- `StartDev` / `StopDev` / `ResetDevWorkspace` / `TeardownDev`,
+  `EnsureGateway` / `ProvisionSshUser` / `DeprovisionSshUser`,
+  `StartTunnel` / `GetTunnel` / `StopTunnel` — **(Part D)** dev containers, the
+  per-host SSH gateway projection, and the VS Code tunnel. The control plane
+  renders the dev compose / entrypoint / gateway config / per-user exec steps and
+  ships them opaque; the agent writes files + drives Docker.
 
 ## Trust (mTLS, and the Part-B inversion)
 
@@ -67,10 +76,17 @@ it as the local agent, and also serves it (checksum-verified) to remote servers
 via `/install-agent.sh`. End-to-end against real Docker:
 
 ```bash
+# Each needs the server-only shim: node --require ./lib/test/server-only-shim.cjs
+#   --import tsx scripts/<name>.mts
 npx tsx scripts/agent-e2e.mts            # Part A: local supervised agent
 npx tsx scripts/agent-part-b-e2e.mts     # Part B: simulated remote — call-home
                                          # bootstrap (CSR-signed) + pinned mTLS +
                                          # git-source deploy + reattach/replay
+npx tsx scripts/agent-part-c-e2e.mts     # Part C: instances/exec/logs/attach/
+                                         # metrics/files-CRUD + sandbox rejection
+npx tsx scripts/agent-part-d-e2e.mts     # Part D: StartDev/StopDev/Teardown +
+                                         # DEV_WORKSPACE deploy + tunnel + the SSH
+                                         # gateway (ensure/provision/deprovision)
 ```
 
 ## Layout

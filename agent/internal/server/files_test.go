@@ -15,7 +15,7 @@ import (
 func newFilesService(t *testing.T, slug string) (*Service, string) {
 	t.Helper()
 	stackDir := t.TempDir()
-	s := New(stackDir, t.TempDir(), "/")
+	s := New(stackDir, t.TempDir(), "/", "")
 	root := filepath.Join(stackDir, "files", slug)
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)

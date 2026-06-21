@@ -22,7 +22,7 @@ func dialLocal(t *testing.T) (pb.AgentClient, func()) {
 		t.Fatal(err)
 	}
 	srv := grpc.NewServer()
-	pb.RegisterAgentServer(srv, New(t.TempDir(), t.TempDir(), "/"))
+	pb.RegisterAgentServer(srv, New(t.TempDir(), t.TempDir(), "/", ""))
 	go srv.Serve(lis)
 
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))

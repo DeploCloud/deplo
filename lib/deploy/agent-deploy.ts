@@ -74,6 +74,22 @@ export type AgentBuildPlan =
       kind: "compose";
       /** Template config files the stack bind-mounts (project.mounts); may be empty. */
       mounts: { filePath: string; content: string }[];
+    }
+  | {
+      /**
+       * "Deploy from dev workspace" on a REMOTE server (Part D). The developer's
+       * live tree lives on the AGENT's host (<dev-dir>/<slug>), so the control
+       * plane never copies it — the agent builds from its OWN workspace
+       * (SOURCE_KIND_DEV_WORKSPACE), applying the same exclude-set + symlink-reject
+       * guard copyWorkspaceForBuild does on localhost. No workspace bytes cross the
+       * wire. The build dispatch mirrors the git arm (no tree to probe here).
+       */
+      kind: "dev-workspace";
+      /** Build config (drives the Dockerfile dispatch, same as the git plan). */
+      build: BuildConfig;
+      /** rootDirectory within the workspace (validated against the build dir on
+       *  the agent). Mirrors the git plan's subdir. */
+      subdir: string;
     };
 
 /**
@@ -342,6 +358,7 @@ export async function buildDeployRequest(opts: {
     contextTar: new Uint8Array(0),
     pullImage: false,
     mounts: [],
+    devWorkspaceSubdir: "",
   };
 
   if (opts.plan.kind === "compose") {
@@ -402,6 +419,33 @@ export async function buildDeployRequest(opts: {
         subdir: opts.plan.subdir,
         token: "", // the url is already authenticated by the control plane
       },
+    };
+  }
+
+  if (opts.plan.kind === "dev-workspace") {
+    // DEV_WORKSPACE source (Part D, remote): the agent builds from its OWN
+    // <dev-dir>/<slug> (no tree crosses the wire). Like the git arm, we can't
+    // probe the not-here tree for a root Dockerfile, so for the generated/auto
+    // method we send generated:true with the body; the agent's buildImage writes
+    // it ONLY when the workspace has no Dockerfile — same prefer-repo-Dockerfile
+    // semantics as the local copyWorkspaceForBuild + buildGenerated path.
+    const normalized = normalizeBuildConfig(opts.plan.build);
+    const dockerfile =
+      normalized.buildMethod === "dockerfile"
+        ? explicitDockerfileDescriptor(normalized)
+        : {
+            dockerfilePath: "",
+            contextPath: ".",
+            targetStage: "",
+            generated: true,
+            generatedDockerfile: generateDockerfile(normalized),
+          };
+    return {
+      ...base,
+      sourceKind: SourceKind.SOURCE_KIND_DEV_WORKSPACE,
+      buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
+      dockerfile,
+      devWorkspaceSubdir: opts.plan.subdir,
     };
   }
 

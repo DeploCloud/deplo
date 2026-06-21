@@ -21,11 +21,13 @@ below are referenced there as D1–D8.
 
 ## Implementation status
 
-**Parts A, B and C are implemented.** Part A routed the localhost deploy through the agent; Part B
-makes a remote agent real: call-home provisioning, remote `agent-client` routing with cert
-fingerprint pinning, the GIT source (the agent clones itself, D3), and reconnection/replay (D5).
-Part C moves the per-server **observability + lifecycle + files** surface onto the owning agent
-(below). Two refinements emerged while building Part B and are recorded here:
+**Parts A, B, C and D are implemented — the full A–D arc is complete.** Part A routed the
+localhost deploy through the agent; Part B makes a remote agent real: call-home provisioning,
+remote `agent-client` routing with cert fingerprint pinning, the GIT source (the agent clones
+itself, D3), and reconnection/replay (D5). Part C moves the per-server **observability +
+lifecycle + files** surface onto the owning agent. Part D moves the last per-host singletons —
+**dev containers + the SSH gateway + the VS Code tunnel** — agent-side (below). Two refinements
+emerged while building Part B and are recorded here:
 
 - **The trust direction inverts for a remote agent.** Part A's control plane minted the agent's
   cert *and key* and wrote both to the agent's disk — possible only because the agent was local.
@@ -68,7 +70,50 @@ now asks the owning agent). Verified by `scripts/agent-part-c-e2e.mts` (17 check
 mTLS: instances/exec/label-deny/shell/logs/attach/metrics/files-CRUD/traversal-reject) plus Go unit
 tests for the sandbox + shell classification.
 
-Out of scope here and deferred to the last phase: dev mode + SSH gateway on remotes (Part D).
+**Part D — dev containers + SSH gateway + VS Code tunnel per server.** The last per-host
+singletons (ADR-0002) move agent-side, so a project that lives on a remote server gets its dev
+container, its SSH gateway, and its tunnel **there**. The seam holds: the control plane keeps ALL
+the rendering as the single source of truth and ships it opaque (D2/D4); the agent owns the
+host-coupled half. New agent RPCs (additive, contract still V1):
+
+- **Dev lifecycle** — `StartDev`/`ResetDevWorkspace` (server-streaming like `Deploy`, so the
+  materialise/up logs flow into the same SSE plumbing) + `StopDev`/`TeardownDev`. The control
+  plane renders the dev compose (`renderDevCompose`), the entrypoint script (`devEntryScript`),
+  the **tokenized clone URL** (it mints the GitHub App token; the agent writes the 0600
+  `/run/deplo/clone-url` file and never holds the key — D4), and the **upload archive** (tarred
+  and shipped; the agent extracts it into its own workspace, clone-once). `lib/deploy/dev.ts` is
+  now pure renderers + the build-context helpers; the lifecycle lives in `lib/deploy/agent-dev.ts`
+  (the dev-mode twin of `agent-deploy.ts`), routed through `connectAgent(serverId)` for localhost
+  and remote alike (Decision 4, uniform path).
+- **"Deploy from dev workspace"** gains a new `SOURCE_KIND_DEV_WORKSPACE`: for a remote project
+  the workspace lives on the agent, so the agent builds from its **own** `<dev-dir>/<slug>` —
+  applying the same exclude-set (`node_modules`/`.deplo`/`.deplo-home`/`.git`) + symlink-reject
+  guard `copyWorkspaceForBuild` does on localhost, plus a re-validated `rootDirectory` subdir. No
+  workspace bytes cross the wire; localhost keeps the local-copy path.
+- **SSH gateway** — `EnsureGateway`/`ProvisionSshUser`/`DeprovisionSshUser`. The store's
+  `DevSshUser[]` stays the SOLE source of truth (ADR-0002); the running gateway is a disposable
+  projection of it that now lives on the **owning server's** host. The control plane keeps
+  `gateway-config.ts`/`gateway-projection.ts` as the single (snapshot-tested) renderer and ships
+  the rendered config files + the per-user provision/deprovision **exec-step plan** (the password
+  rides in a step's stdin, never argv/env); the agent writes the files, brings the 2-service
+  socket-filtered stack up, and runs the steps. The compose's host-specific bind path is rendered
+  with a `__DEPLO_GW_HOST_DIR__` sentinel the agent substitutes for its own gw dir (the control
+  plane cannot know a remote agent's real path). A user RPC sends the **full** user set so a
+  freshly-created gateway rebuilds its whole projection. The security-critical wrapper /
+  sshd_config / socket-filter are NEVER re-implemented in Go.
+- **VS Code tunnel** — `StartTunnel`/`GetTunnel`/`StopTunnel`, thin `docker exec` wrappers (the
+  tunnel dials OUT to Microsoft's relay, so no inbound port / gateway change). The control plane
+  renders the launch script and **parses the raw log** (`parseTunnelLog` — device-login link /
+  connected URL stays pure TS, not duplicated in Go).
+
+A race was found and fixed building Part D: the gateway's `waitGatewayReady` must gate on the
+`devusers` **group** existing, not just the sshd binary — the entrypoint creates the group AFTER
+the binary lands but BEFORE `exec sshd`, so an `adduser -G devusers` fired on a `command -v sshd`
+signal raced the `addgroup` and silently failed ("unknown group devusers"). Verified by
+`scripts/agent-part-d-e2e.mts` (16 checks over real Docker + mTLS: StartDev/StopDev/TeardownDev,
+a DEV_WORKSPACE deploy, GetTunnel, EnsureGateway + ProvisionSshUser + account/map verification +
+DeprovisionSshUser) plus Go unit tests for the workspace exclude/symlink-reject/subdir guards and
+the gateway-config sentinel substitution.
 
 ## Decision
 
@@ -229,6 +274,8 @@ Out of scope here and deferred to the last phase: dev mode + SSH gateway on remo
   the Files tab gated to localhost projects until Part C repoints it. New host-coupled features
   added later should be checked against this seam by default.
 - Dev containers + the SSH gateway ([ADR-0002](0002-ssh-gateway-is-lazy-platform-infrastructure.md))
-  are per-host singletons and must eventually run agent-side too; this is explicitly a later,
-  self-contained phase and out of scope here.
+  are per-host singletons and now run agent-side too (Part D, above): `lib/deploy/agent-dev.ts`
+  drives the dev lifecycle + tunnel; `lib/infra/ssh-gateway.ts` renders the gateway config + the
+  per-user step plan and ships them to the owning agent. ADR-0002 is unchanged in spirit — the
+  store leads, the container is a disposable projection — only its host moved.
 - A **server agent** glossary entry is added to `CONTEXT.md` (Runtimes section).

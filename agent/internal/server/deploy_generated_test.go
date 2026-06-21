@@ -16,7 +16,7 @@ import (
 // the provided body into the context before building. We assert that side
 // effect (the build itself needs a daemon and is covered by the repo-root e2e).
 func TestBuildImage_generatedWritesDockerfileIntoContext(t *testing.T) {
-	s := New(t.TempDir(), t.TempDir(), "/")
+	s := New(t.TempDir(), t.TempDir(), "/", "")
 
 	// A context with a source file but NO Dockerfile.
 	data := tarball(t,

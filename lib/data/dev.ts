@@ -5,18 +5,21 @@ import { nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import {
-  startDev,
-  stopDev,
-  resetDevWorkspace as resetDevWorkspace_,
   defaultDevConfig,
   devImage,
   devPreviewUrl,
-  startVscodeTunnel,
-  stopVscodeTunnel,
-  getVscodeTunnel,
   workspaceHasSource,
   type VscodeTunnelInfo,
 } from "../deploy/dev";
+import {
+  agentStartDev,
+  agentStopDev,
+  agentResetDevWorkspace,
+  agentStartTunnel,
+  agentStopTunnel,
+  agentGetTunnel,
+} from "../deploy/agent-dev";
+import { ensureGateway } from "../infra/ssh-gateway";
 import { startDeployment } from "../deploy/build";
 import { usesComposeStack } from "../utils";
 import type {
@@ -157,7 +160,7 @@ export async function disableDev(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = read().users.find((u) => u.id === membership.userId)!;
   const p = requireTeamProject(projectId, membership.teamId);
-  await stopDev(p.slug).catch(() => {});
+  await agentStopDev(p).catch(() => {});
   mutate((d) => {
     const proj = d.projects.find((x) => x.id === projectId);
     if (proj?.dev) {
@@ -181,11 +184,19 @@ export async function startDevContainer(projectId: string): Promise<void> {
   setDevStatus(projectId, "starting");
   try {
     const fresh = requireProject(projectId);
-    await startDev(fresh);
+    await agentStartDev(fresh);
     setDevStatus(projectId, "running");
   } catch (e) {
     setDevStatus(projectId, "error");
     throw e;
+  }
+  // If this project has SSH users, (re)establish the gateway on its server so a
+  // restarted/drifted gateway reconciles them (ADR-0002: lazy, never at install —
+  // so only when users actually exist, never opening port 2222 otherwise). The
+  // gateway is a separate singleton that survives dev-container restarts; this is
+  // best-effort drift repair, not a hard dependency of the start.
+  if (read().devSshUsers.some((u) => u.projectId === projectId)) {
+    await ensureGateway(p.serverId).catch(() => {});
   }
   recordActivity("project", "Started dev container", user.name, projectId);
 }
@@ -195,7 +206,7 @@ export async function stopDevContainer(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = read().users.find((u) => u.id === membership.userId)!;
   const p = requireTeamProject(projectId, membership.teamId);
-  await stopDev(p.slug);
+  await agentStopDev(p);
   setDevStatus(projectId, "stopped");
   recordActivity("project", "Stopped dev container", user.name, projectId);
 }
@@ -217,7 +228,7 @@ export async function resetDevWorkspace(projectId: string): Promise<void> {
   }
   setDevStatus(projectId, "starting");
   try {
-    await resetDevWorkspace_(p);
+    await agentResetDevWorkspace(p);
     setDevStatus(projectId, "running");
   } catch (e) {
     setDevStatus(projectId, "error");
@@ -259,7 +270,12 @@ export async function deployDevWorkspace(
   }
   // The real precondition: files on disk. Not "enabled", not "running" — a
   // workspace seeded once and then stopped still has the edited tree to deploy.
-  if (!(await workspaceHasSource(p.slug))) {
+  // For a LOCALHOST project the workspace is on this disk, so we pre-check it for
+  // a friendly error. For a REMOTE project the workspace lives on the agent, so
+  // the check runs THERE (the agent's DEV_WORKSPACE build errors clearly on an
+  // empty/missing workspace) — a local check would read the wrong host's disk.
+  const server = read().servers.find((s) => s.id === p.serverId);
+  if (server?.type !== "remote" && !(await workspaceHasSource(p.slug))) {
     throw new Error(
       "No files to deploy yet. Start dev mode at least once so the workspace has source.",
     );
@@ -305,7 +321,7 @@ export async function startTunnel(projectId: string): Promise<VscodeTunnelInfo> 
   if (p.dev?.status !== "running") {
     throw new Error("Start the dev container before opening it in VS Code");
   }
-  const info = await startVscodeTunnel(p.slug);
+  const info = await agentStartTunnel(p);
   recordActivity("project", "Opened dev container in VS Code", user.name, projectId);
   return info;
 }
@@ -314,7 +330,7 @@ export async function startTunnel(projectId: string): Promise<VscodeTunnelInfo> 
 export async function getTunnel(projectId: string): Promise<VscodeTunnelInfo> {
   const teamId = await requireActiveTeamId();
   const p = requireTeamProject(projectId, teamId);
-  return getVscodeTunnel(p.slug);
+  return agentGetTunnel(p);
 }
 
 /** Stop the VS Code tunnel (the dev container keeps running). */
@@ -322,6 +338,6 @@ export async function stopTunnel(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = read().users.find((u) => u.id === membership.userId)!;
   const p = requireTeamProject(projectId, membership.teamId);
-  await stopVscodeTunnel(p.slug);
+  await agentStopTunnel(p);
   recordActivity("project", "Closed VS Code tunnel", user.name, projectId);
 }

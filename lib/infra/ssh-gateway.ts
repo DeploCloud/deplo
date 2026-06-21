@@ -1,11 +1,9 @@
 import "server-only";
 
-import { mkdir, writeFile, chmod } from "node:fs/promises";
-import { join } from "node:path";
 import { read } from "../store";
 import { decryptSecret } from "../crypto";
-import { docker, ensureNetwork } from "./docker";
-import { dataVolumeHostMountpoint } from "../deploy/builders";
+import { connectAgent } from "./agent-client";
+import type { AgentGatewayConfig, AgentGatewayStep } from "./agent-client";
 import {
   GATEWAY_PROJECT,
   GATEWAY_CONTAINER,
@@ -19,7 +17,6 @@ import {
 import {
   provisionSteps,
   deprovisionSteps,
-  type GatewayStep,
   type GatewayTarget,
 } from "./gateway-projection";
 import type { DevSshUser } from "../types";
@@ -27,95 +24,36 @@ import type { DevSshUser } from "../types";
 // Re-export the identity constants so existing callers keep importing them here.
 export { GATEWAY_PROJECT, GATEWAY_CONTAINER, GATEWAY_PORT };
 
-const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
-/** All gateway-managed files live here (host keys, sshd_config, wrapper, maps). */
-const GW_DIR = join(DATA_DIR, "ssh-gateway");
-const GW_STACK_FILE = join(GW_DIR, "docker-compose.yml");
-
 // ---------------------------------------------------------------------------
-// File materialisation — write the pure-rendered configs to the bind mount.
+// PART D: the SSH gateway moved to the per-host agent (ADR-0002 singleton). The
+// store's DevSshUser[] stays the SOLE source of truth in the control plane; the
+// running gateway container is a disposable projection of it that now lives on
+// the OWNING SERVER's host. This module keeps the pure RENDERING — the config
+// files (gateway-config.ts) and the per-user exec-step plan (gateway-projection.ts)
+// — as the single source of truth (snapshot-tested), and ships them to the agent
+// over EnsureGateway / ProvisionSshUser / DeprovisionSshUser. The agent writes the
+// files, brings the 2-service stack up, and runs the steps; the security-critical
+// wrapper / sshd_config / allowlist are never re-implemented in Go.
+//
+// The gateway's compose bind path is host-specific (the agent owns its own
+// <data>/ssh-gateway dir), so the compose is rendered with a SENTINEL the agent
+// substitutes for its real path — see GATEWAY_HOST_DIR_SENTINEL.
 // ---------------------------------------------------------------------------
 
-/** Write all gateway-managed config files (idempotent). The contents are
- * rendered by the pure ./gateway-config module; this just lands them on disk
- * (host-path-translated so the bind mount works in Postgres/volume mode). */
-async function writeGatewayFiles(): Promise<void> {
-  await mkdir(join(GW_DIR, "keys"), { recursive: true });
-  await mkdir(join(GW_DIR, "map"), { recursive: true });
+/** Must match gatewayHostDirSentinel in agent/internal/server/sshgateway.go. */
+const GATEWAY_HOST_DIR_SENTINEL = "__DEPLO_GW_HOST_DIR__";
 
-  const mountpoint = await dataVolumeHostMountpoint();
-  const gwHostDir =
-    mountpoint && GW_DIR.startsWith(DATA_DIR)
-      ? join(mountpoint, GW_DIR.slice(DATA_DIR.length))
-      : GW_DIR;
-
-  await writeFile(GW_STACK_FILE, renderGatewayCompose(gwHostDir));
-  await writeFile(join(GW_DIR, "socket-filter.cfg"), SOCKET_FILTER_CFG);
-  await writeFile(join(GW_DIR, "sshd_config"), SSHD_CONFIG);
-  await writeFile(join(GW_DIR, "deplo-dev-shell"), WRAPPER_SCRIPT, { mode: 0o755 });
-  await chmod(join(GW_DIR, "deplo-dev-shell"), 0o755).catch(() => {});
-  await writeFile(join(GW_DIR, "gateway-entrypoint"), GATEWAY_ENTRYPOINT, {
-    mode: 0o755,
-  });
-  await chmod(join(GW_DIR, "gateway-entrypoint"), 0o755).catch(() => {});
+/** The rendered gateway config the agent writes to its own bind mount. The
+ *  compose's bind source is the sentinel; the agent fills in its real path. */
+function gatewayConfig(): AgentGatewayConfig {
+  return {
+    composeYaml: renderGatewayCompose(GATEWAY_HOST_DIR_SENTINEL),
+    sshdConfig: SSHD_CONFIG,
+    wrapperScript: WRAPPER_SCRIPT,
+    entrypointScript: GATEWAY_ENTRYPOINT,
+    socketFilterCfg: SOCKET_FILTER_CFG,
+  };
 }
-
-// ---------------------------------------------------------------------------
-// Lifecycle — create, wait, reconcile (ADR-0002: lazy platform infrastructure).
-// ---------------------------------------------------------------------------
-
-/** Is the gateway container currently running? */
-async function gatewayRunning(): Promise<boolean> {
-  try {
-    const { stdout } = await docker(
-      ["inspect", "-f", "{{.State.Running}}", GATEWAY_CONTAINER],
-      { timeout: 10_000, noThrow: true },
-    );
-    return stdout.trim() === "true";
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Lazily create the gateway on the first SSH user (ADR-0002) — never at install.
- * Idempotent, like ensureNetwork: writes config, brings the 2-service stack up,
- * then reconciles every stored DevSshUser into the fresh container. Safe to call
- * on every startDev / addDevSshUser.
- */
-export async function ensureGateway(): Promise<void> {
-  await ensureNetwork("deplo");
-  await writeGatewayFiles();
-  await docker(
-    ["compose", "-p", GATEWAY_PROJECT, "-f", GW_STACK_FILE, "up", "-d", "--remove-orphans"],
-    { timeout: 180_000 },
-  );
-  await waitGatewayReady(60_000);
-  await reconcileGateway();
-}
-
-/** Poll until sshd is up inside the gateway (the entrypoint installs it). */
-async function waitGatewayReady(timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const { stdout } = await docker(
-        ["exec", GATEWAY_CONTAINER, "sh", "-c", "command -v sshd >/dev/null && echo ok"],
-        { timeout: 10_000, noThrow: true },
-      );
-      if (stdout.trim() === "ok") return;
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 1500));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Per-user provisioning — store leads, gateway exec follows. No sshd reload.
-// The PLAN (which exec steps) is computed by the pure ./gateway-projection
-// module; this driver just decrypts the password and runs the steps.
-// ---------------------------------------------------------------------------
 
 /** Look up the dev container name for a user's project (for the map file). */
 function devContainerForProject(projectId: string): GatewayTarget | null {
@@ -124,51 +62,92 @@ function devContainerForProject(projectId: string): GatewayTarget | null {
   return { slug: p.slug, container: `deplo-dev-${p.slug}` };
 }
 
-/** Run one projected step inside the gateway container. */
-function runStep(step: GatewayStep) {
-  return docker(["exec", "-i", GATEWAY_CONTAINER, ...step.argv], {
-    timeout: 30_000,
-    input: step.input,
-    noThrow: true,
-  });
+/** The owning server id of a dev SSH user (via its project). */
+function serverIdForUser(user: DevSshUser): string | null {
+  const p = read().projects.find((x) => x.id === user.projectId);
+  return p?.serverId ?? null;
 }
 
-/**
- * Provision one user inside the running gateway (no sshd reload — sshd reads
- * accounts/keys/maps per-connection). Decrypts the password just-in-time and
- * hands the cleartext to the pure projection, which never sees ciphertext; the
- * secret is passed to chpasswd over STDIN, never argv/env that `docker inspect`
- * could surface.
- */
-export async function provisionUser(user: DevSshUser): Promise<void> {
+/** Render one user's provision step-list (the pure projection). The password is
+ *  decrypted just-in-time and baked into the right step's stdin; the cleartext
+ *  never leaves this call frame as ciphertext. Returns [] if the user's project
+ *  (and thus its dev container target) is gone. */
+function userProvisionSteps(user: DevSshUser): AgentGatewayStep[] {
   const target = devContainerForProject(user.projectId);
-  if (!target) return;
-  const steps = provisionSteps(
+  if (!target) return [];
+  return provisionSteps(
     {
       username: user.username,
       password: user.passwordEnc ? decryptSecret(user.passwordEnc) : null,
       publicKey: user.publicKey ?? null,
     },
     target,
-  );
-  for (const step of steps) await runStep(step);
+  ).map((s) => ({ argv: s.argv, input: s.input ?? "" }));
 }
 
-/** Remove one user from the gateway (account + key + map files). */
-export async function deprovisionUser(username: string): Promise<void> {
-  if (!(await gatewayRunning())) return;
-  for (const step of deprovisionSteps(username)) await runStep(step);
+/** The full reconcile set for a server: every stored DevSshUser whose project
+ *  lives on that server (the store's truth — ADR-0002), each as its step-list.
+ *  Sending the WHOLE set lets a freshly-created gateway rebuild its projection. */
+function serverUserSteps(serverId: string): AgentGatewayStep[][] {
+  const projectIds = new Set(
+    read()
+      .projects.filter((p) => p.serverId === serverId)
+      .map((p) => p.id),
+  );
+  return read()
+    .devSshUsers.filter((u) => projectIds.has(u.projectId))
+    .map(userProvisionSteps)
+    .filter((steps) => steps.length > 0);
 }
 
 /**
- * Rebuild the gateway's account/key/map projection from the store (the sole
- * source of truth — ADR-0002). Called on gateway first boot and after drift.
- * The store always leads; a reconcile after any mutation is always correct.
+ * Lazily ensure the gateway on a server (ADR-0002) — never at install. Routes to
+ * the owning agent: ensure the 2-service stack is up and reconcile every stored
+ * user of that server into it. Idempotent. Mirrors the old in-process ensureGateway.
  */
-export async function reconcileGateway(): Promise<void> {
-  if (!(await gatewayRunning())) return;
-  const users = read().devSshUsers;
-  for (const u of users) {
-    await provisionUser(u).catch(() => {});
+export async function ensureGateway(serverId: string): Promise<void> {
+  const conn = await connectAgent(serverId);
+  try {
+    await conn.ensureGateway(gatewayConfig(), serverUserSteps(serverId));
+  } finally {
+    conn.close();
+  }
+}
+
+/**
+ * Provision one user inside the gateway on its server. Ensures the gateway first
+ * (the user may be the first SSH user → lazy create) and reconciles the full set,
+ * so the just-created gateway rebuilds from the store. The store leads; this
+ * follows. Resolves the server from the user's project.
+ */
+export async function provisionUser(user: DevSshUser): Promise<void> {
+  const serverId = serverIdForUser(user);
+  if (!serverId) return;
+  const conn = await connectAgent(serverId);
+  try {
+    await conn.provisionSshUser(gatewayConfig(), serverUserSteps(serverId));
+  } finally {
+    conn.close();
+  }
+}
+
+/**
+ * Remove one user from the gateway on its server (account + key + map files).
+ * No-op if the agent isn't reachable or the gateway isn't running. The store has
+ * already dropped the user (the driver calls this after the store write).
+ */
+export async function deprovisionUser(
+  serverId: string,
+  username: string,
+): Promise<void> {
+  const steps = deprovisionSteps(username).map((s) => ({
+    argv: s.argv,
+    input: s.input ?? "",
+  }));
+  const conn = await connectAgent(serverId);
+  try {
+    await conn.deprovisionSshUser(steps);
+  } finally {
+    conn.close();
   }
 }

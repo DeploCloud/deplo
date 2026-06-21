@@ -5,11 +5,7 @@ import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
-import {
-  ensureGateway,
-  provisionUser,
-  deprovisionUser,
-} from "../infra/ssh-gateway";
+import { provisionUser, deprovisionUser } from "../infra/ssh-gateway";
 import type { DevSshUser, DevSshUserDTO } from "../types";
 
 /** A user-supplied name component → a gateway-safe, lowercased token. */
@@ -111,11 +107,12 @@ export async function createDevSshUser(input: {
     createdAt: nowIso(),
   };
 
-  // Store leads, gateway exec follows.
+  // Store leads, gateway exec follows. provisionUser ensures the gateway on the
+  // project's owning server first (lazy create — the user may be the first), then
+  // reconciles the full user set, so a fresh gateway rebuilds from the store.
   mutate((d) => {
     d.devSshUsers.push(record);
   });
-  await ensureGateway();
   await provisionUser(record);
 
   recordActivity(
@@ -136,15 +133,18 @@ export async function removeDevSshUser(id: string): Promise<void> {
   const user = read().users.find((u) => u.id === membership.userId)!;
   const record = read().devSshUsers.find((u) => u.id === id);
   if (!record) throw new Error("SSH user not found");
-  const inTeam = read().projects.some(
+  const project = read().projects.find(
     (p) => p.id === record.projectId && p.teamId === membership.teamId,
   );
-  if (!inTeam) throw new Error("SSH user not found");
+  if (!project) throw new Error("SSH user not found");
+  // Resolve the owning server BEFORE the store mutation — deprovision routes to
+  // that server's gateway agent.
+  const serverId = project.serverId;
 
   mutate((d) => {
     d.devSshUsers = d.devSshUsers.filter((u) => u.id !== id);
   });
-  await deprovisionUser(record.username).catch(() => {});
+  await deprovisionUser(serverId, record.username).catch(() => {});
 
   recordActivity(
     "project",
@@ -165,10 +165,14 @@ export async function removeProjectDevSshUsers(
     .devSshUsers.filter((u) => u.projectId === projectId)
     .map((u) => u.username);
   if (usernames.length === 0) return;
+  // Every user of a project lives on the project's server (the gateway runs on
+  // the dev container's host). Resolve it before the store mutation.
+  const serverId = read().projects.find((p) => p.id === projectId)?.serverId;
   mutate((d) => {
     d.devSshUsers = d.devSshUsers.filter((u) => u.projectId !== projectId);
   });
+  if (!serverId) return;
   for (const username of usernames) {
-    await deprovisionUser(username).catch(() => {});
+    await deprovisionUser(serverId, username).catch(() => {});
   }
 }

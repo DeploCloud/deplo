@@ -32,7 +32,7 @@ func tarball(t *testing.T, entries []tar.Header, bodies map[string]string) []byt
 }
 
 func TestMaterializeUpload_extractsRegularFiles(t *testing.T) {
-	s := New(t.TempDir(), t.TempDir(), "/")
+	s := New(t.TempDir(), t.TempDir(), "/", "")
 	data := tarball(t,
 		[]tar.Header{
 			{Name: "Dockerfile", Typeflag: tar.TypeReg, Mode: 0o644},
@@ -60,7 +60,7 @@ func TestMaterializeUpload_extractsRegularFiles(t *testing.T) {
 }
 
 func TestMaterializeUpload_rejectsTraversal(t *testing.T) {
-	s := New(t.TempDir(), t.TempDir(), "/")
+	s := New(t.TempDir(), t.TempDir(), "/", "")
 	data := tarball(t,
 		[]tar.Header{{Name: "../escape.txt", Typeflag: tar.TypeReg, Mode: 0o644}},
 		map[string]string{"../escape.txt": "pwned"},
@@ -80,7 +80,7 @@ func TestMaterializeUpload_rejectsTraversal(t *testing.T) {
 }
 
 func TestMaterializeUpload_rejectsSymlink(t *testing.T) {
-	s := New(t.TempDir(), t.TempDir(), "/")
+	s := New(t.TempDir(), t.TempDir(), "/", "")
 	data := tarball(t,
 		[]tar.Header{{Name: "evil", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"}},
 		nil,

@@ -21,8 +21,15 @@
 // (the console introspection that was direct-Docker in lib/data/console.ts), and
 // the file RPCs (List/Read/Write/Upload/CreateDir/Delete/Rename/FilesExist) that
 // repoint lib/data/project-files.ts off the control plane's local fs onto the
-// project's host. Every addition is new RPCs/messages — the contract version stays
-// V1 (additive, never a redesign; D6's forward-compat principle holds).
+// project's host. PART D adds the DEV-MODE + SSH-GATEWAY surface (the last
+// per-host singletons, ADR-0002): StartDev/StopDev/ResetDevWorkspace/TeardownDev
+// (the dev container lifecycle, repointing lib/deploy/dev.ts), EnsureGateway/
+// ProvisionSshUser/DeprovisionSshUser (the SSH gateway, repointing
+// lib/infra/ssh-gateway.ts — the control plane renders config + steps, the agent
+// applies them), StartTunnel/GetTunnel/StopTunnel (the VS Code tunnel), and a new
+// SOURCE_KIND_DEV_WORKSPACE so "deploy from dev workspace" builds on the owning
+// host. Every addition is new RPCs/messages — the contract version stays V1
+// (additive, never a redesign; D6's forward-compat principle holds).
 //
 // The agent's CALL-HOME BOOTSTRAP (PLAN P1-P4) is deliberately NOT a method on
 // this service: it travels agent -> control plane (the opposite direction of
@@ -46,27 +53,37 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Agent_Hello_FullMethodName          = "/deplo.agent.v1.Agent/Hello"
-	Agent_Metrics_FullMethodName        = "/deplo.agent.v1.Agent/Metrics"
-	Agent_Deploy_FullMethodName         = "/deplo.agent.v1.Agent/Deploy"
-	Agent_ReattachDeploy_FullMethodName = "/deplo.agent.v1.Agent/ReattachDeploy"
-	Agent_StopStack_FullMethodName      = "/deplo.agent.v1.Agent/StopStack"
-	Agent_StartStack_FullMethodName     = "/deplo.agent.v1.Agent/StartStack"
-	Agent_DestroyStack_FullMethodName   = "/deplo.agent.v1.Agent/DestroyStack"
-	Agent_Inspect_FullMethodName        = "/deplo.agent.v1.Agent/Inspect"
-	Agent_FollowLogs_FullMethodName     = "/deplo.agent.v1.Agent/FollowLogs"
-	Agent_Attach_FullMethodName         = "/deplo.agent.v1.Agent/Attach"
-	Agent_ListInstances_FullMethodName  = "/deplo.agent.v1.Agent/ListInstances"
-	Agent_Exec_FullMethodName           = "/deplo.agent.v1.Agent/Exec"
-	Agent_ShellLabel_FullMethodName     = "/deplo.agent.v1.Agent/ShellLabel"
-	Agent_ListFiles_FullMethodName      = "/deplo.agent.v1.Agent/ListFiles"
-	Agent_ReadFile_FullMethodName       = "/deplo.agent.v1.Agent/ReadFile"
-	Agent_WriteFile_FullMethodName      = "/deplo.agent.v1.Agent/WriteFile"
-	Agent_UploadFile_FullMethodName     = "/deplo.agent.v1.Agent/UploadFile"
-	Agent_CreateDir_FullMethodName      = "/deplo.agent.v1.Agent/CreateDir"
-	Agent_DeleteFile_FullMethodName     = "/deplo.agent.v1.Agent/DeleteFile"
-	Agent_RenameFile_FullMethodName     = "/deplo.agent.v1.Agent/RenameFile"
-	Agent_FilesExist_FullMethodName     = "/deplo.agent.v1.Agent/FilesExist"
+	Agent_Hello_FullMethodName              = "/deplo.agent.v1.Agent/Hello"
+	Agent_Metrics_FullMethodName            = "/deplo.agent.v1.Agent/Metrics"
+	Agent_Deploy_FullMethodName             = "/deplo.agent.v1.Agent/Deploy"
+	Agent_ReattachDeploy_FullMethodName     = "/deplo.agent.v1.Agent/ReattachDeploy"
+	Agent_StopStack_FullMethodName          = "/deplo.agent.v1.Agent/StopStack"
+	Agent_StartStack_FullMethodName         = "/deplo.agent.v1.Agent/StartStack"
+	Agent_DestroyStack_FullMethodName       = "/deplo.agent.v1.Agent/DestroyStack"
+	Agent_Inspect_FullMethodName            = "/deplo.agent.v1.Agent/Inspect"
+	Agent_FollowLogs_FullMethodName         = "/deplo.agent.v1.Agent/FollowLogs"
+	Agent_Attach_FullMethodName             = "/deplo.agent.v1.Agent/Attach"
+	Agent_ListInstances_FullMethodName      = "/deplo.agent.v1.Agent/ListInstances"
+	Agent_Exec_FullMethodName               = "/deplo.agent.v1.Agent/Exec"
+	Agent_ShellLabel_FullMethodName         = "/deplo.agent.v1.Agent/ShellLabel"
+	Agent_ListFiles_FullMethodName          = "/deplo.agent.v1.Agent/ListFiles"
+	Agent_ReadFile_FullMethodName           = "/deplo.agent.v1.Agent/ReadFile"
+	Agent_WriteFile_FullMethodName          = "/deplo.agent.v1.Agent/WriteFile"
+	Agent_UploadFile_FullMethodName         = "/deplo.agent.v1.Agent/UploadFile"
+	Agent_CreateDir_FullMethodName          = "/deplo.agent.v1.Agent/CreateDir"
+	Agent_DeleteFile_FullMethodName         = "/deplo.agent.v1.Agent/DeleteFile"
+	Agent_RenameFile_FullMethodName         = "/deplo.agent.v1.Agent/RenameFile"
+	Agent_FilesExist_FullMethodName         = "/deplo.agent.v1.Agent/FilesExist"
+	Agent_StartDev_FullMethodName           = "/deplo.agent.v1.Agent/StartDev"
+	Agent_StopDev_FullMethodName            = "/deplo.agent.v1.Agent/StopDev"
+	Agent_ResetDevWorkspace_FullMethodName  = "/deplo.agent.v1.Agent/ResetDevWorkspace"
+	Agent_TeardownDev_FullMethodName        = "/deplo.agent.v1.Agent/TeardownDev"
+	Agent_EnsureGateway_FullMethodName      = "/deplo.agent.v1.Agent/EnsureGateway"
+	Agent_ProvisionSshUser_FullMethodName   = "/deplo.agent.v1.Agent/ProvisionSshUser"
+	Agent_DeprovisionSshUser_FullMethodName = "/deplo.agent.v1.Agent/DeprovisionSshUser"
+	Agent_StartTunnel_FullMethodName        = "/deplo.agent.v1.Agent/StartTunnel"
+	Agent_GetTunnel_FullMethodName          = "/deplo.agent.v1.Agent/GetTunnel"
+	Agent_StopTunnel_FullMethodName         = "/deplo.agent.v1.Agent/StopTunnel"
 )
 
 // AgentClient is the client API for Agent service.
@@ -139,6 +156,42 @@ type AgentClient interface {
 	RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*FileEntryResult, error)
 	// Whether a project's files root exists on this host (drives the Files tab).
 	FilesExist(ctx context.Context, in *FilesExistRequest, opts ...grpc.CallOption) (*FilesExistResponse, error)
+	// Start (or restart) a project's dev container. Server-streaming like Deploy
+	// (it materialises the workspace, ensures the gateway, pre-chowns, writes the
+	// stack, `compose up`s) so progress logs flow live into the same SSE plumbing.
+	// The control plane sends the rendered dev compose + entrypoint + (for git) the
+	// tokenized clone URL + (for upload) the archive; the agent stays dumb.
+	StartDev(ctx context.Context, in *StartDevRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DeployEvent], error)
+	// Stop a project's dev container (reversible — KEEPS the workspace + deps
+	// volume so a later StartDev resumes the edited tree). Also stops the tunnel.
+	StopDev(ctx context.Context, in *StopDevRequest, opts ...grpc.CallOption) (*StackResult, error)
+	// DESTRUCTIVE: wipe the workspace + deps volume, then reseed via StartDev's
+	// body. The request carries the same StartDevRequest payload used to reseed.
+	ResetDevWorkspace(ctx context.Context, in *StartDevRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DeployEvent], error)
+	// Fully tear down on PROJECT DELETE: stop the stack, remove the stack file +
+	// deps volume, WIPE the workspace dir. The gateway singleton is NOT torn down
+	// (its per-project users are removed via DeprovisionSshUser).
+	TeardownDev(ctx context.Context, in *TeardownDevRequest, opts ...grpc.CallOption) (*StackResult, error)
+	// Lazily ensure the 2-service SSH gateway stack is up on this host (idempotent;
+	// ensureNetwork + write the rendered config files + `compose up` + wait for
+	// sshd + reconcile every supplied user). The control plane sends the rendered
+	// files (sshd_config / wrapper / socket-filter / compose / entrypoint) and the
+	// full provision step-list for every stored DevSshUser of this server so the
+	// agent rebuilds the projection from the store's truth (ADR-0002).
+	EnsureGateway(ctx context.Context, in *EnsureGatewayRequest, opts ...grpc.CallOption) (*StackResult, error)
+	// Provision one user inside the running gateway by running the control-plane-
+	// computed exec steps (the password, if any, rides in a step's stdin — never
+	// argv/env). Ensures the gateway first (carries the same gateway payload).
+	ProvisionSshUser(ctx context.Context, in *ProvisionSshUserRequest, opts ...grpc.CallOption) (*StackResult, error)
+	// Remove one user from the gateway (account + key + map files). No-op if the
+	// gateway isn't running. Runs the control-plane-computed deprovision steps.
+	DeprovisionSshUser(ctx context.Context, in *DeprovisionSshUserRequest, opts ...grpc.CallOption) (*StackResult, error)
+	// Launch the tunnel (idempotent) and return the current raw log + running flag.
+	StartTunnel(ctx context.Context, in *TunnelRequest, opts ...grpc.CallOption) (*TunnelStatus, error)
+	// Read the current tunnel log + running flag (no side effects).
+	GetTunnel(ctx context.Context, in *TunnelRequest, opts ...grpc.CallOption) (*TunnelStatus, error)
+	// Stop the tunnel process (the CLI download + auth token are kept).
+	StopTunnel(ctx context.Context, in *TunnelRequest, opts ...grpc.CallOption) (*StackResult, error)
 }
 
 type agentClient struct {
@@ -389,6 +442,124 @@ func (c *agentClient) FilesExist(ctx context.Context, in *FilesExistRequest, opt
 	return out, nil
 }
 
+func (c *agentClient) StartDev(ctx context.Context, in *StartDevRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DeployEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Agent_ServiceDesc.Streams[4], Agent_StartDev_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StartDevRequest, DeployEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Agent_StartDevClient = grpc.ServerStreamingClient[DeployEvent]
+
+func (c *agentClient) StopDev(ctx context.Context, in *StopDevRequest, opts ...grpc.CallOption) (*StackResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StackResult)
+	err := c.cc.Invoke(ctx, Agent_StopDev_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) ResetDevWorkspace(ctx context.Context, in *StartDevRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DeployEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Agent_ServiceDesc.Streams[5], Agent_ResetDevWorkspace_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StartDevRequest, DeployEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Agent_ResetDevWorkspaceClient = grpc.ServerStreamingClient[DeployEvent]
+
+func (c *agentClient) TeardownDev(ctx context.Context, in *TeardownDevRequest, opts ...grpc.CallOption) (*StackResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StackResult)
+	err := c.cc.Invoke(ctx, Agent_TeardownDev_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) EnsureGateway(ctx context.Context, in *EnsureGatewayRequest, opts ...grpc.CallOption) (*StackResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StackResult)
+	err := c.cc.Invoke(ctx, Agent_EnsureGateway_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) ProvisionSshUser(ctx context.Context, in *ProvisionSshUserRequest, opts ...grpc.CallOption) (*StackResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StackResult)
+	err := c.cc.Invoke(ctx, Agent_ProvisionSshUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) DeprovisionSshUser(ctx context.Context, in *DeprovisionSshUserRequest, opts ...grpc.CallOption) (*StackResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StackResult)
+	err := c.cc.Invoke(ctx, Agent_DeprovisionSshUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) StartTunnel(ctx context.Context, in *TunnelRequest, opts ...grpc.CallOption) (*TunnelStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TunnelStatus)
+	err := c.cc.Invoke(ctx, Agent_StartTunnel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) GetTunnel(ctx context.Context, in *TunnelRequest, opts ...grpc.CallOption) (*TunnelStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TunnelStatus)
+	err := c.cc.Invoke(ctx, Agent_GetTunnel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) StopTunnel(ctx context.Context, in *TunnelRequest, opts ...grpc.CallOption) (*StackResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StackResult)
+	err := c.cc.Invoke(ctx, Agent_StopTunnel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServer is the server API for Agent service.
 // All implementations must embed UnimplementedAgentServer
 // for forward compatibility.
@@ -459,6 +630,42 @@ type AgentServer interface {
 	RenameFile(context.Context, *RenameFileRequest) (*FileEntryResult, error)
 	// Whether a project's files root exists on this host (drives the Files tab).
 	FilesExist(context.Context, *FilesExistRequest) (*FilesExistResponse, error)
+	// Start (or restart) a project's dev container. Server-streaming like Deploy
+	// (it materialises the workspace, ensures the gateway, pre-chowns, writes the
+	// stack, `compose up`s) so progress logs flow live into the same SSE plumbing.
+	// The control plane sends the rendered dev compose + entrypoint + (for git) the
+	// tokenized clone URL + (for upload) the archive; the agent stays dumb.
+	StartDev(*StartDevRequest, grpc.ServerStreamingServer[DeployEvent]) error
+	// Stop a project's dev container (reversible — KEEPS the workspace + deps
+	// volume so a later StartDev resumes the edited tree). Also stops the tunnel.
+	StopDev(context.Context, *StopDevRequest) (*StackResult, error)
+	// DESTRUCTIVE: wipe the workspace + deps volume, then reseed via StartDev's
+	// body. The request carries the same StartDevRequest payload used to reseed.
+	ResetDevWorkspace(*StartDevRequest, grpc.ServerStreamingServer[DeployEvent]) error
+	// Fully tear down on PROJECT DELETE: stop the stack, remove the stack file +
+	// deps volume, WIPE the workspace dir. The gateway singleton is NOT torn down
+	// (its per-project users are removed via DeprovisionSshUser).
+	TeardownDev(context.Context, *TeardownDevRequest) (*StackResult, error)
+	// Lazily ensure the 2-service SSH gateway stack is up on this host (idempotent;
+	// ensureNetwork + write the rendered config files + `compose up` + wait for
+	// sshd + reconcile every supplied user). The control plane sends the rendered
+	// files (sshd_config / wrapper / socket-filter / compose / entrypoint) and the
+	// full provision step-list for every stored DevSshUser of this server so the
+	// agent rebuilds the projection from the store's truth (ADR-0002).
+	EnsureGateway(context.Context, *EnsureGatewayRequest) (*StackResult, error)
+	// Provision one user inside the running gateway by running the control-plane-
+	// computed exec steps (the password, if any, rides in a step's stdin — never
+	// argv/env). Ensures the gateway first (carries the same gateway payload).
+	ProvisionSshUser(context.Context, *ProvisionSshUserRequest) (*StackResult, error)
+	// Remove one user from the gateway (account + key + map files). No-op if the
+	// gateway isn't running. Runs the control-plane-computed deprovision steps.
+	DeprovisionSshUser(context.Context, *DeprovisionSshUserRequest) (*StackResult, error)
+	// Launch the tunnel (idempotent) and return the current raw log + running flag.
+	StartTunnel(context.Context, *TunnelRequest) (*TunnelStatus, error)
+	// Read the current tunnel log + running flag (no side effects).
+	GetTunnel(context.Context, *TunnelRequest) (*TunnelStatus, error)
+	// Stop the tunnel process (the CLI download + auth token are kept).
+	StopTunnel(context.Context, *TunnelRequest) (*StackResult, error)
 	mustEmbedUnimplementedAgentServer()
 }
 
@@ -531,6 +738,36 @@ func (UnimplementedAgentServer) RenameFile(context.Context, *RenameFileRequest) 
 }
 func (UnimplementedAgentServer) FilesExist(context.Context, *FilesExistRequest) (*FilesExistResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FilesExist not implemented")
+}
+func (UnimplementedAgentServer) StartDev(*StartDevRequest, grpc.ServerStreamingServer[DeployEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method StartDev not implemented")
+}
+func (UnimplementedAgentServer) StopDev(context.Context, *StopDevRequest) (*StackResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StopDev not implemented")
+}
+func (UnimplementedAgentServer) ResetDevWorkspace(*StartDevRequest, grpc.ServerStreamingServer[DeployEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method ResetDevWorkspace not implemented")
+}
+func (UnimplementedAgentServer) TeardownDev(context.Context, *TeardownDevRequest) (*StackResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TeardownDev not implemented")
+}
+func (UnimplementedAgentServer) EnsureGateway(context.Context, *EnsureGatewayRequest) (*StackResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EnsureGateway not implemented")
+}
+func (UnimplementedAgentServer) ProvisionSshUser(context.Context, *ProvisionSshUserRequest) (*StackResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProvisionSshUser not implemented")
+}
+func (UnimplementedAgentServer) DeprovisionSshUser(context.Context, *DeprovisionSshUserRequest) (*StackResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeprovisionSshUser not implemented")
+}
+func (UnimplementedAgentServer) StartTunnel(context.Context, *TunnelRequest) (*TunnelStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StartTunnel not implemented")
+}
+func (UnimplementedAgentServer) GetTunnel(context.Context, *TunnelRequest) (*TunnelStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTunnel not implemented")
+}
+func (UnimplementedAgentServer) StopTunnel(context.Context, *TunnelRequest) (*StackResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StopTunnel not implemented")
 }
 func (UnimplementedAgentServer) mustEmbedUnimplementedAgentServer() {}
 func (UnimplementedAgentServer) testEmbeddedByValue()               {}
@@ -899,6 +1136,172 @@ func _Agent_FilesExist_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Agent_StartDev_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StartDevRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentServer).StartDev(m, &grpc.GenericServerStream[StartDevRequest, DeployEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Agent_StartDevServer = grpc.ServerStreamingServer[DeployEvent]
+
+func _Agent_StopDev_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopDevRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).StopDev(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_StopDev_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).StopDev(ctx, req.(*StopDevRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_ResetDevWorkspace_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StartDevRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentServer).ResetDevWorkspace(m, &grpc.GenericServerStream[StartDevRequest, DeployEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Agent_ResetDevWorkspaceServer = grpc.ServerStreamingServer[DeployEvent]
+
+func _Agent_TeardownDev_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TeardownDevRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).TeardownDev(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_TeardownDev_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).TeardownDev(ctx, req.(*TeardownDevRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_EnsureGateway_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnsureGatewayRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).EnsureGateway(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_EnsureGateway_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).EnsureGateway(ctx, req.(*EnsureGatewayRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_ProvisionSshUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProvisionSshUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).ProvisionSshUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_ProvisionSshUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).ProvisionSshUser(ctx, req.(*ProvisionSshUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_DeprovisionSshUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeprovisionSshUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).DeprovisionSshUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_DeprovisionSshUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).DeprovisionSshUser(ctx, req.(*DeprovisionSshUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_StartTunnel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TunnelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).StartTunnel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_StartTunnel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).StartTunnel(ctx, req.(*TunnelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_GetTunnel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TunnelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).GetTunnel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_GetTunnel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).GetTunnel(ctx, req.(*TunnelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_StopTunnel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TunnelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).StopTunnel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_StopTunnel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).StopTunnel(ctx, req.(*TunnelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Agent_ServiceDesc is the grpc.ServiceDesc for Agent service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -974,6 +1377,38 @@ var Agent_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "FilesExist",
 			Handler:    _Agent_FilesExist_Handler,
 		},
+		{
+			MethodName: "StopDev",
+			Handler:    _Agent_StopDev_Handler,
+		},
+		{
+			MethodName: "TeardownDev",
+			Handler:    _Agent_TeardownDev_Handler,
+		},
+		{
+			MethodName: "EnsureGateway",
+			Handler:    _Agent_EnsureGateway_Handler,
+		},
+		{
+			MethodName: "ProvisionSshUser",
+			Handler:    _Agent_ProvisionSshUser_Handler,
+		},
+		{
+			MethodName: "DeprovisionSshUser",
+			Handler:    _Agent_DeprovisionSshUser_Handler,
+		},
+		{
+			MethodName: "StartTunnel",
+			Handler:    _Agent_StartTunnel_Handler,
+		},
+		{
+			MethodName: "GetTunnel",
+			Handler:    _Agent_GetTunnel_Handler,
+		},
+		{
+			MethodName: "StopTunnel",
+			Handler:    _Agent_StopTunnel_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -996,6 +1431,16 @@ var Agent_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _Agent_Attach_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "StartDev",
+			Handler:       _Agent_StartDev_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ResetDevWorkspace",
+			Handler:       _Agent_ResetDevWorkspace_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "agent.proto",

@@ -1,20 +1,17 @@
 import "server-only";
 
-import { mkdir, rm, writeFile, chmod, readdir, cp } from "node:fs/promises";
+import { readdir, cp } from "node:fs/promises";
 import { join } from "node:path";
 import { read } from "../store";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
-import { docker } from "../infra/docker";
 import { dataVolumeHostMountpoint } from "./builders";
 import {
   devCommandFor,
   devImagePresetFor,
   devPresetImage,
 } from "../frameworks";
-import { installationCloneUrl } from "../github/app";
-import { extractArchive, rejectSymlinks } from "./upload";
-import { ensureGateway } from "../infra/ssh-gateway";
+import { rejectSymlinks } from "./upload";
 import { certResolver, instanceHost, sslipDomain } from "./domains";
 import { portFor } from "./ports";
 import { traefikRouterLabels } from "./routing";
@@ -157,38 +154,6 @@ function seedEnv(project: Project): Record<string, string> {
 }
 
 /**
- * Stage the tokenized clone URL to a root-owned 0600 file bind-mounted into the
- * container at /run/deplo/clone-url (outside /workspace). The dev user (UID
- * 1000) cannot read it and it never appears in the container env / inspect /
- * stack file. Removed when not a git source.
- */
-async function writeCloneSecret(project: Project): Promise<void> {
-  const path = cloneSecretPath(project.slug);
-  await mkdir(join(DEV_DIR, "_secrets"), { recursive: true });
-  if ((project.source === "github" || project.source === "git") && project.repo) {
-    let url = project.repo.url;
-    try {
-      // Mint a tokenized URL for private GitHub repos. If the installation is
-      // missing/stale (or this is a public/plain-git repo), fall back to the
-      // plain URL rather than failing the whole start — a public clone still
-      // succeeds, and a private one degrades to an empty git workspace the user
-      // can re-point, instead of a hard error on Start.
-      url = await installationCloneUrl(
-        project.repo.url,
-        project.repo.installationId ?? null,
-      );
-    } catch {
-      url = project.repo.url;
-    }
-    // 0600 root-owned: the dev user inside the container cannot read it.
-    await writeFile(path, url, { mode: 0o600 });
-    await chmod(path, 0o600).catch(() => {});
-  } else {
-    await rm(path, { force: true }).catch(() => {});
-  }
-}
-
-/**
  * Whether the workspace holds REAL source — any entry outside
  * WORKSPACE_BUILD_EXCLUDE. This is the gate for deploying FROM the workspace
  * (and the once-only seed check): there must be files on disk to build,
@@ -206,33 +171,10 @@ export async function workspaceHasSource(slug: string): Promise<boolean> {
   }
 }
 
-/**
- * Seed an `upload`-source workspace HOST-SIDE (the archive lives under
- * /data/uploads and is not mounted in the container, and the secure extract —
- * zip-slip + symlink guards + single-root collapse — already exists for the
- * production path). Only runs when the workspace is empty, mirroring the
- * clone-once semantics: user edits are never clobbered. The entrypoint's `git
- * init` then makes it a local repo. No-op when there is no archive yet.
- */
-async function seedUploadWorkspace(project: Project): Promise<void> {
-  if (project.source !== "upload" || !project.upload) return;
-  if (await workspaceHasSource(project.slug)) return;
-  const ws = workspaceDir(project.slug);
-  await mkdir(ws, { recursive: true });
-  // Extract to a temp dir, then copy the (single-root-collapsed) tree into the
-  // workspace without disturbing the node_modules / .deplo mountpoints.
-  const tmp = join(DEV_DIR, "_extract", project.slug);
-  await rm(tmp, { recursive: true, force: true }).catch(() => {});
-  await mkdir(tmp, { recursive: true });
-  try {
-    const root = await extractArchive(project.upload, tmp, () => {});
-    for (const e of await readdir(root)) {
-      await cp(join(root, e), join(ws, e), { recursive: true }).catch(() => {});
-    }
-  } finally {
-    await rm(tmp, { recursive: true, force: true }).catch(() => {});
-  }
-}
+// seedUploadWorkspace moved AGENT-SIDE (Part D): the archive is tarred by the
+// control plane (./agent-dev buildUploadTar) and shipped in the StartDev request;
+// the agent extracts it into its own workspace host-side (clone-once). The
+// control plane no longer touches the workspace filesystem for an upload seed.
 
 /**
  * Copy a project's live dev workspace (/data/dev/<slug>) into `destDir` for a
@@ -584,128 +526,27 @@ else
 fi
 `;
 
-/** Write the bind-mounted dev entrypoint (idempotent; overwrites on upgrade). */
-export async function ensureDevEntry(): Promise<void> {
-  await mkdir(ENTRY_DIR, { recursive: true });
-  await writeFile(ENTRY_PATH, DEV_ENTRY_SCRIPT, { mode: 0o755 });
-  await chmod(ENTRY_PATH, 0o755).catch(() => {});
+/** The rendered dev entrypoint script (Part D: the AGENT writes it to its own
+ *  bind mount, so the control plane only RENDERS it here — single source of truth,
+ *  rewritten each start so a Deplo upgrade ships a new entrypoint, ADR-0004). */
+export function devEntryScript(): string {
+  return DEV_ENTRY_SCRIPT;
 }
 
-/**
- * Start (or restart) a project's dev container. Ensures the gateway + entrypoint
- * + workspace dir exist (chowned 1000), renders + writes the stack, `compose up
- * -d`. First start seeds the workspace; later starts reuse it (edits intact).
- * Does NOT create a Domain row — the preview is a label.
- */
-export async function startDev(project: Project): Promise<void> {
-  const slug = project.slug;
-  await mkdir(STACK_DIR, { recursive: true });
-  await ensureDevEntry();
-  await ensureGateway();
-
-  const ws = workspaceDir(slug);
-  await mkdir(ws, { recursive: true });
-  // Pre-chown so the dev server (UID 1000) and the developer never fight over
-  // ownership across the bind mount. Best-effort: the entrypoint re-chowns too.
-  await docker(["run", "--rm", "-v", `${await hostWorkspaceMount(slug)}`, "alpine", "chown", "1000:1000", "/workspace"], {
-    timeout: 30_000,
-  }).catch(() => {});
-
-  // Stage the tokenized clone URL to a root-only 0600 file (never in env).
-  await writeCloneSecret(project);
-  // For an `upload` source, extract the archive into the (empty) workspace
-  // host-side before the container starts — the archive isn't mounted in the
-  // container, so the entrypoint can't reach it. (git/github seed in-container.)
-  await seedUploadWorkspace(project);
-
-  const stackFile = devStackFile(slug);
-  const yaml = await renderDevCompose(project);
-  // 0600: the stack file holds decrypted `development` env vars; keep it as
-  // tight as the production env-file (build.ts writes its env-file 0600 too).
-  await writeFile(stackFile, yaml, { mode: 0o600 });
-
-  await docker(
-    ["compose", "-p", devProjectName(slug), "-f", stackFile, "up", "-d", "--remove-orphans"],
-    { timeout: 600_000 },
-  );
-}
-
-/**
- * DESTRUCTIVE: reset a project's workspace to a fresh copy of the CURRENT deploy
- * source. Stops the container, wipes the workspace dir AND the deps volume (so a
- * source change doesn't leave stale files or node_modules), then `startDev`
- * reseeds from scratch — the entrypoint clones/extracts the current source into
- * the now-empty workspace. Any uncommitted edits in the old workspace are lost.
- */
-export async function resetDevWorkspace(project: Project): Promise<void> {
-  const slug = project.slug;
-  // 1. Stop the container so nothing holds the bind mount / writes during wipe.
-  await stopDev(slug).catch(() => {});
-  // 2. Wipe the workspace contents (keep the dir — it's the bind target). Files
-  //    created inside as UID 1000 are removable by root (the Deplo app is root).
-  const ws = workspaceDir(slug);
-  await rm(ws, { recursive: true, force: true }).catch(() => {});
-  await mkdir(ws, { recursive: true });
-  // 3. Drop the deps volume so dependencies are reinstalled for the new source.
-  await docker(["volume", "rm", "-f", depsVolume(slug)], {
-    timeout: 30_000,
-  }).catch(() => {});
-  // 4. Reseed: startDev re-stages a fresh clone token and the entrypoint clones
-  //    the CURRENT source into the empty workspace.
-  await startDev(project);
-}
-
-/** The `-v host:/workspace` arg for the pre-chown helper container. */
-async function hostWorkspaceMount(slug: string): Promise<string> {
-  const mountpoint = await dataVolumeHostMountpoint();
-  const ws = workspaceDir(slug);
-  const host =
-    mountpoint && ws.startsWith(DATA_DIR)
-      ? join(mountpoint, ws.slice(DATA_DIR.length))
-      : ws;
-  return `${host}:/workspace`;
-}
-
-/**
- * Stop a project's dev container (reversible). KEEPS the workspace dir and the
- * deps volume so a later `startDev` resumes the edited tree.
- */
-export async function stopDev(slug: string): Promise<void> {
-  const stackFile = devStackFile(slug);
-  // Stop the VS Code tunnel FIRST, while the container is still up. `compose
-  // down` would kill the tunnel PROCESS, but the machine stays registered on the
-  // relay (reconnectable on vscode.dev for the grace period) and the PID file
-  // lingers in the persisted workspace. `tunnel kill` unregisters cleanly and
-  // clears the PID; it keeps the auth token, so a later Start re-uses the login.
-  // noThrow/.catch inside, so a missing/never-tunnelled container is a no-op.
-  await stopVscodeTunnel(slug).catch(() => {});
-  await docker(
-    ["compose", "-p", devProjectName(slug), "-f", stackFile, "down", "--remove-orphans"],
-    { timeout: 90_000 },
-  ).catch(async () => {
-    await docker(["rm", "-f", devProjectName(slug)], { timeout: 30_000 }).catch(
-      () => {},
-    );
-  });
-  // Drop the staged clone token — startDev regenerates a fresh one on restart.
-  await rm(cloneSecretPath(slug), { force: true }).catch(() => {});
-}
-
-/**
- * Fully tear down a project's dev container on PROJECT DELETE: stop the stack,
- * remove the stack file + the deps volume, and WIPE the workspace dir (the
- * project is gone). The gateway itself is a platform singleton and is NOT torn
- * down here (ADR-0002) — its per-project users are removed separately.
- */
-export async function teardownDev(slug: string): Promise<void> {
-  await stopDev(slug).catch(() => {});
-  await docker(["volume", "rm", "-f", depsVolume(slug)], {
-    timeout: 30_000,
-  }).catch(() => {});
-  await rm(devStackFile(slug), { force: true }).catch(() => {});
-  await rm(cloneSecretPath(slug), { force: true }).catch(() => {});
-  await rm(workspaceDir(slug), { recursive: true, force: true }).catch(() => {});
-}
+// ---------------------------------------------------------------------------
+// PART D: the dev-container LIFECYCLE (start / stop / reset / teardown) and the
+// VS Code tunnel exec moved to the per-host agent — once a project can live on a
+// remote server, its dev container + tunnel must run THERE (ADR-0002 singletons).
+// The control plane keeps ALL the RENDERING above (renderDevCompose, the
+// entrypoint script, the tunnel launch script, the clone-URL minting) as the
+// single source of truth (D2/D4); the agent owns the host-coupled half. The
+// lifecycle entry points now live in ./agent-dev (agentStartDev / agentStopDev /
+// agentResetDevWorkspace / agentTeardownDev / the agent tunnel fns), the dev-mode
+// twin of ./agent-deploy. dev.ts is now pure renderers + the build-context
+// helpers below (copyWorkspaceForBuild / workspaceHasSource), which feed the
+// "deploy from dev workspace" path (a localhost build reads the workspace
+// directly; a remote build uses SOURCE_KIND_DEV_WORKSPACE on the agent).
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // VS Code Remote Tunnel — the editor integration for an exec-only gateway.
@@ -743,7 +584,7 @@ const CLI_DATA_DIR = `${TUNNEL_DIR}/cli-data`;
  * the VS Code CLI once, then starts `code tunnel` writing to TUNNEL_LOG. Run as
  * the dev user so the tunnel (and any edits it makes) are UID 1000.
  */
-function tunnelLaunchScript(slug: string): string {
+export function tunnelLaunchScript(slug: string): string {
   return `set -e
 mkdir -p ${TUNNEL_DIR} ${CLI_DATA_DIR}
 # Already running? leave it.
@@ -794,7 +635,7 @@ export interface VscodeTunnelInfo {
  * device-code authorization completes, and a guessed URL 404s ("tunnel not
  * found"). A pending device-login line means NOT yet connected.
  */
-function parseTunnelLog(log: string): {
+export function parseTunnelLog(log: string): {
   connected: boolean;
   loginUrl: string | null;
   loginCode: string | null;
@@ -816,64 +657,8 @@ function parseTunnelLog(log: string): {
   };
 }
 
-/** Read the current tunnel log + pid state from the container. */
-export async function getVscodeTunnel(slug: string): Promise<VscodeTunnelInfo> {
-  const name = devProjectName(slug);
-  const { stdout } = await docker(
-    [
-      "exec",
-      name,
-      "/bin/sh",
-      "-c",
-      `cat ${TUNNEL_LOG} 2>/dev/null; ` +
-        `if [ -f ${TUNNEL_PID} ] && kill -0 "$(cat ${TUNNEL_PID} 2>/dev/null)" 2>/dev/null; then echo __DEPLO_RUNNING__; fi`,
-    ],
-    { timeout: 15_000, noThrow: true },
-  ).catch(() => ({ stdout: "" }) as { stdout: string });
-  const running = stdout.includes("__DEPLO_RUNNING__");
-  const log = stdout.replace("__DEPLO_RUNNING__", "").trim();
-  return { running, log: log.slice(-2000), ...parseTunnelLog(log) };
-}
-
-/**
- * Start the VS Code tunnel in a project's dev container (idempotent), then poll
- * briefly for the device-login link so the UI can show it immediately.
- */
-export async function startVscodeTunnel(slug: string): Promise<VscodeTunnelInfo> {
-  const name = devProjectName(slug);
-  // Launch as the dev user (UID 1000) so the tunnel owns its files.
-  await docker(
-    ["exec", "-u", "1000", "-w", "/workspace", name, "/bin/sh", "-lc", tunnelLaunchScript(slug)],
-    { timeout: 120_000, noThrow: true },
-  );
-  // Poll the log up to ~24s for the device-code line OR a completed connection
-  // (the CLI download can take a moment). Return as soon as there's something to
-  // show the user — the login link is what they act on first.
-  for (let i = 0; i < 12; i++) {
-    const info = await getVscodeTunnel(slug);
-    if (info.loginUrl || info.connected) return info;
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-  return getVscodeTunnel(slug);
-}
-
-/**
- * Stop the VS Code tunnel (kills the process; the CLI download AND the auth
- * token are kept). `tunnel kill` only stops the running tunnel — it does NOT log
- * out — and we pass the same --cli-data-dir so it acts on the same CLI state and
- * never falls back to a stray default dir. So Close-then-Open re-uses the
- * existing GitHub login.
- */
-export async function stopVscodeTunnel(slug: string): Promise<void> {
-  const name = devProjectName(slug);
-  await docker(
-    [
-      "exec",
-      name,
-      "/bin/sh",
-      "-c",
-      `[ -f ${TUNNEL_PID} ] && kill "$(cat ${TUNNEL_PID})" 2>/dev/null; rm -f ${TUNNEL_PID}; ${CODE_CLI} tunnel --cli-data-dir ${CLI_DATA_DIR} kill 2>/dev/null || true`,
-    ],
-    { timeout: 20_000, noThrow: true },
-  ).catch(() => {});
-}
+// The tunnel exec wrappers (getVscodeTunnel / startVscodeTunnel /
+// stopVscodeTunnel) moved to ./agent-dev (agentGetTunnel / agentStartTunnel /
+// agentStopTunnel) — they `docker exec` into the dev container, which now runs on
+// the owning agent's host. The TUNNEL_* in-container paths + the launch script +
+// parseTunnelLog stay here as the single rendering/parsing source of truth.
