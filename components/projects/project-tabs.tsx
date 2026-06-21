@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useLiveRunning } from "@/components/projects/project-live-status";
 
 export function ProjectTabs({
   slug,
-  running = false,
+  running: serverRunning = false,
   devEligible = false,
   canManageEnv = true,
 }: {
@@ -19,6 +20,11 @@ export function ProjectTabs({
 }) {
   const pathname = usePathname();
   const base = `/projects/${slug}`;
+  // Live running state drives the Console/Logs tabs so they appear/disappear
+  // the moment the container starts/stops — no reload — and stay in sync across
+  // clients. Falls back to the server-rendered value before the subscription
+  // delivers its first snapshot.
+  const running = useLiveRunning(serverRunning);
 
   function matchSub(seg: string) {
     const p = base + seg;

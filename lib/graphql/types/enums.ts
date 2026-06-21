@@ -17,7 +17,7 @@ export const CapabilityEnum = builder.enumType("Capability", {
 });
 
 export const ProjectStatusEnum = builder.enumType("ProjectStatus", {
-  values: ["active", "building", "error", "queued", "idle"] as const,
+  values: ["active", "building", "error", "queued", "idle", "stopping"] as const,
 });
 
 // GraphQL enum value names must match /[_a-zA-Z0-9]/, but some of the domain

@@ -174,16 +174,21 @@ function hasGrant(
   return Boolean(raw && (raw.isInstanceAdmin || raw[flag]));
 }
 
-/** True if the current user may expose/publish container ports. */
+/**
+ * True if the current user may publish container ports — a compose service's
+ * `ports:` (bound to the host) or `expose:` (advertised to linked containers).
+ * This is orthogonal to Traefik routing: giving a service a public DOMAIN does
+ * NOT require this grant; only declaring published ports in the compose does.
+ */
 export async function canExposePorts(): Promise<boolean> {
   return hasGrant(await getCurrentUser(), "canExposePorts");
 }
 
-/** Throwing variant — gate any action that exposes a port behind this. */
+/** Throwing variant — gate any action that publishes container ports. */
 export async function requireExposePorts(): Promise<{ userId: string }> {
   const user = await assertUser();
   if (!hasGrant(user, "canExposePorts"))
-    throw new Error("You don't have permission to expose ports");
+    throw new Error("You don't have permission to publish ports");
   return { userId: user.id };
 }
 

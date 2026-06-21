@@ -396,8 +396,8 @@ function EditUserDialog({
                 </p>
               )}
               <ToggleRow
-                title="Expose ports"
-                detail="Publish container ports on a deployment. Instance admins always can."
+                title="Publish ports"
+                detail="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains/routes don't need this. Instance admins always can."
                 checked={admin || exposePorts}
                 disabled={admin}
                 onChange={setExposePorts}
@@ -411,7 +411,7 @@ function EditUserDialog({
               />
               {admin && (
                 <p className="text-xs text-muted-foreground">
-                  Instance admins hold the expose-ports and host-volume grants
+                  Instance admins hold the publish-ports and host-volume grants
                   implicitly.
                 </p>
               )}
