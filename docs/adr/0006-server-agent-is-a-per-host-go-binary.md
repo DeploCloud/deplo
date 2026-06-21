@@ -21,10 +21,11 @@ below are referenced there as D1–D8.
 
 ## Implementation status
 
-**Parts A and B are implemented.** Part A routed the localhost deploy through the agent; Part B
+**Parts A, B and C are implemented.** Part A routed the localhost deploy through the agent; Part B
 makes a remote agent real: call-home provisioning, remote `agent-client` routing with cert
 fingerprint pinning, the GIT source (the agent clones itself, D3), and reconnection/replay (D5).
-Two refinements emerged while building Part B and are recorded here:
+Part C moves the per-server **observability + lifecycle + files** surface onto the owning agent
+(below). Two refinements emerged while building Part B and are recorded here:
 
 - **The trust direction inverts for a remote agent.** Part A's control plane minted the agent's
   cert *and key* and wrote both to the agent's disk — possible only because the agent was local.
@@ -42,8 +43,32 @@ Two refinements emerged while building Part B and are recorded here:
   who never had the token cannot forge the CA it hands back. The `Server` row stores only the
   token's sha256 (+ expiry), never the raw token.
 
-Out of scope here and deferred to later phases: per-server logs/console/metrics (Part C), the
-config-file editor repoint (D9), dev mode + SSH gateway on remotes (Part D).
+**Part C — per-server observability, lifecycle, and files.** Every project surface that was
+direct-Docker / local-`fs` now resolves the project's owning server and branches: localhost keeps
+the in-process path unchanged; a **remote** routes through `connectAgent(serverId)` to the owning
+agent. New agent RPCs (additive, contract still V1): `FollowLogs` (live `docker logs -f` as raw
+byte chunks), `Attach` (bidi console; the **pty moved from Node node-pty to Go creack/pty**),
+`Exec`/`ListInstances`/`ShellLabel` (the console introspection), and the file RPCs
+(`ListFiles`/`ReadFile`/`WriteFile`/`UploadFile`/`CreateDir`/`DeleteFile`/`RenameFile`/`FilesExist`).
+The streaming RPCs are adapted to the existing `AttachHandle` so the SSE session registries
+(`lib/logs/session.ts`, `lib/attach/session.ts`) and the browser SSE contract are unchanged. Two
+adjacent gaps from B are closed here too: the **lifecycle verbs** (`stopContainer`/`startContainer`/
+`destroyStack`) now drive the owning agent's `Stop`/`Start`/`DestroyStack` for a remote project
+(they shelled the local socket before), and the **console exec** path joins the same agent route.
+
+Three rules hold across Part C: (1) every container RPC carries `project_id` and the agent
+**label-checks `deplo.project=<id>`** (`assertOwned`) before acting — defence in depth on a
+container name off the wire; (2) the files sandbox is **re-enforced agent-side** (`internal/safepath`,
+re-ported `resolveWithinRoot`) since the path arrives off the wire (D9); (3) a remote whose agent is
+**unreachable fails clearly with no local fallback** — never a synthetic container entry, never the
+master's metrics, never an rm against the wrong disk (a remote `destroyStack` skips the local
+file cleanup; those files live on the agent and its `DestroyStack` owns them). The Files tab,
+gated to localhost until now (D9), is **re-enabled for remote** (its only gate, `projectFilesExist`,
+now asks the owning agent). Verified by `scripts/agent-part-c-e2e.mts` (17 checks over real Docker +
+mTLS: instances/exec/label-deny/shell/logs/attach/metrics/files-CRUD/traversal-reject) plus Go unit
+tests for the sandbox + shell classification.
+
+Out of scope here and deferred to the last phase: dev mode + SSH gateway on remotes (Part D).
 
 ## Decision
 

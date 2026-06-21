@@ -133,15 +133,23 @@ install — by an **HMAC over the bootstrap response keyed by the one-time token
 work). Because a remote agent's key must never leave the box, the agent **generates its own key
 and sends a CSR**; the control plane CA **signs the CSR** (it never sees the agent's private key).
 Health is **read live** (never a stored value that goes stale). See
-[ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md). *(**Parts A + B built**:
+[ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md). *(**Parts A + B + C built**:
 the localhost server's deploy runs through the agent (Part A), and a **remote** agent is real
 (Part B) — call-home provisioning, remote routing with fingerprint-pinned mTLS, the **git source
 the agent clones itself**, and **reconnection/replay** so a control-plane restart mid-build does
-not lose the deploy. Heavy builders, multi-service compose stacks, and an unavailable agent still
-fall back to the local path on localhost — and **fail clearly on a remote** (no silent
-deploy-to-localhost). Logs/console/metrics/Files are later parts. Agent code in [`agent/`](../agent/),
-contract in [`proto/agent.proto`](../proto/agent.proto), control-plane side in
-[`lib/agent/`](../lib/agent/) + [`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts).)*
+not lose the deploy. **Part C** moves the rest of the host-coupled surface onto the owning agent:
+live **logs** (`FollowLogs`), **console/attach** (bidi `Attach`, pty now Go `creack/pty`), the
+**console exec + introspection** (`Exec`/`ListInstances`/`ShellLabel`), per-server **metrics**
+(`Metrics`), the **lifecycle verbs** (`Stop`/`Start`/`DestroyStack`), and the **Files** tab
+(`ListFiles`/`ReadFile`/`WriteFile`/…, re-enabled for remote). The browser GraphQL + SSE contracts
+are unchanged — only the backing is repointed. Every container RPC label-checks
+`deplo.project=<id>` agent-side; the files sandbox is re-enforced agent-side; a remote whose agent
+is unreachable **fails clearly with no local fallback** (no synthetic container, no master metrics,
+no wrong-disk teardown). Heavy builders, multi-service compose stacks, and an unavailable agent
+still fall back to the local path on localhost — and **fail clearly on a remote** (no silent
+deploy-to-localhost). Dev mode + SSH gateway on remotes is the last part (D). Agent code in
+[`agent/`](../agent/), contract in [`proto/agent.proto`](../proto/agent.proto), control-plane side
+in [`lib/agent/`](../lib/agent/) + [`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts).)*
 _Avoid_: agent (ambiguous — say "server agent"), node, worker, runner (CI term), daemon
 (reserve for the Docker daemon it drives), deplo agent on the remote being a "second Deplo".
 
