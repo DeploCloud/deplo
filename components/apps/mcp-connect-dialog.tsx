@@ -98,7 +98,7 @@ export function McpConnectDialog({
             Done
           </Button>
           <Button asChild>
-            <Link href="/settings?tab=tokens">
+            <Link href="/settings/tokens">
               Mint a token
               <ArrowUpRight className="size-4" />
             </Link>

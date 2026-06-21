@@ -55,7 +55,7 @@ export function UserMenu({ user }: { user: PublicUser }) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/settings?tab=account" className="cursor-pointer">
+          <Link href="/settings/account" className="cursor-pointer">
             <UserIcon className="size-4" />
             Account
           </Link>

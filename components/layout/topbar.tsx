@@ -31,11 +31,13 @@ export function Topbar({
   team,
   teams,
   capabilities = [],
+  isAdmin = false,
 }: {
   user: PublicUser;
   team: Team;
   teams: TeamSummary[];
   capabilities?: string[];
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -57,6 +59,7 @@ export function Topbar({
           <SidebarNav
             onNavigate={() => setMobileOpen(false)}
             capabilities={capabilities}
+            isAdmin={isAdmin}
           />
         </SheetContent>
       </Sheet>

@@ -27,7 +27,7 @@ export default async function ProjectOverview(
   const prod = project.latestDeployment;
 
   return (
-    <div className="stagger-children space-y-6">
+    <div className="space-y-6">
       {/* Production hero */}
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">

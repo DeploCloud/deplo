@@ -165,6 +165,15 @@ export interface Team {
   name: string;
   slug: string;
   plan: "pro" | "enterprise";
+  /**
+   * Team-wide display order of projects in the Overview grid (array of project
+   * ids, first = top-left). A team-level setting, not a per-user preference, so
+   * everyone sees the same arrangement; only an instance admin or a member with
+   * `manage_team` may change it (see `reorderProjects`). Absent ⇒ no manual order
+   * yet, fall back to newest-updated-first. Stale/missing ids are tolerated:
+   * `listProjects` filters to live projects and appends any not listed here.
+   */
+  projectOrder?: ID[];
   createdAt: string;
 }
 

@@ -7,6 +7,7 @@ import {
   requireCapability,
   requireExposePorts,
   requireMountHostVolumes,
+  isInstanceAdmin,
 } from "../membership";
 import {
   composeHasHostBindMount,
@@ -186,10 +187,54 @@ function summarize(p: Project): ProjectSummary {
 
 export async function listProjects(): Promise<ProjectSummary[]> {
   const teamId = await requireActiveTeamId();
+  // Honour the team's manual order (Overview drag-and-drop) when present:
+  // explicitly-ordered projects come first in that order, anything not listed
+  // (a brand-new project, or before any reorder) falls back to newest-first.
+  const order = read().teams.find((t) => t.id === teamId)?.projectOrder ?? [];
+  const rank = new Map(order.map((id, i) => [id, i] as const));
   return read()
     .projects.filter((p) => p.teamId === teamId)
     .map(summarize)
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    .sort((a, b) => {
+      const ra = rank.get(a.id) ?? Infinity;
+      const rb = rank.get(b.id) ?? Infinity;
+      if (ra !== rb) return ra - rb;
+      return a.updatedAt < b.updatedAt ? 1 : -1;
+    });
+}
+
+/**
+ * Persist the team-wide order of projects shown in the Overview grid. Team-wide
+ * by design — every member sees the same arrangement — so it is gated like a
+ * team setting: an instance admin (who bypasses team capabilities) or a member
+ * holding `manage_team`. The incoming ids are sanitised to the caller's own team
+ * projects (dropping unknown/duplicate ids), and any team project the client
+ * omitted is appended, so the stored order is always total and self-heals.
+ */
+export async function reorderProjects(orderedIds: string[]): Promise<void> {
+  const teamId = await requireActiveTeamId();
+  // Instance admins bypass team capabilities; everyone else needs manage_team.
+  if (!(await isInstanceAdmin())) {
+    await requireCapability("manage_team");
+  }
+  mutate((d) => {
+    const team = d.teams.find((t) => t.id === teamId);
+    if (!team) return;
+    const teamProjectIds = d.projects
+      .filter((p) => p.teamId === teamId)
+      .map((p) => p.id);
+    const valid = new Set(teamProjectIds);
+    const seen = new Set<string>();
+    const next: string[] = [];
+    for (const id of orderedIds) {
+      if (valid.has(id) && !seen.has(id)) {
+        seen.add(id);
+        next.push(id);
+      }
+    }
+    for (const id of teamProjectIds) if (!seen.has(id)) next.push(id);
+    team.projectOrder = next;
+  });
 }
 
 export async function getProjectBySlug(
@@ -885,6 +930,11 @@ export async function deleteProject(id: string): Promise<void> {
   await removeUploads(id).catch(() => {});
   mutate((d) => {
     d.projects = d.projects.filter((x) => x.id !== id);
+    // Drop the deleted id from the team's manual Overview order so it doesn't
+    // linger (listProjects also filters stale ids, but keep the stored list tidy).
+    const team = d.teams.find((t) => t.id === membership.teamId);
+    if (team?.projectOrder)
+      team.projectOrder = team.projectOrder.filter((pid) => pid !== id);
     const depIds = d.deployments.filter((x) => x.projectId === id).map((x) => x.id);
     d.deployments = d.deployments.filter((x) => x.projectId !== id);
     for (const depId of depIds) delete d.logs[depId];

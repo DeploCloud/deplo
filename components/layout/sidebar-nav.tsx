@@ -1,8 +1,9 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV } from "./nav-config";
+import { NAV, SETTINGS_NAV } from "./nav-config";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -14,14 +15,34 @@ export function SidebarNav({
   onNavigate,
   collapsed = false,
   capabilities = [],
+  isAdmin = false,
 }: {
   onNavigate?: () => void;
   collapsed?: boolean;
   /** The current member's capabilities; items whose `requires` isn't held are hidden. */
   capabilities?: string[];
+  /** Instance admin — gates items marked `requiresAdmin` (e.g. the Users settings). */
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const caps = new Set(capabilities);
+
+  // Inside settings, the same sidebar shows the settings nav instead of the
+  // main nav — one sidebar system, a different left-hand navigation.
+  const inSettings = pathname.startsWith("/settings");
+  const sections = inSettings ? SETTINGS_NAV : NAV;
+
+  // Slide the nav horizontally when it swaps between the main nav and a sub-menu
+  // (e.g. Settings): in from the right going deeper, from the left coming back.
+  // Comparing against the previous render's value (a supported React pattern)
+  // applies the slide class only on the boundary crossing — so it plays on the
+  // transition, but not on the initial mount or same-menu navigations.
+  const [prevInSettings, setPrevInSettings] = React.useState(inSettings);
+  const [slide, setSlide] = React.useState("");
+  if (prevInSettings !== inSettings) {
+    setPrevInSettings(inSettings);
+    setSlide(inSettings ? "animate-slide-in-right" : "animate-slide-in-left");
+  }
 
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href;
@@ -29,10 +50,12 @@ export function SidebarNav({
   }
 
   return (
-    <nav className={cn("flex flex-col py-3", collapsed ? "px-2" : "px-3")}>
-      {NAV.map((section, i) => {
+    <nav className={cn("flex flex-col py-3", collapsed ? "px-2" : "px-3", slide)}>
+      {sections.map((section, i) => {
         const items = section.items.filter(
-          (item) => !item.requires || caps.has(item.requires),
+          (item) =>
+            (!item.requires || caps.has(item.requires)) &&
+            (!item.requiresAdmin || isAdmin),
         );
         if (items.length === 0) return null;
         return (

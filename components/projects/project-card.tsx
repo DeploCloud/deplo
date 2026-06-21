@@ -33,9 +33,12 @@ import type { ProjectSummary } from "@/lib/data/projects";
 export function ProjectCard({
   project,
   view = "grid",
+  dragHandle,
 }: {
   project: ProjectSummary;
   view?: "grid" | "list";
+  /** Optional drag-to-reorder handle, rendered with the card's controls. */
+  dragHandle?: React.ReactNode;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -62,6 +65,7 @@ export function ProjectCard({
   // Shared interactive controls (external link + menu). Used by both layouts.
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
+      {dragHandle}
       {project.productionUrl && (
         <Button
           asChild

@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   // behind a reverse proxy the latter is the internal origin (e.g.
   // http://localhost:3000), which would send the browser to the wrong host.
   const origin = resolvePublicBaseUrl(request.headers);
-  const settings = new URL("/settings?tab=git", origin);
+  const settings = new URL("/settings/git", origin);
 
   const user = await getCurrentUser();
   if (!user) return NextResponse.redirect(new URL("/login", origin));

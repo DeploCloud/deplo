@@ -12,6 +12,14 @@ import {
   Braces,
   Blocks,
   Users,
+  ArrowLeft,
+  Building2,
+  User,
+  Package,
+  GitBranch,
+  Bell,
+  KeyRound,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -28,6 +36,8 @@ export interface NavItem {
    * also guards server-side). Matches the Capability strings in lib/types.ts.
    */
   requires?: string;
+  /** Visible only to instance admins (orthogonal to team capabilities). */
+  requiresAdmin?: boolean;
 }
 
 export interface NavSection {
@@ -82,12 +92,6 @@ export const NAV: NavSection[] = [
         requires: "manage_env",
       },
       {
-        label: "Servers",
-        href: "/servers",
-        icon: Server,
-        tooltip: "Connected servers & Docker hosts",
-      },
-      {
         label: "Templates",
         href: "/templates",
         icon: LayoutTemplate,
@@ -127,7 +131,100 @@ export const NAV: NavSection[] = [
         label: "Settings",
         href: "/settings",
         icon: Settings,
-        tooltip: "Account, users, tokens & security",
+        tooltip: "Account, servers, tokens & security",
+      },
+    ],
+  },
+];
+
+/**
+ * Settings navigation. When the viewer is anywhere under `/settings`, the
+ * sidebar swaps {@link NAV} for this set — the same sidebar UI, just a different
+ * left-hand nav — so each settings section is its own route/link (including the
+ * relocated Servers page). The first item is a "back to dashboard" escape hatch.
+ */
+export const SETTINGS_NAV: NavSection[] = [
+  {
+    items: [
+      {
+        label: "Back to dashboard",
+        href: "/",
+        icon: ArrowLeft,
+        tooltip: "Return to the dashboard",
+        exact: true,
+      },
+    ],
+  },
+  {
+    items: [
+      {
+        label: "General",
+        href: "/settings",
+        icon: Building2,
+        tooltip: "Team details & appearance",
+        exact: true,
+      },
+      {
+        label: "Account",
+        href: "/settings/account",
+        icon: User,
+        tooltip: "Your personal account",
+      },
+    ],
+  },
+  {
+    title: "Infrastructure",
+    items: [
+      {
+        label: "Servers",
+        href: "/settings/servers",
+        icon: Server,
+        tooltip: "Connected servers & Docker hosts",
+      },
+      {
+        label: "Registries",
+        href: "/settings/registries",
+        icon: Package,
+        tooltip: "Container image registries",
+      },
+      {
+        label: "Git",
+        href: "/settings/git",
+        icon: GitBranch,
+        tooltip: "Connected GitHub apps",
+      },
+    ],
+  },
+  {
+    items: [
+      {
+        label: "Notifications",
+        href: "/settings/notifications",
+        icon: Bell,
+        tooltip: "Alerts & delivery channels",
+      },
+      {
+        label: "API Tokens",
+        href: "/settings/tokens",
+        icon: KeyRound,
+        tooltip: "Personal access tokens",
+      },
+    ],
+  },
+  {
+    items: [
+      {
+        label: "Users",
+        href: "/settings/users",
+        icon: Users,
+        tooltip: "Instance-wide user administration",
+        requiresAdmin: true,
+      },
+      {
+        label: "Security",
+        href: "/settings/security",
+        icon: ShieldCheck,
+        tooltip: "Security posture",
       },
     ],
   },

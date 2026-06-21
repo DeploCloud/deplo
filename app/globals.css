@@ -36,6 +36,7 @@
 
   --success: #00794d;
   --warning: #a35200;
+  --info: #0068d6;
 
   --border: #e4e4e7;
   --input: #e4e4e7;
@@ -74,6 +75,7 @@
 
   --success: #50e3c2;
   --warning: #f5a623;
+  --info: #5b9dff;
 
   --border: #242424;
   --input: #2e2e2e;
@@ -104,6 +106,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-info: var(--info);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -172,20 +175,10 @@
 
 /* ------------------------------------------------------------------ */
 /* Page + element transitions  the "single-page app" feel.            */
-/* Routes are prefetched by <Link>; this only animates the entrance so */
-/* navigating between pages stays instant but never feels abrupt.      */
+/* Page and skeleton entrances are intentionally NOT animated (no fade-in-up). */
 /* ------------------------------------------------------------------ */
-@keyframes deplo-page-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
+/* Plain opacity fade — used only by the auth pages (not a fade-in-up). */
 @keyframes deplo-fade-in {
   from {
     opacity: 0;
@@ -195,41 +188,47 @@
   }
 }
 
-.animate-page-in {
-  animation: deplo-page-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
 .animate-fade-in {
   animation: deplo-fade-in 0.2s ease-out both;
 }
 
-/* Stagger helper: children fade up one after another. */
-.stagger-children > * {
-  animation: deplo-page-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+/* Sidebar sub-menu transitions: the left navigation slides in horizontally when
+ * it swaps — entering a sub-menu (e.g. Settings) slides in from the right, going
+ * back slides in from the left. */
+@keyframes deplo-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
-.stagger-children > *:nth-child(1) {
-  animation-delay: 0ms;
+
+@keyframes deplo-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
-.stagger-children > *:nth-child(2) {
-  animation-delay: 40ms;
+
+.animate-slide-in-right {
+  animation: deplo-slide-in-right 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-.stagger-children > *:nth-child(3) {
-  animation-delay: 80ms;
-}
-.stagger-children > *:nth-child(4) {
-  animation-delay: 120ms;
-}
-.stagger-children > *:nth-child(5) {
-  animation-delay: 160ms;
-}
-.stagger-children > *:nth-child(6) {
-  animation-delay: 200ms;
+
+.animate-slide-in-left {
+  animation: deplo-slide-in-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-page-in,
   .animate-fade-in,
-  .stagger-children > * {
+  .animate-slide-in-right,
+  .animate-slide-in-left {
     animation: none;
   }
   *,

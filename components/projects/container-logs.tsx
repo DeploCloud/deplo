@@ -23,11 +23,7 @@ import { DownloadButton } from "@/components/shared/download-button";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { stripAnsi } from "@/lib/ansi";
 import { detectLogLevel } from "@/lib/log-level-detect";
-import {
-  LEVEL_BADGE_CLASS,
-  LEVEL_LABEL,
-  LEVEL_TEXT_CLASS,
-} from "@/lib/log-levels";
+import { LEVEL_BADGE_CLASS, LEVEL_LABEL } from "@/lib/log-levels";
 import { cn } from "@/lib/utils";
 
 type Status = "connecting" | "live" | "ended" | "error";
@@ -295,12 +291,8 @@ export function ContainerLogs({
             >
               {LEVEL_LABEL[l.level] ?? l.level}
             </span>
-            <span
-              className={cn(
-                "min-w-0 flex-1 whitespace-pre-wrap break-words",
-                LEVEL_TEXT_CLASS[l.level] ?? "text-zinc-300",
-              )}
-            >
+            {/* Message text stays neutral — the level pill carries the colour. */}
+            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-zinc-300">
               {l.text}
             </span>
           </div>

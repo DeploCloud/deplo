@@ -2,10 +2,11 @@ import Link from "next/link";
 import { Plus, Rocket, Bell, Eye, ArrowUpRight } from "lucide-react";
 import { listProjects } from "@/lib/data/projects";
 import { listActivity } from "@/lib/data/activity";
+import { isInstanceAdmin, hasCapability } from "@/lib/membership";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ProjectCard } from "@/components/projects/project-card";
+import { ProjectsGrid } from "@/components/projects/projects-grid";
 import { ProjectSearch } from "@/components/projects/project-search";
 import { timeAgo } from "@/lib/utils";
 
@@ -15,9 +16,11 @@ export default async function OverviewPage(props: PageProps<"/">) {
   const viewRaw = Array.isArray(viewParam) ? viewParam[0] : viewParam;
   const view = viewRaw === "list" ? "list" : "grid";
 
-  const [projects, activity] = await Promise.all([
+  const [projects, activity, canManageOrder] = await Promise.all([
     listProjects(),
     listActivity(6),
+    (async () =>
+      (await isInstanceAdmin()) || (await hasCapability("manage_team")))(),
   ]);
 
   const filtered = query
@@ -28,6 +31,11 @@ export default async function OverviewPage(props: PageProps<"/">) {
           p.productionUrl?.toLowerCase().includes(query)
       )
     : projects;
+
+  // Drag-to-reorder writes a team-wide order, so it is gated on permission; it is
+  // also disabled mid-search (reordering a filtered list would persist a partial
+  // order). When off, the grid renders exactly as before.
+  const canReorder = canManageOrder && !query;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
@@ -120,17 +128,12 @@ export default async function OverviewPage(props: PageProps<"/">) {
             />
           )
         ) : (
-          <div
-            className={
-              view === "list"
-                ? "flex flex-col gap-3"
-                : "grid gap-4 sm:grid-cols-2"
-            }
-          >
-            {filtered.map((p) => (
-              <ProjectCard key={p.id} project={p} view={view} />
-            ))}
-          </div>
+          <ProjectsGrid
+            key={filtered.map((p) => p.id).join(",")}
+            projects={filtered}
+            view={view}
+            canReorder={canReorder}
+          />
         )}
       </div>
     </div>

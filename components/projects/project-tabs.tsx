@@ -1,9 +1,14 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useLiveRunning } from "@/components/projects/project-live-status";
+import {
+  useSlidingUnderline,
+  SlidingUnderline,
+} from "@/components/ui/sliding-underline";
 
 export function ProjectTabs({
   slug,
@@ -103,22 +108,42 @@ export function ProjectTabs({
     },
   ];
 
+  // Single underline that slides to the active tab (instead of each tab toggling
+  // its own static underline). Re-measures when the active tab changes or the tab
+  // set changes (Console/Logs/Dev/Files appear and disappear).
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const tabRefs = React.useRef(new Map<string, HTMLAnchorElement | null>());
+  const activeLabel = tabs.find((t) => t.active)?.label ?? null;
+  const signature = tabs.map((t) => t.label).join("|");
+  const rect = useSlidingUnderline(
+    containerRef,
+    () => (activeLabel ? (tabRefs.current.get(activeLabel) ?? null) : null),
+    [activeLabel, signature],
+  );
+
   return (
-    <div className="flex h-12 items-center gap-1 border-b border-border">
+    <div
+      ref={containerRef}
+      className="relative flex h-12 items-center gap-1 border-b border-border"
+    >
       {tabs.map((t) => (
         <Link
           key={t.label}
+          ref={(el) => {
+            tabRefs.current.set(t.label, el);
+          }}
           href={t.href}
           className={cn(
-            "relative flex h-12 cursor-pointer items-center px-3 -mb-px text-sm font-medium transition-colors after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-full",
+            "flex h-12 cursor-pointer items-center px-3 text-sm font-medium transition-colors",
             t.active
-              ? "text-foreground after:bg-foreground"
-              : "text-muted-foreground hover:text-foreground after:bg-transparent",
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
           {t.label}
         </Link>
       ))}
+      <SlidingUnderline rect={rect} />
     </div>
   );
 }

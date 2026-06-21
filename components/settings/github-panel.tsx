@@ -44,7 +44,7 @@ export function GithubPanel({
     if (!gitStatus) return;
     const fb = GIT_FEEDBACK[gitStatus];
     if (fb) (fb.ok ? toast.success : toast.error)(fb.msg);
-    router.replace("/settings?tab=git", { scroll: false });
+    router.replace("/settings/git", { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

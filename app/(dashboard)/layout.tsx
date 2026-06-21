@@ -1,7 +1,6 @@
 import { requireUser } from "@/lib/auth";
-import { read } from "@/lib/store";
 import { getTeam, listMyTeams } from "@/lib/data/teams";
-import { currentCapabilities } from "@/lib/membership";
+import { currentCapabilities, isInstanceAdmin } from "@/lib/membership";
 import { AppShell } from "@/components/layout/app-shell";
 
 export default async function DashboardLayout({
@@ -12,16 +11,18 @@ export default async function DashboardLayout({
   const user = await requireUser();
   const team = await getTeam();
   const teams = await listMyTeams();
-  const capabilities = await currentCapabilities();
-  const server = read().servers[0] ?? null;
+  const [capabilities, isAdmin] = await Promise.all([
+    currentCapabilities(),
+    isInstanceAdmin(),
+  ]);
 
   return (
     <AppShell
       user={user}
       team={team}
       teams={teams}
-      server={server}
       capabilities={capabilities}
+      isAdmin={isAdmin}
     >
       {children}
     </AppShell>

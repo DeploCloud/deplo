@@ -19,6 +19,7 @@ import {
   startProject,
   rebuildProject,
   deleteProject,
+  reorderProjects,
   setProjectVolumes,
   findProjectSummaryBySlugForTeam,
   summarizeForTeam,
@@ -357,6 +358,18 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { id, name }) => {
       await renameProject(id, name);
       return reloadProject(id);
+    },
+  }),
+  reorderProjects: t.field({
+    type: "Boolean",
+    // Team-wide setting: an instance admin OR a member with manage_team. The
+    // data layer re-checks the same gate (defense-in-depth).
+    authScopes: { $any: { instanceAdmin: true, capability: "manage_team" } },
+    description: "Set the team-wide display order of projects in Overview.",
+    args: { projectIds: t.arg.idList({ required: true }) },
+    resolve: async (_r, { projectIds }) => {
+      await reorderProjects(projectIds.map(String));
+      return true;
     },
   }),
   updateProjectBuild: t.field({
