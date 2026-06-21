@@ -689,9 +689,10 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
         `agent speaks contract ${resp.contractVersion}, control plane speaks V1`,
       );
     }
-    // Heartbeat cache (P5): best-effort, behind the live-read.
+    // Heartbeat cache (P5): best-effort, behind the live-read. Also refresh the
+    // server's traefikEnabled from this live Hello so the badge reflects reality.
     try {
-      markServerSeen(serverId, resp.agentVersion);
+      markServerSeen(serverId, resp.agentVersion, resp.traefikRunning);
     } catch {
       /* localhost or unknown id: no row to touch */
     }

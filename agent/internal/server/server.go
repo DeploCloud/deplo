@@ -24,8 +24,8 @@ import (
 // what the agent supports here through the agent path, keeping a local fallback
 // for everything else (Part A: the Dockerfile build + single-image compose-up).
 var Capabilities = []string{
-	"deploy.dockerfile",  // builds the Dockerfile method
-	"deploy.image",       // runs a prebuilt image as-is
+	"deploy.dockerfile",     // builds the Dockerfile method
+	"deploy.image",          // runs a prebuilt image as-is
 	"deploy.compose.single", // single-image compose-up
 	"metrics",
 }
@@ -79,6 +79,9 @@ func (s *Service) Hello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloRes
 		DockerAvailable: available,
 		DockerVersion:   version,
 		Capabilities:    Capabilities,
+		// Read live so the control plane can set the server's traefikEnabled from
+		// each Hello rather than a stored value that goes stale.
+		TraefikRunning: available && dockercli.TraefikRunning(ctx),
 	}, nil
 }
 

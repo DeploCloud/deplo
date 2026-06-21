@@ -152,6 +152,13 @@ message HelloResponse {
   // single-image compose-up path). Absent capability => control plane keeps the
   // local fallback path. Forward-compatible: new capabilities are new entries.
   repeated string capabilities = 5;
+  // Whether a Traefik reverse proxy is running on this host (a container on the
+  // shared `deplo` network that reads the deploy labels and routes traffic).
+  // Read LIVE by the agent, so the control plane can set the server's
+  // `traefikEnabled` from each Hello rather than a stored value that goes stale —
+  // the same read-live-not-stored model as health. Without Traefik, deployed
+  // apps run on the host but are not reachable on their domains.
+  bool traefik_running = 6;
 }
 
 // ---------------------------------------------------------------------------

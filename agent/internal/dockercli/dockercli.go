@@ -169,6 +169,30 @@ func RunningContainers(ctx context.Context) int {
 	return n
 }
 
+// TraefikRunning reports whether a Traefik reverse proxy container is running on
+// this host. Traefik is what reads the `traefik.*` labels Deplo's deploys emit
+// and routes traffic to them; without it a deployed app runs but is unreachable
+// on its domain. Detected by image name (traefik*) among running containers — the
+// installer names its instance `deplo-traefik`, but an operator's own Traefik
+// counts too (the routing works either way). Best-effort: false on any failure.
+func TraefikRunning(ctx context.Context) bool {
+	res, err := Run(ctx, 5*time.Second, "ps", "--filter", "status=running",
+		"--format", "{{.Image}}\t{{.Names}}")
+	if err != nil || res.Code != 0 {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(res.Stdout), "\n") {
+		// Match the image repo (traefik, traefik:v3.7, library/traefik, …) or a
+		// container named *traefik* — covers the deplo-traefik instance and a
+		// bring-your-own proxy alike.
+		low := strings.ToLower(line)
+		if strings.Contains(low, "traefik") {
+			return true
+		}
+	}
+	return false
+}
+
 // IsRunning reports whether a named container is in the running state. Used by
 // the deploy readiness wait and Inspect. Never errors (false on any failure).
 func IsRunning(ctx context.Context, name string) bool {

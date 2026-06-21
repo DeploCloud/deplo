@@ -267,13 +267,21 @@ export async function completeBootstrap(
 
 /**
  * Mark a server seen now (P5 heartbeat cache). A best-effort write behind the
- * live-read health check — never the source of truth for status.
+ * live-read health check — never the source of truth for status. Also refreshes
+ * `traefikEnabled` from the live Hello (whether a Traefik proxy is running on the
+ * host) — read-live-not-stored, so the badge self-corrects if Traefik later stops
+ * or is added, instead of the hardcoded false a remote row is born with.
  */
-export function markServerSeen(id: string, agentVersion?: string): void {
+export function markServerSeen(
+  id: string,
+  agentVersion?: string,
+  traefikRunning?: boolean,
+): void {
   mutate((d) => {
     const s = d.servers.find((x) => x.id === id);
     if (!s) return;
     s.lastSeenAt = nowIso();
     if (agentVersion && s.agent) s.agent.version = agentVersion;
+    if (typeof traefikRunning === "boolean") s.traefikEnabled = traefikRunning;
   });
 }

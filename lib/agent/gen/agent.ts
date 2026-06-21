@@ -252,6 +252,15 @@ export interface HelloResponse {
    * local fallback path. Forward-compatible: new capabilities are new entries.
    */
   capabilities: string[];
+  /**
+   * Whether a Traefik reverse proxy is running on this host (a container on the
+   * shared `deplo` network that reads the deploy labels and routes traffic).
+   * Read LIVE by the agent, so the control plane can set the server's
+   * `traefikEnabled` from each Hello rather than a stored value that goes stale —
+   * the same read-live-not-stored model as health. Without Traefik, deployed
+   * apps run on the host but are not reachable on their domains.
+   */
+  traefikRunning: boolean;
 }
 
 export interface MetricsRequest {
@@ -808,7 +817,14 @@ export const HelloRequest: MessageFns<HelloRequest> = {
 };
 
 function createBaseHelloResponse(): HelloResponse {
-  return { contractVersion: 0, agentVersion: "", dockerAvailable: false, dockerVersion: "", capabilities: [] };
+  return {
+    contractVersion: 0,
+    agentVersion: "",
+    dockerAvailable: false,
+    dockerVersion: "",
+    capabilities: [],
+    traefikRunning: false,
+  };
 }
 
 export const HelloResponse: MessageFns<HelloResponse> = {
@@ -827,6 +843,9 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     }
     for (const v of message.capabilities) {
       writer.uint32(42).string(v!);
+    }
+    if (message.traefikRunning !== false) {
+      writer.uint32(48).bool(message.traefikRunning);
     }
     return writer;
   },
@@ -878,6 +897,14 @@ export const HelloResponse: MessageFns<HelloResponse> = {
           message.capabilities.push(reader.string());
           continue;
         }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.traefikRunning = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -912,6 +939,11 @@ export const HelloResponse: MessageFns<HelloResponse> = {
       capabilities: globalThis.Array.isArray(object?.capabilities)
         ? object.capabilities.map((e: any) => globalThis.String(e))
         : [],
+      traefikRunning: isSet(object.traefikRunning)
+        ? globalThis.Boolean(object.traefikRunning)
+        : isSet(object.traefik_running)
+        ? globalThis.Boolean(object.traefik_running)
+        : false,
     };
   },
 
@@ -932,6 +964,9 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     if (message.capabilities?.length) {
       obj.capabilities = message.capabilities;
     }
+    if (message.traefikRunning !== false) {
+      obj.traefikRunning = message.traefikRunning;
+    }
     return obj;
   },
 
@@ -945,6 +980,7 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     message.dockerAvailable = object.dockerAvailable ?? false;
     message.dockerVersion = object.dockerVersion ?? "";
     message.capabilities = object.capabilities?.map((e) => e) || [];
+    message.traefikRunning = object.traefikRunning ?? false;
     return message;
   },
 };

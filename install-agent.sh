@@ -95,9 +95,86 @@ install -m 0755 "$TMP" "$AGENT_BIN"
 rm -f "$TMP"
 ok "Agent installed at $AGENT_BIN (checksum verified)"
 
-# 3. Data dir + systemd unit ------------------------------------------------
+# 3. Data dir --------------------------------------------------------------
 mkdir -p "$AGENT_DATA"
 chmod 700 "$AGENT_DATA"
+
+# 3b. Traefik reverse proxy (idempotent) ------------------------------------
+# Deplo's deploys emit `traefik.*` labels and join the shared `deplo` network, but
+# something must READ those labels and route traffic — that is Traefik. The master
+# host runs it; a remote needs its own. Install it here, but never fight for the
+# box: skip if a Traefik is already running (idempotent re-runs, or the operator's
+# own proxy), and only claim :80/:443 if they are free — otherwise warn and let
+# the operator wire their existing proxy to the `deplo` network.
+TRAEFIK_DIR="$AGENT_DATA/traefik"
+if docker ps --filter status=running --format '{{.Image}} {{.Names}}' 2>/dev/null \
+     | grep -qi traefik; then
+  ok "Traefik already running — leaving it untouched"
+else
+  # Is anything already bound to 80 or 443? (ss if present, else netstat, else
+  # a best-effort docker port check.) If so, don't try to bind them.
+  PORTS_FREE=true
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|[.:])(80|443)$' && PORTS_FREE=false
+  elif command -v netstat >/dev/null 2>&1; then
+    netstat -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|[.:])(80|443)$' && PORTS_FREE=false
+  fi
+  if [ "$PORTS_FREE" != true ]; then
+    err "Ports 80/443 are already in use on this host — NOT installing Traefik."
+    err "Routing for apps deployed here will not work until a reverse proxy on the"
+    err "shared 'deplo' docker network handles their traefik.* labels. Point your"
+    err "existing proxy at the 'deplo' network, or free 80/443 and re-run."
+  else
+    step "Installing Traefik reverse proxy..."
+    docker network create deplo >/dev/null 2>&1 || true
+    mkdir -p "$TRAEFIK_DIR/acme"
+    touch "$TRAEFIK_DIR/acme/acme.json"
+    chmod 600 "$TRAEFIK_DIR/acme/acme.json"
+    # traefik:v3.7 (NOT v3.3): Docker Engine 29 raised the min API to 1.40, which
+    # Traefik <=3.3 can't negotiate, breaking the docker provider on every poll.
+    # ACME is HTTP-01, same as the master — it issues certs for apps deployed here
+    # whose domains resolve (DNS) to this host. The acme dir persists certs.
+    cat > "$TRAEFIK_DIR/docker-compose.yml" <<YAML
+services:
+  traefik:
+    image: traefik:v3.7
+    container_name: deplo-traefik
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=deplo
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@deluxhost.net}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - $TRAEFIK_DIR/acme:/acme
+    networks:
+      - deplo
+networks:
+  deplo:
+    external: true
+YAML
+    if docker compose -f "$TRAEFIK_DIR/docker-compose.yml" up -d 2>/dev/null \
+       || docker-compose -f "$TRAEFIK_DIR/docker-compose.yml" up -d 2>/dev/null; then
+      ok "Traefik running (deplo-traefik)"
+    else
+      err "Traefik failed to start — apps deployed here won't be routed until it is."
+      err "Inspect: docker compose -f $TRAEFIK_DIR/docker-compose.yml logs"
+    fi
+  fi
+fi
+
+# 4. systemd unit -----------------------------------------------------------
 
 # The agent runs in bootstrap mode: it calls home with the token, gets its cert
 # signed, persists the materials under $AGENT_DATA, and then serves gRPC. On a
