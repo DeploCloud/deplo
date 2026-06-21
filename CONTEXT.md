@@ -128,13 +128,18 @@ crosses the wire per-deploy but the agent **never holds the encryption key**. An
 by **call-home bootstrap** — the control plane never SSHes in: the operator runs a paste-on-the-
 server script that installs it and **calls home** with a **bootstrap token**, then the control
 plane (which is the agents' private **CA**, derived from `DEPLO_SECRET`) signs its mTLS cert.
-The agent pins the control plane by cert **fingerprint** (so bare-IP, no-domain installs work).
+The agent pins the control plane by cert **fingerprint** over HTTPS, or — on a bare-IP, no-TLS
+install — by an **HMAC over the bootstrap response keyed by the one-time token** (so both worlds
+work). Because a remote agent's key must never leave the box, the agent **generates its own key
+and sends a CSR**; the control plane CA **signs the CSR** (it never sees the agent's private key).
 Health is **read live** (never a stored value that goes stale). See
-[ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md). *(**Part A built**: the
-localhost server's **deploy execution** runs through the agent — Hello/Metrics/Deploy over mTLS
-for the Dockerfile-build + single-image compose-up path, with a clean fallback to the in-process
-direct-Docker path for the heavy builders, compose stacks, or an unavailable agent. Logs/console/
-metrics/Files and remote provisioning are later parts. Agent code in [`agent/`](../agent/),
+[ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md). *(**Parts A + B built**:
+the localhost server's deploy runs through the agent (Part A), and a **remote** agent is real
+(Part B) — call-home provisioning, remote routing with fingerprint-pinned mTLS, the **git source
+the agent clones itself**, and **reconnection/replay** so a control-plane restart mid-build does
+not lose the deploy. Heavy builders, multi-service compose stacks, and an unavailable agent still
+fall back to the local path on localhost — and **fail clearly on a remote** (no silent
+deploy-to-localhost). Logs/console/metrics/Files are later parts. Agent code in [`agent/`](../agent/),
 contract in [`proto/agent.proto`](../proto/agent.proto), control-plane side in
 [`lib/agent/`](../lib/agent/) + [`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts).)*
 _Avoid_: agent (ambiguous — say "server agent"), node, worker, runner (CI term), daemon

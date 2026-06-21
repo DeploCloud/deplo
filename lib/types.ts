@@ -176,6 +176,48 @@ export interface TeamSummary extends Team {
 
 export type ServerStatus = "online" | "offline" | "provisioning" | "error";
 
+/**
+ * The agent trust + reachability material for a remote server (PLAN Part B). A
+ * `localhost` server has none of this — its agent is the in-process supervised
+ * one (Part A). A remote server gains it through the call-home bootstrap: the
+ * agent generates its own key, the control plane signs its CSR, and the cert's
+ * fingerprint is pinned here so the control plane can authenticate that exact
+ * agent (and revoke it on removal, P6). Cert material is the pinning identity,
+ * not a secret (it is a public certificate), so it is stored as-is; the
+ * pre-bootstrap token, which IS secret-shaped, is stored hashed in
+ * {@link ServerBootstrap}.
+ */
+export interface ServerAgent {
+  /** The TCP port the agent's gRPC listener is on (default 9443). */
+  port: number;
+  /**
+   * sha256(DER) of the agent's signed server cert, lowercase hex — the pinning
+   * identity (P3/P6). The control plane trusts an agent iff the cert it presents
+   * on dial matches this. Cleared on removal to revoke trust.
+   */
+  certFingerprint: string;
+  /** The agent's signed server certificate, PEM (public; for diagnostics/renewal). */
+  certPem: string;
+  /** The agent binary version reported at the last successful Hello (diagnostics). */
+  version: string;
+}
+
+/**
+ * The one-time bootstrap secret for a provisioning server (PLAN P2). Mirrors the
+ * registration-link pattern ([[RegistrationLink]]) — only the token's sha256 is
+ * stored, never the raw token — but ADDS a short expiry (registration links do
+ * not expire; a provisioning token is more dangerous, so it must). Consumed
+ * single-use when the agent calls home.
+ */
+export interface ServerBootstrap {
+  /** sha256 of the raw one-time token; the raw token lives only in the install command. */
+  tokenHash: string;
+  /** When the token expires (ISO). Past it, call-home is refused. */
+  expiresAt: string;
+  /** Set once the agent has called home and been provisioned. */
+  usedAt: string | null;
+}
+
 export interface Server {
   id: ID;
   name: string;
@@ -194,6 +236,22 @@ export interface Server {
   memoryUsage: number;
   diskUsage: number;
   createdAt: string;
+  /**
+   * Agent trust material — present once a remote server is provisioned (Part B).
+   * Absent on `localhost` (its agent is supervised in-process) and on a remote
+   * still in `provisioning` (before its agent has called home).
+   */
+  agent?: ServerAgent;
+  /**
+   * The pending call-home bootstrap secret — present only while a remote server
+   * is `provisioning`, cleared once its agent has been provisioned (Part B, P2).
+   */
+  bootstrap?: ServerBootstrap;
+  /**
+   * Last time the agent answered (ISO) — fed by the heartbeat (P5). A CACHE
+   * behind the live-read health check, never the source of truth.
+   */
+  lastSeenAt?: string;
 }
 
 export type FrameworkId =

@@ -7,12 +7,21 @@ syntax = "proto3";
 // it over this typed RPC. See docs/research/server-agent/PLAN.md and
 // docs/adr/0006-server-agent-is-a-per-host-go-binary.md.
 //
-// PART A SUBSET. This file is the versioned boundary for the whole A-D arc, but
-// only Hello / Metrics / Deploy / Inspect / control verbs are implemented in
-// Part A (localhost agent, deploy-only). FollowLogs / Attach / file RPCs land in
-// Part C; the source descriptor's git/image cases land in Part B. Messages are
-// designed forward-compatible so adding those is new fields/enum cases, never a
-// redesign (D6: "image from registry" is one more SourceKind, not a rewrite).
+// PART A SUBSET (extended in PART B). This file is the versioned boundary for
+// the whole A-D arc. Part A implemented Hello / Metrics / Deploy (UPLOAD+IMAGE) /
+// Inspect / control verbs (localhost agent, deploy-only). Part B adds: the GIT
+// source case (the agent clones with a short-lived token, D3), and ReattachDeploy
+// (reconnect to an in-flight deploy and replay missed events, D5). FollowLogs /
+// Attach / file RPCs land in Part C. Messages are designed forward-compatible so
+// adding those is new fields/enum cases, never a redesign (D6: "image from
+// registry" is one more SourceKind, not a rewrite).
+//
+// The agent's CALL-HOME BOOTSTRAP (PLAN P1-P4) is deliberately NOT a method on
+// this service: it travels agent -> control plane (the opposite direction of
+// every RPC here, which is control plane -> agent), is a one-shot HTTP POST over
+// a fingerprint-pinned TLS channel, and happens BEFORE the mTLS identity this
+// service requires even exists. It lives at the control plane's /api/agent/
+// bootstrap endpoint; see lib/agent/bootstrap.ts and app/api/agent/bootstrap.
 package deplo.agent.v1;
 
 option go_package = "github.com/idradev/deplo/agent/gen;agentpb";
@@ -39,6 +48,16 @@ service Agent {
   // connection, into the control plane's existing per-deployment log + status
   // writes (which republish over the GraphQL SSE subscriptions unchanged).
   rpc Deploy(DeployRequest) returns (stream DeployEvent);
+
+  // Reconnect to an in-flight (or just-finished) deploy and replay the events
+  // the control plane missed (PLAN D5, Part-B half). Remote builds are long and
+  // costly to lose, so the agent keeps a bounded record of each deploy's events
+  // keyed by deploy_id; if the control plane drops mid-build it dials back with
+  // ReattachDeploy(deploy_id, from_seq) and the agent replays from the cursor,
+  // then continues streaming live events as the build proceeds. Returns
+  // NOT_FOUND if the agent has no record of that deploy (it never ran there, or
+  // its record was evicted) — the control plane then reconciles it to error.
+  rpc ReattachDeploy(ReattachRequest) returns (stream DeployEvent);
 
   // Lifecycle control over an already-deployed stack. These replace the direct
   // stop/start/destroy docker calls in lib/deploy/build.ts for agent-owned
@@ -111,11 +130,12 @@ message HostMetrics {
 // Deploy
 // ---------------------------------------------------------------------------
 
-// Where the agent gets the bytes it builds/runs. Part A implements UPLOAD
+// Where the agent gets the bytes it builds/runs. Part A implemented UPLOAD
 // (archive streamed inside the Deploy RPC) and IMAGE (an already-built image ref
-// the agent runs as-is). GIT (agent clones with a short-lived token) lands in
-// Part B (D3). New sources (e.g. registry pull) are new enum cases — not a
-// redesign (D6).
+// the agent runs as-is). Part B implements GIT (the agent clones with a
+// short-lived token, D3) so a remote build never ships the whole repo over the
+// wire — only the clone URL + branch + ephemeral token. New sources (e.g.
+// registry pull) are new enum cases — not a redesign (D6).
 enum SourceKind {
   SOURCE_KIND_UNSPECIFIED = 0;
   // The control plane streams a tar archive of the materialised build context
@@ -137,6 +157,30 @@ enum BuildKind {
   BUILD_KIND_UNSPECIFIED = 0;
   BUILD_KIND_NONE = 1;        // SOURCE_KIND_IMAGE: run as-is, no build
   BUILD_KIND_DOCKERFILE = 2;  // build from a Dockerfile in the context
+}
+
+// A git source the agent clones itself (SOURCE_KIND_GIT, D3). The control plane
+// resolves the clone URL and mints a SHORT-LIVED token (e.g. a GitHub App
+// installation token, ~1h) and sends both inside the Deploy request over mTLS;
+// the agent clones, resolves the commit sha (reported back in DeployResult), and
+// builds locally. The token is the only secret here and it is ephemeral —
+// nothing long-lived crosses the wire, and the agent never persists it.
+message GitSource {
+  // The clone URL. For a private GitHub repo the control plane has already
+  // embedded the installation token (https://x-access-token:<tok>@github.com/...);
+  // `token` below is then empty. For other providers the agent injects `token`
+  // into the URL itself. Either way the agent treats the resulting URL as opaque.
+  string url = 1;
+  // The branch (or ref) to check out. Empty => the remote's default branch.
+  string branch = 2;
+  // An optional short-lived credential the agent injects as the URL's
+  // x-access-token (when `url` does not already carry one). Empty for public
+  // repos or when the token is already baked into `url`. Never logged.
+  string token = 3;
+  // Sub-directory within the repo to build from (the project's rootDirectory),
+  // relative to the clone root. Empty => the repo root. Re-validated against the
+  // clone root inside the agent (anti-escape, like the Dockerfile paths).
+  string subdir = 4;
 }
 
 message DockerfileBuild {
@@ -179,6 +223,11 @@ message DeployRequest {
   // Present iff build_kind == DOCKERFILE.
   DockerfileBuild dockerfile = 7;
 
+  // Present iff source_kind == GIT (Part B). The agent clones this itself; the
+  // control plane does not tar a context for git sources targeting a remote
+  // agent — only the descriptor crosses the wire (D3).
+  GitSource git = 13;
+
   // The fully-rendered compose YAML (D2): renderCompose stays the single TS
   // source of truth; the agent receives opaque YAML and never re-implements
   // routing/label logic in Go. The agent writes it to <stack_dir>/<slug>.yml and
@@ -217,6 +266,24 @@ message DeployEvent {
     PhaseChange phase = 2;
     DeployResult result = 3;
   }
+  // Monotonic per-deploy sequence number (1-based), the REPLAY CURSOR for
+  // ReattachDeploy (D5). The agent stamps every event it emits and keeps a
+  // bounded buffer of them keyed by deploy_id; a reconnecting control plane
+  // asks for everything after the last seq it saw. 0 on a fresh Deploy stream's
+  // events is also fine — the control plane only needs ordering on reattach.
+  uint64 seq = 4;
+}
+
+// Reconnect to an in-flight or recently-finished deploy and replay from a
+// cursor (D5). The agent replays buffered events with seq > from_seq, then (if
+// the deploy is still running) continues streaming live events; if it already
+// finished, it replays through the terminal DeployResult and ends the stream.
+message ReattachRequest {
+  // The deploy to reattach to (the same stable id from DeployRequest.deploy_id).
+  string deploy_id = 1;
+  // Replay every buffered event with seq strictly greater than this. 0 => from
+  // the very first event the agent still has buffered.
+  uint64 from_seq = 2;
 }
 
 message LogLine {
@@ -243,8 +310,10 @@ message DeployResult {
   bool ready = 1;
   // A human-readable reason on failure (empty on success).
   string error = 2;
-  // The git commit sha the agent resolved, when it materialised a git source
-  // (Part B). Empty in Part A (the control plane resolves it before sending).
+  // The git commit sha the agent resolved when it materialised a GIT source
+  // (Part B): the control plane writes it back to the Deployment row. Empty for
+  // UPLOAD/IMAGE sources (the control plane already knows the sha, or there is
+  // none).
   string commit_sha = 3;
 }
 

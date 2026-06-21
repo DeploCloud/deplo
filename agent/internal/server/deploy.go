@@ -66,6 +66,10 @@ func (s *Service) runDeploy(ctx context.Context, req *pb.DeployRequest, e *emitt
 	}
 
 	imageRef := req.GetImageRef()
+	// commitSha is reported in the terminal result for a GIT source (the agent
+	// resolves it after cloning); empty for UPLOAD/IMAGE (the control plane
+	// already knows the sha, or there is none).
+	commitSha := ""
 
 	// --- Phase: prepare the image (build from context, or pull/run as-is). ---
 	e.phase(pb.DeployPhase_DEPLOY_PHASE_PREPARING)
@@ -94,9 +98,21 @@ func (s *Service) runDeploy(ctx context.Context, req *pb.DeployRequest, e *emitt
 			return // buildImage already emitted the failure result
 		}
 	case pb.SourceKind_SOURCE_KIND_GIT:
-		// Part B: the agent clones with a short-lived token. Not in Part A.
-		e.result(false, "git source is not supported by this agent yet (Part B)", "")
-		return
+		// Part B (D3): the agent clones the repo ITSELF with a short-lived token,
+		// resolves the commit sha, then builds exactly like the UPLOAD path.
+		buildDir, sha, cleanup, err := s.materializeGit(ctx, req.GetGit(), slug, e)
+		if err != nil {
+			e.result(false, "git clone: "+err.Error(), "")
+			return
+		}
+		defer cleanup()
+		commitSha = sha
+		if sha != "" {
+			e.log("info", "Checked out "+shortSha(sha))
+		}
+		if !s.buildImage(ctx, req, buildDir, e) {
+			return // buildImage already emitted the failure result
+		}
 	default:
 		e.result(false, "unknown source kind", "")
 		return
@@ -136,10 +152,17 @@ func (s *Service) runDeploy(ctx context.Context, req *pb.DeployRequest, e *emitt
 		timeout = 60 * time.Second
 	}
 	if waitRunning(ctx, name, timeout) {
-		e.result(true, "", "")
+		e.result(true, "", commitSha)
 		return
 	}
-	e.result(false, "Container did not reach a running state", "")
+	e.result(false, "Container did not reach a running state", commitSha)
+}
+
+func shortSha(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
 }
 
 // buildImage builds req.image_ref from a Dockerfile in buildDir. Returns false
