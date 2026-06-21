@@ -591,3 +591,46 @@ test("per-route mode applies PathPrefix + stripprefix too (compose path)", () =>
   assert.ok(labels.includes("traefik.http.routers.deplo-svc-3000.rule=Host(`app.com`)"));
   assert.ok(!labels.some((l) => l.startsWith("traefik.http.routers.deplo-svc-3000.priority")));
 });
+
+// --- Single-image backfill invariant: storing port = build.port explicitly must
+// render byte-identically to leaving it null. This is what lets the data layer
+// always write a concrete port onto single-image domains (so none is portless)
+// without rerouting / restarting any existing single-image container. ---
+
+test("single-image: explicit port == defaultPort renders byte-identically to null", () => {
+  const nullPort = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [{ name: "app.example.com", port: null }],
+    defaultPort: 3000,
+    certResolver: CR,
+  });
+  const explicitPort = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [{ name: "app.example.com", port: 3000 }], // == defaultPort
+    certResolver: CR,
+    defaultPort: 3000,
+  });
+  assert.deepEqual(explicitPort, nullPort);
+});
+
+test("single-image: mixed null + explicit-default ports still fold into ONE router", () => {
+  const labels = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [
+      { name: "a.example.com", port: null },
+      { name: "b.example.com", port: 3000 }, // explicit but == defaultPort
+    ],
+    defaultPort: 3000,
+    certResolver: CR,
+  });
+  // One router, one OR-rule, single loadbalancer port — no __3000 split.
+  assert.ok(
+    labels.includes(
+      "traefik.http.routers.deplo-app.rule=Host(`a.example.com`) || Host(`b.example.com`)",
+    ),
+  );
+  assert.ok(
+    labels.includes("traefik.http.services.deplo-app.loadbalancer.server.port=3000"),
+  );
+  assert.ok(!labels.some((l) => l.includes("deplo-app__3000")));
+});

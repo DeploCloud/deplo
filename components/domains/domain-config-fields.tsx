@@ -58,18 +58,31 @@ export interface DomainConfigState {
 
 /** Seed config form state from a domain (or defaults for a brand-new domain).
  * `manualEntrypoint` seeds on whether the domain stored an explicit entrypoint
- * — an absent entrypoint means "auto" (the data layer derived it). */
-export function initialDomainConfig(domain?: {
-  port?: number | null;
-  entrypoint?: DomainEntrypoint;
-  certProvider?: CertProvider;
-  middlewares?: string[];
-  pathPrefix?: string;
-  stripPrefix?: boolean;
-  service?: string;
-}): DomainConfigState {
+ * — an absent entrypoint means "auto" (the data layer derived it).
+ *
+ * `defaultPort` pre-fills the port field for a BRAND-NEW domain (the Add dialog,
+ * where `domain` is undefined) so single-image domains are created with an
+ * explicit port rather than blank — every domain now carries a concrete port.
+ * Ignored when editing an existing domain (its stored port wins). */
+export function initialDomainConfig(
+  domain?: {
+    port?: number | null;
+    entrypoint?: DomainEntrypoint;
+    certProvider?: CertProvider;
+    middlewares?: string[];
+    pathPrefix?: string;
+    stripPrefix?: boolean;
+    service?: string;
+  },
+  defaultPort?: number,
+): DomainConfigState {
   return {
-    port: domain?.port != null ? String(domain.port) : "",
+    port:
+      domain?.port != null
+        ? String(domain.port)
+        : defaultPort != null
+          ? String(defaultPort)
+          : "",
     manualEntrypoint: domain?.entrypoint != null,
     entrypoint: domain?.entrypoint ?? "websecure",
     certProvider: domain?.certProvider ?? "letsencrypt",
@@ -206,14 +219,7 @@ export function DomainConfigFields({
       )}
 
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-port`}>
-          Service port{" "}
-          {!isCompose && (
-            <span className="text-xs font-normal text-muted-foreground">
-              (optional)
-            </span>
-          )}
-        </Label>
+        <Label htmlFor={`${idPrefix}-port`}>Service port</Label>
         <Input
           id={`${idPrefix}-port`}
           type="number"
@@ -221,13 +227,13 @@ export function DomainConfigFields({
           max={65535}
           value={state.port}
           onChange={(e) => set("port", e.target.value)}
-          placeholder={isCompose ? "e.g. 8080" : "Default port"}
+          placeholder="e.g. 8080"
           className="font-mono text-sm"
         />
         <p className="text-xs text-muted-foreground">
           {isCompose
             ? "The container port of the selected service to route to."
-            : "The container port this domain routes to. Leave blank to use the project's default port."}
+            : "The container port this domain routes to. Defaults to the project's port."}
         </p>
       </div>
 

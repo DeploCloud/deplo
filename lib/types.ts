@@ -231,6 +231,17 @@ export type DeploySource =
   | "compose";
 
 /**
+ * The internal `DeploySource` strings are lowercase and hyphenated
+ * ("docker-image"), but the GraphQL `DeploySource` enum exposes uppercase,
+ * underscored value *names* (GITHUB, DOCKER_IMAGE …) — GraphQL enum names can't
+ * contain hyphens. A wire request must carry the enum *name*, so map the
+ * runtime value to its enum name before sending it as a GraphQL variable.
+ */
+export function deploySourceEnumName(source: DeploySource): string {
+  return source.replace(/-/g, "_").toUpperCase();
+}
+
+/**
  * A code archive uploaded from the dashboard, backing an "upload" source. The
  * tarball/zip is written to DATA_DIR/uploads/<projectId>/<id><ext> and built
  * exactly like a git clone (extract → resolve rootDirectory → build method).

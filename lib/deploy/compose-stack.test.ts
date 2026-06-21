@@ -129,3 +129,123 @@ services:
     undefined,
   );
 });
+
+/**
+ * Backfill byte-identity contract (the load-bearing guarantee behind making
+ * auto/extra domains carry an explicit service+port): a stored domainRoute that
+ * merely RESTATES its host's default expose (same service, same port, no path)
+ * must render byte-identically to a stack with no such route — otherwise every
+ * existing compose deploy would re-render with split per-host routers on its
+ * next reroute. Only a route that genuinely diverges becomes a per-host router.
+ */
+const WEB_COMPOSE = `
+services:
+  web:
+    image: nginx
+    ports:
+      - "80:80"
+`;
+
+function buildRaw(compose: string, extra: Partial<ComposeStackInput> = {}): string {
+  return buildComposeStack({
+    compose,
+    name: "deplo-demo",
+    slug: "demo",
+    projectId: "p1",
+    domains: ["demo.1.2.3.4.sslip.io"],
+    expose: { service: "web", port: 80 },
+    ...extra,
+  });
+}
+
+test("a domainRoute restating the default expose renders byte-identically to none", () => {
+  const bare = buildRaw(WEB_COMPOSE);
+  const backfilled = buildRaw(WEB_COMPOSE, {
+    domainRoutes: [
+      {
+        name: "demo.1.2.3.4.sslip.io",
+        service: "web", // == default expose service
+        port: 80, // == default expose port
+        pathPrefix: "",
+        stripPrefix: false,
+      },
+    ],
+  });
+  assert.equal(backfilled, bare);
+});
+
+test("a domainRoute with the default port but no service still renders byte-identically", () => {
+  const bare = buildRaw(WEB_COMPOSE);
+  const backfilled = buildRaw(WEB_COMPOSE, {
+    domainRoutes: [
+      {
+        name: "demo.1.2.3.4.sslip.io",
+        service: null,
+        port: 80, // == default expose port
+        pathPrefix: "",
+        stripPrefix: false,
+      },
+    ],
+  });
+  assert.equal(backfilled, bare);
+});
+
+test("a domainRoute targeting a DIFFERENT service still becomes its own router", () => {
+  const compose = `
+services:
+  web:
+    image: nginx
+    ports:
+      - "80:80"
+  api:
+    image: api
+    ports:
+      - "8080:8080"
+`;
+  const bare = buildRaw(compose);
+  const overridden = buildRaw(compose, {
+    domains: ["demo.1.2.3.4.sslip.io", "api.example.com"],
+    domainRoutes: [
+      {
+        name: "api.example.com",
+        service: "api", // diverges from the default `web` expose
+        port: 8080,
+        pathPrefix: "",
+        stripPrefix: false,
+      },
+    ],
+  });
+  // The divergent route must change the output (a real per-host router on api).
+  assert.notEqual(overridden, bare);
+  assert.match(overridden, /api\.example\.com/);
+});
+
+test("an extra exposes host backfilled with its own service+port stays byte-identical", () => {
+  const compose = `
+services:
+  web:
+    image: nginx
+    ports:
+      - "80:80"
+  ui:
+    image: ui
+    ports:
+      - "3000:3000"
+`;
+  const exposes = [
+    { service: "web", port: 80, host: "demo.1.2.3.4.sslip.io" },
+    { service: "ui", port: 3000, host: "ui.example.com" },
+  ];
+  const domains = ["demo.1.2.3.4.sslip.io", "ui.example.com"];
+  const bare = buildRaw(compose, { domains, exposes });
+  const backfilled = buildRaw(compose, {
+    domains,
+    exposes,
+    domainRoutes: [
+      // Both rows restate their host's pinned exposes entry — pure backfill.
+      { name: "demo.1.2.3.4.sslip.io", service: "web", port: 80, pathPrefix: "", stripPrefix: false },
+      { name: "ui.example.com", service: "ui", port: 3000, pathPrefix: "", stripPrefix: false },
+    ],
+  });
+  assert.equal(backfilled, bare);
+});

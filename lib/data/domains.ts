@@ -16,6 +16,7 @@ import {
   domainTlsConfig,
 } from "../deploy/domains";
 import { usesComposeStack } from "../utils";
+import { portFor } from "../deploy/ports";
 import type { CertProvider, Domain, DomainEntrypoint } from "../types";
 
 const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
@@ -54,7 +55,18 @@ export function autoDomainName(slug: string, ip: string): string {
  */
 export function ensureAutoDomain(
   projectId: string,
-  opts: { slug: string; ip: string; preferred?: string },
+  opts: {
+    slug: string;
+    ip: string;
+    preferred?: string;
+    /** The container port this host routes to: the compose default expose port,
+     * or the single-image build.port. Always written so no auto domain is ever
+     * portless. */
+    defaultPort: number;
+    /** Compose default expose service (null/absent for single-image). Written so
+     * a compose auto domain always names the service it routes to. */
+    defaultService?: string | null;
+  },
 ): string {
   const existing = read().domains.filter((d) => d.projectId === projectId);
   const primary = existing.find((d) => d.primary) ?? existing[0];
@@ -93,6 +105,12 @@ export function ensureAutoDomain(
     redirectTo: null,
     ssl: true,
     source: "auto",
+    // Always born complete: the resolved container port (and, on a compose
+    // stack, the service it routes to) so no auto domain is ever portless or
+    // serviceless. These equal the project's default expose/build port, so the
+    // compose renderer treats them as the default route (byte-identical YAML).
+    port: opts.defaultPort,
+    ...(opts.defaultService ? { service: opts.defaultService } : {}),
     createdAt: nowIso(),
   };
   mutate((d) => d.domains.push(domain));
@@ -105,7 +123,11 @@ export function ensureAutoDomain(
  * Runs without an authenticated user (called from the fire-and-forget deploy).
  * Idempotent: a domain with the same name is left as-is.
  */
-export function ensureExtraDomain(projectId: string, rawName: string): void {
+export function ensureExtraDomain(
+  projectId: string,
+  rawName: string,
+  route: { port: number; service?: string | null },
+): void {
   const name = rawName
     .trim()
     .toLowerCase()
@@ -125,6 +147,11 @@ export function ensureExtraDomain(projectId: string, rawName: string): void {
     redirectTo: null,
     ssl: true,
     source: "auto",
+    // The extra host comes from a compose `exposes` entry that carries its own
+    // service + port; store both so the row is never serviceless/portless. They
+    // equal that host's default expose, so the renderer keeps it byte-identical.
+    port: route.port,
+    ...(route.service ? { service: route.service } : {}),
     createdAt: nowIso(),
   };
   mutate((d) => d.domains.push(domain));
@@ -211,7 +238,11 @@ export async function addDomain(
       read().domains.filter((x) => x.projectId === projectId).length === 0,
     redirectTo: null,
     ssl: false,
-    port: config.port ?? null,
+    // Always store a concrete port so no domain is ever portless. Compose
+    // already required one above; single-image falls back to the project's
+    // production port (build.port) — byte-identical to leaving it null, since
+    // the router resolves an absent port to build.port anyway.
+    port: config.port ?? portFor(project, "production"),
     // Entrypoint persists only when the user picked it explicitly (manual mode).
     // Absent ⇒ derived at deploy time by domainTlsConfig (websecure for TLS, web
     // for the `none` provider). Storing it only when given keeps the auto/manual

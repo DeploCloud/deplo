@@ -308,7 +308,9 @@ async function buildNixpacks(ctx: BuildContext): Promise<void> {
     { DOCKER_BUILDKIT: "1" },
   );
   try {
-    await nginxWrap(ctx, staging, `/app/${publishDir.replace(/^\.?\/?/, "")}`);
+    // Strip only a leading "./" (or a stray leading "/"); do NOT eat a bare
+    // leading "." — that is part of dot-dir names like ".next"/".output".
+    await nginxWrap(ctx, staging, `/app/${publishDir.replace(/^(?:\.\/|\/)/, "")}`);
   } finally {
     await docker(["rmi", staging], { timeout: 30_000 }).catch(() => {});
   }

@@ -38,7 +38,11 @@ const LEVEL_TEXT: Record<LogLevel, string> = {
 function fmtTime(ts: string): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "--:--:--";
-  return d.toLocaleTimeString("en-GB", { hour12: false });
+  // Use a fixed UTC HH:MM:SS. `toLocaleTimeString` pins the locale but not the
+  // timezone, so a non-UTC server and a UTC browser format the same instant
+  // differently → hydration mismatch. getUTC* is deterministic everywhere.
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
 export function LogViewer({

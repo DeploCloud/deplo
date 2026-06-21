@@ -501,7 +501,12 @@ export function buildConfigFor(
       dockerContextPath: ".",
       railpackVersion: "latest",
       herokuVersion: "24",
-      nixpacksPublishDirectory: p.output || undefined,
+      // Only seed a publish dir for frameworks with no start command (true
+      // static sites: vite/react/vue/angular/svelte/static). Server runtimes
+      // (next/nuxt/sveltekit/remix/astro/gatsby/go/rust) must run their start
+      // command — a non-empty publish dir forces buildNixpacks down the nginx
+      // static-wrap path, which cannot serve an SSR build artifact like .next.
+      nixpacksPublishDirectory: p.start ? undefined : p.output || undefined,
       staticSinglePageApp: false,
       ...overrides.methodSettings,
     },

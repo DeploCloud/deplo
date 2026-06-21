@@ -65,6 +65,7 @@ import type {
   GitRepo,
   VolumeMount,
 } from "@/lib/types";
+import { deploySourceEnumName } from "@/lib/types";
 import { formatBytes, serverLabel, usesComposeStack } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { gqlAction } from "@/lib/graphql-client";
@@ -326,7 +327,7 @@ export function BuildSettingsForm({
         {
           id: projectId,
           input: {
-            source,
+            source: deploySourceEnumName(source),
             serverId,
             dockerImage: image,
             repo,

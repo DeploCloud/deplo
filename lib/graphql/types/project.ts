@@ -156,6 +156,18 @@ const BuildConfigInput = builder.inputType("BuildConfigInput", {
   }),
 });
 
+/**
+ * Translate a BuildConfigInput into the stored BuildConfig shape. The input
+ * exposes method settings under `settings` (a JSON blob), but the persisted
+ * BuildConfig names that field `methodSettings`. Without this remap the field
+ * is dropped on the way to the store, so publish dir / build stage / version
+ * edits silently never persist and a shallow merge keeps the old values.
+ */
+function remapBuildInput(build: unknown): Record<string, unknown> {
+  const { settings, ...rest } = (build ?? {}) as Record<string, unknown>;
+  return settings === undefined ? rest : { ...rest, methodSettings: settings };
+}
+
 const ExposeInput = builder.inputType("ExposeInput", {
   description: "Which compose service + port Traefik exposes.",
   fields: (t) => ({
@@ -302,7 +314,10 @@ builder.mutationFields((t) => ({
         logo: input.logo ?? null,
         compose: input.compose ?? null,
         serverId: input.serverId ?? undefined,
-        build: (input.build ?? undefined) as never,
+        // Remap the input's `settings` to the stored `methodSettings` shape so
+        // method settings chosen at create time aren't silently dropped (see
+        // updateProjectBuild). buildConfigFor reads overrides.methodSettings.
+        build: input.build ? (remapBuildInput(input.build) as never) : undefined,
         autoDeploy: input.autoDeploy ?? undefined,
         env: input.env?.map((e) => ({ key: e.key, value: e.value })),
         composeService: input.composeService ?? null,
@@ -340,7 +355,7 @@ builder.mutationFields((t) => ({
       build: t.arg({ type: BuildConfigInput, required: true }),
     },
     resolve: async (_r, { id, build }) => {
-      await updateProjectBuild(id, build as never);
+      await updateProjectBuild(id, remapBuildInput(build) as never);
       return reloadProject(id);
     },
   }),
