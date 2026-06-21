@@ -1,4 +1,4 @@
-import { Network, Server as ServerIcon } from "lucide-react";
+import { Server as ServerIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusDot } from "@/components/shared/status-badge";
@@ -17,7 +17,11 @@ import { listServers } from "@/lib/data/servers";
 import { getInitialServerMetrics } from "@/lib/data/monitoring";
 import { serverLabel } from "@/lib/utils";
 import type { Server } from "@/lib/types";
-import { ServerMetricsProvider, LiveServerMetrics } from "./server-metrics";
+import {
+  ServerMetricsProvider,
+  LiveServerMetrics,
+  LiveTraefikBadge,
+} from "./server-metrics";
 
 export const metadata = { title: "Servers" };
 
@@ -48,10 +52,10 @@ function ServerCard({ server }: { server: Server }) {
           <span className="text-muted-foreground">
             Docker {server.dockerVersion}
           </span>
-          <Badge variant={server.traefikEnabled ? "success" : "muted"}>
-            <Network className="size-3" />
-            Traefik {server.traefikEnabled ? "on" : "off"}
-          </Badge>
+          <LiveTraefikBadge
+            serverId={server.id}
+            initial={server.traefikEnabled}
+          />
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -18,6 +18,8 @@ const ServerMetricsRef = builder
     fields: (t) => ({
       serverId: t.exposeID("serverId"),
       online: t.exposeBoolean("online"),
+      // Live Traefik state, so the badge updates with the poll (no reload).
+      traefik: t.exposeBoolean("traefik"),
       cpu: t.exposeFloat("cpu"),
       cpuCores: t.exposeInt("cpuCores"),
       memUsed: t.exposeFloat("memUsed"),
