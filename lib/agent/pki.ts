@@ -143,26 +143,39 @@ type SanEntry =
   | { type: "dns"; value: string }
   | { type: "ip"; value: string };
 
-/** Mint a leaf cert (server or client) signed by the deterministic CA. */
-async function issueLeaf(
+/**
+ * The validity window for every minted leaf — server, client, or CSR-signed
+ * agent cert: one year. Re-minted each install/dial cycle for the local agent;
+ * for a remote agent the cert is stored in the Server row and the agent re-runs
+ * the bootstrap to renew (or the control plane re-issues). Shared so the
+ * "leaves live a year" rule is stated once.
+ */
+const LEAF_LIFETIME_MS = 365 * 24 * 3600_000;
+
+/**
+ * The shared certificate-issuance core. Builds a CA-signed leaf around a public
+ * key — either one we generate here (local agent / control-plane client, where
+ * we also return the private key) or one parsed from an agent's CSR (remote
+ * bootstrap, where the private key never leaves the agent). `keyPem` in the
+ * returned bundle is "" when the public key came from outside (we never had the
+ * private half). Pure crypto, no I/O.
+ */
+async function issueCertFor(
+  publicKey: CryptoKey,
   commonName: string,
   sans: SanEntry[],
   eku: string,
-): Promise<CertBundle> {
-  const { caKeys, subject, caPem } = await getCa();
-  const leafNode = ed25519KeyFromSeed(randomBytes(32));
-  const leafKeys = await toWebCryptoKeys(leafNode);
+): Promise<x509.X509Certificate> {
+  const { caKeys, subject } = await getCa();
   const san = new x509.GeneralNames(sans);
-  const cert = await x509.X509CertificateGenerator.create({
+  return x509.X509CertificateGenerator.create({
     serialNumber: randomBytes(8).toString("hex"),
     subject: `CN=${commonName}`,
     issuer: subject,
     notBefore: new Date(Date.now() - 60_000),
-    // Leaf certs live a year; re-minted each install/dial cycle. (Part B adds a
-    // stored, revocable per-server cert; Part A re-mints on demand.)
-    notAfter: new Date(Date.now() + 365 * 24 * 3600_000),
+    notAfter: new Date(Date.now() + LEAF_LIFETIME_MS),
     signingKey: caKeys.privateKey,
-    publicKey: leafKeys.publicKey,
+    publicKey,
     signingAlgorithm: { name: "Ed25519" },
     extensions: [
       new x509.BasicConstraintsExtension(false, undefined, true),
@@ -170,6 +183,18 @@ async function issueLeaf(
       new x509.SubjectAlternativeNameExtension(san.toJSON()),
     ],
   });
+}
+
+/** Mint a leaf cert (server or client) with a freshly-generated key pair. */
+async function issueLeaf(
+  commonName: string,
+  sans: SanEntry[],
+  eku: string,
+): Promise<CertBundle> {
+  const { caPem } = await getCa();
+  const leafNode = ed25519KeyFromSeed(randomBytes(32));
+  const leafKeys = await toWebCryptoKeys(leafNode);
+  const cert = await issueCertFor(leafKeys.publicKey, commonName, sans, eku);
   return {
     certPem: cert.toString("pem"),
     keyPem: pemPrivateKey(leafNode),
@@ -201,6 +226,79 @@ export async function issueControlPlaneClientCert(): Promise<CertBundle> {
     [{ type: "dns", value: "deplo-control-plane" }],
     EKU_CLIENT_AUTH,
   );
+}
+
+/**
+ * The result of signing a remote agent's CSR during call-home bootstrap: the
+ * agent's signed SERVER cert, the pinned CA, and the cert's fingerprint (which
+ * the control plane stores in the Server row to authenticate — and later revoke
+ * — this exact agent).
+ */
+export interface SignedAgentCert {
+  /** The agent's signed leaf certificate, PEM. */
+  certPem: string;
+  /** The pinned CA certificate, PEM (the agent verifies the control plane with it). */
+  caPem: string;
+  /** sha256(DER) of the issued cert, lowercase hex — the pinning identity (P6). */
+  fingerprint: string;
+}
+
+/**
+ * THE TRUST-DIRECTION INVERSION (PLAN P1-P4). In Part A the control plane minted
+ * the agent's cert AND its key and wrote both to the agent's disk — possible only
+ * because the agent was local. A REMOTE agent's private key must never leave the
+ * remote, so the agent generates its own key pair, sends us a PKCS#10 CSR during
+ * call-home, and we sign it here: the CA (derived from `DEPLO_SECRET`) issues a
+ * server cert around the CSR's public key. We return the cert + CA + the cert's
+ * fingerprint; the private key stays on the agent the whole time.
+ *
+ * `hosts` are the names/IPs the control plane will dial the agent by (its public
+ * IP/host) and become the cert SANs — NOT taken from the CSR (a peer must not
+ * choose its own SANs; the control plane decides who it will trust to answer for
+ * which address). The CSR is verified (self-signature) before signing so a
+ * malformed/forged request is rejected, but its only trusted contribution is the
+ * public key.
+ */
+export async function signAgentCsr(
+  csrPem: string,
+  hosts: string[],
+): Promise<SignedAgentCert> {
+  const csr = new x509.Pkcs10CertificateRequest(csrPem);
+  // Verify the CSR's self-signature: proves the requester holds the private key
+  // for the public key it presents (proof-of-possession). A forged/garbled CSR
+  // fails here and is never signed.
+  if (!(await csr.verify())) {
+    throw new Error("agent CSR self-signature is invalid");
+  }
+  const publicKey = await csr.publicKey.export(crypto as unknown as Crypto);
+  const cert = await issueCertFor(
+    publicKey,
+    "deplo-agent",
+    hostsToSans(hosts),
+    EKU_SERVER_AUTH,
+  );
+  return {
+    certPem: cert.toString("pem"),
+    caPem: await caCertPem(),
+    fingerprint: await certFingerprint(cert.toString("pem")),
+  };
+}
+
+/**
+ * The sha256(DER) fingerprint of a PEM certificate, lowercase hex. This is the
+ * pinning identity used in BOTH directions of the agent trust model:
+ *   - the control plane stores an agent cert's fingerprint in the Server row to
+ *     authenticate that exact agent and revoke it on removal (P6);
+ *   - the agent is handed the control plane's cert fingerprint in the bootstrap
+ *     command and trusts the control plane iff the presented cert matches it
+ *     (P3 — primary trust on IP-only deployments).
+ * Computed from the DER bytes so it matches `openssl x509 -fingerprint -sha256`
+ * and Go's crypto/sha256 over the same DER — verified cross-language.
+ */
+export async function certFingerprint(certPem: string): Promise<string> {
+  const der = new x509.X509Certificate(certPem).rawData;
+  const digest = await crypto.subtle.digest("SHA-256", der);
+  return Buffer.from(digest).toString("hex");
 }
 
 const IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;

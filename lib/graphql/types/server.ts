@@ -4,6 +4,7 @@ import {
   getServer,
   getPrimaryServer,
   addServer,
+  reissueBootstrap,
   removeServer,
 } from "@/lib/data/servers";
 import type { Server } from "@/lib/types";
@@ -45,20 +46,63 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     memoryUsage: t.exposeInt("memoryUsage"),
     diskUsage: t.exposeInt("diskUsage"),
     createdAt: t.exposeString("createdAt"),
+    // Part B: provisioning/trust state, all nullable (absent on localhost or a
+    // not-yet-provisioned remote). Never expose secret-shaped material — only
+    // the agent VERSION + a "is it provisioned" signal + the heartbeat cache.
+    provisioned: t.boolean({
+      description: "True once a remote agent has called home and been trusted.",
+      resolve: (s) => Boolean(s.agent?.certFingerprint),
+    }),
+    agentPort: t.int({
+      nullable: true,
+      resolve: (s) => s.agent?.port ?? null,
+    }),
+    agentVersion: t.string({
+      nullable: true,
+      resolve: (s) => s.agent?.version || null,
+    }),
+    lastSeenAt: t.string({
+      nullable: true,
+      description: "Heartbeat cache (P5) — a hint, not the source of truth.",
+      resolve: (s) => s.lastSeenAt ?? null,
+    }),
   }),
 });
+
+/**
+ * The result of registering a remote server: the new row PLUS the one-time
+ * install command the operator pastes on the box (P1). The command embeds a
+ * single-use bootstrap token, so it is returned ONCE here and never re-readable
+ * (the control plane stores only its hash). Re-mint with `reissueBootstrap`.
+ */
+interface AddServerPayload {
+  server: Server;
+  installCommand: string;
+}
+
+const AddServerPayloadRef = builder
+  .objectRef<AddServerPayload>("AddServerPayload")
+  .implement({
+    description: "A newly registered server + its one-time agent install command.",
+    fields: (t) => ({
+      server: t.field({ type: ServerRef, resolve: (p) => p.server }),
+      installCommand: t.exposeString("installCommand", {
+        description:
+          "Paste-on-the-server command to provision the agent. Shown once; embeds a single-use token.",
+      }),
+    }),
+  });
 
 /* ------------------------------------------------------------------ */
 /* Inputs                                                              */
 /* ------------------------------------------------------------------ */
 
 const AddServerInputType = builder.inputType("AddServerInput", {
-  description: "Register a remote server (provisioned via SSH).",
+  description:
+    "Register a remote server. Provisioned by a call-home bootstrap (no SSH-in): you run the returned install command on the box.",
   fields: (t) => ({
     name: t.string({ required: true }),
     host: t.string({ required: true }),
-    sshPort: t.int({ required: false }),
-    sshUser: t.string({ required: false }),
   }),
 });
 
@@ -94,25 +138,30 @@ builder.queryFields((t) => ({
 
 builder.mutationFields((t) => ({
   addServer: t.field({
-    type: ServerRef,
+    type: AddServerPayloadRef,
     authScopes: { capability: "manage_infra" },
     args: { input: t.arg({ type: AddServerInputType, required: true }) },
     resolve: (_r, { input }) =>
-      addServer({
-        name: input.name,
-        host: input.host,
-        sshPort: input.sshPort ?? undefined,
-        sshUser: input.sshUser ?? undefined,
-      }),
+      addServer({ name: input.name, host: input.host }),
+  }),
+  reissueServerBootstrap: t.field({
+    type: AddServerPayloadRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Mint a fresh install command for a server still provisioning (the original token expired or was lost).",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => reissueBootstrap(id),
   }),
   removeServer: t.field({
-    type: "Boolean",
+    type: "String",
+    nullable: true,
     authScopes: { capability: "manage_infra" },
-    description: "Disconnect and remove a remote server. Returns true.",
+    description:
+      "Disconnect and remove a remote server (revokes trust, best-effort teardown). Returns a warning string if the agent was unreachable, else null.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await removeServer(id);
-      return true;
+      const { warning } = await removeServer(id);
+      return warning;
     },
   }),
 }));

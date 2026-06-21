@@ -11,12 +11,21 @@
 // it over this typed RPC. See docs/research/server-agent/PLAN.md and
 // docs/adr/0006-server-agent-is-a-per-host-go-binary.md.
 //
-// PART A SUBSET. This file is the versioned boundary for the whole A-D arc, but
-// only Hello / Metrics / Deploy / Inspect / control verbs are implemented in
-// Part A (localhost agent, deploy-only). FollowLogs / Attach / file RPCs land in
-// Part C; the source descriptor's git/image cases land in Part B. Messages are
-// designed forward-compatible so adding those is new fields/enum cases, never a
-// redesign (D6: "image from registry" is one more SourceKind, not a rewrite).
+// PART A SUBSET (extended in PART B). This file is the versioned boundary for
+// the whole A-D arc. Part A implemented Hello / Metrics / Deploy (UPLOAD+IMAGE) /
+// Inspect / control verbs (localhost agent, deploy-only). Part B adds: the GIT
+// source case (the agent clones with a short-lived token, D3), and ReattachDeploy
+// (reconnect to an in-flight deploy and replay missed events, D5). FollowLogs /
+// Attach / file RPCs land in Part C. Messages are designed forward-compatible so
+// adding those is new fields/enum cases, never a redesign (D6: "image from
+// registry" is one more SourceKind, not a rewrite).
+//
+// The agent's CALL-HOME BOOTSTRAP (PLAN P1-P4) is deliberately NOT a method on
+// this service: it travels agent -> control plane (the opposite direction of
+// every RPC here, which is control plane -> agent), is a one-shot HTTP POST over
+// a fingerprint-pinned TLS channel, and happens BEFORE the mTLS identity this
+// service requires even exists. It lives at the control plane's /api/agent/
+// bootstrap endpoint; see lib/agent/bootstrap.ts and app/api/agent/bootstrap.
 
 package agentpb
 
@@ -33,13 +42,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Agent_Hello_FullMethodName        = "/deplo.agent.v1.Agent/Hello"
-	Agent_Metrics_FullMethodName      = "/deplo.agent.v1.Agent/Metrics"
-	Agent_Deploy_FullMethodName       = "/deplo.agent.v1.Agent/Deploy"
-	Agent_StopStack_FullMethodName    = "/deplo.agent.v1.Agent/StopStack"
-	Agent_StartStack_FullMethodName   = "/deplo.agent.v1.Agent/StartStack"
-	Agent_DestroyStack_FullMethodName = "/deplo.agent.v1.Agent/DestroyStack"
-	Agent_Inspect_FullMethodName      = "/deplo.agent.v1.Agent/Inspect"
+	Agent_Hello_FullMethodName          = "/deplo.agent.v1.Agent/Hello"
+	Agent_Metrics_FullMethodName        = "/deplo.agent.v1.Agent/Metrics"
+	Agent_Deploy_FullMethodName         = "/deplo.agent.v1.Agent/Deploy"
+	Agent_ReattachDeploy_FullMethodName = "/deplo.agent.v1.Agent/ReattachDeploy"
+	Agent_StopStack_FullMethodName      = "/deplo.agent.v1.Agent/StopStack"
+	Agent_StartStack_FullMethodName     = "/deplo.agent.v1.Agent/StartStack"
+	Agent_DestroyStack_FullMethodName   = "/deplo.agent.v1.Agent/DestroyStack"
+	Agent_Inspect_FullMethodName        = "/deplo.agent.v1.Agent/Inspect"
 )
 
 // AgentClient is the client API for Agent service.
@@ -57,6 +67,15 @@ type AgentClient interface {
 	// connection, into the control plane's existing per-deployment log + status
 	// writes (which republish over the GraphQL SSE subscriptions unchanged).
 	Deploy(ctx context.Context, in *DeployRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DeployEvent], error)
+	// Reconnect to an in-flight (or just-finished) deploy and replay the events
+	// the control plane missed (PLAN D5, Part-B half). Remote builds are long and
+	// costly to lose, so the agent keeps a bounded record of each deploy's events
+	// keyed by deploy_id; if the control plane drops mid-build it dials back with
+	// ReattachDeploy(deploy_id, from_seq) and the agent replays from the cursor,
+	// then continues streaming live events as the build proceeds. Returns
+	// NOT_FOUND if the agent has no record of that deploy (it never ran there, or
+	// its record was evicted) — the control plane then reconciles it to error.
+	ReattachDeploy(ctx context.Context, in *ReattachRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DeployEvent], error)
 	// Lifecycle control over an already-deployed stack. These replace the direct
 	// stop/start/destroy docker calls in lib/deploy/build.ts for agent-owned
 	// stacks. (Wired in a later step; defined now so the boundary is complete.)
@@ -114,6 +133,25 @@ func (c *agentClient) Deploy(ctx context.Context, in *DeployRequest, opts ...grp
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Agent_DeployClient = grpc.ServerStreamingClient[DeployEvent]
 
+func (c *agentClient) ReattachDeploy(ctx context.Context, in *ReattachRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DeployEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Agent_ServiceDesc.Streams[1], Agent_ReattachDeploy_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ReattachRequest, DeployEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Agent_ReattachDeployClient = grpc.ServerStreamingClient[DeployEvent]
+
 func (c *agentClient) StopStack(ctx context.Context, in *StackRef, opts ...grpc.CallOption) (*StackResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StackResult)
@@ -169,6 +207,15 @@ type AgentServer interface {
 	// connection, into the control plane's existing per-deployment log + status
 	// writes (which republish over the GraphQL SSE subscriptions unchanged).
 	Deploy(*DeployRequest, grpc.ServerStreamingServer[DeployEvent]) error
+	// Reconnect to an in-flight (or just-finished) deploy and replay the events
+	// the control plane missed (PLAN D5, Part-B half). Remote builds are long and
+	// costly to lose, so the agent keeps a bounded record of each deploy's events
+	// keyed by deploy_id; if the control plane drops mid-build it dials back with
+	// ReattachDeploy(deploy_id, from_seq) and the agent replays from the cursor,
+	// then continues streaming live events as the build proceeds. Returns
+	// NOT_FOUND if the agent has no record of that deploy (it never ran there, or
+	// its record was evicted) — the control plane then reconciles it to error.
+	ReattachDeploy(*ReattachRequest, grpc.ServerStreamingServer[DeployEvent]) error
 	// Lifecycle control over an already-deployed stack. These replace the direct
 	// stop/start/destroy docker calls in lib/deploy/build.ts for agent-owned
 	// stacks. (Wired in a later step; defined now so the boundary is complete.)
@@ -195,6 +242,9 @@ func (UnimplementedAgentServer) Metrics(context.Context, *MetricsRequest) (*Host
 }
 func (UnimplementedAgentServer) Deploy(*DeployRequest, grpc.ServerStreamingServer[DeployEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method Deploy not implemented")
+}
+func (UnimplementedAgentServer) ReattachDeploy(*ReattachRequest, grpc.ServerStreamingServer[DeployEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method ReattachDeploy not implemented")
 }
 func (UnimplementedAgentServer) StopStack(context.Context, *StackRef) (*StackResult, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StopStack not implemented")
@@ -275,6 +325,17 @@ func _Agent_Deploy_Handler(srv interface{}, stream grpc.ServerStream) error {
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Agent_DeployServer = grpc.ServerStreamingServer[DeployEvent]
+
+func _Agent_ReattachDeploy_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ReattachRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentServer).ReattachDeploy(m, &grpc.GenericServerStream[ReattachRequest, DeployEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Agent_ReattachDeployServer = grpc.ServerStreamingServer[DeployEvent]
 
 func _Agent_StopStack_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(StackRef)
@@ -384,6 +445,11 @@ var Agent_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Deploy",
 			Handler:       _Agent_Deploy_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "ReattachDeploy",
+			Handler:       _Agent_ReattachDeploy_Handler,
 			ServerStreams: true,
 		},
 	},

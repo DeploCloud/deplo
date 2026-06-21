@@ -62,11 +62,12 @@ export function contractVersionToJSON(object: ContractVersion): string {
 }
 
 /**
- * Where the agent gets the bytes it builds/runs. Part A implements UPLOAD
+ * Where the agent gets the bytes it builds/runs. Part A implemented UPLOAD
  * (archive streamed inside the Deploy RPC) and IMAGE (an already-built image ref
- * the agent runs as-is). GIT (agent clones with a short-lived token) lands in
- * Part B (D3). New sources (e.g. registry pull) are new enum cases — not a
- * redesign (D6).
+ * the agent runs as-is). Part B implements GIT (the agent clones with a
+ * short-lived token, D3) so a remote build never ships the whole repo over the
+ * wire — only the clone URL + branch + ephemeral token. New sources (e.g.
+ * registry pull) are new enum cases — not a redesign (D6).
  */
 export enum SourceKind {
   SOURCE_KIND_UNSPECIFIED = 0,
@@ -282,6 +283,38 @@ export interface HostMetrics {
   runningContainers: number;
 }
 
+/**
+ * A git source the agent clones itself (SOURCE_KIND_GIT, D3). The control plane
+ * resolves the clone URL and mints a SHORT-LIVED token (e.g. a GitHub App
+ * installation token, ~1h) and sends both inside the Deploy request over mTLS;
+ * the agent clones, resolves the commit sha (reported back in DeployResult), and
+ * builds locally. The token is the only secret here and it is ephemeral —
+ * nothing long-lived crosses the wire, and the agent never persists it.
+ */
+export interface GitSource {
+  /**
+   * The clone URL. For a private GitHub repo the control plane has already
+   * embedded the installation token (https://x-access-token:<tok>@github.com/...);
+   * `token` below is then empty. For other providers the agent injects `token`
+   * into the URL itself. Either way the agent treats the resulting URL as opaque.
+   */
+  url: string;
+  /** The branch (or ref) to check out. Empty => the remote's default branch. */
+  branch: string;
+  /**
+   * An optional short-lived credential the agent injects as the URL's
+   * x-access-token (when `url` does not already carry one). Empty for public
+   * repos or when the token is already baked into `url`. Never logged.
+   */
+  token: string;
+  /**
+   * Sub-directory within the repo to build from (the project's rootDirectory),
+   * relative to the clone root. Empty => the repo root. Re-validated against the
+   * clone root inside the agent (anti-escape, like the Dockerfile paths).
+   */
+  subdir: string;
+}
+
 export interface DockerfileBuild {
   /**
    * Path to the Dockerfile, relative to the build context root. Empty =>
@@ -331,6 +364,14 @@ export interface DeployRequest {
     | DockerfileBuild
     | undefined;
   /**
+   * Present iff source_kind == GIT (Part B). The agent clones this itself; the
+   * control plane does not tar a context for git sources targeting a remote
+   * agent — only the descriptor crosses the wire (D3).
+   */
+  git?:
+    | GitSource
+    | undefined;
+  /**
    * The fully-rendered compose YAML (D2): renderCompose stays the single TS
    * source of truth; the agent receives opaque YAML and never re-implements
    * routing/label logic in Go. The agent writes it to <stack_dir>/<slug>.yml and
@@ -376,7 +417,33 @@ export interface DeployRequest_EnvEntry {
 export interface DeployEvent {
   log?: LogLine | undefined;
   phase?: PhaseChange | undefined;
-  result?: DeployResult | undefined;
+  result?:
+    | DeployResult
+    | undefined;
+  /**
+   * Monotonic per-deploy sequence number (1-based), the REPLAY CURSOR for
+   * ReattachDeploy (D5). The agent stamps every event it emits and keeps a
+   * bounded buffer of them keyed by deploy_id; a reconnecting control plane
+   * asks for everything after the last seq it saw. 0 on a fresh Deploy stream's
+   * events is also fine — the control plane only needs ordering on reattach.
+   */
+  seq: number;
+}
+
+/**
+ * Reconnect to an in-flight or recently-finished deploy and replay from a
+ * cursor (D5). The agent replays buffered events with seq > from_seq, then (if
+ * the deploy is still running) continues streaming live events; if it already
+ * finished, it replays through the terminal DeployResult and ends the stream.
+ */
+export interface ReattachRequest {
+  /** The deploy to reattach to (the same stable id from DeployRequest.deploy_id). */
+  deployId: string;
+  /**
+   * Replay every buffered event with seq strictly greater than this. 0 => from
+   * the very first event the agent still has buffered.
+   */
+  fromSeq: number;
 }
 
 export interface LogLine {
@@ -398,8 +465,10 @@ export interface DeployResult {
   /** A human-readable reason on failure (empty on success). */
   error: string;
   /**
-   * The git commit sha the agent resolved, when it materialised a git source
-   * (Part B). Empty in Part A (the control plane resolves it before sending).
+   * The git commit sha the agent resolved when it materialised a GIT source
+   * (Part B): the control plane writes it back to the Deployment row. Empty for
+   * UPLOAD/IMAGE sources (the control plane already knows the sha, or there is
+   * none).
    */
   commitSha: string;
 }
@@ -1059,6 +1128,114 @@ export const HostMetrics: MessageFns<HostMetrics> = {
   },
 };
 
+function createBaseGitSource(): GitSource {
+  return { url: "", branch: "", token: "", subdir: "" };
+}
+
+export const GitSource: MessageFns<GitSource> = {
+  encode(message: GitSource, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.url !== "") {
+      writer.uint32(10).string(message.url);
+    }
+    if (message.branch !== "") {
+      writer.uint32(18).string(message.branch);
+    }
+    if (message.token !== "") {
+      writer.uint32(26).string(message.token);
+    }
+    if (message.subdir !== "") {
+      writer.uint32(34).string(message.subdir);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GitSource {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGitSource();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.url = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.branch = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.token = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.subdir = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GitSource {
+    return {
+      url: isSet(object.url) ? globalThis.String(object.url) : "",
+      branch: isSet(object.branch) ? globalThis.String(object.branch) : "",
+      token: isSet(object.token) ? globalThis.String(object.token) : "",
+      subdir: isSet(object.subdir) ? globalThis.String(object.subdir) : "",
+    };
+  },
+
+  toJSON(message: GitSource): unknown {
+    const obj: any = {};
+    if (message.url !== "") {
+      obj.url = message.url;
+    }
+    if (message.branch !== "") {
+      obj.branch = message.branch;
+    }
+    if (message.token !== "") {
+      obj.token = message.token;
+    }
+    if (message.subdir !== "") {
+      obj.subdir = message.subdir;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GitSource>, I>>(base?: I): GitSource {
+    return GitSource.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GitSource>, I>>(object: I): GitSource {
+    const message = createBaseGitSource();
+    message.url = object.url ?? "";
+    message.branch = object.branch ?? "";
+    message.token = object.token ?? "";
+    message.subdir = object.subdir ?? "";
+    return message;
+  },
+};
+
 function createBaseDockerfileBuild(): DockerfileBuild {
   return { dockerfilePath: "", contextPath: "", targetStage: "", generated: false, generatedDockerfile: "" };
 }
@@ -1208,6 +1385,7 @@ function createBaseDeployRequest(): DeployRequest {
     sourceKind: 0,
     buildKind: 0,
     dockerfile: undefined,
+    git: undefined,
     composeYaml: "",
     env: {},
     readyTimeoutMs: 0,
@@ -1238,6 +1416,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.dockerfile !== undefined) {
       DockerfileBuild.encode(message.dockerfile, writer.uint32(58).fork()).join();
+    }
+    if (message.git !== undefined) {
+      GitSource.encode(message.git, writer.uint32(106).fork()).join();
     }
     if (message.composeYaml !== "") {
       writer.uint32(66).string(message.composeYaml);
@@ -1318,6 +1499,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
           }
 
           message.dockerfile = DockerfileBuild.decode(reader, reader.uint32());
+          continue;
+        }
+        case 13: {
+          if (tag !== 106) {
+            break;
+          }
+
+          message.git = GitSource.decode(reader, reader.uint32());
           continue;
         }
         case 8: {
@@ -1401,6 +1590,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         ? buildKindFromJSON(object.build_kind)
         : 0,
       dockerfile: isSet(object.dockerfile) ? DockerfileBuild.fromJSON(object.dockerfile) : undefined,
+      git: isSet(object.git) ? GitSource.fromJSON(object.git) : undefined,
       composeYaml: isSet(object.composeYaml)
         ? globalThis.String(object.composeYaml)
         : isSet(object.compose_yaml)
@@ -1456,6 +1646,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.dockerfile !== undefined) {
       obj.dockerfile = DockerfileBuild.toJSON(message.dockerfile);
     }
+    if (message.git !== undefined) {
+      obj.git = GitSource.toJSON(message.git);
+    }
     if (message.composeYaml !== "") {
       obj.composeYaml = message.composeYaml;
     }
@@ -1494,6 +1687,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.dockerfile = (object.dockerfile !== undefined && object.dockerfile !== null)
       ? DockerfileBuild.fromPartial(object.dockerfile)
       : undefined;
+    message.git = (object.git !== undefined && object.git !== null) ? GitSource.fromPartial(object.git) : undefined;
     message.composeYaml = object.composeYaml ?? "";
     message.env = (globalThis.Object.entries(object.env ?? {}) as [string, string][]).reduce(
       (acc: { [key: string]: string }, [key, value]: [string, string]) => {
@@ -1588,7 +1782,7 @@ export const DeployRequest_EnvEntry: MessageFns<DeployRequest_EnvEntry> = {
 };
 
 function createBaseDeployEvent(): DeployEvent {
-  return { log: undefined, phase: undefined, result: undefined };
+  return { log: undefined, phase: undefined, result: undefined, seq: 0 };
 }
 
 export const DeployEvent: MessageFns<DeployEvent> = {
@@ -1601,6 +1795,9 @@ export const DeployEvent: MessageFns<DeployEvent> = {
     }
     if (message.result !== undefined) {
       DeployResult.encode(message.result, writer.uint32(26).fork()).join();
+    }
+    if (message.seq !== 0) {
+      writer.uint32(32).uint64(message.seq);
     }
     return writer;
   },
@@ -1636,6 +1833,14 @@ export const DeployEvent: MessageFns<DeployEvent> = {
           message.result = DeployResult.decode(reader, reader.uint32());
           continue;
         }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.seq = longToNumber(reader.uint64());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1650,6 +1855,7 @@ export const DeployEvent: MessageFns<DeployEvent> = {
       log: isSet(object.log) ? LogLine.fromJSON(object.log) : undefined,
       phase: isSet(object.phase) ? PhaseChange.fromJSON(object.phase) : undefined,
       result: isSet(object.result) ? DeployResult.fromJSON(object.result) : undefined,
+      seq: isSet(object.seq) ? globalThis.Number(object.seq) : 0,
     };
   },
 
@@ -1663,6 +1869,9 @@ export const DeployEvent: MessageFns<DeployEvent> = {
     }
     if (message.result !== undefined) {
       obj.result = DeployResult.toJSON(message.result);
+    }
+    if (message.seq !== 0) {
+      obj.seq = Math.round(message.seq);
     }
     return obj;
   },
@@ -1679,6 +1888,91 @@ export const DeployEvent: MessageFns<DeployEvent> = {
     message.result = (object.result !== undefined && object.result !== null)
       ? DeployResult.fromPartial(object.result)
       : undefined;
+    message.seq = object.seq ?? 0;
+    return message;
+  },
+};
+
+function createBaseReattachRequest(): ReattachRequest {
+  return { deployId: "", fromSeq: 0 };
+}
+
+export const ReattachRequest: MessageFns<ReattachRequest> = {
+  encode(message: ReattachRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.deployId !== "") {
+      writer.uint32(10).string(message.deployId);
+    }
+    if (message.fromSeq !== 0) {
+      writer.uint32(16).uint64(message.fromSeq);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReattachRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReattachRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.deployId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.fromSeq = longToNumber(reader.uint64());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReattachRequest {
+    return {
+      deployId: isSet(object.deployId)
+        ? globalThis.String(object.deployId)
+        : isSet(object.deploy_id)
+        ? globalThis.String(object.deploy_id)
+        : "",
+      fromSeq: isSet(object.fromSeq)
+        ? globalThis.Number(object.fromSeq)
+        : isSet(object.from_seq)
+        ? globalThis.Number(object.from_seq)
+        : 0,
+    };
+  },
+
+  toJSON(message: ReattachRequest): unknown {
+    const obj: any = {};
+    if (message.deployId !== "") {
+      obj.deployId = message.deployId;
+    }
+    if (message.fromSeq !== 0) {
+      obj.fromSeq = Math.round(message.fromSeq);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReattachRequest>, I>>(base?: I): ReattachRequest {
+    return ReattachRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReattachRequest>, I>>(object: I): ReattachRequest {
+    const message = createBaseReattachRequest();
+    message.deployId = object.deployId ?? "";
+    message.fromSeq = object.fromSeq ?? 0;
     return message;
   },
 };
@@ -2241,6 +2535,25 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): DeployEvent => DeployEvent.decode(value),
   },
   /**
+   * Reconnect to an in-flight (or just-finished) deploy and replay the events
+   * the control plane missed (PLAN D5, Part-B half). Remote builds are long and
+   * costly to lose, so the agent keeps a bounded record of each deploy's events
+   * keyed by deploy_id; if the control plane drops mid-build it dials back with
+   * ReattachDeploy(deploy_id, from_seq) and the agent replays from the cursor,
+   * then continues streaming live events as the build proceeds. Returns
+   * NOT_FOUND if the agent has no record of that deploy (it never ran there, or
+   * its record was evicted) — the control plane then reconciles it to error.
+   */
+  reattachDeploy: {
+    path: "/deplo.agent.v1.Agent/ReattachDeploy" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: ReattachRequest): Buffer => Buffer.from(ReattachRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ReattachRequest => ReattachRequest.decode(value),
+    responseSerialize: (value: DeployEvent): Buffer => Buffer.from(DeployEvent.encode(value).finish()),
+    responseDeserialize: (value: Buffer): DeployEvent => DeployEvent.decode(value),
+  },
+  /**
    * Lifecycle control over an already-deployed stack. These replace the direct
    * stop/start/destroy docker calls in lib/deploy/build.ts for agent-owned
    * stacks. (Wired in a later step; defined now so the boundary is complete.)
@@ -2303,6 +2616,17 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   deploy: handleServerStreamingCall<DeployRequest, DeployEvent>;
   /**
+   * Reconnect to an in-flight (or just-finished) deploy and replay the events
+   * the control plane missed (PLAN D5, Part-B half). Remote builds are long and
+   * costly to lose, so the agent keeps a bounded record of each deploy's events
+   * keyed by deploy_id; if the control plane drops mid-build it dials back with
+   * ReattachDeploy(deploy_id, from_seq) and the agent replays from the cursor,
+   * then continues streaming live events as the build proceeds. Returns
+   * NOT_FOUND if the agent has no record of that deploy (it never ran there, or
+   * its record was evicted) — the control plane then reconciles it to error.
+   */
+  reattachDeploy: handleServerStreamingCall<ReattachRequest, DeployEvent>;
+  /**
    * Lifecycle control over an already-deployed stack. These replace the direct
    * stop/start/destroy docker calls in lib/deploy/build.ts for agent-owned
    * stacks. (Wired in a later step; defined now so the boundary is complete.)
@@ -2362,6 +2686,22 @@ export interface AgentClient extends Client {
   deploy(request: DeployRequest, options?: Partial<CallOptions>): ClientReadableStream<DeployEvent>;
   deploy(
     request: DeployRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<DeployEvent>;
+  /**
+   * Reconnect to an in-flight (or just-finished) deploy and replay the events
+   * the control plane missed (PLAN D5, Part-B half). Remote builds are long and
+   * costly to lose, so the agent keeps a bounded record of each deploy's events
+   * keyed by deploy_id; if the control plane drops mid-build it dials back with
+   * ReattachDeploy(deploy_id, from_seq) and the agent replays from the cursor,
+   * then continues streaming live events as the build proceeds. Returns
+   * NOT_FOUND if the agent has no record of that deploy (it never ran there, or
+   * its record was evicted) — the control plane then reconciles it to error.
+   */
+  reattachDeploy(request: ReattachRequest, options?: Partial<CallOptions>): ClientReadableStream<DeployEvent>;
+  reattachDeploy(
+    request: ReattachRequest,
     metadata?: Metadata,
     options?: Partial<CallOptions>,
   ): ClientReadableStream<DeployEvent>;

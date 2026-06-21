@@ -3,7 +3,6 @@ import { Network, Server as ServerIcon } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
-import { CommandLine } from "@/components/shared/code-block";
 import { AddServer } from "@/components/servers/add-server";
 import {
   Card,
@@ -15,7 +14,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { listServers } from "@/lib/data/servers";
 import { getInitialServerMetrics } from "@/lib/data/monitoring";
-import { installOneLiner } from "@/lib/install-script";
 import { serverLabel } from "@/lib/utils";
 import type { Server } from "@/lib/types";
 import { ServerMetricsProvider, LiveServerMetrics } from "./server-metrics";
@@ -69,8 +67,6 @@ export default async function ServersPage() {
     getInitialServerMetrics(),
   ]);
 
-  const installCommand = installOneLiner();
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -83,16 +79,13 @@ export default async function ServersPage() {
           <div className="space-y-1.5">
             <CardTitle>Add a server</CardTitle>
             <CardDescription>
-              Connect a remote Linux server over SSH, or run the install command
-              on it. Deplo sets up Docker and Traefik automatically, with no
-              manual configuration.
+              Register a remote Linux host, then run the one-time install command
+              it gives you on the server. The agent calls home and provisions
+              itself — Deplo never needs SSH access to your box.
             </CardDescription>
           </div>
-          <AddServer installCommand={installCommand} />
+          <AddServer />
         </CardHeader>
-        <CardContent>
-          <CommandLine command={installCommand} />
-        </CardContent>
       </Card>
 
       {servers.length === 0 ? (
