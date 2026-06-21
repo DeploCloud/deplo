@@ -60,6 +60,20 @@ export type AgentBuildPlan =
       subdir: string;
       /** Build config (drives the Dockerfile dispatch, same as the dockerfile plan). */
       build: BuildConfig;
+    }
+  | {
+      /**
+       * A multi-service compose stack (Part C). The control plane already
+       * rendered the full stack (buildComposeStack) into `composeYaml` and
+       * decrypted the env (`env`); the agent neither builds nor pulls an image
+       * (each service's image comes up via `docker compose up`). It writes the
+       * env to a 0600 --env-file (the YAML interpolates `${VAR}`), materialises
+       * these `mounts` (template config files) under its files dir, then brings
+       * the stack up and waits for it by the deplo.slug label.
+       */
+      kind: "compose";
+      /** Template config files the stack bind-mounts (project.mounts); may be empty. */
+      mounts: { filePath: string; content: string }[];
     };
 
 /**
@@ -301,8 +315,10 @@ function coerceLevel(s: string): LogLevel {
   return LEVELS.has(s as LogLevel) ? (s as LogLevel) : "info";
 }
 
-/** Build the self-contained DeployRequest the agent needs. */
-async function buildDeployRequest(opts: {
+/** Build the self-contained DeployRequest the agent needs. Exported for tests:
+ * the plan→request mapping (source/build kind, env-file vs baked env, mounts) is
+ * the wire contract with the Go agent and is asserted directly. */
+export async function buildDeployRequest(opts: {
   deployId: string;
   slug: string;
   projectId: string;
@@ -325,7 +341,24 @@ async function buildDeployRequest(opts: {
     readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
     contextTar: new Uint8Array(0),
     pullImage: false,
+    mounts: [],
   };
+
+  if (opts.plan.kind === "compose") {
+    // A multi-service compose stack (Part C): no build, no image pull — the agent
+    // writes the env to a --env-file (the YAML interpolates `${VAR}`), the mount
+    // files under its files dir, then `docker compose up`s the rendered stack and
+    // waits for it by the deplo.slug label. composeYaml + env ride in `base`.
+    return {
+      ...base,
+      sourceKind: SourceKind.SOURCE_KIND_COMPOSE,
+      buildKind: BuildKind.BUILD_KIND_NONE,
+      mounts: opts.plan.mounts.map((m) => ({
+        path: m.filePath,
+        content: m.content,
+      })),
+    };
+  }
 
   if (opts.plan.kind === "image") {
     return {

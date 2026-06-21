@@ -96,6 +96,7 @@ networks:
         readyTimeoutMs: 60000,
         contextTar: tar,
         pullImage: false,
+        mounts: [],
       })) {
         if (ev.result && !ev.result.ready) throw new Error("deploy failed: " + ev.result.error);
       }

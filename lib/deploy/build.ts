@@ -47,7 +47,7 @@ import {
   AgentUnavailableError,
   type AgentBuildPlan,
 } from "./agent-deploy";
-import { connectAgent } from "../infra/agent-client";
+import { connectAgent, agentPreflight } from "../infra/agent-client";
 import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
 
 /**
@@ -477,6 +477,11 @@ async function tryAgent(opts: {
   /** When true a transport failure is NOT a local fallback (remote has no local
    * path); it is a hard deploy failure. Set for remote servers. */
   noLocalFallback?: boolean;
+  /** How long the agent waits for the stack to report running (ms). Defaults to
+   * 60s (the single-image path); the compose path passes 90s to match the
+   * master's waitStackRunning, since a multi-service stack may pull several
+   * images first. */
+  readyTimeoutMs?: number;
 }): Promise<AgentAttempt> {
   try {
     const { ready, commitSha } = await runAgentDeploy({
@@ -488,7 +493,7 @@ async function tryAgent(opts: {
       composeYaml: opts.composeYaml,
       env: opts.env,
       plan: opts.plan,
-      readyTimeoutMs: 60_000,
+      readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
       sink: { log: (level, text) => log(opts.depId, level, text) },
     });
     return { outcome: ready ? "agent" : "failed", commitSha };
@@ -581,22 +586,7 @@ async function runDeployment(depId: string): Promise<void> {
     const hasCompose = Boolean(project.compose && project.compose.trim());
     const useCompose = usesComposeStack(project);
     if (useCompose && hasCompose) {
-      // A multi-service compose stack is not yet an agent capability (the agent
-      // does single-image compose-up only). On a REMOTE server, running it here
-      // would silently deploy to the WRONG host (localhost's Docker), so fail
-      // clearly instead — multi-service-on-remote is a later phase.
-      if (server?.type === "remote") {
-        log(
-          depId,
-          "error",
-          "Multi-service compose stacks can't yet deploy to a remote server. " +
-            "Move this project to the master server, or split it into single-image services.",
-        );
-        setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-        setProject(project.id, { status: "error" });
-        return;
-      }
-      await deployComposeStack({
+      const composeOpts = {
         depId,
         project,
         name,
@@ -611,7 +601,16 @@ async function runDeployment(depId: string): Promise<void> {
         domainRoutes: routeDomains,
         environment: dep.environment,
         started,
-      });
+      };
+      // A REMOTE server runs the stack through the agent (the agent writes the
+      // mount files + env-file and `compose up`s on the OWNING host); the master
+      // brings it up directly on localhost's Docker. Both render the SAME stack
+      // YAML (buildComposeStack), so routing/labels are byte-identical either way.
+      if (server?.type === "remote") {
+        await deployComposeStackViaAgent({ ...composeOpts, serverId: project.serverId });
+      } else {
+        await deployComposeStack(composeOpts);
+      }
       return;
     }
 
@@ -932,15 +931,17 @@ async function runDeployment(depId: string): Promise<void> {
  * Writes the stack and an env-file next to it, brings it up wired to Traefik on
  * the generated domain, and waits for the exposed service to come up.
  */
-async function deployComposeStack(opts: {
+interface ComposeStackProject {
+  id: string;
+  compose: string | null;
+  expose: { service: string; port: number } | null;
+  exposes?: { service: string; port: number; host?: string }[] | null;
+  mounts?: { filePath: string; content: string }[] | null;
+}
+
+interface ComposeStackOpts {
   depId: string;
-  project: {
-    id: string;
-    compose: string | null;
-    expose: { service: string; port: number } | null;
-    exposes?: { service: string; port: number; host?: string }[] | null;
-    mounts?: { filePath: string; content: string }[] | null;
-  };
+  project: ComposeStackProject;
   name: string;
   slug: string;
   stackFile: string;
@@ -952,19 +953,34 @@ async function deployComposeStack(opts: {
   domainRoutes: RoutableDomain[];
   environment: DeploymentEnvironment;
   started: number;
-}): Promise<void> {
-  const {
-    depId,
-    project,
-    name,
-    slug,
-    stackFile,
-    domain,
-    domains,
-    domainRoutes,
-    environment,
-    started,
-  } = opts;
+}
+
+/**
+ * The host directory a project's compose stack reads its template config files
+ * (mounts) from. buildComposeStack rewrites every `./<x>` bind source to
+ * `<filesDir>/<x>`, so this path is baked into the rendered YAML — and MUST be
+ * the same on whichever host runs the stack. The agent's default stack dir is
+ * `/data/stacks` too (agent/main.go), so `<STACK_DIR>/files/<slug>` resolves
+ * identically on the master and on a remote agent; the agent writes the mount
+ * files there before bringing the stack up.
+ */
+function composeFilesDir(slug: string): string {
+  return join(STACK_DIR, "files", slug);
+}
+
+/**
+ * Register the extra hostnames a multi-domain template exposes and render the
+ * project's compose stack to deployable YAML. Shared by the master path (which
+ * then `compose up`s locally) and the remote/agent path (which ships the YAML to
+ * the agent) so both deploy a byte-identical stack. Returns the rendered YAML and
+ * the files dir the stack's mounts resolve to.
+ */
+function prepareComposeStack(opts: ComposeStackOpts): {
+  stackYaml: string;
+  filesDir: string;
+} {
+  const { project, name, slug, domain, domains, domainRoutes, environment } =
+    opts;
 
   // Register every extra hostname a multi-domain template exposes (the primary
   // domain is already registered by the caller) so each shows up in the project's
@@ -983,13 +999,7 @@ async function deployComposeStack(opts: {
     }
   }
 
-  // Materialise any template config files into the project's isolated files dir
-  // (referenced by the compose as ./<x>) BEFORE the stack comes up.
-  const filesDir = join(STACK_DIR, "files", slug);
-  if (project.mounts?.length) {
-    await writeMountFiles(filesDir, project.mounts, depId);
-  }
-
+  const filesDir = composeFilesDir(slug);
   const stackYaml = buildComposeStack({
     compose: project.compose ?? "",
     name,
@@ -1001,6 +1011,40 @@ async function deployComposeStack(opts: {
     exposes: project.exposes ?? undefined,
     filesDir,
   });
+  return { stackYaml, filesDir };
+}
+
+/** Apply the terminal status of a compose-stack deploy (master or agent). */
+function finishComposeStack(
+  opts: ComposeStackOpts,
+  running: boolean,
+): void {
+  const { depId, project, domain, environment, started } = opts;
+  const buildDurationMs = Date.now() - started;
+  const url = `https://${domain}`;
+  if (running) {
+    setDep(depId, { status: "ready", readyAt: nowIso(), buildDurationMs });
+    setProject(project.id, {
+      status: "active",
+      ...(environment === "production" ? { productionUrl: url } : {}),
+    });
+    log(depId, "info", `Deployment ready at ${url}`);
+  } else {
+    setDep(depId, { status: "error", buildDurationMs });
+    setProject(project.id, { status: "error" });
+    log(depId, "error", "Stack did not reach a running state");
+  }
+}
+
+async function deployComposeStack(opts: ComposeStackOpts): Promise<void> {
+  const { depId, project, name, slug, stackFile } = opts;
+
+  // Materialise any template config files into the project's isolated files dir
+  // (referenced by the compose as ./<x>) BEFORE the stack comes up.
+  const { stackYaml, filesDir } = prepareComposeStack(opts);
+  if (project.mounts?.length) {
+    await writeMountFiles(filesDir, project.mounts, depId);
+  }
   await writeFile(stackFile, stackYaml);
 
   // Env-file for ${VAR} interpolation. Written 0600 since it holds secrets.
@@ -1028,21 +1072,75 @@ async function deployComposeStack(opts: {
 
   log(depId, "info", "Waiting for the stack to become healthy…");
   const running = await waitStackRunning(slug, 90_000);
-  const buildDurationMs = Date.now() - started;
-  const url = `https://${domain}`;
+  finishComposeStack(opts, running);
+}
 
-  if (running) {
-    setDep(depId, { status: "ready", readyAt: nowIso(), buildDurationMs });
-    setProject(project.id, {
-      status: "active",
-      ...(environment === "production" ? { productionUrl: url } : {}),
-    });
-    log(depId, "info", `Deployment ready at ${url}`);
-  } else {
-    setDep(depId, { status: "error", buildDurationMs });
-    setProject(project.id, { status: "error" });
-    log(depId, "error", "Stack did not reach a running state");
+/**
+ * Deploy a multi-service compose stack to a REMOTE server via its agent. The
+ * control plane stays the source of truth: it renders the SAME stack YAML as the
+ * master path (prepareComposeStack) and decrypts the env, then hands the agent a
+ * self-contained DeployRequest — the agent writes the mount files + env-file on
+ * the owning host and `compose up`s there. A remote server has no local fallback,
+ * so an unreachable agent is a hard failure (P5), exactly like the single-image
+ * remote path. The agent reports `ready` once the stack is running (it waits by
+ * the deplo.slug label, since a multi-service stack's containers are
+ * compose-prefixed, not named deplo-<slug>).
+ */
+async function deployComposeStackViaAgent(
+  opts: ComposeStackOpts & { serverId: string },
+): Promise<void> {
+  const { depId, project, slug, serverId } = opts;
+
+  // A multi-service compose stack is a distinct source kind (SOURCE_KIND_COMPOSE).
+  // The contract version is additive (still V1), so an OLD agent would accept the
+  // Deploy call and only fail deep in its switch with "unknown source kind" — a
+  // confusing error. Gate on the advertised capability instead and fail with an
+  // actionable message (the operator must update the agent). Mirrors P5's
+  // fail-fast-on-an-incapable-agent discipline.
+  try {
+    const hello = await agentPreflight(serverId);
+    if (!hello.capabilities.includes("deploy.compose.multi")) {
+      log(
+        depId,
+        "error",
+        "This server's agent is too old to run multi-service compose stacks. " +
+          "Update the agent (reissue the install command from the server's actions menu), " +
+          "or move this project to the master server.",
+      );
+      finishComposeStack(opts, false);
+      return;
+    }
+  } catch (e) {
+    log(
+      depId,
+      "error",
+      `Remote agent unavailable: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    finishComposeStack(opts, false);
+    return;
   }
+
+  const { stackYaml } = prepareComposeStack(opts);
+  const env = projectEnv(project.id);
+
+  const { outcome } = await tryAgent({
+    depId,
+    serverId,
+    project: { id: project.id, slug },
+    // A compose stack has no single image_ref (each service brings its own); the
+    // agent neither builds nor pulls one. Pass an empty ref.
+    imageRef: "",
+    composeYaml: stackYaml,
+    env,
+    plan: { kind: "compose", mounts: project.mounts ?? [] },
+    noLocalFallback: true,
+    // Match the master's 90s waitStackRunning — a multi-service stack may pull
+    // several images on the agent before any service reports running.
+    readyTimeoutMs: 90_000,
+  });
+
+  // tryAgent already logged the failure reason / unreachable-agent message.
+  finishComposeStack(opts, outcome === "agent");
 }
 
 /**

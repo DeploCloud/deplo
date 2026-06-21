@@ -83,6 +83,18 @@ export enum SourceKind {
   SOURCE_KIND_IMAGE = 2,
   /** SOURCE_KIND_GIT - The agent clones a git URL itself with a short-lived token. PART B. */
   SOURCE_KIND_GIT = 3,
+  /**
+   * SOURCE_KIND_COMPOSE - A multi-service compose stack: the control plane rendered the full stack
+   * (buildComposeStack — Traefik labels, deplo-network wiring, the deplo.* labels
+   * on EVERY service) into compose_yaml; the agent neither builds nor pulls an
+   * image (each service's image comes up via `docker compose up` itself). The
+   * agent writes the env map to a 0600 --env-file (the YAML interpolates `${VAR}`
+   * — it is NOT baked in like the single-image path), writes any `mounts`
+   * (template config files) under <stack_dir>/files/<slug>, then `compose up`s and
+   * waits for the stack by LABEL (deplo.slug), since the containers are
+   * compose-prefixed, not named deplo-<slug>. PART C.
+   */
+  SOURCE_KIND_COMPOSE = 4,
   UNRECOGNIZED = -1,
 }
 
@@ -100,6 +112,9 @@ export function sourceKindFromJSON(object: any): SourceKind {
     case 3:
     case "SOURCE_KIND_GIT":
       return SourceKind.SOURCE_KIND_GIT;
+    case 4:
+    case "SOURCE_KIND_COMPOSE":
+      return SourceKind.SOURCE_KIND_COMPOSE;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -117,6 +132,8 @@ export function sourceKindToJSON(object: SourceKind): string {
       return "SOURCE_KIND_IMAGE";
     case SourceKind.SOURCE_KIND_GIT:
       return "SOURCE_KIND_GIT";
+    case SourceKind.SOURCE_KIND_COMPOSE:
+      return "SOURCE_KIND_COMPOSE";
     case SourceKind.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -351,6 +368,20 @@ export interface DockerfileBuild {
   generatedDockerfile: string;
 }
 
+/**
+ * One template config file a compose stack bind-mounts (SOURCE_KIND_COMPOSE).
+ * The control plane carries the file CONTENT (it lives in its store, not on the
+ * remote host); the agent materialises it under <stack_dir>/files/<slug>/<path>
+ * before `compose up` — the rendered compose already points its bind sources at
+ * that directory. `path` is relative to the project files dir; the agent rejects
+ * any `..` segment or absolute path (the content arrives off the wire — same
+ * anti-escape guard as the build context and the file RPCs).
+ */
+export interface MountFile {
+  path: string;
+  content: string;
+}
+
 export interface DeployRequest {
   /**
    * A stable id for this deploy, minted by the control plane (the Deployment
@@ -417,6 +448,12 @@ export interface DeployRequest {
    * remote registry ref). The agent `docker pull`s it, streaming progress.
    */
   pullImage: boolean;
+  /**
+   * Template config files a multi-service compose stack bind-mounts
+   * (SOURCE_KIND_COMPOSE). Written under <stack_dir>/files/<slug>/ before
+   * `compose up`. Empty for every other source kind.
+   */
+  mounts: MountFile[];
 }
 
 export interface DeployRequest_EnvEntry {
@@ -1641,6 +1678,82 @@ export const DockerfileBuild: MessageFns<DockerfileBuild> = {
   },
 };
 
+function createBaseMountFile(): MountFile {
+  return { path: "", content: "" };
+}
+
+export const MountFile: MessageFns<MountFile> = {
+  encode(message: MountFile, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.path !== "") {
+      writer.uint32(10).string(message.path);
+    }
+    if (message.content !== "") {
+      writer.uint32(18).string(message.content);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): MountFile {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseMountFile();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.content = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): MountFile {
+    return {
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      content: isSet(object.content) ? globalThis.String(object.content) : "",
+    };
+  },
+
+  toJSON(message: MountFile): unknown {
+    const obj: any = {};
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.content !== "") {
+      obj.content = message.content;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<MountFile>, I>>(base?: I): MountFile {
+    return MountFile.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<MountFile>, I>>(object: I): MountFile {
+    const message = createBaseMountFile();
+    message.path = object.path ?? "";
+    message.content = object.content ?? "";
+    return message;
+  },
+};
+
 function createBaseDeployRequest(): DeployRequest {
   return {
     deployId: "",
@@ -1656,6 +1769,7 @@ function createBaseDeployRequest(): DeployRequest {
     readyTimeoutMs: 0,
     contextTar: new Uint8Array(0),
     pullImage: false,
+    mounts: [],
   };
 }
 
@@ -1699,6 +1813,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.pullImage !== false) {
       writer.uint32(96).bool(message.pullImage);
+    }
+    for (const v of message.mounts) {
+      MountFile.encode(v!, writer.uint32(114).fork()).join();
     }
     return writer;
   },
@@ -1817,6 +1934,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
           message.pullImage = reader.bool();
           continue;
         }
+        case 14: {
+          if (tag !== 114) {
+            break;
+          }
+
+          message.mounts.push(MountFile.decode(reader, reader.uint32()));
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1885,6 +2010,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.pull_image)
         ? globalThis.Boolean(object.pull_image)
         : false,
+      mounts: globalThis.Array.isArray(object?.mounts)
+        ? object.mounts.map((e: any) => MountFile.fromJSON(e))
+        : [],
     };
   },
 
@@ -1935,6 +2063,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.pullImage !== false) {
       obj.pullImage = message.pullImage;
     }
+    if (message.mounts?.length) {
+      obj.mounts = message.mounts.map((e) => MountFile.toJSON(e));
+    }
     return obj;
   },
 
@@ -1966,6 +2097,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.readyTimeoutMs = object.readyTimeoutMs ?? 0;
     message.contextTar = object.contextTar ?? new Uint8Array(0);
     message.pullImage = object.pullImage ?? false;
+    message.mounts = object.mounts?.map((e) => MountFile.fromPartial(e)) || [];
     return message;
   },
 };

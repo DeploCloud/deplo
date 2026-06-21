@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -113,10 +114,27 @@ func (s *Service) runDeploy(ctx context.Context, req *pb.DeployRequest, e *emitt
 		if !s.buildImage(ctx, req, buildDir, e) {
 			return // buildImage already emitted the failure result
 		}
+	case pb.SourceKind_SOURCE_KIND_COMPOSE:
+		// Part C: a multi-service compose stack. There is NO agent build and NO
+		// image to pull — each service's image comes up via `docker compose up`
+		// itself. The only preparation is materialising the template config files
+		// the compose bind-mounts (the rendered YAML already points its bind
+		// sources at <stackDir>/files/<slug>). Env + label-wait differ from the
+		// single-image path below; see isCompose.
+		if err := s.writeMountFiles(slug, req.GetMounts(), e); err != nil {
+			e.result(false, "write mount files: "+err.Error(), "")
+			return
+		}
 	default:
 		e.result(false, "unknown source kind", "")
 		return
 	}
+
+	// A multi-service compose stack interpolates `${VAR}` from a --env-file (the
+	// control plane did NOT bake env into its YAML, unlike the single-image path),
+	// and its containers are compose-prefixed (deplo-<slug>-<service>-N) rather
+	// than named deplo-<slug> — so the readiness wait is by label, not by name.
+	isCompose := req.GetSourceKind() == pb.SourceKind_SOURCE_KIND_COMPOSE
 
 	// --- Phase: write the rendered stack and bring it up. ---
 	e.phase(pb.DeployPhase_DEPLOY_PHASE_STARTING)
@@ -130,9 +148,19 @@ func (s *Service) runDeploy(ctx context.Context, req *pb.DeployRequest, e *emitt
 	}
 
 	// The single-image stack already bakes env into its `environment:` map (the
-	// control plane rendered it that way), so no --env-file is needed here. The
-	// env map still rides along for the future compose-stack path.
-	composeArgs := []string{"compose", "-p", name, "-f", stackFile, "up", "-d", "--remove-orphans"}
+	// control plane rendered it that way), so no --env-file is needed there. A
+	// compose stack relies on `${VAR}` interpolation, so write a 0600 env-file and
+	// pass it to compose (mirrors the control plane's deployComposeStack).
+	composeArgs := []string{"compose", "-p", name, "-f", stackFile}
+	if isCompose {
+		envFile := filepath.Join(s.stackDir, slug+".env")
+		if err := os.WriteFile(envFile, []byte(renderEnvFile(req.GetEnv())), 0o600); err != nil {
+			e.result(false, "write env file: "+err.Error(), "")
+			return
+		}
+		composeArgs = append(composeArgs, "--env-file", envFile)
+	}
+	composeArgs = append(composeArgs, "up", "-d", "--remove-orphans")
 	e.log("command", "docker compose up -d")
 	code, err := dockercli.Stream(ctx, 5*time.Minute, func(l string) { e.log("info", l) }, "", composeArgs...)
 	if err != nil {
@@ -144,18 +172,94 @@ func (s *Service) runDeploy(ctx context.Context, req *pb.DeployRequest, e *emitt
 		return
 	}
 
-	// --- Phase: wait for the container to report running. ---
+	// --- Phase: wait for the stack to report running. ---
 	e.phase(pb.DeployPhase_DEPLOY_PHASE_WAITING)
-	e.log("info", "Waiting for the container to become healthy…")
 	timeout := time.Duration(req.GetReadyTimeoutMs()) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
+	if isCompose {
+		e.log("info", "Waiting for the stack to become healthy…")
+		if waitStackRunning(ctx, slug, timeout) {
+			e.result(true, "", commitSha)
+			return
+		}
+		e.result(false, "Stack did not reach a running state", commitSha)
+		return
+	}
+	e.log("info", "Waiting for the container to become healthy…")
 	if waitRunning(ctx, name, timeout) {
 		e.result(true, "", commitSha)
 		return
 	}
 	e.result(false, "Container did not reach a running state", commitSha)
+}
+
+// renderEnvFile renders a decrypted env map as KEY=VALUE lines for a compose
+// --env-file. Mirrors the control plane's renderEnvFile (build.ts): values are
+// literal and any newline (which would break the env-file format) collapses to a
+// space. Keys are emitted in sorted order for a deterministic file.
+func renderEnvFile(env map[string]string) string {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		v := strings.ReplaceAll(env[k], "\r\n", " ")
+		v = strings.ReplaceAll(v, "\n", " ")
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(v)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// writeMountFiles materialises a compose stack's template config files under
+// <stackDir>/files/<slug>/. Each path is treated as relative to that dir; any
+// `..` segment or absolute path is rejected (the content arrives off the wire —
+// same anti-escape guard as the build context and the file RPCs). Mirrors the
+// control plane's writeMountFiles (build.ts).
+func (s *Service) writeMountFiles(slug string, mounts []*pb.MountFile, e *emitter) error {
+	if len(mounts) == 0 {
+		return nil
+	}
+	filesDir := filepath.Join(s.stackDir, "files", slug)
+	for _, m := range mounts {
+		// safepath.Join strips a leading "./"/"/", rejects any ".." segment, and
+		// returns the bare filesDir for an empty/"." path — all three of which are
+		// "no file to write here", so skip them rather than write outside or onto
+		// the dir itself.
+		target, ok := safepath.Join(filesDir, m.GetPath())
+		if !ok || target == filesDir {
+			e.log("warn", "Skipping unsafe mount path: "+m.GetPath())
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(target, []byte(m.GetContent()), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func waitStackRunning(ctx context.Context, slug string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if dockercli.StackRunning(ctx, slug) {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(2 * time.Second):
+		}
+	}
+	return false
 }
 
 func shortSha(sha string) string {

@@ -209,6 +209,16 @@ enum SourceKind {
   SOURCE_KIND_IMAGE = 2;
   // The agent clones a git URL itself with a short-lived token. PART B.
   SOURCE_KIND_GIT = 3;
+  // A multi-service compose stack: the control plane rendered the full stack
+  // (buildComposeStack — Traefik labels, deplo-network wiring, the deplo.* labels
+  // on EVERY service) into compose_yaml; the agent neither builds nor pulls an
+  // image (each service's image comes up via `docker compose up` itself). The
+  // agent writes the env map to a 0600 --env-file (the YAML interpolates `${VAR}`
+  // — it is NOT baked in like the single-image path), writes any `mounts`
+  // (template config files) under <stack_dir>/files/<slug>, then `compose up`s and
+  // waits for the stack by LABEL (deplo.slug), since the containers are
+  // compose-prefixed, not named deplo-<slug>. PART C.
+  SOURCE_KIND_COMPOSE = 4;
 }
 
 // How the agent turns the build context into an image. Part A implements the
@@ -263,6 +273,18 @@ message DockerfileBuild {
   // the control plane (generateDockerfile) so the agent stays dumb about
   // framework presets — same single-source-of-truth principle as the compose.
   string generated_dockerfile = 5;
+}
+
+// One template config file a compose stack bind-mounts (SOURCE_KIND_COMPOSE).
+// The control plane carries the file CONTENT (it lives in its store, not on the
+// remote host); the agent materialises it under <stack_dir>/files/<slug>/<path>
+// before `compose up` — the rendered compose already points its bind sources at
+// that directory. `path` is relative to the project files dir; the agent rejects
+// any `..` segment or absolute path (the content arrives off the wire — same
+// anti-escape guard as the build context and the file RPCs).
+message MountFile {
+  string path = 1;
+  string content = 2;
 }
 
 message DeployRequest {
@@ -320,6 +342,11 @@ message DeployRequest {
   // True when image_ref must be pulled before running (SOURCE_KIND_IMAGE with a
   // remote registry ref). The agent `docker pull`s it, streaming progress.
   bool pull_image = 12;
+
+  // Template config files a multi-service compose stack bind-mounts
+  // (SOURCE_KIND_COMPOSE). Written under <stack_dir>/files/<slug>/ before
+  // `compose up`. Empty for every other source kind.
+  repeated MountFile mounts = 14;
 }
 
 // One event in the deploy stream. Exactly one of the oneof arms is set.

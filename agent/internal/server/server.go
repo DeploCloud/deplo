@@ -27,6 +27,7 @@ var Capabilities = []string{
 	"deploy.dockerfile",     // builds the Dockerfile method
 	"deploy.image",          // runs a prebuilt image as-is
 	"deploy.compose.single", // single-image compose-up
+	"deploy.compose.multi",  // multi-service compose stack (env-file + label-wait)
 	"metrics",
 }
 

@@ -212,3 +212,19 @@ func State(ctx context.Context, name string) (bool, string) {
 	}
 	return true, strings.TrimSpace(res.Stdout)
 }
+
+// StackRunning reports whether ANY container of a Deplo stack is running, keyed
+// by the deplo.slug label rather than a container name. A multi-service compose
+// stack has compose-prefixed container names (deplo-<slug>-<service>-N), so the
+// name-based IsRunning would never see it; every service carries deplo.slug, so
+// the label query finds the whole stack. Mirrors the control plane's
+// waitStackRunning (build.ts). Best-effort: false on any failure.
+func StackRunning(ctx context.Context, slug string) bool {
+	res, err := Run(ctx, 5*time.Second, "ps", "-q",
+		"--filter", "label=deplo.slug="+slug,
+		"--filter", "status=running")
+	if err != nil || res.Code != 0 {
+		return false
+	}
+	return strings.TrimSpace(res.Stdout) != ""
+}
