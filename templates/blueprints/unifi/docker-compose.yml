@@ -15,7 +15,7 @@ services:
       - MONGO_TLS= #optional  # MongoDB TLS setting
       - MONGO_AUTHSOURCE= #optional  # MongoDB authentication source
     volumes: # Volumes to mount in the container
-      - ../files/config:/config # Map host directory to container directory
+      - ./config:/config # Map host directory to container directory
     ports:
       - 8443:8443 # HTTPS portal
       # - 3478:3478/udp # STUN service
@@ -34,8 +34,8 @@ services:
   unifi-db:
     image: mongo:4.4
     volumes:
-      - ../files/db/data:/data/db
-      - ../files/init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh:ro
+      - ./db/data:/data/db
+      - ./init-mongo.sh:/docker-entrypoint-initdb.d/init-mongo.sh:ro
     ports:
       - 27017
     restart: unless-stopped

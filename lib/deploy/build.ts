@@ -40,6 +40,7 @@ import {
   type RoutableDomain,
 } from "../data/domains";
 import { installationCloneUrl } from "../github/app";
+import { publishProjectChanged } from "../graphql/pubsub";
 import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
@@ -54,10 +55,17 @@ function log(depId: string, level: LogLine["level"], text: string): void {
 }
 
 function setDep(depId: string, patch: Partial<Deployment>): void {
+  let projectId: string | undefined;
   mutate((d) => {
     const x = d.deployments.find((y) => y.id === depId);
-    if (x) Object.assign(x, patch);
+    if (x) {
+      Object.assign(x, patch);
+      projectId = x.projectId;
+    }
   });
+  // A deployment's status feeds the project's `latestDeployment` view, so push
+  // the owning project to live subscribers when it changes.
+  if (projectId && "status" in patch) publishProjectChanged(projectId);
 }
 
 function setProject(projectId: string, patch: Record<string, unknown>): void {
@@ -65,6 +73,7 @@ function setProject(projectId: string, patch: Record<string, unknown>): void {
     const p = d.projects.find((x) => x.id === projectId);
     if (p) Object.assign(p, patch, { updatedAt: nowIso() });
   });
+  publishProjectChanged(projectId);
 }
 
 /**
@@ -100,14 +109,18 @@ export function renderCompose(opts: {
   /**
    * User-managed volumes. A "named" volume (default) gets a top-level `volumes:`
    * entry whose host name is namespaced per-project via `hostVolumeName`; a
-   * "host" bind mount renders its `hostPath` directly as the source and gets NO
-   * top-level entry. Empty/absent (and no NAMED volumes) ⇒ NO `volumes:` keys are
-   * emitted, keeping the output byte-identical to the long-standing stack so a
-   * reroute of an unchanged routing set never restarts the container.
+   * "project" bind renders its `projectPath` resolved against the project's
+   * isolated files dir; a "host" bind mount renders its `hostPath` directly as
+   * the source. Only NAMED volumes get a top-level entry — "project" and "host"
+   * are bind mounts (absolute source) and get none. Empty/absent (and no NAMED
+   * volumes) ⇒ NO `volumes:` keys are emitted, keeping the output byte-identical
+   * to the long-standing stack so a reroute of an unchanged routing set never
+   * restarts the container.
    */
   volumes?: {
-    type?: "named" | "host";
+    type?: "named" | "project" | "host";
     name: string;
+    projectPath?: string;
     hostPath?: string;
     mountPath: string;
     readOnly?: boolean;
@@ -115,7 +128,11 @@ export function renderCompose(opts: {
 }): string {
   const { name, image, port, projectId, slug, routes } = opts;
   const vols = opts.volumes ?? [];
-  const namedVols = vols.filter((v) => v.type !== "host");
+  const namedVols = vols.filter((v) => v.type !== "host" && v.type !== "project");
+  // Absolute, per-project files dir — the same sandbox the `./<x>` compose
+  // convention resolves to. A "project" mount's source is rendered here so it
+  // stays isolated (never resolved against the stack dir by docker).
+  const filesDir = join(STACK_DIR, "files", slug);
   // Default PORT to the project's default container port so 12-factor apps
   // (buildpacks, Nixpacks, Railpack) bind where Traefik forwards. A user-set
   // PORT wins. Per-domain port overrides only change Traefik's target, not the
@@ -159,12 +176,15 @@ export function renderCompose(opts: {
   const serviceVolsYaml = vols.length
     ? "    volumes:\n" +
       vols
-        .map(
-          (v) =>
-            `      - ${v.type === "host" ? v.hostPath : v.name}:${v.mountPath}${
-              v.readOnly ? ":ro" : ""
-            }`,
-        )
+        .map((v) => {
+          const source =
+            v.type === "host"
+              ? v.hostPath
+              : v.type === "project"
+                ? `${filesDir}/${v.projectPath}`
+                : v.name;
+          return `      - ${source}:${v.mountPath}${v.readOnly ? ":ro" : ""}`;
+        })
         .join("\n") +
       "\n"
     : "";
@@ -301,6 +321,9 @@ export function startDeployment(
     }
   });
   recordActivity("deployment", `Deploying ${project.name}`, opts.creator, projectId);
+  // A new deployment flips the project to "queued" and sets latestDeployment —
+  // push it to live subscribers so the header/tabs update without a reload.
+  publishProjectChanged(projectId);
 
   // Fire-and-forget: the standalone Node server keeps the event loop alive.
   void runDeployment(depId).catch((e) => {
@@ -646,7 +669,7 @@ async function deployComposeStack(opts: {
   }
 
   // Materialise any template config files into the project's isolated files dir
-  // (referenced by the compose as ../files/<x>) BEFORE the stack comes up.
+  // (referenced by the compose as ./<x>) BEFORE the stack comes up.
   const filesDir = join(STACK_DIR, "files", slug);
   if (project.mounts?.length) {
     await writeMountFiles(filesDir, project.mounts, depId);
@@ -847,8 +870,9 @@ async function readStackEnv(
  */
 /** The shape `renderCompose` accepts and `parseStackVolumes` reconstructs. */
 type StackVolume = {
-  type?: "named" | "host";
+  type?: "named" | "project" | "host";
   name: string;
+  projectPath?: string;
   hostPath?: string;
   mountPath: string;
   readOnly?: boolean;
@@ -868,9 +892,10 @@ async function readStackVolumes(
 /**
  * The pure parser behind `readStackVolumes` (no fs) — exported for tests. Reads
  * the service `volumes:` lines back into the same shape `renderCompose` emitted,
- * so a reroute re-renders byte-identically. A source starting with "/" is a HOST
- * bind mount (round-tripped as `type: "host"` with its `hostPath`); anything else
- * is a docker-named volume alias.
+ * so a reroute re-renders byte-identically. An absolute source under the
+ * project's files dir (`<STACK_DIR>/files/<slug>/<rel>`) round-trips as a
+ * "project" mount; any other absolute source is a HOST bind mount (`type:
+ * "host"` with its `hostPath`); anything else is a docker-named volume alias.
  */
 export function parseStackVolumes(
   yamlText: string,
@@ -881,11 +906,22 @@ export function parseStackVolumes(
   } | null;
   const list = doc?.services?.[service]?.volumes;
   if (!Array.isArray(list)) return [];
+  const filesRoot = join(STACK_DIR, "files") + "/";
   return list.flatMap((e) => {
     if (typeof e !== "string") return [];
     const [source, mountPath, flag] = e.split(":");
     if (!source || !mountPath) return [];
     const readOnly = flag === "ro";
+    if (source.startsWith(filesRoot)) {
+      // `<filesRoot><slug>/<rel>` — drop the slug segment, the rest is the
+      // project-relative path the "project" mount was authored with.
+      const afterRoot = source.slice(filesRoot.length);
+      const slash = afterRoot.indexOf("/");
+      const projectPath = slash >= 0 ? afterRoot.slice(slash + 1) : "";
+      if (projectPath) {
+        return [{ type: "project" as const, name: "", projectPath, mountPath, readOnly }];
+      }
+    }
     if (source.startsWith("/")) {
       return [{ type: "host" as const, name: "", hostPath: source, mountPath, readOnly }];
     }

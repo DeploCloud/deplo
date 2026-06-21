@@ -249,3 +249,64 @@ services:
   });
   assert.equal(backfilled, bare);
 });
+
+/* ------------------------------------------------------------------ */
+/* Project-files `./<x>` bind-mount rewrite                            */
+/* ------------------------------------------------------------------ */
+
+/** The volume sources of a service, post-build. */
+function volsOf(svc: Svc & { volumes?: unknown }): string[] {
+  return Array.isArray(svc.volumes) ? (svc.volumes as string[]) : [];
+}
+
+test("`./<x>` sources rewrite to the project's files dir; named/flags preserved", () => {
+  const doc = buildDoc(
+    `
+services:
+  app:
+    image: nginx
+    volumes:
+      - ./config.toml:/etc/app/config.toml
+      - ./nested/dir:/data:ro
+      - appdata:/var/lib/app
+`,
+    { filesDir: "/srv/stacks/files/demo" },
+  );
+  const vols = volsOf(doc.services.app as Svc & { volumes?: unknown });
+  assert.ok(vols.includes("/srv/stacks/files/demo/config.toml:/etc/app/config.toml"));
+  // Nested path + the :ro flag survive the rewrite.
+  assert.ok(vols.includes("/srv/stacks/files/demo/nested/dir:/data:ro"));
+  // A named volume is untouched.
+  assert.ok(vols.includes("appdata:/var/lib/app"));
+});
+
+test("a `..` escape source is NOT rewritten (left for the host-bind gate to block)", () => {
+  const doc = buildDoc(
+    `
+services:
+  app:
+    image: nginx
+    volumes:
+      - ../sibling/data:/data
+`,
+    { filesDir: "/srv/stacks/files/demo" },
+  );
+  const vols = volsOf(doc.services.app as Svc & { volumes?: unknown });
+  // Unchanged — the gate (isHostBindSource) is what rejects it, not the rewrite.
+  assert.ok(vols.includes("../sibling/data:/data"));
+});
+
+test("an absolute host source is NOT rewritten", () => {
+  const doc = buildDoc(
+    `
+services:
+  app:
+    image: nginx
+    volumes:
+      - /srv/host/data:/data
+`,
+    { filesDir: "/srv/stacks/files/demo" },
+  );
+  const vols = volsOf(doc.services.app as Svc & { volumes?: unknown });
+  assert.ok(vols.includes("/srv/host/data:/data"));
+});

@@ -175,6 +175,35 @@ test("migrate: converts the singleton notificationSettings into a per-team map",
   assert.equal(d.notificationSettings["team_1"].events.deployment_failed, true);
 });
 
+test("migrate: rewrites legacy ../files/ compose sources onto the ./ convention", () => {
+  const d = legacyDoc() as unknown as DeploData;
+  (d.projects as unknown[]) = [
+    {
+      id: "prj_1",
+      name: "App",
+      slug: "app",
+      teamId: "team_1",
+      compose:
+        "services:\n  app:\n    image: nginx\n    volumes:\n      - ../files/config.toml:/etc/config.toml\n      - ./files/data:/data\n      - appvol:/var/lib/app",
+    },
+  ];
+  migrate(d);
+  const compose = (d.projects[0] as { compose: string }).compose;
+  assert.ok(compose.includes("- ./config.toml:/etc/config.toml"), "../files/ rewritten");
+  assert.ok(compose.includes("- ./data:/data"), "./files/ rewritten");
+  assert.ok(compose.includes("- appvol:/var/lib/app"), "named volume untouched");
+  assert.ok(!/files\//.test(compose), "no files/ convention prefix remains");
+});
+
+test("migrate: leaves a project with no compose untouched", () => {
+  const d = legacyDoc() as unknown as DeploData;
+  (d.projects as unknown[]) = [
+    { id: "prj_2", name: "X", slug: "x", teamId: "team_1", compose: null },
+  ];
+  migrate(d);
+  assert.equal((d.projects[0] as { compose: null }).compose, null);
+});
+
 test("migrate: is idempotent", () => {
   const d = legacyDoc() as unknown as DeploData;
   migrate(d);

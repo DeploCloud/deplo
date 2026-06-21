@@ -11,7 +11,7 @@ host = "${main_domain}"
 
 [[config.mounts]]
 # Note: this relative path is resolved by Deplo to the file mounted from
-# ../files/prometheus.yml in docker-compose, and mapped inside the container
+# ./prometheus.yml in docker-compose, and mapped inside the container
 # to /etc/prometheus/prometheus.yml.
 filePath = "prometheus.yml"
 serviceName = "prometheus"

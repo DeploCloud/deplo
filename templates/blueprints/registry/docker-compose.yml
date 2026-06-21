@@ -5,7 +5,7 @@ services:
     ports:
       - 5000
     volumes:
-      - ../files/auth/registry.password:/auth/registry.password
+      - ./auth/registry.password:/auth/registry.password
       - registry-data:/var/lib/registry
     environment:
       REGISTRY_STORAGE_DELETE_ENABLED: true

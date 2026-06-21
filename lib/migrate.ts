@@ -26,6 +26,9 @@ import { uniqueUsername } from "./username";
  *  6. Instance admin: documents written before the global-admin flag get it
  *     backfilled onto the first team's owner(s) — the de-facto admins until now.
  *     `suspended` defaults to false for everyone.
+ *  7. Compose convention: rewrite stored bind-mount sources off the legacy
+ *     `../files/<x>` Dokploy convention onto the project-files `./<x>` form, so
+ *     a non-privileged re-save of an old stack doesn't trip the host-bind gate.
  */
 export function migrate(data: DeploData): DeploData {
   const firstTeamId = data.teams[0]?.id ?? null;
@@ -128,6 +131,19 @@ export function migrate(data: DeploData): DeploData {
   // 4. Drop the removed "hobby" plan.
   for (const t of data.teams) {
     if ((t.plan as string) === "hobby") t.plan = "pro";
+  }
+
+  // 7. Migrate stored compose bind-mounts off the legacy Dokploy `../files/<x>`
+  //    convention onto the project-files `./<x>` convention. A `../files/` source
+  //    is now treated as a sandbox escape (gated behind canMountHostVolumes), so
+  //    leaving it in an already-deployed stack would make a non-privileged
+  //    re-save fail the host-bind gate. Rewriting `(../|./)files/` → `./` keeps
+  //    the same on-disk target (the files dir name is unchanged). Idempotent:
+  //    once rewritten there is no `files/` left to match.
+  for (const p of data.projects) {
+    if (p.compose && /(?:\.\.?\/)+files\//.test(p.compose)) {
+      p.compose = p.compose.replace(/(?:\.\.?\/)+files\//g, "./");
+    }
   }
 
   return data;

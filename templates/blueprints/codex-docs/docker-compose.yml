@@ -13,7 +13,7 @@ services:
     volumes:
       - uploads:/usr/src/app/uploads
       - db:/usr/src/app/db
-      - ../files/docs-config.yaml:/usr/src/app/docs-config.yaml
+      - ./docs-config.yaml:/usr/src/app/docs-config.yaml
     depends_on:
       - mongo
 

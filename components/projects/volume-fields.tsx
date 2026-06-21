@@ -6,18 +6,30 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { hostVolumeName, shortId } from "@/lib/utils";
 import type { VolumeMount } from "@/lib/types";
+
+type VolumeType = NonNullable<VolumeMount["type"]>;
 
 /**
  * Presentational editor for a single-container project's persistent volumes (the
  * renderCompose path). Fetch-free — the parent form owns the save.
  *
- * Two kinds per row, switched by the "Host path" toggle:
+ * Three kinds per row, picked from the "Type" selector:
  *  - NAMED (default): a human name + an absolute in-container mount path. The
  *    host-side volume name is namespaced per project (deplo-<slug>-<name>); we
  *    preview it here, but the server is the only thing that derives/trusts it. A
  *    blank name is fine in a draft row — the server derives one on save.
+ *  - PROJECT FILE: a path RELATIVE to the project's isolated files dir
+ *    (e.g. "config.toml" or "uploads"). Stays inside the sandbox — no grant
+ *    needed. The same place the `./<x>` compose convention targets.
  *  - HOST: an absolute HOST path bound into the container. Only privileged users
  *    (the `canMountHostVolumes` grant, or instance admins) may save one; the
  *    server rejects it otherwise — we don't hide the control here.
@@ -59,29 +71,64 @@ export function VolumeFields({
       ) : (
         <div className="space-y-3">
           {volumes.map((v) => {
-            const isHost = v.type === "host";
+            const type: VolumeType = v.type ?? "named";
+            const isHost = type === "host";
+            const isProject = type === "project";
             const previewName = (v.name || "").trim();
+            const sourceLabel = isHost
+              ? "Host path"
+              : isProject
+                ? "Project path (in files dir)"
+                : "Name";
+            const sourceValue = isHost
+              ? (v.hostPath ?? "")
+              : isProject
+                ? (v.projectPath ?? "")
+                : v.name;
+            const sourcePlaceholder = isHost
+              ? "/srv/data"
+              : isProject
+                ? "config.toml"
+                : "data";
             return (
               <div
                 key={v.id}
                 className="rounded-lg border border-border p-3 space-y-3"
               >
-                <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
+                <div className="grid gap-3 sm:grid-cols-[auto_1fr_1fr]">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">
-                      {isHost ? "Host path" : "Name"}
-                    </Label>
+                    <Label className="text-xs">Type</Label>
+                    <Select
+                      value={type}
+                      onValueChange={(t) =>
+                        update(v.id, { type: t as VolumeType })
+                      }
+                    >
+                      <SelectTrigger className="text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="named">Named volume</SelectItem>
+                        <SelectItem value="project">Project file</SelectItem>
+                        <SelectItem value="host">Host path</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{sourceLabel}</Label>
                     <Input
-                      value={isHost ? (v.hostPath ?? "") : v.name}
+                      value={sourceValue}
                       onChange={(e) =>
                         update(
                           v.id,
                           isHost
                             ? { hostPath: e.target.value }
-                            : { name: e.target.value },
+                            : isProject
+                              ? { projectPath: e.target.value }
+                              : { name: e.target.value },
                         )
                       }
-                      placeholder={isHost ? "/srv/data" : "data"}
+                      placeholder={sourcePlaceholder}
                       className="font-mono text-sm"
                     />
                   </div>
@@ -101,6 +148,8 @@ export function VolumeFields({
                   <p className="truncate text-xs text-muted-foreground">
                     {isHost ? (
                       "Binds a path on the deploy host — needs the host-volume permission."
+                    ) : isProject ? (
+                      "Binds a path inside this project's isolated files directory."
                     ) : previewName ? (
                       <>
                         Host volume:{" "}
@@ -113,15 +162,6 @@ export function VolumeFields({
                     )}
                   </p>
                   <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Switch
-                        checked={isHost}
-                        onCheckedChange={(c) =>
-                          update(v.id, { type: c ? "host" : "named" })
-                        }
-                      />
-                      Host path
-                    </label>
                     <label className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Switch
                         checked={v.readOnly}

@@ -15,6 +15,6 @@ POSTGRES_PASSWORD = "${postgres_password}"
 
 
 [[config.mounts]]
-source = "../files/db-data"  
+source = "./db-data"  
 target = "/var/lib/postgresql/data"  
 type = "bind"  

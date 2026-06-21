@@ -170,3 +170,75 @@ test("host mount: does not enforce docker-name rules and ignores name dupes", ()
   );
   assert.equal(out?.length, 2);
 });
+
+/* ------------------------------------------------------------------ */
+/* Project-files binds (type: "project")                               */
+/* ------------------------------------------------------------------ */
+
+test("accepts a project bind and keeps type + projectPath", () => {
+  const out = validateVolumes(
+    [vol({ id: "vol_p", type: "project", projectPath: "config.toml", mountPath: "/app/config.toml" })],
+    null,
+  );
+  assert.deepEqual(out, [
+    {
+      id: "vol_p",
+      type: "project",
+      // Name is derived from the mount path with non-alnum runs collapsed to "-".
+      name: "app-config-toml",
+      projectPath: "config.toml",
+      mountPath: "/app/config.toml",
+      readOnly: false,
+    },
+  ]);
+});
+
+test("project bind: strips a leading './' from the projectPath", () => {
+  const out = validateVolumes(
+    [vol({ type: "project", projectPath: "./uploads", mountPath: "/uploads" })],
+    null,
+  );
+  assert.equal(out?.[0].projectPath, "uploads");
+});
+
+test("project bind: accepts a nested relative path", () => {
+  const out = validateVolumes(
+    [vol({ type: "project", projectPath: "volumes/db/init.sql", mountPath: "/init.sql" })],
+    null,
+  );
+  assert.equal(out?.[0].projectPath, "volumes/db/init.sql");
+});
+
+test("project bind: rejects a '..' escape (the rename-vuln guard)", () => {
+  assert.throws(
+    () => validateVolumes([vol({ type: "project", projectPath: "../other/data", mountPath: "/data" })], null),
+    /must not contain "\.\."/,
+  );
+  // …including a climb dressed up as same-project self-reference.
+  assert.throws(
+    () => validateVolumes([vol({ type: "project", projectPath: "../demo/appdata", mountPath: "/appdata" })], null),
+    /must not contain "\.\."/,
+  );
+});
+
+test("project bind: rejects an absolute or empty projectPath", () => {
+  assert.throws(
+    () => validateVolumes([vol({ type: "project", projectPath: "/abs", mountPath: "/data" })], null),
+    /relative to the project/,
+  );
+  assert.throws(
+    () => validateVolumes([vol({ type: "project", projectPath: "", mountPath: "/data" })], null),
+    /relative to the project/,
+  );
+});
+
+test("project bind: rejects spaces or a colon in the projectPath", () => {
+  assert.throws(
+    () => validateVolumes([vol({ type: "project", projectPath: "my file", mountPath: "/data" })], null),
+    /spaces or ":"/,
+  );
+  assert.throws(
+    () => validateVolumes([vol({ type: "project", projectPath: "a:b", mountPath: "/data" })], null),
+    /spaces or ":"/,
+  );
+});

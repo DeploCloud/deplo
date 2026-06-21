@@ -4,8 +4,8 @@ services:
     environment:
       - RUNNING_IN_DOCKER=true
     volumes:
-      - ../files/app.conf:/conf/app.conf
-      - ../files/init_data.json:/init_data.json
+      - ./app.conf:/conf/app.conf
+      - ./init_data.json:/init_data.json
       - casdoor-data:/data
     depends_on:
       casdoor-db:

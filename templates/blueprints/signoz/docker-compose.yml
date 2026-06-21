@@ -76,7 +76,7 @@ services:
         mv histogram-quantile /var/lib/clickhouse/user_scripts/histogramQuantile
     restart: on-failure
     volumes:
-      - ../files/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts/
+      - ./clickhouse/user_scripts:/var/lib/clickhouse/user_scripts/
   zookeeper-1:
     !!merge <<: *zookeeper-defaults
     volumes:
@@ -91,9 +91,9 @@ services:
     !!merge <<: *clickhouse-defaults
     container_name: signoz-clickhouse
     volumes:
-      - ../files/clickhouse/config.xml:/etc/clickhouse-server/config.xml
-      - ../files/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts/
-      - ../files/clickhouse/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml
+      - ./clickhouse/config.xml:/etc/clickhouse-server/config.xml
+      - ./clickhouse/user_scripts:/var/lib/clickhouse/user_scripts/
+      - ./clickhouse/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml
       - clickhouse:/var/lib/clickhouse/
   signoz:
     !!merge <<: *db-depend
@@ -103,7 +103,7 @@ services:
     ports:
       - "8080"
     volumes:
-      - ../files/signoz/prometheus.yml:/root/config/prometheus.yml
+      - ./signoz/prometheus.yml:/root/config/prometheus.yml
       - sqlite:/var/lib/signoz/
     environment:
       - SIGNOZ_ALERTMANAGER_PROVIDER=signoz
@@ -130,7 +130,7 @@ services:
     command:
       - --config=/etc/otel-collector-config.yaml
     volumes:
-      - ../files/collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - ./collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
     ports:
       - "4317" # OTLP gRPC receiver
       - "4318" # OTLP HTTP receiver

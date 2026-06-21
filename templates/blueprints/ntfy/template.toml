@@ -12,7 +12,7 @@ path = "/"
 HTTP_PORT = "${ntfy_http_port}"
 
 # This is an example, you'll need to add manually any templates you want to use
-# Should be preserved as we use the ../files/templates solution
+# Should be preserved as we use the ./templates solution
 [[config.mounts]]
 filePath = "/templates/myapp.yml"
 content = """

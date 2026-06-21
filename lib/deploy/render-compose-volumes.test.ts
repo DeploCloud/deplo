@@ -141,3 +141,40 @@ test("host bind round-trips through parseStackVolumes as type: host", () => {
     { type: "host", name: "", hostPath: "/srv/h", mountPath: "/h", readOnly: true },
   ]);
 });
+
+test("project file mount: source resolves to the project's files dir, NO top-level entry", () => {
+  const yaml = renderCompose({
+    ...base,
+    volumes: [
+      { type: "project", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+    ],
+  });
+  // The source is the absolute per-project files dir (…/files/<slug>/<rel>),
+  // never a raw "./" that docker would resolve against the stack dir.
+  assert.match(yaml, /\n {6}- \/.*\/files\/demo\/config\.toml:\/app\/config\.toml\n/);
+  // A project bind, like a host bind, gets NO top-level volumes block.
+  assert.ok(!/\nvolumes:/.test(yaml), "no top-level volumes block for a project bind");
+});
+
+test("project file mount: nested path and :ro flag render correctly", () => {
+  const yaml = renderCompose({
+    ...base,
+    volumes: [
+      { type: "project", name: "", projectPath: "volumes/db/init.sql", mountPath: "/init.sql", readOnly: true },
+    ],
+  });
+  assert.match(yaml, /\n {6}- \/.*\/files\/demo\/volumes\/db\/init\.sql:\/init\.sql:ro\n/);
+});
+
+test("project file mount round-trips through parseStackVolumes as type: project", () => {
+  const volumes = [
+    { name: "data", mountPath: "/data", readOnly: false },
+    { type: "project" as const, name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+  ];
+  const yaml = renderCompose({ ...base, volumes });
+  const parsed = parseStackVolumes(yaml, base.name);
+  assert.deepEqual(parsed, [
+    { name: "data", mountPath: "/data", readOnly: false },
+    { type: "project", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+  ]);
+});

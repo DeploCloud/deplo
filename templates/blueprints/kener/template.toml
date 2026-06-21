@@ -33,5 +33,5 @@ target = "/app/database"
 
 [[config.mounts]]
 type = "bind"
-source = "../files/uploads"
+source = "./uploads"
 target = "/app/uploads"

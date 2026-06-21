@@ -7,8 +7,8 @@ services:
              chown -R 1000:1000 /opt/Lavalink/plugins || true &&
              echo perms-fixed && sleep 1"
     volumes:
-      - "../files/plugins/:/opt/Lavalink/plugins/"
-      - "../files/application.yml:/opt/Lavalink/application.yml"
+      - "./plugins/:/opt/Lavalink/plugins/"
+      - "./application.yml:/opt/Lavalink/application.yml"
     restart: "no"
   lavalink:
     image: ghcr.io/lavalink-devs/lavalink:4
@@ -20,8 +20,8 @@ services:
       LAVALINK_SERVER_PASSWORD: "${LAVALINK_SERVER_PASSWORD:-youshallnotpass}"
       SERVER_PORT: "${SERVER_PORT:-2333}"
     volumes:
-      - "../files/application.yml:/opt/Lavalink/application.yml:rw"
-      - "../files/plugins/:/opt/Lavalink/plugins/:rw"
+      - "./application.yml:/opt/Lavalink/application.yml:rw"
+      - "./plugins/:/opt/Lavalink/plugins/:rw"
     ports:
       - ${SERVER_PORT}
 

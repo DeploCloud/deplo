@@ -5,7 +5,7 @@ services:
     ports:
       - 8000
     volumes:
-      - ../files/surreal_data:/mydata
+      - ./surreal_data:/mydata
     command: start --user root --pass root rocksdb:/mydata/mydatabase.db
     pull_policy: always
     user: root
@@ -24,4 +24,4 @@ services:
       - surrealdb
     pull_policy: always
     volumes:
-      - ../files/notebook_data:/app/data
+      - ./notebook_data:/app/data

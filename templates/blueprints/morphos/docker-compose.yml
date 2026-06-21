@@ -6,7 +6,7 @@ services:
     expose:
       - 8080
     volumes:
-      - ../files/morphos-upload:/upload:rw
+      - ./morphos-upload:/upload:rw
     healthcheck:
       test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1
       interval: 10s

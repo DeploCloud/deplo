@@ -302,7 +302,8 @@ export function lintCompose(source: string): LintDiagnostic[] {
       }
     }
 
-    // Bind mounts: note the `../files` convention and warn on absolute host paths.
+    // Bind mounts: note the `./` convention, flag `..` escapes, and warn on
+    // absolute host paths.
     if (Array.isArray(svc.volumes)) {
       const volLine = lineOfServiceField(lines, svcLine, "volumes");
       for (const v of svc.volumes) {
@@ -313,6 +314,13 @@ export function lintCompose(source: string): LintDiagnostic[] {
             severity: "info",
             rule: "bind-mount-files-note",
             message: `\`${name}\` mounts \`${src}\` — Deplo rewrites this to your project's isolated files directory at deploy time.`,
+            line: volLine,
+          });
+        } else if (isEscapingSource(src)) {
+          diags.push({
+            severity: "warning",
+            rule: "bind-mount-escapes-sandbox",
+            message: `\`${name}\` mounts \`${src}\`, which uses \`..\` to climb out of your project's files directory. This is treated as a host bind mount and needs the host-volume permission. Use a \`./\`-relative path to stay inside the project.`,
             line: volLine,
           });
         } else if (src.startsWith("/")) {
@@ -447,25 +455,44 @@ export function volumeSource(v: unknown): string | null {
   return null;
 }
 
-/** The `../files/<x>` convention is rewritten to the project's isolated files
- * directory at deploy time — NOT a host bind mount the user picked a path for. */
-function isFilesConventionSource(src: string): boolean {
-  return /^(?:\.\.?\/)*files\//.test(src);
+/** The project-files `./<x>` convention is rewritten to the project's isolated
+ * files directory at deploy time — NOT a host bind mount the user picked a path
+ * for. Matches `./x`, `./folder/`, bare `.`/`./`; explicitly NOT `../` (escape). */
+export function isFilesConventionSource(src: string): boolean {
+  return /^\.(?:\/|$)/.test(src) && !isEscapingSource(src);
 }
 
 /**
- * True if a single compose volume entry bind-mounts a real HOST path — i.e. an
- * absolute source that is NOT the project-isolated `../files/...` convention.
- * Shared by the editor lint (warning) and the server-side permission gate so
- * the two never disagree about what counts as a host mount.
+ * True if a source climbs out of the project sandbox via a `..` path segment.
+ * Such a source is never the project-files convention; it is treated as a host
+ * bind (gated behind `canMountHostVolumes`) so a rename can't repoint it at
+ * another project's data.
  */
-export function isHostBindSource(src: string | null | undefined): boolean {
-  return Boolean(src && src.startsWith("/") && !isFilesConventionSource(src));
+export function isEscapingSource(src: string | null | undefined): boolean {
+  return Boolean(src && src.split(/[\\/]/).includes(".."));
 }
 
-/** A docker-compose document, just the slice we read for host-bind detection. */
+/**
+ * True if a single compose volume entry bind-mounts a real HOST path — an
+ * absolute source, OR a `..`-escaping source, that is NOT the project-isolated
+ * `./...` convention. Shared by the editor lint (warning) and the server-side
+ * permission gate so the two never disagree about what counts as a host mount.
+ */
+export function isHostBindSource(src: string | null | undefined): boolean {
+  return Boolean(
+    src &&
+      (src.startsWith("/") || isEscapingSource(src)) &&
+      !isFilesConventionSource(src),
+  );
+}
+
+/** A docker-compose document, just the slice we read for host-bind / port
+ * detection. */
 interface ComposeDocShape {
-  services?: Record<string, { volumes?: unknown } | null | undefined>;
+  services?: Record<
+    string,
+    { volumes?: unknown; ports?: unknown; expose?: unknown } | null | undefined
+  >;
 }
 
 /**
@@ -490,6 +517,39 @@ export function composeHasHostBindMount(composeYaml: string): boolean {
     for (const v of vols) {
       if (isHostBindSource(volumeSource(v))) return true;
     }
+  }
+  return false;
+}
+
+/**
+ * Parse a compose YAML string and report whether ANY service publishes ports —
+ * either host-published `ports:` (mapped onto the server's IP/port) or `expose:`
+ * (advertised to other containers). Used server-side to gate compose edits
+ * behind the `canExposePorts` grant. This is independent of Traefik routing:
+ * giving a service a public DOMAIN does NOT publish a port and is never gated
+ * here — only a `ports:`/`expose:` declaration in the compose itself is.
+ *
+ * Tolerant of malformed input: YAML it can't parse, or a doc with no services,
+ * has no detectable published port (the deploy-time parse is authoritative). A
+ * `ports:`/`expose:` key present but empty (`[]`/null) declares nothing, so it
+ * does not count.
+ */
+export function composePublishesPorts(composeYaml: string): boolean {
+  let doc: ComposeDocShape | null;
+  try {
+    doc = yaml.load(composeYaml) as ComposeDocShape | null;
+  } catch {
+    return false;
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object") return false;
+  for (const svc of Object.values(services)) {
+    // Host-published mappings: any well-formed entry counts.
+    const ports = svc?.ports;
+    if (Array.isArray(ports) && ports.some(isValidPortMapping)) return true;
+    // `expose:` is a list of container ports advertised to linked services.
+    const expose = svc?.expose;
+    if (Array.isArray(expose) && expose.length > 0) return true;
   }
   return false;
 }

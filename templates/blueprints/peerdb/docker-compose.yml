@@ -40,8 +40,8 @@ services:
       POSTGRES_INITDB_ARGS: --locale=C.UTF-8
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ../files/postgresql.conf:/etc/postgresql.conf
-      - ../files/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+      - ./postgresql.conf:/etc/postgresql.conf
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "pg_isready", "-d", "${PEERDB_CATALOG_DATABASE}", "-U", "${PEERDB_CATALOG_USER}"]
       interval: 10s
@@ -65,7 +65,7 @@ services:
     expose:
       - 7233
     volumes:
-      - ../files/temporal-dynamicconfig:/etc/temporal/config/dynamicconfig
+      - ./temporal-dynamicconfig:/etc/temporal/config/dynamicconfig
 
   temporal-admin-tools:
     restart: unless-stopped
@@ -85,7 +85,7 @@ services:
       timeout: 30s
       retries: 5
     volumes:
-      - ../files/scripts/mirror-name-search.sh:/etc/temporal/entrypoint.sh
+      - ./scripts/mirror-name-search.sh:/etc/temporal/entrypoint.sh
 
   temporal-ui:
     restart: unless-stopped

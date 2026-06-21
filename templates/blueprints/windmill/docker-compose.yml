@@ -87,7 +87,7 @@ services:
     restart: unless-stopped
 
     volumes:
-      - ../files/Caddyfile:/etc/caddy/Caddyfile
+      - ./Caddyfile:/etc/caddy/Caddyfile
     environment:
       - BASE_URL=":80"
     depends_on:

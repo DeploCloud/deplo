@@ -28,6 +28,6 @@ HIDE_HISTORY = "${hide_history}"
 LANGUAGE = "${language}"
 
 [[config.mounts]]
-source = "../files/data"
+source = "./data"
 target = "/app/data"
 type = "bind"

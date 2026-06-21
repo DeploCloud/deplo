@@ -14,7 +14,7 @@ services:
     image: clickhouse/clickhouse-server:25.5
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ../files/clickhouse_config:/etc/clickhouse-server/config.d
+      - ./clickhouse_config:/etc/clickhouse-server/config.d
     environment:
       - CLICKHOUSE_DB=${CLICKHOUSE_DB}
       - CLICKHOUSE_USER=${CLICKHOUSE_USER}

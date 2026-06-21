@@ -19,7 +19,7 @@ services:
     restart: always
     command: ["mongod", "--quiet", "--replSet", "rs0", "--bind_ip_all"]
     volumes:
-      - ../files/mongo-data:/data/db
+      - ./mongo-data:/data/db
     healthcheck:
       test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongodb:27017'}]}) }" | mongosh --port 27017 --quiet
       interval: 5s

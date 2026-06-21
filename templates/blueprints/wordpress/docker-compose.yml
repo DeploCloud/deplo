@@ -3,7 +3,7 @@ services:
     image: wordpress:latest
     volumes:
       - wp_app:/var/www/html
-      - ../files/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+      - ./uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
     environment:
       WORDPRESS_DB_HOST: wp_db
       WORDPRESS_DB_NAME: $DB_NAME

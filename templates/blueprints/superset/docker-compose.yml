@@ -30,7 +30,7 @@ services:
       - superset_redis
     volumes:
       # This superset_config.py can be edited in Deplo's UI Advanced -> Volume Mount
-      - ../files/superset/superset_config.py:/etc/superset/superset_config.py
+      - ./superset/superset_config.py:/etc/superset/superset_config.py
     environment:
       SECRET_KEY: ${SECRET_KEY}
       MAPBOX_API_KEY: ${MAPBOX_API_KEY}

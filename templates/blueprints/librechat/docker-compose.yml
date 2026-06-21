@@ -44,7 +44,7 @@ services:
       - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
     volumes:
       - type: bind
-        source: ../files/librechat.yaml
+        source: ./librechat.yaml
         target: /app/librechat.yaml
       - librechat_data:/app/client/public/images
       - librechat_data:/app/uploads
