@@ -130,8 +130,13 @@ server script that installs it and **calls home** with a **bootstrap token**, th
 plane (which is the agents' private **CA**, derived from `DEPLO_SECRET`) signs its mTLS cert.
 The agent pins the control plane by cert **fingerprint** (so bare-IP, no-domain installs work).
 Health is **read live** (never a stored value that goes stale). See
-[ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md). *(Design settled — not
-yet built.)*
+[ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md). *(**Part A built**: the
+localhost server's **deploy execution** runs through the agent — Hello/Metrics/Deploy over mTLS
+for the Dockerfile-build + single-image compose-up path, with a clean fallback to the in-process
+direct-Docker path for the heavy builders, compose stacks, or an unavailable agent. Logs/console/
+metrics/Files and remote provisioning are later parts. Agent code in [`agent/`](../agent/),
+contract in [`proto/agent.proto`](../proto/agent.proto), control-plane side in
+[`lib/agent/`](../lib/agent/) + [`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts).)*
 _Avoid_: agent (ambiguous — say "server agent"), node, worker, runner (CI term), daemon
 (reserve for the Docker daemon it drives), deplo agent on the remote being a "second Deplo".
 

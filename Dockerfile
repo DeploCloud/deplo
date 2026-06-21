@@ -1,4 +1,18 @@
 # Deplo control plane  multi-stage build (Bun + Next.js standalone)
+
+# --- Agent: the per-server Go binary (PLAN Part A / ADR-0006). Built static so
+# it drops into the runtime with no Go toolchain or libc dependency. The control
+# plane launches it as the LOCAL agent (DEPLO_AGENT_BIN below) and, in Part B,
+# the same artifact is shipped to remote servers by the install script.
+FROM golang:1.23-alpine AS agent
+WORKDIR /agent
+COPY agent/go.mod agent/go.sum ./
+RUN go mod download
+COPY agent/ ./
+RUN CGO_ENABLED=0 go build \
+      -ldflags "-X github.com/idradev/deplo/agent/internal/server.AgentVersion=$(cat /agent/VERSION 2>/dev/null || echo prod)" \
+      -o /out/deplo-agent .
+
 FROM oven/bun:1.3 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
@@ -19,6 +33,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV DEPLO_DATA_DIR=/data
+# The control plane launches this binary as the local server agent and dials it
+# over mTLS for the deploy path (PLAN Part A). Absent => the control plane falls
+# back to the in-process direct-Docker deploy path.
+ENV DEPLO_AGENT_BIN=/usr/local/bin/deplo-agent
 
 # Real infrastructure tooling: the control plane shells out to these to clone
 # repos, build images and orchestrate containers over the mounted Docker socket.
@@ -48,6 +66,10 @@ RUN addgroup -g 1001 -S nodejs \
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+
+# The per-server agent binary (static; PLAN Part A). The control plane launches
+# it locally and dials it over mTLS for deploys.
+COPY --from=agent /out/deplo-agent /usr/local/bin/deplo-agent
 
 # Replace the standalone tracer's node-pty (JS only — Next doesn't trace the
 # native .node) with the runtime-compiled one built above against Node 22/musl,
