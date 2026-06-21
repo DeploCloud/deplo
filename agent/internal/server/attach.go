@@ -151,11 +151,12 @@ func dimsOrDefault(cols, rows int) (int, int) {
 // ---- pipe backing (tty:false): docker attach over plain pipes -------------
 
 type attachPipes struct {
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	merged chan []byte
-	once   sync.Once
-	code   int
+	cmd       *exec.Cmd
+	stdin     io.WriteCloser
+	merged    chan []byte
+	done      chan struct{} // closed by close() to unblock blocked pump sends
+	closeOnce sync.Once
+	code      int
 }
 
 func newAttachPipes(name string) (*attachPipes, error) {
@@ -175,7 +176,12 @@ func newAttachPipes(name string) (*attachPipes, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	a := &attachPipes{cmd: cmd, stdin: stdin, merged: make(chan []byte, 16)}
+	a := &attachPipes{
+		cmd:    cmd,
+		stdin:  stdin,
+		merged: make(chan []byte, 16),
+		done:   make(chan struct{}),
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -187,7 +193,13 @@ func newAttachPipes(name string) (*attachPipes, error) {
 			if n > 0 {
 				chunk := make([]byte, n)
 				copy(chunk, buf[:n])
-				a.merged <- chunk
+				// Select on done so a send never blocks forever once the reader
+				// has gone (close() fired): the pump exits instead of leaking.
+				select {
+				case a.merged <- chunk:
+				case <-a.done:
+					return
+				}
 			}
 			if err != nil {
 				return
@@ -196,29 +208,37 @@ func newAttachPipes(name string) (*attachPipes, error) {
 	}
 	go pump(stdout)
 	go pump(stderr)
-	// Once both pipes drain, reap the child and close the merged channel so the
-	// reader sees io.EOF. close(merged) MUST happen exactly once.
+	// Once both pipes drain (process exited, or close() killed it), reap the
+	// child and close merged so the reader sees io.EOF. The wait goroutine is the
+	// SOLE closer of merged — close() never touches it (which would risk a
+	// double-close panic or a send-on-closed-channel from a still-running pump).
 	go func() {
 		wg.Wait()
 		werr := a.cmd.Wait()
 		if ee := (&exec.ExitError{}); errors.As(werr, &ee) {
 			a.code = ee.ExitCode()
 		}
-		a.once.Do(func() { close(a.merged) })
+		close(a.merged)
 	}()
 	return a, nil
 }
 
 func (a *attachPipes) read(p []byte) (int, error) {
-	chunk, ok := <-a.merged
-	if !ok {
+	select {
+	case chunk, ok := <-a.merged:
+		if !ok {
+			return 0, io.EOF
+		}
+		n := copy(p, chunk)
+		// A chunk larger than p is rare (p is 32KiB, matching the pump buffer);
+		// the merged buffer is sized to the same 32KiB pump, so copy is full in
+		// practice.
+		return n, nil
+	case <-a.done:
+		// close() fired; stop reading promptly (the pumps/wait goroutine drain
+		// and close merged on their own).
 		return 0, io.EOF
 	}
-	n := copy(p, chunk)
-	// A chunk larger than p is rare (p is 32KiB, matching the pump buffer); if it
-	// ever happens the tail is dropped rather than corrupting framing — the merged
-	// buffer is sized to the same 32KiB pump, so copy is full in practice.
-	return n, nil
 }
 
 func (a *attachPipes) write(data []byte) {
@@ -230,13 +250,11 @@ func (a *attachPipes) resize(_, _ int) {} // no pty, nothing to resize
 func (a *attachPipes) exitCode() int { return a.code }
 
 func (a *attachPipes) close() {
+	a.closeOnce.Do(func() { close(a.done) }) // unblock the pumps + read()
 	_ = a.stdin.Close()
 	if a.cmd.Process != nil {
 		_ = a.cmd.Process.Kill() // sig-proxy=false => container untouched
 	}
-	// Drain so the pumps unblock if they are mid-send; the wait goroutine closes
-	// the channel.
-	a.once.Do(func() { /* channel close is owned by the wait goroutine */ })
 }
 
 // ---- pty backing (tty:true): docker attach inside a pseudo-terminal -------
