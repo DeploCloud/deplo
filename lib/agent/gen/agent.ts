@@ -10,9 +10,11 @@ import {
   type CallOptions,
   type ChannelCredentials,
   Client,
+  type ClientDuplexStream,
   type ClientOptions,
   type ClientReadableStream,
   type ClientUnaryCall,
+  type handleBidiStreamingCall,
   type handleServerStreamingCall,
   type handleUnaryCall,
   makeGenericClientConstructor,
@@ -492,6 +494,233 @@ export interface InspectResponse {
   running: boolean;
   /** Raw docker state string (running, exited, ...). */
   state: string;
+}
+
+export interface FollowLogsRequest {
+  /** The project the container must belong to (agent re-validates the label). */
+  projectId: string;
+  /**
+   * The exact container name to stream (resolved control-plane-side from the
+   * project's instances; the agent confirms it carries project_id's label).
+   */
+  container: string;
+  /** Seed the stream with the last N lines before following live. 0 => 500. */
+  tail: number;
+}
+
+/**
+ * One raw chunk of merged stdout+stderr. Bytes, not lines: a multi-byte UTF-8
+ * glyph or ANSI sequence split across reads is reassembled by the control
+ * plane's StringDecoder, exactly as the local `docker logs` pipe path does.
+ */
+export interface LogChunk {
+  data: Uint8Array;
+}
+
+/** A client->agent frame on the Attach stream. The first frame MUST be `open`. */
+export interface AttachInput {
+  /** FIRST message: selects the container + tty + size */
+  open?:
+    | AttachOpen
+    | undefined;
+  /** stdin keystrokes (raw bytes) */
+  data?:
+    | Uint8Array
+    | undefined;
+  /** terminal resize (tty containers only) */
+  resize?: AttachResize | undefined;
+}
+
+export interface AttachOpen {
+  /** agent re-validates the container's label */
+  projectId: string;
+  container: string;
+  /**
+   * True for a tty:true container (a real pseudo-terminal is allocated, Go
+   * creack/pty); false attaches over plain pipes. Resolved control-plane-side
+   * from inspectStdio and passed in.
+   */
+  tty: boolean;
+  /** initial terminal size (tty only); 0 => 80 */
+  cols: number;
+  /** 0 => 24 */
+  rows: number;
+}
+
+export interface AttachResize {
+  cols: number;
+  rows: number;
+}
+
+/** An agent->client frame on the Attach stream. */
+export interface AttachOutput {
+  /** merged container output */
+  data?:
+    | Uint8Array
+    | undefined;
+  /** the attach client exited (container stop/detach) */
+  exit?: AttachExit | undefined;
+}
+
+export interface AttachExit {
+  code: number;
+}
+
+export interface ListInstancesRequest {
+  /** label filter: deplo.project=<project_id> */
+  projectId: string;
+  /** for the single-image synthetic service name */
+  slug: string;
+  /**
+   * The Traefik-exposed service name (project.expose.service), so the agent can
+   * flag the exposed instance for ordering. Empty => none exposed.
+   */
+  exposeService: string;
+}
+
+/**
+ * Mirrors lib/data/console.ts ConsoleInstance exactly (field-for-field) so the
+ * control plane maps it 1:1 without translation.
+ */
+export interface ConsoleInstance {
+  name: string;
+  service: string;
+  image: string;
+  running: boolean;
+  exposed: boolean;
+  user: string;
+  workdir: string;
+  openStdin: boolean;
+  tty: boolean;
+}
+
+export interface ListInstancesResponse {
+  /**
+   * Exposed/running first (the agent applies the same sort as listInstances).
+   * Empty when the project has no containers — NO synthetic fallback entry (a
+   * fabricated container would be the "stored status that lies"; the localhost-
+   * only synthetic entry stays control-plane-side).
+   */
+  instances: ConsoleInstance[];
+}
+
+export interface ExecRequest {
+  projectId: string;
+  container: string;
+  /** the raw command line (shell-interpreted or argv) */
+  command: string;
+  /** for the shell-plan cache key */
+  image: string;
+}
+
+export interface ExecResponse {
+  /** guest exit code (a non-zero exit is NOT an error) */
+  code: number;
+  stdout: string;
+  stderr: string;
+  /**
+   * True when the image had no shell and the command ran as raw argv (no pipes/
+   * globbing) — the console renders a notice.
+   */
+  rawMode: boolean;
+}
+
+export interface ShellLabelRequest {
+  projectId: string;
+  container: string;
+  image: string;
+}
+
+export interface ShellLabelResponse {
+  /** "/bin/sh" | "/bin/bash" | "raw exec (no shell)" */
+  label: string;
+}
+
+/** Mirrors lib/data/project-files.ts FileEntry. */
+export interface FileEntry {
+  /** relative to the files root, POSIX, no leading / */
+  path: string;
+  name: string;
+  /** "dir" | "file" */
+  kind: string;
+  size: number;
+  /** ISO timestamp */
+  modifiedAt: string;
+}
+
+/** The common return for the mutating file ops (write/upload/mkdir/rename). */
+export interface FileEntryResult {
+  entry?: FileEntry | undefined;
+}
+
+export interface ListFilesRequest {
+  slug: string;
+  /** "" => the root */
+  path: string;
+}
+
+export interface ListFilesResponse {
+  /** dirs first, then files, each alphabetical */
+  entries: FileEntry[];
+}
+
+export interface ReadFileRequest {
+  slug: string;
+  path: string;
+}
+
+export interface ReadFileResponse {
+  path: string;
+  /** The UTF-8 text body. Empty when reason != "" (binary/too-large). */
+  text: string;
+  size: number;
+  /**
+   * "" when text is present; "binary" or "too-large" when it is withheld —
+   * matches lib/data/project-files.ts FileContent.reason byte-for-byte.
+   */
+  reason: string;
+}
+
+export interface WriteFileRequest {
+  slug: string;
+  path: string;
+  /** capped at 1 MiB agent-side */
+  content: string;
+}
+
+export interface UploadFileRequest {
+  slug: string;
+  path: string;
+  /** Raw bytes (the GraphQL layer base64-decodes; the wire carries binary). */
+  data: Uint8Array;
+}
+
+export interface CreateDirRequest {
+  slug: string;
+  path: string;
+}
+
+export interface DeleteFileRequest {
+  slug: string;
+  path: string;
+}
+
+export interface DeleteFileResult {
+  ok: boolean;
+}
+
+export interface RenameFileRequest {
+  slug: string;
+  path: string;
+  newPath: string;
+}
+
+export interface FilesExistRequest {
+  slug: string;
+}
+
+export interface FilesExistResponse {
+  exists: boolean;
 }
 
 function createBaseHelloRequest(): HelloRequest {
@@ -2491,6 +2720,2452 @@ export const InspectResponse: MessageFns<InspectResponse> = {
   },
 };
 
+function createBaseFollowLogsRequest(): FollowLogsRequest {
+  return { projectId: "", container: "", tail: 0 };
+}
+
+export const FollowLogsRequest: MessageFns<FollowLogsRequest> = {
+  encode(message: FollowLogsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.projectId !== "") {
+      writer.uint32(10).string(message.projectId);
+    }
+    if (message.container !== "") {
+      writer.uint32(18).string(message.container);
+    }
+    if (message.tail !== 0) {
+      writer.uint32(24).int32(message.tail);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): FollowLogsRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseFollowLogsRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.projectId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.container = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.tail = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): FollowLogsRequest {
+    return {
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      container: isSet(object.container) ? globalThis.String(object.container) : "",
+      tail: isSet(object.tail) ? globalThis.Number(object.tail) : 0,
+    };
+  },
+
+  toJSON(message: FollowLogsRequest): unknown {
+    const obj: any = {};
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.container !== "") {
+      obj.container = message.container;
+    }
+    if (message.tail !== 0) {
+      obj.tail = Math.round(message.tail);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<FollowLogsRequest>, I>>(base?: I): FollowLogsRequest {
+    return FollowLogsRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<FollowLogsRequest>, I>>(object: I): FollowLogsRequest {
+    const message = createBaseFollowLogsRequest();
+    message.projectId = object.projectId ?? "";
+    message.container = object.container ?? "";
+    message.tail = object.tail ?? 0;
+    return message;
+  },
+};
+
+function createBaseLogChunk(): LogChunk {
+  return { data: new Uint8Array(0) };
+}
+
+export const LogChunk: MessageFns<LogChunk> = {
+  encode(message: LogChunk, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.data.length !== 0) {
+      writer.uint32(10).bytes(message.data);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LogChunk {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseLogChunk();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): LogChunk {
+    return { data: isSet(object.data) ? bytesFromBase64(object.data) : new Uint8Array(0) };
+  },
+
+  toJSON(message: LogChunk): unknown {
+    const obj: any = {};
+    if (message.data.length !== 0) {
+      obj.data = base64FromBytes(message.data);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<LogChunk>, I>>(base?: I): LogChunk {
+    return LogChunk.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<LogChunk>, I>>(object: I): LogChunk {
+    const message = createBaseLogChunk();
+    message.data = object.data ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseAttachInput(): AttachInput {
+  return { open: undefined, data: undefined, resize: undefined };
+}
+
+export const AttachInput: MessageFns<AttachInput> = {
+  encode(message: AttachInput, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.open !== undefined) {
+      AttachOpen.encode(message.open, writer.uint32(10).fork()).join();
+    }
+    if (message.data !== undefined) {
+      writer.uint32(18).bytes(message.data);
+    }
+    if (message.resize !== undefined) {
+      AttachResize.encode(message.resize, writer.uint32(26).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AttachInput {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAttachInput();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.open = AttachOpen.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.resize = AttachResize.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AttachInput {
+    return {
+      open: isSet(object.open) ? AttachOpen.fromJSON(object.open) : undefined,
+      data: isSet(object.data) ? bytesFromBase64(object.data) : undefined,
+      resize: isSet(object.resize) ? AttachResize.fromJSON(object.resize) : undefined,
+    };
+  },
+
+  toJSON(message: AttachInput): unknown {
+    const obj: any = {};
+    if (message.open !== undefined) {
+      obj.open = AttachOpen.toJSON(message.open);
+    }
+    if (message.data !== undefined) {
+      obj.data = base64FromBytes(message.data);
+    }
+    if (message.resize !== undefined) {
+      obj.resize = AttachResize.toJSON(message.resize);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AttachInput>, I>>(base?: I): AttachInput {
+    return AttachInput.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AttachInput>, I>>(object: I): AttachInput {
+    const message = createBaseAttachInput();
+    message.open = (object.open !== undefined && object.open !== null)
+      ? AttachOpen.fromPartial(object.open)
+      : undefined;
+    message.data = object.data ?? undefined;
+    message.resize = (object.resize !== undefined && object.resize !== null)
+      ? AttachResize.fromPartial(object.resize)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseAttachOpen(): AttachOpen {
+  return { projectId: "", container: "", tty: false, cols: 0, rows: 0 };
+}
+
+export const AttachOpen: MessageFns<AttachOpen> = {
+  encode(message: AttachOpen, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.projectId !== "") {
+      writer.uint32(10).string(message.projectId);
+    }
+    if (message.container !== "") {
+      writer.uint32(18).string(message.container);
+    }
+    if (message.tty !== false) {
+      writer.uint32(24).bool(message.tty);
+    }
+    if (message.cols !== 0) {
+      writer.uint32(32).int32(message.cols);
+    }
+    if (message.rows !== 0) {
+      writer.uint32(40).int32(message.rows);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AttachOpen {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAttachOpen();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.projectId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.container = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.tty = reader.bool();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.cols = reader.int32();
+          continue;
+        }
+        case 5: {
+          if (tag !== 40) {
+            break;
+          }
+
+          message.rows = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AttachOpen {
+    return {
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      container: isSet(object.container) ? globalThis.String(object.container) : "",
+      tty: isSet(object.tty) ? globalThis.Boolean(object.tty) : false,
+      cols: isSet(object.cols) ? globalThis.Number(object.cols) : 0,
+      rows: isSet(object.rows) ? globalThis.Number(object.rows) : 0,
+    };
+  },
+
+  toJSON(message: AttachOpen): unknown {
+    const obj: any = {};
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.container !== "") {
+      obj.container = message.container;
+    }
+    if (message.tty !== false) {
+      obj.tty = message.tty;
+    }
+    if (message.cols !== 0) {
+      obj.cols = Math.round(message.cols);
+    }
+    if (message.rows !== 0) {
+      obj.rows = Math.round(message.rows);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AttachOpen>, I>>(base?: I): AttachOpen {
+    return AttachOpen.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AttachOpen>, I>>(object: I): AttachOpen {
+    const message = createBaseAttachOpen();
+    message.projectId = object.projectId ?? "";
+    message.container = object.container ?? "";
+    message.tty = object.tty ?? false;
+    message.cols = object.cols ?? 0;
+    message.rows = object.rows ?? 0;
+    return message;
+  },
+};
+
+function createBaseAttachResize(): AttachResize {
+  return { cols: 0, rows: 0 };
+}
+
+export const AttachResize: MessageFns<AttachResize> = {
+  encode(message: AttachResize, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.cols !== 0) {
+      writer.uint32(8).int32(message.cols);
+    }
+    if (message.rows !== 0) {
+      writer.uint32(16).int32(message.rows);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AttachResize {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAttachResize();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.cols = reader.int32();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.rows = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AttachResize {
+    return {
+      cols: isSet(object.cols) ? globalThis.Number(object.cols) : 0,
+      rows: isSet(object.rows) ? globalThis.Number(object.rows) : 0,
+    };
+  },
+
+  toJSON(message: AttachResize): unknown {
+    const obj: any = {};
+    if (message.cols !== 0) {
+      obj.cols = Math.round(message.cols);
+    }
+    if (message.rows !== 0) {
+      obj.rows = Math.round(message.rows);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AttachResize>, I>>(base?: I): AttachResize {
+    return AttachResize.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AttachResize>, I>>(object: I): AttachResize {
+    const message = createBaseAttachResize();
+    message.cols = object.cols ?? 0;
+    message.rows = object.rows ?? 0;
+    return message;
+  },
+};
+
+function createBaseAttachOutput(): AttachOutput {
+  return { data: undefined, exit: undefined };
+}
+
+export const AttachOutput: MessageFns<AttachOutput> = {
+  encode(message: AttachOutput, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.data !== undefined) {
+      writer.uint32(10).bytes(message.data);
+    }
+    if (message.exit !== undefined) {
+      AttachExit.encode(message.exit, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AttachOutput {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAttachOutput();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.exit = AttachExit.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AttachOutput {
+    return {
+      data: isSet(object.data) ? bytesFromBase64(object.data) : undefined,
+      exit: isSet(object.exit) ? AttachExit.fromJSON(object.exit) : undefined,
+    };
+  },
+
+  toJSON(message: AttachOutput): unknown {
+    const obj: any = {};
+    if (message.data !== undefined) {
+      obj.data = base64FromBytes(message.data);
+    }
+    if (message.exit !== undefined) {
+      obj.exit = AttachExit.toJSON(message.exit);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AttachOutput>, I>>(base?: I): AttachOutput {
+    return AttachOutput.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AttachOutput>, I>>(object: I): AttachOutput {
+    const message = createBaseAttachOutput();
+    message.data = object.data ?? undefined;
+    message.exit = (object.exit !== undefined && object.exit !== null)
+      ? AttachExit.fromPartial(object.exit)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseAttachExit(): AttachExit {
+  return { code: 0 };
+}
+
+export const AttachExit: MessageFns<AttachExit> = {
+  encode(message: AttachExit, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.code !== 0) {
+      writer.uint32(8).int32(message.code);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AttachExit {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAttachExit();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.code = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AttachExit {
+    return { code: isSet(object.code) ? globalThis.Number(object.code) : 0 };
+  },
+
+  toJSON(message: AttachExit): unknown {
+    const obj: any = {};
+    if (message.code !== 0) {
+      obj.code = Math.round(message.code);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AttachExit>, I>>(base?: I): AttachExit {
+    return AttachExit.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AttachExit>, I>>(object: I): AttachExit {
+    const message = createBaseAttachExit();
+    message.code = object.code ?? 0;
+    return message;
+  },
+};
+
+function createBaseListInstancesRequest(): ListInstancesRequest {
+  return { projectId: "", slug: "", exposeService: "" };
+}
+
+export const ListInstancesRequest: MessageFns<ListInstancesRequest> = {
+  encode(message: ListInstancesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.projectId !== "") {
+      writer.uint32(10).string(message.projectId);
+    }
+    if (message.slug !== "") {
+      writer.uint32(18).string(message.slug);
+    }
+    if (message.exposeService !== "") {
+      writer.uint32(26).string(message.exposeService);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListInstancesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseListInstancesRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.projectId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.exposeService = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ListInstancesRequest {
+    return {
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      exposeService: isSet(object.exposeService)
+        ? globalThis.String(object.exposeService)
+        : isSet(object.expose_service)
+        ? globalThis.String(object.expose_service)
+        : "",
+    };
+  },
+
+  toJSON(message: ListInstancesRequest): unknown {
+    const obj: any = {};
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.exposeService !== "") {
+      obj.exposeService = message.exposeService;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListInstancesRequest>, I>>(base?: I): ListInstancesRequest {
+    return ListInstancesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListInstancesRequest>, I>>(object: I): ListInstancesRequest {
+    const message = createBaseListInstancesRequest();
+    message.projectId = object.projectId ?? "";
+    message.slug = object.slug ?? "";
+    message.exposeService = object.exposeService ?? "";
+    return message;
+  },
+};
+
+function createBaseConsoleInstance(): ConsoleInstance {
+  return {
+    name: "",
+    service: "",
+    image: "",
+    running: false,
+    exposed: false,
+    user: "",
+    workdir: "",
+    openStdin: false,
+    tty: false,
+  };
+}
+
+export const ConsoleInstance: MessageFns<ConsoleInstance> = {
+  encode(message: ConsoleInstance, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.name !== "") {
+      writer.uint32(10).string(message.name);
+    }
+    if (message.service !== "") {
+      writer.uint32(18).string(message.service);
+    }
+    if (message.image !== "") {
+      writer.uint32(26).string(message.image);
+    }
+    if (message.running !== false) {
+      writer.uint32(32).bool(message.running);
+    }
+    if (message.exposed !== false) {
+      writer.uint32(40).bool(message.exposed);
+    }
+    if (message.user !== "") {
+      writer.uint32(50).string(message.user);
+    }
+    if (message.workdir !== "") {
+      writer.uint32(58).string(message.workdir);
+    }
+    if (message.openStdin !== false) {
+      writer.uint32(64).bool(message.openStdin);
+    }
+    if (message.tty !== false) {
+      writer.uint32(72).bool(message.tty);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ConsoleInstance {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseConsoleInstance();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.service = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.image = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.running = reader.bool();
+          continue;
+        }
+        case 5: {
+          if (tag !== 40) {
+            break;
+          }
+
+          message.exposed = reader.bool();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.user = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.workdir = reader.string();
+          continue;
+        }
+        case 8: {
+          if (tag !== 64) {
+            break;
+          }
+
+          message.openStdin = reader.bool();
+          continue;
+        }
+        case 9: {
+          if (tag !== 72) {
+            break;
+          }
+
+          message.tty = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ConsoleInstance {
+    return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      service: isSet(object.service) ? globalThis.String(object.service) : "",
+      image: isSet(object.image) ? globalThis.String(object.image) : "",
+      running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
+      exposed: isSet(object.exposed) ? globalThis.Boolean(object.exposed) : false,
+      user: isSet(object.user) ? globalThis.String(object.user) : "",
+      workdir: isSet(object.workdir) ? globalThis.String(object.workdir) : "",
+      openStdin: isSet(object.openStdin)
+        ? globalThis.Boolean(object.openStdin)
+        : isSet(object.open_stdin)
+        ? globalThis.Boolean(object.open_stdin)
+        : false,
+      tty: isSet(object.tty) ? globalThis.Boolean(object.tty) : false,
+    };
+  },
+
+  toJSON(message: ConsoleInstance): unknown {
+    const obj: any = {};
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.service !== "") {
+      obj.service = message.service;
+    }
+    if (message.image !== "") {
+      obj.image = message.image;
+    }
+    if (message.running !== false) {
+      obj.running = message.running;
+    }
+    if (message.exposed !== false) {
+      obj.exposed = message.exposed;
+    }
+    if (message.user !== "") {
+      obj.user = message.user;
+    }
+    if (message.workdir !== "") {
+      obj.workdir = message.workdir;
+    }
+    if (message.openStdin !== false) {
+      obj.openStdin = message.openStdin;
+    }
+    if (message.tty !== false) {
+      obj.tty = message.tty;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ConsoleInstance>, I>>(base?: I): ConsoleInstance {
+    return ConsoleInstance.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ConsoleInstance>, I>>(object: I): ConsoleInstance {
+    const message = createBaseConsoleInstance();
+    message.name = object.name ?? "";
+    message.service = object.service ?? "";
+    message.image = object.image ?? "";
+    message.running = object.running ?? false;
+    message.exposed = object.exposed ?? false;
+    message.user = object.user ?? "";
+    message.workdir = object.workdir ?? "";
+    message.openStdin = object.openStdin ?? false;
+    message.tty = object.tty ?? false;
+    return message;
+  },
+};
+
+function createBaseListInstancesResponse(): ListInstancesResponse {
+  return { instances: [] };
+}
+
+export const ListInstancesResponse: MessageFns<ListInstancesResponse> = {
+  encode(message: ListInstancesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.instances) {
+      ConsoleInstance.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListInstancesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseListInstancesResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.instances.push(ConsoleInstance.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ListInstancesResponse {
+    return {
+      instances: globalThis.Array.isArray(object?.instances)
+        ? object.instances.map((e: any) => ConsoleInstance.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ListInstancesResponse): unknown {
+    const obj: any = {};
+    if (message.instances?.length) {
+      obj.instances = message.instances.map((e) => ConsoleInstance.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListInstancesResponse>, I>>(base?: I): ListInstancesResponse {
+    return ListInstancesResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListInstancesResponse>, I>>(object: I): ListInstancesResponse {
+    const message = createBaseListInstancesResponse();
+    message.instances = object.instances?.map((e) => ConsoleInstance.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseExecRequest(): ExecRequest {
+  return { projectId: "", container: "", command: "", image: "" };
+}
+
+export const ExecRequest: MessageFns<ExecRequest> = {
+  encode(message: ExecRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.projectId !== "") {
+      writer.uint32(10).string(message.projectId);
+    }
+    if (message.container !== "") {
+      writer.uint32(18).string(message.container);
+    }
+    if (message.command !== "") {
+      writer.uint32(26).string(message.command);
+    }
+    if (message.image !== "") {
+      writer.uint32(34).string(message.image);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExecRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseExecRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.projectId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.container = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.command = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.image = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ExecRequest {
+    return {
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      container: isSet(object.container) ? globalThis.String(object.container) : "",
+      command: isSet(object.command) ? globalThis.String(object.command) : "",
+      image: isSet(object.image) ? globalThis.String(object.image) : "",
+    };
+  },
+
+  toJSON(message: ExecRequest): unknown {
+    const obj: any = {};
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.container !== "") {
+      obj.container = message.container;
+    }
+    if (message.command !== "") {
+      obj.command = message.command;
+    }
+    if (message.image !== "") {
+      obj.image = message.image;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExecRequest>, I>>(base?: I): ExecRequest {
+    return ExecRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExecRequest>, I>>(object: I): ExecRequest {
+    const message = createBaseExecRequest();
+    message.projectId = object.projectId ?? "";
+    message.container = object.container ?? "";
+    message.command = object.command ?? "";
+    message.image = object.image ?? "";
+    return message;
+  },
+};
+
+function createBaseExecResponse(): ExecResponse {
+  return { code: 0, stdout: "", stderr: "", rawMode: false };
+}
+
+export const ExecResponse: MessageFns<ExecResponse> = {
+  encode(message: ExecResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.code !== 0) {
+      writer.uint32(8).int32(message.code);
+    }
+    if (message.stdout !== "") {
+      writer.uint32(18).string(message.stdout);
+    }
+    if (message.stderr !== "") {
+      writer.uint32(26).string(message.stderr);
+    }
+    if (message.rawMode !== false) {
+      writer.uint32(32).bool(message.rawMode);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExecResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseExecResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.code = reader.int32();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.stdout = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.stderr = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.rawMode = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ExecResponse {
+    return {
+      code: isSet(object.code) ? globalThis.Number(object.code) : 0,
+      stdout: isSet(object.stdout) ? globalThis.String(object.stdout) : "",
+      stderr: isSet(object.stderr) ? globalThis.String(object.stderr) : "",
+      rawMode: isSet(object.rawMode)
+        ? globalThis.Boolean(object.rawMode)
+        : isSet(object.raw_mode)
+        ? globalThis.Boolean(object.raw_mode)
+        : false,
+    };
+  },
+
+  toJSON(message: ExecResponse): unknown {
+    const obj: any = {};
+    if (message.code !== 0) {
+      obj.code = Math.round(message.code);
+    }
+    if (message.stdout !== "") {
+      obj.stdout = message.stdout;
+    }
+    if (message.stderr !== "") {
+      obj.stderr = message.stderr;
+    }
+    if (message.rawMode !== false) {
+      obj.rawMode = message.rawMode;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExecResponse>, I>>(base?: I): ExecResponse {
+    return ExecResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExecResponse>, I>>(object: I): ExecResponse {
+    const message = createBaseExecResponse();
+    message.code = object.code ?? 0;
+    message.stdout = object.stdout ?? "";
+    message.stderr = object.stderr ?? "";
+    message.rawMode = object.rawMode ?? false;
+    return message;
+  },
+};
+
+function createBaseShellLabelRequest(): ShellLabelRequest {
+  return { projectId: "", container: "", image: "" };
+}
+
+export const ShellLabelRequest: MessageFns<ShellLabelRequest> = {
+  encode(message: ShellLabelRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.projectId !== "") {
+      writer.uint32(10).string(message.projectId);
+    }
+    if (message.container !== "") {
+      writer.uint32(18).string(message.container);
+    }
+    if (message.image !== "") {
+      writer.uint32(26).string(message.image);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ShellLabelRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseShellLabelRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.projectId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.container = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.image = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ShellLabelRequest {
+    return {
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      container: isSet(object.container) ? globalThis.String(object.container) : "",
+      image: isSet(object.image) ? globalThis.String(object.image) : "",
+    };
+  },
+
+  toJSON(message: ShellLabelRequest): unknown {
+    const obj: any = {};
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.container !== "") {
+      obj.container = message.container;
+    }
+    if (message.image !== "") {
+      obj.image = message.image;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ShellLabelRequest>, I>>(base?: I): ShellLabelRequest {
+    return ShellLabelRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ShellLabelRequest>, I>>(object: I): ShellLabelRequest {
+    const message = createBaseShellLabelRequest();
+    message.projectId = object.projectId ?? "";
+    message.container = object.container ?? "";
+    message.image = object.image ?? "";
+    return message;
+  },
+};
+
+function createBaseShellLabelResponse(): ShellLabelResponse {
+  return { label: "" };
+}
+
+export const ShellLabelResponse: MessageFns<ShellLabelResponse> = {
+  encode(message: ShellLabelResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.label !== "") {
+      writer.uint32(10).string(message.label);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ShellLabelResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseShellLabelResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.label = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ShellLabelResponse {
+    return { label: isSet(object.label) ? globalThis.String(object.label) : "" };
+  },
+
+  toJSON(message: ShellLabelResponse): unknown {
+    const obj: any = {};
+    if (message.label !== "") {
+      obj.label = message.label;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ShellLabelResponse>, I>>(base?: I): ShellLabelResponse {
+    return ShellLabelResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ShellLabelResponse>, I>>(object: I): ShellLabelResponse {
+    const message = createBaseShellLabelResponse();
+    message.label = object.label ?? "";
+    return message;
+  },
+};
+
+function createBaseFileEntry(): FileEntry {
+  return { path: "", name: "", kind: "", size: 0, modifiedAt: "" };
+}
+
+export const FileEntry: MessageFns<FileEntry> = {
+  encode(message: FileEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.path !== "") {
+      writer.uint32(10).string(message.path);
+    }
+    if (message.name !== "") {
+      writer.uint32(18).string(message.name);
+    }
+    if (message.kind !== "") {
+      writer.uint32(26).string(message.kind);
+    }
+    if (message.size !== 0) {
+      writer.uint32(32).int64(message.size);
+    }
+    if (message.modifiedAt !== "") {
+      writer.uint32(42).string(message.modifiedAt);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): FileEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseFileEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.kind = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.size = longToNumber(reader.int64());
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.modifiedAt = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): FileEntry {
+    return {
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      kind: isSet(object.kind) ? globalThis.String(object.kind) : "",
+      size: isSet(object.size) ? globalThis.Number(object.size) : 0,
+      modifiedAt: isSet(object.modifiedAt)
+        ? globalThis.String(object.modifiedAt)
+        : isSet(object.modified_at)
+        ? globalThis.String(object.modified_at)
+        : "",
+    };
+  },
+
+  toJSON(message: FileEntry): unknown {
+    const obj: any = {};
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.kind !== "") {
+      obj.kind = message.kind;
+    }
+    if (message.size !== 0) {
+      obj.size = Math.round(message.size);
+    }
+    if (message.modifiedAt !== "") {
+      obj.modifiedAt = message.modifiedAt;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<FileEntry>, I>>(base?: I): FileEntry {
+    return FileEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<FileEntry>, I>>(object: I): FileEntry {
+    const message = createBaseFileEntry();
+    message.path = object.path ?? "";
+    message.name = object.name ?? "";
+    message.kind = object.kind ?? "";
+    message.size = object.size ?? 0;
+    message.modifiedAt = object.modifiedAt ?? "";
+    return message;
+  },
+};
+
+function createBaseFileEntryResult(): FileEntryResult {
+  return { entry: undefined };
+}
+
+export const FileEntryResult: MessageFns<FileEntryResult> = {
+  encode(message: FileEntryResult, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.entry !== undefined) {
+      FileEntry.encode(message.entry, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): FileEntryResult {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseFileEntryResult();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.entry = FileEntry.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): FileEntryResult {
+    return { entry: isSet(object.entry) ? FileEntry.fromJSON(object.entry) : undefined };
+  },
+
+  toJSON(message: FileEntryResult): unknown {
+    const obj: any = {};
+    if (message.entry !== undefined) {
+      obj.entry = FileEntry.toJSON(message.entry);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<FileEntryResult>, I>>(base?: I): FileEntryResult {
+    return FileEntryResult.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<FileEntryResult>, I>>(object: I): FileEntryResult {
+    const message = createBaseFileEntryResult();
+    message.entry = (object.entry !== undefined && object.entry !== null)
+      ? FileEntry.fromPartial(object.entry)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseListFilesRequest(): ListFilesRequest {
+  return { slug: "", path: "" };
+}
+
+export const ListFilesRequest: MessageFns<ListFilesRequest> = {
+  encode(message: ListFilesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.path !== "") {
+      writer.uint32(18).string(message.path);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListFilesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseListFilesRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ListFilesRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+    };
+  },
+
+  toJSON(message: ListFilesRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListFilesRequest>, I>>(base?: I): ListFilesRequest {
+    return ListFilesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListFilesRequest>, I>>(object: I): ListFilesRequest {
+    const message = createBaseListFilesRequest();
+    message.slug = object.slug ?? "";
+    message.path = object.path ?? "";
+    return message;
+  },
+};
+
+function createBaseListFilesResponse(): ListFilesResponse {
+  return { entries: [] };
+}
+
+export const ListFilesResponse: MessageFns<ListFilesResponse> = {
+  encode(message: ListFilesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.entries) {
+      FileEntry.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListFilesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseListFilesResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.entries.push(FileEntry.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ListFilesResponse {
+    return {
+      entries: globalThis.Array.isArray(object?.entries) ? object.entries.map((e: any) => FileEntry.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: ListFilesResponse): unknown {
+    const obj: any = {};
+    if (message.entries?.length) {
+      obj.entries = message.entries.map((e) => FileEntry.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListFilesResponse>, I>>(base?: I): ListFilesResponse {
+    return ListFilesResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListFilesResponse>, I>>(object: I): ListFilesResponse {
+    const message = createBaseListFilesResponse();
+    message.entries = object.entries?.map((e) => FileEntry.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseReadFileRequest(): ReadFileRequest {
+  return { slug: "", path: "" };
+}
+
+export const ReadFileRequest: MessageFns<ReadFileRequest> = {
+  encode(message: ReadFileRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.path !== "") {
+      writer.uint32(18).string(message.path);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadFileRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReadFileRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReadFileRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+    };
+  },
+
+  toJSON(message: ReadFileRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadFileRequest>, I>>(base?: I): ReadFileRequest {
+    return ReadFileRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadFileRequest>, I>>(object: I): ReadFileRequest {
+    const message = createBaseReadFileRequest();
+    message.slug = object.slug ?? "";
+    message.path = object.path ?? "";
+    return message;
+  },
+};
+
+function createBaseReadFileResponse(): ReadFileResponse {
+  return { path: "", text: "", size: 0, reason: "" };
+}
+
+export const ReadFileResponse: MessageFns<ReadFileResponse> = {
+  encode(message: ReadFileResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.path !== "") {
+      writer.uint32(10).string(message.path);
+    }
+    if (message.text !== "") {
+      writer.uint32(18).string(message.text);
+    }
+    if (message.size !== 0) {
+      writer.uint32(24).int64(message.size);
+    }
+    if (message.reason !== "") {
+      writer.uint32(34).string(message.reason);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadFileResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReadFileResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.text = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.size = longToNumber(reader.int64());
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.reason = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReadFileResponse {
+    return {
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      text: isSet(object.text) ? globalThis.String(object.text) : "",
+      size: isSet(object.size) ? globalThis.Number(object.size) : 0,
+      reason: isSet(object.reason) ? globalThis.String(object.reason) : "",
+    };
+  },
+
+  toJSON(message: ReadFileResponse): unknown {
+    const obj: any = {};
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.text !== "") {
+      obj.text = message.text;
+    }
+    if (message.size !== 0) {
+      obj.size = Math.round(message.size);
+    }
+    if (message.reason !== "") {
+      obj.reason = message.reason;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadFileResponse>, I>>(base?: I): ReadFileResponse {
+    return ReadFileResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadFileResponse>, I>>(object: I): ReadFileResponse {
+    const message = createBaseReadFileResponse();
+    message.path = object.path ?? "";
+    message.text = object.text ?? "";
+    message.size = object.size ?? 0;
+    message.reason = object.reason ?? "";
+    return message;
+  },
+};
+
+function createBaseWriteFileRequest(): WriteFileRequest {
+  return { slug: "", path: "", content: "" };
+}
+
+export const WriteFileRequest: MessageFns<WriteFileRequest> = {
+  encode(message: WriteFileRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.path !== "") {
+      writer.uint32(18).string(message.path);
+    }
+    if (message.content !== "") {
+      writer.uint32(26).string(message.content);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): WriteFileRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseWriteFileRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.content = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): WriteFileRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      content: isSet(object.content) ? globalThis.String(object.content) : "",
+    };
+  },
+
+  toJSON(message: WriteFileRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.content !== "") {
+      obj.content = message.content;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<WriteFileRequest>, I>>(base?: I): WriteFileRequest {
+    return WriteFileRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<WriteFileRequest>, I>>(object: I): WriteFileRequest {
+    const message = createBaseWriteFileRequest();
+    message.slug = object.slug ?? "";
+    message.path = object.path ?? "";
+    message.content = object.content ?? "";
+    return message;
+  },
+};
+
+function createBaseUploadFileRequest(): UploadFileRequest {
+  return { slug: "", path: "", data: new Uint8Array(0) };
+}
+
+export const UploadFileRequest: MessageFns<UploadFileRequest> = {
+  encode(message: UploadFileRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.path !== "") {
+      writer.uint32(18).string(message.path);
+    }
+    if (message.data.length !== 0) {
+      writer.uint32(26).bytes(message.data);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): UploadFileRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseUploadFileRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): UploadFileRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      data: isSet(object.data) ? bytesFromBase64(object.data) : new Uint8Array(0),
+    };
+  },
+
+  toJSON(message: UploadFileRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.data.length !== 0) {
+      obj.data = base64FromBytes(message.data);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<UploadFileRequest>, I>>(base?: I): UploadFileRequest {
+    return UploadFileRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<UploadFileRequest>, I>>(object: I): UploadFileRequest {
+    const message = createBaseUploadFileRequest();
+    message.slug = object.slug ?? "";
+    message.path = object.path ?? "";
+    message.data = object.data ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseCreateDirRequest(): CreateDirRequest {
+  return { slug: "", path: "" };
+}
+
+export const CreateDirRequest: MessageFns<CreateDirRequest> = {
+  encode(message: CreateDirRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.path !== "") {
+      writer.uint32(18).string(message.path);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CreateDirRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCreateDirRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CreateDirRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+    };
+  },
+
+  toJSON(message: CreateDirRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CreateDirRequest>, I>>(base?: I): CreateDirRequest {
+    return CreateDirRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CreateDirRequest>, I>>(object: I): CreateDirRequest {
+    const message = createBaseCreateDirRequest();
+    message.slug = object.slug ?? "";
+    message.path = object.path ?? "";
+    return message;
+  },
+};
+
+function createBaseDeleteFileRequest(): DeleteFileRequest {
+  return { slug: "", path: "" };
+}
+
+export const DeleteFileRequest: MessageFns<DeleteFileRequest> = {
+  encode(message: DeleteFileRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.path !== "") {
+      writer.uint32(18).string(message.path);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DeleteFileRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDeleteFileRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DeleteFileRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+    };
+  },
+
+  toJSON(message: DeleteFileRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<DeleteFileRequest>, I>>(base?: I): DeleteFileRequest {
+    return DeleteFileRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<DeleteFileRequest>, I>>(object: I): DeleteFileRequest {
+    const message = createBaseDeleteFileRequest();
+    message.slug = object.slug ?? "";
+    message.path = object.path ?? "";
+    return message;
+  },
+};
+
+function createBaseDeleteFileResult(): DeleteFileResult {
+  return { ok: false };
+}
+
+export const DeleteFileResult: MessageFns<DeleteFileResult> = {
+  encode(message: DeleteFileResult, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.ok !== false) {
+      writer.uint32(8).bool(message.ok);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DeleteFileResult {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDeleteFileResult();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.ok = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DeleteFileResult {
+    return { ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false };
+  },
+
+  toJSON(message: DeleteFileResult): unknown {
+    const obj: any = {};
+    if (message.ok !== false) {
+      obj.ok = message.ok;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<DeleteFileResult>, I>>(base?: I): DeleteFileResult {
+    return DeleteFileResult.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<DeleteFileResult>, I>>(object: I): DeleteFileResult {
+    const message = createBaseDeleteFileResult();
+    message.ok = object.ok ?? false;
+    return message;
+  },
+};
+
+function createBaseRenameFileRequest(): RenameFileRequest {
+  return { slug: "", path: "", newPath: "" };
+}
+
+export const RenameFileRequest: MessageFns<RenameFileRequest> = {
+  encode(message: RenameFileRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.path !== "") {
+      writer.uint32(18).string(message.path);
+    }
+    if (message.newPath !== "") {
+      writer.uint32(26).string(message.newPath);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RenameFileRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRenameFileRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.newPath = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RenameFileRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      newPath: isSet(object.newPath)
+        ? globalThis.String(object.newPath)
+        : isSet(object.new_path)
+        ? globalThis.String(object.new_path)
+        : "",
+    };
+  },
+
+  toJSON(message: RenameFileRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.newPath !== "") {
+      obj.newPath = message.newPath;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RenameFileRequest>, I>>(base?: I): RenameFileRequest {
+    return RenameFileRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RenameFileRequest>, I>>(object: I): RenameFileRequest {
+    const message = createBaseRenameFileRequest();
+    message.slug = object.slug ?? "";
+    message.path = object.path ?? "";
+    message.newPath = object.newPath ?? "";
+    return message;
+  },
+};
+
+function createBaseFilesExistRequest(): FilesExistRequest {
+  return { slug: "" };
+}
+
+export const FilesExistRequest: MessageFns<FilesExistRequest> = {
+  encode(message: FilesExistRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): FilesExistRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseFilesExistRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): FilesExistRequest {
+    return { slug: isSet(object.slug) ? globalThis.String(object.slug) : "" };
+  },
+
+  toJSON(message: FilesExistRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<FilesExistRequest>, I>>(base?: I): FilesExistRequest {
+    return FilesExistRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<FilesExistRequest>, I>>(object: I): FilesExistRequest {
+    const message = createBaseFilesExistRequest();
+    message.slug = object.slug ?? "";
+    return message;
+  },
+};
+
+function createBaseFilesExistResponse(): FilesExistResponse {
+  return { exists: false };
+}
+
+export const FilesExistResponse: MessageFns<FilesExistResponse> = {
+  encode(message: FilesExistResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.exists !== false) {
+      writer.uint32(8).bool(message.exists);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): FilesExistResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseFilesExistResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.exists = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): FilesExistResponse {
+    return { exists: isSet(object.exists) ? globalThis.Boolean(object.exists) : false };
+  },
+
+  toJSON(message: FilesExistResponse): unknown {
+    const obj: any = {};
+    if (message.exists !== false) {
+      obj.exists = message.exists;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<FilesExistResponse>, I>>(base?: I): FilesExistResponse {
+    return FilesExistResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<FilesExistResponse>, I>>(object: I): FilesExistResponse {
+    const message = createBaseFilesExistResponse();
+    message.exists = object.exists ?? false;
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -2595,6 +5270,159 @@ export const AgentService = {
     responseSerialize: (value: InspectResponse): Buffer => Buffer.from(InspectResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): InspectResponse => InspectResponse.decode(value),
   },
+  /**
+   * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
+   * byte chunks. Output-only — there is no stdin. The control plane proxies these
+   * chunks straight into the unchanged SSE log route. Closing the stream (browser
+   * disconnect) cancels the RPC, which kills the agent's `docker logs` client
+   * only — never the container. Works on a stopped container (tails its recorded
+   * output, then ends).
+   */
+  followLogs: {
+    path: "/deplo.agent.v1.Agent/FollowLogs" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: FollowLogsRequest): Buffer => Buffer.from(FollowLogsRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): FollowLogsRequest => FollowLogsRequest.decode(value),
+    responseSerialize: (value: LogChunk): Buffer => Buffer.from(LogChunk.encode(value).finish()),
+    responseDeserialize: (value: Buffer): LogChunk => LogChunk.decode(value),
+  },
+  /**
+   * Interactive `docker attach` to a running container, full-duplex over one bidi
+   * stream. The FIRST client message MUST be an AttachOpen (selects the container,
+   * declares tty + initial size); subsequent client messages are stdin bytes or a
+   * resize. The agent streams the container's merged output down. `--sig-proxy` is
+   * off, so a client disconnect never signals the container. The pty backing (Go
+   * creack/pty) lives here now (was Node node-pty), so tty containers get a real
+   * terminal regardless of the agent host.
+   */
+  attach: {
+    path: "/deplo.agent.v1.Agent/Attach" as const,
+    requestStream: true as const,
+    responseStream: true as const,
+    requestSerialize: (value: AttachInput): Buffer => Buffer.from(AttachInput.encode(value).finish()),
+    requestDeserialize: (value: Buffer): AttachInput => AttachInput.decode(value),
+    responseSerialize: (value: AttachOutput): Buffer => Buffer.from(AttachOutput.encode(value).finish()),
+    responseDeserialize: (value: Buffer): AttachOutput => AttachOutput.decode(value),
+  },
+  /**
+   * Every attachable container in a project's stack (replaces listInstances +
+   * inspectRuntime + inspectStdio in lib/data/console.ts), default (exposed/
+   * running) first. Carries the project id + slug + exposed-service so the agent
+   * can label-filter and order without knowing Deplo's store.
+   */
+  listInstances: {
+    path: "/deplo.agent.v1.Agent/ListInstances" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ListInstancesRequest): Buffer => Buffer.from(ListInstancesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ListInstancesRequest => ListInstancesRequest.decode(value),
+    responseSerialize: (value: ListInstancesResponse): Buffer =>
+      Buffer.from(ListInstancesResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ListInstancesResponse => ListInstancesResponse.decode(value),
+  },
+  /**
+   * Run a command in a container (`docker exec`), replacing execInContainer. The
+   * agent detects the image's shell (or falls back to raw argv on distroless) and
+   * returns the guest exit code/stdout/stderr instead of erroring on a non-zero
+   * exit — the REPL renders failures. A docker/OCI-level failure (no such
+   * container, stopped, no shell) is a gRPC error, not a guest exit.
+   */
+  exec: {
+    path: "/deplo.agent.v1.Agent/Exec" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ExecRequest): Buffer => Buffer.from(ExecRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ExecRequest => ExecRequest.decode(value),
+    responseSerialize: (value: ExecResponse): Buffer => Buffer.from(ExecResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ExecResponse => ExecResponse.decode(value),
+  },
+  /**
+   * The default (or chosen) container's shell label ("/bin/sh" | "/bin/bash" |
+   * "raw exec (no shell)") for the console banner — replaces shellLabel.
+   */
+  shellLabel: {
+    path: "/deplo.agent.v1.Agent/ShellLabel" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ShellLabelRequest): Buffer => Buffer.from(ShellLabelRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ShellLabelRequest => ShellLabelRequest.decode(value),
+    responseSerialize: (value: ShellLabelResponse): Buffer => Buffer.from(ShellLabelResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ShellLabelResponse => ShellLabelResponse.decode(value),
+  },
+  listFiles: {
+    path: "/deplo.agent.v1.Agent/ListFiles" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ListFilesRequest): Buffer => Buffer.from(ListFilesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ListFilesRequest => ListFilesRequest.decode(value),
+    responseSerialize: (value: ListFilesResponse): Buffer => Buffer.from(ListFilesResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ListFilesResponse => ListFilesResponse.decode(value),
+  },
+  readFile: {
+    path: "/deplo.agent.v1.Agent/ReadFile" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ReadFileRequest): Buffer => Buffer.from(ReadFileRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ReadFileRequest => ReadFileRequest.decode(value),
+    responseSerialize: (value: ReadFileResponse): Buffer => Buffer.from(ReadFileResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ReadFileResponse => ReadFileResponse.decode(value),
+  },
+  writeFile: {
+    path: "/deplo.agent.v1.Agent/WriteFile" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: WriteFileRequest): Buffer => Buffer.from(WriteFileRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): WriteFileRequest => WriteFileRequest.decode(value),
+    responseSerialize: (value: FileEntryResult): Buffer => Buffer.from(FileEntryResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): FileEntryResult => FileEntryResult.decode(value),
+  },
+  uploadFile: {
+    path: "/deplo.agent.v1.Agent/UploadFile" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: UploadFileRequest): Buffer => Buffer.from(UploadFileRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): UploadFileRequest => UploadFileRequest.decode(value),
+    responseSerialize: (value: FileEntryResult): Buffer => Buffer.from(FileEntryResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): FileEntryResult => FileEntryResult.decode(value),
+  },
+  createDir: {
+    path: "/deplo.agent.v1.Agent/CreateDir" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: CreateDirRequest): Buffer => Buffer.from(CreateDirRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): CreateDirRequest => CreateDirRequest.decode(value),
+    responseSerialize: (value: FileEntryResult): Buffer => Buffer.from(FileEntryResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): FileEntryResult => FileEntryResult.decode(value),
+  },
+  deleteFile: {
+    path: "/deplo.agent.v1.Agent/DeleteFile" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: DeleteFileRequest): Buffer => Buffer.from(DeleteFileRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): DeleteFileRequest => DeleteFileRequest.decode(value),
+    responseSerialize: (value: DeleteFileResult): Buffer => Buffer.from(DeleteFileResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): DeleteFileResult => DeleteFileResult.decode(value),
+  },
+  renameFile: {
+    path: "/deplo.agent.v1.Agent/RenameFile" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: RenameFileRequest): Buffer => Buffer.from(RenameFileRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RenameFileRequest => RenameFileRequest.decode(value),
+    responseSerialize: (value: FileEntryResult): Buffer => Buffer.from(FileEntryResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): FileEntryResult => FileEntryResult.decode(value),
+  },
+  /** Whether a project's files root exists on this host (drives the Files tab). */
+  filesExist: {
+    path: "/deplo.agent.v1.Agent/FilesExist" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: FilesExistRequest): Buffer => Buffer.from(FilesExistRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): FilesExistRequest => FilesExistRequest.decode(value),
+    responseSerialize: (value: FilesExistResponse): Buffer => Buffer.from(FilesExistResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): FilesExistResponse => FilesExistResponse.decode(value),
+  },
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
@@ -2636,6 +5464,54 @@ export interface AgentServer extends UntypedServiceImplementation {
   destroyStack: handleUnaryCall<StackRef, StackResult>;
   /** Container introspection (status/running) for the live-status subscriptions. */
   inspect: handleUnaryCall<InspectRequest, InspectResponse>;
+  /**
+   * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
+   * byte chunks. Output-only — there is no stdin. The control plane proxies these
+   * chunks straight into the unchanged SSE log route. Closing the stream (browser
+   * disconnect) cancels the RPC, which kills the agent's `docker logs` client
+   * only — never the container. Works on a stopped container (tails its recorded
+   * output, then ends).
+   */
+  followLogs: handleServerStreamingCall<FollowLogsRequest, LogChunk>;
+  /**
+   * Interactive `docker attach` to a running container, full-duplex over one bidi
+   * stream. The FIRST client message MUST be an AttachOpen (selects the container,
+   * declares tty + initial size); subsequent client messages are stdin bytes or a
+   * resize. The agent streams the container's merged output down. `--sig-proxy` is
+   * off, so a client disconnect never signals the container. The pty backing (Go
+   * creack/pty) lives here now (was Node node-pty), so tty containers get a real
+   * terminal regardless of the agent host.
+   */
+  attach: handleBidiStreamingCall<AttachInput, AttachOutput>;
+  /**
+   * Every attachable container in a project's stack (replaces listInstances +
+   * inspectRuntime + inspectStdio in lib/data/console.ts), default (exposed/
+   * running) first. Carries the project id + slug + exposed-service so the agent
+   * can label-filter and order without knowing Deplo's store.
+   */
+  listInstances: handleUnaryCall<ListInstancesRequest, ListInstancesResponse>;
+  /**
+   * Run a command in a container (`docker exec`), replacing execInContainer. The
+   * agent detects the image's shell (or falls back to raw argv on distroless) and
+   * returns the guest exit code/stdout/stderr instead of erroring on a non-zero
+   * exit — the REPL renders failures. A docker/OCI-level failure (no such
+   * container, stopped, no shell) is a gRPC error, not a guest exit.
+   */
+  exec: handleUnaryCall<ExecRequest, ExecResponse>;
+  /**
+   * The default (or chosen) container's shell label ("/bin/sh" | "/bin/bash" |
+   * "raw exec (no shell)") for the console banner — replaces shellLabel.
+   */
+  shellLabel: handleUnaryCall<ShellLabelRequest, ShellLabelResponse>;
+  listFiles: handleUnaryCall<ListFilesRequest, ListFilesResponse>;
+  readFile: handleUnaryCall<ReadFileRequest, ReadFileResponse>;
+  writeFile: handleUnaryCall<WriteFileRequest, FileEntryResult>;
+  uploadFile: handleUnaryCall<UploadFileRequest, FileEntryResult>;
+  createDir: handleUnaryCall<CreateDirRequest, FileEntryResult>;
+  deleteFile: handleUnaryCall<DeleteFileRequest, DeleteFileResult>;
+  renameFile: handleUnaryCall<RenameFileRequest, FileEntryResult>;
+  /** Whether a project's files root exists on this host (drives the Files tab). */
+  filesExist: handleUnaryCall<FilesExistRequest, FilesExistResponse>;
 }
 
 export interface AgentClient extends Client {
@@ -2764,6 +5640,212 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: InspectResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
+   * byte chunks. Output-only — there is no stdin. The control plane proxies these
+   * chunks straight into the unchanged SSE log route. Closing the stream (browser
+   * disconnect) cancels the RPC, which kills the agent's `docker logs` client
+   * only — never the container. Works on a stopped container (tails its recorded
+   * output, then ends).
+   */
+  followLogs(request: FollowLogsRequest, options?: Partial<CallOptions>): ClientReadableStream<LogChunk>;
+  followLogs(
+    request: FollowLogsRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<LogChunk>;
+  /**
+   * Interactive `docker attach` to a running container, full-duplex over one bidi
+   * stream. The FIRST client message MUST be an AttachOpen (selects the container,
+   * declares tty + initial size); subsequent client messages are stdin bytes or a
+   * resize. The agent streams the container's merged output down. `--sig-proxy` is
+   * off, so a client disconnect never signals the container. The pty backing (Go
+   * creack/pty) lives here now (was Node node-pty), so tty containers get a real
+   * terminal regardless of the agent host.
+   */
+  attach(): ClientDuplexStream<AttachInput, AttachOutput>;
+  attach(options: Partial<CallOptions>): ClientDuplexStream<AttachInput, AttachOutput>;
+  attach(metadata: Metadata, options?: Partial<CallOptions>): ClientDuplexStream<AttachInput, AttachOutput>;
+  /**
+   * Every attachable container in a project's stack (replaces listInstances +
+   * inspectRuntime + inspectStdio in lib/data/console.ts), default (exposed/
+   * running) first. Carries the project id + slug + exposed-service so the agent
+   * can label-filter and order without knowing Deplo's store.
+   */
+  listInstances(
+    request: ListInstancesRequest,
+    callback: (error: ServiceError | null, response: ListInstancesResponse) => void,
+  ): ClientUnaryCall;
+  listInstances(
+    request: ListInstancesRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ListInstancesResponse) => void,
+  ): ClientUnaryCall;
+  listInstances(
+    request: ListInstancesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ListInstancesResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Run a command in a container (`docker exec`), replacing execInContainer. The
+   * agent detects the image's shell (or falls back to raw argv on distroless) and
+   * returns the guest exit code/stdout/stderr instead of erroring on a non-zero
+   * exit — the REPL renders failures. A docker/OCI-level failure (no such
+   * container, stopped, no shell) is a gRPC error, not a guest exit.
+   */
+  exec(request: ExecRequest, callback: (error: ServiceError | null, response: ExecResponse) => void): ClientUnaryCall;
+  exec(
+    request: ExecRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ExecResponse) => void,
+  ): ClientUnaryCall;
+  exec(
+    request: ExecRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ExecResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * The default (or chosen) container's shell label ("/bin/sh" | "/bin/bash" |
+   * "raw exec (no shell)") for the console banner — replaces shellLabel.
+   */
+  shellLabel(
+    request: ShellLabelRequest,
+    callback: (error: ServiceError | null, response: ShellLabelResponse) => void,
+  ): ClientUnaryCall;
+  shellLabel(
+    request: ShellLabelRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ShellLabelResponse) => void,
+  ): ClientUnaryCall;
+  shellLabel(
+    request: ShellLabelRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ShellLabelResponse) => void,
+  ): ClientUnaryCall;
+  listFiles(
+    request: ListFilesRequest,
+    callback: (error: ServiceError | null, response: ListFilesResponse) => void,
+  ): ClientUnaryCall;
+  listFiles(
+    request: ListFilesRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ListFilesResponse) => void,
+  ): ClientUnaryCall;
+  listFiles(
+    request: ListFilesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ListFilesResponse) => void,
+  ): ClientUnaryCall;
+  readFile(
+    request: ReadFileRequest,
+    callback: (error: ServiceError | null, response: ReadFileResponse) => void,
+  ): ClientUnaryCall;
+  readFile(
+    request: ReadFileRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ReadFileResponse) => void,
+  ): ClientUnaryCall;
+  readFile(
+    request: ReadFileRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ReadFileResponse) => void,
+  ): ClientUnaryCall;
+  writeFile(
+    request: WriteFileRequest,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  writeFile(
+    request: WriteFileRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  writeFile(
+    request: WriteFileRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  uploadFile(
+    request: UploadFileRequest,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  uploadFile(
+    request: UploadFileRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  uploadFile(
+    request: UploadFileRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  createDir(
+    request: CreateDirRequest,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  createDir(
+    request: CreateDirRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  createDir(
+    request: CreateDirRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  deleteFile(
+    request: DeleteFileRequest,
+    callback: (error: ServiceError | null, response: DeleteFileResult) => void,
+  ): ClientUnaryCall;
+  deleteFile(
+    request: DeleteFileRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: DeleteFileResult) => void,
+  ): ClientUnaryCall;
+  deleteFile(
+    request: DeleteFileRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: DeleteFileResult) => void,
+  ): ClientUnaryCall;
+  renameFile(
+    request: RenameFileRequest,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  renameFile(
+    request: RenameFileRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  renameFile(
+    request: RenameFileRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: FileEntryResult) => void,
+  ): ClientUnaryCall;
+  /** Whether a project's files root exists on this host (drives the Files tab). */
+  filesExist(
+    request: FilesExistRequest,
+    callback: (error: ServiceError | null, response: FilesExistResponse) => void,
+  ): ClientUnaryCall;
+  filesExist(
+    request: FilesExistRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: FilesExistResponse) => void,
+  ): ClientUnaryCall;
+  filesExist(
+    request: FilesExistRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: FilesExistResponse) => void,
   ): ClientUnaryCall;
 }
 

@@ -11,14 +11,18 @@
 // it over this typed RPC. See docs/research/server-agent/PLAN.md and
 // docs/adr/0006-server-agent-is-a-per-host-go-binary.md.
 //
-// PART A SUBSET (extended in PART B). This file is the versioned boundary for
-// the whole A-D arc. Part A implemented Hello / Metrics / Deploy (UPLOAD+IMAGE) /
-// Inspect / control verbs (localhost agent, deploy-only). Part B adds: the GIT
-// source case (the agent clones with a short-lived token, D3), and ReattachDeploy
-// (reconnect to an in-flight deploy and replay missed events, D5). FollowLogs /
-// Attach / file RPCs land in Part C. Messages are designed forward-compatible so
-// adding those is new fields/enum cases, never a redesign (D6: "image from
-// registry" is one more SourceKind, not a rewrite).
+// PART A SUBSET (extended in PART B + PART C). This file is the versioned
+// boundary for the whole A-D arc. Part A implemented Hello / Metrics / Deploy
+// (UPLOAD+IMAGE) / Inspect / control verbs (localhost agent, deploy-only). Part B
+// adds: the GIT source case (the agent clones with a short-lived token, D3), and
+// ReattachDeploy (reconnect to an in-flight deploy and replay missed events, D5).
+// PART C adds the per-server OBSERVABILITY + FILES surface: FollowLogs (live
+// `docker logs -f`), Attach (bidi console/pty), Exec + ListInstances + ShellLabel
+// (the console introspection that was direct-Docker in lib/data/console.ts), and
+// the file RPCs (List/Read/Write/Upload/CreateDir/Delete/Rename/FilesExist) that
+// repoint lib/data/project-files.ts off the control plane's local fs onto the
+// project's host. Every addition is new RPCs/messages — the contract version stays
+// V1 (additive, never a redesign; D6's forward-compat principle holds).
 //
 // The agent's CALL-HOME BOOTSTRAP (PLAN P1-P4) is deliberately NOT a method on
 // this service: it travels agent -> control plane (the opposite direction of
@@ -50,6 +54,19 @@ const (
 	Agent_StartStack_FullMethodName     = "/deplo.agent.v1.Agent/StartStack"
 	Agent_DestroyStack_FullMethodName   = "/deplo.agent.v1.Agent/DestroyStack"
 	Agent_Inspect_FullMethodName        = "/deplo.agent.v1.Agent/Inspect"
+	Agent_FollowLogs_FullMethodName     = "/deplo.agent.v1.Agent/FollowLogs"
+	Agent_Attach_FullMethodName         = "/deplo.agent.v1.Agent/Attach"
+	Agent_ListInstances_FullMethodName  = "/deplo.agent.v1.Agent/ListInstances"
+	Agent_Exec_FullMethodName           = "/deplo.agent.v1.Agent/Exec"
+	Agent_ShellLabel_FullMethodName     = "/deplo.agent.v1.Agent/ShellLabel"
+	Agent_ListFiles_FullMethodName      = "/deplo.agent.v1.Agent/ListFiles"
+	Agent_ReadFile_FullMethodName       = "/deplo.agent.v1.Agent/ReadFile"
+	Agent_WriteFile_FullMethodName      = "/deplo.agent.v1.Agent/WriteFile"
+	Agent_UploadFile_FullMethodName     = "/deplo.agent.v1.Agent/UploadFile"
+	Agent_CreateDir_FullMethodName      = "/deplo.agent.v1.Agent/CreateDir"
+	Agent_DeleteFile_FullMethodName     = "/deplo.agent.v1.Agent/DeleteFile"
+	Agent_RenameFile_FullMethodName     = "/deplo.agent.v1.Agent/RenameFile"
+	Agent_FilesExist_FullMethodName     = "/deplo.agent.v1.Agent/FilesExist"
 )
 
 // AgentClient is the client API for Agent service.
@@ -84,6 +101,44 @@ type AgentClient interface {
 	DestroyStack(ctx context.Context, in *StackRef, opts ...grpc.CallOption) (*StackResult, error)
 	// Container introspection (status/running) for the live-status subscriptions.
 	Inspect(ctx context.Context, in *InspectRequest, opts ...grpc.CallOption) (*InspectResponse, error)
+	// Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
+	// byte chunks. Output-only — there is no stdin. The control plane proxies these
+	// chunks straight into the unchanged SSE log route. Closing the stream (browser
+	// disconnect) cancels the RPC, which kills the agent's `docker logs` client
+	// only — never the container. Works on a stopped container (tails its recorded
+	// output, then ends).
+	FollowLogs(ctx context.Context, in *FollowLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogChunk], error)
+	// Interactive `docker attach` to a running container, full-duplex over one bidi
+	// stream. The FIRST client message MUST be an AttachOpen (selects the container,
+	// declares tty + initial size); subsequent client messages are stdin bytes or a
+	// resize. The agent streams the container's merged output down. `--sig-proxy` is
+	// off, so a client disconnect never signals the container. The pty backing (Go
+	// creack/pty) lives here now (was Node node-pty), so tty containers get a real
+	// terminal regardless of the agent host.
+	Attach(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AttachInput, AttachOutput], error)
+	// Every attachable container in a project's stack (replaces listInstances +
+	// inspectRuntime + inspectStdio in lib/data/console.ts), default (exposed/
+	// running) first. Carries the project id + slug + exposed-service so the agent
+	// can label-filter and order without knowing Deplo's store.
+	ListInstances(ctx context.Context, in *ListInstancesRequest, opts ...grpc.CallOption) (*ListInstancesResponse, error)
+	// Run a command in a container (`docker exec`), replacing execInContainer. The
+	// agent detects the image's shell (or falls back to raw argv on distroless) and
+	// returns the guest exit code/stdout/stderr instead of erroring on a non-zero
+	// exit — the REPL renders failures. A docker/OCI-level failure (no such
+	// container, stopped, no shell) is a gRPC error, not a guest exit.
+	Exec(ctx context.Context, in *ExecRequest, opts ...grpc.CallOption) (*ExecResponse, error)
+	// The default (or chosen) container's shell label ("/bin/sh" | "/bin/bash" |
+	// "raw exec (no shell)") for the console banner — replaces shellLabel.
+	ShellLabel(ctx context.Context, in *ShellLabelRequest, opts ...grpc.CallOption) (*ShellLabelResponse, error)
+	ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error)
+	ReadFile(ctx context.Context, in *ReadFileRequest, opts ...grpc.CallOption) (*ReadFileResponse, error)
+	WriteFile(ctx context.Context, in *WriteFileRequest, opts ...grpc.CallOption) (*FileEntryResult, error)
+	UploadFile(ctx context.Context, in *UploadFileRequest, opts ...grpc.CallOption) (*FileEntryResult, error)
+	CreateDir(ctx context.Context, in *CreateDirRequest, opts ...grpc.CallOption) (*FileEntryResult, error)
+	DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*DeleteFileResult, error)
+	RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*FileEntryResult, error)
+	// Whether a project's files root exists on this host (drives the Files tab).
+	FilesExist(ctx context.Context, in *FilesExistRequest, opts ...grpc.CallOption) (*FilesExistResponse, error)
 }
 
 type agentClient struct {
@@ -192,6 +247,148 @@ func (c *agentClient) Inspect(ctx context.Context, in *InspectRequest, opts ...g
 	return out, nil
 }
 
+func (c *agentClient) FollowLogs(ctx context.Context, in *FollowLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Agent_ServiceDesc.Streams[2], Agent_FollowLogs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[FollowLogsRequest, LogChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Agent_FollowLogsClient = grpc.ServerStreamingClient[LogChunk]
+
+func (c *agentClient) Attach(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AttachInput, AttachOutput], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Agent_ServiceDesc.Streams[3], Agent_Attach_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[AttachInput, AttachOutput]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Agent_AttachClient = grpc.BidiStreamingClient[AttachInput, AttachOutput]
+
+func (c *agentClient) ListInstances(ctx context.Context, in *ListInstancesRequest, opts ...grpc.CallOption) (*ListInstancesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListInstancesResponse)
+	err := c.cc.Invoke(ctx, Agent_ListInstances_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) Exec(ctx context.Context, in *ExecRequest, opts ...grpc.CallOption) (*ExecResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExecResponse)
+	err := c.cc.Invoke(ctx, Agent_Exec_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) ShellLabel(ctx context.Context, in *ShellLabelRequest, opts ...grpc.CallOption) (*ShellLabelResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ShellLabelResponse)
+	err := c.cc.Invoke(ctx, Agent_ShellLabel_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) ListFiles(ctx context.Context, in *ListFilesRequest, opts ...grpc.CallOption) (*ListFilesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListFilesResponse)
+	err := c.cc.Invoke(ctx, Agent_ListFiles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) ReadFile(ctx context.Context, in *ReadFileRequest, opts ...grpc.CallOption) (*ReadFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReadFileResponse)
+	err := c.cc.Invoke(ctx, Agent_ReadFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) WriteFile(ctx context.Context, in *WriteFileRequest, opts ...grpc.CallOption) (*FileEntryResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FileEntryResult)
+	err := c.cc.Invoke(ctx, Agent_WriteFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) UploadFile(ctx context.Context, in *UploadFileRequest, opts ...grpc.CallOption) (*FileEntryResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FileEntryResult)
+	err := c.cc.Invoke(ctx, Agent_UploadFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) CreateDir(ctx context.Context, in *CreateDirRequest, opts ...grpc.CallOption) (*FileEntryResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FileEntryResult)
+	err := c.cc.Invoke(ctx, Agent_CreateDir_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*DeleteFileResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteFileResult)
+	err := c.cc.Invoke(ctx, Agent_DeleteFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*FileEntryResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FileEntryResult)
+	err := c.cc.Invoke(ctx, Agent_RenameFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentClient) FilesExist(ctx context.Context, in *FilesExistRequest, opts ...grpc.CallOption) (*FilesExistResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FilesExistResponse)
+	err := c.cc.Invoke(ctx, Agent_FilesExist_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServer is the server API for Agent service.
 // All implementations must embed UnimplementedAgentServer
 // for forward compatibility.
@@ -224,6 +421,44 @@ type AgentServer interface {
 	DestroyStack(context.Context, *StackRef) (*StackResult, error)
 	// Container introspection (status/running) for the live-status subscriptions.
 	Inspect(context.Context, *InspectRequest) (*InspectResponse, error)
+	// Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
+	// byte chunks. Output-only — there is no stdin. The control plane proxies these
+	// chunks straight into the unchanged SSE log route. Closing the stream (browser
+	// disconnect) cancels the RPC, which kills the agent's `docker logs` client
+	// only — never the container. Works on a stopped container (tails its recorded
+	// output, then ends).
+	FollowLogs(*FollowLogsRequest, grpc.ServerStreamingServer[LogChunk]) error
+	// Interactive `docker attach` to a running container, full-duplex over one bidi
+	// stream. The FIRST client message MUST be an AttachOpen (selects the container,
+	// declares tty + initial size); subsequent client messages are stdin bytes or a
+	// resize. The agent streams the container's merged output down. `--sig-proxy` is
+	// off, so a client disconnect never signals the container. The pty backing (Go
+	// creack/pty) lives here now (was Node node-pty), so tty containers get a real
+	// terminal regardless of the agent host.
+	Attach(grpc.BidiStreamingServer[AttachInput, AttachOutput]) error
+	// Every attachable container in a project's stack (replaces listInstances +
+	// inspectRuntime + inspectStdio in lib/data/console.ts), default (exposed/
+	// running) first. Carries the project id + slug + exposed-service so the agent
+	// can label-filter and order without knowing Deplo's store.
+	ListInstances(context.Context, *ListInstancesRequest) (*ListInstancesResponse, error)
+	// Run a command in a container (`docker exec`), replacing execInContainer. The
+	// agent detects the image's shell (or falls back to raw argv on distroless) and
+	// returns the guest exit code/stdout/stderr instead of erroring on a non-zero
+	// exit — the REPL renders failures. A docker/OCI-level failure (no such
+	// container, stopped, no shell) is a gRPC error, not a guest exit.
+	Exec(context.Context, *ExecRequest) (*ExecResponse, error)
+	// The default (or chosen) container's shell label ("/bin/sh" | "/bin/bash" |
+	// "raw exec (no shell)") for the console banner — replaces shellLabel.
+	ShellLabel(context.Context, *ShellLabelRequest) (*ShellLabelResponse, error)
+	ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error)
+	ReadFile(context.Context, *ReadFileRequest) (*ReadFileResponse, error)
+	WriteFile(context.Context, *WriteFileRequest) (*FileEntryResult, error)
+	UploadFile(context.Context, *UploadFileRequest) (*FileEntryResult, error)
+	CreateDir(context.Context, *CreateDirRequest) (*FileEntryResult, error)
+	DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResult, error)
+	RenameFile(context.Context, *RenameFileRequest) (*FileEntryResult, error)
+	// Whether a project's files root exists on this host (drives the Files tab).
+	FilesExist(context.Context, *FilesExistRequest) (*FilesExistResponse, error)
 	mustEmbedUnimplementedAgentServer()
 }
 
@@ -257,6 +492,45 @@ func (UnimplementedAgentServer) DestroyStack(context.Context, *StackRef) (*Stack
 }
 func (UnimplementedAgentServer) Inspect(context.Context, *InspectRequest) (*InspectResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Inspect not implemented")
+}
+func (UnimplementedAgentServer) FollowLogs(*FollowLogsRequest, grpc.ServerStreamingServer[LogChunk]) error {
+	return status.Errorf(codes.Unimplemented, "method FollowLogs not implemented")
+}
+func (UnimplementedAgentServer) Attach(grpc.BidiStreamingServer[AttachInput, AttachOutput]) error {
+	return status.Errorf(codes.Unimplemented, "method Attach not implemented")
+}
+func (UnimplementedAgentServer) ListInstances(context.Context, *ListInstancesRequest) (*ListInstancesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListInstances not implemented")
+}
+func (UnimplementedAgentServer) Exec(context.Context, *ExecRequest) (*ExecResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Exec not implemented")
+}
+func (UnimplementedAgentServer) ShellLabel(context.Context, *ShellLabelRequest) (*ShellLabelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ShellLabel not implemented")
+}
+func (UnimplementedAgentServer) ListFiles(context.Context, *ListFilesRequest) (*ListFilesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListFiles not implemented")
+}
+func (UnimplementedAgentServer) ReadFile(context.Context, *ReadFileRequest) (*ReadFileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadFile not implemented")
+}
+func (UnimplementedAgentServer) WriteFile(context.Context, *WriteFileRequest) (*FileEntryResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method WriteFile not implemented")
+}
+func (UnimplementedAgentServer) UploadFile(context.Context, *UploadFileRequest) (*FileEntryResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UploadFile not implemented")
+}
+func (UnimplementedAgentServer) CreateDir(context.Context, *CreateDirRequest) (*FileEntryResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateDir not implemented")
+}
+func (UnimplementedAgentServer) DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteFile not implemented")
+}
+func (UnimplementedAgentServer) RenameFile(context.Context, *RenameFileRequest) (*FileEntryResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RenameFile not implemented")
+}
+func (UnimplementedAgentServer) FilesExist(context.Context, *FilesExistRequest) (*FilesExistResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FilesExist not implemented")
 }
 func (UnimplementedAgentServer) mustEmbedUnimplementedAgentServer() {}
 func (UnimplementedAgentServer) testEmbeddedByValue()               {}
@@ -409,6 +683,222 @@ func _Agent_Inspect_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Agent_FollowLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(FollowLogsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentServer).FollowLogs(m, &grpc.GenericServerStream[FollowLogsRequest, LogChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Agent_FollowLogsServer = grpc.ServerStreamingServer[LogChunk]
+
+func _Agent_Attach_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(AgentServer).Attach(&grpc.GenericServerStream[AttachInput, AttachOutput]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Agent_AttachServer = grpc.BidiStreamingServer[AttachInput, AttachOutput]
+
+func _Agent_ListInstances_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListInstancesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).ListInstances(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_ListInstances_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).ListInstances(ctx, req.(*ListInstancesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_Exec_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExecRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).Exec(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_Exec_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).Exec(ctx, req.(*ExecRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_ShellLabel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShellLabelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).ShellLabel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_ShellLabel_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).ShellLabel(ctx, req.(*ShellLabelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_ListFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListFilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).ListFiles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_ListFiles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).ListFiles(ctx, req.(*ListFilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_ReadFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReadFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).ReadFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_ReadFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).ReadFile(ctx, req.(*ReadFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_WriteFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WriteFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).WriteFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_WriteFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).WriteFile(ctx, req.(*WriteFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_UploadFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UploadFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).UploadFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_UploadFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).UploadFile(ctx, req.(*UploadFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_CreateDir_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateDirRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).CreateDir(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_CreateDir_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).CreateDir(ctx, req.(*CreateDirRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_DeleteFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).DeleteFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_DeleteFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).DeleteFile(ctx, req.(*DeleteFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_RenameFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).RenameFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_RenameFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).RenameFile(ctx, req.(*RenameFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Agent_FilesExist_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FilesExistRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).FilesExist(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Agent_FilesExist_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).FilesExist(ctx, req.(*FilesExistRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Agent_ServiceDesc is the grpc.ServiceDesc for Agent service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -440,6 +930,50 @@ var Agent_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "Inspect",
 			Handler:    _Agent_Inspect_Handler,
 		},
+		{
+			MethodName: "ListInstances",
+			Handler:    _Agent_ListInstances_Handler,
+		},
+		{
+			MethodName: "Exec",
+			Handler:    _Agent_Exec_Handler,
+		},
+		{
+			MethodName: "ShellLabel",
+			Handler:    _Agent_ShellLabel_Handler,
+		},
+		{
+			MethodName: "ListFiles",
+			Handler:    _Agent_ListFiles_Handler,
+		},
+		{
+			MethodName: "ReadFile",
+			Handler:    _Agent_ReadFile_Handler,
+		},
+		{
+			MethodName: "WriteFile",
+			Handler:    _Agent_WriteFile_Handler,
+		},
+		{
+			MethodName: "UploadFile",
+			Handler:    _Agent_UploadFile_Handler,
+		},
+		{
+			MethodName: "CreateDir",
+			Handler:    _Agent_CreateDir_Handler,
+		},
+		{
+			MethodName: "DeleteFile",
+			Handler:    _Agent_DeleteFile_Handler,
+		},
+		{
+			MethodName: "RenameFile",
+			Handler:    _Agent_RenameFile_Handler,
+		},
+		{
+			MethodName: "FilesExist",
+			Handler:    _Agent_FilesExist_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -451,6 +985,17 @@ var Agent_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "ReattachDeploy",
 			Handler:       _Agent_ReattachDeploy_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "FollowLogs",
+			Handler:       _Agent_FollowLogs_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "Attach",
+			Handler:       _Agent_Attach_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "agent.proto",
