@@ -50,6 +50,7 @@ import {
 } from "@/components/projects/build-config-fields";
 import { FRAMEWORKS, buildConfigFor } from "@/lib/frameworks";
 import type { DeploySource, FrameworkId } from "@/lib/types";
+import { deploySourceEnumName } from "@/lib/types";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, serverLabel } from "@/lib/utils";
 import { GithubRepoPicker, type GithubSelection } from "@/components/projects/github-repo-picker";
@@ -326,7 +327,7 @@ export function NewProjectWizard({
             // A template deploying its own stack is stored as the `compose` source
             // so settings opens on the Compose tab and the deploy engine is
             // unambiguous.
-            source: useCompose ? "compose" : source,
+            source: deploySourceEnumName(useCompose ? "compose" : source),
             serverId,
             dockerImage: image,
             // Seed the project's display logo from the template so a deployed

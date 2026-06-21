@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import yaml from "js-yaml";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -25,12 +25,24 @@ import {
 } from "@/components/domains/domain-config-fields";
 import { gqlAction } from "@/lib/graphql-client";
 
-/** A project as the dialog needs it: id, name, and its compose YAML (when it is
- * a compose stack) so the service selector can be populated client-side. */
+/** A project as the dialog needs it: id, name, its compose YAML (when it is a
+ * compose stack) so the service selector can be populated client-side, and its
+ * default container port so a new single-image domain's port field is pre-filled
+ * (every domain now carries an explicit port). */
 export interface AddDomainProject {
   id: string;
   name: string;
   compose?: string | null;
+  /** The project's default container port (build.port) — seeds the port field. */
+  defaultPort?: number;
+}
+
+/** Props for {@link AddDomain}. `suggestedDomain` is a ready-to-use zero-config
+ * sslip.io hostname (`<slug>.<server-ip>.sslip.io`) resolved server-side; the
+ * dialog offers a one-click button to drop it into the Domain field. */
+export interface AddDomainProps {
+  project: AddDomainProject;
+  suggestedDomain?: string;
 }
 
 /** Service names declared in a compose file, parsed in the browser (js-yaml is
@@ -47,13 +59,13 @@ function composeServices(compose?: string | null): string[] {
   }
 }
 
-export function AddDomain({ project }: { project: AddDomainProject }) {
+export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
   const [config, setConfig] = React.useState<DomainConfigState>(() =>
-    initialDomainConfig(),
+    initialDomainConfig(undefined, project.defaultPort),
   );
 
   // The project's compose services (empty ⇒ single-image). A compose stack
@@ -65,7 +77,7 @@ export function AddDomain({ project }: { project: AddDomainProject }) {
 
   function reset() {
     setName("");
-    setConfig(initialDomainConfig());
+    setConfig(initialDomainConfig(undefined, project.defaultPort));
   }
 
   function submit() {
@@ -124,7 +136,21 @@ export function AddDomain({ project }: { project: AddDomainProject }) {
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="domain-name">Domain</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="domain-name">Domain</Label>
+              {suggestedDomain ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-muted-foreground"
+                  onClick={() => setName(suggestedDomain)}
+                >
+                  <Sparkles className="size-3.5" />
+                  Generate from sslip.io
+                </Button>
+              ) : null}
+            </div>
             <Input
               id="domain-name"
               value={name}
@@ -132,6 +158,13 @@ export function AddDomain({ project }: { project: AddDomainProject }) {
               placeholder="app.example.com"
               className="font-mono text-sm"
             />
+            {suggestedDomain ? (
+              <p className="text-xs text-muted-foreground">
+                No domain? Generate a free{" "}
+                <span className="font-mono">{suggestedDomain}</span> that works
+                with zero DNS setup.
+              </p>
+            ) : null}
           </div>
           <DomainConfigFields
             state={config}

@@ -186,29 +186,26 @@ function AddMemberDialog() {
   const [pending, startTransition] = React.useTransition();
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<UserSearchResult[]>([]);
-  const [searching, setSearching] = React.useState(false);
+  // Start true so the dialog shows "Searching…" on its first render rather than
+  // flashing the empty-state before the initial roster fetch resolves.
+  const [searching, setSearching] = React.useState(true);
   const [picked, setPicked] = React.useState<UserSearchResult | null>(null);
   const [role, setRole] = React.useState<Role>("member");
   const [caps, setCaps] = React.useState<Capability[]>(
     capabilitiesForRole("member"),
   );
 
-  // Debounced username search. All state writes happen asynchronously (inside
-  // the timeout), never synchronously in the effect body, to avoid cascading
-  // renders — the empty-query reset is handled on the same tick.
+  // Debounced username search. The empty query is a valid search that returns
+  // the full available roster, so the list is populated as soon as the dialog
+  // opens; typing filters it. Only run while the dialog is open and no user is
+  // picked. All state writes happen asynchronously (inside the timeout) to
+  // avoid cascading renders.
   React.useEffect(() => {
-    if (picked) return;
+    if (!open || picked) return;
     const q = query.trim();
     let cancelled = false;
     const t = setTimeout(async () => {
-      if (!q) {
-        if (!cancelled) {
-          setResults([]);
-          setSearching(false);
-        }
-        return;
-      }
-      setSearching(true);
+      if (!cancelled) setSearching(true);
       const res = await gqlAction<
         { searchUsers: UserSearchResult[] },
         UserSearchResult[]
@@ -234,11 +231,12 @@ function AddMemberDialog() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, picked]);
+  }, [query, picked, open]);
 
   function reset() {
     setQuery("");
     setResults([]);
+    setSearching(true);
     setPicked(null);
     setRole("member");
     setCaps(capabilitiesForRole("member"));
@@ -280,7 +278,8 @@ function AddMemberDialog() {
         <DialogHeader>
           <DialogTitle>Add a member</DialogTitle>
           <DialogDescription>
-            Search registered users by username and add them to this team.
+            Pick a registered user to add to this team. Search by username to
+            narrow the list.
           </DialogDescription>
         </DialogHeader>
 
@@ -296,15 +295,17 @@ function AddMemberDialog() {
                 autoFocus
               />
             </div>
-            <div className="min-h-24 space-y-1">
+            <div className="min-h-24 max-h-72 space-y-1 overflow-y-auto">
               {searching && (
                 <p className="px-1 py-2 text-sm text-muted-foreground">
                   Searching…
                 </p>
               )}
-              {!searching && query.trim() && results.length === 0 && (
+              {!searching && results.length === 0 && (
                 <p className="px-1 py-2 text-sm text-muted-foreground">
-                  No matching users.
+                  {query.trim()
+                    ? "No matching users."
+                    : "No users available to add."}
                 </p>
               )}
               {results.map((u) => (

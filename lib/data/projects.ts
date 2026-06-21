@@ -275,6 +275,11 @@ export async function createProject(
     slug,
     ip,
     preferred: input.autoDomain ?? undefined,
+    // The primary host routes to the compose default expose (service + port) or,
+    // for a single-image project, to build.port. `expose` is the first of
+    // `exposes`, so it is the canonical default for the primary domain.
+    defaultPort: project.expose?.port ?? project.build.port,
+    defaultService: project.expose?.service ?? null,
   });
 
   // An "upload" project has no archive at creation (it is uploaded from the

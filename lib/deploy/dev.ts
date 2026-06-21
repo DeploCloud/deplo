@@ -453,10 +453,18 @@ mkdir -p "$WS"
 # the tree in (leaving the node_modules mount untouched).
 is_seeded() { [ -e "$WS/.git" ]; }
 ws_empty() {
-  # True when the only entry (if any) is the node_modules volume mountpoint.
+  # True when the only entries (if any) are NON-source dirs that legitimately
+  # live in the bind-mounted workspace and persist across restarts: the
+  # node_modules deps-volume mountpoint, the VS Code tunnel state (.deplo) and
+  # the dropped user's writable HOME (.deplo-home). This list MUST stay in sync
+  # with WORKSPACE_BUILD_EXCLUDE (host side) — if it drifts, the tunnel/HOME
+  # dirs make the workspace look non-empty and seeding is silently skipped,
+  # leaving the user with only .deplo + node_modules and no source.
   for e in "$WS"/* "$WS"/.[!.]*; do
     [ -e "$e" ] || continue
-    case "$e" in "$WS/node_modules") continue ;; esac
+    case "$e" in
+      "$WS/node_modules"|"$WS/.deplo"|"$WS/.deplo-home") continue ;;
+    esac
     return 1
   done
   return 0

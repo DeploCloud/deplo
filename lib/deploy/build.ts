@@ -260,7 +260,14 @@ export function startDeployment(
   // Domains section and baked into a template's env. Previews are ephemeral.
   const domain =
     environment === "production"
-      ? ensureAutoDomain(projectId, { slug: project.slug, ip })
+      ? ensureAutoDomain(projectId, {
+          slug: project.slug,
+          ip,
+          // The primary host's default route: compose default expose, else
+          // build.port. Keeps the auto domain complete (never portless).
+          defaultPort: project.expose?.port ?? project.build.port,
+          defaultService: project.expose?.service ?? null,
+        })
       : previewDomain(project.slug, newId("").slice(1, 7), ip);
   const url = `https://${domain}`;
   const depId = newId("dpl");
@@ -357,7 +364,12 @@ async function runDeployment(depId: string): Promise<void> {
   const ip = resolveServerIp(server);
   const domain =
     dep.environment === "production"
-      ? ensureAutoDomain(project.id, { slug, ip })
+      ? ensureAutoDomain(project.id, {
+          slug,
+          ip,
+          defaultPort: project.expose?.port ?? project.build.port,
+          defaultService: project.expose?.service ?? null,
+        })
       : dep.url.replace(/^https?:\/\//, "");
   // Production routes to every verified domain (primary first); a preview uses
   // only its ephemeral host (not a registered domain). `domain` is always the
@@ -622,7 +634,14 @@ async function deployComposeStack(opts: {
   if (environment === "production") {
     for (const ex of project.exposes ?? []) {
       const host = ex.host?.trim();
-      if (host && host !== domain) ensureExtraDomain(project.id, host);
+      // Each extra host's default route IS the exposes entry it came from, so
+      // pass that service + port — the row is born complete and renders as the
+      // default route (byte-identical to the pre-backfill output).
+      if (host && host !== domain)
+        ensureExtraDomain(project.id, host, {
+          port: ex.port,
+          service: ex.service,
+        });
     }
   }
 

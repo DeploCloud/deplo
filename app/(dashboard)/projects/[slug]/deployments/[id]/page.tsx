@@ -7,18 +7,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { CopyButton } from "@/components/shared/copy-button";
-import { cn, timeAgo } from "@/lib/utils";
+import { timeAgo } from "@/lib/utils";
+import { BuildLogStream } from "./build-log-stream";
 
 export const metadata = { title: "Deployment" };
-
-const LEVEL_CLASS: Record<string, string> = {
-  command: "text-zinc-100 font-medium",
-  info: "text-zinc-400",
-  warn: "text-[var(--warning)]",
-  error: "text-destructive",
-  debug: "text-muted-foreground",
-};
 
 export default async function DeploymentDetailPage(
   props: PageProps<"/projects/[slug]/deployments/[id]">,
@@ -30,9 +22,6 @@ export default async function DeploymentDetailPage(
   if (!deployment || deployment.projectId !== project.id) notFound();
 
   const logs = await getLogs(id);
-  const logText = logs
-    .map((l) => `[${new Date(l.ts).toLocaleTimeString()}] ${l.text}`)
-    .join("\n");
 
   return (
     <div className="space-y-6">
@@ -107,26 +96,11 @@ export default async function DeploymentDetailPage(
 
       <div className="space-y-2">
         <p className="text-sm font-medium">Build Logs</p>
-        <div className="overflow-hidden rounded-xl border border-border bg-[#0a0a0a]">
-          <div className="flex items-center justify-between border-b border-border px-4 py-2">
-            <span className="text-xs text-muted-foreground">
-              {logs.length} lines
-            </span>
-            <CopyButton value={logText} label="Copy logs" />
-          </div>
-          <div className="max-h-120 overflow-y-auto p-4 font-mono text-xs leading-relaxed">
-            {logs.map((l, i) => (
-              <div key={i} className="flex gap-3">
-                <span className="shrink-0 select-none text-zinc-600">
-                  {new Date(l.ts).toLocaleTimeString()}
-                </span>
-                <span className={cn(LEVEL_CLASS[l.level] ?? "text-zinc-300")}>
-                  {l.text}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <BuildLogStream
+          deploymentId={id}
+          initialLogs={logs}
+          initialStatus={deployment.status}
+        />
       </div>
     </div>
   );

@@ -306,10 +306,31 @@ export function buildComposeStack(input: ComposeStackInput): string {
     const p = publishedPort(services[service] as Service);
     return p ?? 80; // conventional web port when the service declares none
   };
+  // The default route for a host: a pinned `exposes` entry for that exact host,
+  // else the primary default expose. A stored route that merely restates this
+  // default (same service, same port, no path) is the SAME route the default
+  // routing would emit, so it must NOT become a per-domain override — otherwise
+  // a backfilled auto/extra domain (which carries its host's default service +
+  // port for data-completeness) would split the single default router into a
+  // per-host router and change the rendered YAML. Only a route that genuinely
+  // diverges (different service, different port, or any path prefix) overrides.
+  const defaultFor = (host: string): StackExpose | null =>
+    routes.find((e) => e.host?.trim() === host) ?? defaultExpose;
+  const restatesDefault = (r: ComposeDomainRoute): boolean => {
+    if (r.pathPrefix) return false;
+    const def = defaultFor(r.name);
+    if (!def) return false;
+    return (
+      (!r.service || r.service === def.service) &&
+      (r.port == null || r.port === def.port)
+    );
+  };
   const overrides = (input.domainRoutes ?? [])
     .filter(
       (r) =>
-        (r.service || r.port != null || r.pathPrefix) && domains.includes(r.name),
+        (r.service || r.port != null || r.pathPrefix) &&
+        domains.includes(r.name) &&
+        !restatesDefault(r),
     )
     .map((r) => {
       const service = (r.service ?? defaultService) ?? "";

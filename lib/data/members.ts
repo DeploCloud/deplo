@@ -124,16 +124,17 @@ export async function listMembers(): Promise<MemberDTO[]> {
 }
 
 /**
- * Search registered users to add to the active team, matching on USERNAME (and
- * display name) only — emails are never searched or returned. Excludes users
- * already in the team. Each result carries the user's home-team name so two
- * identical display names stay distinguishable without exposing an email.
+ * List registered users available to add to the active team, matching on
+ * USERNAME (and display name) only — emails are never searched or returned.
+ * Excludes users already in the team. An empty query returns every available
+ * user so the picker is populated from the start; a non-empty query filters
+ * that roster. Each result carries the user's home-team name so two identical
+ * display names stay distinguishable without exposing an email.
  */
 export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   const teamId = await requireActiveTeamId();
   await requireCapability("manage_members");
   const q = query.trim().toLowerCase();
-  if (!q) return [];
   const d = read();
   const inTeam = new Set(
     d.memberships.filter((m) => m.teamId === teamId).map((m) => m.userId),
@@ -142,10 +143,11 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
     .filter((u) => !inTeam.has(u.id))
     .filter(
       (u) =>
+        !q ||
         u.username.toLowerCase().includes(q) ||
         u.name.toLowerCase().includes(q),
     )
-    .slice(0, 10)
+    .sort((a, b) => a.username.localeCompare(b.username))
     .map((u) => {
       // Their "home" team = the team they own, else any team they're in.
       const mine = d.memberships.filter((m) => m.userId === u.id);
