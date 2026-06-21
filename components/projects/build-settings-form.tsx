@@ -401,6 +401,22 @@ export function BuildSettingsForm({
         }
         continue; // host mounts have no docker name to validate
       }
+      if (v.type === "project") {
+        const projectPath = (v.projectPath ?? "")
+          .trim()
+          .replace(/^\.\/+/, "");
+        if (projectPath === "" || projectPath.startsWith("/") || /[\s:]/.test(projectPath)) {
+          toast.error(
+            `Project path must be relative to the files dir, e.g. "config.toml"`,
+          );
+          return;
+        }
+        if (projectPath.split("/").includes("..")) {
+          toast.error(`Project path must not contain ".."`);
+          return;
+        }
+        continue; // project mounts have no docker name to validate
+      }
       const name = v.name.trim().toLowerCase();
       if (name && !/^[a-z0-9][a-z0-9_-]*$/.test(name)) {
         toast.error(`Volume name "${name}" must be lowercase letters, digits, "-"/"_"`);
@@ -421,8 +437,17 @@ export function BuildSettingsForm({
           id: projectId,
           volumes: volumes.map((v) => ({
             id: v.id,
-            type: v.type === "host" ? "host" : "named",
+            type:
+              v.type === "host"
+                ? "host"
+                : v.type === "project"
+                  ? "project"
+                  : "named",
             name: v.name.trim(),
+            projectPath:
+              v.type === "project"
+                ? (v.projectPath ?? "").trim().replace(/^\.\/+/, "")
+                : undefined,
             hostPath: v.type === "host" ? (v.hostPath ?? "").trim() : undefined,
             mountPath: v.mountPath.trim(),
             readOnly: v.readOnly,

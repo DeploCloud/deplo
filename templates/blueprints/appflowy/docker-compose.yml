@@ -3,7 +3,7 @@ services:
     restart: on-failure
     image: nginx
     volumes:
-      - ../files/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
 
   minio:
     restart: on-failure
@@ -31,7 +31,7 @@ services:
       retries: 12
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./files/volumes/postgres/:/docker-entrypoint-initdb.d/
+      - ./volumes/postgres/:/docker-entrypoint-initdb.d/
 
   redis:
     restart: on-failure

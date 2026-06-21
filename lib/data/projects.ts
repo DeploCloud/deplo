@@ -8,7 +8,10 @@ import {
   requireExposePorts,
   requireMountHostVolumes,
 } from "../membership";
-import { composeHasHostBindMount } from "../deploy/compose-lint";
+import {
+  composeHasHostBindMount,
+  composePublishesPorts,
+} from "../deploy/compose-lint";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
@@ -20,6 +23,7 @@ import type {
   FrameworkId,
   GitRepo,
   Project,
+  ProjectStatus,
   UploadArchive,
   VolumeMount,
 } from "../types";
@@ -36,6 +40,7 @@ import { teardownDev } from "../deploy/dev";
 import { removeUploads } from "../deploy/upload";
 import { removeProjectDevSshUsers } from "./dev-ssh";
 import { isValidLogoValue } from "../projects/logo-shared";
+import { publishProjectChanged } from "../graphql/pubsub";
 
 /** Heuristic: treat secret-looking keys as masked secrets. */
 function isSecretKey(key: string): boolean {
@@ -123,9 +128,34 @@ function normalizeProject<T extends Project>(p: T): T {
   };
 }
 
+/**
+ * "stopping" is a transient state held only while `stopProject` awaits the
+ * container teardown (≤60s). If the server is killed mid-stop, a project can be
+ * left wedged in "stopping" forever. Self-heal on read: a "stopping" project
+ * whose last update is older than the stop timeout is reported as "idle" (the
+ * stop's intended terminal state). The store row is not rewritten here — the
+ * next real status change persists the corrected value.
+ */
+const STOPPING_STALE_MS = 90_000;
+
+/**
+ * Map a project's persisted status to the status callers should see, self-
+ * healing a wedged "stopping". Exported for unit tests; pure (no store/docker).
+ */
+export function reconcileStatus(
+  status: ProjectStatus,
+  updatedAt: string,
+  now: number = Date.now(),
+): ProjectStatus {
+  if (status !== "stopping") return status;
+  const age = now - new Date(updatedAt).getTime();
+  return age > STOPPING_STALE_MS ? "idle" : "stopping";
+}
+
 function summarize(p: Project): ProjectSummary {
   const d = read();
   const np = normalizeProject(p);
+  np.status = reconcileStatus(np.status, np.updatedAt);
   const latest = np.latestDeploymentId
     ? d.deployments.find((x) => x.id === np.latestDeploymentId) || null
     : null;
@@ -161,6 +191,32 @@ export async function getProjectById(id: string): Promise<Project | null> {
   return p && p.teamId === teamId ? normalizeProject(p) : null;
 }
 
+/**
+ * Project summary by id for an already-resolved team, WITHOUT reading the
+ * request's cookies. The live `projectStatus` subscription resolves the caller's
+ * team once from the GraphQL context (`ctx.teamId`, established in request
+ * scope) and then reloads snapshots through this seam on each change — Next's
+ * `cookies()` is NOT callable across the async-iteration ticks of a long-lived
+ * SSE response (it runs after the request scope closes), so the team is passed
+ * explicitly rather than re-derived. The same applies to the slug lookup below.
+ */
+export function summarizeForTeam(
+  id: string,
+  teamId: string,
+): ProjectSummary | null {
+  const p = read().projects.find((x) => x.id === id);
+  return p && p.teamId === teamId ? summarize(p) : null;
+}
+
+/** Cookie-free slug → summary lookup scoped to an explicit team (see above). */
+export function findProjectSummaryBySlugForTeam(
+  slug: string,
+  teamId: string,
+): ProjectSummary | null {
+  const p = read().projects.find((x) => x.slug === slug);
+  return p && p.teamId === teamId ? summarize(p) : null;
+}
+
 export interface CreateProjectInput {
   name: string;
   framework: FrameworkId;
@@ -189,10 +245,11 @@ export async function createProject(
   input: CreateProjectInput
 ): Promise<ProjectSummary> {
   const { membership } = await requireCapability("deploy");
-  // Publishing a compose service port is a port-exposure action; a single-image
-  // project's build.port is the intrinsic route Traefik targets, not an extra
-  // published port, so it isn't gated here.
-  if ((input.composeService && input.composePort) || input.exposes?.length) {
+  // Publishing container ports — a service's `ports:` (bound to the host) or
+  // `expose:` (advertised to linked containers) — needs the expose-ports grant.
+  // Giving a service a public Traefik DOMAIN (composeService/composePort/exposes)
+  // is routing, NOT port publishing, so it is intentionally NOT gated here.
+  if (input.compose != null && composePublishesPorts(input.compose)) {
     await requireExposePorts();
   }
   // A host bind mount baked into the initial compose needs the host-volume grant.
@@ -309,19 +366,9 @@ export async function updateProjectBuild(
   build: Partial<BuildConfig>
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  // Changing which container port Traefik routes to is a port-exposure action;
-  // gate only on an actual change so ordinary build-setting edits (commands,
-  // build method, …) stay open to anyone who can deploy.
-  const target = read().projects.find(
-    (x) => x.id === id && x.teamId === membership.teamId,
-  );
-  if (
-    target &&
-    build.port !== undefined &&
-    build.port !== target.build.port
-  ) {
-    await requireExposePorts();
-  }
+  // build.port is only WHICH container port Traefik routes to (routing), not a
+  // published host port, so changing it isn't gated behind the expose-ports
+  // grant — any member who can deploy may edit build settings.
   const user = read().users.find((u) => u.id === membership.userId)!;
   mutate((d) => {
     const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
@@ -351,11 +398,10 @@ export async function updateProjectSource(
   input: UpdateSourceInput
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  // Setting a compose service to publish a port requires the expose-ports grant.
-  if (
-    (input.expose !== undefined && input.expose !== null) ||
-    (input.exposes !== undefined && (input.exposes?.length ?? 0) > 0)
-  ) {
+  // Saving compose YAML that publishes ports (`ports:`/`expose:`) requires the
+  // expose-ports grant. Routing metadata (`expose`/`exposes` — Traefik domains)
+  // is NOT port publishing and is intentionally not gated here.
+  if (input.compose != null && composePublishesPorts(input.compose)) {
     await requireExposePorts();
   }
   // Saving compose YAML that bind-mounts a host path requires the host grant.
@@ -467,6 +513,43 @@ export function validateVolumes(
     seenPath.add(mountPath);
 
     const name = ((v.name ?? "").trim() || deriveVolumeName(mountPath)).toLowerCase();
+
+    if (v.type === "project") {
+      // Bind a path INSIDE the project's isolated files dir. The source is
+      // relative (no leading "/") and must stay in the sandbox — a ".." segment
+      // would climb out, which is exactly what we forbid (a rename could then
+      // repoint it at another project). No top-level volumes entry is emitted;
+      // renderCompose resolves it to the absolute files dir at deploy time.
+      // Accept an optional `./` prefix (the same marker the compose convention
+      // uses) but NOT a leading `/` — an absolute source is a host path, which
+      // must be declared as type:"host" so it goes through the permission gate.
+      const projectPath = (v.projectPath ?? "")
+        .trim()
+        .replace(/^\.\/+/, "")
+        .replace(/\/+$/, "");
+      if (projectPath === "" || projectPath.startsWith("/")) {
+        throw new Error(
+          `Project path must be relative to the project's files dir, e.g. "config.toml": "${v.projectPath}"`,
+        );
+      }
+      if (/[\s:]/.test(projectPath)) {
+        throw new Error(
+          `Project path must not contain spaces or ":": "${v.projectPath}"`,
+        );
+      }
+      if (projectPath.split("/").includes("..")) {
+        throw new Error(`Project path must not contain "..": "${v.projectPath}"`);
+      }
+      out.push({
+        id: v.id || newId("vol"),
+        type: "project",
+        name,
+        projectPath,
+        mountPath,
+        readOnly: Boolean(v.readOnly),
+      });
+      continue;
+    }
 
     if (v.type === "host") {
       // Host bind mount: validate the host SOURCE path the same way as the
@@ -621,6 +704,18 @@ export async function updateProjectLogo(
   if (changed) recordActivity("project", `Updated project logo`, user.name, id);
 }
 
+/** Mutate a project's status and notify every live subscriber. */
+function setProjectStatus(id: string, status: ProjectStatus): void {
+  mutate((d) => {
+    const p = d.projects.find((x) => x.id === id);
+    if (p) {
+      p.status = status;
+      p.updatedAt = nowIso();
+    }
+  });
+  publishProjectChanged(id);
+}
+
 /** Stop the project's running container. */
 export async function stopProject(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
@@ -629,13 +724,18 @@ export async function stopProject(id: string): Promise<void> {
     (x) => x.id === id && x.teamId === membership.teamId,
   );
   if (!project) throw new Error("Project not found");
-  await stopContainer(project.slug).catch(() => {});
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === id)!;
-    p.status = "idle";
-    p.updatedAt = nowIso();
-  });
-  recordActivity("project", `Stopped ${project.name}`, user.name, id);
+  // Persist "stopping" BEFORE the (up to 60s) container stop so the transition
+  // is visible to every client immediately and survives a reload — not just a
+  // local label on the clicking user's button. We settle to "idle" once the
+  // stop returns (success or failure: the intent was to stop).
+  setProjectStatus(id, "stopping");
+  recordActivity("project", `Stopping ${project.name}`, user.name, id);
+  try {
+    await stopContainer(project.slug);
+  } catch {
+    // Ignore — the project is being torn down regardless; reflect "idle" below.
+  }
+  setProjectStatus(id, "idle");
 }
 
 /** Start a previously stopped project's container. */
@@ -647,11 +747,7 @@ export async function startProject(id: string): Promise<void> {
   );
   if (!project) throw new Error("Project not found");
   await startContainer(project.slug).catch(() => {});
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === id)!;
-    p.status = "active";
-    p.updatedAt = nowIso();
-  });
+  setProjectStatus(id, "active");
   recordActivity("project", `Started ${project.name}`, user.name, id);
 }
 

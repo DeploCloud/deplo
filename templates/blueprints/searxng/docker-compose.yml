@@ -10,7 +10,7 @@ services:
     image: searxng/searxng:latest
     restart: unless-stopped
     volumes:
-      - ../files/searxng:/etc/searxng
+      - ./searxng:/etc/searxng
       - searxng-data:/var/cache/searxng
 
 volumes:

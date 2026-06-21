@@ -10,7 +10,7 @@ services:
     volumes:
       - verdaccio_storage:/verdaccio/storage
       - verdaccio_plugins:/verdaccio/plugins
-      - ../files/conf:/verdaccio/conf
+      - ./conf:/verdaccio/conf
 
 volumes:
   verdaccio_storage:

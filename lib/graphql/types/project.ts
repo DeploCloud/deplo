@@ -20,8 +20,11 @@ import {
   rebuildProject,
   deleteProject,
   setProjectVolumes,
+  findProjectSummaryBySlugForTeam,
+  summarizeForTeam,
   type ProjectSummary,
 } from "@/lib/data/projects";
+import { pubSub } from "../pubsub";
 import {
   listDeployments,
   getDeployment,
@@ -76,10 +79,16 @@ export const DeploymentRef = builder
 
 const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
   description:
-    "A persistent docker named volume mounted into a single-container project.",
+    "A persistent volume mounted into a single-container project — a docker " +
+    "named volume, a project-files bind, or a host bind mount.",
   fields: (t) => ({
     id: t.exposeID("id"),
+    // "named" (default), "project", or "host" — the UI re-derives its source
+    // control from this, so it must round-trip back on read.
+    type: t.string({ resolve: (v) => v.type ?? "named" }),
     name: t.exposeString("name"),
+    projectPath: t.exposeString("projectPath", { nullable: true }),
+    hostPath: t.exposeString("hostPath", { nullable: true }),
     mountPath: t.exposeString("mountPath"),
     readOnly: t.exposeBoolean("readOnly"),
   }),
@@ -197,9 +206,12 @@ const VolumeInput = builder.inputType("VolumeInput", {
   description: "A persistent volume for a single-container project.",
   fields: (t) => ({
     id: t.string({ required: false }),
-    /** "named" (docker-managed, default) or "host" (bind a host path). */
+    /** "named" (docker-managed, default), "project" (bind inside the project's
+     * files dir), or "host" (bind an absolute host path). */
     type: t.string({ required: false }),
     name: t.string({ required: false }),
+    /** Path relative to the project's files dir (project mounts only). */
+    projectPath: t.string({ required: false }),
     /** Absolute host path to bind-mount (host mounts only). */
     hostPath: t.string({ required: false }),
     mountPath: t.string({ required: true }),
@@ -401,7 +413,7 @@ builder.mutationFields((t) => ({
     type: ProjectRef,
     authScopes: { capability: "deploy" },
     description:
-      "Replace a single-container project's volumes (named + host bind mounts).",
+      "Replace a single-container project's volumes (named, project-files, and host bind mounts).",
     args: {
       id: t.arg.string({ required: true }),
       volumes: t.arg({ type: [VolumeInput], required: true }),
@@ -411,8 +423,14 @@ builder.mutationFields((t) => ({
         id,
         volumes.map((v) => ({
           id: v.id ?? "",
-          type: v.type === "host" ? ("host" as const) : ("named" as const),
+          type:
+            v.type === "host"
+              ? ("host" as const)
+              : v.type === "project"
+                ? ("project" as const)
+                : ("named" as const),
           name: v.name ?? "",
+          projectPath: v.projectPath ?? undefined,
           hostPath: v.hostPath ?? undefined,
           mountPath: v.mountPath,
           readOnly: v.readOnly ?? false,
@@ -528,4 +546,66 @@ async function reloadProject(id: string): Promise<ProjectSummary> {
   const found = all.find((p) => p.id === id);
   if (!found) throw new Error("Project not found");
   return found;
+}
+
+/* ------------------------------------------------------------------ */
+/* Subscriptions                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Live project status, served over SSE on the same `/api/graphql` endpoint
+ * (Yoga negotiates `text/event-stream` for subscriptions — no separate
+ * WebSocket server). Pushes a fresh project snapshot whenever the project's
+ * power/deploy state changes, so the dashboard reflects start/stop/deploy
+ * without a reload and stays in sync across every connected client.
+ *
+ * Lives here (not a separate module) so the only edge to `ProjectRef` and the
+ * data layer stays within this file — a cross-module import of `ProjectRef`
+ * created a second evaluation path to this module under Turbopack and tripped a
+ * duplicate-type registration.
+ *
+ * IMPORTANT — no cookies in the stream. A subscription's async iterator runs
+ * AFTER the HTTP handler returns the streaming Response, so Next's `cookies()`
+ * is no longer callable. The caller's team is resolved from the GraphQL context
+ * (`ctx.teamId`, established in request scope by buildContext); every lookup in
+ * the generator uses the cookie-free `*ForTeam` data seams.
+ */
+builder.subscriptionType({});
+
+builder.subscriptionFields((t) => ({
+  projectStatus: t.field({
+    type: ProjectRef,
+    description:
+      "Emits the project whenever its status (power / deployment) changes. " +
+      "Fires once immediately with the current snapshot, then on every change.",
+    // `loggedIn` (synchronous `!!ctx.viewer` — no cookie call) gates opening the
+    // stream; the generator enforces team ownership of the project below.
+    authScopes: { loggedIn: true },
+    args: { slug: t.arg.string({ required: true }) },
+    subscribe: (_root, { slug }, ctx) => projectStatusStream(slug, ctx.teamId),
+    // The generator yields fully-resolved, team-scoped snapshots already.
+    resolve: (project) => project,
+  }),
+}));
+
+async function* projectStatusStream(
+  slug: string,
+  teamId: string | null,
+): AsyncGenerator<ProjectSummary> {
+  if (!teamId) throw new Error("Project not found");
+  const project = findProjectSummaryBySlugForTeam(slug, teamId);
+  if (!project) throw new Error("Project not found");
+  const projectId = project.id;
+
+  // Initial snapshot — a fresh subscriber paints current state immediately.
+  yield project;
+
+  // Forward each change ping as a freshly-reloaded snapshot. The payload is the
+  // changed project's id (always this project's, given the keyed channel). If
+  // the project was deleted mid-stream, summarizeForTeam returns null → end.
+  for await (const changedId of pubSub.subscribe("projectChanged", projectId)) {
+    const next = summarizeForTeam(changedId, teamId);
+    if (!next) return;
+    yield next;
+  }
 }

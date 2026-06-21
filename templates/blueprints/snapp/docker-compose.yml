@@ -23,6 +23,6 @@ services:
       - URLS_VIA_GROUPS_ONLY=${URLS_VIA_GROUPS_ONLY}
       - HOST=${HOST}
     volumes:
-      - ../files/snapp-db:/app/db.sqlite
+      - ./snapp-db:/app/db.sqlite
 volumes:
   snapp-db: {}

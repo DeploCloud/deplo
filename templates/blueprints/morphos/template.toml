@@ -13,7 +13,7 @@ certResolver = "letsencrypt"
 # No environment variables required based on provided information
 
 [[config.mounts]]
-source = "../files/morphos-upload"
+source = "./morphos-upload"
 target = "/upload"
 type = "bind"
 readOnly = false

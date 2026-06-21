@@ -93,9 +93,9 @@ export interface ComposeStackInput {
    */
   domainRoutes?: ComposeDomainRoute[];
   /**
-   * Absolute host directory holding this project's mount files. Template
-   * bind-mounts that reference `../files/<x>` (Dokploy convention) are rewritten
-   * to `<filesDir>/<x>` so each project's config files stay isolated.
+   * Absolute host directory holding this project's mount files. Compose
+   * bind-mounts that reference `./<x>` (the project-files convention) are
+   * rewritten to `<filesDir>/<x>` so each project's config files stay isolated.
    */
   filesDir?: string;
 }
@@ -206,10 +206,20 @@ function mergeLabels(svc: Service, add: string[]): void {
   svc.labels = [...existing, ...add];
 }
 
-/** Rewrite a `../files/<x>` bind-mount source to the project's files dir. */
+/**
+ * Rewrite a project-relative `./<x>` bind-mount source to the project's isolated
+ * files dir. `./config.toml` → `<filesDir>/config.toml`, `./folder/x` →
+ * `<filesDir>/folder/x`, bare `.`/`./` → `<filesDir>`. A `../` source escapes the
+ * sandbox and is intentionally NOT rewritten — it falls through unchanged and is
+ * caught by the host-bind permission gate (see `isHostBindSource`). Absolute
+ * (`/srv/x`) and named (`vol`) sources pass through untouched.
+ */
 function rewriteMountSource(source: string, filesDir: string): string {
-  const m = source.match(/^(?:\.\.?\/)*files\/(.+)$/);
-  return m ? `${filesDir}/${m[1]}` : source;
+  if (source.includes("..")) return source; // escape — leave for the gate to block
+  const m = source.match(/^\.\/?(.*)$/);
+  if (!m) return source;
+  const rel = m[1].replace(/^\/+/, "").replace(/\/+$/, "");
+  return rel ? `${filesDir}/${rel}` : filesDir;
 }
 
 /** Point every `../files/...` bind mount at the per-project files directory. */

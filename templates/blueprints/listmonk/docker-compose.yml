@@ -38,7 +38,7 @@ services:
       # --install --idempotent ensures that DB installation happens only once on an empty DB, on the first ever start.
       # --upgrade automatically runs any DB migrations when a new image is pulled.
     volumes:
-      - ../files/config.toml:/listmonk/config.toml
+      - ./config.toml:/listmonk/config.toml
       - listmonk-uploads:/listmonk/uploads
 
 volumes:

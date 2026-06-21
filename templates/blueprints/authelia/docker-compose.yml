@@ -4,8 +4,8 @@ services:
     restart: unless-stopped
     volumes:
       - authelia_config:/config
-      - ../files/configuration.yml:/config/configuration.yml:ro
-      - ../files/users_database.yml:/config/users_database.yml
+      - ./configuration.yml:/config/configuration.yml:ro
+      - ./users_database.yml:/config/users_database.yml
     environment:
       AUTHELIA_JWT_SECRET: $JWT_SECRET
       AUTHELIA_SESSION_SECRET: $SESSION_SECRET

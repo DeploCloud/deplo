@@ -60,8 +60,8 @@ services:
     expose:
       - 50051
     volumes:
-      - ../files/config/keys:/opt/fonoster/keys:ro
-      - ../files/config/integrations.json:/opt/fonoster/integrations.json:ro
+      - ./config/keys:/opt/fonoster/keys:ro
+      - ./config/integrations.json:/opt/fonoster/integrations.json:ro
 
   autopilot:
     image: fonoster/autopilot:0.15.15
@@ -82,7 +82,7 @@ services:
       - AUTOPILOT_UNSTRUCTURED_API_KEY=${AUTOPILOT_UNSTRUCTURED_API_KEY}
       - AUTOPILOT_UNSTRUCTURED_API_URL=${AUTOPILOT_UNSTRUCTURED_API_URL}
     volumes:
-      - ../files/config/integrations.json:/opt/fonoster/integrations.json:ro
+      - ./config/integrations.json:/opt/fonoster/integrations.json:ro
 
   routr:
     image: fonoster/routr-one:2.13.13
@@ -108,7 +108,7 @@ services:
       - 5060:5060/udp
       - 5060-5063:5060-5063
     volumes:
-      - ../files/config/keys/public.pem:/etc/routr/keys/public.pem
+      - ./config/keys/public.pem:/etc/routr/keys/public.pem
 
   # RTPEngine uses a range of ports to handle RTP traffic. Because exposing a large range of ports 
   # is not possible in Docker, we need to use network_mode: host.
@@ -163,7 +163,7 @@ services:
       - 5432
     volumes:
       - db:/var/lib/postgresql/data
-      - ../files/config/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+      - ./config/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -196,7 +196,7 @@ services:
     restart: unless-stopped
     command: ["/usr/local/bin/envoy", "-c", "/etc/envoy/envoy.yaml"]
     volumes:
-      - ../files/config:/etc/envoy:ro
+      - ./config:/etc/envoy:ro
     ports:
       - 8449:8449
 

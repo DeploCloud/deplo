@@ -42,9 +42,9 @@ services:
     volumes:
       - op-ch-data:/var/lib/clickhouse
       - op-ch-logs:/var/log/clickhouse-server
-      - ../files/clickhouse_config:/etc/clickhouse-server/config.d
-      - ../files/clickhouse_users:/etc/clickhouse-server/users.d
-      - ../files/clickhouse_init:/docker-entrypoint-initdb.d
+      - ./clickhouse_config:/etc/clickhouse-server/config.d
+      - ./clickhouse_users:/etc/clickhouse-server/users.d
+      - ./clickhouse_init:/docker-entrypoint-initdb.d
     environment:
       - CLICKHOUSE_SKIP_USER_SETUP=1
     healthcheck:

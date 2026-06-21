@@ -4,7 +4,7 @@ services:
     image: mariadb:10.11
     restart: unless-stopped
     volumes:
-      - "../files/db:/var/lib/mysql"
+      - "./db:/var/lib/mysql"
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME}

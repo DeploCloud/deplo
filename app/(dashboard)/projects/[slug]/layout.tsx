@@ -6,10 +6,14 @@ import { isDevEligible } from "@/lib/data/dev";
 import { hasCapability } from "@/lib/membership";
 import { Button } from "@/components/ui/button";
 import { ProjectLogo } from "@/components/shared/project-logo";
-import { StatusDot } from "@/components/shared/status-badge";
 import { RedeployButton } from "@/components/projects/redeploy-button";
 import { ProjectControls } from "@/components/projects/project-controls";
+import { ProjectStatusDot } from "@/components/projects/project-status-dot";
 import { ProjectTabs } from "@/components/projects/project-tabs";
+import {
+  ProjectLiveStatusProvider,
+  type LiveProject,
+} from "@/components/projects/project-live-status";
 
 export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]">) {
   const { slug } = await props.params;
@@ -17,7 +21,17 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
   if (!project) notFound();
   const canManageEnv = await hasCapability("manage_env");
 
+  // Seed for the live-status subscription (kept current client-side thereafter).
+  const initialLive: LiveProject = {
+    id: project.id,
+    slug: project.slug,
+    status: project.status,
+    productionUrl: project.productionUrl ?? null,
+    latestDeploymentStatus: project.latestDeployment?.status ?? null,
+  };
+
   return (
+    <ProjectLiveStatusProvider key={initialLive.slug} initial={initialLive}>
     <div className="space-y-6">
       <div>
         <Button
@@ -50,7 +64,7 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
                   rel="noopener noreferrer"
                   className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
                 >
-                  <StatusDot status={project.status} />
+                  <ProjectStatusDot status={project.status} />
                   {project.productionUrl.replace(/^https?:\/\//, "")}
                 </a>
               )}
@@ -84,5 +98,6 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
 
       {props.children}
     </div>
+    </ProjectLiveStatusProvider>
   );
 }

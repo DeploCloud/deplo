@@ -1,10 +1,8 @@
 import { notFound } from "next/navigation";
-import { TerminalSquare } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { getConsoleInfo } from "@/lib/data/console";
 import { PageHeader } from "@/components/shared/page-header";
-import { EmptyState } from "@/components/shared/empty-state";
-import { ContainerConsole } from "@/components/projects/container-console";
+import { LiveConsole } from "@/components/projects/live-console";
 
 export const metadata = { title: "Console" };
 
@@ -27,20 +25,21 @@ export default async function ProjectConsolePage(
         description="Run commands in the running container (docker exec)."
       />
 
-      {info?.running ? (
-        <ContainerConsole
-          projectId={project.id}
-          containerName={info.containerName}
-          image={info.image}
-          instances={info.instances}
-        />
-      ) : (
-        <EmptyState
-          icon={TerminalSquare}
-          title="Container is not running"
-          description="The console is available once the project has a running deployment. Deploy or redeploy this project, then attach."
-        />
-      )}
+      {/* Follows the project's live running state: the terminal appears/
+          disappears as the container starts/stops, no reload. */}
+      <LiveConsole
+        projectId={project.id}
+        initialInfo={
+          info?.running
+            ? {
+                containerName: info.containerName,
+                image: info.image,
+                instances: info.instances,
+              }
+            : null
+        }
+        initialRunning={!!info?.running}
+      />
     </div>
   );
 }

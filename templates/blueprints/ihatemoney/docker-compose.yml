@@ -30,4 +30,4 @@ services:
       - PUID=0
       - PGID=0
     volumes:
-      - ../files/sqlite-db:/database
+      - ./sqlite-db:/database

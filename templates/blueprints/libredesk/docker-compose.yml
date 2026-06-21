@@ -12,8 +12,8 @@ services:
       - db
       - redis
     volumes:
-      - ../files/uploads:/libredesk/uploads:rw
-      - ../files/config.toml:/libredesk/config.toml
+      - ./uploads:/libredesk/uploads:rw
+      - ./config.toml:/libredesk/config.toml
     command: [ sh, -c, "./libredesk --install --idempotent-install --yes --config /libredesk/config.toml && ./libredesk --upgrade --yes --config /libredesk/config.toml && ./libredesk --config /libredesk/config.toml" ]
 
   # PostgreSQL database

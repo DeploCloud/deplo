@@ -2,7 +2,7 @@ services:
   garage:
     image: dxflrs/garage:v2.0.0
     volumes:
-      - ../files/garage.toml:/etc/garage.toml
+      - ./garage.toml:/etc/garage.toml
       - garage-storage:/var/lib/garage
       - garage-storage:/var/lib/garage
     restart: unless-stopped
@@ -16,7 +16,7 @@ services:
     image: khairul169/garage-webui:1.1.0
     restart: unless-stopped
     volumes:
-      - ../files/garage.toml:/etc/garage.toml:ro
+      - ./garage.toml:/etc/garage.toml:ro
     ports:
       - 3909
     environment:

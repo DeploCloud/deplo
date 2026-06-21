@@ -46,7 +46,7 @@ services:
     networks:
       - chibinet
     volumes:
-      - ../files/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - uploads:/app/uploads:ro
     environment:
       - BASE_URL=":80"

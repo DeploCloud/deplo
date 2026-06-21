@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     command: --config /etc/livekit.yaml
     volumes:
-      - ../files/livekit.yaml:/etc/livekit.yaml
+      - ./livekit.yaml:/etc/livekit.yaml
     ports:
       - "${LIVEKIT_PORT}:${LIVEKIT_PORT}"
       - "${TURN_UDP_PORT}:${TURN_UDP_PORT}/udp"
@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
     command: redis-server /etc/redis.conf
     volumes:
-      - ../files/redis.conf:/etc/redis.conf
+      - ./redis.conf:/etc/redis.conf
     healthcheck:
       test: [ "CMD-SHELL", "redis-cli ping || exit 1" ]
       interval: 10s
@@ -36,7 +36,7 @@ services:
     environment:
       - EGRESS_CONFIG_FILE=/etc/egress.yaml
     volumes:
-      - ../files/egress.yaml:/etc/egress.yaml
+      - ./egress.yaml:/etc/egress.yaml
     cap_add:
       - CAP_SYS_ADMIN
     depends_on:
@@ -49,7 +49,7 @@ services:
     environment:
       - INGRESS_CONFIG_FILE=/etc/ingress.yaml
     volumes:
-      - ../files/ingress.yaml:/etc/ingress.yaml
+      - ./ingress.yaml:/etc/ingress.yaml
     ports:
       - "${RTMP_PORT}:${RTMP_PORT}"
       - "${INGRESS_UDP_PORT}:${INGRESS_UDP_PORT}/udp"

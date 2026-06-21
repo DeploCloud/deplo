@@ -6,8 +6,8 @@ services:
     # ports:
     #   - "6432:6432"
     volumes:
-      - ../files/pgdog.toml:/pgdog/pgdog.toml
-      - ../files/users.toml:/pgdog/users.toml
+      - ./pgdog.toml:/pgdog/pgdog.toml
+      - ./users.toml:/pgdog/users.toml
     environment:
       - RUST_LOG=${RUST_LOG}
     depends_on:

@@ -16,4 +16,4 @@ services:
       - HIDE_HISTORY=${HIDE_HISTORY}
       - LANGUAGE=${LANGUAGE}
     volumes:
-      - ../files/data:/app/data
+      - ./data:/app/data

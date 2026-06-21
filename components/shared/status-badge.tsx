@@ -16,6 +16,7 @@ type AnyStatus =
   | S3Status
   | "active"
   | "idle"
+  | "stopping"
   | "success"
   | "failed"
   | "never"
@@ -30,15 +31,19 @@ const COLORS: Record<string, string> = {
   connected: "bg-[var(--success)]",
   active: "bg-[var(--success)]",
   success: "bg-[var(--success)]",
-  // amber
+  // amber — in-progress / transitioning. "stopping" is the transient state
+  // between a Stop click and the container settling to "idle"; it shares the
+  // deploying colour so "something is happening" reads the same everywhere.
   building: "bg-[var(--warning)]",
   queued: "bg-[var(--warning)]",
+  stopping: "bg-[var(--warning)]",
   provisioning: "bg-[var(--warning)]",
   pending: "bg-[var(--warning)]",
   unverified: "bg-[var(--warning)]",
-  idle: "bg-[var(--warning)]",
   never: "bg-muted-foreground",
-  // red
+  // red — stopped or failed. "idle" means the user stopped the project; it now
+  // reads as a hard "off" state rather than amber.
+  idle: "bg-destructive",
   error: "bg-destructive",
   failed: "bg-destructive",
   misconfigured: "bg-destructive",
@@ -48,7 +53,7 @@ const COLORS: Record<string, string> = {
   canceled: "bg-muted-foreground",
 };
 
-const PULSE = new Set(["building", "queued", "provisioning"]);
+const PULSE = new Set(["building", "queued", "provisioning", "stopping"]);
 
 export function StatusDot({
   status,

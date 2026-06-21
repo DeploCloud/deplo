@@ -12,7 +12,7 @@ services:
       GID: "${GID-1000}"
       COLLECTIONS: "crowdsecurity/linux crowdsecurity/traefik crowdsecurity/http-cve"
     volumes:
-      - ../files/acquis.yaml:/etc/crowdsec/acquis.yaml # https://docs.crowdsec.net/u/getting_started/post_installation/acquisition_new/
+      - ./acquis.yaml:/etc/crowdsec/acquis.yaml # https://docs.crowdsec.net/u/getting_started/post_installation/acquisition_new/
       - crowdsec-db:/var/lib/crowdsec/data/
       - crowdsec-config:/etc/crowdsec/
       - /etc/deplo/traefik/dynamic/access.log:/var/log/traefik/access.log:ro # make sure access log is enabled in deplo

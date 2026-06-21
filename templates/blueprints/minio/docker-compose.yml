@@ -11,7 +11,7 @@ services:
       # If you want to use a local directory instead, uncomment the line below
       # and specify the path to your local directory.
       # (be warned that ../files is pointing to a subdirectory of /etc/deplo/compose in deplo)
-      # - ../files/minio-data:/data
+      # - ./minio-data:/data
       # if you uncommented the line above, comment the line below and the volumes section at the end
       - minio-data:/data
     environment:

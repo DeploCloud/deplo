@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   composeHasHostBindMount,
+  isEscapingSource,
+  isFilesConventionSource,
   isHostBindSource,
   volumeSource,
 } from "./compose-lint";
@@ -12,9 +14,10 @@ import {
  * `canMountHostVolumes` grant. The detection MUST agree with the editor lint
  * (both use volumeSource + isHostBindSource), so it's tested directly here.
  *
- * A host bind is an ABSOLUTE source that is NOT the `../files/...` convention
+ * A host bind is a source that escapes the project sandbox — an ABSOLUTE path,
+ * OR a `..`-climbing path — and is NOT the project-files `./<x>` convention
  * (rewritten to the project-isolated dir at deploy time). Named/anonymous
- * volumes and relative `../files` mounts are not host binds.
+ * volumes and `./`-relative mounts are not host binds.
  */
 
 test("volumeSource extracts the source of each volume entry form", () => {
@@ -24,15 +27,41 @@ test("volumeSource extracts the source of each volume entry form", () => {
   assert.equal(volumeSource({ type: "bind", source: "/host", target: "/x" }), "/host");
 });
 
-test("isHostBindSource: absolute, non-files sources are host binds", () => {
+test("isHostBindSource: absolute and escaping sources are host binds", () => {
   assert.equal(isHostBindSource("/data"), true);
   assert.equal(isHostBindSource("/etc/passwd"), true);
-  // The ../files convention is project-isolated, not a host bind.
-  assert.equal(isHostBindSource("../files/config"), false);
-  assert.equal(isHostBindSource("files/config"), false);
+  // The ./ project-files convention is project-isolated, not a host bind.
+  assert.equal(isHostBindSource("./config"), false);
+  assert.equal(isHostBindSource("./folder/x"), false);
+  assert.equal(isHostBindSource("."), false);
+  // A `..` climb escapes the sandbox — now treated as a host bind (gated).
+  assert.equal(isHostBindSource("../files/config"), true);
+  assert.equal(isHostBindSource("../sibling/data"), true);
+  assert.equal(isHostBindSource("./../escape"), true);
   // Named volumes and anonymous mounts are not host binds.
   assert.equal(isHostBindSource("named"), false);
   assert.equal(isHostBindSource(null), false);
+});
+
+test("isFilesConventionSource: ./ paths in, .. and absolute out", () => {
+  assert.equal(isFilesConventionSource("./config.toml"), true);
+  assert.equal(isFilesConventionSource("./folder/x"), true);
+  assert.equal(isFilesConventionSource("."), true);
+  assert.equal(isFilesConventionSource("./"), true);
+  assert.equal(isFilesConventionSource("../escape"), false);
+  assert.equal(isFilesConventionSource("./../escape"), false);
+  assert.equal(isFilesConventionSource("/abs"), false);
+  assert.equal(isFilesConventionSource("named"), false);
+});
+
+test("isEscapingSource: any .. path segment escapes", () => {
+  assert.equal(isEscapingSource("../x"), true);
+  assert.equal(isEscapingSource("./../x"), true);
+  assert.equal(isEscapingSource("a/../b"), true);
+  assert.equal(isEscapingSource("./x"), false);
+  assert.equal(isEscapingSource("/abs"), false);
+  assert.equal(isEscapingSource("name"), false);
+  assert.equal(isEscapingSource(null), false);
 });
 
 test("composeHasHostBindMount: true for an absolute string bind", () => {
@@ -66,13 +95,22 @@ volumes:
   assert.equal(composeHasHostBindMount(yaml), false);
 });
 
-test("composeHasHostBindMount: false for the ../files convention", () => {
+test("composeHasHostBindMount: false for the ./ project-files convention", () => {
   const yaml = `services:
   app:
     image: nginx
     volumes:
-      - ../files/config:/etc/app/config`;
+      - ./config:/etc/app/config`;
   assert.equal(composeHasHostBindMount(yaml), false);
+});
+
+test("composeHasHostBindMount: true for a .. sandbox escape (now gated)", () => {
+  const yaml = `services:
+  app:
+    image: nginx
+    volumes:
+      - ../sibling/data:/data`;
+  assert.equal(composeHasHostBindMount(yaml), true);
 });
 
 test("composeHasHostBindMount: tolerant of malformed / empty input", () => {

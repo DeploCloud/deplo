@@ -65,9 +65,12 @@ export interface User {
    */
   suspended?: boolean;
   /**
-   * Instance-wide grant: may expose/publish container ports on a deployment.
-   * Security-sensitive, so it is opt-in per user (granted from Settings → Users)
-   * rather than implied by a team capability. Instance admins hold it implicitly.
+   * Instance-wide grant: may publish container ports declared in a compose
+   * stack — a service's `ports:` (bound to the host) or `expose:`. Orthogonal to
+   * Traefik routing: giving a service a public domain/route does NOT require this
+   * grant. Security-sensitive, so it is opt-in per user (granted from Settings →
+   * Users) rather than implied by a team capability. Instance admins hold it
+   * implicitly.
    */
   canExposePorts?: boolean;
   /**
@@ -211,7 +214,16 @@ export type FrameworkId =
   | "docker"
   | "other";
 
-export type ProjectStatus = "active" | "building" | "error" | "queued" | "idle";
+export type ProjectStatus =
+  | "active"
+  | "building"
+  | "error"
+  | "queued"
+  | "idle"
+  // Transient: the user pressed Stop and the container is being brought down.
+  // Persisted (so it survives reload and every client sees it) until the stop
+  // completes and the project settles to "idle".
+  | "stopping";
 
 /**
  * Where a project's code/image comes from. Mirrors the choices offered by
@@ -426,13 +438,17 @@ export interface DevSshUserDTO {
  * template CONFIG FILES to disk and bind-mounts them (content-bearing); a
  * VolumeMount carries no content — it is data that survives redeploys.
  *
- * Two kinds, discriminated by `type` (absent ⇒ "named", for back-compat):
+ * Three kinds, discriminated by `type` (absent ⇒ "named", for back-compat):
  *  - "named": a docker-MANAGED volume. The on-host volume name is NOT `name` —
  *    it is namespaced per-project at render time (deplo-<slug>-<name>, see
  *    `hostVolumeName`) so it can never collide with or leak into another team's
  *    project on the shared host (the same isolation reason compose strips
  *    container_name). Deriving from the slug at render time (never storing the
  *    host name) means a rename can't orphan data and `name` stays a label.
+ *  - "project": a bind mount of a path INSIDE the project's isolated files dir
+ *    (`projectPath`, relative, e.g. "config.toml" or "uploads"). The same
+ *    sandbox the `./<x>` compose convention targets; rendered to the absolute
+ *    files dir at deploy time. No grant needed — it can't escape the project.
  *  - "host": a bind mount of a real HOST filesystem path (`hostPath`). The host
  *    is docker-only and shared across teams, so a user-typed host path is a
  *    cross-tenant footgun — only users with the `canMountHostVolumes` grant (or
@@ -448,15 +464,21 @@ export interface VolumeMount {
    * Kind of mount. Absent ⇒ "named" (docker-managed) so documents written before
    * host bind mounts existed keep rendering identically.
    */
-  type?: "named" | "host";
+  type?: "named" | "project" | "host";
   /**
    * Human label, lowercase-kebab, UNIQUE PER PROJECT. Namespaced on the host.
-   * Named volumes only (ignored for "host" mounts).
+   * Named volumes only (ignored for "project"/"host" mounts).
    */
   name: string;
   /**
+   * Path RELATIVE to the project's isolated files dir, e.g. "config.toml" or
+   * "uploads". Project mounts only (type === "project"); never contains "..".
+   * Absent/ignored for named and host mounts.
+   */
+  projectPath?: string;
+  /**
    * Absolute HOST path to bind-mount, e.g. "/srv/data". Host mounts only
-   * (type === "host"); absent/ignored for named volumes.
+   * (type === "host"); absent/ignored for named and project mounts.
    */
   hostPath?: string;
   /** Absolute in-container mount path, e.g. "/data". UNIQUE PER PROJECT. */

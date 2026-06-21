@@ -15,7 +15,7 @@ services:
       - 3000
     volumes:
       - kener_db:/app/database
-      - ../files/uploads:/app/uploads
+      - ./uploads:/app/uploads
     restart: unless-stopped
 
   postgres:

@@ -3,28 +3,36 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Play, Square, Hammer } from "lucide-react";
+import { Play, Square, Hammer, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
+import { useLiveStatus } from "@/components/projects/project-live-status";
 import type { ProjectStatus } from "@/lib/types";
 
 export function ProjectControls({
   projectId,
-  status,
+  status: serverStatus,
 }: {
   projectId: string;
   status: ProjectStatus;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  // Anything other than an explicitly stopped (idle) project counts as running.
+  // Live status (subscription) takes precedence over the server-rendered value
+  // so the button reflects start/stop/deploy in real time — and the "Stopping"
+  // label is driven by the persisted "stopping" status, so it survives reload
+  // and every viewer sees it, not just the user who clicked.
+  const status = useLiveStatus(serverStatus);
   const stopped = status === "idle";
+  const stopping = status === "stopping";
 
   function act(mutation: string, success: string) {
     startTransition(async () => {
       const res = await gqlAction(mutation, { id: projectId });
       if (res.ok) {
         toast.success(success);
+        // The subscription pushes the new status, but refresh the RSC tree too
+        // so any server-rendered, non-subscribed bits stay consistent.
         router.refresh();
       } else {
         toast.error(res.error);
@@ -48,6 +56,13 @@ export function ProjectControls({
         >
           <Play className="size-4" />
           Start
+        </Button>
+      ) : stopping ? (
+        // Persisted transient state: the container is being brought down. The
+        // button is disabled and self-clears when the status settles to "idle".
+        <Button variant="outline" size="sm" disabled>
+          <Loader2 className="size-4 animate-spin" />
+          Stopping
         </Button>
       ) : (
         <Button

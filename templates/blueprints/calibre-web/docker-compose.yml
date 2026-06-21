@@ -11,7 +11,7 @@ services:
     volumes:
       - calibre-config:/config
       - calibre-books:/books
-      - ../files/startup-scripts:/custom-cont-init.d:ro # optional, comment out if you have your own metadata.db file, otherwise it will be created
+      - ./startup-scripts:/custom-cont-init.d:ro # optional, comment out if you have your own metadata.db file, otherwise it will be created
 
 volumes:
   calibre-config: {}

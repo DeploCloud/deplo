@@ -1,10 +1,8 @@
 import { notFound } from "next/navigation";
-import { ScrollText } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { getLogsInfo } from "@/lib/data/console";
 import { PageHeader } from "@/components/shared/page-header";
-import { EmptyState } from "@/components/shared/empty-state";
-import { ContainerLogs } from "@/components/projects/container-logs";
+import { LiveLogs } from "@/components/projects/live-logs";
 
 export const metadata = { title: "Logs" };
 
@@ -28,15 +26,13 @@ export default async function ProjectLogsPage(
         description="Live runtime output from the running container (docker logs -f)."
       />
 
-      {info?.running ? (
-        <ContainerLogs projectId={project.id} instances={info.instances} />
-      ) : (
-        <EmptyState
-          icon={ScrollText}
-          title="Container is not running"
-          description="Runtime logs stream from a running container. Deploy or redeploy this project to start streaming its output."
-        />
-      )}
+      {/* Follows the project's live running state: the log stream appears/
+          disappears as the container starts/stops, no reload. */}
+      <LiveLogs
+        projectId={project.id}
+        initialInstances={info?.running ? info.instances : null}
+        initialRunning={!!info?.running}
+      />
     </div>
   );
 }

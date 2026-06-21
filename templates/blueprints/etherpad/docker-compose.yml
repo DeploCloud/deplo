@@ -6,8 +6,8 @@ services:
     tty: true
     stdin_open: true
     volumes:
-      - ../files/plugins:/opt/etherpad-lite/src/plugin_packages
-      - ../files/etherpad_var:/opt/etherpad-lite/var
+      - ./plugins:/opt/etherpad-lite/src/plugin_packages
+      - ./etherpad_var:/opt/etherpad-lite/var
     depends_on:
       - postgres
     environment:
@@ -36,4 +36,4 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     restart: always
     volumes:
-      - ../files/postgres_data:/var/lib/postgresql/data/pgdata
+      - ./postgres_data:/var/lib/postgresql/data/pgdata

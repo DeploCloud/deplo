@@ -82,3 +82,104 @@ export async function gql<TData = unknown>(
   }
   return json.data as TData;
 }
+
+/**
+ * Open a GraphQL subscription over Server-Sent Events against the same
+ * `/api/graphql` endpoint. GraphQL Yoga negotiates `text/event-stream` for the
+ * operation and streams each result as an `event: next\ndata: {…}\n\n` frame;
+ * we POST (so the query lives in the body and the session cookie rides along,
+ * same-origin) and parse the SSE frames off the response body stream.
+ *
+ * `onData` is called with `data` for every emitted result. Returns an
+ * unsubscribe function that aborts the stream — call it on unmount. Network
+ * blips are reconnected with a short backoff until unsubscribed, so a dropped
+ * SSE connection self-heals (the subscription re-emits its current snapshot on
+ * resubscribe). Terminal GraphQL errors are reported via `onError`.
+ */
+export function gqlSubscribe<TData = unknown>(
+  query: string,
+  variables: Record<string, unknown> | undefined,
+  onData: (data: TData) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  const controller = new AbortController();
+  let closed = false;
+
+  async function connect(): Promise<void> {
+    const res = await fetch("/api/graphql", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "text/event-stream",
+      },
+      body: JSON.stringify({ query, variables }),
+      credentials: "same-origin",
+      signal: controller.signal,
+    });
+
+    if (!res.ok || !res.body) {
+      throw new GraphQLRequestError(`Subscription failed (${res.status})`, []);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    // SSE frames are separated by a blank line; each frame is a set of
+    // `field: value` lines. We only care about `event:` and `data:`.
+    while (!closed) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let sep: number;
+      while ((sep = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+
+        let event = "message";
+        const dataLines: string[] = [];
+        for (const line of frame.split("\n")) {
+          if (line.startsWith(":")) continue; // keep-alive ping
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+        }
+        if (event === "complete") return;
+        if (event !== "next" || dataLines.length === 0) continue;
+
+        const json = JSON.parse(dataLines.join("\n")) as {
+          data?: TData;
+          errors?: { message: string }[];
+        };
+        if (json.errors?.length) {
+          throw new GraphQLRequestError(json.errors[0].message, json.errors);
+        }
+        if (json.data !== undefined) onData(json.data as TData);
+      }
+    }
+  }
+
+  // Reconnect loop: keep the subscription alive across transient drops until
+  // the caller unsubscribes (which aborts and sets `closed`).
+  (async () => {
+    let backoff = 1000;
+    while (!closed) {
+      try {
+        await connect();
+        // Clean `complete` or EOF — for a status stream that should not happen
+        // unless the project was deleted; stop trying in that case.
+        if (!closed) return;
+      } catch (e) {
+        if (closed || controller.signal.aborted) return;
+        onError?.(e instanceof Error ? e : new Error(String(e)));
+        await new Promise((r) => setTimeout(r, backoff));
+        backoff = Math.min(backoff * 2, 10_000);
+      }
+    }
+  })();
+
+  return () => {
+    closed = true;
+    controller.abort();
+  };
+}

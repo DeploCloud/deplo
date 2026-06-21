@@ -7,7 +7,7 @@ services:
     ports:
       - 6379
     volumes:
-      - ../files/valkey.conf:/etc/valkey/valkey.conf
+      - ./valkey.conf:/etc/valkey/valkey.conf
       - valkey-data:/data
     command: valkey-server /etc/valkey/valkey.conf
     environment:

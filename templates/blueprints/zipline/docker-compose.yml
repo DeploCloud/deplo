@@ -27,8 +27,8 @@ services:
       - DATASOURCE_TYPE=local
       - DATASOURCE_LOCAL_DIRECTORY=./uploads
     volumes:
-      - "../files/uploads:/zipline/uploads"
-      - "../files/public:/zipline/public"
+      - "./uploads:/zipline/uploads"
+      - "./public:/zipline/public"
     depends_on:
       - "postgres"
 
