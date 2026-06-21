@@ -47,7 +47,20 @@ import {
   AgentUnavailableError,
   type AgentBuildPlan,
 } from "./agent-deploy";
+import { connectAgent } from "../infra/agent-client";
 import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
+
+/**
+ * Whether a slug's project lives on a REMOTE server (its lifecycle verbs must
+ * run on the owning agent, not the local docker socket). Resolved from the store.
+ * A localhost / unknown server stays on the local path.
+ */
+function remoteServerIdForSlug(slug: string): string | null {
+  const p = read().projects.find((x) => x.slug === slug);
+  if (!p) return null;
+  const server = read().servers.find((s) => s.id === p.serverId);
+  return server?.type === "remote" ? server.id : null;
+}
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 const STACK_DIR = join(DATA_DIR, "stacks");
@@ -1394,8 +1407,24 @@ export async function renderProjectStack(
   return readFile(stackFile, "utf8").catch(() => null);
 }
 
-/** Stop a project's stack (compose-managed; falls back to the single container). */
+/**
+ * Stop a project's stack (compose-managed; falls back to the single container).
+ * A REMOTE project (PLAN Part C) routes to the owning agent's StopStack — the
+ * stack lives on the agent's daemon, not the local socket. An unreachable agent
+ * throws (the caller surfaces it; a stop must not silently no-op).
+ */
 export async function stopContainer(slug: string): Promise<void> {
+  const remoteId = remoteServerIdForSlug(slug);
+  if (remoteId) {
+    const conn = await connectAgent(remoteId);
+    try {
+      const r = await conn.stopStack(slug);
+      if (!r.ok) throw new Error(r.error || "agent failed to stop the stack");
+    } finally {
+      conn.close();
+    }
+    return;
+  }
   const stackFile = stackFilePath(slug);
   if (await fileExists(stackFile)) {
     await docker(["compose", "-p", `deplo-${slug}`, "-f", stackFile, "stop"], {
@@ -1406,8 +1435,19 @@ export async function stopContainer(slug: string): Promise<void> {
   await docker(["stop", `deplo-${slug}`], { timeout: 30_000 });
 }
 
-/** Start a previously stopped stack. */
+/** Start a previously stopped stack (remote -> owning agent's StartStack). */
 export async function startContainer(slug: string): Promise<void> {
+  const remoteId = remoteServerIdForSlug(slug);
+  if (remoteId) {
+    const conn = await connectAgent(remoteId);
+    try {
+      const r = await conn.startStack(slug);
+      if (!r.ok) throw new Error(r.error || "agent failed to start the stack");
+    } finally {
+      conn.close();
+    }
+    return;
+  }
   const stackFile = stackFilePath(slug);
   if (await fileExists(stackFile)) {
     await docker(["compose", "-p", `deplo-${slug}`, "-f", stackFile, "start"], {
@@ -1418,8 +1458,26 @@ export async function startContainer(slug: string): Promise<void> {
   await docker(["start", `deplo-${slug}`], { timeout: 30_000 });
 }
 
-/** Stop and remove a project's stack. */
+/**
+ * Stop and remove a project's stack. A REMOTE project routes to the owning
+ * agent's DestroyStack — and the local file cleanup below is DELIBERATELY skipped
+ * for it: the stack file, env file, and files dir live on the AGENT's disk
+ * (the agent's DestroyStack owns their teardown), so an rm here would target the
+ * wrong host (and there is nothing local to remove). An unreachable agent throws
+ * so the caller can warn about manual cleanup (P6 spirit).
+ */
 export async function destroyStack(slug: string): Promise<void> {
+  const remoteId = remoteServerIdForSlug(slug);
+  if (remoteId) {
+    const conn = await connectAgent(remoteId);
+    try {
+      const r = await conn.destroyStack(slug);
+      if (!r.ok) throw new Error(r.error || "agent failed to destroy the stack");
+    } finally {
+      conn.close();
+    }
+    return;
+  }
   const stackFile = stackFilePath(slug);
   const envFile = join(STACK_DIR, `${slug}.env`);
   const args = ["compose", "-p", `deplo-${slug}`, "-f", stackFile];

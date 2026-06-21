@@ -33,6 +33,7 @@ import {
   stopContainer,
   startContainer,
 } from "../deploy/build";
+import { AgentUnreachableError } from "../infra/agent-client";
 import { ensureAutoDomain } from "./domains";
 import { resolveServerIp } from "../deploy/domains";
 import { teardownProject } from "./deployments";
@@ -732,8 +733,15 @@ export async function stopProject(id: string): Promise<void> {
   recordActivity("project", `Stopping ${project.name}`, user.name, id);
   try {
     await stopContainer(project.slug);
-  } catch {
-    // Ignore — the project is being torn down regardless; reflect "idle" below.
+  } catch (e) {
+    // A REMOTE whose agent is unreachable must FAIL CLEARLY (PLAN Part C): the
+    // container may still be running there, so settling to "idle" would lie.
+    // Revert the optimistic "stopping" and surface the error.
+    if (e instanceof AgentUnreachableError) {
+      setProjectStatus(id, "active");
+      throw new Error(`Server unreachable — the stack was not stopped: ${e.message}`);
+    }
+    // Localhost / best-effort: ignore (the project settles to "idle" below).
   }
   setProjectStatus(id, "idle");
 }
@@ -746,7 +754,15 @@ export async function startProject(id: string): Promise<void> {
     (x) => x.id === id && x.teamId === membership.teamId,
   );
   if (!project) throw new Error("Project not found");
-  await startContainer(project.slug).catch(() => {});
+  try {
+    await startContainer(project.slug);
+  } catch (e) {
+    // Remote unreachable: fail clearly rather than marking it "active" falsely.
+    if (e instanceof AgentUnreachableError) {
+      throw new Error(`Server unreachable — the stack was not started: ${e.message}`);
+    }
+    // Localhost: best-effort (a missing container surfaces on next status read).
+  }
   setProjectStatus(id, "active");
   recordActivity("project", `Started ${project.name}`, user.name, id);
 }
@@ -773,8 +789,21 @@ export async function deleteProject(id: string): Promise<void> {
     (x) => x.id === id && x.teamId === membership.teamId,
   );
   if (!project) throw new Error("Project not found");
-  // Tear down the running container/stack before dropping the records.
-  await teardownProject(project.slug);
+  // Tear down the running container/stack before dropping the records. A REMOTE
+  // whose agent is unreachable can't be torn down now — proceed with the delete
+  // anyway (P6 spirit: never leave records pinned to a dead box) and warn so the
+  // operator cleans up the leftover containers by hand.
+  const tornDown = await teardownProject(project.slug);
+  const server = read().servers.find((s) => s.id === project.serverId);
+  if (!tornDown && server?.type === "remote") {
+    recordActivity(
+      "project",
+      `Deleted ${project.name} but its server (${server.name}) was unreachable — ` +
+        `leftover containers on that host must be removed manually.`,
+      user.name,
+      null,
+    );
+  }
   // Dev mode: tear down the dev container + deps volume + WIPE the workspace
   // (the project is gone), and remove this project's SSH users from the gateway
   // (which stays up — it is a platform singleton).

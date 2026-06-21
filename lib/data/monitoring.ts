@@ -4,13 +4,15 @@ import { read } from "../store";
 import { assertUser } from "../auth";
 import { hostMetrics, hostFacts } from "../infra/host";
 import { dockerAvailable, listContainers } from "../infra/docker";
+import { connectAgent, AgentUnreachableError } from "../infra/agent-client";
 import type { Server } from "../types";
 
 /**
  * Real server metrics. The host running the control plane (the localhost
  * "master") is measured directly via node:os, /proc and df, plus a live
- * container count from Docker. Remote servers require an agent we do not have
- * yet, so they report no live data rather than fabricating any.
+ * container count from Docker. A REMOTE server is measured by its agent's
+ * Metrics RPC (PLAN Part C); an unreachable agent reports no live data
+ * (online:false) rather than fabricating any.
  */
 export interface ServerMetrics {
   serverId: string;
@@ -85,9 +87,55 @@ async function measureLocal(serverId: string): Promise<ServerMetrics> {
   };
 }
 
+/**
+ * Measure a remote server via its agent's Metrics RPC. The agent measures its own
+ * host (CPU/mem/disk of its --data-dir + a live running-container count) and
+ * returns a HostMetrics, mapped 1:1 into ServerMetrics. An unreachable / not-yet-
+ * provisioned agent reports no live data (online:false) — never fabricated, never
+ * the control plane's own numbers.
+ *
+ * NOTE: the dashboard polls every ~1s, so this dials+closes a gRPC client per
+ * poll per viewer. Acceptable at current scale; a connection pool is a Part C+
+ * optimisation (TODO) if the fleet/viewer count makes the churn matter.
+ */
+async function measureRemote(server: Server): Promise<ServerMetrics> {
+  const conn = await connectAgent(server.id);
+  try {
+    // Empty dataDir => the agent measures its own configured --data-dir.
+    const m = await conn.metrics("");
+    return {
+      serverId: server.id,
+      online: true,
+      cpu: m.cpu,
+      cpuCores: m.cpuCores,
+      memUsed: Number(m.memUsed),
+      memTotal: Number(m.memTotal),
+      memPct: m.memPct,
+      diskUsed: Number(m.diskUsed),
+      diskTotal: Number(m.diskTotal),
+      diskPct: m.diskPct,
+      netRx: Number(m.netRx),
+      netTx: Number(m.netTx),
+      load: [m.load1, m.load5, m.load15],
+      uptimeSec: Number(m.uptimeSec),
+      containers: m.runningContainers,
+      ts: Date.now(),
+    };
+  } finally {
+    conn.close();
+  }
+}
+
 async function metricsFor(server: Server): Promise<ServerMetrics> {
   if (server.type === "localhost") return measureLocal(server.id);
-  return unavailable(server.id);
+  try {
+    return await measureRemote(server);
+  } catch (e) {
+    // Unreachable / unprovisioned agent, or any transport error: report offline
+    // rather than the master's numbers or a fabricated snapshot.
+    if (e instanceof AgentUnreachableError) return unavailable(server.id);
+    return unavailable(server.id);
+  }
 }
 
 export async function getServerMetrics(serverId: string): Promise<ServerMetrics> {
