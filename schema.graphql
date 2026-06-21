@@ -120,6 +120,7 @@ enum Capability {
   deploy
   manage_domains
   manage_env
+  manage_files
   manage_infra
   manage_members
   manage_team
@@ -430,6 +431,25 @@ input ExposeInput {
   service: String!
 }
 
+"""A project file's text body (null when binary or too large)."""
+type FileContent {
+  path: String
+  reason: String
+  size: Int
+  text: String
+}
+
+"""
+One entry in a project's files directory (the on-disk /data/stacks/files/<slug> tree).
+"""
+type FileEntry {
+  kind: String
+  modifiedAt: String
+  name: String
+  path: String
+  size: Int
+}
+
 input GitRepoInput {
   branch: String!
   installationId: String
@@ -565,6 +585,9 @@ type Mutation {
   createBackup(input: CreateBackupInput!): Boolean
   createDatabase(input: CreateDatabaseInput!): Database
   createProject(input: CreateProjectInput!): Project
+
+  """Create a new (empty) folder in the project files tree."""
+  createProjectDir(path: String!, projectId: String!): FileEntry
   createS3(input: CreateS3Input!): S3Destination
 
   """Create a new team; the viewer becomes its owner and it is made active."""
@@ -586,6 +609,9 @@ type Mutation {
 
   """Delete the project and tear down its stack. Returns true."""
   deleteProject(id: String!): Boolean
+
+  """Delete a file or folder (recursively). Returns true."""
+  deleteProjectFile(path: String!, projectId: String!): Boolean
 
   """Delete a registry credential. Returns true."""
   deleteRegistry(id: String!): Boolean
@@ -652,6 +678,9 @@ type Mutation {
   """Disconnect and remove a remote server. Returns true."""
   removeServer(id: String!): Boolean
   renameProject(id: String!, name: String!): Project
+
+  """Rename or move a file/folder within the project files tree."""
+  renameProjectFile(newPath: String!, path: String!, projectId: String!): FileEntry
 
   """Render the docker-compose stack a project would deploy."""
   renderComposeStack(projectId: String!): String
@@ -755,11 +784,17 @@ type Mutation {
   """Edit a user's instance-admin flag, suspended state, and password."""
   updateUserAdmin(input: UpdateUserAdminInput!): UserDetail
 
+  """Upload a file from a base64 body (used for binary files)."""
+  uploadProjectFile(base64: String!, path: String!, projectId: String!): FileEntry
+
   """Create or update an env var, then return the stored entity."""
   upsertEnv(input: UpsertEnvInput!): EnvVar
 
   """Re-check the domain's DNS and (re)issue its certificate."""
   verifyDomain(id: String!): Domain
+
+  """Create or overwrite a text file in the project files tree."""
+  writeProjectFile(content: String!, path: String!, projectId: String!): FileEntry
 }
 
 """Per-team notification channels + per-event delivery toggles."""
@@ -923,6 +958,19 @@ type Query {
   """The master (localhost) server, or the first one available."""
   primaryServer: Server
   project(slug: String!): Project
+
+  """Read a single project file's text body."""
+  projectFile(path: String!, projectId: String!): FileContent
+
+  """
+  List the immediate children of a directory in the project files tree (the root when path is omitted), directories first.
+  """
+  projectFiles(path: String, projectId: String!): [FileEntry!]
+
+  """
+  Whether the project has an on-disk files directory (drives the Files tab).
+  """
+  projectFilesExist(projectId: String!): Boolean
 
   """All projects in the active team, newest first."""
   projects: [Project!]

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ExternalLink, ArrowLeft } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { isDevEligible } from "@/lib/data/dev";
+import { projectFilesExist } from "@/lib/data/project-files";
 import { hasCapability } from "@/lib/membership";
 import { Button } from "@/components/ui/button";
 import { ProjectLogo } from "@/components/shared/project-logo";
@@ -20,6 +21,10 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
   const canManageEnv = await hasCapability("manage_env");
+  // The Files tab only appears when the caller can manage files AND the project
+  // actually has an on-disk files dir (projectFilesExist returns false for both
+  // a missing capability and a missing directory, so this one call covers both).
+  const showFiles = await projectFilesExist(project.id);
 
   // Seed for the live-status subscription (kept current client-side thereafter).
   const initialLive: LiveProject = {
@@ -94,6 +99,7 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
         running={project.status === "active"}
         devEligible={isDevEligible(project.source)}
         canManageEnv={canManageEnv}
+        showFiles={showFiles}
       />
 
       {props.children}

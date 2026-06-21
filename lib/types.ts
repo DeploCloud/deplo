@@ -9,6 +9,7 @@ export type Role = "owner" | "member" | "viewer";
  *  - deploy          create/redeploy/stop/start projects & dev environments
  *  - manage_domains  add/verify/route/remove custom domains
  *  - manage_env      edit project & shared environment variables
+ *  - manage_files    browse/edit/upload/delete a project's files dir
  *  - manage_infra    servers, databases, S3, registries, backups, GitHub apps
  *  - manage_members  invite/create/remove members, change their roles
  *  - manage_team     rename the team, edit team settings, delete the team
@@ -18,6 +19,7 @@ export type Capability =
   | "deploy"
   | "manage_domains"
   | "manage_env"
+  | "manage_files"
   | "manage_infra"
   | "manage_members"
   | "manage_team"
@@ -29,6 +31,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "deploy",
   "manage_domains",
   "manage_env",
+  "manage_files",
   "manage_infra",
   "manage_members",
   "manage_team",

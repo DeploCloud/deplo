@@ -112,6 +112,41 @@ the event), trigger.
 
 ### Runtimes
 
+**Server agent**:
+The single-purpose **Go binary** (`deplo-agent`) that runs on a **server** and owns that
+host's Docker socket, build pipeline, log/console streaming, host metrics, and the
+bind-mounted project config files under `/data/stacks/files/<slug>/` — the host-coupled half
+of the platform, on its own machine. Platform infrastructure, the moral
+sibling of the local Docker socket — **not a project and not a frontend**. The control plane
+(GraphQL/data/auth, which stays TypeScript) never reaches a remote Docker socket directly; it
+drives each agent over a **versioned gRPC contract** (`proto/agent.proto`) on **mTLS**, the
+*second system boundary* alongside the GraphQL UI contract. **localhost is an agent too**
+("agent 0"), so "local" and "remote" servers become one execution path parameterised by which
+agent — reached incrementally (the deploy path first, then logs/console/metrics). The compose
+is rendered control-plane-side and handed to the agent as **opaque YAML**; decrypted env
+crosses the wire per-deploy but the agent **never holds the encryption key**. An agent is born
+by **call-home bootstrap** — the control plane never SSHes in: the operator runs a paste-on-the-
+server script that installs it and **calls home** with a **bootstrap token**, then the control
+plane (which is the agents' private **CA**, derived from `DEPLO_SECRET`) signs its mTLS cert.
+The agent pins the control plane by cert **fingerprint** (so bare-IP, no-domain installs work).
+Health is **read live** (never a stored value that goes stale). See
+[ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md). *(Design settled — not
+yet built.)*
+_Avoid_: agent (ambiguous — say "server agent"), node, worker, runner (CI term), daemon
+(reserve for the Docker daemon it drives), deplo agent on the remote being a "second Deplo".
+
+**Bootstrap token**:
+The **one-time, short-lived** secret that lets a freshly-installed **server agent** prove it is
+an authorized newcomer when it first **calls home** to the control plane — after which the
+control plane signs the agent's mTLS cert and the token is spent. Carried in the paste-on-the-
+server bootstrap command; **single-use**, expires (~1h), and stored only as its **sha256**
+(never the raw value) — the same handling as a **registration link**, with an added expiry
+because a provisioning token is more dangerous (it gives rise to a trusted agent). Distinct from
+the **caller token** (a user's `deplo_` API token, long-lived, for the MCP flow) and from the
+short-lived **git token** the control plane hands an agent to clone a private repo.
+_Avoid_: agent token (the agent's lasting credential is its mTLS cert, not this), join token,
+enrollment key, API token (that is the caller token).
+
 **Production stack**:
 The immutable, image-baked runtime for a project (`deplo-<slug>`). Built by
 cloning the repo to a temp dir, building an image, then discarding the clone — the

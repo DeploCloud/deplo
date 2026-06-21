@@ -10,6 +10,7 @@ export function ProjectTabs({
   running: serverRunning = false,
   devEligible = false,
   canManageEnv = true,
+  showFiles = false,
 }: {
   slug: string;
   running?: boolean;
@@ -17,6 +18,9 @@ export function ProjectTabs({
   devEligible?: boolean;
   /** The Environment tab is only shown to members with the manage_env capability. */
   canManageEnv?: boolean;
+  /** The Files tab is shown only when the project has an on-disk files dir and
+   *  the viewer holds the manage_files capability (resolved server-side). */
+  showFiles?: boolean;
 }) {
   const pathname = usePathname();
   const base = `/projects/${slug}`;
@@ -78,6 +82,17 @@ export function ProjectTabs({
             label: "Dev Mode",
             href: `${base}/dev`,
             active: matchSub("/dev"),
+          },
+        ]
+      : []),
+    // Files (browse/edit the project's /data/stacks/files/<slug> tree) — only
+    // when that dir exists and the viewer holds the manage_files capability.
+    ...(showFiles
+      ? [
+          {
+            label: "Files",
+            href: `${base}/files`,
+            active: matchSub("/files"),
           },
         ]
       : []),

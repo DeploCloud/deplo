@@ -11,7 +11,7 @@ import { ALL_CAPABILITIES } from "./types";
 /** Capability sets the three named roles grant by default. */
 export const CAPABILITY_PRESETS: Record<Role, Capability[]> = {
   owner: [...ALL_CAPABILITIES],
-  member: ["view", "deploy", "manage_domains", "manage_env"],
+  member: ["view", "deploy", "manage_domains", "manage_env", "manage_files"],
   viewer: ["view"],
 };
 
@@ -35,6 +35,10 @@ export const CAPABILITY_META: Record<
   manage_env: {
     label: "Manage env vars",
     description: "Edit project and shared environment variables.",
+  },
+  manage_files: {
+    label: "Manage files",
+    description: "Browse, edit, upload and delete a project's files.",
   },
   manage_infra: {
     label: "Manage infrastructure",

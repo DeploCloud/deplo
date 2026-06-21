@@ -21,6 +21,7 @@ import "./types/member";
 import "./types/monitoring";
 import "./types/notifications";
 import "./types/project";
+import "./types/project-files";
 import "./types/registry";
 import "./types/s3";
 import "./types/server";
