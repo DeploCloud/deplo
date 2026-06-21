@@ -155,6 +155,14 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   if (read().projects.some((p) => p.serverId === id))
     throw new Error("Move or delete projects on this server first");
 
+  // Snapshot the trust material BEFORE revoking. `read()` returns the live cache,
+  // so `server` is a reference the revoke mutate below clears in place — capture
+  // a frozen copy now (with its original pinned cert) so the teardown can still
+  // dial the agent, and so the "was it provisioned?" decision is the pre-revoke
+  // truth, not the post-revoke "".
+  const snapshot: Server = { ...server, agent: server.agent ? { ...server.agent } : undefined };
+  const wasProvisioned = Boolean(server.agent?.certFingerprint) || server.status === "online";
+
   // (a) Revoke trust FIRST, unconditionally: clear the pinned cert so even if
   // every later step fails, the agent's badge is already dead. Persisted before
   // any network call so a crash mid-teardown still leaves trust revoked.
@@ -165,11 +173,12 @@ export async function removeServer(id: string): Promise<{ warning: string | null
 
   // (c) Best-effort remote teardown. Import lazily so removing a server doesn't
   // force the agent-client (and its grpc deps) into modules that never deploy.
+  // Dial via the pre-revoke snapshot (the live row's pin is now cleared).
   let warning: string | null = null;
-  if (server.agent?.certFingerprint || server.status === "online") {
+  if (wasProvisioned) {
     try {
       const { teardownServerAgent } = await import("../infra/agent-client");
-      await teardownServerAgent(server);
+      await teardownServerAgent(snapshot);
     } catch (e) {
       warning =
         `Could not reach the agent on ${server.name} to tear down its containers ` +

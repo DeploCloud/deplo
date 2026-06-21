@@ -154,47 +154,115 @@ export async function runAgentDeploy(opts: {
   }
 
   const req = await buildDeployRequest(opts);
-  const conn = await connectAgent(opts.serverId);
-  // Track whether the agent has started doing real work. Once it has (any
-  // event received, or the stream errors mid-flight), a local fallback would
-  // DOUBLE-build and thrash the container the agent may have already brought up
-  // — so past this point a failure is a deploy ERROR, not a fallback. Falling
-  // back is only safe BEFORE any work began (a pure connect/transport failure).
+
+  // Cursor: the highest seq we've successfully consumed. A reattach asks the
+  // agent to replay everything AFTER this, so a reconnect never double-logs and
+  // never misses an event (D5). Shared across the initial Deploy and any reattach.
+  const cursor = { seq: 0 };
+
+  // First leg: the Deploy stream. `started` gates fallback — once the agent has
+  // begun real work, a local fallback would DOUBLE-build, so from here a failure
+  // is a deploy ERROR (or a RECONNECT), never a silent local rebuild.
   let started = false;
+  const first = await connectAgent(opts.serverId);
   try {
-    for await (const ev of conn.deploy(req)) {
+    const outcome = await consumeStream(first.deploy(req), opts.sink, cursor, () => {
       started = true;
-      const terminal = handleEvent(ev, opts.sink);
-      if (terminal !== undefined) {
-        return { ready: terminal.ready, commitSha: terminal.commitSha };
-      }
+    });
+    if (outcome.terminal) return outcome.terminal;
+    if (!started) {
+      // No events at all == agent unavailable: safe to fall back to local.
+      throw new AgentUnavailableError("agent stream produced no events");
     }
-    // Stream ended cleanly but with no terminal result. If work had begun, the
-    // agent's state is unknown — fail rather than silently rebuilding locally.
-    if (started) {
-      opts.sink.log("error", "Agent stream ended without a result.");
-      return { ready: false, commitSha: "" };
-    }
-    throw new AgentUnavailableError("agent stream produced no events");
+    // Dropped/ended without a result after work began: reattach below.
   } catch (e) {
-    if (e instanceof AgentUnavailableError) throw e;
-    // A mid-stream transport error AFTER work began: do not fall back (reconnect/
-    // replay would re-attach to the SAME deploy; we surface it as a failure here
-    // so we never double-build over an in-flight agent deploy).
-    if (started) {
-      opts.sink.log(
-        "error",
-        `Agent deploy interrupted: ${e instanceof Error ? e.message : String(e)}`,
-      );
-      return { ready: false, commitSha: "" };
+    if (e instanceof AgentUnavailableError && !started) throw e;
+    if (!started) {
+      // Pure connect/transport failure before any work: agent unavailable.
+      throw new AgentUnavailableError(e instanceof Error ? e.message : String(e));
     }
-    // Failure before any work began == agent unavailable: safe to fall back.
-    throw new AgentUnavailableError(
-      e instanceof Error ? e.message : String(e),
+    opts.sink.log(
+      "warn",
+      `Agent stream dropped (${e instanceof Error ? e.message : String(e)}); reconnecting…`,
     );
   } finally {
-    conn.close();
+    first.close();
   }
+
+  // RECONNECT/REPLAY (D5). The agent kept building through the drop and buffered
+  // its events; reattach by deploy id, replaying from our cursor, and follow it
+  // to completion. Bounded retries with backoff — if the agent is genuinely gone
+  // (or has no record of the deploy), give up and mark the deploy errored rather
+  // than hang or double-build.
+  for (let attempt = 1; attempt <= REATTACH_MAX_TRIES; attempt++) {
+    await delay(REATTACH_BACKOFF_MS * attempt);
+    let conn: Awaited<ReturnType<typeof connectAgent>>;
+    try {
+      conn = await connectAgent(opts.serverId);
+    } catch {
+      continue; // agent not back yet; retry
+    }
+    try {
+      opts.sink.log("info", `Reattaching to deploy ${opts.deployId} (from #${cursor.seq})…`);
+      const outcome = await consumeStream(
+        conn.reattach({ deployId: opts.deployId, fromSeq: cursor.seq }),
+        opts.sink,
+        cursor,
+        () => {},
+      );
+      if (outcome.terminal) return outcome.terminal;
+      // Stream ended without a terminal result: the agent is still building (a
+      // partial replay) — loop to reattach again from the advanced cursor.
+    } catch (e) {
+      // NOT_FOUND => the agent has no record (never ran it, or it was evicted):
+      // unrecoverable, stop retrying.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/not.?found/i.test(msg)) {
+        opts.sink.log("error", `Agent has no record of deploy ${opts.deployId}; giving up.`);
+        return { ready: false, commitSha: "" };
+      }
+      opts.sink.log("warn", `Reattach attempt ${attempt} failed (${msg}).`);
+    } finally {
+      conn.close();
+    }
+  }
+  opts.sink.log("error", "Could not reconnect to the agent to follow the deploy.");
+  return { ready: false, commitSha: "" };
+}
+
+const REATTACH_MAX_TRIES = 5;
+const REATTACH_BACKOFF_MS = 1_000;
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Consume one event stream (Deploy or Reattach) into the sink, advancing the
+ * shared seq cursor and calling `onFirst` on the first event. Returns the
+ * terminal result if one arrived, or `{ terminal: null }` if the stream ended
+ * (cleanly or via the generator returning) without one. Throws on a transport
+ * error so the caller can decide to reattach.
+ */
+async function consumeStream(
+  stream: AsyncGenerator<DeployEvent, void, unknown>,
+  sink: AgentDeploySink,
+  cursor: { seq: number },
+  onFirst: () => void,
+): Promise<{ terminal: AgentDeployResult | null }> {
+  let sawAny = false;
+  for await (const ev of stream) {
+    if (!sawAny) {
+      sawAny = true;
+      onFirst();
+    }
+    // Skip anything at or below the cursor (a replay overlap), then advance it.
+    const seq = Number(ev.seq ?? 0);
+    if (seq && seq <= cursor.seq) continue;
+    if (seq) cursor.seq = seq;
+    const terminal = handleEvent(ev, sink);
+    if (terminal !== undefined) {
+      return { terminal: { ready: terminal.ready, commitSha: terminal.commitSha } };
+    }
+  }
+  return { terminal: null };
 }
 
 /**

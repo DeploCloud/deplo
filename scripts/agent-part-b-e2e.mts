@@ -212,6 +212,49 @@ async function main() {
   if (!replayResult) throw new Error("reattach did not replay the terminal result");
   if (replayCount < lastSeq) throw new Error("reattach replayed fewer events than were buffered");
 
+  // ---- 6. MID-FLIGHT drop + reattach (D5, the real promise). ----
+  // Start a second deploy, abandon the Deploy stream after the first event (as if
+  // the control plane crashed mid-build), then reattach from the cursor and
+  // follow it to completion — the build kept going on the agent's background ctx.
+  await sh("docker", ["rm", "-f", NAME]);
+  const DEPLOY_ID_2 = "dpl_e2e_partb_2";
+  console.log("== mid-flight: start deploy, drop after 1 event, reattach ==");
+  const c3 = await connectAgent("srv-e2e-remote");
+  let cursor = 0;
+  for await (const ev of c3.deploy({
+    deployId: DEPLOY_ID_2,
+    slug: SLUG,
+    projectId: "prj_e2e",
+    imageRef: `deplo/${SLUG}:e2e`,
+    sourceKind: SourceKind.SOURCE_KIND_GIT,
+    buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
+    dockerfile: { dockerfilePath: "Dockerfile", contextPath: ".", targetStage: "", generated: false, generatedDockerfile: "" },
+    git: { url: `file://${repoDir}`, branch: "", token: "", subdir: "" },
+    composeYaml,
+    env: {},
+    readyTimeoutMs: 60_000,
+    contextTar: new Uint8Array(0),
+    pullImage: false,
+  })) {
+    if (ev.seq) cursor = Number(ev.seq);
+    break; // DROP: simulate the control plane losing the stream mid-build
+  }
+  c3.close();
+  console.log(`  dropped after seq ${cursor}; the agent keeps building…`);
+
+  const c4 = await connectAgent("srv-e2e-remote");
+  let reReady = false;
+  let reGotResultAfterDrop = false;
+  for await (const ev of c4.reattach({ deployId: DEPLOY_ID_2, fromSeq: cursor })) {
+    if (Number(ev.seq) <= cursor) throw new Error("reattach replayed an event we already saw");
+    if (ev.result) { reReady = ev.result.ready; reGotResultAfterDrop = true; }
+  }
+  c4.close();
+  if (!reGotResultAfterDrop || !reReady) throw new Error("mid-flight reattach did not complete the deploy");
+  const running2 = (await sh("docker", ["inspect", "-f", "{{.State.Running}}", NAME])).out.trim();
+  if (running2 !== "true") throw new Error(`mid-flight: container not running: ${running2}`);
+  console.log("  reattached from the cursor and the deploy completed ✓");
+
   // ---- Cleanup ----
   await sh("docker", ["rm", "-f", NAME]);
   agent.kill("SIGKILL");
