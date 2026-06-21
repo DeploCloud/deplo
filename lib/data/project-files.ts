@@ -15,15 +15,24 @@ import { read } from "../store";
 import { requireCapability, hasCapability, getActiveTeamId } from "../membership";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
+import { connectAgent, type AgentConnection } from "../infra/agent-client";
 
 /**
  * Browse and edit a single-container project's files directory — the on-disk
- * `/data/stacks/files/<slug>` tree that backs the `./` project-files volume
+ * `<stacks>/files/<slug>` tree that backs the `./` project-files volume
  * convention (see `lib/deploy/compose-stack.ts`). Every op is gated by the
  * `manage_files` capability and sandboxed inside that one directory: a path is
  * rejected unless its real location (symlinks resolved) is the root itself or a
  * true descendant, so a `..` segment or a planted symlink can never read or
  * clobber a sibling project's files — let alone the host.
+ *
+ * MULTI-SERVER (PLAN Part C, D9): the files live on the PROJECT'S host. A
+ * localhost project reads/writes the control plane's local fs; a REMOTE project
+ * routes every op to its owning agent's file RPCs, where the SAME anti-traversal
+ * sandbox is re-enforced (the path arrives off the wire). The GraphQL contract
+ * and the Files tab are unchanged — the tab now works for remote projects too.
+ * `normalizeRel` still runs control-plane-side as a fast-fail guard before any
+ * remote RPC (the agent re-checks independently — separate trust boundaries).
  *
  * The directory only exists once a project has materialised config files or a
  * project-type volume there, so callers first check {@link projectFilesExist}
@@ -138,16 +147,45 @@ export function normalizeRel(relPath: string): string {
   return rel;
 }
 
-/** Confirm the project is in the caller's team; throws if not. */
+/** Confirm the project is in the caller's team; throws if not. Resolves the
+ * owning server so each op can route localhost (local fs) vs remote (agent). */
 async function requireProjectInTeam(
   projectId: string,
-): Promise<{ slug: string; teamId: string }> {
+): Promise<{ slug: string; teamId: string; serverId: string; remote: boolean }> {
   const { teamId } = await requireCapability("manage_files");
   const project = read().projects.find((p) => p.id === projectId);
   if (!project || project.teamId !== teamId) {
     throw new Error("Project not found");
   }
-  return { slug: project.slug, teamId };
+  const server = read().servers.find((s) => s.id === project.serverId);
+  return {
+    slug: project.slug,
+    teamId,
+    serverId: project.serverId,
+    remote: server?.type === "remote",
+  };
+}
+
+/** Open a connection to a project's owning agent (remote file ops). */
+function agentFor(serverId: string): Promise<AgentConnection> {
+  return connectAgent(serverId);
+}
+
+/** Narrow the agent's structural FileEntry (kind: string) to the local union. */
+function toEntry(e: {
+  path: string;
+  name: string;
+  kind: string;
+  size: number;
+  modifiedAt: string;
+}): FileEntry {
+  return {
+    path: e.path,
+    name: e.name,
+    kind: e.kind === "dir" ? "dir" : "file",
+    size: e.size,
+    modifiedAt: e.modifiedAt,
+  };
 }
 
 /**
@@ -162,6 +200,22 @@ export async function projectFilesExist(projectId: string): Promise<boolean> {
   const teamId = await getActiveTeamId();
   const project = read().projects.find((p) => p.id === projectId);
   if (!project || !teamId || project.teamId !== teamId) return false;
+  const server = read().servers.find((s) => s.id === project.serverId);
+  // REMOTE (PLAN Part C, D9): ask the owning agent — the files dir is on its
+  // disk, not the control plane's. An unreachable agent yields false so the tab
+  // is hidden (never a 500 during the project layout render). This RE-ENABLES the
+  // Files tab for remote projects, which was gated off until Part C.
+  if (server?.type === "remote") {
+    let conn: AgentConnection | undefined;
+    try {
+      conn = await agentFor(project.serverId);
+      return await conn.filesExist(project.slug);
+    } catch {
+      return false;
+    } finally {
+      conn?.close();
+    }
+  }
   try {
     const st = await stat(filesRoot(project.slug));
     return st.isDirectory();
@@ -179,7 +233,16 @@ export async function listProjectFiles(
   projectId: string,
   path = "",
 ): Promise<FileEntry[]> {
-  const { slug } = await requireProjectInTeam(projectId);
+  const { slug, serverId, remote } = await requireProjectInTeam(projectId);
+  if (path) normalizeRel(path); // fast-fail guard (agent re-checks)
+  if (remote) {
+    const conn = await agentFor(serverId);
+    try {
+      return (await conn.listFiles(slug, path)).map(toEntry);
+    } finally {
+      conn.close();
+    }
+  }
   const abs = await resolveInsideRoot(slug, path);
   const rel = normalizeRel(path);
   const dirents = await readdir(abs, { withFileTypes: true });
@@ -214,7 +277,17 @@ export async function readProjectFile(
   projectId: string,
   path: string,
 ): Promise<FileContent> {
-  const { slug } = await requireProjectInTeam(projectId);
+  const { slug, serverId, remote } = await requireProjectInTeam(projectId);
+  normalizeRel(path);
+  if (remote) {
+    const conn = await agentFor(serverId);
+    try {
+      const r = await conn.readFile(slug, path);
+      return { path: r.path, text: r.text, size: r.size, reason: r.reason };
+    } finally {
+      conn.close();
+    }
+  }
   const abs = await resolveInsideRoot(slug, path);
   const rel = normalizeRel(path);
   const st = await stat(abs);
@@ -240,9 +313,20 @@ export async function writeProjectFile(
   path: string,
   content: string,
 ): Promise<FileEntry> {
-  const { slug } = await requireProjectInTeam(projectId);
+  const { slug, serverId, remote } = await requireProjectInTeam(projectId);
   if (Buffer.byteLength(content, "utf8") > MAX_WRITE_BYTES) {
     throw new Error("File is too large to save (1 MiB max)");
+  }
+  normalizeRel(path);
+  if (remote) {
+    const conn = await agentFor(serverId);
+    try {
+      const entry = toEntry(await conn.writeFile(slug, path, content));
+      await note(projectId, `Edited file ${entry.path}`);
+      return entry;
+    } finally {
+      conn.close();
+    }
   }
   const { abs, rel } = await resolveParentInsideRoot(slug, path);
   // Refuse to clobber a directory with a file write.
@@ -272,7 +356,7 @@ export async function uploadProjectFile(
   path: string,
   base64: string,
 ): Promise<FileEntry> {
-  const { slug } = await requireProjectInTeam(projectId);
+  const { slug, serverId, remote } = await requireProjectInTeam(projectId);
   let buf: Buffer;
   try {
     buf = Buffer.from(base64, "base64");
@@ -281,6 +365,17 @@ export async function uploadProjectFile(
   }
   if (buf.byteLength > MAX_WRITE_BYTES) {
     throw new Error("File is too large to upload (1 MiB max)");
+  }
+  normalizeRel(path);
+  if (remote) {
+    const conn = await agentFor(serverId);
+    try {
+      const entry = toEntry(await conn.uploadFile(slug, path, buf));
+      await note(projectId, `Uploaded file ${entry.path}`);
+      return entry;
+    } finally {
+      conn.close();
+    }
   }
   const { abs, rel } = await resolveParentInsideRoot(slug, path);
   const existing = await stat(abs).catch(() => null);
@@ -303,7 +398,18 @@ export async function createProjectDir(
   projectId: string,
   path: string,
 ): Promise<FileEntry> {
-  const { slug } = await requireProjectInTeam(projectId);
+  const { slug, serverId, remote } = await requireProjectInTeam(projectId);
+  normalizeRel(path);
+  if (remote) {
+    const conn = await agentFor(serverId);
+    try {
+      const entry = toEntry(await conn.createDir(slug, path));
+      await note(projectId, `Created folder ${entry.path}`);
+      return entry;
+    } finally {
+      conn.close();
+    }
+  }
   const { abs, rel } = await resolveParentInsideRoot(slug, path);
   const existing = await stat(abs).catch(() => null);
   if (existing) throw new Error("That path already exists");
@@ -327,7 +433,18 @@ export async function deleteProjectFile(
   projectId: string,
   path: string,
 ): Promise<boolean> {
-  const { slug } = await requireProjectInTeam(projectId);
+  const { slug, serverId, remote } = await requireProjectInTeam(projectId);
+  normalizeRel(path);
+  if (remote) {
+    const conn = await agentFor(serverId);
+    try {
+      const ok = await conn.deleteFile(slug, path);
+      await note(projectId, `Deleted ${normalizeRel(path)}`);
+      return ok;
+    } finally {
+      conn.close();
+    }
+  }
   const abs = await resolveInsideRoot(slug, path);
   if (abs === (await realpath(filesRoot(slug)))) {
     throw new Error("Cannot delete the project files root");
@@ -343,7 +460,19 @@ export async function renameProjectFile(
   path: string,
   newPath: string,
 ): Promise<FileEntry> {
-  const { slug } = await requireProjectInTeam(projectId);
+  const { slug, serverId, remote } = await requireProjectInTeam(projectId);
+  normalizeRel(path);
+  normalizeRel(newPath);
+  if (remote) {
+    const conn = await agentFor(serverId);
+    try {
+      const entry = toEntry(await conn.renameFile(slug, path, newPath));
+      await note(projectId, `Moved ${normalizeRel(path)} → ${entry.path}`);
+      return entry;
+    } finally {
+      conn.close();
+    }
+  }
   const from = await resolveInsideRoot(slug, path);
   if (from === (await realpath(filesRoot(slug)))) {
     throw new Error("Cannot move the project files root");

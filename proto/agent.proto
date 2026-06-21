@@ -7,14 +7,18 @@ syntax = "proto3";
 // it over this typed RPC. See docs/research/server-agent/PLAN.md and
 // docs/adr/0006-server-agent-is-a-per-host-go-binary.md.
 //
-// PART A SUBSET (extended in PART B). This file is the versioned boundary for
-// the whole A-D arc. Part A implemented Hello / Metrics / Deploy (UPLOAD+IMAGE) /
-// Inspect / control verbs (localhost agent, deploy-only). Part B adds: the GIT
-// source case (the agent clones with a short-lived token, D3), and ReattachDeploy
-// (reconnect to an in-flight deploy and replay missed events, D5). FollowLogs /
-// Attach / file RPCs land in Part C. Messages are designed forward-compatible so
-// adding those is new fields/enum cases, never a redesign (D6: "image from
-// registry" is one more SourceKind, not a rewrite).
+// PART A SUBSET (extended in PART B + PART C). This file is the versioned
+// boundary for the whole A-D arc. Part A implemented Hello / Metrics / Deploy
+// (UPLOAD+IMAGE) / Inspect / control verbs (localhost agent, deploy-only). Part B
+// adds: the GIT source case (the agent clones with a short-lived token, D3), and
+// ReattachDeploy (reconnect to an in-flight deploy and replay missed events, D5).
+// PART C adds the per-server OBSERVABILITY + FILES surface: FollowLogs (live
+// `docker logs -f`), Attach (bidi console/pty), Exec + ListInstances + ShellLabel
+// (the console introspection that was direct-Docker in lib/data/console.ts), and
+// the file RPCs (List/Read/Write/Upload/CreateDir/Delete/Rename/FilesExist) that
+// repoint lib/data/project-files.ts off the control plane's local fs onto the
+// project's host. Every addition is new RPCs/messages — the contract version stays
+// V1 (additive, never a redesign; D6's forward-compat principle holds).
 //
 // The agent's CALL-HOME BOOTSTRAP (PLAN P1-P4) is deliberately NOT a method on
 // this service: it travels agent -> control plane (the opposite direction of
@@ -68,6 +72,58 @@ service Agent {
 
   // Container introspection (status/running) for the live-status subscriptions.
   rpc Inspect(InspectRequest) returns (InspectResponse);
+
+  // ---- PART C: console observability (replaces lib/logs + lib/attach +
+  // the direct-Docker half of lib/data/console.ts for remote projects) ----
+
+  // Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
+  // byte chunks. Output-only — there is no stdin. The control plane proxies these
+  // chunks straight into the unchanged SSE log route. Closing the stream (browser
+  // disconnect) cancels the RPC, which kills the agent's `docker logs` client
+  // only — never the container. Works on a stopped container (tails its recorded
+  // output, then ends).
+  rpc FollowLogs(FollowLogsRequest) returns (stream LogChunk);
+
+  // Interactive `docker attach` to a running container, full-duplex over one bidi
+  // stream. The FIRST client message MUST be an AttachOpen (selects the container,
+  // declares tty + initial size); subsequent client messages are stdin bytes or a
+  // resize. The agent streams the container's merged output down. `--sig-proxy` is
+  // off, so a client disconnect never signals the container. The pty backing (Go
+  // creack/pty) lives here now (was Node node-pty), so tty containers get a real
+  // terminal regardless of the agent host.
+  rpc Attach(stream AttachInput) returns (stream AttachOutput);
+
+  // Every attachable container in a project's stack (replaces listInstances +
+  // inspectRuntime + inspectStdio in lib/data/console.ts), default (exposed/
+  // running) first. Carries the project id + slug + exposed-service so the agent
+  // can label-filter and order without knowing Deplo's store.
+  rpc ListInstances(ListInstancesRequest) returns (ListInstancesResponse);
+
+  // Run a command in a container (`docker exec`), replacing execInContainer. The
+  // agent detects the image's shell (or falls back to raw argv on distroless) and
+  // returns the guest exit code/stdout/stderr instead of erroring on a non-zero
+  // exit — the REPL renders failures. A docker/OCI-level failure (no such
+  // container, stopped, no shell) is a gRPC error, not a guest exit.
+  rpc Exec(ExecRequest) returns (ExecResponse);
+
+  // The default (or chosen) container's shell label ("/bin/sh" | "/bin/bash" |
+  // "raw exec (no shell)") for the console banner — replaces shellLabel.
+  rpc ShellLabel(ShellLabelRequest) returns (ShellLabelResponse);
+
+  // ---- PART C: project config files (repoints lib/data/project-files.ts off
+  // the control plane's local fs onto the project's host; the anti-traversal
+  // sandbox is re-enforced agent-side via internal/safepath since the path
+  // arrives off the wire) ----
+
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+  rpc ReadFile(ReadFileRequest) returns (ReadFileResponse);
+  rpc WriteFile(WriteFileRequest) returns (FileEntryResult);
+  rpc UploadFile(UploadFileRequest) returns (FileEntryResult);
+  rpc CreateDir(CreateDirRequest) returns (FileEntryResult);
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResult);
+  rpc RenameFile(RenameFileRequest) returns (FileEntryResult);
+  // Whether a project's files root exists on this host (drives the Files tab).
+  rpc FilesExist(FilesExistRequest) returns (FilesExistResponse);
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +152,13 @@ message HelloResponse {
   // single-image compose-up path). Absent capability => control plane keeps the
   // local fallback path. Forward-compatible: new capabilities are new entries.
   repeated string capabilities = 5;
+  // Whether a Traefik reverse proxy is running on this host (a container on the
+  // shared `deplo` network that reads the deploy labels and routes traffic).
+  // Read LIVE by the agent, so the control plane can set the server's
+  // `traefikEnabled` from each Hello rather than a stored value that goes stale —
+  // the same read-live-not-stored model as health. Without Traefik, deployed
+  // apps run on the host but are not reachable on their domains.
+  bool traefik_running = 6;
 }
 
 // ---------------------------------------------------------------------------
@@ -340,4 +403,214 @@ message InspectResponse {
   bool running = 2;
   // Raw docker state string (running, exited, ...).
   string state = 3;
+}
+
+// ---------------------------------------------------------------------------
+// PART C — console observability (logs / attach / exec / instances)
+// ---------------------------------------------------------------------------
+
+// Every container RPC carries BOTH the project id and the already-resolved
+// container NAME. The control plane is the primary authz gate (it resolves the
+// instance from its own store before calling), but the agent ALSO label-checks
+// `deplo.project=<project_id>` on the named container before acting — defence in
+// depth, so a container name off the wire can never reach a sibling project's
+// container even if the control-plane check were ever bypassed.
+
+message FollowLogsRequest {
+  // The project the container must belong to (agent re-validates the label).
+  string project_id = 1;
+  // The exact container name to stream (resolved control-plane-side from the
+  // project's instances; the agent confirms it carries project_id's label).
+  string container = 2;
+  // Seed the stream with the last N lines before following live. 0 => 500.
+  int32 tail = 3;
+}
+
+// One raw chunk of merged stdout+stderr. Bytes, not lines: a multi-byte UTF-8
+// glyph or ANSI sequence split across reads is reassembled by the control
+// plane's StringDecoder, exactly as the local `docker logs` pipe path does.
+message LogChunk {
+  bytes data = 1;
+}
+
+// A client->agent frame on the Attach stream. The first frame MUST be `open`.
+message AttachInput {
+  oneof frame {
+    AttachOpen open = 1;     // FIRST message: selects the container + tty + size
+    bytes data = 2;          // stdin keystrokes (raw bytes)
+    AttachResize resize = 3; // terminal resize (tty containers only)
+  }
+}
+
+message AttachOpen {
+  string project_id = 1;     // agent re-validates the container's label
+  string container = 2;
+  // True for a tty:true container (a real pseudo-terminal is allocated, Go
+  // creack/pty); false attaches over plain pipes. Resolved control-plane-side
+  // from inspectStdio and passed in.
+  bool tty = 3;
+  int32 cols = 4;            // initial terminal size (tty only); 0 => 80
+  int32 rows = 5;            // 0 => 24
+}
+
+message AttachResize {
+  int32 cols = 1;
+  int32 rows = 2;
+}
+
+// An agent->client frame on the Attach stream.
+message AttachOutput {
+  oneof frame {
+    bytes data = 1;          // merged container output
+    AttachExit exit = 2;     // the attach client exited (container stop/detach)
+  }
+}
+
+message AttachExit {
+  int32 code = 1;
+}
+
+message ListInstancesRequest {
+  string project_id = 1;     // label filter: deplo.project=<project_id>
+  string slug = 2;           // for the single-image synthetic service name
+  // The Traefik-exposed service name (project.expose.service), so the agent can
+  // flag the exposed instance for ordering. Empty => none exposed.
+  string expose_service = 3;
+}
+
+// Mirrors lib/data/console.ts ConsoleInstance exactly (field-for-field) so the
+// control plane maps it 1:1 without translation.
+message ConsoleInstance {
+  string name = 1;
+  string service = 2;
+  string image = 3;
+  bool running = 4;
+  bool exposed = 5;
+  string user = 6;
+  string workdir = 7;
+  bool open_stdin = 8;
+  bool tty = 9;
+}
+
+message ListInstancesResponse {
+  // Exposed/running first (the agent applies the same sort as listInstances).
+  // Empty when the project has no containers — NO synthetic fallback entry (a
+  // fabricated container would be the "stored status that lies"; the localhost-
+  // only synthetic entry stays control-plane-side).
+  repeated ConsoleInstance instances = 1;
+}
+
+message ExecRequest {
+  string project_id = 1;
+  string container = 2;
+  string command = 3;        // the raw command line (shell-interpreted or argv)
+  string image = 4;          // for the shell-plan cache key
+}
+
+message ExecResponse {
+  int32 code = 1;            // guest exit code (a non-zero exit is NOT an error)
+  string stdout = 2;
+  string stderr = 3;
+  // True when the image had no shell and the command ran as raw argv (no pipes/
+  // globbing) — the console renders a notice.
+  bool raw_mode = 4;
+}
+
+message ShellLabelRequest {
+  string project_id = 1;
+  string container = 2;
+  string image = 3;
+}
+
+message ShellLabelResponse {
+  string label = 1;          // "/bin/sh" | "/bin/bash" | "raw exec (no shell)"
+}
+
+// ---------------------------------------------------------------------------
+// PART C — project config files
+// ---------------------------------------------------------------------------
+
+// File RPCs key on SLUG, not project_id: the on-disk root is
+// <stack-dir>/files/<slug> (the agent derives the root itself from its
+// --stack-dir; it never takes a root path off the wire). The relative `path` is
+// re-validated against that root inside the agent via internal/safepath (lexical
+// `..` reject + realpath containment), since the path arrives off the wire.
+
+// Mirrors lib/data/project-files.ts FileEntry.
+message FileEntry {
+  string path = 1;           // relative to the files root, POSIX, no leading /
+  string name = 2;
+  string kind = 3;           // "dir" | "file"
+  int64 size = 4;
+  string modified_at = 5;    // ISO timestamp
+}
+
+// The common return for the mutating file ops (write/upload/mkdir/rename).
+message FileEntryResult {
+  FileEntry entry = 1;
+}
+
+message ListFilesRequest {
+  string slug = 1;
+  string path = 2;           // "" => the root
+}
+
+message ListFilesResponse {
+  repeated FileEntry entries = 1;  // dirs first, then files, each alphabetical
+}
+
+message ReadFileRequest {
+  string slug = 1;
+  string path = 2;
+}
+
+message ReadFileResponse {
+  string path = 1;
+  // The UTF-8 text body. Empty when reason != "" (binary/too-large).
+  string text = 2;
+  int64 size = 3;
+  // "" when text is present; "binary" or "too-large" when it is withheld —
+  // matches lib/data/project-files.ts FileContent.reason byte-for-byte.
+  string reason = 4;
+}
+
+message WriteFileRequest {
+  string slug = 1;
+  string path = 2;
+  string content = 3;        // capped at 1 MiB agent-side
+}
+
+message UploadFileRequest {
+  string slug = 1;
+  string path = 2;
+  // Raw bytes (the GraphQL layer base64-decodes; the wire carries binary).
+  bytes data = 3;
+}
+
+message CreateDirRequest {
+  string slug = 1;
+  string path = 2;
+}
+
+message DeleteFileRequest {
+  string slug = 1;
+  string path = 2;
+}
+
+message DeleteFileResult {
+  bool ok = 1;
+}
+
+message RenameFileRequest {
+  string slug = 1;
+  string path = 2;
+  string new_path = 3;
+}
+
+message FilesExistRequest {
+  string slug = 1;
+}
+
+message FilesExistResponse {
+  bool exists = 1;
 }

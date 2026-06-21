@@ -105,7 +105,18 @@ export async function promoteToProduction(id: string): Promise<void> {
   recordActivity("deployment", `Promoted deployment to production`, user.name, null, membership.teamId);
 }
 
-/** Tear down a project's running stack (used when deleting the project). */
-export async function teardownProject(slug: string): Promise<void> {
-  await destroyStack(slug).catch(() => {});
+/**
+ * Tear down a project's running stack (used when deleting the project). Returns
+ * `true` if the stack was destroyed, `false` if teardown failed — for a REMOTE
+ * project that means an unreachable agent, in which case the delete proceeds
+ * anyway (P6 spirit) and the caller warns that leftover containers on the remote
+ * must be cleaned by hand. Never throws, so a dead remote never blocks a delete.
+ */
+export async function teardownProject(slug: string): Promise<boolean> {
+  try {
+    await destroyStack(slug);
+    return true;
+  } catch {
+    return false;
+  }
 }

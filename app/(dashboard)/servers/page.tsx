@@ -1,9 +1,10 @@
-import { Network, Server as ServerIcon } from "lucide-react";
+import { Server as ServerIcon } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AddServer } from "@/components/servers/add-server";
+import { ServerActions } from "@/components/servers/server-actions";
 import {
   Card,
   CardHeader,
@@ -16,7 +17,11 @@ import { listServers } from "@/lib/data/servers";
 import { getInitialServerMetrics } from "@/lib/data/monitoring";
 import { serverLabel } from "@/lib/utils";
 import type { Server } from "@/lib/types";
-import { ServerMetricsProvider, LiveServerMetrics } from "./server-metrics";
+import {
+  ServerMetricsProvider,
+  LiveServerMetrics,
+  LiveTraefikBadge,
+} from "./server-metrics";
 
 export const metadata = { title: "Servers" };
 
@@ -30,16 +35,27 @@ function ServerCard({ server }: { server: Server }) {
           <Badge variant={server.type === "localhost" ? "default" : "secondary"}>
             {server.type === "localhost" ? "master" : "remote"}
           </Badge>
+          {/* Management actions for remote servers only — the master isn't
+              provisioned via bootstrap and can't be removed. Pushed to the right. */}
+          {server.type === "remote" && (
+            <div className="ml-auto">
+              <ServerActions
+                serverId={server.id}
+                serverName={serverLabel(server)}
+                provisioning={server.status === "provisioning"}
+              />
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
           <span className="font-mono text-muted-foreground">{server.ip}</span>
           <span className="text-muted-foreground">
             Docker {server.dockerVersion}
           </span>
-          <Badge variant={server.traefikEnabled ? "success" : "muted"}>
-            <Network className="size-3" />
-            Traefik {server.traefikEnabled ? "on" : "off"}
-          </Badge>
+          <LiveTraefikBadge
+            serverId={server.id}
+            initial={server.traefikEnabled}
+          />
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

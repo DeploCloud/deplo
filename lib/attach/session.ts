@@ -1,11 +1,7 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import {
-  attachContainer,
-  attachContainerPty,
-  type AttachHandle,
-} from "../infra/docker";
+import { type AttachHandle } from "../infra/docker";
 
 /**
  * In-process registry of live `docker attach` sessions.
@@ -16,6 +12,13 @@ import {
  *   - POST writes a keystroke chunk to the same child's stdin
  * A session id ties them together. The child is owned here, not by either
  * request, so a POST can reach the stdin of the process the GET is draining.
+ *
+ * The backing handle is BUILT BY THE CALLER and passed in (PLAN Part C): for a
+ * localhost project it is `attachContainer*` over the local docker socket; for a
+ * remote project it is the owning agent's bidi `Attach` stream adapted to the
+ * same AttachHandle shape (the pty lives Go-side now). The session layer is
+ * identical for both. An optional `cleanup` (closing the agent's gRPC client) is
+ * bound atomically into the exit path here.
  *
  * This map is module-level singleton state: it survives across requests within
  * one server process. It is NOT shared across a multi-process/clustered
@@ -52,23 +55,20 @@ function armIdleReaper(s: AttachSession) {
 }
 
 /**
- * Open a new attach session against a container. The caller MUST have already
- * verified the container belongs to `projectId`. Returns the session id; the
- * browser passes it back on the GET (to stream) and POST (to send input).
- *
- * `tty` selects the backing: a tty:true container needs a real pseudo-terminal
- * on the docker CLI's stdin (otherwise the CLI errors "the input device is not
- * a TTY"), while tty:false containers attach over plain pipes. The caller reads
- * this from `inspectStdio` — see lib/infra/docker.ts.
+ * Open a new attach session over a pre-built backing handle. The caller MUST
+ * have already verified the container belongs to `projectId`, chosen the tty
+ * backing, and built the handle against the project's OWNING server (local
+ * docker for localhost, the agent's bidi Attach for remote). `cleanup` runs once
+ * when the backing exits/closes (e.g. `conn.close()` for a remote gRPC client) —
+ * bound here so it can never leak. Returns the session id; the browser passes it
+ * back on the GET (to stream) and POST (to send input).
  */
 export function open(
   projectId: string,
   containerName: string,
-  tty: boolean,
+  handle: AttachHandle,
+  cleanup?: () => void,
 ): AttachSession {
-  const handle = tty
-    ? attachContainerPty(containerName)
-    : attachContainer(containerName);
   const id = `att_${randomBytes(12).toString("hex")}`;
   const session: AttachSession = {
     id,
@@ -86,6 +86,7 @@ export function open(
   handle.onExit(() => {
     if (session.exited) return;
     session.exited = true;
+    cleanup?.();
     session.onExit?.();
     clearTimeout(session.idleTimer);
     sessions.delete(id);

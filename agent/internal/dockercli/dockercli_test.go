@@ -40,3 +40,38 @@ func TestStream_cancellationReportsClearError(t *testing.T) {
 		t.Fatalf("cancellation should surface a clear error, got: %v", err)
 	}
 }
+
+// TraefikRunning detects a running Traefik container on the host (what routes
+// deploys). Verified against real docker: false with none present, true once a
+// throwaway traefik is up. Skips cleanly when docker is unavailable.
+func TestTraefikRunning(t *testing.T) {
+	ctx := context.Background()
+	if !Available(ctx) {
+		t.Skip("docker unavailable")
+	}
+	const name = "deplo-traefik-dockercli-test"
+	// Best-effort cleanup of any leftover from a prior run.
+	_, _ = Run(ctx, 15*time.Second, "rm", "-f", name)
+
+	// Start a throwaway traefik (no ports, just `version` then sleep so the image
+	// name shows in `docker ps`). The detection matches the image substring.
+	res, err := Run(ctx, 60*time.Second, "run", "-d", "--name", name,
+		"--entrypoint", "sleep", "traefik:v3.7", "30")
+	if err != nil || res.Code != 0 {
+		t.Skipf("could not start traefik test container (no image/pull): %v %s", err, res.Stderr)
+	}
+	t.Cleanup(func() { _, _ = Run(context.Background(), 15*time.Second, "rm", "-f", name) })
+
+	if !TraefikRunning(ctx) {
+		t.Fatal("TraefikRunning = false with a traefik container running, want true")
+	}
+
+	if _, err := Run(ctx, 15*time.Second, "rm", "-f", name); err != nil {
+		t.Fatalf("cleanup rm: %v", err)
+	}
+	// A brief settle, then it should read false again (assuming no OTHER traefik
+	// runs on this host; if one does, skip rather than fail).
+	if TraefikRunning(ctx) {
+		t.Skip("another traefik is running on this host; can't assert the false case")
+	}
+}

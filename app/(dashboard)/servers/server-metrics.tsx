@@ -3,7 +3,10 @@
 import * as React from "react";
 import { Cpu, MemoryStick, HardDrive } from "lucide-react";
 
+import { Network } from "lucide-react";
+
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { gql } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
 
@@ -81,7 +84,7 @@ export function ServerMetricsProvider({
       busy = true;
       try {
         const data = await gql<{ allServerMetrics: ServerMetrics[] }>(
-          `query { allServerMetrics { serverId online cpu memPct diskPct } }`,
+          `query { allServerMetrics { serverId online traefik cpu memPct diskPct } }`,
         );
         if (!active || !data.allServerMetrics) return;
         setMetrics(
@@ -159,5 +162,27 @@ export function LiveServerMetrics({
         caption={`${diskGb} GB disk`}
       />
     </>
+  );
+}
+
+/** Live Traefik badge: reads the proxy state from the same metrics poll so it
+ *  updates without a page reload (and self-corrects when Traefik is added/removed
+ *  on the host). Falls back to the server-rendered `initial` value before the
+ *  first poll resolves, keeping SSR/CSR markup identical. */
+export function LiveTraefikBadge({
+  serverId,
+  initial,
+}: {
+  serverId: string;
+  initial: boolean;
+}) {
+  const map = React.useContext(MetricsContext);
+  const live = map[serverId]?.traefik;
+  const on = live ?? initial;
+  return (
+    <Badge variant={on ? "success" : "muted"}>
+      <Network className="size-3" />
+      Traefik {on ? "on" : "off"}
+    </Badge>
   );
 }

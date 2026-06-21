@@ -4,17 +4,27 @@ import { read } from "../store";
 import { assertUser } from "../auth";
 import { hostMetrics, hostFacts } from "../infra/host";
 import { dockerAvailable, listContainers } from "../infra/docker";
+import { connectAgent, AgentUnreachableError } from "../infra/agent-client";
+import { markServerSeen } from "./servers";
 import type { Server } from "../types";
 
 /**
  * Real server metrics. The host running the control plane (the localhost
  * "master") is measured directly via node:os, /proc and df, plus a live
- * container count from Docker. Remote servers require an agent we do not have
- * yet, so they report no live data rather than fabricating any.
+ * container count from Docker. A REMOTE server is measured by its agent's
+ * Metrics RPC (PLAN Part C); an unreachable agent reports no live data
+ * (online:false) rather than fabricating any.
  */
 export interface ServerMetrics {
   serverId: string;
   online: boolean;
+  /**
+   * Whether a Traefik reverse proxy is running on the server (read live from the
+   * agent's Hello on this same poll). Carried in the live payload so the Traefik
+   * badge updates without a page reload, like online/CPU — and self-corrects when
+   * Traefik is added/removed. False when offline/unreachable; true for localhost.
+   */
+  traefik: boolean;
   cpu: number;
   cpuCores: number;
   memUsed: number;
@@ -36,6 +46,7 @@ function unavailable(serverId: string): ServerMetrics {
   return {
     serverId,
     online: false,
+    traefik: false,
     cpu: 0,
     cpuCores: facts.cpuCores,
     memUsed: 0,
@@ -56,18 +67,26 @@ function unavailable(serverId: string): ServerMetrics {
 async function measureLocal(serverId: string): Promise<ServerMetrics> {
   const m = await hostMetrics(process.env.DEPLO_DATA_DIR || "/");
   let containers = 0;
+  let traefik = false;
   if (await dockerAvailable()) {
     try {
-      containers = (await listContainers()).filter(
+      const running = (await listContainers()).filter(
         (c) => c.state === "running",
-      ).length;
+      );
+      containers = running.length;
+      // Read live (not the hardcoded assumption): is a Traefik proxy running on
+      // the master? Same image/name substring match as the agent's TraefikRunning.
+      traefik = running.some(
+        (c) => /traefik/i.test(c.image) || /traefik/i.test(c.name),
+      );
     } catch {
-      /* leave 0 */
+      /* leave 0 / false */
     }
   }
   return {
     serverId,
     online: true,
+    traefik,
     cpu: m.cpu,
     cpuCores: m.cpuCores,
     memUsed: m.memUsed,
@@ -85,9 +104,72 @@ async function measureLocal(serverId: string): Promise<ServerMetrics> {
   };
 }
 
+/**
+ * Measure a remote server via its agent's Metrics RPC. The agent measures its own
+ * host (CPU/mem/disk of its --data-dir + a live running-container count) and
+ * returns a HostMetrics, mapped 1:1 into ServerMetrics. An unreachable / not-yet-
+ * provisioned agent reports no live data (online:false) — never fabricated, never
+ * the control plane's own numbers.
+ *
+ * NOTE: the dashboard polls every ~1s, so this dials+closes a gRPC client per
+ * poll per viewer. Acceptable at current scale; a connection pool is a Part C+
+ * optimisation (TODO) if the fleet/viewer count makes the churn matter.
+ */
+async function measureRemote(server: Server): Promise<ServerMetrics> {
+  const conn = await connectAgent(server.id);
+  try {
+    // Empty dataDir => the agent measures its own configured --data-dir.
+    const m = await conn.metrics("");
+    // Read the Traefik state live on this same poll (the poll already holds the
+    // mTLS connection open). This is the ONLY steady-state path — the deploy
+    // preflight aside — so without it traefikEnabled would only ever update on a
+    // deploy. Best-effort: a Hello failure doesn't fail the metrics snapshot;
+    // we just keep the last-known traefik flag for the payload.
+    let traefik = server.traefikEnabled;
+    try {
+      const hello = await conn.hello();
+      traefik = hello.traefikRunning;
+      // Persist the live value (read-live-not-stored, like health). The badge's
+      // server-rendered render reads this on the next page load; the live payload
+      // below updates it without a reload.
+      markServerSeen(server.id, hello.agentVersion, hello.traefikRunning);
+    } catch {
+      /* metrics succeeded; the Hello refresh is best-effort */
+    }
+    return {
+      serverId: server.id,
+      online: true,
+      traefik,
+      cpu: m.cpu,
+      cpuCores: m.cpuCores,
+      memUsed: Number(m.memUsed),
+      memTotal: Number(m.memTotal),
+      memPct: m.memPct,
+      diskUsed: Number(m.diskUsed),
+      diskTotal: Number(m.diskTotal),
+      diskPct: m.diskPct,
+      netRx: Number(m.netRx),
+      netTx: Number(m.netTx),
+      load: [m.load1, m.load5, m.load15],
+      uptimeSec: Number(m.uptimeSec),
+      containers: m.runningContainers,
+      ts: Date.now(),
+    };
+  } finally {
+    conn.close();
+  }
+}
+
 async function metricsFor(server: Server): Promise<ServerMetrics> {
   if (server.type === "localhost") return measureLocal(server.id);
-  return unavailable(server.id);
+  try {
+    return await measureRemote(server);
+  } catch (e) {
+    // Unreachable / unprovisioned agent, or any transport error: report offline
+    // rather than the master's numbers or a fabricated snapshot.
+    if (e instanceof AgentUnreachableError) return unavailable(server.id);
+    return unavailable(server.id);
+  }
 }
 
 export async function getServerMetrics(serverId: string): Promise<ServerMetrics> {
@@ -119,6 +201,8 @@ export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
     // Remote servers have no agent yet, so they report no live data — mark them
     // offline exactly as metricsFor() would, to keep the card UI consistent.
     online: s.type === "localhost",
+    // Cheap hydration value from the stored flag; the first live poll replaces it.
+    traefik: s.traefikEnabled,
     cpu: s.cpuUsage,
     cpuCores: s.cpuCores || facts.cpuCores,
     memUsed: 0,

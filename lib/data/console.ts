@@ -10,7 +10,25 @@ import {
   listContainers,
   shellLabel,
 } from "../infra/docker";
-import type { Project } from "../types";
+import {
+  connectAgent,
+  AgentUnreachableError,
+  type AgentConnection,
+} from "../infra/agent-client";
+import type { Project, Server } from "../types";
+
+/**
+ * Resolve a project's owning server. Every console/logs surface routes to the
+ * agent that owns the project's host: `localhost` uses today's direct-Docker
+ * path; `remote` goes through the owning agent (PLAN Part C). An unknown serverId
+ * is treated as localhost (the host), matching the deploy path's resolveTarget.
+ */
+function serverOf(p: Project): Server | undefined {
+  return read().servers.find((s) => s.id === p.serverId);
+}
+function isRemote(p: Project): boolean {
+  return serverOf(p)?.type === "remote";
+}
 
 /**
  * Real container console. Commands are forwarded to the project's running
@@ -80,10 +98,18 @@ function serviceOf(p: Project, containerName: string): string {
 
 /**
  * Every attachable container for a project, default (exposed/running) first.
- * Returns a single synthetic entry when Docker is unavailable so the console
- * still renders with the conventional name.
+ *
+ * LOCALHOST: probes the local docker socket; returns a single SYNTHETIC entry
+ * when Docker is unavailable / no containers exist, so the console still renders
+ * with the conventional name. REMOTE (PLAN Part C): asks the owning agent's
+ * ListInstances — and DELIBERATELY has NO synthetic fallback. Fabricating a
+ * container for a remote we can't reach would be a "status that lies"; an
+ * unreachable remote throws {@link AgentUnreachableError} (the caller surfaces a
+ * clear error), and a reachable remote with no containers truthfully returns [].
  */
 export async function listInstances(p: Project): Promise<ConsoleInstance[]> {
+  if (isRemote(p)) return listInstancesRemote(p);
+
   const fallback: ConsoleInstance = {
     name: containerName(p),
     service: p.slug,
@@ -132,6 +158,16 @@ export async function listInstances(p: Project): Promise<ConsoleInstance[]> {
   }
 }
 
+/** Remote instance list via the owning agent (ordering applied agent-side). */
+async function listInstancesRemote(p: Project): Promise<ConsoleInstance[]> {
+  const conn = await connectAgent(p.serverId);
+  try {
+    return await conn.listInstances(p.id, p.slug, p.expose?.service ?? "");
+  } finally {
+    conn.close();
+  }
+}
+
 /**
  * Container discovery without the shell probe. `getAttachInfo` adds the
  * `shellLabel` probe on top (≤4 `docker exec` calls into the container), which
@@ -144,11 +180,45 @@ export interface LogsInfo {
   instances: ConsoleInstance[];
 }
 
+/**
+ * A single honest placeholder instance for the console/logs PAGE render when the
+ * real list can't be obtained: a remote whose agent is unreachable, or a reachable
+ * remote with zero containers (which returns []). It renders the conventional name
+ * with running:false — never fabricating a "running" container — so the page loads
+ * and shows "not running / unreachable" instead of 500ing. The OPERATIONAL paths
+ * (exec/attach/logs streams) still fail clearly; this is display-only.
+ */
+function displayFallback(p: Project): ConsoleInstance {
+  return {
+    name: containerName(p),
+    service: p.slug,
+    image: p.dockerImage ?? `deplo/${p.slug}:latest`,
+    running: false,
+    exposed: true,
+    user: "root",
+    workdir: "/",
+    openStdin: false,
+    tty: false,
+  };
+}
+
+/** listInstances for a page render: never throws, never empty — degrades to a
+ *  single honest, not-running placeholder so the console/logs page always loads. */
+async function listInstancesForDisplay(p: Project): Promise<ConsoleInstance[]> {
+  try {
+    const instances = await listInstances(p);
+    return instances.length ? instances : [displayFallback(p)];
+  } catch (e) {
+    if (e instanceof AgentUnreachableError) return [displayFallback(p)];
+    throw e;
+  }
+}
+
 export async function getLogsInfo(projectId: string): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
   if (!p) return null;
-  const instances = await listInstances(p);
+  const instances = await listInstancesForDisplay(p);
   return { running: instances.some((i) => i.running), instances };
 }
 
@@ -169,7 +239,7 @@ export async function getConsoleInfo(projectId: string): Promise<ConsoleInfo | n
   const teamId = await requireActiveTeamId();
   const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
   if (!p) return null;
-  const instances = await listInstances(p);
+  const instances = await listInstancesForDisplay(p);
   const def = instances[0];
   return {
     containerName: def.name,
@@ -193,11 +263,14 @@ export async function getShellLabel(
   const teamId = await requireActiveTeamId();
   const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
   if (!p) return "raw exec (no shell)";
-  const instances = await listInstances(p);
+  // Display-grade list: an unreachable remote degrades to a not-running
+  // placeholder, so we return "raw exec (no shell)" below rather than throwing.
+  const instances = await listInstancesForDisplay(p);
   const pick = target
     ? instances.find((i) => i.name === target)
     : instances.find((i) => i.running) ?? instances[0];
   if (!pick || !pick.running) return "raw exec (no shell)";
+  if (isRemote(p)) return probeRemoteShellLabel(p, pick.name, pick.image);
   return shellLabel(pick.name, pick.image);
 }
 
@@ -205,19 +278,36 @@ export async function getAttachInfo(projectId: string): Promise<AttachInfo | nul
   const teamId = await requireActiveTeamId();
   const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
   if (!p) return null;
-  const instances = await listInstances(p);
+  const instances = await listInstancesForDisplay(p);
   // Default target: exposed/running first thanks to listInstances ordering.
   const def = instances[0];
   const running = instances.some((i) => i.running);
-  return {
-    containerName: def.name,
-    image: def.image,
-    running,
-    // Probe the default instance's real shell (or lack of one). Only meaningful
-    // when running; a stopped container can't be probed, so report raw.
-    shell: running ? await shellLabel(def.name, def.image) : "raw exec (no shell)",
-    instances,
-  };
+  // Probe the default instance's real shell (or lack of one). Only meaningful
+  // when running; a stopped/unreachable container can't be probed, so report raw.
+  let shell = "raw exec (no shell)";
+  if (running) {
+    shell = isRemote(p)
+      ? await probeRemoteShellLabel(p, def.name, def.image)
+      : await shellLabel(def.name, def.image);
+  }
+  return { containerName: def.name, image: def.image, running, shell, instances };
+}
+
+/** Remote shell-label probe that degrades to raw on an unreachable agent. */
+async function probeRemoteShellLabel(
+  p: Project,
+  container: string,
+  image: string,
+): Promise<string> {
+  const conn = await connectAgent(p.serverId);
+  try {
+    return await conn.shellLabel(p.id, container, image);
+  } catch (e) {
+    if (e instanceof AgentUnreachableError) return "raw exec (no shell)";
+    throw e;
+  } finally {
+    conn.close();
+  }
 }
 
 /**
@@ -230,8 +320,8 @@ export async function resolveAttachTarget(
   projectId: string,
   target?: string,
 ): Promise<
-  | { ok: true; instance: ConsoleInstance }
-  | { ok: false; reason: "not-found" | "no-instance" | "stopped" }
+  | { ok: true; instance: ConsoleInstance; server: Server | undefined }
+  | { ok: false; reason: "not-found" | "no-instance" | "stopped" | "unreachable" }
 > {
   // Attaching to PID 1 (full-duplex, stdin to the live container) is a
   // deploy-class operation — never available to a view-only member.
@@ -239,14 +329,22 @@ export async function resolveAttachTarget(
   const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
   if (!p) return { ok: false, reason: "not-found" };
 
-  const instances = await listInstances(p);
+  let instances: ConsoleInstance[];
+  try {
+    instances = await listInstances(p);
+  } catch (e) {
+    // A remote whose agent is unreachable: fail clearly, never fall back to the
+    // local socket (which would attach a foreign/empty container).
+    if (e instanceof AgentUnreachableError) return { ok: false, reason: "unreachable" };
+    throw e;
+  }
   const pick = target
     ? instances.find((i) => i.name === target)
     : instances.find((i) => i.running) ?? instances[0];
   if (!pick) return { ok: false, reason: "no-instance" };
   // Attaching to a stopped container's PID 1 would just hang — refuse early.
   if (!pick.running) return { ok: false, reason: "stopped" };
-  return { ok: true, instance: pick };
+  return { ok: true, instance: pick, server: serverOf(p) };
 }
 
 /**
@@ -260,19 +358,25 @@ export async function resolveLogsTarget(
   projectId: string,
   target?: string,
 ): Promise<
-  | { ok: true; instance: ConsoleInstance }
-  | { ok: false; reason: "not-found" | "no-instance" }
+  | { ok: true; instance: ConsoleInstance; server: Server | undefined }
+  | { ok: false; reason: "not-found" | "no-instance" | "unreachable" }
 > {
   const teamId = await requireActiveTeamId();
   const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
   if (!p) return { ok: false, reason: "not-found" };
 
-  const instances = await listInstances(p);
+  let instances: ConsoleInstance[];
+  try {
+    instances = await listInstances(p);
+  } catch (e) {
+    if (e instanceof AgentUnreachableError) return { ok: false, reason: "unreachable" };
+    throw e;
+  }
   const pick = target
     ? instances.find((i) => i.name === target)
     : instances.find((i) => i.running) ?? instances[0];
   if (!pick) return { ok: false, reason: "no-instance" };
-  return { ok: true, instance: pick };
+  return { ok: true, instance: pick, server: serverOf(p) };
 }
 
 export async function execInContainer(
@@ -300,7 +404,13 @@ export async function execInContainer(
       ? instances.find((i) => i.name === target)
       : instances[0];
     if (!pick) return { output: `! no such instance: ${target}` };
-    const res = await dockerExec(pick.name, command, pick.image);
+
+    // REMOTE (PLAN Part C): exec on the owning agent. The agent applies the same
+    // shell/raw dispatch and docker-vs-guest classification, returning the guest
+    // exit code; a docker-level failure is a thrown gRPC error (caught below).
+    const res = isRemote(p)
+      ? await execOnAgent(p, pick.name, command, pick.image)
+      : await dockerExec(pick.name, command, pick.image);
 
     // Docker/OCI-level failure: `docker exec` couldn't run the command at all
     // (container stopped/removed, daemon error, or the exec target binary is
@@ -326,9 +436,28 @@ export async function execInContainer(
     return { output: body };
   } catch (e) {
     // Reject path: spawn failure / timeout / daemon unreachable — docker never
-    // produced an exit status. An infrastructure error, not guest output.
+    // produced an exit status. An infrastructure error, not guest output. A
+    // remote whose agent is unreachable surfaces here with a clear message.
+    if (e instanceof AgentUnreachableError) {
+      return { output: `! Server unreachable: ${e.message}` };
+    }
     return {
       output: `! ${e instanceof Error ? e.message : "command failed"}`,
     };
+  }
+}
+
+/** Exec on the owning agent, returning the docker.ts ContainerExecResult shape. */
+async function execOnAgent(
+  p: Project,
+  container: string,
+  command: string,
+  image: string,
+): Promise<{ stdout: string; stderr: string; code: number; rawMode: boolean }> {
+  const conn: AgentConnection = await connectAgent(p.serverId);
+  try {
+    return await conn.exec(p.id, container, command, image);
+  } finally {
+    conn.close();
   }
 }

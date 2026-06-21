@@ -3,6 +3,7 @@ module github.com/idradev/deplo/agent
 go 1.23.4
 
 require (
+	github.com/creack/pty v1.1.21
 	google.golang.org/grpc v1.69.4
 	google.golang.org/protobuf v1.36.3
 )

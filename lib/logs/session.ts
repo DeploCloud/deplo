@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import { followLogs, type AttachHandle } from "../infra/docker";
+import { type AttachHandle } from "../infra/docker";
 
 /**
  * In-process registry of live `docker logs -f` sessions.
@@ -11,6 +11,13 @@ import { followLogs, type AttachHandle } from "../infra/docker";
  * stream draining a `docker logs -f` child. The shared `AttachHandle` shape lets
  * the SSE route reuse the same subscribe/onExit plumbing; `write` is a no-op on
  * the logs backing.
+ *
+ * The backing handle is BUILT BY THE CALLER and passed in (PLAN Part C): for a
+ * localhost project it is `followLogs(name,tail)` over the local docker socket;
+ * for a remote project it is the owning agent's `FollowLogs` stream adapted to
+ * the same AttachHandle shape. The session layer is identical for both — it never
+ * knows which backing produced the handle. An optional `cleanup` (e.g. closing
+ * the agent's gRPC client) is bound atomically into the exit path here.
  *
  * This map is module-level singleton state: it survives across requests within
  * one server process, matching Deplo's single-process-against-one-socket model
@@ -55,12 +62,20 @@ function armIdleReaper(s: LogsSession) {
 }
 
 /**
- * Open a new logs session against a container. The caller MUST have already
- * verified the container belongs to `projectId`. Returns the session id; the
- * browser passes it back on the DELETE to detach.
+ * Open a new logs session over a pre-built backing handle. The caller MUST have
+ * already verified the container belongs to `projectId` AND built the handle
+ * against the project's OWNING server (local docker for localhost, the agent's
+ * FollowLogs for remote). `cleanup` runs once when the backing exits/closes (e.g.
+ * `conn.close()` for a remote gRPC client) — bound here so it can never leak if
+ * the stream ends before the route wires its own `onExit`. Returns the session
+ * id; the browser passes it back on the DELETE to detach.
  */
-export function open(projectId: string, containerName: string, tail = 500): LogsSession {
-  const handle = followLogs(containerName, tail);
+export function open(
+  projectId: string,
+  containerName: string,
+  handle: AttachHandle,
+  cleanup?: () => void,
+): LogsSession {
   const id = `log_${randomBytes(12).toString("hex")}`;
   const session: LogsSession = {
     id,
@@ -86,6 +101,7 @@ export function open(projectId: string, containerName: string, tail = 500): Logs
   handle.onExit(() => {
     if (session.exited) return;
     session.exited = true;
+    cleanup?.();
     session.onExit?.();
     clearTimeout(session.idleTimer);
     sessions.delete(id);
