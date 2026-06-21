@@ -49,11 +49,19 @@ if [ -z "$TOKEN" ] || [ -z "$URL" ]; then
   err "Copy the exact command from the dashboard's Add remote server dialog."
   exit 1
 fi
-if [ "$AGENT_BIN_URL" = "__AGENT_BIN_URL__" ]; then
-  err "This script must be fetched from the control plane (/install-agent.sh),"
-  err "which fills in the binary URL + checksum. Don't run the repo copy directly."
-  exit 1
-fi
+# Detect the UNSUBSTITUTED template (someone ran the repo copy directly). The
+# control plane fills the value above via a plain text replace of the sentinel
+# token, so this check must NOT contain that exact token — otherwise it would be
+# rewritten to the real URL too and the guard would always fire on the rendered
+# script. Match the sentinel's shape with a glob (the token split by a `*`) so the
+# exact string never appears literally anywhere a replace could touch.
+case "$AGENT_BIN_URL" in
+  *__AGENT_BIN*URL__*)
+    err "This script must be fetched from the control plane (/install-agent.sh),"
+    err "which fills in the binary URL + checksum. Don't run the repo copy directly."
+    exit 1
+    ;;
+esac
 if [ "$(id -u)" -ne 0 ]; then
   err "Please run as root (or with sudo)."
   exit 1
