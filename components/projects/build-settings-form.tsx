@@ -43,7 +43,6 @@ import { GithubConnectButton } from "@/components/projects/github-connect-button
 import { UploadInput, type CurrentUpload } from "@/components/projects/upload-input";
 import { hasBlockingErrors, type LintDiagnostic } from "@/lib/deploy/compose-lint";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -692,11 +691,6 @@ export function BuildSettingsForm({
                     <span className="flex items-center gap-2">
                       <ServerIcon className="size-4 text-muted-foreground" />
                       {serverLabel(s)}
-                      {s.type === "remote" && (
-                        <Badge variant="secondary" className="ml-1">
-                          remote
-                        </Badge>
-                      )}
                     </span>
                   </SelectItem>
                 ))}

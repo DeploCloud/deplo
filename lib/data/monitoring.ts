@@ -2,18 +2,17 @@ import "server-only";
 
 import { read } from "../store";
 import { assertUser } from "../auth";
-import { hostMetrics, hostFacts } from "../infra/host";
-import { dockerAvailable, listContainers } from "../infra/docker";
-import { connectAgent, AgentUnreachableError } from "../infra/agent-client";
+import { hostFacts } from "../infra/host";
+import { connectAgent } from "../infra/agent-client";
 import { markServerSeen } from "./servers";
 import type { Server } from "../types";
 
 /**
- * Real server metrics. The host running the control plane (the localhost
- * "master") is measured directly via node:os, /proc and df, plus a live
- * container count from Docker. A REMOTE server is measured by its agent's
- * Metrics RPC (PLAN Part C); an unreachable agent reports no live data
- * (online:false) rather than fabricating any.
+ * Real server metrics. EVERY server — including the host running Deplo — is
+ * measured by its agent's Metrics RPC over mTLS (PLAN Part C): the agent measures
+ * its own host (CPU/mem/disk + a live running-container count). An unreachable /
+ * not-yet-provisioned agent reports no live data (online:false) rather than
+ * fabricating any.
  */
 export interface ServerMetrics {
   serverId: string;
@@ -22,7 +21,7 @@ export interface ServerMetrics {
    * Whether a Traefik reverse proxy is running on the server (read live from the
    * agent's Hello on this same poll). Carried in the live payload so the Traefik
    * badge updates without a page reload, like online/CPU — and self-corrects when
-   * Traefik is added/removed. False when offline/unreachable; true for localhost.
+   * Traefik is added/removed. False when offline/unreachable.
    */
   traefik: boolean;
   cpu: number;
@@ -60,46 +59,6 @@ function unavailable(serverId: string): ServerMetrics {
     load: [0, 0, 0],
     uptimeSec: 0,
     containers: 0,
-    ts: Date.now(),
-  };
-}
-
-async function measureLocal(serverId: string): Promise<ServerMetrics> {
-  const m = await hostMetrics(process.env.DEPLO_DATA_DIR || "/");
-  let containers = 0;
-  let traefik = false;
-  if (await dockerAvailable()) {
-    try {
-      const running = (await listContainers()).filter(
-        (c) => c.state === "running",
-      );
-      containers = running.length;
-      // Read live (not the hardcoded assumption): is a Traefik proxy running on
-      // the master? Same image/name substring match as the agent's TraefikRunning.
-      traefik = running.some(
-        (c) => /traefik/i.test(c.image) || /traefik/i.test(c.name),
-      );
-    } catch {
-      /* leave 0 / false */
-    }
-  }
-  return {
-    serverId,
-    online: true,
-    traefik,
-    cpu: m.cpu,
-    cpuCores: m.cpuCores,
-    memUsed: m.memUsed,
-    memTotal: m.memTotal,
-    memPct: m.memPct,
-    diskUsed: m.diskUsed,
-    diskTotal: m.diskTotal,
-    diskPct: m.diskPct,
-    netRx: m.netRx,
-    netTx: m.netTx,
-    load: m.load,
-    uptimeSec: m.uptimeSec,
-    containers,
     ts: Date.now(),
   };
 }
@@ -161,13 +120,11 @@ async function measureRemote(server: Server): Promise<ServerMetrics> {
 }
 
 async function metricsFor(server: Server): Promise<ServerMetrics> {
-  if (server.type === "localhost") return measureLocal(server.id);
   try {
     return await measureRemote(server);
-  } catch (e) {
+  } catch {
     // Unreachable / unprovisioned agent, or any transport error: report offline
-    // rather than the master's numbers or a fabricated snapshot.
-    if (e instanceof AgentUnreachableError) return unavailable(server.id);
+    // rather than a fabricated snapshot.
     return unavailable(server.id);
   }
 }
@@ -198,9 +155,10 @@ export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
   const facts = hostFacts();
   return read().servers.map((s) => ({
     serverId: s.id,
-    // Remote servers have no agent yet, so they report no live data — mark them
-    // offline exactly as metricsFor() would, to keep the card UI consistent.
-    online: s.type === "localhost",
+    // Cheap hydration hint from the stored status; the first live poll replaces
+    // it. A not-yet-provisioned server has no agent and reports offline, exactly
+    // as metricsFor() would, keeping the card UI consistent.
+    online: Boolean(s.agent?.certFingerprint) && s.status === "online",
     // Cheap hydration value from the stored flag; the first live poll replaces it.
     traefik: s.traefikEnabled,
     cpu: s.cpuUsage,

@@ -11,7 +11,7 @@ export const DEPLO_REPO = "IdraDev/deplo";
 
 /**
  * The agent version we expect every server to be running. The agent now lives in
- * its own repo (PixelFederico/deplo-agent) and ships as GitHub releases, so the
+ * its own repo (DeploCloud/deplo-agent) and ships as GitHub releases, so the
  * real "latest" is resolved at runtime via resolveExpectedAgentVersion() — see
  * lib/agent/release.ts. This constant is the OFFLINE FALLBACK used only when
  * GitHub can't be reached; it must stay a conservative value, because the
@@ -59,29 +59,23 @@ export function isAgentOutdated(
 
 /**
  * The agent version a server is effectively running, for display and the
- * outdated check. localhost's agent is supervised in-process and shares the
- * control plane's binary, so it is the expected version by definition — its
- * stored `agent.version` (if any) is a diagnostic relic and must not be used.
- * A remote reports its version on each Hello (cached in `agent.version`); an
- * empty string or absent agent (not-yet-provisioned) collapses to null.
+ * outdated check. Every server (the host running Deplo included) runs an agent
+ * installed via install-agent.sh that reports its version on each Hello (cached
+ * in `agent.version`); an empty string or absent agent (not-yet-provisioned)
+ * collapses to null.
  *
  * Kept here, decoupled from the `Server` type, so the GraphQL resolver and the
  * server-rendered Servers card derive the same value from one rule.
  */
-export function reportedAgentVersion(
-  server: {
-    type: "localhost" | "remote";
-    agent?: { version: string };
-  },
-  expected: string = EXPECTED_AGENT_VERSION,
-): string | null {
-  if (server.type === "localhost") return expected;
+export function reportedAgentVersion(server: {
+  agent?: { version: string };
+}): string | null {
   return server.agent?.version || null;
 }
 
 /**
  * Resolve the agent version every server should be running — the latest agent
- * GitHub release (PixelFederico/deplo-agent), cached. Falls back to the static
+ * GitHub release (DeploCloud/deplo-agent), cached. Falls back to the static
  * EXPECTED_AGENT_VERSION when GitHub is unreachable. This is the async successor
  * to the old compile-time EXPECTED_AGENT_VERSION constant: server-side callers
  * (GraphQL resolvers, the Servers RSC) await it once and thread the value into

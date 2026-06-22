@@ -186,15 +186,14 @@ export interface TeamSummary extends Team {
 export type ServerStatus = "online" | "offline" | "provisioning" | "error";
 
 /**
- * The agent trust + reachability material for a remote server (PLAN Part B). A
- * `localhost` server has none of this — its agent is the in-process supervised
- * one (Part A). A remote server gains it through the call-home bootstrap: the
- * agent generates its own key, the control plane signs its CSR, and the cert's
- * fingerprint is pinned here so the control plane can authenticate that exact
- * agent (and revoke it on removal, P6). Cert material is the pinning identity,
- * not a secret (it is a public certificate), so it is stored as-is; the
- * pre-bootstrap token, which IS secret-shaped, is stored hashed in
- * {@link ServerBootstrap}.
+ * The agent trust + reachability material for a server (PLAN Part B). EVERY
+ * server — including the host running Deplo — gains it through the call-home
+ * bootstrap: the agent (installed on the host via install-agent.sh) generates
+ * its own key, the control plane signs its CSR, and the cert's fingerprint is
+ * pinned here so the control plane can authenticate that exact agent (and revoke
+ * it on removal, P6). Cert material is the pinning identity, not a secret (it is
+ * a public certificate), so it is stored as-is; the pre-bootstrap token, which IS
+ * secret-shaped, is stored hashed in {@link ServerBootstrap}.
  */
 export interface ServerAgent {
   /** The TCP port the agent's gRPC listener is on (default 9443). */
@@ -230,9 +229,14 @@ export interface ServerBootstrap {
 export interface Server {
   id: ID;
   name: string;
-  /** "localhost" for the host running Deplo, or a remote IP/host */
+  /** The server's reachable IP/host (the host running Deplo is dialed the same way). */
   host: string;
-  type: "localhost" | "remote";
+  /**
+   * Discriminant retained for forward-compat; every server is now reached only
+   * through its agent over mTLS (the host running Deplo included), so there is no
+   * longer a special "localhost" kind.
+   */
+  type: "remote";
   status: ServerStatus;
   ip: string;
   dockerVersion: string;
@@ -246,14 +250,14 @@ export interface Server {
   diskUsage: number;
   createdAt: string;
   /**
-   * Agent trust material — present once a remote server is provisioned (Part B).
-   * Absent on `localhost` (its agent is supervised in-process) and on a remote
-   * still in `provisioning` (before its agent has called home).
+   * Agent trust material — present once a server is provisioned (Part B). Absent
+   * only while a server is still in `provisioning` (before its agent has called
+   * home). Applies to every server, the host running Deplo included.
    */
   agent?: ServerAgent;
   /**
-   * The pending call-home bootstrap secret — present only while a remote server
-   * is `provisioning`, cleared once its agent has been provisioned (Part B, P2).
+   * The pending call-home bootstrap secret — present only while a server is
+   * `provisioning`, cleared once its agent has been provisioned (Part B, P2).
    */
   bootstrap?: ServerBootstrap;
   /**

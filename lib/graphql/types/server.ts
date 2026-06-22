@@ -27,7 +27,7 @@ const ServerStatusEnum = builder.enumType("ServerStatus", {
 });
 
 const ServerTypeEnum = builder.enumType("ServerType", {
-  values: ["localhost", "remote"] as const,
+  values: ["remote"] as const,
 });
 
 /* ------------------------------------------------------------------ */
@@ -35,7 +35,7 @@ const ServerTypeEnum = builder.enumType("ServerType", {
 /* ------------------------------------------------------------------ */
 
 export const ServerRef = builder.objectRef<Server>("Server").implement({
-  description: "A host (the master or a connected remote) running deployments.",
+  description: "A connected host running deployments (reached via its agent).",
   fields: (t) => ({
     id: t.exposeID("id"),
     name: t.exposeString("name"),
@@ -53,11 +53,11 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     memoryUsage: t.exposeInt("memoryUsage"),
     diskUsage: t.exposeInt("diskUsage"),
     createdAt: t.exposeString("createdAt"),
-    // Part B: provisioning/trust state, all nullable (absent on localhost or a
-    // not-yet-provisioned remote). Never expose secret-shaped material — only
+    // Part B: provisioning/trust state, all nullable (absent on a
+    // not-yet-provisioned server). Never expose secret-shaped material — only
     // the agent VERSION + a "is it provisioned" signal + the heartbeat cache.
     provisioned: t.boolean({
-      description: "True once a remote agent has called home and been trusted.",
+      description: "True once the server's agent has called home and been trusted.",
       resolve: (s) => Boolean(s.agent?.certFingerprint),
     }),
     agentPort: t.int({
@@ -67,21 +67,20 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     agentVersion: t.string({
       nullable: true,
       description:
-        "The agent binary version last reported by this server. Null for a remote whose agent hasn't called home yet; the latest agent release for localhost (the master runs the control-plane image's agent).",
-      resolve: async (s) =>
-        reportedAgentVersion(s, await resolveExpectedAgentVersion()),
+        "The agent binary version last reported by this server on its last Hello. Null until the server's agent has called home and been provisioned.",
+      resolve: (s) => reportedAgentVersion(s),
     }),
     expectedAgentVersion: t.string({
       description:
-        "The agent version this server should be running — the latest GitHub release of the agent (PixelFederico/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.",
+        "The agent version this server should be running — the latest GitHub release of the agent (DeploCloud/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.",
       resolve: () => resolveExpectedAgentVersion(),
     }),
     agentOutdated: t.boolean({
       description:
-        "True when this server's reported agent version is strictly older than expectedAgentVersion. False for localhost, an unseen agent, or a non-semver/dev version we can't confidently compare.",
+        "True when this server's reported agent version is strictly older than expectedAgentVersion. False for an unseen agent or a non-semver/dev version we can't confidently compare.",
       resolve: async (s) => {
         const expected = await resolveExpectedAgentVersion();
-        return isAgentOutdated(reportedAgentVersion(s, expected), expected);
+        return isAgentOutdated(reportedAgentVersion(s), expected);
       },
     }),
     lastSeenAt: t.string({
@@ -137,7 +136,7 @@ builder.queryFields((t) => ({
   servers: t.field({
     type: [ServerRef],
     authScopes: { loggedIn: true },
-    description: "All servers, master first then remotes by creation order.",
+    description: "All servers, by creation order.",
     resolve: () => listServers(),
   }),
   server: t.field({
@@ -149,8 +148,10 @@ builder.queryFields((t) => ({
   }),
   primaryServer: t.field({
     type: ServerRef,
+    nullable: true,
     authScopes: { loggedIn: true },
-    description: "The master (localhost) server, or the first one available.",
+    description:
+      "The first server available, or null when none has been added/provisioned yet.",
     resolve: () => getPrimaryServer(),
   }),
 }));

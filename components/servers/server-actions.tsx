@@ -25,16 +25,15 @@ import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Per-server management actions for a REMOTE server card (PLAN Part B follow-up).
- * Two actions, both gated server-side by `manage_infra`:
+ * Per-server management actions, shown for EVERY server card (the host running
+ * Deplo included — it is a bootstrapped agent like any other). Two actions, both
+ * gated server-side by `manage_infra`:
  *   - Reissue install command — mint a FRESH one-time bootstrap command for a
  *     server still provisioning (the original token expired or was lost). This is
  *     the "server's menu" the AddServer dialog's note points at.
  *   - Remove server — revoke trust + best-effort teardown. Returns a warning when
  *     the agent was unreachable (the stack/containers on that host must be cleaned
  *     by hand); shown so the operator knows.
- * The master (localhost) server has no actions (it isn't provisioned this way and
- * can't be removed), so the page only renders this for `type === "remote"`.
  */
 export function ServerActions({
   serverId,

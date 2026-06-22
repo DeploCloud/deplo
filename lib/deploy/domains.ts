@@ -164,18 +164,12 @@ export function domainTlsConfig(domain: {
 }
 
 /**
- * The IPv4 to use for a given server's domains. A remote server's recorded IP
- * is authoritative; for the localhost master we prefer a usable recorded IP but
- * never a stored loopback (an early install may have persisted "127.0.0.1"),
- * resolving the host live in that case.
+ * The IPv4 to use for a given server's domains. The server's recorded IP is
+ * authoritative when it is a usable, non-loopback IPv4; otherwise fall back to
+ * the instance host (a never-set or stored-loopback IP resolves live). Uniform
+ * across every server, the host running Deplo included.
  */
-export function resolveServerIp(server?: {
-  type?: string;
-  ip?: string;
-}): string {
-  if (server?.type && server.type !== "localhost") {
-    return server.ip && isIpv4(server.ip) ? server.ip : instanceHost();
-  }
+export function resolveServerIp(server?: { ip?: string }): string {
   if (server?.ip && isIpv4(server.ip) && !isLoopbackIp(server.ip)) {
     return server.ip;
   }

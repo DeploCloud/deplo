@@ -1,7 +1,7 @@
 import { resolveLatestAgentRelease } from "@/lib/agent/release";
 
 /**
- * Redirect to the agent binary on GitHub Releases (PixelFederico/deplo-agent).
+ * Redirect to the agent binary on GitHub Releases (DeploCloud/deplo-agent).
  *
  * The binary is no longer built into or served by the control plane — it ships
  * as a release asset and the install script downloads it from github.com

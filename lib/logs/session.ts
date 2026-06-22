@@ -12,12 +12,12 @@ import { type AttachHandle } from "../infra/docker";
  * the SSE route reuse the same subscribe/onExit plumbing; `write` is a no-op on
  * the logs backing.
  *
- * The backing handle is BUILT BY THE CALLER and passed in (PLAN Part C): for a
- * localhost project it is `followLogs(name,tail)` over the local docker socket;
- * for a remote project it is the owning agent's `FollowLogs` stream adapted to
- * the same AttachHandle shape. The session layer is identical for both — it never
- * knows which backing produced the handle. An optional `cleanup` (e.g. closing
- * the agent's gRPC client) is bound atomically into the exit path here.
+ * The backing handle is BUILT BY THE CALLER and passed in (PLAN Part C): it is
+ * the owning agent's `FollowLogs` stream adapted to the AttachHandle shape (every
+ * project, the host running Deplo included, is reached through its agent). The
+ * session layer never knows which backing produced the handle. An optional
+ * `cleanup` (closing the agent's gRPC client) is bound atomically into the exit
+ * path here.
  *
  * This map is module-level singleton state: it survives across requests within
  * one server process, matching Deplo's single-process-against-one-socket model

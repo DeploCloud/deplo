@@ -38,27 +38,23 @@ function ServerCard({
   server: Server;
   expectedAgentVersion: string;
 }) {
-  const agentVersion = reportedAgentVersion(server, expectedAgentVersion);
+  const agentVersion = reportedAgentVersion(server);
   return (
     <Card>
       <CardHeader className="space-y-3">
         <div className="flex items-center gap-2">
           <StatusDot status={server.status} />
           <CardTitle className="truncate">{serverLabel(server)}</CardTitle>
-          <Badge variant={server.type === "localhost" ? "default" : "secondary"}>
-            {server.type === "localhost" ? "master" : "remote"}
-          </Badge>
-          {/* Management actions for remote servers only — the master isn't
-              provisioned via bootstrap and can't be removed. Pushed to the right. */}
-          {server.type === "remote" && (
-            <div className="ml-auto">
-              <ServerActions
-                serverId={server.id}
-                serverName={serverLabel(server)}
-                provisioning={server.status === "provisioning"}
-              />
-            </div>
-          )}
+          <Badge variant="secondary">{server.status}</Badge>
+          {/* Every server is a bootstrapped agent now (the host running Deplo
+              included), so the management actions apply to all of them. */}
+          <div className="ml-auto">
+            <ServerActions
+              serverId={server.id}
+              serverName={serverLabel(server)}
+              provisioning={server.status === "provisioning"}
+            />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
           <span className="font-mono text-muted-foreground">{server.ip}</span>
@@ -114,9 +110,10 @@ export default async function ServersPage() {
           <div className="space-y-1.5">
             <CardTitle>Add a server</CardTitle>
             <CardDescription>
-              Register a remote Linux host, then run the one-time install command
-              it gives you on the server. The agent calls home and provisions
-              itself — Deplo never needs SSH access to your box.
+              Start with <strong>this host</strong>: add it (use its IP), then run
+              the one-time install command it gives you here on the box to install
+              the agent. Add more Linux hosts the same way. The agent calls home and
+              provisions itself — Deplo never needs SSH access to your servers.
             </CardDescription>
           </div>
           <AddServer />

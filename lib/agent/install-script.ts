@@ -9,7 +9,7 @@ import { resolveLatestAgentRelease } from "./release";
  * Serve the agent installer (PLAN Part B, P2). The script template lives at the
  * repo root (`install-agent.sh`, the single source of truth). The agent binary
  * is no longer built into the control-plane image — it ships as a GitHub Release
- * asset of PixelFederico/deplo-agent (see lib/agent/release.ts). At serve time we
+ * asset of DeploCloud/deplo-agent (see lib/agent/release.ts). At serve time we
  * resolve the latest release, substitute the per-arch download URL + the sha256
  * from the release's `checksums.txt`, and the script verifies the binary BEFORE
  * running it. So the chain is: operator trusts the control-plane URL they pasted

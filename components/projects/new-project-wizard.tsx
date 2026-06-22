@@ -170,8 +170,7 @@ export function NewProjectWizard({
   const [editing, setEditing] = React.useState(false);
   const locked = isTemplate && !editing;
 
-  const defaultServerId =
-    servers.find((s) => s.type === "localhost")?.id ?? servers[0]?.id ?? "";
+  const defaultServerId = servers[0]?.id ?? "";
 
   const [serverId, setServerId] = React.useState(defaultServerId);
   const [source, setSource] = React.useState<DeploySource>(
@@ -670,11 +669,6 @@ export function NewProjectWizard({
                   <span className="flex items-center gap-2">
                     <ServerIcon className="size-4 text-muted-foreground" />
                     {serverLabel(s)}
-                    {s.type === "remote" && (
-                      <Badge variant="secondary" className="ml-1">
-                        remote
-                      </Badge>
-                    )}
                   </span>
                 </SelectItem>
               ))}

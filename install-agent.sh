@@ -19,7 +19,7 @@
 #                    present over HTTPS, absent over plain HTTP (the token then
 #                    binds the response via HMAC instead).
 #
-# The agent binary ships as a GitHub Release asset (PixelFederico/deplo-agent).
+# The agent binary ships as a GitHub Release asset (DeploCloud/deplo-agent).
 # The control plane serves this script over its own domain and substitutes the
 # release's per-arch download URL + sha256 below (read from the release's
 # checksums.txt at serve time) — the script REFUSES to run a binary whose

@@ -13,12 +13,11 @@ import { type AttachHandle } from "../infra/docker";
  * A session id ties them together. The child is owned here, not by either
  * request, so a POST can reach the stdin of the process the GET is draining.
  *
- * The backing handle is BUILT BY THE CALLER and passed in (PLAN Part C): for a
- * localhost project it is `attachContainer*` over the local docker socket; for a
- * remote project it is the owning agent's bidi `Attach` stream adapted to the
- * same AttachHandle shape (the pty lives Go-side now). The session layer is
- * identical for both. An optional `cleanup` (closing the agent's gRPC client) is
- * bound atomically into the exit path here.
+ * The backing handle is BUILT BY THE CALLER and passed in (PLAN Part C): it is
+ * the owning agent's bidi `Attach` stream adapted to the AttachHandle shape (the
+ * pty lives Go-side now), for every project including the host running Deplo. An
+ * optional `cleanup` (closing the agent's gRPC client) is bound atomically into
+ * the exit path here.
  *
  * This map is module-level singleton state: it survives across requests within
  * one server process. It is NOT shared across a multi-process/clustered

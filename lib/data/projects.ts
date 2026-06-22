@@ -54,11 +54,6 @@ function isSecretKey(key: string): boolean {
   return /pass|secret|token|key|api|private|credential|dsn|url/i.test(key);
 }
 
-/** Whether a project runs on a remote server (its lifecycle hits an agent). */
-function projectIsRemote(p: Project): boolean {
-  return read().servers.find((s) => s.id === p.serverId)?.type === "remote";
-}
-
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -328,20 +323,25 @@ export async function createProject(
   while (existing.has(slug)) slug = `${slugBase}-${i++}`;
 
   const servers = read().servers;
-  // Default to the master (localhost) server; honour an explicit, existing pick.
+  // Default to the first server added; honour an explicit, existing pick. With no
+  // server seeded at setup, the list can be empty — surface a clear error so the
+  // operator adds (and provisions) a host first.
   const server =
     (input.serverId && servers.find((s) => s.id === input.serverId)) ||
-    servers.find((s) => s.type === "localhost") ||
     servers[0];
+  if (!server)
+    throw new Error(
+      "No server available — add a server from Settings → Servers and run its install command first.",
+    );
 
   // A template's generated sslip.io hosts (the primary autoDomain + every
   // exposes[].host, and any env value that embedded ${domain}) are baked in the
-  // /new page against the MASTER's IP (instanceHost), because the server isn't
+  // /new page against the instance IP (instanceHost), because the server isn't
   // known until submit. If this project targets a DIFFERENT server, those hosts
   // would route to (and display) the wrong IP — re-host them onto the target
-  // server's IP. A no-op for a master-targeted project (same IP) and non-sslip
-  // hosts. resolveServerIp falls back to instanceHost for a remote with no known
-  // IP yet, so that case also no-ops rather than rehosting toward a bad address.
+  // server's IP. A no-op when the target IP matches and for non-sslip hosts.
+  // resolveServerIp falls back to instanceHost for a server with no known IP yet,
+  // so that case also no-ops rather than rehosting toward a bad address.
   const serverIp = resolveServerIp(server);
   const hosts = rehostBlueprintHosts(
     { autoDomain: input.autoDomain, exposes: input.exposes, env: input.env },
@@ -844,18 +844,14 @@ export async function stopProject(id: string): Promise<void> {
   try {
     await stopContainer(project.slug);
   } catch (e) {
-    // A REMOTE failure must FAIL CLEARLY (PLAN Part C): the container may still
-    // be running there, so settling to "idle" would lie. This covers BOTH an
+    // A stop failure must FAIL CLEARLY (PLAN Part C): the container may still be
+    // running on the host, so settling to "idle" would lie. This covers BOTH an
     // unreachable agent (AgentUnreachableError) AND a reachable agent that
     // reported the stop failed (build.ts throws a plain Error on ok:false).
-    // Only a LOCALHOST stop stays best-effort (the old behaviour).
-    if (projectIsRemote(project)) {
-      setProjectStatus(id, "active");
-      throw new Error(
-        `The stack on ${project.name}'s server was not stopped: ${errMsg(e)}`,
-      );
-    }
-    // Localhost / best-effort: ignore (the project settles to "idle" below).
+    setProjectStatus(id, "active");
+    throw new Error(
+      `The stack on ${project.name}'s server was not stopped: ${errMsg(e)}`,
+    );
   }
   setProjectStatus(id, "idle");
 }
@@ -871,14 +867,11 @@ export async function startProject(id: string): Promise<void> {
   try {
     await startContainer(project.slug);
   } catch (e) {
-    // Remote failure (unreachable, or agent reported start failed): fail clearly
-    // rather than marking it "active" falsely. Localhost stays best-effort.
-    if (projectIsRemote(project)) {
-      throw new Error(
-        `The stack on ${project.name}'s server was not started: ${errMsg(e)}`,
-      );
-    }
-    // Localhost: best-effort (a missing container surfaces on next status read).
+    // Start failure (unreachable, or agent reported start failed): fail clearly
+    // rather than marking it "active" falsely.
+    throw new Error(
+      `The stack on ${project.name}'s server was not started: ${errMsg(e)}`,
+    );
   }
   setProjectStatus(id, "active");
   recordActivity("project", `Started ${project.name}`, user.name, id);
@@ -912,7 +905,7 @@ export async function deleteProject(id: string): Promise<void> {
   // operator cleans up the leftover containers by hand.
   const tornDown = await teardownProject(project.slug);
   const server = read().servers.find((s) => s.id === project.serverId);
-  if (!tornDown && server?.type === "remote") {
+  if (!tornDown && server) {
     recordActivity(
       "project",
       `Deleted ${project.name} but its server (${server.name}) was unreachable — ` +

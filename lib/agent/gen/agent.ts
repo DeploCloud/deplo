@@ -555,6 +555,43 @@ export interface StackResult {
   error: string;
 }
 
+/**
+ * A label-only reroute of an already-deployed stack (no build, no env change
+ * beyond what the control plane re-sends). Mirrors the compose-write half of a
+ * Deploy: the control plane renders everything, the agent just writes + brings up.
+ */
+export interface RerouteRequest {
+  /** Stack identity — keys the stack file, compose project and container name. */
+  slug: string;
+  /**
+   * The fully re-rendered stack YAML with the new domain/label set. Opaque to the
+   * agent (same contract as DeployRequest.compose_yaml).
+   */
+  composeYaml: string;
+  /**
+   * Decrypted env for ${VAR} interpolation; written to <stack_dir>/<slug>.env
+   * (0600) and passed as --env-file. Empty => no env-file.
+   */
+  env: { [key: string]: string };
+  /**
+   * Compose mount files to (re)materialise under <stack_dir>/files/<slug>/ before
+   * bringing the stack up. Empty for single-image projects.
+   */
+  mounts: MountFile[];
+}
+
+export interface RerouteRequest_EnvEntry {
+  key: string;
+  value: string;
+}
+
+export interface ReadStackResponse {
+  /** Whether a stack file exists on disk for this slug. */
+  exists: boolean;
+  /** The rendered stack YAML (empty when exists=false). */
+  yaml: string;
+}
+
 export interface InspectRequest {
   /** Inspect by container/stack name (the agent maps slug -> deplo-<slug>). */
   slug: string;
@@ -2937,6 +2974,295 @@ export const StackResult: MessageFns<StackResult> = {
     const message = createBaseStackResult();
     message.ok = object.ok ?? false;
     message.error = object.error ?? "";
+    return message;
+  },
+};
+
+function createBaseRerouteRequest(): RerouteRequest {
+  return { slug: "", composeYaml: "", env: {}, mounts: [] };
+}
+
+export const RerouteRequest: MessageFns<RerouteRequest> = {
+  encode(message: RerouteRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.composeYaml !== "") {
+      writer.uint32(18).string(message.composeYaml);
+    }
+    globalThis.Object.entries(message.env).forEach(([key, value]: [string, string]) => {
+      RerouteRequest_EnvEntry.encode({ key: key as any, value }, writer.uint32(26).fork()).join();
+    });
+    for (const v of message.mounts) {
+      MountFile.encode(v!, writer.uint32(34).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RerouteRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRerouteRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.composeYaml = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          const entry3 = RerouteRequest_EnvEntry.decode(reader, reader.uint32());
+          if (entry3.value !== undefined) {
+            message.env[entry3.key] = entry3.value;
+          }
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.mounts.push(MountFile.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RerouteRequest {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      composeYaml: isSet(object.composeYaml)
+        ? globalThis.String(object.composeYaml)
+        : isSet(object.compose_yaml)
+        ? globalThis.String(object.compose_yaml)
+        : "",
+      env: isObject(object.env)
+        ? (globalThis.Object.entries(object.env) as [string, any][]).reduce(
+          (acc: { [key: string]: string }, [key, value]: [string, any]) => {
+            acc[key] = globalThis.String(value);
+            return acc;
+          },
+          {},
+        )
+        : {},
+      mounts: globalThis.Array.isArray(object?.mounts) ? object.mounts.map((e: any) => MountFile.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: RerouteRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.composeYaml !== "") {
+      obj.composeYaml = message.composeYaml;
+    }
+    if (message.env) {
+      const entries = globalThis.Object.entries(message.env) as [string, string][];
+      if (entries.length > 0) {
+        obj.env = {};
+        entries.forEach(([k, v]) => {
+          obj.env[k] = v;
+        });
+      }
+    }
+    if (message.mounts?.length) {
+      obj.mounts = message.mounts.map((e) => MountFile.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RerouteRequest>, I>>(base?: I): RerouteRequest {
+    return RerouteRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RerouteRequest>, I>>(object: I): RerouteRequest {
+    const message = createBaseRerouteRequest();
+    message.slug = object.slug ?? "";
+    message.composeYaml = object.composeYaml ?? "";
+    message.env = (globalThis.Object.entries(object.env ?? {}) as [string, string][]).reduce(
+      (acc: { [key: string]: string }, [key, value]: [string, string]) => {
+        if (value !== undefined) {
+          acc[key] = globalThis.String(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    message.mounts = object.mounts?.map((e) => MountFile.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseRerouteRequest_EnvEntry(): RerouteRequest_EnvEntry {
+  return { key: "", value: "" };
+}
+
+export const RerouteRequest_EnvEntry: MessageFns<RerouteRequest_EnvEntry> = {
+  encode(message: RerouteRequest_EnvEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== "") {
+      writer.uint32(18).string(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RerouteRequest_EnvEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRerouteRequest_EnvEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RerouteRequest_EnvEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? globalThis.String(object.value) : "",
+    };
+  },
+
+  toJSON(message: RerouteRequest_EnvEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== "") {
+      obj.value = message.value;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RerouteRequest_EnvEntry>, I>>(base?: I): RerouteRequest_EnvEntry {
+    return RerouteRequest_EnvEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RerouteRequest_EnvEntry>, I>>(object: I): RerouteRequest_EnvEntry {
+    const message = createBaseRerouteRequest_EnvEntry();
+    message.key = object.key ?? "";
+    message.value = object.value ?? "";
+    return message;
+  },
+};
+
+function createBaseReadStackResponse(): ReadStackResponse {
+  return { exists: false, yaml: "" };
+}
+
+export const ReadStackResponse: MessageFns<ReadStackResponse> = {
+  encode(message: ReadStackResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.exists !== false) {
+      writer.uint32(8).bool(message.exists);
+    }
+    if (message.yaml !== "") {
+      writer.uint32(18).string(message.yaml);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadStackResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReadStackResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.exists = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.yaml = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReadStackResponse {
+    return {
+      exists: isSet(object.exists) ? globalThis.Boolean(object.exists) : false,
+      yaml: isSet(object.yaml) ? globalThis.String(object.yaml) : "",
+    };
+  },
+
+  toJSON(message: ReadStackResponse): unknown {
+    const obj: any = {};
+    if (message.exists !== false) {
+      obj.exists = message.exists;
+    }
+    if (message.yaml !== "") {
+      obj.yaml = message.yaml;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadStackResponse>, I>>(base?: I): ReadStackResponse {
+    return ReadStackResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadStackResponse>, I>>(object: I): ReadStackResponse {
+    const message = createBaseReadStackResponse();
+    message.exists = object.exists ?? false;
+    message.yaml = object.yaml ?? "";
     return message;
   },
 };
@@ -6587,6 +6913,40 @@ export const AgentService = {
     responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
     responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
   },
+  /**
+   * Re-apply routing to a running stack WITHOUT a rebuild. The control plane
+   * re-renders the stack YAML with the new domain set (renderCompose /
+   * buildComposeStack stay the single TS source of truth) and sends it; the agent
+   * overwrites <stack_dir>/<slug>.yml (+ the env-file and any compose mount files)
+   * and `docker compose up -d --remove-orphans`, which recreates only the routed
+   * service in place so Traefik picks up the new labels. Replaces the in-process
+   * reroute that read/wrote the stack file on the control plane's own disk.
+   */
+  reroute: {
+    path: "/deplo.agent.v1.Agent/Reroute" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: RerouteRequest): Buffer => Buffer.from(RerouteRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RerouteRequest => RerouteRequest.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
+  /**
+   * Read back the rendered stack YAML the agent has on disk (<stack_dir>/<slug>.yml)
+   * for the "View full compose" preview. The single-image/built stack's image ref
+   * + env live only in this file (not on the project), so the preview must read it
+   * from the owning host. Returns exists=false (empty yaml) when no stack file is
+   * present yet (never deployed).
+   */
+  readStack: {
+    path: "/deplo.agent.v1.Agent/ReadStack" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: StackRef): Buffer => Buffer.from(StackRef.encode(value).finish()),
+    requestDeserialize: (value: Buffer): StackRef => StackRef.decode(value),
+    responseSerialize: (value: ReadStackResponse): Buffer => Buffer.from(ReadStackResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ReadStackResponse => ReadStackResponse.decode(value),
+  },
   /** Container introspection (status/running) for the live-status subscriptions. */
   inspect: {
     path: "/deplo.agent.v1.Agent/Inspect" as const,
@@ -6921,6 +7281,24 @@ export interface AgentServer extends UntypedServiceImplementation {
   stopStack: handleUnaryCall<StackRef, StackResult>;
   startStack: handleUnaryCall<StackRef, StackResult>;
   destroyStack: handleUnaryCall<StackRef, StackResult>;
+  /**
+   * Re-apply routing to a running stack WITHOUT a rebuild. The control plane
+   * re-renders the stack YAML with the new domain set (renderCompose /
+   * buildComposeStack stay the single TS source of truth) and sends it; the agent
+   * overwrites <stack_dir>/<slug>.yml (+ the env-file and any compose mount files)
+   * and `docker compose up -d --remove-orphans`, which recreates only the routed
+   * service in place so Traefik picks up the new labels. Replaces the in-process
+   * reroute that read/wrote the stack file on the control plane's own disk.
+   */
+  reroute: handleUnaryCall<RerouteRequest, StackResult>;
+  /**
+   * Read back the rendered stack YAML the agent has on disk (<stack_dir>/<slug>.yml)
+   * for the "View full compose" preview. The single-image/built stack's image ref
+   * + env live only in this file (not on the project), so the preview must read it
+   * from the owning host. Returns exists=false (empty yaml) when no stack file is
+   * present yet (never deployed).
+   */
+  readStack: handleUnaryCall<StackRef, ReadStackResponse>;
   /** Container introspection (status/running) for the live-status subscriptions. */
   inspect: handleUnaryCall<InspectRequest, InspectResponse>;
   /**
@@ -7133,6 +7511,52 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  /**
+   * Re-apply routing to a running stack WITHOUT a rebuild. The control plane
+   * re-renders the stack YAML with the new domain set (renderCompose /
+   * buildComposeStack stay the single TS source of truth) and sends it; the agent
+   * overwrites <stack_dir>/<slug>.yml (+ the env-file and any compose mount files)
+   * and `docker compose up -d --remove-orphans`, which recreates only the routed
+   * service in place so Traefik picks up the new labels. Replaces the in-process
+   * reroute that read/wrote the stack file on the control plane's own disk.
+   */
+  reroute(
+    request: RerouteRequest,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  reroute(
+    request: RerouteRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  reroute(
+    request: RerouteRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  /**
+   * Read back the rendered stack YAML the agent has on disk (<stack_dir>/<slug>.yml)
+   * for the "View full compose" preview. The single-image/built stack's image ref
+   * + env live only in this file (not on the project), so the preview must read it
+   * from the owning host. Returns exists=false (empty yaml) when no stack file is
+   * present yet (never deployed).
+   */
+  readStack(
+    request: StackRef,
+    callback: (error: ServiceError | null, response: ReadStackResponse) => void,
+  ): ClientUnaryCall;
+  readStack(
+    request: StackRef,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ReadStackResponse) => void,
+  ): ClientUnaryCall;
+  readStack(
+    request: StackRef,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ReadStackResponse) => void,
   ): ClientUnaryCall;
   /** Container introspection (status/running) for the live-status subscriptions. */
   inspect(
