@@ -1,14 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { agentCanHandle, explicitDockerfileDescriptor } from "./agent-deploy";
+import {
+  agentCanHandle,
+  agentCapabilityForMethod,
+  buildSpecFor,
+  explicitDockerfileDescriptor,
+} from "./agent-deploy";
 import type { BuildConfig } from "../types";
 
 /**
- * Part A routes ONLY the Dockerfile-family build (explicit Dockerfile, or the
- * generated/auto Node Dockerfile) and prebuilt images through the agent; the
- * heavy builders stay on the local path. agentCanHandle is the gate, so its
- * decisions are the contract for "what the agent owns in Part A".
+ * The agent now runs EVERY build method (the Dockerfile family + the heavy
+ * builders static/nixpacks/buildpacks/railpack, ported to deplo-agent). So
+ * agentCanHandle is always true; the real gate is per-server —
+ * agentCapabilityForMethod names the Hello capability the owning agent must
+ * advertise, and the deploy path checks it before routing.
  */
 
 function build(method: BuildConfig["buildMethod"]): BuildConfig {
@@ -26,18 +32,44 @@ function build(method: BuildConfig["buildMethod"]): BuildConfig {
   };
 }
 
-test("image source (no build config) is agent-eligible", () => {
+test("image source (no build config) is agent-eligible and needs no heavy capability", () => {
   assert.equal(agentCanHandle(null), true);
+  assert.equal(agentCapabilityForMethod(null), null);
 });
 
-test("the dockerfile method is agent-eligible", () => {
-  assert.equal(agentCanHandle(build("dockerfile")), true);
-});
-
-test("the heavy builders are NOT agent-eligible (they have no in-process fallback now, so a clear deploy error)", () => {
-  for (const m of ["nixpacks", "railpack", "heroku", "paketo", "static"] as const) {
-    assert.equal(agentCanHandle(build(m)), false, `${m} is not an agent capability`);
+test("every build method is now agent-eligible", () => {
+  for (const m of ["dockerfile", "nixpacks", "railpack", "heroku", "paketo", "static"] as const) {
+    assert.equal(agentCanHandle(build(m)), true, `${m} is agent-eligible`);
   }
+});
+
+test("the dockerfile family needs no heavy capability; each heavy method names its own", () => {
+  assert.equal(agentCapabilityForMethod(build("dockerfile")), null);
+  assert.equal(agentCapabilityForMethod(build("static")), "deploy.static");
+  assert.equal(agentCapabilityForMethod(build("nixpacks")), "deploy.nixpacks");
+  // heroku + paketo are both Cloud Native Buildpacks → one capability.
+  assert.equal(agentCapabilityForMethod(build("heroku")), "deploy.buildpacks");
+  assert.equal(agentCapabilityForMethod(build("paketo")), "deploy.buildpacks");
+  assert.equal(agentCapabilityForMethod(build("railpack")), "deploy.railpack");
+});
+
+test("buildSpecFor flattens the build config + resolves the runtime language", () => {
+  const b = build("nixpacks");
+  b.installCommand = "npm ci";
+  b.buildCommand = "npm run build";
+  b.startCommand = "node server.js";
+  b.runtimeVersion = "20";
+  b.methodSettings = { nixpacksPublishDirectory: "dist", staticSinglePageApp: true };
+  const spec = buildSpecFor(b);
+  assert.equal(spec.method, "nixpacks");
+  assert.equal(spec.port, 3000);
+  assert.equal(spec.installCommand, "npm ci");
+  assert.equal(spec.buildCommand, "npm run build");
+  assert.equal(spec.startCommand, "node server.js");
+  assert.equal(spec.runtimeVersion, "20");
+  assert.equal(spec.runtimeLanguage, "node", "node framework → node language");
+  assert.equal(spec.nixpacksPublishDirectory, "dist");
+  assert.equal(spec.staticSinglePageApp, true);
 });
 
 test("explicit dockerfile descriptor carries methodSettings (parity with builders.ts)", () => {

@@ -32,7 +32,7 @@ import {
 import { installationCloneUrl } from "../github/app";
 import { publishProjectChanged } from "../graphql/pubsub";
 import {
-  agentCanHandle,
+  agentCapabilityForMethod,
   runAgentDeploy,
   AgentUnavailableError,
   type AgentBuildPlan,
@@ -132,8 +132,20 @@ export function renderCompose(opts: {
     mountPath: string;
     readOnly?: boolean;
   }[];
+  /**
+   * Whether to inject `PORT=<port>` into the container env. True for sources
+   * Deplo BUILDS (git/upload/dockerfile/dev-workspace) — 12-factor apps bind
+   * to $PORT, so we tell the container where Traefik forwards. FALSE for a
+   * prebuilt docker image: that image is deployed as-is and its author already
+   * chose where it listens; injecting PORT silently overrides that listen
+   * address (e.g. an image that binds :8080 gets forced onto :3000). The routing
+   * target is unaffected — it comes from the Ports/Domains routing model
+   * (`expose.port`/per-domain `route.port`), not from this env var.
+   */
+  injectPort?: boolean;
 }): string {
   const { name, image, port, projectId, slug, routes } = opts;
+  const injectPort = opts.injectPort ?? true;
   const vols = opts.volumes ?? [];
   const namedVols = vols.filter((v) => v.type !== "host" && v.type !== "project");
   // Absolute, per-project files dir — the same sandbox the `./<x>` compose
@@ -143,8 +155,10 @@ export function renderCompose(opts: {
   // Default PORT to the project's default container port so 12-factor apps
   // (buildpacks, Nixpacks, Railpack) bind where Traefik forwards. A user-set
   // PORT wins. Per-domain port overrides only change Traefik's target, not the
-  // single PORT the container is told to listen on.
-  const env = { PORT: String(port), ...opts.env };
+  // single PORT the container is told to listen on. Skipped entirely for a
+  // prebuilt image (injectPort=false): it deploys as-is and owns its own listen
+  // address — see the injectPort docs above.
+  const env = injectPort ? { PORT: String(port), ...opts.env } : { ...opts.env };
   // Traefik routing (TLS via Let's Encrypt), one router per distinct target
   // port. The global web->websecure redirect is configured on the proxy, so no
   // per-router middleware is needed here.
@@ -483,22 +497,13 @@ async function runDeployment(depId: string): Promise<void> {
     await mkdir(STACK_DIR, { recursive: true });
     await ensureNetwork("deplo");
 
-    // Every server is reached only through its agent — there is no in-process
-    // build path. The heavy builders (Nixpacks/Buildpacks/Railpack/static) aren't
-    // agent capabilities yet, so a project using one fails clearly here rather
-    // than having nowhere to run. (Image + Dockerfile/auto + single-image compose
-    // go through the agent below.) An unprovisioned server also fails fast (P5).
-    if (!agentCanHandle(project.build)) {
-      log(
-        depId,
-        "error",
-        "This build method can't be deployed by the agent yet (only Dockerfile/" +
-          "auto builds and prebuilt images can). Switch the build method.",
-      );
-      setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-      setProject(project.id, { status: "error" });
-      return;
-    }
+    // The agent now runs EVERY build method (Dockerfile family + the heavy
+    // builders static/nixpacks/buildpacks/railpack, ported to deplo-agent). The
+    // only gate left is per-server: is THIS server's agent new enough to carry the
+    // method's capability? That check is below (after the compose branch), keyed on
+    // agentCapabilityForMethod. A compose stack is NOT a single-image build — it
+    // never consults project.build — so it is handled by its own branch first and
+    // is exempt from the build-method capability gate.
 
     // Multi-service compose / one-click template deploy: deploy the project's
     // own compose stack, wired to Traefik on the generated domain. The compose
@@ -543,6 +548,41 @@ async function runDeployment(depId: string): Promise<void> {
     let agentOutcome: "agent" | "failed" | null = null;
     const serverId = project.serverId;
 
+    // Per-server build-method capability gate. A heavy method (static/nixpacks/
+    // buildpacks/railpack) needs the matching capability on THIS server's agent; an
+    // older agent would accept the Deploy and only fail deep in its switch with an
+    // opaque error. Gate on the advertised capability and fail with an actionable
+    // "update the agent" message instead (mirrors the compose.multi gate + P5's
+    // fail-fast-on-an-incapable-agent discipline). The Dockerfile family + a
+    // prebuilt image need no heavy capability, so the check is skipped for them.
+    const requiredCapability = agentCapabilityForMethod(project.build);
+    if (requiredCapability) {
+      try {
+        const hello = await agentPreflight(serverId);
+        if (!hello.capabilities.includes(requiredCapability)) {
+          log(
+            depId,
+            "error",
+            `This server's agent is too old to run the ${project.build.buildMethod} ` +
+              `build method. Update the agent (reissue the install command from the ` +
+              `server's actions menu).`,
+          );
+          setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
+          setProject(project.id, { status: "error" });
+          return;
+        }
+      } catch (e) {
+        log(
+          depId,
+          "error",
+          `Agent unavailable: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
+        setProject(project.id, { status: "error" });
+        return;
+      }
+    }
+
     // Render the single-image stack the agent brings up. The control plane stays
     // the single source of truth for the compose (D2) and env decryption (D4);
     // both are computed here, once, and handed to the agent.
@@ -556,6 +596,10 @@ async function runDeployment(depId: string): Promise<void> {
         slug,
         routes: routeDomains,
         env,
+        // A prebuilt image is deployed as-is — never inject PORT and override the
+        // listen address its author baked in. Built sources (git/upload/dockerfile/
+        // dev-workspace) DO get PORT so 12-factor apps bind where Traefik forwards.
+        injectPort: project.source !== "docker-image",
         // The deploy path is the only writer of volumes into the stack — sourced
         // from the project. A reroute reads them back from the file instead.
         volumes: project.volumes ?? [],
@@ -574,14 +618,6 @@ async function runDeployment(depId: string): Promise<void> {
       failOnMissing: boolean;
       notFoundMessage?: string;
     }): Promise<void> => {
-      if (!agentCanHandle(project.build)) {
-        // The build method isn't an agent capability and there is no in-process
-        // fallback — fail clearly so the operator switches the build method.
-        throw new Error(
-          "This build method can't be deployed by the agent yet (only Dockerfile/" +
-            "auto builds and prebuilt images can). Switch the build method.",
-        );
-      }
       const { buildDir } = await buildImageFromTree({
         depId,
         project,
@@ -630,12 +666,6 @@ async function runDeployment(depId: string): Promise<void> {
         // the host running Deplo included. The agent builds from its OWN workspace
         // via SOURCE_KIND_DEV_WORKSPACE (same exclude-set + symlink-reject guard
         // copyWorkspaceForBuild applied). No workspace bytes cross the wire.
-        if (!agentCanHandle(project.build)) {
-          throw new Error(
-            "This build method can't be deployed by the agent yet (only Dockerfile/" +
-              "auto builds and prebuilt images can). Switch the build method.",
-          );
-        }
         const { composeYaml, env } = renderStack(imageRef);
         const { outcome } = await tryAgent({
           depId,
@@ -676,12 +706,6 @@ async function runDeployment(depId: string): Promise<void> {
         // the descriptor does. The control plane resolves the authenticated clone
         // URL (short-lived token baked in for private GitHub) and hands the agent
         // the branch + subdir; the agent reports back the commit sha it checked out.
-        if (!agentCanHandle(project.build)) {
-          throw new Error(
-            "This build method can't be deployed by the agent yet (only Dockerfile/" +
-              "auto builds and prebuilt images can). Switch the build method.",
-          );
-        }
         const cloneUrl = await installationCloneUrl(
           repo.url,
           repo.installationId ?? null,
@@ -1169,6 +1193,10 @@ export async function rerouteProject(
         slug,
         routes,
         env,
+        // Mirror the deploy path: a prebuilt image never carries an injected PORT,
+        // so a domain-only reroute must not add one (it would diverge from the
+        // running stack and force a needless container restart).
+        injectPort: project.source !== "docker-image",
         volumes,
       });
     }

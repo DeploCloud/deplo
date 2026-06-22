@@ -130,3 +130,66 @@ test("dev-workspace plan with the explicit dockerfile method honours methodSetti
   assert.equal(req.dockerfile?.targetStage, "prod");
   assert.equal(req.dockerfile?.generated, false);
 });
+
+/**
+ * Heavy build methods (static/nixpacks/buildpacks/railpack) now run agent-side.
+ * buildDeployRequest must map them to the matching heavy BuildKind + a BuildSpec
+ * (NOT BUILD_KIND_DOCKERFILE + a dockerfile descriptor) so the agent dispatches to
+ * the ported builder. The git + dev-workspace arms can't probe the tree, so they
+ * key purely off the method — these pin that mapping.
+ */
+
+test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfile", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    plan: {
+      kind: "git",
+      url: "https://x@github.com/o/r.git",
+      branch: "main",
+      subdir: "",
+      build: devBuild({ buildMethod: "nixpacks", installCommand: "npm ci" }),
+    },
+  });
+  assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_GIT);
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_NIXPACKS);
+  assert.equal(req.dockerfile, undefined, "heavy method does not send a dockerfile descriptor");
+  assert.equal(req.buildSpec?.method, "nixpacks");
+  assert.equal(req.buildSpec?.installCommand, "npm ci");
+  assert.equal(req.buildSpec?.runtimeLanguage, "node");
+});
+
+test("dev-workspace plan with the static method → BUILD_KIND_STATIC + a BuildSpec", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    plan: {
+      kind: "dev-workspace",
+      build: devBuild({
+        buildMethod: "static",
+        outputDirectory: "dist",
+        methodSettings: { staticSinglePageApp: true },
+      }),
+      subdir: "",
+    },
+  });
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_STATIC);
+  assert.equal(req.buildSpec?.method, "static");
+  assert.equal(req.buildSpec?.outputDirectory, "dist");
+  assert.equal(req.buildSpec?.staticSinglePageApp, true);
+});
+
+test("the buildpacks methods (heroku/paketo) both map to BUILD_KIND_BUILDPACKS", async () => {
+  for (const method of ["heroku", "paketo"] as const) {
+    const req = await buildDeployRequest({
+      ...base,
+      plan: {
+        kind: "git",
+        url: "https://x@github.com/o/r.git",
+        branch: "main",
+        subdir: "",
+        build: devBuild({ buildMethod: method }),
+      },
+    });
+    assert.equal(req.buildKind, BuildKind.BUILD_KIND_BUILDPACKS, `${method} → BUILDPACKS`);
+    assert.equal(req.buildSpec?.method, method, "the flavor rides in the spec");
+  }
+});

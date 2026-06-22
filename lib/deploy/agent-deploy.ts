@@ -9,11 +9,12 @@ import {
   DeployPhase,
   type DeployRequest,
   type DeployEvent,
+  type BuildSpec,
 } from "../agent/gen/agent";
 import { connectAgent, agentPreflight } from "../infra/agent-client";
 import { generateDockerfile } from "./dockerfile";
-import { normalizeBuildConfig } from "../frameworks";
-import type { BuildConfig, LogLevel } from "../types";
+import { normalizeBuildConfig, runtimeFor } from "../frameworks";
+import type { BuildConfig, BuildMethod, LogLevel } from "../types";
 
 /**
  * The agent-deploy seam (PLAN Part A, step 4). Every deploy EXECUTES on the
@@ -22,12 +23,14 @@ import type { BuildConfig, LogLevel } from "../types";
  * rendering (D2) and env decryption (D4) — then hands the agent a self-contained
  * DeployRequest and streams its events back into the existing log/status writes.
  *
- * The agent handles the **Dockerfile/auto build + single-image compose-up** path,
- * prebuilt images, git clones, dev-workspace builds, and multi-service compose
- * stacks. Build methods the agent can't yet run ({@link agentCanHandle} returns
- * false — Nixpacks/Buildpacks/Railpack/static) are a clear deploy ERROR, not a
- * fallback: there is no local path to fall back to. An unreachable/unavailable
- * agent is likewise a hard deploy failure (P5), never a silent local rebuild.
+ * The agent handles EVERY build method — the Dockerfile/auto family, prebuilt
+ * images, git clones, dev-workspace builds, multi-service compose stacks, AND the
+ * heavy builders (static/nixpacks/buildpacks/railpack, ported to deplo-agent). The
+ * only per-server gate is whether THIS server's agent is new enough to carry the
+ * method's capability ({@link agentCapabilityForMethod}); an older agent is a clear
+ * "update the agent" deploy ERROR, not a fallback — there is no local path to fall
+ * back to. An unreachable/unavailable agent is likewise a hard deploy failure (P5),
+ * never a silent local rebuild.
  */
 
 /** A built-context source the agent can tar up and build, vs. an image to run. */
@@ -92,20 +95,72 @@ export type AgentBuildPlan =
     };
 
 /**
- * Whether the agent can execute this deploy in Part A. The agent owns only the
- * Dockerfile-family build (an explicit Dockerfile, or the generated/auto Node
- * Dockerfile) and running a prebuilt image. The heavier builders stay local.
+ * Whether the agent can execute this build method at all. Every method the
+ * control plane knows is now an agent capability — the Dockerfile family (explicit
+ * + generated/auto), prebuilt images, AND the heavy builders (static / nixpacks /
+ * buildpacks / railpack), each ported to the agent (deplo-agent build_methods.go).
+ * So this is always true; it stays as the single predicate the deploy arms call so
+ * a future agent-only-can't-do-X method has one place to return false. The PER-
+ * SERVER gate (is THIS server's agent new enough to have the method's capability?)
+ * is {@link agentCapabilityForMethod} + a Hello check at the call site, not here.
  */
 export function agentCanHandle(build: BuildConfig | null): boolean {
   if (!build) return true; // image source: no build config involved
-  const method = normalizeBuildConfig(build).buildMethod;
-  // "dockerfile" is explicit; an unknown/legacy method funnels to the generated
-  // Dockerfile path (buildGenerated), which the agent also supports. The named
-  // heavy builders do NOT.
-  return method === "dockerfile" || !KNOWN_HEAVY.has(method);
+  void normalizeBuildConfig(build).buildMethod; // every known method is handled
+  return true;
 }
 
-const KNOWN_HEAVY = new Set(["railpack", "nixpacks", "heroku", "paketo", "static"]);
+/** The heavy build methods, mapped to the agent BuildKind that runs them and the
+ * Hello capability a server's agent must advertise to be sent that kind. A method
+ * absent here is the Dockerfile family (explicit or generated/auto). */
+const HEAVY_METHOD: Record<
+  string,
+  { kind: BuildKind; capability: string } | undefined
+> = {
+  static: { kind: BuildKind.BUILD_KIND_STATIC, capability: "deploy.static" },
+  nixpacks: { kind: BuildKind.BUILD_KIND_NIXPACKS, capability: "deploy.nixpacks" },
+  heroku: { kind: BuildKind.BUILD_KIND_BUILDPACKS, capability: "deploy.buildpacks" },
+  paketo: { kind: BuildKind.BUILD_KIND_BUILDPACKS, capability: "deploy.buildpacks" },
+  railpack: { kind: BuildKind.BUILD_KIND_RAILPACK, capability: "deploy.railpack" },
+};
+
+/** The agent capability a build method requires, or null for the Dockerfile family
+ * (always supported via the base deploy.dockerfile capability). The deploy path
+ * checks this against the server's Hello capabilities before routing — an older
+ * agent without it gets a clear "update the agent" error. */
+export function agentCapabilityForMethod(build: BuildConfig | null): string | null {
+  if (!build) return null;
+  return HEAVY_METHOD[normalizeBuildConfig(build).buildMethod]?.capability ?? null;
+}
+
+/** The heavy BuildKind for a method, or null for the Dockerfile family (which uses
+ * BUILD_KIND_DOCKERFILE + a DockerfileDescriptor instead of a BuildSpec). */
+function heavyBuildKind(method: BuildMethod): BuildKind | null {
+  return HEAVY_METHOD[method]?.kind ?? null;
+}
+
+/** The BuildSpec the agent's heavy builders read — flattens BuildConfig +
+ * methodSettings onto the wire, resolving the framework's runtime language here so
+ * the agent stays dumb about Deplo's framework registry. Mirrors the fields
+ * builders.ts reads. Pure (no I/O) so the mapping is unit-tested directly. */
+export function buildSpecFor(build: BuildConfig): BuildSpec {
+  const b = normalizeBuildConfig(build);
+  const lang = runtimeFor(b.framework).language;
+  return {
+    method: b.buildMethod,
+    port: b.port ?? 0,
+    installCommand: b.installCommand ?? "",
+    buildCommand: b.buildCommand ?? "",
+    startCommand: b.startCommand ?? "",
+    outputDirectory: b.outputDirectory ?? "",
+    runtimeVersion: b.runtimeVersion ?? "",
+    runtimeLanguage: lang,
+    nixpacksPublishDirectory: b.methodSettings.nixpacksPublishDirectory?.trim() ?? "",
+    herokuVersion: b.methodSettings.herokuVersion?.trim() ?? "",
+    railpackVersion: b.methodSettings.railpackVersion?.trim() ?? "",
+    staticSinglePageApp: b.methodSettings.staticSinglePageApp ?? false,
+  };
+}
 
 /** The proto DockerfileBuild shape the agent receives. */
 export interface DockerfileDescriptor {
@@ -366,6 +421,7 @@ export async function buildDeployRequest(opts: {
     pullImage: false,
     mounts: [],
     devWorkspaceSubdir: "",
+    buildSpec: undefined,
   };
 
   if (opts.plan.kind === "compose") {
@@ -399,27 +455,13 @@ export async function buildDeployRequest(opts: {
 
   if (opts.plan.kind === "git") {
     // GIT source (D3): the agent clones the repo itself, so no context is tarred
-    // here — only the descriptor crosses the wire. We can't probe the (not-yet-
-    // cloned) tree for a root Dockerfile, so for the generated/auto method we
-    // send generated:true with the body; the agent's buildImage writes it ONLY
-    // when the clone has no Dockerfile — the same prefer-repo-Dockerfile
-    // semantics as the local buildGenerated path, decided where the tree lives.
-    const normalized = normalizeBuildConfig(opts.plan.build);
-    const dockerfile =
-      normalized.buildMethod === "dockerfile"
-        ? explicitDockerfileDescriptor(normalized)
-        : {
-            dockerfilePath: "",
-            contextPath: ".",
-            targetStage: "",
-            generated: true,
-            generatedDockerfile: generateDockerfile(normalized),
-          };
+    // here — only the descriptor crosses the wire. The tree isn't here to probe,
+    // so noProbeBuildFields sends generated:true (the agent writes it ONLY when the
+    // clone has no Dockerfile) for the auto method, or the heavy kind + BuildSpec.
     return {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_GIT,
-      buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
-      dockerfile,
+      ...noProbeBuildFields(opts.plan.build),
       git: {
         url: opts.plan.url,
         branch: opts.plan.branch,
@@ -431,44 +473,38 @@ export async function buildDeployRequest(opts: {
 
   if (opts.plan.kind === "dev-workspace") {
     // DEV_WORKSPACE source (Part D, remote): the agent builds from its OWN
-    // <dev-dir>/<slug> (no tree crosses the wire). Like the git arm, we can't
-    // probe the not-here tree for a root Dockerfile, so for the generated/auto
-    // method we send generated:true with the body; the agent's buildImage writes
-    // it ONLY when the workspace has no Dockerfile — same prefer-repo-Dockerfile
-    // semantics as the local copyWorkspaceForBuild + buildGenerated path.
-    const normalized = normalizeBuildConfig(opts.plan.build);
-    const dockerfile =
-      normalized.buildMethod === "dockerfile"
-        ? explicitDockerfileDescriptor(normalized)
-        : {
-            dockerfilePath: "",
-            contextPath: ".",
-            targetStage: "",
-            generated: true,
-            generatedDockerfile: generateDockerfile(normalized),
-          };
+    // <dev-dir>/<slug> (no tree crosses the wire). Same no-probe dispatch as git.
     return {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_DEV_WORKSPACE,
-      buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
-      dockerfile,
+      ...noProbeBuildFields(opts.plan.build),
       devWorkspaceSubdir: opts.plan.subdir,
     };
   }
 
-  // Dockerfile build from a materialised local context (UPLOAD). The dispatch
-  // MUST mirror lib/deploy/builders.ts so the agent builds byte-identically to
-  // the old local path:
-  //   - buildMethod "dockerfile" → buildFromDockerfile: honour the explicit
-  //     dockerfilePath / dockerContextPath / dockerBuildStage from methodSettings;
-  //     the Dockerfile is REQUIRED (the agent errors loudly if it is missing),
-  //     and a generated Dockerfile is NEVER substituted.
-  //   - anything else (the legacy/auto method agentCanHandle also allows) →
-  //     buildGenerated: build the repo's root Dockerfile if present, else build a
-  //     control-plane-generated one.
+  // Materialised local context (UPLOAD). The dispatch MUST mirror builders.ts so
+  // the agent builds byte-identically to the old local path:
+  //   - heavy method (static/nixpacks/buildpacks/railpack) → the heavy BuildKind +
+  //     a BuildSpec; the agent runs the ported builder.
+  //   - "dockerfile" → buildFromDockerfile: honour the explicit dockerfilePath /
+  //     dockerContextPath / dockerBuildStage; the Dockerfile is REQUIRED, never
+  //     substituted with a generated one.
+  //   - legacy/auto → buildGenerated: build the repo's root Dockerfile if present
+  //     (we CAN probe the materialised tree here), else a generated one.
   const { buildDir, build } = opts.plan;
   const normalized = normalizeBuildConfig(build);
   const tar = await tarDir(buildDir);
+
+  const heavyKind = heavyBuildKind(normalized.buildMethod);
+  if (heavyKind !== null) {
+    return {
+      ...base,
+      sourceKind: SourceKind.SOURCE_KIND_UPLOAD,
+      buildKind: heavyKind,
+      buildSpec: buildSpecFor(normalized),
+      contextTar: tar,
+    };
+  }
 
   let dockerfile;
   if (normalized.buildMethod === "dockerfile") {
@@ -497,6 +533,31 @@ export async function buildDeployRequest(opts: {
     dockerfile,
     contextTar: tar,
   };
+}
+
+/** The build-dispatch fields (buildKind + dockerfile|buildSpec) for a source whose
+ * tree the control plane CANNOT probe here (git clone / dev workspace both
+ * materialise on the agent). A heavy method → its BuildKind + a BuildSpec; the
+ * Dockerfile family → BUILD_KIND_DOCKERFILE with an explicit descriptor, or
+ * generated:true (the agent writes the body only when the tree has no Dockerfile,
+ * preserving the prefer-repo-Dockerfile semantics where the tree actually lives). */
+function noProbeBuildFields(build: BuildConfig): Partial<DeployRequest> {
+  const normalized = normalizeBuildConfig(build);
+  const heavyKind = heavyBuildKind(normalized.buildMethod);
+  if (heavyKind !== null) {
+    return { buildKind: heavyKind, buildSpec: buildSpecFor(normalized) };
+  }
+  const dockerfile =
+    normalized.buildMethod === "dockerfile"
+      ? explicitDockerfileDescriptor(normalized)
+      : {
+          dockerfilePath: "",
+          contextPath: ".",
+          targetStage: "",
+          generated: true,
+          generatedDockerfile: generateDockerfile(normalized),
+        };
+  return { buildKind: BuildKind.BUILD_KIND_DOCKERFILE, dockerfile };
 }
 
 /**

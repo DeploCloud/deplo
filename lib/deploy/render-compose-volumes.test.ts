@@ -44,6 +44,20 @@ test("no volumes: output is byte-identical with [], undefined, and missing key",
   assert.ok(!/\bvolumes:/.test(withMissing), "no volumes: key when empty");
 });
 
+test("PORT is injected for a built source (default) but NOT for a prebuilt image", () => {
+  // Built sources (git/upload/dockerfile/dev-workspace): PORT tells the 12-factor
+  // app where Traefik forwards. Default behaviour, so the flag is omitted.
+  const built = renderCompose(base);
+  assert.match(built, /PORT: "3000"/, "built source gets PORT injected");
+
+  // A prebuilt docker image is deployed as-is — it owns its own listen address,
+  // so Deplo must not inject PORT (which would silently override e.g. an :8080
+  // image onto :3000). The rest of the env is untouched.
+  const image = renderCompose({ ...base, injectPort: false });
+  assert.ok(!/\bPORT:/.test(image), "prebuilt image stack carries no PORT env");
+  assert.match(image, /FOO: "bar"/, "user env is still rendered");
+});
+
 test("named volumes: emits service list + namespaced top-level volume", () => {
   const yaml = renderCompose({
     ...base,

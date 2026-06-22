@@ -158,11 +158,15 @@ export function sourceKindToJSON(object: SourceKind): string {
 }
 
 /**
- * How the agent turns the build context into an image. Part A implements the
- * DOCKERFILE family (an explicit or generated Dockerfile, the most common path);
- * the heavier builders (Nixpacks/Buildpacks/Railpack/static) stay on the control
- * plane's local path in Part A and migrate agent-side later. NONE means "no
- * build, run the IMAGE source directly".
+ * How the agent turns the build context into an image. The DOCKERFILE family (an
+ * explicit or generated Dockerfile, the most common path) was Part A; the heavier
+ * builders (Nixpacks/Buildpacks/Railpack/static) — ported from the control plane's
+ * old in-process builders (lib/deploy/builders.ts) — now ALSO run agent-side, each
+ * keyed by a BuildKind below and parameterised by DeployRequest.build_spec. NONE
+ * means "no build, run the IMAGE source directly". A heavy kind is only sent to an
+ * agent whose Hello advertised the matching capability (deploy.nixpacks / .static /
+ * .buildpacks / .railpack); an older agent surfaces a clear "update the agent"
+ * error rather than silently mishandling the request — forward-compatible (D6).
  */
 export enum BuildKind {
   BUILD_KIND_UNSPECIFIED = 0,
@@ -170,6 +174,18 @@ export enum BuildKind {
   BUILD_KIND_NONE = 1,
   /** BUILD_KIND_DOCKERFILE - build from a Dockerfile in the context */
   BUILD_KIND_DOCKERFILE = 2,
+  /**
+   * BUILD_KIND_STATIC - The heavy builders. Each reads DeployRequest.build_spec for its method
+   * settings (port, commands, runtime version, per-method knobs). The agent ports
+   * builders.ts byte-for-byte so an image built here matches the old local path.
+   */
+  BUILD_KIND_STATIC = 3,
+  /** BUILD_KIND_NIXPACKS - nixpacks generates a Dockerfile, then docker build */
+  BUILD_KIND_NIXPACKS = 4,
+  /** BUILD_KIND_BUILDPACKS - Cloud Native Buildpacks via `pack` (heroku|paketo) */
+  BUILD_KIND_BUILDPACKS = 5,
+  /** BUILD_KIND_RAILPACK - railpack plan + buildkitd/buildctl */
+  BUILD_KIND_RAILPACK = 6,
   UNRECOGNIZED = -1,
 }
 
@@ -184,6 +200,18 @@ export function buildKindFromJSON(object: any): BuildKind {
     case 2:
     case "BUILD_KIND_DOCKERFILE":
       return BuildKind.BUILD_KIND_DOCKERFILE;
+    case 3:
+    case "BUILD_KIND_STATIC":
+      return BuildKind.BUILD_KIND_STATIC;
+    case 4:
+    case "BUILD_KIND_NIXPACKS":
+      return BuildKind.BUILD_KIND_NIXPACKS;
+    case 5:
+    case "BUILD_KIND_BUILDPACKS":
+      return BuildKind.BUILD_KIND_BUILDPACKS;
+    case 6:
+    case "BUILD_KIND_RAILPACK":
+      return BuildKind.BUILD_KIND_RAILPACK;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -199,6 +227,14 @@ export function buildKindToJSON(object: BuildKind): string {
       return "BUILD_KIND_NONE";
     case BuildKind.BUILD_KIND_DOCKERFILE:
       return "BUILD_KIND_DOCKERFILE";
+    case BuildKind.BUILD_KIND_STATIC:
+      return "BUILD_KIND_STATIC";
+    case BuildKind.BUILD_KIND_NIXPACKS:
+      return "BUILD_KIND_NIXPACKS";
+    case BuildKind.BUILD_KIND_BUILDPACKS:
+      return "BUILD_KIND_BUILDPACKS";
+    case BuildKind.BUILD_KIND_RAILPACK:
+      return "BUILD_KIND_RAILPACK";
     case BuildKind.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -326,6 +362,73 @@ export interface HostMetrics {
   load15: number;
   uptimeSec: number;
   runningContainers: number;
+}
+
+/**
+ * The build method's settings for a heavy BuildKind (STATIC/NIXPACKS/BUILDPACKS/
+ * RAILPACK). Mirrors the fields lib/deploy/builders.ts reads off BuildConfig +
+ * methodSettings, flattened onto the wire. The control plane is the single source
+ * of truth: it resolves the framework's runtime language (runtimeFor().language)
+ * so the agent stays dumb about Deplo's framework registry. Only the fields the
+ * chosen method uses are read; the rest are ignored. Present iff build_kind is one
+ * of the heavy kinds (DeployRequest.build_spec).
+ */
+export interface BuildSpec {
+  /**
+   * The build method name, for logs + the buildpacks flavor select
+   * ("nixpacks"|"heroku"|"paketo"|"railpack"|"static"). The agent dispatches on
+   * build_kind, not this string; it is the human label + the heroku/paketo split.
+   */
+  method: string;
+  /**
+   * The container port the app listens on (drives PORT/--build-arg PORT and the
+   * nginx `listen`). 0 => the method's default (nginx 80).
+   */
+  port: number;
+  /**
+   * Build commands (empty => the method's own default / detection). Mirror
+   * BuildConfig.installCommand / buildCommand / startCommand.
+   */
+  installCommand: string;
+  buildCommand: string;
+  startCommand: string;
+  /**
+   * The static method's output dir to serve (BuildConfig.outputDirectory). Empty
+   * => ".".
+   */
+  outputDirectory: string;
+  /**
+   * The runtime version the user pinned (BuildConfig.runtimeVersion), e.g. "20".
+   * Empty => the method's default.
+   */
+  runtimeVersion: string;
+  /**
+   * The framework's runtime language, resolved control-plane-side via
+   * runtimeFor(framework).language ("node"|"python"|…|"none"). Used to pin the
+   * nixpacks per-language version var (NIXPACKS_<LANG>_VERSION) and to gate the
+   * static builder's Node builder stage. Empty/"none" => no language pin.
+   */
+  runtimeLanguage: string;
+  /**
+   * nixpacks: the dir the build publishes/serves; non-empty switches nixpacks to
+   * the nginx-wrap static path (methodSettings.nixpacksPublishDirectory).
+   */
+  nixpacksPublishDirectory: string;
+  /**
+   * heroku: builder image version ("22"|"24"|"26"); maps to heroku/builder:<v>.
+   * Empty => "24". Ignored for paketo (methodSettings.herokuVersion).
+   */
+  herokuVersion: string;
+  /**
+   * railpack: CLI/frontend version pin ("latest" or "0.27.2"); empty => latest
+   * (methodSettings.railpackVersion).
+   */
+  railpackVersion: string;
+  /**
+   * static / nixpacks-static: serve as an SPA (history-API fallback to
+   * index.html) (methodSettings.staticSinglePageApp).
+   */
+  staticSinglePageApp: boolean;
 }
 
 /**
@@ -479,6 +582,13 @@ export interface DeployRequest {
    * project.build.rootDirectory as GitSource.subdir.
    */
   devWorkspaceSubdir: string;
+  /**
+   * The heavy build method's settings — present iff build_kind is STATIC /
+   * NIXPACKS / BUILDPACKS / RAILPACK. The agent reads the fields its method uses
+   * and ignores the rest. Absent for BUILD_KIND_DOCKERFILE (which uses
+   * `dockerfile` above) and BUILD_KIND_NONE.
+   */
+  buildSpec?: BuildSpec | undefined;
 }
 
 export interface DeployRequest_EnvEntry {
@@ -1709,6 +1819,295 @@ export const HostMetrics: MessageFns<HostMetrics> = {
   },
 };
 
+function createBaseBuildSpec(): BuildSpec {
+  return {
+    method: "",
+    port: 0,
+    installCommand: "",
+    buildCommand: "",
+    startCommand: "",
+    outputDirectory: "",
+    runtimeVersion: "",
+    runtimeLanguage: "",
+    nixpacksPublishDirectory: "",
+    herokuVersion: "",
+    railpackVersion: "",
+    staticSinglePageApp: false,
+  };
+}
+
+export const BuildSpec: MessageFns<BuildSpec> = {
+  encode(message: BuildSpec, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.method !== "") {
+      writer.uint32(10).string(message.method);
+    }
+    if (message.port !== 0) {
+      writer.uint32(16).int32(message.port);
+    }
+    if (message.installCommand !== "") {
+      writer.uint32(26).string(message.installCommand);
+    }
+    if (message.buildCommand !== "") {
+      writer.uint32(34).string(message.buildCommand);
+    }
+    if (message.startCommand !== "") {
+      writer.uint32(42).string(message.startCommand);
+    }
+    if (message.outputDirectory !== "") {
+      writer.uint32(50).string(message.outputDirectory);
+    }
+    if (message.runtimeVersion !== "") {
+      writer.uint32(58).string(message.runtimeVersion);
+    }
+    if (message.runtimeLanguage !== "") {
+      writer.uint32(66).string(message.runtimeLanguage);
+    }
+    if (message.nixpacksPublishDirectory !== "") {
+      writer.uint32(74).string(message.nixpacksPublishDirectory);
+    }
+    if (message.herokuVersion !== "") {
+      writer.uint32(82).string(message.herokuVersion);
+    }
+    if (message.railpackVersion !== "") {
+      writer.uint32(90).string(message.railpackVersion);
+    }
+    if (message.staticSinglePageApp !== false) {
+      writer.uint32(96).bool(message.staticSinglePageApp);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): BuildSpec {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseBuildSpec();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.method = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.port = reader.int32();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.installCommand = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.buildCommand = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.startCommand = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.outputDirectory = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.runtimeVersion = reader.string();
+          continue;
+        }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.runtimeLanguage = reader.string();
+          continue;
+        }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.nixpacksPublishDirectory = reader.string();
+          continue;
+        }
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.herokuVersion = reader.string();
+          continue;
+        }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.railpackVersion = reader.string();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.staticSinglePageApp = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): BuildSpec {
+    return {
+      method: isSet(object.method) ? globalThis.String(object.method) : "",
+      port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+      installCommand: isSet(object.installCommand)
+        ? globalThis.String(object.installCommand)
+        : isSet(object.install_command)
+        ? globalThis.String(object.install_command)
+        : "",
+      buildCommand: isSet(object.buildCommand)
+        ? globalThis.String(object.buildCommand)
+        : isSet(object.build_command)
+        ? globalThis.String(object.build_command)
+        : "",
+      startCommand: isSet(object.startCommand)
+        ? globalThis.String(object.startCommand)
+        : isSet(object.start_command)
+        ? globalThis.String(object.start_command)
+        : "",
+      outputDirectory: isSet(object.outputDirectory)
+        ? globalThis.String(object.outputDirectory)
+        : isSet(object.output_directory)
+        ? globalThis.String(object.output_directory)
+        : "",
+      runtimeVersion: isSet(object.runtimeVersion)
+        ? globalThis.String(object.runtimeVersion)
+        : isSet(object.runtime_version)
+        ? globalThis.String(object.runtime_version)
+        : "",
+      runtimeLanguage: isSet(object.runtimeLanguage)
+        ? globalThis.String(object.runtimeLanguage)
+        : isSet(object.runtime_language)
+        ? globalThis.String(object.runtime_language)
+        : "",
+      nixpacksPublishDirectory: isSet(object.nixpacksPublishDirectory)
+        ? globalThis.String(object.nixpacksPublishDirectory)
+        : isSet(object.nixpacks_publish_directory)
+        ? globalThis.String(object.nixpacks_publish_directory)
+        : "",
+      herokuVersion: isSet(object.herokuVersion)
+        ? globalThis.String(object.herokuVersion)
+        : isSet(object.heroku_version)
+        ? globalThis.String(object.heroku_version)
+        : "",
+      railpackVersion: isSet(object.railpackVersion)
+        ? globalThis.String(object.railpackVersion)
+        : isSet(object.railpack_version)
+        ? globalThis.String(object.railpack_version)
+        : "",
+      staticSinglePageApp: isSet(object.staticSinglePageApp)
+        ? globalThis.Boolean(object.staticSinglePageApp)
+        : isSet(object.static_single_page_app)
+        ? globalThis.Boolean(object.static_single_page_app)
+        : false,
+    };
+  },
+
+  toJSON(message: BuildSpec): unknown {
+    const obj: any = {};
+    if (message.method !== "") {
+      obj.method = message.method;
+    }
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    if (message.installCommand !== "") {
+      obj.installCommand = message.installCommand;
+    }
+    if (message.buildCommand !== "") {
+      obj.buildCommand = message.buildCommand;
+    }
+    if (message.startCommand !== "") {
+      obj.startCommand = message.startCommand;
+    }
+    if (message.outputDirectory !== "") {
+      obj.outputDirectory = message.outputDirectory;
+    }
+    if (message.runtimeVersion !== "") {
+      obj.runtimeVersion = message.runtimeVersion;
+    }
+    if (message.runtimeLanguage !== "") {
+      obj.runtimeLanguage = message.runtimeLanguage;
+    }
+    if (message.nixpacksPublishDirectory !== "") {
+      obj.nixpacksPublishDirectory = message.nixpacksPublishDirectory;
+    }
+    if (message.herokuVersion !== "") {
+      obj.herokuVersion = message.herokuVersion;
+    }
+    if (message.railpackVersion !== "") {
+      obj.railpackVersion = message.railpackVersion;
+    }
+    if (message.staticSinglePageApp !== false) {
+      obj.staticSinglePageApp = message.staticSinglePageApp;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<BuildSpec>, I>>(base?: I): BuildSpec {
+    return BuildSpec.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<BuildSpec>, I>>(object: I): BuildSpec {
+    const message = createBaseBuildSpec();
+    message.method = object.method ?? "";
+    message.port = object.port ?? 0;
+    message.installCommand = object.installCommand ?? "";
+    message.buildCommand = object.buildCommand ?? "";
+    message.startCommand = object.startCommand ?? "";
+    message.outputDirectory = object.outputDirectory ?? "";
+    message.runtimeVersion = object.runtimeVersion ?? "";
+    message.runtimeLanguage = object.runtimeLanguage ?? "";
+    message.nixpacksPublishDirectory = object.nixpacksPublishDirectory ?? "";
+    message.herokuVersion = object.herokuVersion ?? "";
+    message.railpackVersion = object.railpackVersion ?? "";
+    message.staticSinglePageApp = object.staticSinglePageApp ?? false;
+    return message;
+  },
+};
+
 function createBaseGitSource(): GitSource {
   return { url: "", branch: "", token: "", subdir: "" };
 }
@@ -2050,6 +2449,7 @@ function createBaseDeployRequest(): DeployRequest {
     pullImage: false,
     mounts: [],
     devWorkspaceSubdir: "",
+    buildSpec: undefined,
   };
 }
 
@@ -2099,6 +2499,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.devWorkspaceSubdir !== "") {
       writer.uint32(122).string(message.devWorkspaceSubdir);
+    }
+    if (message.buildSpec !== undefined) {
+      BuildSpec.encode(message.buildSpec, writer.uint32(130).fork()).join();
     }
     return writer;
   },
@@ -2233,6 +2636,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
           message.devWorkspaceSubdir = reader.string();
           continue;
         }
+        case 16: {
+          if (tag !== 130) {
+            break;
+          }
+
+          message.buildSpec = BuildSpec.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2309,6 +2720,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.dev_workspace_subdir)
         ? globalThis.String(object.dev_workspace_subdir)
         : "",
+      buildSpec: isSet(object.buildSpec)
+        ? BuildSpec.fromJSON(object.buildSpec)
+        : isSet(object.build_spec)
+        ? BuildSpec.fromJSON(object.build_spec)
+        : undefined,
     };
   },
 
@@ -2365,6 +2781,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.devWorkspaceSubdir !== "") {
       obj.devWorkspaceSubdir = message.devWorkspaceSubdir;
     }
+    if (message.buildSpec !== undefined) {
+      obj.buildSpec = BuildSpec.toJSON(message.buildSpec);
+    }
     return obj;
   },
 
@@ -2398,6 +2817,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.pullImage = object.pullImage ?? false;
     message.mounts = object.mounts?.map((e) => MountFile.fromPartial(e)) || [];
     message.devWorkspaceSubdir = object.devWorkspaceSubdir ?? "";
+    message.buildSpec = (object.buildSpec !== undefined && object.buildSpec !== null)
+      ? BuildSpec.fromPartial(object.buildSpec)
+      : undefined;
     return message;
   },
 };
