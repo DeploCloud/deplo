@@ -192,6 +192,54 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   return { warning };
 }
 
+/**
+ * Update a server's agent binary in place to the latest released version WITHOUT
+ * reissuing its certificates. Unlike re-running the installer (which mints a new
+ * token and re-bootstraps, clearing the agent's mTLS materials), this dials the
+ * agent over its EXISTING pinned-mTLS channel and asks it to self-update: fetch
+ * the checksum-verified latest binary, swap itself on disk, and re-exec keeping
+ * the same on-disk cert/key/CA. Trust — the pinned fingerprint — is untouched, so
+ * the server stays "online" with the same identity across the upgrade.
+ *
+ * Resolves the "latest" target version through the same release resolver the
+ * outdated badge uses, so what we install matches what the dashboard flagged.
+ * Returns the version the agent is now running. Throws when the server is
+ * unreachable / not provisioned, or — until the agent ships the self-update RPC —
+ * AgentUpdateUnsupportedError (the GraphQL layer turns that into a clear message
+ * telling the operator to re-run the installer for now).
+ */
+export async function updateServerAgent(id: string): Promise<{ version: string }> {
+  const { membership } = await requireCapability("manage_infra");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const server = read().servers.find((s) => s.id === id);
+  if (!server) throw new Error("Server not found");
+  if (!server.agent?.certFingerprint)
+    throw new Error("This server is not provisioned yet — finish provisioning before updating its agent");
+
+  // Lazy-import for the same reason removeServer does: keep the grpc agent-client
+  // (and its deps) out of modules that never reach an agent. The seam resolves the
+  // latest release itself (version + per-arch url/sha from one consistent release)
+  // and tells the agent to self-update over its existing pinned-mTLS channel —
+  // certs are never reissued.
+  const { selfUpdateServerAgent } = await import("../infra/agent-client");
+  const result = await selfUpdateServerAgent(id);
+
+  // Record the new version optimistically; the next Hello (markServerSeen)
+  // refreshes it from the live agent regardless, so this is just a faster echo.
+  mutate((d) => {
+    const s = d.servers.find((x) => x.id === id);
+    if (s?.agent) s.agent.version = result.version;
+  });
+  recordActivity(
+    "member",
+    `Updated agent on ${server.name} to v${result.version}`,
+    user.name,
+    null,
+    membership.teamId,
+  );
+  return result;
+}
+
 /** What a calling-home agent sends, and what completeBootstrap signs against. */
 export interface BootstrapCallHome {
   /** The raw one-time token from the install command. */

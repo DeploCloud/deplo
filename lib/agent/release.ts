@@ -82,7 +82,16 @@ function parseChecksums(text: string): Map<string, string> {
 
 /** In-process memo so a single render doesn't fan out to GitHub per field/server. */
 let cache: { at: number; release: AgentRelease | null } | null = null;
-const CACHE_TTL_MS = 3600_000; // 1h, matching the getUpdateInfo cadence
+/**
+ * Short TTL: the memo only exists to coalesce the GitHub calls within a single
+ * render (many server cards / GraphQL fields resolve the same release). It is NOT
+ * a freshness control — a newly cut agent release should surface promptly. 5 min
+ * keeps GitHub well under its rate limit while bounding how long a stale "latest"
+ * (e.g. a release published seconds after this process cached the prior one) is
+ * served. For an immediate refresh use refreshAgentRelease() (the operator's
+ * "Check for updates" action) rather than waiting this out.
+ */
+const CACHE_TTL_MS = 300_000; // 5m
 
 /** A monotonic-ish clock that tolerates environments where Date.now is shimmed. */
 function now(): number {
@@ -102,6 +111,21 @@ export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> 
   const release = await fetchLatestRelease();
   cache = { at: now(), release };
   return release;
+}
+
+/**
+ * Force an immediate re-resolution of the latest agent release, bypassing the
+ * in-process memo. The production sibling of __resetReleaseCacheForTests: the
+ * operator's "Check for updates" action calls this so a release cut moments ago
+ * is reflected at once, instead of waiting out CACHE_TTL_MS. Re-populates the
+ * memo with the fresh result (so the immediately-following render reuses it) and
+ * returns it. Note the underlying fetch still carries `next: { revalidate }`, but
+ * that Data Cache is suppressed on the dynamic/cookie'd paths that call this, so
+ * clearing the in-process memo is the effective bust.
+ */
+export async function refreshAgentRelease(): Promise<AgentRelease | null> {
+  cache = null;
+  return resolveLatestAgentRelease();
 }
 
 async function fetchLatestRelease(): Promise<AgentRelease | null> {

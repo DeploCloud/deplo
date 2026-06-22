@@ -6,6 +6,7 @@ import {
   addServer,
   reissueBootstrap,
   removeServer,
+  updateServerAgent,
 } from "@/lib/data/servers";
 import {
   isAgentOutdated,
@@ -186,6 +187,32 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { id }) => {
       const { warning } = await removeServer(id);
       return warning;
+    },
+  }),
+  updateServerAgent: t.field({
+    type: "String",
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Update this server's agent binary in place to the latest released version WITHOUT reissuing its certificates — the agent self-updates over its existing pinned-mTLS channel and re-execs keeping the same on-disk trust materials, so the server stays online with the same identity. Returns the version the agent is now running. Errors clearly when the server is unreachable/unprovisioned, or — until the agent ships the self-update RPC — when its agent is too old to update itself remotely (re-run the installer to upgrade it for now).",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      const { version } = await updateServerAgent(id);
+      return version;
+    },
+  }),
+  checkAgentUpdates: t.field({
+    type: "String",
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Force an immediate re-resolution of the latest agent release from GitHub, bypassing the in-process cache. Returns the resolved expected agent version so the dashboard re-renders with fresh outdated badges. Use after publishing a new agent release rather than waiting out the cache TTL.",
+    resolve: async () => {
+      // Bust the in-process memo, then re-resolve through the standard helper so
+      // the fallback rule (GitHub unreachable -> FALLBACK_AGENT_VERSION) stays in
+      // one place. resolveExpectedAgentVersion re-populates the memo, so the
+      // RSC re-render that follows reuses this fresh value.
+      const { refreshAgentRelease } = await import("@/lib/agent/release");
+      await refreshAgentRelease();
+      return resolveExpectedAgentVersion();
     },
   }),
 }));

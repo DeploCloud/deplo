@@ -3,7 +3,13 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MoreVertical, KeyRound, Trash2, ServerCog } from "lucide-react";
+import {
+  MoreVertical,
+  KeyRound,
+  Trash2,
+  ServerCog,
+  CircleFadingArrowUp,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,8 +32,13 @@ import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * Per-server management actions, shown for EVERY server card (the host running
- * Deplo included — it is a bootstrapped agent like any other). Two actions, both
- * gated server-side by `manage_infra`:
+ * Deplo included — it is a bootstrapped agent like any other). All gated
+ * server-side by `manage_infra`:
+ *   - Update agent — only when the server's agent is OUTDATED. Updates the agent
+ *     binary in place to the latest release WITHOUT reissuing certificates: the
+ *     agent self-updates over its existing pinned-mTLS channel and re-execs with
+ *     the same on-disk trust, so the server stays online with the same identity.
+ *     Distinct from reissue (which re-bootstraps and would reset trust).
  *   - Reissue install command — mint a FRESH one-time bootstrap command for a
  *     server still provisioning (the original token expired or was lost). This is
  *     the "server's menu" the AddServer dialog's note points at.
@@ -39,16 +50,23 @@ export function ServerActions({
   serverId,
   serverName,
   provisioning,
+  outdated,
+  expectedVersion,
 }: {
   serverId: string;
   serverName: string;
   /** Still awaiting the agent's call-home — show the reissue action prominently. */
   provisioning: boolean;
+  /** The agent is strictly behind the latest release — offer the in-place update. */
+  outdated: boolean;
+  /** The latest agent version we'd update to, for the menu label + confirm copy. */
+  expectedVersion: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [command, setCommand] = React.useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = React.useState(false);
+  const [confirmUpdate, setConfirmUpdate] = React.useState(false);
 
   function reissue() {
     startTransition(async () => {
@@ -68,6 +86,32 @@ export function ServerActions({
       }
       if (!res.data) return;
       setCommand(res.data.reissueServerBootstrap.installCommand);
+    });
+  }
+
+  function update() {
+    startTransition(async () => {
+      const res = await gqlAction<{ updateServerAgent: string }>(
+        `mutation UpdateServerAgent($id: String!) {
+          updateServerAgent(id: $id)
+        }`,
+        { id: serverId },
+      );
+      if (!res.ok) {
+        // Surfaces the server-side message verbatim, including the "this agent is
+        // too old to self-update remotely — re-run the installer for now" case
+        // (until the agent ships the self-update RPC).
+        toast.error(res.error);
+        return;
+      }
+      setConfirmUpdate(false);
+      const version = res.data?.updateServerAgent;
+      toast.success(
+        version
+          ? `${serverName} agent updated to v${version}`
+          : `${serverName} agent updated`,
+      );
+      router.refresh();
     });
   }
 
@@ -109,7 +153,22 @@ export function ServerActions({
             <MoreVertical className="size-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuContent align="end" className="w-56">
+          {outdated ? (
+            <>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setConfirmUpdate(true);
+                }}
+                disabled={pending}
+              >
+                <CircleFadingArrowUp className="size-4" />
+                Update agent to v{expectedVersion}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
           <DropdownMenuItem onSelect={() => reissue()} disabled={pending}>
             <KeyRound className="size-4" />
             {provisioning ? "Show install command" : "Reissue install command"}
@@ -166,6 +225,38 @@ export function ServerActions({
               }}
             >
               Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm in-place agent update (no cert reissue). */}
+      <Dialog open={confirmUpdate} onOpenChange={setConfirmUpdate}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CircleFadingArrowUp className="size-4" />
+              Update agent on {serverName}?
+            </DialogTitle>
+            <DialogDescription>
+              Updates the agent binary in place to{" "}
+              <strong>v{expectedVersion}</strong> over its existing secure
+              connection. Its certificates are <strong>not</strong> reissued — the
+              agent restarts with the same identity, so the server stays online and
+              keeps its trust. The update takes a few seconds while the agent swaps
+              its binary and reconnects.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmUpdate(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => update()} disabled={pending}>
+              {pending ? "Updating…" : `Update to v${expectedVersion}`}
             </Button>
           </DialogFooter>
         </DialogContent>
