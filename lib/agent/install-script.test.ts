@@ -9,7 +9,7 @@ import { __resetReleaseCacheForTests } from "./release";
 /**
  * The install script is a TEMPLATE: the control plane fills in the per-arch
  * binary URLs + sha256s via a plain replaceAll of the `__…__` sentinels at serve
- * time, reading them from the latest GitHub release of PixelFederico/deplo-agent.
+ * time, reading them from the latest GitHub release of DeploCloud/deplo-agent.
  * The script carries a self-guard that refuses to run the UNSUBSTITUTED repo copy.
  *
  * The trap (regression guarded here): if that guard compares against the literal
@@ -22,9 +22,9 @@ import { __resetReleaseCacheForTests } from "./release";
 
 const FAKE = {
   tag: "v2.3.0",
-  amd64Url: "https://github.com/PixelFederico/deplo-agent/releases/download/v2.3.0/deplo-agent-linux-amd64",
+  amd64Url: "https://github.com/DeploCloud/deplo-agent/releases/download/v2.3.0/deplo-agent-linux-amd64",
   amd64Sha: "a".repeat(64),
-  arm64Url: "https://github.com/PixelFederico/deplo-agent/releases/download/v2.3.0/deplo-agent-linux-arm64",
+  arm64Url: "https://github.com/DeploCloud/deplo-agent/releases/download/v2.3.0/deplo-agent-linux-arm64",
   arm64Sha: "b".repeat(64),
 };
 

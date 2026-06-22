@@ -73,7 +73,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     expectedAgentVersion: t.string({
       description:
-        "The agent version this server should be running — the latest GitHub release of the agent (PixelFederico/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.",
+        "The agent version this server should be running — the latest GitHub release of the agent (DeploCloud/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.",
       resolve: () => resolveExpectedAgentVersion(),
     }),
     agentOutdated: t.boolean({

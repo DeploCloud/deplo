@@ -1,7 +1,7 @@
 # Deplo control plane  multi-stage build (Bun + Next.js standalone)
 
 # --- Agent: the per-server binary (PLAN Part A / ADR-0006). It now lives in its
-# own repo (PixelFederico/deplo-agent) and ships as GitHub Release assets, so the
+# own repo (DeploCloud/deplo-agent) and ships as GitHub Release assets, so the
 # image no longer builds it (no Go toolchain) — it DOWNLOADS the latest release
 # for the build's target arch and verifies it against the release's checksums.txt
 # before it ever ends up in the runtime. The control plane launches this as its
@@ -10,7 +10,7 @@
 # resolve true-latest at install time (lib/agent/release.ts), and the dashboard's
 # agent badge surfaces any resulting drift rather than hiding it.
 FROM alpine:3.20 AS agent
-ARG AGENT_REPO=PixelFederico/deplo-agent
+ARG AGENT_REPO=DeploCloud/deplo-agent
 # TARGETARCH is provided by BuildKit (amd64 / arm64) — map it to the asset name.
 ARG TARGETARCH=amd64
 RUN apk add --no-cache curl coreutils
@@ -83,7 +83,7 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
 # The per-server agent binary (downloaded + checksum-verified in the `agent`
-# stage from PixelFederico/deplo-agent's latest release). The control plane
+# stage from DeploCloud/deplo-agent's latest release). The control plane
 # launches it locally and dials it over mTLS for deploys.
 COPY --from=agent /out/deplo-agent /usr/local/bin/deplo-agent
 

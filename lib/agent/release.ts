@@ -20,7 +20,7 @@ import "server-only";
  */
 
 /** The repo that builds + releases the agent binary. */
-export const AGENT_REPO = "PixelFederico/deplo-agent";
+export const AGENT_REPO = "DeploCloud/deplo-agent";
 
 /**
  * Fallback agent version reported as "expected" when GitHub can't be reached
