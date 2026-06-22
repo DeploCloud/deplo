@@ -1,6 +1,6 @@
 import "server-only";
 
-import { DEPLO_VERSION, DEPLO_REPO } from "../version";
+import { DEPLO_VERSION, DEPLO_REPO, isNewer } from "../version";
 
 /** Result of checking the upstream GitHub repository for a newer release. */
 export interface UpdateInfo {
@@ -12,27 +12,6 @@ export interface UpdateInfo {
   publishedAt: string | null;
   checkedAt: string;
   error?: string;
-}
-
-function parseSemver(v: string): [number, number, number] | null {
-  const m = v
-    .trim()
-    .replace(/^v/i, "")
-    .match(/^(\d+)\.(\d+)\.(\d+)/);
-  if (!m) return null;
-  return [Number(m[1]), Number(m[2]), Number(m[3])];
-}
-
-/** True when `latest` is a strictly higher semver than `current`. */
-function isNewer(latest: string, current: string): boolean {
-  const a = parseSemver(latest);
-  const b = parseSemver(current);
-  if (!a || !b) return false;
-  for (let i = 0; i < 3; i++) {
-    if (a[i] > b[i]) return true;
-    if (a[i] < b[i]) return false;
-  }
-  return false;
 }
 
 /**

@@ -16,7 +16,13 @@ import { Badge } from "@/components/ui/badge";
 import { listServers } from "@/lib/data/servers";
 import { getInitialServerMetrics } from "@/lib/data/monitoring";
 import { serverLabel } from "@/lib/utils";
+import {
+  isAgentOutdated,
+  reportedAgentVersion,
+  resolveExpectedAgentVersion,
+} from "@/lib/version";
 import type { Server } from "@/lib/types";
+import { AgentVersionBadge } from "./agent-version-badge";
 import {
   ServerMetricsProvider,
   LiveServerMetrics,
@@ -25,7 +31,14 @@ import {
 
 export const metadata = { title: "Servers" };
 
-function ServerCard({ server }: { server: Server }) {
+function ServerCard({
+  server,
+  expectedAgentVersion,
+}: {
+  server: Server;
+  expectedAgentVersion: string;
+}) {
+  const agentVersion = reportedAgentVersion(server, expectedAgentVersion);
   return (
     <Card>
       <CardHeader className="space-y-3">
@@ -56,6 +69,11 @@ function ServerCard({ server }: { server: Server }) {
             serverId={server.id}
             initial={server.traefikEnabled}
           />
+          <AgentVersionBadge
+            version={agentVersion}
+            expected={expectedAgentVersion}
+            outdated={isAgentOutdated(agentVersion, expectedAgentVersion)}
+          />
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -78,9 +96,10 @@ function ServerCard({ server }: { server: Server }) {
 export default async function ServersPage() {
   // Cheap last-known metrics so the page renders instantly; the cards poll live
   // values every second and replace these (see ServerMetricsProvider).
-  const [servers, allMetrics] = await Promise.all([
+  const [servers, allMetrics, expectedAgentVersion] = await Promise.all([
     listServers(),
     getInitialServerMetrics(),
+    resolveExpectedAgentVersion(),
   ]);
 
   return (
@@ -114,7 +133,11 @@ export default async function ServersPage() {
         <ServerMetricsProvider initialMetrics={allMetrics}>
           <div className="grid gap-4 sm:grid-cols-2">
             {servers.map((server) => (
-              <ServerCard key={server.id} server={server} />
+              <ServerCard
+                key={server.id}
+                server={server}
+                expectedAgentVersion={expectedAgentVersion}
+              />
             ))}
           </div>
         </ServerMetricsProvider>

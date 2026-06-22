@@ -35,7 +35,12 @@ var Capabilities = []string{
 	"tunnel",      // the VS Code remote tunnel (Start/Get/Stop)
 }
 
-// AgentVersion is stamped at build time via -ldflags; "dev" by default.
+// AgentVersion is the version this agent reports over Hello. It is stamped at
+// build time via -ldflags from agent/version.json — the SINGLE SOURCE the control
+// plane also reads (lib/version.ts EXPECTED_AGENT_VERSION), so the binary's version
+// and the control plane's notion of "latest" can't drift. "dev" for a build that
+// skipped the stamp (e.g. a bare `go build`), which the control plane treats as
+// "can't compare", never "outdated".
 var AgentVersion = "dev"
 
 // retainFinished is how long a finished deploy's event buffer is kept so a

@@ -1105,18 +1105,24 @@ input SaveSharedEnvGroupInput {
 
 """A host (the master or a connected remote) running deployments."""
 type Server {
+  agentOutdated: Boolean
+  agentPort: Int
+  agentVersion: String
   cpuCores: Int
   cpuUsage: Int
   createdAt: String
   diskGb: Int
   diskUsage: Int
   dockerVersion: String
+  expectedAgentVersion: String
   host: String
   id: ID
   ip: String
+  lastSeenAt: String
   memoryMb: Int
   memoryUsage: Int
   name: String
+  provisioned: Boolean
   status: ServerStatus
   traefikEnabled: Boolean
   type: ServerType

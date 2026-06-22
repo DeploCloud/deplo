@@ -7,6 +7,13 @@ import {
   reissueBootstrap,
   removeServer,
 } from "@/lib/data/servers";
+import {
+  isAgentOutdated,
+  reportedAgentVersion,
+  resolveExpectedAgentVersion,
+} from "@/lib/version";
+// (resolveExpectedAgentVersion is awaited per-request; it is cached so the three
+// agent fields below don't each hit GitHub.)
 import type { Server } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -59,7 +66,23 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     agentVersion: t.string({
       nullable: true,
-      resolve: (s) => s.agent?.version || null,
+      description:
+        "The agent binary version last reported by this server. Null for a remote whose agent hasn't called home yet; the latest agent release for localhost (the master runs the control-plane image's agent).",
+      resolve: async (s) =>
+        reportedAgentVersion(s, await resolveExpectedAgentVersion()),
+    }),
+    expectedAgentVersion: t.string({
+      description:
+        "The agent version this server should be running — the latest GitHub release of the agent (PixelFederico/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.",
+      resolve: () => resolveExpectedAgentVersion(),
+    }),
+    agentOutdated: t.boolean({
+      description:
+        "True when this server's reported agent version is strictly older than expectedAgentVersion. False for localhost, an unseen agent, or a non-semver/dev version we can't confidently compare.",
+      resolve: async (s) => {
+        const expected = await resolveExpectedAgentVersion();
+        return isAgentOutdated(reportedAgentVersion(s, expected), expected);
+      },
     }),
     lastSeenAt: t.string({
       nullable: true,

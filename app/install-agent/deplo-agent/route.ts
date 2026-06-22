@@ -1,28 +1,26 @@
-import { agentBinary } from "@/lib/agent/install-script";
+import { resolveLatestAgentRelease } from "@/lib/agent/release";
 
 /**
- * Serve the `deplo-agent` binary (PLAN Part B, P2). Public + unauthenticated:
- * the install script downloads it on the target server. The script verifies the
- * sha256 (substituted into it from the SAME bytes) before executing, so a
- * tampered binary is rejected at the operator's end. This is the exact binary
- * the control plane runs as its own local agent, so versions never skew.
+ * Redirect to the agent binary on GitHub Releases (PixelFederico/deplo-agent).
+ *
+ * The binary is no longer built into or served by the control plane — it ships
+ * as a release asset and the install script downloads it from github.com
+ * directly (verifying the sha256 the script pins). This route is kept as a
+ * stable alias: older install scripts that still point at
+ * `/install-agent/deplo-agent` get 302'd to the current release asset. New
+ * scripts skip it and hit GitHub directly.
+ *
+ * Defaults to the amd64 asset; pass `?arch=arm64` for the other Linux build.
+ * Integrity is still guaranteed by the script's checksum check, not by this hop.
  */
-export async function GET() {
-  let bytes: Buffer;
-  try {
-    ({ bytes } = await agentBinary());
-  } catch {
+export async function GET(req: Request) {
+  const arch = new URL(req.url).searchParams.get("arch") === "arm64"
+    ? "arm64"
+    : "amd64";
+  const release = await resolveLatestAgentRelease();
+  const target = release?.binaries[arch]?.url;
+  if (!target) {
     return new Response("agent binary unavailable", { status: 503 });
   }
-  // Buffer -> a fresh Uint8Array view so the Response body is a clean ArrayBuffer.
-  const body = new Uint8Array(bytes);
-  return new Response(body, {
-    status: 200,
-    headers: {
-      "content-type": "application/octet-stream",
-      "content-disposition": 'attachment; filename="deplo-agent"',
-      "content-length": String(body.byteLength),
-      "cache-control": "no-store",
-    },
-  });
+  return Response.redirect(target, 302);
 }

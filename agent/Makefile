@@ -6,7 +6,11 @@
 #   make test      -> go test ./...
 #   make vet       -> go vet ./...
 
-VERSION ?= dev
+# Stamp the agent version from version.json — the SINGLE source the control plane
+# also reads (lib/version.ts EXPECTED_AGENT_VERSION), so the binary's version and
+# the control plane's "latest" can't drift. Extracted with sed (portable); falls
+# back to "dev" if the file/field is missing. Override with `make build VERSION=x`.
+VERSION ?= $(shell sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' version.json 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/idradev/deplo/agent/internal/server.AgentVersion=$(VERSION)
 
 .PHONY: build test vet proto clean

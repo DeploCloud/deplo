@@ -19,16 +19,23 @@
 #                    present over HTTPS, absent over plain HTTP (the token then
 #                    binds the response via HMAC instead).
 #
-# The control plane serves this script and the binary over its own domain and
-# pins the binary's sha256 below (substituted at serve time) — the script REFUSES
-# to run a binary whose checksum does not match (P2).
+# The agent binary ships as a GitHub Release asset (PixelFederico/deplo-agent).
+# The control plane serves this script over its own domain and substitutes the
+# release's per-arch download URL + sha256 below (read from the release's
+# checksums.txt at serve time) — the script REFUSES to run a binary whose
+# checksum does not match (P2), even though the bytes come from github.com.
 set -euo pipefail
 
-# --- These two are substituted by the control plane when it serves the script.
-# (When read straight from the repo they are left as placeholders and the script
-# errors clearly — this file is a template, fetched via /install-agent.sh.)
-AGENT_BIN_URL="__AGENT_BIN_URL__"
-AGENT_SHA256="__AGENT_SHA256__"
+# --- Substituted by the control plane when it serves the script. One URL+sha
+# pair per Linux arch; the script selects by `uname -m` below. An arch the
+# release didn't publish is left empty and the script errors on that host.
+# (When read straight from the repo these stay placeholders and the guard below
+# refuses to run — this file is a template, fetched via /install-agent.sh.)
+AGENT_VERSION="__AGENT_VERSION__"
+AGENT_URL_AMD64="__AGENT_URL_AMD64__"
+AGENT_SHA256_AMD64="__AGENT_SHA256_AMD64__"
+AGENT_URL_ARM64="__AGENT_URL_ARM64__"
+AGENT_SHA256_ARM64="__AGENT_SHA256_ARM64__"
 
 INSTALL_DIR="/usr/local/bin"
 AGENT_BIN="$INSTALL_DIR/deplo-agent"
@@ -50,13 +57,13 @@ if [ -z "$TOKEN" ] || [ -z "$URL" ]; then
   exit 1
 fi
 # Detect the UNSUBSTITUTED template (someone ran the repo copy directly). The
-# control plane fills the value above via a plain text replace of the sentinel
-# token, so this check must NOT contain that exact token — otherwise it would be
-# rewritten to the real URL too and the guard would always fire on the rendered
+# control plane fills the values above via a plain text replace of the sentinel
+# tokens, so this check must NOT contain an exact token — otherwise it would be
+# rewritten to the real value too and the guard would always fire on the rendered
 # script. Match the sentinel's shape with a glob (the token split by a `*`) so the
 # exact string never appears literally anywhere a replace could touch.
-case "$AGENT_BIN_URL" in
-  *__AGENT_BIN*URL__*)
+case "$AGENT_URL_AMD64" in
+  *__AGENT_URL*AMD64__*)
     err "This script must be fetched from the control plane (/install-agent.sh),"
     err "which fills in the binary URL + checksum. Don't run the repo copy directly."
     exit 1
@@ -81,7 +88,23 @@ else
 fi
 
 # 2. Agent binary (checksum-verified before it ever runs, P2) ----------------
-step "Downloading the Deplo agent..."
+# Pick the release asset for this host's architecture. The release publishes
+# linux/amd64 and linux/arm64; anything else has no binary and we stop early.
+case "$(uname -m)" in
+  x86_64|amd64)        AGENT_BIN_URL="$AGENT_URL_AMD64"; AGENT_SHA256="$AGENT_SHA256_AMD64" ;;
+  aarch64|arm64)       AGENT_BIN_URL="$AGENT_URL_ARM64"; AGENT_SHA256="$AGENT_SHA256_ARM64" ;;
+  *)
+    err "Unsupported architecture '$(uname -m)' — the Deplo agent ships linux/amd64 and linux/arm64 only."
+    exit 1
+    ;;
+esac
+if [ -z "$AGENT_BIN_URL" ] || [ -z "$AGENT_SHA256" ]; then
+  err "The latest agent release has no binary for this architecture ($(uname -m))."
+  err "Pick a host with linux/amd64 or linux/arm64, or wait for a release that includes it."
+  exit 1
+fi
+
+step "Downloading the Deplo agent (v$AGENT_VERSION, $(uname -m))..."
 TMP="$(mktemp)"
 curl -fsSL "$AGENT_BIN_URL" -o "$TMP"
 GOT="$(sha256sum "$TMP" | awk '{print $1}')"
@@ -93,7 +116,7 @@ if [ "$GOT" != "$AGENT_SHA256" ]; then
 fi
 install -m 0755 "$TMP" "$AGENT_BIN"
 rm -f "$TMP"
-ok "Agent installed at $AGENT_BIN (checksum verified)"
+ok "Agent v$AGENT_VERSION installed at $AGENT_BIN (checksum verified)"
 
 # 3. Data dir --------------------------------------------------------------
 mkdir -p "$AGENT_DATA"
