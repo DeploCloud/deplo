@@ -604,6 +604,66 @@ export interface InspectResponse {
   state: string;
 }
 
+/**
+ * In-place agent binary update (SelfUpdate). The control plane resolves the
+ * latest release and sends EVERY published per-arch asset (its download URL + the
+ * sha256 from the release's checksums.txt — the same integrity source install-
+ * agent.sh pins). The AGENT selects the asset matching its OWN architecture
+ * (runtime.GOARCH), exactly as install-agent.sh selects by `uname -m`: the agent
+ * is the authority on its own host's arch, and the control plane never has to
+ * learn or store it. The agent stays otherwise dumb — it does not talk to the
+ * GitHub API or know the release repo, it just fetches the chosen URL, checks the
+ * digest, and swaps itself. Trust material is NOT in this message and is never
+ * touched by the update.
+ */
+export interface SelfUpdateRequest {
+  /**
+   * The target version, normalized without a leading v (e.g. "1.2.0"). Used only
+   * for logging + the response echo; the agent does not gate on it (the control
+   * plane already decided this is the version to install).
+   */
+  version: string;
+  /**
+   * The published binaries, keyed by Go arch ("amd64" | "arm64"). The agent picks
+   * the entry for its own runtime.GOARCH; if its arch is absent (the release
+   * didn't publish it), the update fails with FAILED_PRECONDITION and the running
+   * binary is untouched. At least one entry is always present.
+   */
+  binaries: { [key: string]: ArchBinary };
+}
+
+export interface SelfUpdateRequest_BinariesEntry {
+  key: string;
+  value?: ArchBinary | undefined;
+}
+
+/** One published binary asset for a single architecture. */
+export interface ArchBinary {
+  /**
+   * The asset download URL. The agent treats the bytes as opaque until the
+   * checksum passes.
+   */
+  url: string;
+  /**
+   * Lowercase hex sha256 the downloaded bytes MUST match. A mismatch aborts the
+   * update with FAILED_PRECONDITION and the running binary is left untouched —
+   * the agent never execs an unverified binary (install-agent.sh P2 parity).
+   */
+  sha256: string;
+}
+
+export interface SelfUpdateResponse {
+  /** The version now staged on disk (echoes the request's version on success). */
+  version: string;
+  /**
+   * True once the new binary is in place and the agent is about to restart to
+   * exec it. The control plane uses this as the "update applied" signal; the
+   * agent then exits so its supervisor (systemd Restart=on-failure) re-execs the
+   * freshly-swapped binary, which reuses the existing mTLS materials.
+   */
+  restarting: boolean;
+}
+
 export interface FollowLogsRequest {
   /** The project the container must belong to (agent re-validates the label). */
   projectId: string;
@@ -3413,6 +3473,339 @@ export const InspectResponse: MessageFns<InspectResponse> = {
     message.exists = object.exists ?? false;
     message.running = object.running ?? false;
     message.state = object.state ?? "";
+    return message;
+  },
+};
+
+function createBaseSelfUpdateRequest(): SelfUpdateRequest {
+  return { version: "", binaries: {} };
+}
+
+export const SelfUpdateRequest: MessageFns<SelfUpdateRequest> = {
+  encode(message: SelfUpdateRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.version !== "") {
+      writer.uint32(10).string(message.version);
+    }
+    globalThis.Object.entries(message.binaries).forEach(([key, value]: [string, ArchBinary]) => {
+      SelfUpdateRequest_BinariesEntry.encode({ key: key as any, value }, writer.uint32(18).fork()).join();
+    });
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SelfUpdateRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSelfUpdateRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.version = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          const entry2 = SelfUpdateRequest_BinariesEntry.decode(reader, reader.uint32());
+          if (entry2.value !== undefined) {
+            message.binaries[entry2.key] = entry2.value;
+          }
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SelfUpdateRequest {
+    return {
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+      binaries: isObject(object.binaries)
+        ? (globalThis.Object.entries(object.binaries) as [string, any][]).reduce(
+          (acc: { [key: string]: ArchBinary }, [key, value]: [string, any]) => {
+            acc[key] = ArchBinary.fromJSON(value);
+            return acc;
+          },
+          {},
+        )
+        : {},
+    };
+  },
+
+  toJSON(message: SelfUpdateRequest): unknown {
+    const obj: any = {};
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    if (message.binaries) {
+      const entries = globalThis.Object.entries(message.binaries) as [string, ArchBinary][];
+      if (entries.length > 0) {
+        obj.binaries = {};
+        entries.forEach(([k, v]) => {
+          obj.binaries[k] = ArchBinary.toJSON(v);
+        });
+      }
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SelfUpdateRequest>, I>>(base?: I): SelfUpdateRequest {
+    return SelfUpdateRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SelfUpdateRequest>, I>>(object: I): SelfUpdateRequest {
+    const message = createBaseSelfUpdateRequest();
+    message.version = object.version ?? "";
+    message.binaries = (globalThis.Object.entries(object.binaries ?? {}) as [string, ArchBinary][]).reduce(
+      (acc: { [key: string]: ArchBinary }, [key, value]: [string, ArchBinary]) => {
+        if (value !== undefined) {
+          acc[key] = ArchBinary.fromPartial(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    return message;
+  },
+};
+
+function createBaseSelfUpdateRequest_BinariesEntry(): SelfUpdateRequest_BinariesEntry {
+  return { key: "", value: undefined };
+}
+
+export const SelfUpdateRequest_BinariesEntry: MessageFns<SelfUpdateRequest_BinariesEntry> = {
+  encode(message: SelfUpdateRequest_BinariesEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== undefined) {
+      ArchBinary.encode(message.value, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SelfUpdateRequest_BinariesEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSelfUpdateRequest_BinariesEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = ArchBinary.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SelfUpdateRequest_BinariesEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? ArchBinary.fromJSON(object.value) : undefined,
+    };
+  },
+
+  toJSON(message: SelfUpdateRequest_BinariesEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== undefined) {
+      obj.value = ArchBinary.toJSON(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SelfUpdateRequest_BinariesEntry>, I>>(base?: I): SelfUpdateRequest_BinariesEntry {
+    return SelfUpdateRequest_BinariesEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SelfUpdateRequest_BinariesEntry>, I>>(
+    object: I,
+  ): SelfUpdateRequest_BinariesEntry {
+    const message = createBaseSelfUpdateRequest_BinariesEntry();
+    message.key = object.key ?? "";
+    message.value = (object.value !== undefined && object.value !== null)
+      ? ArchBinary.fromPartial(object.value)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseArchBinary(): ArchBinary {
+  return { url: "", sha256: "" };
+}
+
+export const ArchBinary: MessageFns<ArchBinary> = {
+  encode(message: ArchBinary, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.url !== "") {
+      writer.uint32(10).string(message.url);
+    }
+    if (message.sha256 !== "") {
+      writer.uint32(18).string(message.sha256);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ArchBinary {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseArchBinary();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.url = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.sha256 = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ArchBinary {
+    return {
+      url: isSet(object.url) ? globalThis.String(object.url) : "",
+      sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
+    };
+  },
+
+  toJSON(message: ArchBinary): unknown {
+    const obj: any = {};
+    if (message.url !== "") {
+      obj.url = message.url;
+    }
+    if (message.sha256 !== "") {
+      obj.sha256 = message.sha256;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ArchBinary>, I>>(base?: I): ArchBinary {
+    return ArchBinary.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ArchBinary>, I>>(object: I): ArchBinary {
+    const message = createBaseArchBinary();
+    message.url = object.url ?? "";
+    message.sha256 = object.sha256 ?? "";
+    return message;
+  },
+};
+
+function createBaseSelfUpdateResponse(): SelfUpdateResponse {
+  return { version: "", restarting: false };
+}
+
+export const SelfUpdateResponse: MessageFns<SelfUpdateResponse> = {
+  encode(message: SelfUpdateResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.version !== "") {
+      writer.uint32(10).string(message.version);
+    }
+    if (message.restarting !== false) {
+      writer.uint32(16).bool(message.restarting);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SelfUpdateResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSelfUpdateResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.version = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.restarting = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SelfUpdateResponse {
+    return {
+      version: isSet(object.version) ? globalThis.String(object.version) : "",
+      restarting: isSet(object.restarting) ? globalThis.Boolean(object.restarting) : false,
+    };
+  },
+
+  toJSON(message: SelfUpdateResponse): unknown {
+    const obj: any = {};
+    if (message.version !== "") {
+      obj.version = message.version;
+    }
+    if (message.restarting !== false) {
+      obj.restarting = message.restarting;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SelfUpdateResponse>, I>>(base?: I): SelfUpdateResponse {
+    return SelfUpdateResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SelfUpdateResponse>, I>>(object: I): SelfUpdateResponse {
+    const message = createBaseSelfUpdateResponse();
+    message.version = object.version ?? "";
+    message.restarting = object.restarting ?? false;
     return message;
   },
 };
@@ -6958,6 +7351,32 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): InspectResponse => InspectResponse.decode(value),
   },
   /**
+   * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping
+   * — the agent's mTLS materials (agent.crt/agent.key/ca.crt under --agent-dir)
+   * are NEVER touched, so the server keeps its identity and pinned fingerprint
+   * across the upgrade and stays "online". This is the in-place sibling of
+   * re-running install-agent.sh (which mints a fresh token and re-bootstraps,
+   * resetting trust). The control plane resolves the latest release (the SAME
+   * GitHub release the install path uses) and sends the per-arch download URL +
+   * its sha256 here; the agent downloads, VERIFIES the checksum (refusing a
+   * mismatch, exactly like the installer's P2 guard), atomically swaps its own
+   * on-disk binary, replies, then restarts so systemd re-execs the new binary
+   * (which finds the existing materials and serves straight away — no call-home).
+   * INVARIANT: trust material is out of scope here; a SelfUpdate can change the
+   * code but never the identity. Returns FAILED_PRECONDITION when the agent can't
+   * locate/replace its own binary (e.g. a read-only install dir), so the control
+   * plane can tell the operator to fall back to re-running the installer.
+   */
+  selfUpdate: {
+    path: "/deplo.agent.v1.Agent/SelfUpdate" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SelfUpdateRequest): Buffer => Buffer.from(SelfUpdateRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SelfUpdateRequest => SelfUpdateRequest.decode(value),
+    responseSerialize: (value: SelfUpdateResponse): Buffer => Buffer.from(SelfUpdateResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SelfUpdateResponse => SelfUpdateResponse.decode(value),
+  },
+  /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
    * byte chunks. Output-only — there is no stdin. The control plane proxies these
    * chunks straight into the unchanged SSE log route. Closing the stream (browser
@@ -7302,6 +7721,24 @@ export interface AgentServer extends UntypedServiceImplementation {
   /** Container introspection (status/running) for the live-status subscriptions. */
   inspect: handleUnaryCall<InspectRequest, InspectResponse>;
   /**
+   * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping
+   * — the agent's mTLS materials (agent.crt/agent.key/ca.crt under --agent-dir)
+   * are NEVER touched, so the server keeps its identity and pinned fingerprint
+   * across the upgrade and stays "online". This is the in-place sibling of
+   * re-running install-agent.sh (which mints a fresh token and re-bootstraps,
+   * resetting trust). The control plane resolves the latest release (the SAME
+   * GitHub release the install path uses) and sends the per-arch download URL +
+   * its sha256 here; the agent downloads, VERIFIES the checksum (refusing a
+   * mismatch, exactly like the installer's P2 guard), atomically swaps its own
+   * on-disk binary, replies, then restarts so systemd re-execs the new binary
+   * (which finds the existing materials and serves straight away — no call-home).
+   * INVARIANT: trust material is out of scope here; a SelfUpdate can change the
+   * code but never the identity. Returns FAILED_PRECONDITION when the agent can't
+   * locate/replace its own binary (e.g. a read-only install dir), so the control
+   * plane can tell the operator to fall back to re-running the installer.
+   */
+  selfUpdate: handleUnaryCall<SelfUpdateRequest, SelfUpdateResponse>;
+  /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
    * byte chunks. Output-only — there is no stdin. The control plane proxies these
    * chunks straight into the unchanged SSE log route. Closing the stream (browser
@@ -7573,6 +8010,38 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: InspectResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping
+   * — the agent's mTLS materials (agent.crt/agent.key/ca.crt under --agent-dir)
+   * are NEVER touched, so the server keeps its identity and pinned fingerprint
+   * across the upgrade and stays "online". This is the in-place sibling of
+   * re-running install-agent.sh (which mints a fresh token and re-bootstraps,
+   * resetting trust). The control plane resolves the latest release (the SAME
+   * GitHub release the install path uses) and sends the per-arch download URL +
+   * its sha256 here; the agent downloads, VERIFIES the checksum (refusing a
+   * mismatch, exactly like the installer's P2 guard), atomically swaps its own
+   * on-disk binary, replies, then restarts so systemd re-execs the new binary
+   * (which finds the existing materials and serves straight away — no call-home).
+   * INVARIANT: trust material is out of scope here; a SelfUpdate can change the
+   * code but never the identity. Returns FAILED_PRECONDITION when the agent can't
+   * locate/replace its own binary (e.g. a read-only install dir), so the control
+   * plane can tell the operator to fall back to re-running the installer.
+   */
+  selfUpdate(
+    request: SelfUpdateRequest,
+    callback: (error: ServiceError | null, response: SelfUpdateResponse) => void,
+  ): ClientUnaryCall;
+  selfUpdate(
+    request: SelfUpdateRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SelfUpdateResponse) => void,
+  ): ClientUnaryCall;
+  selfUpdate(
+    request: SelfUpdateRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SelfUpdateResponse) => void,
   ): ClientUnaryCall;
   /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw

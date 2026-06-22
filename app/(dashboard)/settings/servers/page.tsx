@@ -23,6 +23,7 @@ import {
 } from "@/lib/version";
 import type { Server } from "@/lib/types";
 import { AgentVersionBadge } from "./agent-version-badge";
+import { CheckUpdatesButton } from "./check-updates-button";
 import {
   ServerMetricsProvider,
   LiveServerMetrics,
@@ -39,6 +40,7 @@ function ServerCard({
   expectedAgentVersion: string;
 }) {
   const agentVersion = reportedAgentVersion(server);
+  const outdated = isAgentOutdated(agentVersion, expectedAgentVersion);
   return (
     <Card>
       <CardHeader className="space-y-3">
@@ -53,6 +55,8 @@ function ServerCard({
               serverId={server.id}
               serverName={serverLabel(server)}
               provisioning={server.status === "provisioning"}
+              outdated={outdated}
+              expectedVersion={expectedAgentVersion}
             />
           </div>
         </div>
@@ -68,7 +72,7 @@ function ServerCard({
           <AgentVersionBadge
             version={agentVersion}
             expected={expectedAgentVersion}
-            outdated={isAgentOutdated(agentVersion, expectedAgentVersion)}
+            outdated={outdated}
           />
         </div>
       </CardHeader>
@@ -103,6 +107,7 @@ export default async function ServersPage() {
       <PageHeader
         title="Servers"
         description="Connected Docker hosts running your deployments."
+        actions={<CheckUpdatesButton />}
       />
 
       <Card>

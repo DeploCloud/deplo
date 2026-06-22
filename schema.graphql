@@ -41,12 +41,21 @@ input AddRegistryInput {
   username: String!
 }
 
-"""Register a remote server (provisioned via SSH)."""
+"""
+Register a remote server. Provisioned by a call-home bootstrap (no SSH-in): you run the returned install command on the box.
+"""
 input AddServerInput {
   host: String!
   name: String!
-  sshPort: Int
-  sshUser: String
+}
+
+"""A newly registered server + its one-time agent install command."""
+type AddServerPayload {
+  """
+  Paste-on-the-server command to provision the agent. Shown once; embeds a single-use token.
+  """
+  installCommand: String
+  server: Server
 }
 
 """
@@ -502,6 +511,8 @@ type GithubRepo {
 """A registered user in the instance-wide Users list (no email exposed)."""
 type GlobalUser {
   avatarColor: String
+  canExposePorts: Boolean
+  canMountHostVolumes: Boolean
   createdAt: String
   isInstanceAdmin: Boolean
   name: String
@@ -567,13 +578,18 @@ type Mutation {
 
   """Add a registry credential to the active team. Returns true."""
   addRegistry(input: AddRegistryInput!): Boolean
-  addServer(input: AddServerInput!): Server
+  addServer(input: AddServerInput!): AddServerPayload
   cancelDeployment(id: String!): Boolean
 
   """
   Change the current user's password after verifying the current one. Returns true.
   """
   changePassword(currentPassword: String!, newPassword: String!): Boolean
+
+  """
+  Force an immediate re-resolution of the latest agent release from GitHub, bypassing the in-process cache. Returns the resolved expected agent version so the dashboard re-renders with fresh outdated badges. Use after publishing a new agent release rather than waiting out the cache TTL.
+  """
+  checkAgentUpdates: String
 
   """Re-run the upstream release check and return the latest update info."""
   checkForUpdates: UpdateInfo
@@ -663,6 +679,11 @@ type Mutation {
   """
   registerThroughLink(email: String!, name: String!, password: String!, teamName: String!, token: String!, username: String!): AuthPayload
 
+  """
+  Mint a fresh install command for a server still provisioning (the original token expired or was lost).
+  """
+  reissueServerBootstrap(id: String!): AddServerPayload
+
   """Remove a dev SSH user. Returns true."""
   removeDevSshUser(id: String!): Boolean
 
@@ -675,8 +696,10 @@ type Mutation {
   """Remove a member from the active team. Returns true."""
   removeMember(userId: String!): Boolean
 
-  """Disconnect and remove a remote server. Returns true."""
-  removeServer(id: String!): Boolean
+  """
+  Disconnect and remove a remote server (revokes trust, best-effort teardown). Returns a warning string if the agent was unreachable, else null.
+  """
+  removeServer(id: String!): String
   renameProject(id: String!, name: String!): Project
 
   """Rename or move a file/folder within the project files tree."""
@@ -684,6 +707,9 @@ type Mutation {
 
   """Render the docker-compose stack a project would deploy."""
   renderComposeStack(projectId: String!): String
+
+  """Set the team-wide display order of projects in Overview."""
+  reorderProjects(projectIds: [ID!]!): Boolean
 
   """DESTRUCTIVE: replace the workspace with a fresh copy of the source."""
   resetDevWorkspace(projectId: String!): DevInfo
@@ -718,6 +744,11 @@ type Mutation {
   """Make this domain its project's primary (canonical) host. Returns true."""
   setPrimaryDomain(id: String!): Boolean
   setProjectAutoDeploy(id: String!, value: Boolean!): Project
+
+  """
+  Replace a single-container project's volumes (named, project-files, and host bind mounts).
+  """
+  setProjectVolumes(id: String!, volumes: [VolumeInput!]!): Project
 
   """Attach or detach a shared group to one project. Returns true."""
   setSharedEnvGroupAttachment(attached: Boolean!, groupId: String!, projectId: String!): Boolean
@@ -779,6 +810,11 @@ type Mutation {
   updateProjectBuild(build: BuildConfigInput!, id: String!): Project
   updateProjectLogo(id: String!, logo: String): Project
   updateProjectSource(id: String!, input: UpdateSourceInput!): Project
+
+  """
+  Update this server's agent binary in place to the latest released version WITHOUT reissuing its certificates — the agent self-updates over its existing pinned-mTLS channel and re-execs keeping the same on-disk trust materials, so the server stays online with the same identity. Returns the version the agent is now running. Errors clearly when the server is unreachable/unprovisioned, or — until the agent ships the self-update RPC — when its agent is too old to update itself remotely (re-run the installer to upgrade it for now).
+  """
+  updateServerAgent(id: String!): String
   updateTeam(input: UpdateTeamInput!): Team
 
   """Edit a user's instance-admin flag, suspended state, and password."""
@@ -832,6 +868,9 @@ type Project {
   status: ProjectStatus
   teamId: ID
   updatedAt: String
+
+  """Persistent named volumes (single-container projects only)."""
+  volumes: [Volume!]
 }
 
 """One project together with all of its env vars."""
@@ -868,6 +907,7 @@ enum ProjectStatus {
   error
   idle
   queued
+  stopping
 }
 
 type Query {
@@ -955,7 +995,9 @@ type Query {
   """The active team's notification settings (defaults if unset)."""
   notificationSettings: NotificationSettings
 
-  """The master (localhost) server, or the first one available."""
+  """
+  The first server available, or null when none has been added/provisioned yet.
+  """
   primaryServer: Server
   project(slug: String!): Project
 
@@ -991,7 +1033,7 @@ type Query {
   """A fresh live metrics snapshot for one server."""
   serverMetrics(serverId: String!): ServerMetrics
 
-  """All servers, master first then remotes by creation order."""
+  """All servers, by creation order."""
   servers: [Server!]
 
   """All shared env groups in the active team, A→Z."""
@@ -1103,10 +1145,17 @@ input SaveSharedEnvGroupInput {
   targets: [EnvTarget!]!
 }
 
-"""A host (the master or a connected remote) running deployments."""
+"""A connected host running deployments (reached via its agent)."""
 type Server {
+  """
+  True when this server's reported agent version is strictly older than expectedAgentVersion. False for an unseen agent or a non-semver/dev version we can't confidently compare.
+  """
   agentOutdated: Boolean
   agentPort: Int
+
+  """
+  The agent binary version last reported by this server on its last Hello. Null until the server's agent has called home and been provisioned.
+  """
   agentVersion: String
   cpuCores: Int
   cpuUsage: Int
@@ -1114,14 +1163,22 @@ type Server {
   diskGb: Int
   diskUsage: Int
   dockerVersion: String
+
+  """
+  The agent version this server should be running — the latest GitHub release of the agent (DeploCloud/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.
+  """
   expectedAgentVersion: String
   host: String
   id: ID
   ip: String
+
+  """Heartbeat cache (P5) — a hint, not the source of truth."""
   lastSeenAt: String
   memoryMb: Int
   memoryUsage: Int
   name: String
+
+  """True once the server's agent has called home and been trusted."""
   provisioned: Boolean
   status: ServerStatus
   traefikEnabled: Boolean
@@ -1148,6 +1205,7 @@ type ServerMetrics {
   netTx: Float
   online: Boolean
   serverId: ID
+  traefik: Boolean
   ts: Float
   uptimeSec: Int
 }
@@ -1160,7 +1218,6 @@ enum ServerStatus {
 }
 
 enum ServerType {
-  localhost
   remote
 }
 
@@ -1197,6 +1254,13 @@ type SharedEnvVar {
 input ShellLabelInput {
   containerName: String
   projectId: String!
+}
+
+type Subscription {
+  """
+  Emits the project whenever its status (power / deployment) changes. Fires once immediately with the current snapshot, then on every change.
+  """
+  projectStatus(slug: String!): Project
 }
 
 """A team that owns projects, infra and members."""
@@ -1275,6 +1339,8 @@ input UpdateTeamInput {
 }
 
 input UpdateUserAdminInput {
+  canExposePorts: Boolean
+  canMountHostVolumes: Boolean
   isInstanceAdmin: Boolean!
   newPassword: String
   suspended: Boolean!
@@ -1299,6 +1365,8 @@ Full per-user detail for the admin editor — the email IS included here.
 """
 type UserDetail {
   avatarColor: String
+  canExposePorts: Boolean
+  canMountHostVolumes: Boolean
   createdAt: String
   email: String
   isInstanceAdmin: Boolean
@@ -1336,6 +1404,30 @@ type Viewer {
   name: String
   role: String
   username: String
+}
+
+"""
+A persistent volume mounted into a single-container project — a docker named volume, a project-files bind, or a host bind mount.
+"""
+type Volume {
+  hostPath: String
+  id: ID
+  mountPath: String
+  name: String
+  projectPath: String
+  readOnly: Boolean
+  type: String
+}
+
+"""A persistent volume for a single-container project."""
+input VolumeInput {
+  hostPath: String
+  id: String
+  mountPath: String!
+  name: String
+  projectPath: String
+  readOnly: Boolean
+  type: String
 }
 
 """VS Code Remote Tunnel status for a project's dev container."""

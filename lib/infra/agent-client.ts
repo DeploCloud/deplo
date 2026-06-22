@@ -53,6 +53,7 @@ const CONSOLE_TIMEOUT_MS = 30_000; // exec runs in-container; match docker.ts ex
 const FILES_TIMEOUT_MS = 15_000;
 const STREAM_DEADLINE_MS = 30 * 60_000; // logs/attach are long-lived
 const GATEWAY_TIMEOUT_MS = 4 * 60_000; // gateway compose-up + sshd-wait + reconcile (Part D)
+const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000; // agent downloads + verifies + swaps its own binary
 
 /** Plain structural shapes the agent returns — mapped 1:1 by the data layer. */
 export interface AgentConsoleInstance {
@@ -147,6 +148,14 @@ export interface AgentConnection {
   /** Read back the rendered stack YAML the agent has on disk, for the "View full
    *  compose" preview. `exists` is false (empty yaml) when never deployed. */
   readStack(slug: string): Promise<{ exists: boolean; yaml: string }>;
+  /** Update the agent BINARY in place to `version`, WITHOUT reissuing certs: the
+   *  agent picks the asset for its own arch from `binaries`, verifies the sha256,
+   *  swaps itself, and re-execs reusing the on-disk mTLS materials. Resolves once
+   *  the swap is staged and the restart is scheduled (`restarting`). */
+  selfUpdate(
+    version: string,
+    binaries: Record<string, { url: string; sha256: string }>,
+  ): Promise<{ version: string; restarting: boolean }>;
 
   // ---- Part C: console observability ----
   /** Live `docker logs -f` as an output-only AttachHandle (reuses the SSE session
@@ -235,6 +244,22 @@ interface DialTarget {
 
 /** A typed availability error: the agent could not be reached (caller falls back). */
 export class AgentUnreachableError extends Error {}
+
+/**
+ * The reachable agent does not (yet) implement the in-place self-update RPC.
+ *
+ * The agent binary lives in its own repo (DeploCloud/deplo-agent) and ships on
+ * its own cadence; the `SelfUpdate` RPC — "fetch the checksum-verified latest
+ * binary, swap yourself on disk, re-exec keeping the SAME on-disk mTLS materials"
+ * — is added there and rolled out in an agent release. Until a server is running
+ * an agent new enough to answer it, `selfUpdateServerAgent` rejects with THIS
+ * error (distinct from {@link AgentUnreachableError}: the agent IS up, it just
+ * can't update itself remotely). The data/GraphQL layers surface it as a clear
+ * "update this agent by re-running the installer for now" message rather than a
+ * generic failure. When the RPC ships, only the body of `selfUpdateServerAgent`
+ * changes — every layer above it is already wired.
+ */
+export class AgentUpdateUnsupportedError extends Error {}
 
 /**
  * gRPC status codes that mean "the agent is down / not answering" rather than
@@ -630,6 +655,22 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
+    selfUpdate(
+      version: string,
+      binaries: Record<string, { url: string; sha256: string }>,
+    ) {
+      return new Promise<{ version: string; restarting: boolean }>((resolve, reject) => {
+        client.selfUpdate(
+          { version, binaries },
+          new Metadata(),
+          { deadline: new Date(Date.now() + SELF_UPDATE_TIMEOUT_MS) },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({ version: resp.version, restarting: resp.restarting }),
+        );
+      });
+    },
 
     // ---- Part C: console observability ----
     followLogs(projectId: string, container: string, tail: number) {
@@ -905,6 +946,94 @@ export async function teardownServerAgent(server: Server): Promise<void> {
   const conn = dial(target);
   try {
     await conn.hello(); // reachability pre-flight; throws if the box is gone
+  } finally {
+    conn.close();
+  }
+}
+
+/** The capability an agent advertises in Hello once it can self-update (mirrors
+ *  the "self-update" entry in the agent's server.Capabilities). */
+const SELF_UPDATE_CAPABILITY = "self-update";
+
+/**
+ * Update a server's agent binary IN PLACE to the latest release, WITHOUT
+ * reissuing its certificates. We dial the agent over its existing pinned-mTLS
+ * channel (`resolveTarget` proves it is provisioned + reachable, and the dial
+ * reuses the cert fingerprint recorded at bootstrap) and ask it to self-update:
+ * it fetches the checksum-verified binary for its own arch from GitHub Releases,
+ * swaps itself on disk, and re-execs keeping the SAME on-disk `agent.crt` /
+ * `agent.key` / `ca.crt`. Trust is untouched — no new CSR, no re-bootstrap, no
+ * token — so the server stays "online" with the same pinned fingerprint across
+ * the upgrade. This is the whole point of doing it over the agent channel rather
+ * than re-running install-agent.sh (which clears materials and re-bootstraps).
+ *
+ * The control plane resolves the release and sends EVERY published per-arch asset
+ * (url + sha256 from the release's checksums.txt — the same integrity source the
+ * installer pins); the agent selects its own arch. We do NOT pass the target
+ * version in from the caller's idea of "latest" only — we re-resolve here so the
+ * url/sha/version are internally consistent (one release).
+ *
+ * Throws:
+ *  - {@link AgentUnreachableError} when the server is unknown / not provisioned /
+ *    offline (the data layer surfaces "not provisioned / unreachable").
+ *  - {@link AgentUpdateUnsupportedError} when the reachable agent is too OLD to
+ *    self-update (it doesn't advertise the `self-update` capability, or it returns
+ *    gRPC UNIMPLEMENTED) — the UI tells the operator to re-run the installer.
+ *  - a plain error when no agent release can be resolved (GitHub unreachable), so
+ *    we never tell the agent to update to nothing.
+ */
+export async function selfUpdateServerAgent(
+  serverId: string,
+): Promise<{ version: string; restarting: boolean }> {
+  // Resolves only for a provisioned server with un-revoked trust; throws
+  // AgentUnreachableError otherwise.
+  const target = await resolveTarget(serverId);
+
+  // Resolve the release to install (version + per-arch url/sha). Out here so a
+  // GitHub outage fails before we touch the agent, and so version/urls are one
+  // consistent release. Lazy import keeps release.ts (and its server-only fetch)
+  // out of modules that never update an agent.
+  const { resolveLatestAgentRelease } = await import("../agent/release");
+  const release = await resolveLatestAgentRelease();
+  if (!release) {
+    throw new Error(
+      "Could not resolve the latest agent release from GitHub — try again, or use Check for updates.",
+    );
+  }
+  // Shape the release's per-arch binaries into the RPC's { arch -> {url,sha256} }
+  // map, dropping any arch the release didn't publish (the agent picks its own).
+  const binaries: Record<string, { url: string; sha256: string }> = {};
+  for (const [arch, bin] of Object.entries(release.binaries)) {
+    if (bin) binaries[arch] = { url: bin.url, sha256: bin.sha256 };
+  }
+
+  const conn = dial(target);
+  try {
+    // Pre-flight: confirm the agent answers AND can self-update. An agent too old
+    // to know the RPC won't advertise the capability — reject distinctly so the UI
+    // says "re-run the installer" rather than emitting a confusing UNIMPLEMENTED.
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(SELF_UPDATE_CAPABILITY)) {
+      throw new AgentUpdateUnsupportedError(
+        `The agent on this server is too old to update itself remotely ` +
+          `(target v${release.version}). Re-run the install command to upgrade it.`,
+      );
+    }
+    return await conn.selfUpdate(release.version, binaries);
+  } catch (e) {
+    // Belt-and-braces: a just-old-enough agent that advertises nothing useful, or
+    // a version skew, may still answer the call with UNIMPLEMENTED — map it to the
+    // same actionable message rather than a raw gRPC error.
+    if (
+      !(e instanceof AgentUpdateUnsupportedError) &&
+      (e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED
+    ) {
+      throw new AgentUpdateUnsupportedError(
+        `The agent on this server is too old to update itself remotely ` +
+          `(target v${release.version}). Re-run the install command to upgrade it.`,
+      );
+    }
+    throw e;
   } finally {
     conn.close();
   }
