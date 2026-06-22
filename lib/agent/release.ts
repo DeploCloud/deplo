@@ -102,8 +102,10 @@ function now(): number {
  * Resolve the latest agent release: its version plus a checksum-pinned download
  * URL per arch. Returns null when GitHub is unreachable or has no usable
  * release/checksums (callers degrade gracefully — the install route 503s, the
- * expected-version resolver falls back to FALLBACK_AGENT_VERSION). Cached for an
- * hour both in-process and via the fetch layer to respect rate limits.
+ * expected-version resolver falls back to FALLBACK_AGENT_VERSION). Cached ONLY by
+ * the in-process memo (CACHE_TTL_MS) — the underlying fetches are `no-store`, so a
+ * new release surfaces within that TTL (or instantly via refreshAgentRelease) and
+ * a restart always re-resolves; nothing is pinned in Next's on-disk Data Cache.
  */
 export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> {
   if (cache && now() - cache.at < CACHE_TTL_MS) return cache.release;
@@ -119,9 +121,8 @@ export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> 
  * operator's "Check for updates" action calls this so a release cut moments ago
  * is reflected at once, instead of waiting out CACHE_TTL_MS. Re-populates the
  * memo with the fresh result (so the immediately-following render reuses it) and
- * returns it. Note the underlying fetch still carries `next: { revalidate }`, but
- * that Data Cache is suppressed on the dynamic/cookie'd paths that call this, so
- * clearing the in-process memo is the effective bust.
+ * returns it. The underlying fetches are `no-store`, so clearing the in-process
+ * memo is a COMPLETE bust — there is no on-disk Data Cache layer to also defeat.
  */
 export async function refreshAgentRelease(): Promise<AgentRelease | null> {
   cache = null;
@@ -133,7 +134,13 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
   try {
     const res = await fetch(
       `https://api.github.com/repos/${AGENT_REPO}/releases/latest`,
-      { headers: GH_HEADERS, next: { revalidate: 3600 } },
+      // no-store: the in-process memo (CACHE_TTL_MS) is the ONLY cache. We
+      // deliberately do NOT use Next's Data Cache (`next: { revalidate }`) here —
+      // it persists on disk under .next/cache and survives a process restart, so a
+      // freshly cut release stayed hidden until the hour lapsed even after a
+      // restart or a "Check for updates" (which only clears the memo). With
+      // no-store, a restart and refreshAgentRelease() both re-hit GitHub at once.
+      { headers: GH_HEADERS, cache: "no-store" },
     );
     if (!res.ok) return null; // 404 (no releases yet), rate limit, etc.
     rel = (await res.json()) as GitHubRelease;
@@ -153,7 +160,10 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
   try {
     const res = await fetch(checksumAsset.browser_download_url, {
       headers: { "User-Agent": GH_HEADERS["User-Agent"] },
-      next: { revalidate: 3600 },
+      // no-store, same rationale as the release fetch above: the memo is the only
+      // cache, so this re-resolves with the (fresh) release rather than serving a
+      // checksums.txt from a prior release out of the on-disk Data Cache.
+      cache: "no-store",
     });
     if (!res.ok) return null;
     sums = parseChecksums(await res.text());
