@@ -24,7 +24,6 @@ import { cn, formatBytes, serverLabel } from "@/lib/utils";
 interface ServerLite {
   id: string;
   name: string;
-  type: "localhost" | "remote";
   status: ServerStatus;
   ip: string;
   dockerVersion: string;
@@ -109,6 +108,24 @@ export function MonitoringDashboard({
     initialMetrics.find((m) => m.serverId === selectedId) ??
     null;
 
+  // No servers added yet (e.g. straight after first-run setup): nothing to chart.
+  // Point the operator at the Servers page to add this host and run its installer.
+  // (After all hooks above, so the hook order stays stable across renders.)
+  if (!selected) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
+          <ServerOff className="size-8 text-muted-foreground" />
+          <p className="font-medium">No servers connected</p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            Add a server from Settings → Servers (start with this host) and run its
+            install command to see live metrics here.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Server selector */}
@@ -130,9 +147,7 @@ export function MonitoringDashboard({
             >
               <StatusDot status={s.status} />
               <span className="font-medium">{serverLabel(s)}</span>
-              <Badge variant={s.type === "localhost" ? "default" : "secondary"}>
-                {s.type === "localhost" ? "master" : "remote"}
-              </Badge>
+              <Badge variant="secondary">{s.status}</Badge>
               <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
                 {s.ip}
               </span>

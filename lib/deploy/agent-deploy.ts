@@ -16,19 +16,18 @@ import { normalizeBuildConfig } from "../frameworks";
 import type { BuildConfig, LogLevel } from "../types";
 
 /**
- * The agent-deploy seam (PLAN Part A, step 4). This is where `runDeployment`'s
- * EXECUTION moves off the direct-Docker path and onto the agent: the control
- * plane still does policy, the Deployment row, source materialisation, compose
+ * The agent-deploy seam (PLAN Part A, step 4). Every deploy EXECUTES on the
+ * owning server's agent — there is no in-process Docker path. The control plane
+ * still does policy, the Deployment row, source materialisation, compose
  * rendering (D2) and env decryption (D4) — then hands the agent a self-contained
  * DeployRequest and streams its events back into the existing log/status writes.
  *
- * PART A SCOPE — the agent handles the **Dockerfile build + single-image
- * compose-up** path (the most common). Everything else (Nixpacks/Buildpacks/
- * Railpack/static builders, multi-service compose stacks) stays on today's local
- * path via {@link agentCanHandle} returning false, so there is ZERO behavioural
- * change for those. If the agent is unreachable/unavailable, the caller also
- * falls back — the local path is never removed in Part A, only bypassed when the
- * agent can do the job.
+ * The agent handles the **Dockerfile/auto build + single-image compose-up** path,
+ * prebuilt images, git clones, dev-workspace builds, and multi-service compose
+ * stacks. Build methods the agent can't yet run ({@link agentCanHandle} returns
+ * false — Nixpacks/Buildpacks/Railpack/static) are a clear deploy ERROR, not a
+ * fallback: there is no local path to fall back to. An unreachable/unavailable
+ * agent is likewise a hard deploy failure (P5), never a silent local rebuild.
  */
 
 /** A built-context source the agent can tar up and build, vs. an image to run. */
@@ -98,7 +97,6 @@ export type AgentBuildPlan =
  * Dockerfile) and running a prebuilt image. The heavier builders stay local.
  */
 export function agentCanHandle(build: BuildConfig | null): boolean {
-  if (process.env.DEPLO_AGENT_DEPLOY === "off") return false;
   if (!build) return true; // image source: no build config involved
   const method = normalizeBuildConfig(build).buildMethod;
   // "dockerfile" is explicit; an unknown/legacy method funnels to the generated
@@ -156,12 +154,13 @@ export interface AgentDeployResult {
 
 /**
  * Run a deploy through the agent. Performs the mandatory Hello pre-flight (P5),
- * builds the DeployRequest (taring the context for a Dockerfile build, a GIT
- * source the agent clones itself, or an IMAGE source), streams events into
- * `sink`, and resolves `ready: true` on a ready result. Throws on
- * agent-unreachable / transport errors so the caller can fall back to the local
- * path; returns `ready: false` on a clean BUILD failure reported by the agent
- * (the deploy genuinely failed — do NOT silently retry locally).
+ * builds the DeployRequest (taring the context for a Dockerfile/upload build, a
+ * GIT source the agent clones itself, a dev-workspace, or an IMAGE source),
+ * streams events into `sink`, and resolves `ready: true` on a ready result.
+ * Throws {@link AgentUnavailableError} on agent-unreachable / transport errors
+ * BEFORE any work began (the caller turns it into a hard deploy failure — there
+ * is no local fallback); returns `ready: false` on a clean BUILD failure reported
+ * by the agent (the deploy genuinely failed).
  */
 export async function runAgentDeploy(opts: {
   serverId: string;
@@ -296,10 +295,11 @@ async function consumeStream(
 }
 
 /**
- * An agent transport/availability failure BEFORE any deploy work began — the
- * caller may safely fall back to the local path (the agent did nothing). A
- * failure AFTER work began is NOT this error: it is reported as a deploy failure
- * so we never double-build over an in-flight agent deploy.
+ * An agent transport/availability failure BEFORE any deploy work began. There is
+ * no local fallback, so the caller turns this into a hard deploy failure (P5); it
+ * exists separately from a normal error only so {@link runAgentDeploy} can tell
+ * "the agent never started" (fail the deploy) from "the stream dropped mid-build"
+ * (reattach + replay), never double-building over an in-flight agent deploy.
  */
 export class AgentUnavailableError extends Error {}
 

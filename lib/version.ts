@@ -59,23 +59,17 @@ export function isAgentOutdated(
 
 /**
  * The agent version a server is effectively running, for display and the
- * outdated check. localhost's agent is supervised in-process and shares the
- * control plane's binary, so it is the expected version by definition — its
- * stored `agent.version` (if any) is a diagnostic relic and must not be used.
- * A remote reports its version on each Hello (cached in `agent.version`); an
- * empty string or absent agent (not-yet-provisioned) collapses to null.
+ * outdated check. Every server (the host running Deplo included) runs an agent
+ * installed via install-agent.sh that reports its version on each Hello (cached
+ * in `agent.version`); an empty string or absent agent (not-yet-provisioned)
+ * collapses to null.
  *
  * Kept here, decoupled from the `Server` type, so the GraphQL resolver and the
  * server-rendered Servers card derive the same value from one rule.
  */
-export function reportedAgentVersion(
-  server: {
-    type: "localhost" | "remote";
-    agent?: { version: string };
-  },
-  expected: string = EXPECTED_AGENT_VERSION,
-): string | null {
-  if (server.type === "localhost") return expected;
+export function reportedAgentVersion(server: {
+  agent?: { version: string };
+}): string | null {
   return server.agent?.version || null;
 }
 

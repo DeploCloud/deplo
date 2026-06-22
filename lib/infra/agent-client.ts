@@ -28,7 +28,6 @@ import {
   type GatewayStep as PbGatewayStep,
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
-import { ensureLocalAgent, type LocalAgentHandle } from "../agent/local-agent";
 import { read } from "../store";
 import { markServerSeen } from "../data/servers";
 import type { Server } from "../types";
@@ -41,12 +40,11 @@ import type { Server } from "../types";
  * `lib/infra/docker.ts` calls in the deploy path: `runDeployment` calls
  * `agentDeploy(...)` instead of spawning docker locally.
  *
- * PART A resolved every server to the LOCAL agent. PART B makes the resolution
- * real: a `localhost` server still resolves to the supervised local agent, but a
- * `remote` server resolves to its declared address + port and PINS the agent's
- * certificate fingerprint (stored in the Server row at bootstrap, P3/P6). The
- * dial is mTLS in both worlds — one trust model — so the only thing that differs
- * is the address lookup and the fingerprint pin.
+ * EVERY server — the host running Deplo included — resolves to its declared
+ * address + port and PINS the agent's certificate fingerprint (stored in the
+ * Server row at bootstrap, P3/P6). There is one uniform trust model: the dial is
+ * mTLS against a CA-signed, pinned agent cert, with no in-process / un-pinned
+ * special case.
  */
 
 const HELLO_TIMEOUT_MS = 8_000;
@@ -137,6 +135,18 @@ export interface AgentConnection {
   startStack(slug: string): Promise<{ ok: boolean; error: string }>;
   /** Tear down a stack on the agent (P6 teardown / lifecycle). */
   destroyStack(slug: string): Promise<{ ok: boolean; error: string }>;
+  /** Re-apply routing to a running stack WITHOUT a rebuild: the control plane
+   *  re-renders the stack YAML (+ env + compose mounts) and the agent writes it
+   *  and `compose up`s in place. Replaces the old in-process reroute. */
+  reroute(req: {
+    slug: string;
+    composeYaml: string;
+    env: Record<string, string>;
+    mounts: { path: string; content: string }[];
+  }): Promise<{ ok: boolean; error: string }>;
+  /** Read back the rendered stack YAML the agent has on disk, for the "View full
+   *  compose" preview. `exists` is false (empty yaml) when never deployed. */
+  readStack(slug: string): Promise<{ exists: boolean; yaml: string }>;
 
   // ---- Part C: console observability ----
   /** Live `docker logs -f` as an output-only AttachHandle (reuses the SSE session
@@ -212,16 +222,15 @@ export interface AgentConnection {
 
 /**
  * A resolved dial target: the address + serverName + the control plane's client
- * creds, plus an OPTIONAL pinned fingerprint. The pin is set for remote agents
- * (trust that EXACT cert, P6 revocation) and absent for the local agent (our own
- * process; the CA chain is sufficient and the cert is re-minted per start).
+ * creds + the pinned fingerprint. The pin is REQUIRED for every server (trust
+ * that EXACT cert, P6 revocation) — there is no un-pinned in-process agent.
  */
 interface DialTarget {
   address: string;
   serverName: string;
   clientCreds: { certPem: string; keyPem: string; caPem: string };
-  /** sha256(DER) hex of the agent cert we will accept; undefined => CA-chain only. */
-  pinnedFingerprint?: string;
+  /** sha256(DER) hex of the agent cert we will accept. */
+  pinnedFingerprint: string;
 }
 
 /** A typed availability error: the agent could not be reached (caller falls back). */
@@ -261,57 +270,26 @@ function toAgentError(err: unknown): Error {
 }
 
 /**
- * Resolve a server to a dial target. `localhost` → the supervised local agent
- * (Part A path, unchanged). `remote` → its declared host/port + the control
- * plane's client cert, pinning the agent cert recorded at bootstrap. Throws
- * {@link AgentUnreachableError} if a remote server has no provisioned agent yet
- * or trust was revoked — the caller surfaces "server unreachable / not
- * provisioned" instead of hanging.
+ * Resolve a server to a dial target: its declared host/port + the control plane's
+ * client cert, pinning the agent cert recorded at bootstrap. Applies uniformly to
+ * every server, the host running Deplo included. Throws {@link AgentUnreachableError}
+ * if the server is unknown, has no provisioned agent yet, or trust was revoked —
+ * the caller surfaces "server unreachable / not provisioned" instead of hanging.
  */
 async function resolveTarget(serverId: string): Promise<DialTarget> {
   const server = read().servers.find((s) => s.id === serverId);
-
-  // A remote, provisioned server: dial its address, pin its cert.
-  if (server && server.type === "remote") {
-    if (!server.agent || !server.agent.certFingerprint) {
-      throw new AgentUnreachableError(
-        `server ${server.name} is not provisioned (no agent has called home yet)`,
-      );
-    }
-    return remoteTarget(server);
+  if (!server) {
+    throw new AgentUnreachableError(`server ${serverId} not found`);
   }
-
-  // localhost (or an unknown id treated as the host): the supervised local agent.
-  return localTarget();
+  if (!server.agent || !server.agent.certFingerprint) {
+    throw new AgentUnreachableError(
+      `server ${server.name} is not provisioned (no agent has called home yet)`,
+    );
+  }
+  return remoteTarget(server);
 }
 
-/** Build a dial target for the supervised local agent (Part A behaviour). */
-async function localTarget(): Promise<DialTarget> {
-  const handle = await ensureLocalAgent(async (h) => {
-    const conn = dial(handleToTarget(h));
-    try {
-      await conn.hello();
-      return true;
-    } catch {
-      return false;
-    } finally {
-      conn.close();
-    }
-  });
-  return handleToTarget(handle);
-}
-
-function handleToTarget(h: LocalAgentHandle): DialTarget {
-  return {
-    address: h.address,
-    serverName: h.serverName,
-    clientCreds: h.clientCreds,
-    // No pin for the local agent: it is our own process and the cert is re-minted
-    // each start, so the CA chain is the trust (Part A semantics preserved).
-  };
-}
-
-/** Build a dial target for a provisioned remote agent (Part B). */
+/** Build a dial target for a provisioned agent (Part B). */
 async function remoteTarget(server: Server): Promise<DialTarget> {
   const { issueControlPlaneClientCert, caCertPem } = await import("../agent/pki");
   const client = await issueControlPlaneClientCert();
@@ -339,23 +317,21 @@ function dial(target: DialTarget): AgentConnection {
     Buffer.from(caPem),
     Buffer.from(keyPem),
     Buffer.from(certPem),
-    target.pinnedFingerprint
-      ? {
-          // Standard CA-chain + hostname verification still runs; this fires
-          // AFTER it. We additionally require the EXACT pinned fingerprint, so a
-          // cert that chains to our CA but isn't the one we provisioned (or whose
-          // trust was revoked by clearing the pin) is rejected — P6 revocation.
-          checkServerIdentity: (_host, cert) => {
-            const got = peerFingerprint(cert);
-            if (got !== target.pinnedFingerprint) {
-              return new Error(
-                `agent cert fingerprint mismatch: pinned ${target.pinnedFingerprint}, got ${got}`,
-              );
-            }
-            return undefined;
-          },
+    {
+      // Standard CA-chain + hostname verification still runs; this fires AFTER
+      // it. We additionally require the EXACT pinned fingerprint, so a cert that
+      // chains to our CA but isn't the one we provisioned (or whose trust was
+      // revoked by clearing the pin) is rejected — P6 revocation.
+      checkServerIdentity: (_host, cert) => {
+        const got = peerFingerprint(cert);
+        if (got !== target.pinnedFingerprint) {
+          return new Error(
+            `agent cert fingerprint mismatch: pinned ${target.pinnedFingerprint}, got ${got}`,
+          );
         }
-      : undefined,
+        return undefined;
+      },
+    },
   );
   const client = new GrpcAgentClient(target.address, creds, {
     // Verify the agent cert against this name (covered by the cert SANs).
@@ -624,6 +600,36 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
+    reroute(req: {
+      slug: string;
+      composeYaml: string;
+      env: Record<string, string>;
+      mounts: { path: string; content: string }[];
+    }) {
+      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
+        client.reroute(
+          {
+            slug: req.slug,
+            composeYaml: req.composeYaml,
+            env: req.env,
+            mounts: req.mounts,
+          },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({ ok: resp.ok, error: resp.error }),
+        );
+      });
+    },
+    readStack(slug: string) {
+      return new Promise<{ exists: boolean; yaml: string }>((resolve, reject) => {
+        client.readStack({ slug }, (err, resp) =>
+          err
+            ? reject(toAgentError(err))
+            : resolve({ exists: resp.exists, yaml: resp.yaml }),
+        );
+      });
+    },
 
     // ---- Part C: console observability ----
     followLogs(projectId: string, container: string, tail: number) {
@@ -876,7 +882,7 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
     try {
       markServerSeen(serverId, resp.agentVersion, resp.traefikRunning);
     } catch {
-      /* localhost or unknown id: no row to touch */
+      /* unknown id: no row to touch */
     }
     return resp;
   } finally {
@@ -885,15 +891,15 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
 }
 
 /**
- * Best-effort remote teardown for server removal (PLAN P6, move c). Pre-flight
+ * Best-effort agent teardown for server removal (PLAN P6, move c). Pre-flight
  * Hello to confirm the agent answers; if it does, the removal is clean and the
  * operator is not warned. (Container cleanup is bounded: removeServer blocks
  * while any project is still assigned, so by the time we reach here the control
  * plane owns no stacks on this host — the meaningful signal is reachability.)
  * Throws if the agent is unreachable so the caller warns about manual cleanup.
+ * Applies to every server uniformly (the host running Deplo included).
  */
 export async function teardownServerAgent(server: Server): Promise<void> {
-  if (server.type === "localhost") return; // never tear down our own host
   const target = await remoteTarget(server).catch(() => null);
   if (!target) return; // never provisioned; nothing to reach
   const conn = dial(target);

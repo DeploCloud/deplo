@@ -2,14 +2,7 @@ import "server-only";
 
 import { read } from "../store";
 import { requireActiveTeamId, requireCapability } from "../membership";
-import {
-  execInContainer as dockerExec,
-  isDockerLevelStderr,
-  inspectRuntime,
-  inspectStdio,
-  listContainers,
-  shellLabel,
-} from "../infra/docker";
+import { isDockerLevelStderr } from "../infra/docker";
 import {
   connectAgent,
   AgentUnreachableError,
@@ -19,15 +12,13 @@ import type { Project, Server } from "../types";
 
 /**
  * Resolve a project's owning server. Every console/logs surface routes to the
- * agent that owns the project's host: `localhost` uses today's direct-Docker
- * path; `remote` goes through the owning agent (PLAN Part C). An unknown serverId
- * is treated as localhost (the host), matching the deploy path's resolveTarget.
+ * agent that owns the project's host (PLAN Part C) — there is no direct-Docker
+ * path anymore; the host running Deplo is reached through its agent like any
+ * other. An unknown serverId resolves to undefined and the agent dial then fails
+ * clearly as unreachable.
  */
 function serverOf(p: Project): Server | undefined {
   return read().servers.find((s) => s.id === p.serverId);
-}
-function isRemote(p: Project): boolean {
-  return serverOf(p)?.type === "remote";
 }
 
 /**
@@ -84,82 +75,14 @@ export function containerName(p: Project): string {
 }
 
 /**
- * The compose service name embedded in a Compose container name
- * (`deplo-<slug>-<service>-N`). Falls back to the whole name when the pattern
- * does not match (single-image deploys).
- */
-function serviceOf(p: Project, containerName: string): string {
-  const prefix = `deplo-${p.slug}-`;
-  if (containerName.startsWith(prefix)) {
-    return containerName.slice(prefix.length).replace(/-\d+$/, "");
-  }
-  return containerName.replace(/^deplo-/, "");
-}
-
-/**
- * Every attachable container for a project, default (exposed/running) first.
- *
- * LOCALHOST: probes the local docker socket; returns a single SYNTHETIC entry
- * when Docker is unavailable / no containers exist, so the console still renders
- * with the conventional name. REMOTE (PLAN Part C): asks the owning agent's
- * ListInstances — and DELIBERATELY has NO synthetic fallback. Fabricating a
- * container for a remote we can't reach would be a "status that lies"; an
- * unreachable remote throws {@link AgentUnreachableError} (the caller surfaces a
- * clear error), and a reachable remote with no containers truthfully returns [].
+ * Every attachable container for a project, default (exposed/running) first —
+ * via the owning agent's ListInstances (ordering applied agent-side). There is
+ * DELIBERATELY no synthetic fallback: fabricating a container for a host we can't
+ * reach would be a "status that lies". An unreachable agent throws
+ * {@link AgentUnreachableError} (the caller surfaces a clear error), and a
+ * reachable host with no containers truthfully returns [].
  */
 export async function listInstances(p: Project): Promise<ConsoleInstance[]> {
-  if (isRemote(p)) return listInstancesRemote(p);
-
-  const fallback: ConsoleInstance = {
-    name: containerName(p),
-    service: p.slug,
-    image: p.dockerImage ?? `deplo/${p.slug}:latest`,
-    running: false,
-    exposed: true,
-    user: "root",
-    workdir: "/",
-    openStdin: false,
-    tty: false,
-  };
-  try {
-    const cs = await listContainers(`deplo.project=${p.id}`);
-    if (cs.length === 0) return [fallback];
-    const instances = await Promise.all(
-      cs.map(async (c) => {
-        // Both inspects are metadata-only and never throw.
-        const [rt, io] = await Promise.all([
-          inspectRuntime(c.name),
-          inspectStdio(c.name),
-        ]);
-        return {
-          name: c.name,
-          service: serviceOf(p, c.name),
-          image: c.image,
-          running: c.state === "running",
-          exposed: p.expose?.service
-            ? c.name.includes(`-${p.expose.service}-`)
-            : false,
-          user: rt.user,
-          workdir: rt.workdir,
-          openStdin: io.openStdin,
-          tty: io.tty,
-        };
-      }),
-    );
-    // Exposed app first, then running, then the rest — that is the order the
-    // picker shows and the first entry is the default target.
-    return instances.sort((a, b) => {
-      if (a.exposed !== b.exposed) return a.exposed ? -1 : 1;
-      if (a.running !== b.running) return a.running ? -1 : 1;
-      return a.service.localeCompare(b.service);
-    });
-  } catch {
-    return [fallback];
-  }
-}
-
-/** Remote instance list via the owning agent (ordering applied agent-side). */
-async function listInstancesRemote(p: Project): Promise<ConsoleInstance[]> {
   const conn = await connectAgent(p.serverId);
   try {
     return await conn.listInstances(p.id, p.slug, p.expose?.service ?? "");
@@ -270,8 +193,7 @@ export async function getShellLabel(
     ? instances.find((i) => i.name === target)
     : instances.find((i) => i.running) ?? instances[0];
   if (!pick || !pick.running) return "raw exec (no shell)";
-  if (isRemote(p)) return probeRemoteShellLabel(p, pick.name, pick.image);
-  return shellLabel(pick.name, pick.image);
+  return probeShellLabel(p, pick.name, pick.image);
 }
 
 export async function getAttachInfo(projectId: string): Promise<AttachInfo | null> {
@@ -286,15 +208,13 @@ export async function getAttachInfo(projectId: string): Promise<AttachInfo | nul
   // when running; a stopped/unreachable container can't be probed, so report raw.
   let shell = "raw exec (no shell)";
   if (running) {
-    shell = isRemote(p)
-      ? await probeRemoteShellLabel(p, def.name, def.image)
-      : await shellLabel(def.name, def.image);
+    shell = await probeShellLabel(p, def.name, def.image);
   }
   return { containerName: def.name, image: def.image, running, shell, instances };
 }
 
-/** Remote shell-label probe that degrades to raw on an unreachable agent. */
-async function probeRemoteShellLabel(
+/** Shell-label probe (via the owning agent) that degrades to raw when unreachable. */
+async function probeShellLabel(
   p: Project,
   container: string,
   image: string,
@@ -405,12 +325,10 @@ export async function execInContainer(
       : instances[0];
     if (!pick) return { output: `! no such instance: ${target}` };
 
-    // REMOTE (PLAN Part C): exec on the owning agent. The agent applies the same
+    // Exec on the owning agent (PLAN Part C). The agent applies the same
     // shell/raw dispatch and docker-vs-guest classification, returning the guest
     // exit code; a docker-level failure is a thrown gRPC error (caught below).
-    const res = isRemote(p)
-      ? await execOnAgent(p, pick.name, command, pick.image)
-      : await dockerExec(pick.name, command, pick.image);
+    const res = await execOnAgent(p, pick.name, command, pick.image);
 
     // Docker/OCI-level failure: `docker exec` couldn't run the command at all
     // (container stopped/removed, daemon error, or the exec target binary is

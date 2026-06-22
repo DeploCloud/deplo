@@ -34,21 +34,9 @@ test("the dockerfile method is agent-eligible", () => {
   assert.equal(agentCanHandle(build("dockerfile")), true);
 });
 
-test("the heavy builders are NOT agent-eligible in Part A", () => {
+test("the heavy builders are NOT agent-eligible (they have no in-process fallback now, so a clear deploy error)", () => {
   for (const m of ["nixpacks", "railpack", "heroku", "paketo", "static"] as const) {
-    assert.equal(agentCanHandle(build(m)), false, `${m} should stay local`);
-  }
-});
-
-test("DEPLO_AGENT_DEPLOY=off disables the agent path entirely", () => {
-  const prev = process.env.DEPLO_AGENT_DEPLOY;
-  process.env.DEPLO_AGENT_DEPLOY = "off";
-  try {
-    assert.equal(agentCanHandle(null), false);
-    assert.equal(agentCanHandle(build("dockerfile")), false);
-  } finally {
-    if (prev === undefined) delete process.env.DEPLO_AGENT_DEPLOY;
-    else process.env.DEPLO_AGENT_DEPLOY = prev;
+    assert.equal(agentCanHandle(build(m)), false, `${m} is not an agent capability`);
   }
 });
 

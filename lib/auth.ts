@@ -15,17 +15,12 @@ import type {
   Membership,
   PublicUser,
   Role,
-  Server,
   Team,
   User,
 } from "./types";
 import { capabilitiesForRole } from "./membership-shared";
 import { normalizeUsername, validateUsername, uniqueUsername } from "./username";
-import { instanceHost } from "./deploy/domains";
 import { randomBytes } from "node:crypto";
-import os from "node:os";
-import { serverVersion } from "./infra/docker";
-import { hostMetrics } from "./infra/host";
 import { currentIdentity } from "./auth/request-context";
 
 const SESSION_COOKIE = "deplo_session";
@@ -246,9 +241,11 @@ export async function login(
 }
 
 /**
- * First-run setup: create the workspace (team), the owner account and register
- * the host running Deplo as the master server, then sign the owner in. Refuses
- * to run once any account exists.
+ * First-run setup: create the workspace (team) and the owner account, then sign
+ * the owner in. Refuses to run once any account exists. NO server is seeded — the
+ * operator adds the host running Deplo (and any others) through the normal "Add
+ * server" flow and runs the install command on each box, so every server is a
+ * bootstrapped, pinned agent uniformly (the host running Deplo included).
  */
 export async function completeSetup(input: {
   username: string;
@@ -280,37 +277,6 @@ export async function completeSetup(input: {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
   }
 
-  // The host running Deplo is the master server; probe its real specs.
-  const now = new Date().toISOString();
-  const dockerVersion = await serverVersion();
-  let diskGb = 0;
-  try {
-    const hm = await hostMetrics(process.env.DEPLO_DATA_DIR || "/");
-    diskGb = Math.round(hm.diskTotal / 1024 ** 3);
-  } catch {
-    /* disk unknown */
-  }
-  const master: Server = {
-    id: `srv_${randomBytes(8).toString("hex")}`,
-    name: "master",
-    host: "localhost",
-    type: "localhost",
-    status: "online",
-    ip: instanceHost(),
-    dockerVersion,
-    traefikEnabled: true,
-    cpuCores: os.cpus().length || 1,
-    memoryMb: Math.round(os.totalmem() / (1024 * 1024)),
-    diskGb,
-    cpuUsage: 0,
-    memoryUsage: 0,
-    diskUsage: 0,
-    createdAt: now,
-  };
-
-  mutate((d) => {
-    if (d.servers.length === 0) d.servers.push(master);
-  });
   await setSessionCookie(user.id);
   await setActiveTeamCookie(team.id);
   return { ok: true };

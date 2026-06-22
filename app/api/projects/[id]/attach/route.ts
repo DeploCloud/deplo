@@ -3,7 +3,6 @@ import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth";
 import { resolveAttachTarget } from "@/lib/data/console";
 import * as attach from "@/lib/attach/session";
-import { attachContainer, attachContainerPty } from "@/lib/infra/docker";
 import { connectAgent } from "@/lib/infra/agent-client";
 
 /**
@@ -44,25 +43,17 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
-  // tty:true containers need a real PTY (local node-pty, or the agent's Go pty);
-  // tty:false attach over plain pipes. Build the backing against the OWNING
-  // server: localhost taps the local docker socket; remote opens the agent's bidi
-  // Attach (cleanup closes the gRPC client). A remote dial failure fails clearly.
+  // Build the backing against the OWNING server's agent: the agent's bidi Attach
+  // gives a real PTY for tty:true containers and plain pipes otherwise (cleanup
+  // closes the gRPC client). A dial failure fails clearly.
   const tty = resolved.instance.tty;
   let session;
   try {
-    if (resolved.server?.type === "remote") {
-      const conn = await connectAgent(resolved.server.id);
-      const handle = conn.attach(projectId, resolved.instance.name, tty, 80, 24);
-      session = attach.open(projectId, resolved.instance.name, handle, () =>
-        conn.close(),
-      );
-    } else {
-      const handle = tty
-        ? attachContainerPty(resolved.instance.name)
-        : attachContainer(resolved.instance.name);
-      session = attach.open(projectId, resolved.instance.name, handle);
-    }
+    const conn = await connectAgent(resolved.server!.id);
+    const handle = conn.attach(projectId, resolved.instance.name, tty, 80, 24);
+    session = attach.open(projectId, resolved.instance.name, handle, () =>
+      conn.close(),
+    );
   } catch {
     return Response.json({ error: "unreachable" }, { status: 503 });
   }

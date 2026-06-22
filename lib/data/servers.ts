@@ -19,11 +19,10 @@ import type { Server } from "../types";
 
 export async function listServers(): Promise<Server[]> {
   await assertUser();
-  // Master (localhost) first, then remotes by creation order.
-  return [...read().servers].sort((a, b) => {
-    if (a.type === b.type) return a.createdAt < b.createdAt ? -1 : 1;
-    return a.type === "localhost" ? -1 : 1;
-  });
+  // By creation order — every server is a uniform bootstrapped agent now.
+  return [...read().servers].sort((a, b) =>
+    a.createdAt < b.createdAt ? -1 : 1,
+  );
 }
 
 export async function getServer(id: string): Promise<Server | null> {
@@ -31,11 +30,14 @@ export async function getServer(id: string): Promise<Server | null> {
   return read().servers.find((x) => x.id === id) || null;
 }
 
-export async function getPrimaryServer(): Promise<Server> {
+/**
+ * The "primary" server — the first one added — or null when none exists yet
+ * (e.g. straight after first-run setup, before the operator has added any host).
+ * Callers must tolerate null and prompt the operator to add a server.
+ */
+export async function getPrimaryServer(): Promise<Server | null> {
   await assertUser();
-  return (
-    read().servers.find((s) => s.type === "localhost") ?? read().servers[0]
-  );
+  return read().servers[0] ?? null;
 }
 
 export interface AddServerInput {
@@ -111,8 +113,6 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   await requireCapability("manage_infra");
   const server = read().servers.find((s) => s.id === id);
   if (!server) throw new Error("Server not found");
-  if (server.type === "localhost")
-    throw new Error("The master server is not provisioned this way");
   if (server.agent)
     throw new Error("This server is already provisioned; remove it to re-provision");
 
@@ -148,8 +148,6 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   const user = read().users.find((u) => u.id === membership.userId)!;
   const server = read().servers.find((s) => s.id === id);
   if (!server) throw new Error("Server not found");
-  if (server.type === "localhost")
-    throw new Error("The master server cannot be removed");
 
   // (b) Block while projects are assigned — a conscious decision by the operator.
   if (read().projects.some((p) => p.serverId === id))

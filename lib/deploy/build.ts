@@ -1,24 +1,15 @@
 import "server-only";
 
-import {
-  mkdtemp,
-  mkdir,
-  rm,
-  writeFile,
-  readFile,
-  access,
-} from "node:fs/promises";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import yaml from "js-yaml";
 import { read, mutate } from "../store";
 import { newId, nowIso } from "../ids";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
 import { recordActivity } from "../data/activity";
-import { docker, ensureNetwork } from "../infra/docker";
-import { spawnStream } from "../infra/exec";
-import { cloneStream, revParse } from "../infra/git";
+import { ensureNetwork } from "../infra/docker";
 import { buildImage } from "./builders";
 import { extractArchive } from "./upload";
 import {
@@ -31,7 +22,6 @@ import { usesComposeStack, hostVolumeName } from "../utils";
 import { certResolver, previewDomain, resolveServerIp } from "./domains";
 import { traefikRouterLabels } from "./routing";
 import { buildComposeStack } from "./compose-stack";
-import { copyWorkspaceForBuild } from "./dev";
 import {
   ensureAutoDomain,
   ensureExtraDomain,
@@ -51,21 +41,19 @@ import { connectAgent, agentPreflight } from "../infra/agent-client";
 import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
 
 /**
- * Whether a slug's project lives on a REMOTE server (its lifecycle verbs must
- * run on the owning agent, not the local docker socket). Resolved from the store.
- * A localhost / unknown server stays on the local path.
+ * The owning server id for a slug's project — its lifecycle verbs run on that
+ * server's agent (every project is agent-backed now, the host running Deplo
+ * included). Null for an unknown slug / a project whose server row is missing.
  */
-function remoteServerIdForSlug(slug: string): string | null {
+function owningServerIdForSlug(slug: string): string | null {
   const p = read().projects.find((x) => x.slug === slug);
   if (!p) return null;
   const server = read().servers.find((s) => s.id === p.serverId);
-  return server?.type === "remote" ? server.id : null;
+  return server ? server.id : null;
 }
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 const STACK_DIR = join(DATA_DIR, "stacks");
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function log(depId: string, level: LogLine["level"], text: string): void {
   mutate((d) => {
@@ -232,45 +220,6 @@ networks:
 ${topVolsYaml}`;
 }
 
-async function streamDocker(
-  args: string[],
-  depId: string,
-  timeout: number,
-): Promise<void> {
-  const code = await spawnStream(
-    "docker",
-    args,
-    (line) => log(depId, "info", line),
-    { timeout },
-  );
-  if (code !== 0) throw new Error(`docker ${args[0]} failed (exit ${code})`);
-}
-
-async function waitRunning(name: string, ms: number): Promise<boolean> {
-  const deadline = Date.now() + ms;
-  while (Date.now() < deadline) {
-    try {
-      const { stdout } = await docker(
-        ["inspect", "-f", "{{.State.Running}}", name],
-        { timeout: 5_000 },
-      );
-      if (stdout.trim() === "true") return true;
-    } catch {
-      /* not up yet */
-    }
-    await sleep(2_000);
-  }
-  return false;
-}
-
-async function fileExists(p: string): Promise<boolean> {
-  try {
-    await access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /** A deployment status that is non-terminal — a build was in flight. */
 export function isInFlightStatus(s: Deployment["status"]): boolean {
@@ -449,20 +398,16 @@ async function buildImageFromTree(opts: {
 }
 
 /**
- * Render the single-image stack and stream it through the agent (PLAN Part A).
- * Returns "agent" when the agent fully built + ran the deploy, "local" when the
- * agent was unavailable (so the caller builds + runs locally as before). A clean
- * BUILD failure reported by the agent is NOT a fallback — it returns "failed",
- * and the caller marks the deploy errored without silently rebuilding locally.
- *
- * This is the choke point Part A introduces: the localhost server's deploy now
- * flows agent → control plane → pubsub for the Dockerfile/single-image path,
- * proving the contract with zero remote risk. Anything the agent can't handle
- * (heavy builders, compose stacks, agent down) takes the unchanged local path.
+ * Render the single-image (or compose) stack and stream it through the OWNING
+ * agent. Returns "agent" when the agent fully built + ran the deploy, "failed"
+ * when it reported a build failure OR was unreachable — there is no in-process
+ * fallback, so an unavailable agent is a hard deploy failure (P5), never a silent
+ * local rebuild. This is the single choke point: every deploy flows agent →
+ * control plane → pubsub.
  */
 /** The agent attempt's outcome + any commit sha the agent resolved (git source). */
 interface AgentAttempt {
-  outcome: "agent" | "local" | "failed";
+  outcome: "agent" | "failed";
   commitSha: string;
 }
 
@@ -474,13 +419,9 @@ async function tryAgent(opts: {
   composeYaml: string;
   env: Record<string, string>;
   plan: AgentBuildPlan;
-  /** When true a transport failure is NOT a local fallback (remote has no local
-   * path); it is a hard deploy failure. Set for remote servers. */
-  noLocalFallback?: boolean;
   /** How long the agent waits for the stack to report running (ms). Defaults to
-   * 60s (the single-image path); the compose path passes 90s to match the
-   * master's waitStackRunning, since a multi-service stack may pull several
-   * images first. */
+   * 60s (the single-image path); the compose path passes 90s since a multi-service
+   * stack may pull several images first. */
   readyTimeoutMs?: number;
 }): Promise<AgentAttempt> {
   try {
@@ -499,22 +440,10 @@ async function tryAgent(opts: {
     return { outcome: ready ? "agent" : "failed", commitSha };
   } catch (e) {
     if (e instanceof AgentUnavailableError) {
-      if (opts.noLocalFallback) {
-        // A remote server has no local build path to fall back to: surface the
-        // unreachable agent as a clear deploy failure (P5 — no hung deploys).
-        log(
-          opts.depId,
-          "error",
-          `Remote agent unavailable: ${e.message}`,
-        );
-        return { outcome: "failed", commitSha: "" };
-      }
-      log(
-        opts.depId,
-        "warn",
-        `Agent unavailable (${e.message}); falling back to local build.`,
-      );
-      return { outcome: "local", commitSha: "" };
+      // No in-process build path to fall back to: surface the unreachable agent
+      // as a clear deploy failure (P5 — no hung deploys).
+      log(opts.depId, "error", `Agent unavailable: ${e.message}`);
+      return { outcome: "failed", commitSha: "" };
     }
     throw e;
   }
@@ -531,7 +460,6 @@ async function runDeployment(depId: string): Promise<void> {
   }
   const slug = project.slug;
   const name = `deplo-${slug}`;
-  const stackFile = join(STACK_DIR, `${slug}.yml`);
   const server = read().servers.find((s) => s.id === project.serverId);
   const ip = resolveServerIp(server);
   const domain =
@@ -555,19 +483,17 @@ async function runDeployment(depId: string): Promise<void> {
     await mkdir(STACK_DIR, { recursive: true });
     await ensureNetwork("deplo");
 
-    // A REMOTE server can ONLY deploy what the agent supports — everything else
-    // would silently build/run on the WRONG host (localhost's Docker). The heavy
-    // builders (Nixpacks/Buildpacks/Railpack/static) aren't agent capabilities
-    // yet, so a remote project using one fails clearly here rather than deploying
-    // to the master. (Image + Dockerfile/auto + single-image compose go through
-    // the agent below.) An unprovisioned remote also fails fast (P5).
-    if (server?.type === "remote" && !agentCanHandle(project.build)) {
+    // Every server is reached only through its agent — there is no in-process
+    // build path. The heavy builders (Nixpacks/Buildpacks/Railpack/static) aren't
+    // agent capabilities yet, so a project using one fails clearly here rather
+    // than having nowhere to run. (Image + Dockerfile/auto + single-image compose
+    // go through the agent below.) An unprovisioned server also fails fast (P5).
+    if (!agentCanHandle(project.build)) {
       log(
         depId,
         "error",
-        "This build method can't yet deploy to a remote server (only Dockerfile/" +
-          "auto builds and prebuilt images can). Switch the build method, or move " +
-          "the project to the master server.",
+        "This build method can't be deployed by the agent yet (only Dockerfile/" +
+          "auto builds and prebuilt images can). Switch the build method.",
       );
       setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
       setProject(project.id, { status: "error" });
@@ -591,7 +517,6 @@ async function runDeployment(depId: string): Promise<void> {
         project,
         name,
         slug,
-        stackFile,
         domain,
         // Compose stacks route via their own service/port model (expose/exposes
         // + host pins). Per-domain ports don't apply, but a domain CAN pick a
@@ -602,35 +527,25 @@ async function runDeployment(depId: string): Promise<void> {
         environment: dep.environment,
         started,
       };
-      // A REMOTE server runs the stack through the agent (the agent writes the
-      // mount files + env-file and `compose up`s on the OWNING host); the master
-      // brings it up directly on localhost's Docker. Both render the SAME stack
-      // YAML (buildComposeStack), so routing/labels are byte-identical either way.
-      if (server?.type === "remote") {
-        await deployComposeStackViaAgent({ ...composeOpts, serverId: project.serverId });
-      } else {
-        await deployComposeStack(composeOpts);
-      }
+      // The owning agent runs the stack (it writes the mount files + env-file and
+      // `compose up`s on its host), the host running Deplo included. The control
+      // plane renders the stack YAML (buildComposeStack); the agent brings it up.
+      await deployComposeStackViaAgent({ ...composeOpts, serverId: project.serverId });
       return;
     }
 
     let imageRef: string;
     let commitSha = "";
-    // Set by the agent path (PLAN Part A/B) when the agent fully built + ran this
-    // deploy, so the post-switch LOCAL build + compose-up is skipped. "failed"
-    // means the agent reported a real build failure (do NOT silently rebuild
-    // locally); "agent" means it succeeded; null means the local path runs.
+    // Set by the agent path when it fully built + ran this deploy. "failed" means
+    // the agent reported a real build failure or was unreachable; "agent" means it
+    // succeeded. Every deploy goes through the agent now — there is no in-process
+    // build/run path — so this is always set by the time we settle.
     let agentOutcome: "agent" | "failed" | null = null;
     const serverId = project.serverId;
-    // A REMOTE server has no local build path: the agent is the ONLY way to
-    // deploy there, so an unreachable agent is a hard failure, not a fallback
-    // (P5). For localhost the legacy local path remains the fallback (Part A).
-    const isRemote = server?.type === "remote";
 
-    // Render the single-image stack the agent (or the local path) brings up. The
-    // control plane stays the single source of truth for the compose (D2) and
-    // env decryption (D4); both are computed here, once, and reused by whichever
-    // path runs.
+    // Render the single-image stack the agent brings up. The control plane stays
+    // the single source of truth for the compose (D2) and env decryption (D4);
+    // both are computed here, once, and handed to the agent.
     const renderStack = (image: string): { composeYaml: string; env: Record<string, string> } => {
       const env = projectEnv(project.id);
       const composeYaml = renderCompose({
@@ -649,9 +564,9 @@ async function runDeployment(depId: string): Promise<void> {
     };
 
     // For a BUILT source (git/upload/dev-workspace): resolve the build dir (one
-    // shared rootDirectory containment), then try the agent — building + running
-    // from the materialised tree while it still exists. On agent-unavailable,
-    // build locally HERE (tree alive) and let the post-switch compose-up run.
+    // shared rootDirectory containment), then ship the materialised tree to the
+    // owning agent, which builds + runs it. The agent is the only execution path —
+    // an unreachable agent is a hard deploy failure (P5), never a local fallback.
     const buildAndMaybeAgent = async (treeOpts: {
       workDir: string;
       root: string;
@@ -659,35 +574,32 @@ async function runDeployment(depId: string): Promise<void> {
       failOnMissing: boolean;
       notFoundMessage?: string;
     }): Promise<void> => {
-      if (agentCanHandle(project.build)) {
-        const { buildDir } = await buildImageFromTree({
-          depId,
-          project,
-          slug,
-          ...treeOpts,
-          skipBuild: true, // the agent builds; we only resolve the dir
-        });
-        const { composeYaml, env } = renderStack(treeOpts.imageRef);
-        const { outcome } = await tryAgent({
-          depId,
-          serverId,
-          project: { id: project.id, slug },
-          imageRef: treeOpts.imageRef,
-          composeYaml,
-          env,
-          plan: { kind: "dockerfile", buildDir, build: normalizeBuildConfig(project.build) },
-          noLocalFallback: isRemote,
-        });
-        if (outcome !== "local") {
-          agentOutcome = outcome;
-          return;
-        }
-        log(depId, "info", "Building locally instead.");
+      if (!agentCanHandle(project.build)) {
+        // The build method isn't an agent capability and there is no in-process
+        // fallback — fail clearly so the operator switches the build method.
+        throw new Error(
+          "This build method can't be deployed by the agent yet (only Dockerfile/" +
+            "auto builds and prebuilt images can). Switch the build method.",
+        );
       }
-      // Local fallback (or an ineligible build method): build the image in the
-      // local store, exactly as before; the post-switch block runs the stack.
-      // Unreachable for a remote server (noLocalFallback short-circuits above).
-      await buildImageFromTree({ depId, project, slug, ...treeOpts });
+      const { buildDir } = await buildImageFromTree({
+        depId,
+        project,
+        slug,
+        ...treeOpts,
+        skipBuild: true, // the agent builds; we only resolve the dir
+      });
+      const { composeYaml, env } = renderStack(treeOpts.imageRef);
+      const { outcome } = await tryAgent({
+        depId,
+        serverId,
+        project: { id: project.id, slug },
+        imageRef: treeOpts.imageRef,
+        composeYaml,
+        env,
+        plan: { kind: "dockerfile", buildDir, build: normalizeBuildConfig(project.build) },
+      });
+      agentOutcome = outcome === "agent" ? "agent" : "failed";
     };
 
     // Decide which source this deployment builds from (dev-workspace intent
@@ -714,150 +626,92 @@ async function runDeployment(depId: string): Promise<void> {
           );
         }
         imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
-        // REMOTE: the dev workspace lives on the AGENT's host, not here. The agent
-        // builds from its OWN <dev-dir>/<slug> via SOURCE_KIND_DEV_WORKSPACE (same
-        // exclude-set + symlink-reject guard copyWorkspaceForBuild applies). No
-        // workspace bytes cross the wire; there is no local copy to make.
-        if (isRemote && agentCanHandle(project.build)) {
-          const { composeYaml, env } = renderStack(imageRef);
-          const { outcome } = await tryAgent({
-            depId,
-            serverId,
-            project: { id: project.id, slug },
-            imageRef,
-            composeYaml,
-            env,
-            plan: {
-              kind: "dev-workspace",
-              build: normalizeBuildConfig(project.build),
-              subdir: project.build.rootDirectory ?? "",
-            },
-            noLocalFallback: true, // the workspace is on the agent, not here
-          });
-          agentOutcome = outcome === "agent" ? "agent" : "failed";
-          break;
-        }
-        // LOCALHOST: the workspace is on this host — copy it into a build context.
-        const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
-        try {
-          log(depId, "command", "copy dev workspace");
-          // copyWorkspaceForBuild excludes node_modules/.deplo/.deplo-home/.git
-          // and rejects any planted symlink (the tree is UID-1000-controlled —
-          // same threat model as an upload archive). Dependencies are
-          // reinstalled by the build, exactly like a normal deploy.
-          const root = await copyWorkspaceForBuild(slug, work, (line) =>
-            log(depId, "info", line),
+        // The dev workspace lives on the OWNING AGENT's host (<dev-dir>/<slug>),
+        // the host running Deplo included. The agent builds from its OWN workspace
+        // via SOURCE_KIND_DEV_WORKSPACE (same exclude-set + symlink-reject guard
+        // copyWorkspaceForBuild applied). No workspace bytes cross the wire.
+        if (!agentCanHandle(project.build)) {
+          throw new Error(
+            "This build method can't be deployed by the agent yet (only Dockerfile/" +
+              "auto builds and prebuilt images can). Switch the build method.",
           );
-          await buildAndMaybeAgent({
-            workDir: work,
-            root,
-            imageRef,
-            // Mirror the git arm: a typo'd rootDirectory on a deploy-to-
-            // PRODUCTION must error loudly, not silently ship the workspace root.
-            failOnMissing: true,
-            notFoundMessage: `rootDirectory "${project.build.rootDirectory}" was not found in the dev workspace`,
-          });
-        } finally {
-          await rm(work, { recursive: true, force: true }).catch(() => {});
         }
+        const { composeYaml, env } = renderStack(imageRef);
+        const { outcome } = await tryAgent({
+          depId,
+          serverId,
+          project: { id: project.id, slug },
+          imageRef,
+          composeYaml,
+          env,
+          plan: {
+            kind: "dev-workspace",
+            build: normalizeBuildConfig(project.build),
+            subdir: project.build.rootDirectory ?? "",
+          },
+        });
+        agentOutcome = outcome === "agent" ? "agent" : "failed";
         break;
       }
       case "docker-image": {
         imageRef = plan.image;
-        // A prebuilt image: the agent pulls + runs it (no local pull/build).
-        if (agentCanHandle(null)) {
-          const { composeYaml, env } = renderStack(imageRef);
-          const { outcome } = await tryAgent({
-            depId,
-            serverId,
-            project: { id: project.id, slug },
-            imageRef,
-            composeYaml,
-            env,
-            plan: { kind: "image", image: plan.image },
-            noLocalFallback: isRemote,
-          });
-          if (outcome !== "local") {
-            agentOutcome = outcome;
-            break;
-          }
-          log(depId, "info", "Pulling locally instead.");
-        }
-        log(depId, "command", `docker pull ${plan.image}`);
-        await streamDocker(["pull", plan.image], depId, 600_000);
+        // A prebuilt image: the owning agent pulls + runs it on its host.
+        const { composeYaml, env } = renderStack(imageRef);
+        const { outcome } = await tryAgent({
+          depId,
+          serverId,
+          project: { id: project.id, slug },
+          imageRef,
+          composeYaml,
+          env,
+          plan: { kind: "image", image: plan.image },
+        });
+        agentOutcome = outcome === "agent" ? "agent" : "failed";
         break;
       }
       case "git": {
         const repo = plan.repo;
-
-        // REMOTE server (PLAN Part B, D3): the AGENT clones the repo itself, so
-        // the whole tree never crosses the wire — only the descriptor does. The
-        // control plane resolves the authenticated clone URL (short-lived token
-        // baked in for private GitHub) and hands the agent the branch + subdir;
-        // the agent reports back the commit sha it checked out.
-        if (isRemote && agentCanHandle(project.build)) {
-          const cloneUrl = await installationCloneUrl(
-            repo.url,
-            repo.installationId ?? null,
+        // The OWNING AGENT clones the repo itself (PLAN Part B, D3), the host
+        // running Deplo included, so the whole tree never crosses the wire — only
+        // the descriptor does. The control plane resolves the authenticated clone
+        // URL (short-lived token baked in for private GitHub) and hands the agent
+        // the branch + subdir; the agent reports back the commit sha it checked out.
+        if (!agentCanHandle(project.build)) {
+          throw new Error(
+            "This build method can't be deployed by the agent yet (only Dockerfile/" +
+              "auto builds and prebuilt images can). Switch the build method.",
           );
-          // The agent tags the image by the sha IT resolves; until then use the
-          // deploy id as a placeholder tag (the agent renames are not needed —
-          // the rendered compose references this same imageRef).
-          imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
-          const { composeYaml, env } = renderStack(imageRef);
-          log(depId, "command", `git clone ${repo.url} (${dep.branch}) [on agent]`);
-          const attempt = await tryAgent({
-            depId,
-            serverId,
-            project: { id: project.id, slug },
-            imageRef,
-            composeYaml,
-            env,
-            plan: {
-              kind: "git",
-              url: cloneUrl,
-              branch: dep.branch,
-              subdir: project.build.rootDirectory ?? "",
-              build: normalizeBuildConfig(project.build),
-            },
-            noLocalFallback: true, // remote has no local clone path
-          });
-          if (attempt.commitSha) {
-            commitSha = attempt.commitSha;
-            setDep(depId, { commitSha });
-          }
-          agentOutcome = attempt.outcome === "agent" ? "agent" : "failed";
-          break;
         }
-
-        // LOCALHOST (or an agent-ineligible build): the control plane clones,
-        // then builds locally or hands the materialised tree to the local agent.
-        const work = await mkdtemp(join(tmpdir(), "deplo-build-"));
-        try {
-          // Private GitHub repos clone through the connected App's short-lived
-          // installation token; everything else uses the URL as-is. The token
-          // is never logged.
-          const cloneUrl = await installationCloneUrl(
-            repo.url,
-            repo.installationId ?? null,
-          );
-          log(depId, "command", `git clone ${repo.url} (${dep.branch})`);
-          await cloneStream(cloneUrl, dep.branch, work, (line) =>
-            log(depId, "info", line),
-          );
-          commitSha = await revParse(work);
-          if (commitSha) setDep(depId, { commitSha });
-          imageRef = `deplo/${slug}:${(commitSha || depId).slice(0, 12)}`;
-          await buildAndMaybeAgent({
-            workDir: work,
-            root: work,
-            imageRef,
-            failOnMissing: true,
-            notFoundMessage: `rootDirectory "${project.build.rootDirectory}" was not found in the repository`,
-          });
-        } finally {
-          await rm(work, { recursive: true, force: true }).catch(() => {});
+        const cloneUrl = await installationCloneUrl(
+          repo.url,
+          repo.installationId ?? null,
+        );
+        // The agent tags the image by the sha IT resolves; until then use the
+        // deploy id as a placeholder tag (the rendered compose references this
+        // same imageRef).
+        imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
+        const { composeYaml, env } = renderStack(imageRef);
+        log(depId, "command", `git clone ${repo.url} (${dep.branch}) [on agent]`);
+        const attempt = await tryAgent({
+          depId,
+          serverId,
+          project: { id: project.id, slug },
+          imageRef,
+          composeYaml,
+          env,
+          plan: {
+            kind: "git",
+            url: cloneUrl,
+            branch: dep.branch,
+            subdir: project.build.rootDirectory ?? "",
+            build: normalizeBuildConfig(project.build),
+          },
+        });
+        if (attempt.commitSha) {
+          commitSha = attempt.commitSha;
+          setDep(depId, { commitSha });
         }
+        agentOutcome = attempt.outcome === "agent" ? "agent" : "failed";
         break;
       }
       case "upload": {
@@ -889,44 +743,11 @@ async function runDeployment(depId: string): Promise<void> {
         throw new Error("Nothing to deploy: no Docker image or repository set");
     }
 
-    // The agent already built, rendered, ran, and waited — settle the deploy
-    // from its terminal result without touching the local Docker path.
-    if (agentOutcome !== null) {
-      const buildDurationMs = Date.now() - started;
-      if (agentOutcome === "agent") {
-        setDep(depId, {
-          status: "ready",
-          readyAt: nowIso(),
-          buildDurationMs,
-          commitSha: commitSha || dep.commitSha,
-        });
-        setProject(project.id, {
-          status: "active",
-          ...(dep.environment === "production" ? { productionUrl: dep.url } : {}),
-        });
-        log(depId, "success", `Deployment ready at ${dep.url}`);
-      } else {
-        setDep(depId, { status: "error", buildDurationMs });
-        setProject(project.id, { status: "error" });
-      }
-      return;
-    }
-
-    const { composeYaml } = renderStack(imageRef);
-    await writeFile(stackFile, composeYaml);
-
-    log(depId, "command", "docker compose up -d");
-    await streamDocker(
-      ["compose", "-p", name, "-f", stackFile, "up", "-d", "--remove-orphans"],
-      depId,
-      300_000,
-    );
-
-    log(depId, "info", "Waiting for the container to become healthy…");
-    const running = await waitRunning(name, 60_000);
+    // The agent built, rendered, ran, and waited — settle the deploy from its
+    // terminal result. Every source arm above goes through the agent, so
+    // `agentOutcome` is always set by the time we get here.
     const buildDurationMs = Date.now() - started;
-
-    if (running) {
+    if (agentOutcome === "agent") {
       setDep(depId, {
         status: "ready",
         readyAt: nowIso(),
@@ -941,7 +762,6 @@ async function runDeployment(depId: string): Promise<void> {
     } else {
       setDep(depId, { status: "error", buildDurationMs });
       setProject(project.id, { status: "error" });
-      log(depId, "error", "Container did not reach a running state");
     }
   } catch (e) {
     log(depId, "error", e instanceof Error ? e.message : String(e));
@@ -968,7 +788,6 @@ interface ComposeStackOpts {
   project: ComposeStackProject;
   name: string;
   slug: string;
-  stackFile: string;
   domain: string;
   /** Public hostnames to route, primary first (no-host routes answer on all). */
   domains: string[];
@@ -1038,7 +857,7 @@ function prepareComposeStack(opts: ComposeStackOpts): {
   return { stackYaml, filesDir };
 }
 
-/** Apply the terminal status of a compose-stack deploy (master or agent). */
+/** Apply the terminal status of a compose-stack deploy (via the owning agent). */
 function finishComposeStack(
   opts: ComposeStackOpts,
   running: boolean,
@@ -1060,55 +879,15 @@ function finishComposeStack(
   }
 }
 
-async function deployComposeStack(opts: ComposeStackOpts): Promise<void> {
-  const { depId, project, name, slug, stackFile } = opts;
-
-  // Materialise any template config files into the project's isolated files dir
-  // (referenced by the compose as ./<x>) BEFORE the stack comes up.
-  const { stackYaml, filesDir } = prepareComposeStack(opts);
-  if (project.mounts?.length) {
-    await writeMountFiles(filesDir, project.mounts, depId);
-  }
-  await writeFile(stackFile, stackYaml);
-
-  // Env-file for ${VAR} interpolation. Written 0600 since it holds secrets.
-  const env = projectEnv(project.id);
-  const envFile = join(STACK_DIR, `${slug}.env`);
-  await writeFile(envFile, renderEnvFile(env), { mode: 0o600 });
-
-  log(depId, "command", "docker compose up -d");
-  await streamDocker(
-    [
-      "compose",
-      "-p",
-      name,
-      "-f",
-      stackFile,
-      "--env-file",
-      envFile,
-      "up",
-      "-d",
-      "--remove-orphans",
-    ],
-    depId,
-    600_000,
-  );
-
-  log(depId, "info", "Waiting for the stack to become healthy…");
-  const running = await waitStackRunning(slug, 90_000);
-  finishComposeStack(opts, running);
-}
-
 /**
- * Deploy a multi-service compose stack to a REMOTE server via its agent. The
- * control plane stays the source of truth: it renders the SAME stack YAML as the
- * master path (prepareComposeStack) and decrypts the env, then hands the agent a
- * self-contained DeployRequest — the agent writes the mount files + env-file on
- * the owning host and `compose up`s there. A remote server has no local fallback,
- * so an unreachable agent is a hard failure (P5), exactly like the single-image
- * remote path. The agent reports `ready` once the stack is running (it waits by
- * the deplo.slug label, since a multi-service stack's containers are
- * compose-prefixed, not named deplo-<slug>).
+ * Deploy a multi-service compose stack via the owning server's agent (the host
+ * running Deplo included). The control plane stays the source of truth: it
+ * renders the stack YAML (prepareComposeStack) and decrypts the env, then hands
+ * the agent a self-contained DeployRequest — the agent writes the mount files +
+ * env-file on the owning host and `compose up`s there. There is no local
+ * fallback, so an unreachable agent is a hard failure (P5). The agent reports
+ * `ready` once the stack is running (it waits by the deplo.slug label, since a
+ * multi-service stack's containers are compose-prefixed, not named deplo-<slug>).
  */
 async function deployComposeStackViaAgent(
   opts: ComposeStackOpts & { serverId: string },
@@ -1128,8 +907,7 @@ async function deployComposeStackViaAgent(
         depId,
         "error",
         "This server's agent is too old to run multi-service compose stacks. " +
-          "Update the agent (reissue the install command from the server's actions menu), " +
-          "or move this project to the master server.",
+          "Update the agent (reissue the install command from the server's actions menu).",
       );
       finishComposeStack(opts, false);
       return;
@@ -1157,8 +935,6 @@ async function deployComposeStackViaAgent(
     composeYaml: stackYaml,
     env,
     plan: { kind: "compose", mounts: project.mounts ?? [] },
-    noLocalFallback: true,
-    // Match the master's 90s waitStackRunning — a multi-service stack may pull
     // several images on the agent before any service reports running.
     readyTimeoutMs: 90_000,
   });
@@ -1167,68 +943,6 @@ async function deployComposeStackViaAgent(
   finishComposeStack(opts, outcome === "agent");
 }
 
-/**
- * Write template config files into the project's files dir, guarding against
- * path escape. Each filePath is treated as relative to filesDir; any `..`
- * segment or absolute path is rejected.
- */
-async function writeMountFiles(
-  filesDir: string,
-  mounts: { filePath: string; content: string }[],
-  depId: string,
-): Promise<void> {
-  for (const mount of mounts) {
-    const rel = mount.filePath.replace(/^\.\/+/, "").replace(/^\/+/, "");
-    if (rel.split(/[\\/]/).includes("..") || rel === "") {
-      log(depId, "warn", `Skipping unsafe mount path: ${mount.filePath}`);
-      continue;
-    }
-    const target = join(filesDir, rel);
-    await mkdir(dirname(target), { recursive: true });
-    // 0644: these are bind-mounted into the app container, which may run as a
-    // non-root user and must be able to read its own config.
-    await writeFile(target, mount.content, { mode: 0o644 });
-  }
-}
-
-/** Serialize env to docker-compose env-file lines (KEY=VALUE, no quoting). */
-function renderEnvFile(env: Record<string, string>): string {
-  return (
-    Object.entries(env)
-      // env-file values are literal; strip newlines that would break the format.
-      .map(([k, v]) => `${k}=${String(v).replace(/\r?\n/g, " ")}`)
-      .join("\n") + "\n"
-  );
-}
-
-/** Wait for a compose stack's exposed (Traefik-labelled) service to be running. */
-async function waitStackRunning(slug: string, ms: number): Promise<boolean> {
-  const deadline = Date.now() + ms;
-  while (Date.now() < deadline) {
-    try {
-      const { stdout } = await docker(
-        [
-          "ps",
-          "-q",
-          "--filter",
-          `label=deplo.slug=${slug}`,
-          "--filter",
-          "status=running",
-        ],
-        { timeout: 5_000 },
-      );
-      if (stdout.trim()) return true;
-    } catch {
-      /* not up yet */
-    }
-    await sleep(2_000);
-  }
-  return false;
-}
-
-function stackFilePath(slug: string): string {
-  return join(STACK_DIR, `${slug}.yml`);
-}
 
 /**
  * Hostnames to bake into a deploy's Traefik rule. Production routes to every
@@ -1254,14 +968,15 @@ function routableForDeploy(
   return [primaryRoute, ...valid.filter((d) => d.name !== primary)];
 }
 
-/** The `image:` baked into a single-image stack file, so a reroute reuses the
- * exact running image instead of rebuilding. Null if unreadable. */
-async function readStackImage(
-  stackFile: string,
+/** The `image:` baked into a single-image stack YAML, so a reroute reuses the
+ * exact running image instead of rebuilding. Null if unreadable. The YAML is
+ * read back from the OWNING agent's disk (conn.readStack), not a local file. */
+function readStackImageFromYaml(
+  stackYaml: string,
   service: string,
-): Promise<string | null> {
+): string | null {
   try {
-    const doc = yaml.load(await readFile(stackFile, "utf8")) as {
+    const doc = yaml.load(stackYaml) as {
       services?: Record<string, { image?: unknown }>;
     } | null;
     const svc = doc?.services?.[service];
@@ -1271,15 +986,15 @@ async function readStackImage(
   }
 }
 
-/** The `environment:` baked into a single-image stack file (map form, as
+/** The `environment:` baked into a single-image stack YAML (map form, as
  * renderCompose writes it). Lets a reroute preserve the env the container is
  * actually running with instead of shipping pending edits from the store. */
-async function readStackEnv(
-  stackFile: string,
+function readStackEnvFromYaml(
+  stackYaml: string,
   service: string,
-): Promise<Record<string, string> | null> {
+): Record<string, string> | null {
   try {
-    const doc = yaml.load(await readFile(stackFile, "utf8")) as {
+    const doc = yaml.load(stackYaml) as {
       services?: Record<string, { environment?: unknown }>;
     } | null;
     const env = doc?.services?.[service]?.environment;
@@ -1315,12 +1030,12 @@ type StackVolume = {
   readOnly?: boolean;
 };
 
-async function readStackVolumes(
-  stackFile: string,
+function readStackVolumesFromYaml(
+  stackYaml: string,
   service: string,
-): Promise<StackVolume[]> {
+): StackVolume[] {
   try {
-    return parseStackVolumes(await readFile(stackFile, "utf8"), service);
+    return parseStackVolumes(stackYaml, service);
   } catch {
     return [];
   }
@@ -1395,11 +1110,8 @@ export async function rerouteProject(
   if (!project) return "deferred";
   const slug = project.slug;
   const name = `deplo-${slug}`;
-  const stackFile = stackFilePath(slug);
-
-  // Never deployed (or torn down): nothing running to reroute. The domain change
-  // is already saved; the next deploy bakes the right labels.
-  if (!(await fileExists(stackFile))) return "deferred";
+  const serverId = owningServerIdForSlug(slug);
+  if (!serverId) return "deferred"; // no owning agent (server removed); nothing to do
 
   const routes = routableRoutes(projectId);
   if (routes.length === 0) return "deferred"; // never write an empty Host() rule
@@ -1407,68 +1119,81 @@ export async function rerouteProject(
   const hasCompose = Boolean(project.compose && project.compose.trim());
   const useCompose = usesComposeStack(project);
 
-  // Re-render the stack file with the new domain set (so the labels are correct
-  // whenever the stack next comes up), reusing the running image and env.
-  let rendered: string;
-  if (useCompose && hasCompose) {
-    rendered = buildComposeStack({
-      compose: project.compose ?? "",
-      name,
-      slug,
-      projectId,
-      // Compose stacks route via their own service/port model; per-domain port
-      // overrides apply only to single-image projects, but a domain can pick a
-      // service and/or path prefix (per-route routers).
-      domains: routes.map((d) => d.name),
-      domainRoutes: routes,
-      expose: project.expose ?? null,
-      exposes: project.exposes ?? undefined,
-      filesDir: join(STACK_DIR, "files", slug),
-    });
-  } else {
-    // Single-image / built path: the image ref and env live only in the stack
-    // file (not on the project), so read them back to keep this a pure routing
-    // change — never a rebuild or a silent env/image change.
-    const image = await readStackImage(stackFile, name);
-    if (!image) return "deferred"; // can't safely reroute without the running image
-    const env = (await readStackEnv(stackFile, name)) ?? projectEnv(projectId);
-    // Volumes are read back from the stack (like image/env), NOT from
-    // project.volumes — so a domain-only reroute keeps the running mounts and
-    // never silently applies a volume edit the user hasn't redeployed.
-    const volumes = await readStackVolumes(stackFile, name);
-    rendered = renderCompose({
-      name,
-      image,
-      port: project.build.port,
-      projectId,
-      slug,
-      routes,
-      env,
-      volumes,
-    });
+  const conn = await connectAgent(serverId);
+  try {
+    // Read the rendered stack back from the OWNING agent's disk. Never deployed
+    // (or torn down) => nothing running to reroute; the domain change is saved and
+    // the next deploy bakes the right labels.
+    const current = await conn.readStack(slug);
+    if (!current.exists) return "deferred";
+
+    // Re-render the stack with the new domain set (so the labels are correct
+    // whenever the stack next comes up), reusing the running image and env.
+    let rendered: string;
+    let mounts: { path: string; content: string }[] = [];
+    if (useCompose && hasCompose) {
+      rendered = buildComposeStack({
+        compose: project.compose ?? "",
+        name,
+        slug,
+        projectId,
+        // Compose stacks route via their own service/port model; per-domain port
+        // overrides apply only to single-image projects, but a domain can pick a
+        // service and/or path prefix (per-route routers).
+        domains: routes.map((d) => d.name),
+        domainRoutes: routes,
+        expose: project.expose ?? null,
+        exposes: project.exposes ?? undefined,
+        filesDir: composeFilesDir(slug),
+      });
+      mounts = (project.mounts ?? []).map((m) => ({
+        path: m.filePath,
+        content: m.content,
+      }));
+    } else {
+      // Single-image / built path: the image ref and env live only in the stack
+      // file (not on the project), so read them back from the agent's copy to keep
+      // this a pure routing change — never a rebuild or a silent env/image change.
+      const image = readStackImageFromYaml(current.yaml, name);
+      if (!image) return "deferred"; // can't safely reroute without the running image
+      const env = readStackEnvFromYaml(current.yaml, name) ?? projectEnv(projectId);
+      // Volumes are read back from the stack (like image/env), NOT from
+      // project.volumes — so a domain-only reroute keeps the running mounts and
+      // never silently applies a volume edit the user hasn't redeployed.
+      const volumes = readStackVolumesFromYaml(current.yaml, name);
+      rendered = renderCompose({
+        name,
+        image,
+        port: project.build.port,
+        projectId,
+        slug,
+        routes,
+        env,
+        volumes,
+      });
+    }
+
+    // No-op when the labels already match — avoids a pointless container restart
+    // (e.g. re-verifying an already-valid domain, or toggling primary back).
+    if (current.yaml === rendered) return "unchanged";
+
+    // Only an active project may be recreated. Recreating an idle (deliberately
+    // stopped) project would silently restart it; recreating mid-deploy races the
+    // deploy on the same compose project. For those, the agent still rewrites the
+    // file (so the labels apply on next start/deploy) but does not bring it up.
+    // We model that here by writing the file via a reroute only when active; for
+    // non-active we defer (the next deploy/start renders + applies anyway).
+    if (project.status !== "active") return "deferred";
+
+    // For a single-image stack the env is baked into the YAML, so send no env-file
+    // (mirrors the deploy path); compose stacks interpolate ${VAR} from the env.
+    const env = useCompose && hasCompose ? projectEnv(projectId) : {};
+    const r = await conn.reroute({ slug, composeYaml: rendered, env, mounts });
+    if (!r.ok) throw new Error(r.error || "agent failed to reroute the stack");
+    return "rerouted";
+  } finally {
+    conn.close();
   }
-
-  // No-op when the labels already match — avoids a pointless container restart
-  // (e.g. re-verifying an already-valid domain, or toggling primary back).
-  const current = await readFile(stackFile, "utf8").catch(() => "");
-  if (current === rendered) return "unchanged";
-
-  await writeFile(stackFile, rendered);
-
-  // Only an active project may be recreated. Recreating an idle (deliberately
-  // stopped) project would silently restart it; recreating mid-deploy races the
-  // deploy on the same compose project. In both cases the file is now correct
-  // and the labels apply on the next start/deploy.
-  if (project.status !== "active") return "deferred";
-
-  await ensureNetwork("deplo");
-  const args = ["compose", "-p", name, "-f", stackFile];
-  if (useCompose && hasCompose) {
-    const envFile = join(STACK_DIR, `${slug}.env`);
-    if (await fileExists(envFile)) args.push("--env-file", envFile);
-  }
-  await docker([...args, "up", "-d", "--remove-orphans"], { timeout: 120_000 });
-  return "rerouted";
 }
 
 /**
@@ -1519,103 +1244,71 @@ export async function renderProjectStack(
       domainRoutes: routes,
       expose: project.expose ?? null,
       exposes: project.exposes ?? undefined,
-      filesDir: join(STACK_DIR, "files", slug),
+      filesDir: composeFilesDir(slug),
     });
   }
 
-  // Single-image / built: the rendered stack only exists on disk after a deploy.
-  const stackFile = stackFilePath(slug);
-  if (!(await fileExists(stackFile))) return null;
-  return readFile(stackFile, "utf8").catch(() => null);
+  // Single-image / built: the rendered stack only exists on the OWNING agent's
+  // disk after a deploy. Read it back over the wire; null when never deployed or
+  // the agent is unreachable (the preview just shows nothing yet).
+  const serverId = owningServerIdForSlug(slug);
+  if (!serverId) return null;
+  const conn = await connectAgent(serverId);
+  try {
+    const { exists, yaml: stackYaml } = await conn.readStack(slug);
+    return exists ? stackYaml : null;
+  } catch {
+    return null;
+  } finally {
+    conn.close();
+  }
 }
 
 /**
- * Stop a project's stack (compose-managed; falls back to the single container).
- * A REMOTE project (PLAN Part C) routes to the owning agent's StopStack — the
- * stack lives on the agent's daemon, not the local socket. An unreachable agent
- * throws (the caller surfaces it; a stop must not silently no-op).
+ * Stop a project's stack via the owning server's agent StopStack (PLAN Part C).
+ * The stack lives on the agent's daemon, the host running Deplo included. An
+ * unreachable agent throws (the caller surfaces it; a stop must not silently
+ * no-op). A no-op when the project/server is gone.
  */
 export async function stopContainer(slug: string): Promise<void> {
-  const remoteId = remoteServerIdForSlug(slug);
-  if (remoteId) {
-    const conn = await connectAgent(remoteId);
-    try {
-      const r = await conn.stopStack(slug);
-      if (!r.ok) throw new Error(r.error || "agent failed to stop the stack");
-    } finally {
-      conn.close();
-    }
-    return;
+  const serverId = owningServerIdForSlug(slug);
+  if (!serverId) return;
+  const conn = await connectAgent(serverId);
+  try {
+    const r = await conn.stopStack(slug);
+    if (!r.ok) throw new Error(r.error || "agent failed to stop the stack");
+  } finally {
+    conn.close();
   }
-  const stackFile = stackFilePath(slug);
-  if (await fileExists(stackFile)) {
-    await docker(["compose", "-p", `deplo-${slug}`, "-f", stackFile, "stop"], {
-      timeout: 60_000,
-    });
-    return;
-  }
-  await docker(["stop", `deplo-${slug}`], { timeout: 30_000 });
 }
 
-/** Start a previously stopped stack (remote -> owning agent's StartStack). */
+/** Start a previously stopped stack via the owning agent's StartStack. */
 export async function startContainer(slug: string): Promise<void> {
-  const remoteId = remoteServerIdForSlug(slug);
-  if (remoteId) {
-    const conn = await connectAgent(remoteId);
-    try {
-      const r = await conn.startStack(slug);
-      if (!r.ok) throw new Error(r.error || "agent failed to start the stack");
-    } finally {
-      conn.close();
-    }
-    return;
+  const serverId = owningServerIdForSlug(slug);
+  if (!serverId) return;
+  const conn = await connectAgent(serverId);
+  try {
+    const r = await conn.startStack(slug);
+    if (!r.ok) throw new Error(r.error || "agent failed to start the stack");
+  } finally {
+    conn.close();
   }
-  const stackFile = stackFilePath(slug);
-  if (await fileExists(stackFile)) {
-    await docker(["compose", "-p", `deplo-${slug}`, "-f", stackFile, "start"], {
-      timeout: 60_000,
-    });
-    return;
-  }
-  await docker(["start", `deplo-${slug}`], { timeout: 30_000 });
 }
 
 /**
- * Stop and remove a project's stack. A REMOTE project routes to the owning
- * agent's DestroyStack — and the local file cleanup below is DELIBERATELY skipped
- * for it: the stack file, env file, and files dir live on the AGENT's disk
- * (the agent's DestroyStack owns their teardown), so an rm here would target the
- * wrong host (and there is nothing local to remove). An unreachable agent throws
- * so the caller can warn about manual cleanup (P6 spirit).
+ * Stop and remove a project's stack via the owning agent's DestroyStack. The
+ * stack file, env file, and files dir live on the AGENT's disk (its DestroyStack
+ * owns their teardown), the host running Deplo included. An unreachable agent
+ * throws so the caller can warn about manual cleanup (P6 spirit).
  */
 export async function destroyStack(slug: string): Promise<void> {
-  const remoteId = remoteServerIdForSlug(slug);
-  if (remoteId) {
-    const conn = await connectAgent(remoteId);
-    try {
-      const r = await conn.destroyStack(slug);
-      if (!r.ok) throw new Error(r.error || "agent failed to destroy the stack");
-    } finally {
-      conn.close();
-    }
-    return;
-  }
-  const stackFile = stackFilePath(slug);
-  const envFile = join(STACK_DIR, `${slug}.env`);
-  const args = ["compose", "-p", `deplo-${slug}`, "-f", stackFile];
-  if (await fileExists(envFile)) args.push("--env-file", envFile);
+  const serverId = owningServerIdForSlug(slug);
+  if (!serverId) return;
+  const conn = await connectAgent(serverId);
   try {
-    await docker([...args, "down", "--remove-orphans"], { timeout: 90_000 });
-  } catch {
-    // Fall back to removing a single labelled container directly.
-    await docker(["rm", "-f", `deplo-${slug}`], { timeout: 30_000 }).catch(
-      () => {},
-    );
+    const r = await conn.destroyStack(slug);
+    if (!r.ok) throw new Error(r.error || "agent failed to destroy the stack");
+  } finally {
+    conn.close();
   }
-  await rm(stackFile, { force: true }).catch(() => {});
-  await rm(envFile, { force: true }).catch(() => {});
-  await rm(join(STACK_DIR, "files", slug), {
-    recursive: true,
-    force: true,
-  }).catch(() => {});
 }

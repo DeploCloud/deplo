@@ -17,13 +17,12 @@ export default async function MonitoringPage() {
     <div className="space-y-6">
       <PageHeader
         title="Monitoring"
-        description="Real-time CPU, memory, disk and network across your master and remote servers."
+        description="Real-time CPU, memory, disk and network across your servers."
       />
       <MonitoringDashboard
         servers={servers.map((s) => ({
           id: s.id,
           name: s.name,
-          type: s.type,
           status: s.status,
           ip: s.ip,
           dockerVersion: s.dockerVersion,

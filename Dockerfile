@@ -1,32 +1,11 @@
 # Deplo control plane  multi-stage build (Bun + Next.js standalone)
-
-# --- Agent: the per-server binary (PLAN Part A / ADR-0006). It now lives in its
-# own repo (DeploCloud/deplo-agent) and ships as GitHub Release assets, so the
-# image no longer builds it (no Go toolchain) — it DOWNLOADS the latest release
-# for the build's target arch and verifies it against the release's checksums.txt
-# before it ever ends up in the runtime. The control plane launches this as its
-# LOCAL agent (DEPLO_AGENT_BIN below); remote servers fetch the same release via
-# the install script. The image thus pins "latest at build time"; new servers
-# resolve true-latest at install time (lib/agent/release.ts), and the dashboard's
-# agent badge surfaces any resulting drift rather than hiding it.
-FROM alpine:3.20 AS agent
-ARG AGENT_REPO=DeploCloud/deplo-agent
-# TARGETARCH is provided by BuildKit (amd64 / arm64) — map it to the asset name.
-ARG TARGETARCH=amd64
-RUN apk add --no-cache curl coreutils
-RUN set -eu; \
-    asset="deplo-agent-linux-${TARGETARCH}"; \
-    base="https://github.com/${AGENT_REPO}/releases/latest/download"; \
-    echo "Fetching ${asset} from ${AGENT_REPO} latest release..."; \
-    curl -fsSL "${base}/${asset}" -o /out-deplo-agent; \
-    curl -fsSL "${base}/checksums.txt" -o /checksums.txt; \
-    want="$(grep -E "[[:space:]]\*?${asset}\$" /checksums.txt | awk '{print $1}')"; \
-    test -n "$want" || { echo "no checksum for ${asset} in checksums.txt" >&2; exit 1; }; \
-    got="$(sha256sum /out-deplo-agent | awk '{print $1}')"; \
-    [ "$want" = "$got" ] || { echo "agent checksum mismatch: want $want got $got" >&2; exit 1; }; \
-    chmod 0755 /out-deplo-agent; \
-    mkdir -p /out && mv /out-deplo-agent /out/deplo-agent; \
-    echo "agent binary verified ($got)"
+#
+# The per-server agent (DeploCloud/deplo-agent) is NO LONGER bundled in this
+# image: the control plane never spawns an in-process local agent. EVERY server —
+# the host running Deplo included — installs the agent on its own host via
+# install-agent.sh (served from /install-agent.sh, which pins the latest release's
+# checksum), bootstraps via call-home, and is dialed over mTLS. So there is no Go
+# binary to ship here; the dashboard's agent badge surfaces version drift.
 
 FROM oven/bun:1.3 AS deps
 WORKDIR /app
@@ -48,10 +27,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV DEPLO_DATA_DIR=/data
-# The control plane launches this binary as the local server agent and dials it
-# over mTLS for the deploy path (PLAN Part A). Absent => the control plane falls
-# back to the in-process direct-Docker deploy path.
-ENV DEPLO_AGENT_BIN=/usr/local/bin/deplo-agent
 
 # Real infrastructure tooling: the control plane shells out to these to clone
 # repos, build images and orchestrate containers over the mounted Docker socket.
@@ -81,11 +56,6 @@ RUN addgroup -g 1001 -S nodejs \
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-
-# The per-server agent binary (downloaded + checksum-verified in the `agent`
-# stage from DeploCloud/deplo-agent's latest release). The control plane
-# launches it locally and dials it over mTLS for deploys.
-COPY --from=agent /out/deplo-agent /usr/local/bin/deplo-agent
 
 # Replace the standalone tracer's node-pty (JS only — Next doesn't trace the
 # native .node) with the runtime-compiled one built above against Node 22/musl,

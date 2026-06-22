@@ -3,7 +3,6 @@ import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth";
 import { resolveLogsTarget } from "@/lib/data/console";
 import * as logs from "@/lib/logs/session";
-import { followLogs } from "@/lib/infra/docker";
 import { connectAgent } from "@/lib/infra/agent-client";
 
 /**
@@ -52,25 +51,16 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
-  // Build the backing handle against the project's OWNING server: localhost taps
-  // the local docker socket; remote streams the agent's FollowLogs (cleanup closes
-  // the gRPC client when the session exits). On a remote dial failure, fail clearly
-  // with 503 rather than falling back to the local socket.
+  // Build the backing handle against the project's OWNING server's agent: it
+  // streams the agent's FollowLogs (cleanup closes the gRPC client when the
+  // session exits). On a dial failure, fail clearly with 503.
   let session;
   try {
-    if (resolved.server?.type === "remote") {
-      const conn = await connectAgent(resolved.server.id);
-      const handle = conn.followLogs(projectId, resolved.instance.name, tail);
-      session = logs.open(projectId, resolved.instance.name, handle, () =>
-        conn.close(),
-      );
-    } else {
-      session = logs.open(
-        projectId,
-        resolved.instance.name,
-        followLogs(resolved.instance.name, tail),
-      );
-    }
+    const conn = await connectAgent(resolved.server!.id);
+    const handle = conn.followLogs(projectId, resolved.instance.name, tail);
+    session = logs.open(projectId, resolved.instance.name, handle, () =>
+      conn.close(),
+    );
   } catch {
     return Response.json({ error: "unreachable" }, { status: 503 });
   }

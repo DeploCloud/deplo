@@ -120,9 +120,10 @@ of the platform, on its own machine. Platform infrastructure, the moral
 sibling of the local Docker socket — **not a project and not a frontend**. The control plane
 (GraphQL/data/auth, which stays TypeScript) never reaches a remote Docker socket directly; it
 drives each agent over a **versioned gRPC contract** (`proto/agent.proto`) on **mTLS**, the
-*second system boundary* alongside the GraphQL UI contract. **localhost is an agent too**
-("agent 0"), so "local" and "remote" servers become one execution path parameterised by which
-agent — reached incrementally (the deploy path first, then logs/console/metrics). The compose
+*second system boundary* alongside the GraphQL UI contract. **The host running Deplo is an agent
+too** — installed, bootstrapped, pinned, and dialed over mTLS *exactly* like a remote (there is no
+in-process "local agent" and no `type: "localhost"`), so every server is one uniform execution path
+parameterised only by which agent. The compose
 is rendered control-plane-side and handed to the agent as **opaque YAML**; decrypted env
 crosses the wire per-deploy but the agent **never holds the encryption key**. An agent is born
 by **call-home bootstrap** — the control plane never SSHes in: the operator runs a paste-on-the-
@@ -150,13 +151,15 @@ per-user exec-step plan, the agent applies them), the **VS Code tunnel**
 (`StartTunnel`/`GetTunnel`/`StopTunnel`), and a new **`SOURCE_KIND_DEV_WORKSPACE`** so "deploy from
 dev workspace" builds on the owning host. The browser GraphQL + SSE contracts
 are unchanged — only the backing is repointed. Every container RPC label-checks
-`deplo.project=<id>` agent-side; the files sandbox is re-enforced agent-side; a remote whose agent
-is unreachable **fails clearly with no local fallback** (no synthetic container, no master metrics,
-no wrong-disk teardown). Heavy builders, multi-service compose stacks, and an unavailable agent
-still fall back to the local path on localhost — and **fail clearly on a remote** (no silent
-deploy-to-localhost). Agent code in
-[`agent/`](../agent/), contract in [`proto/agent.proto`](../proto/agent.proto), control-plane side
-in [`lib/agent/`](../lib/agent/) + [`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts) +
+`deplo.project=<id>` agent-side; the files sandbox is re-enforced agent-side; an agent that is
+unreachable **fails clearly with NO in-process fallback** (no synthetic container, no host metrics,
+no wrong-disk teardown) — this holds for EVERY server, the host running Deplo included. The legacy
+direct-Docker deploy/logs/console/files/metrics path has been **removed entirely**; build methods
+the agent can't run (heavy builders) are a clear deploy error, not a local fallback. Routing changes
+and the "View full compose" preview also go through the owning agent (`Reroute`/`ReadStack`). Agent
+code in its own repo (**DeploCloud/deplo-agent**), contract in
+[`proto/agent.proto`](../proto/agent.proto), control-plane side in [`lib/agent/`](../lib/agent/) +
+[`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts) +
 [`lib/deploy/agent-dev.ts`](../lib/deploy/agent-dev.ts).)*
 _Avoid_: agent (ambiguous — say "server agent"), node, worker, runner (CI term), daemon
 (reserve for the Docker daemon it drives), deplo agent on the remote being a "second Deplo".

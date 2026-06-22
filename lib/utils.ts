@@ -26,12 +26,8 @@ export function titleCase(input: string): string {
   return input.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Display name for a server: the host running Deplo is the "master". */
-export function serverLabel(server: {
-  name: string;
-  type: "localhost" | "remote";
-}): string {
-  if (server.type === "localhost") return "Master (this host)";
+/** Display name for a server — the operator-chosen name. */
+export function serverLabel(server: { name: string }): string {
   return server.name;
 }
 
