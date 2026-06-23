@@ -7,6 +7,7 @@ import {
   restoreBackup,
   listBackupRuns,
   toggleBackup,
+  updateBackup,
   deleteBackup,
   deleteAllBackupArtifacts,
   type BackupDTO,
@@ -123,6 +124,18 @@ const CreateBackupInputType = builder.inputType("CreateBackupInput", {
   }),
 });
 
+// Editing an existing schedule. The target binding (kind + database/project) is
+// fixed at creation, so only the settings below are editable; `enabled` has its
+// own toggle mutation.
+const UpdateBackupInputType = builder.inputType("UpdateBackupInput", {
+  fields: (t) => ({
+    name: t.string({ required: true }),
+    destinationId: t.string({ required: true }),
+    schedule: t.string({ required: true }),
+    retentionDays: t.int({ required: true }),
+  }),
+});
+
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
 /* ------------------------------------------------------------------ */
@@ -222,6 +235,27 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, enabled }) => {
       await toggleBackup(id, enabled);
+      return true;
+    },
+  }),
+  updateBackup: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Edit a backup schedule's name, destination, cron and retention. The " +
+      "target it backs up is fixed at creation and cannot be changed. Returns " +
+      "true.",
+    args: {
+      id: t.arg.string({ required: true }),
+      input: t.arg({ type: UpdateBackupInputType, required: true }),
+    },
+    resolve: async (_r, { id, input }) => {
+      await updateBackup(id, {
+        name: input.name,
+        destinationId: input.destinationId,
+        schedule: input.schedule,
+        retentionDays: input.retentionDays,
+      });
       return true;
     },
   }),

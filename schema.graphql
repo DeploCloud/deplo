@@ -908,6 +908,11 @@ type Mutation {
   Uninstall an app: destroy its container + Traefik router and drop the row. Revokes nothing (the app held no token). Returns true.
   """
   uninstallApp(id: String!): Boolean
+
+  """
+  Edit a backup schedule's name, destination, cron and retention. The target it backs up is fixed at creation and cannot be changed. Returns true.
+  """
+  updateBackup(id: String!, input: UpdateBackupInput!): Boolean
   updateDev(patch: UpdateDevInput!, projectId: String!): DevInfo
 
   """
@@ -1422,6 +1427,13 @@ enum TestNotificationChannel {
   discord
   email
   webhook
+}
+
+input UpdateBackupInput {
+  destinationId: String!
+  name: String!
+  retentionDays: Int!
+  schedule: String!
 }
 
 """Partial dev config patch; only the provided fields are changed."""

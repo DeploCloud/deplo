@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Play,
+  Pencil,
   Trash2,
   MoreHorizontal,
   RotateCcw,
@@ -14,7 +15,25 @@ import {
 } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +55,8 @@ import { timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { BackupDTO } from "@/lib/data/backups";
 
+type Destination = { id: string; name: string };
+
 /** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
  *  right-click context menu (see the note in project-card.tsx). */
 type MenuKit = {
@@ -52,11 +73,18 @@ const CONTEXT_KIT: MenuKit = {
   Separator: ContextMenuSeparator,
 };
 
-export function BackupRow({ backup }: { backup: BackupDTO }) {
+export function BackupRow({
+  backup,
+  destinations,
+}: {
+  backup: BackupDTO;
+  destinations: Destination[];
+}) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [restoreOpen, setRestoreOpen] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
 
   const isProject = backup.targetKind === "project";
   const targetName = isProject ? backup.projectName : backup.databaseName;
@@ -94,6 +122,16 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
       <K.Item onSelect={run} disabled={pending} title="Run this backup now">
         <Play className="size-4" />
         Run now
+      </K.Item>
+      <K.Item
+        onSelect={(e: Event) => {
+          e.preventDefault();
+          setEditOpen(true);
+        }}
+        title="Edit this backup schedule"
+      >
+        <Pencil className="size-4" />
+        Edit…
       </K.Item>
       <K.Item
         onSelect={(e: Event) => {
@@ -201,6 +239,15 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
             targetName={targetName ?? backup.name}
           />
         )}
+        {/* key on `editOpen` so each open remounts the dialog with fresh state
+            seeded from the current schedule — no reset effect needed. */}
+        <EditBackupDialog
+          key={editOpen ? "edit-open" : "edit-closed"}
+          backup={backup}
+          destinations={destinations}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
       </TableCell>
     </TableRow>
   );
@@ -212,5 +259,127 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
         {menu(CONTEXT_KIT)}
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Edit a schedule (name / destination / cron / retention)             */
+/* ------------------------------------------------------------------ */
+
+/** Edit dialog for an existing schedule. The target it backs up (a database or
+ *  project) is fixed at creation, so only these settings are editable here;
+ *  `enabled` keeps its own row toggle. */
+function EditBackupDialog({
+  backup,
+  destinations,
+  open,
+  onOpenChange,
+}: {
+  backup: BackupDTO;
+  destinations: Destination[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  // Seeded from the current schedule on mount; the parent remounts this dialog
+  // (via `key`) each time it opens, so these initial values are always fresh and
+  // a cancelled edit never leaks stale input into the next open.
+  const [name, setName] = React.useState(backup.name);
+  const [destinationId, setDestinationId] = React.useState(backup.destinationId);
+  const [schedule, setSchedule] = React.useState(backup.schedule);
+  const [retention, setRetention] = React.useState(backup.retentionDays);
+
+  function submit() {
+    startTransition(async () => {
+      const res = await gqlAction(
+        `mutation($id: String!, $input: UpdateBackupInput!) { updateBackup(id: $id, input: $input) }`,
+        {
+          id: backup.id,
+          input: { name, destinationId, schedule, retentionDays: retention },
+        }
+      );
+      if (res.ok) {
+        toast.success("Backup schedule updated");
+        onOpenChange(false);
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit schedule</DialogTitle>
+          <DialogDescription>
+            Change this schedule&apos;s name, destination, cron and retention. The{" "}
+            {backup.targetKind === "project" ? "project" : "database"} it backs up
+            can&apos;t be changed.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Destination</Label>
+            <Select value={destinationId} onValueChange={setDestinationId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select…" />
+              </SelectTrigger>
+              <SelectContent>
+                {destinations.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <SimpleTooltip content="Standard cron expression (UTC)">
+                <Label className="cursor-help underline decoration-dotted underline-offset-4">
+                  Schedule (cron)
+                </Label>
+              </SimpleTooltip>
+              <Input
+                value={schedule}
+                onChange={(e) => setSchedule(e.target.value)}
+                className="font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Retention (days)</Label>
+              <Input
+                type="number"
+                value={retention}
+                onChange={(e) => setRetention(Number(e.target.value) || 7)}
+                min={1}
+              />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={pending}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={submit}
+            disabled={pending || !name.trim() || !destinationId}
+          >
+            {pending ? "Saving…" : "Save changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

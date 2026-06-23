@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   Play,
   Plus,
+  Pencil,
   RotateCcw,
   Trash2,
   Archive,
@@ -121,7 +122,11 @@ export function ProjectBackups({
               </TableHeader>
               <TableBody>
                 {schedules.map((s) => (
-                  <ScheduleRow key={s.id} schedule={s} />
+                  <ScheduleRow
+                    key={s.id}
+                    schedule={s}
+                    destinations={destinations}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -281,12 +286,12 @@ function ScheduleBackup({
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
-  const [name, setName] = React.useState("");
-  const [destinationId, setDestinationId] = React.useState(
-    destinations[0]?.id ?? "",
-  );
-  const [schedule, setSchedule] = React.useState("0 3 * * *");
-  const [retention, setRetention] = React.useState(14);
+  const [fields, setFields] = React.useState<ScheduleFields>({
+    name: "",
+    destinationId: destinations[0]?.id ?? "",
+    schedule: "0 3 * * *",
+    retention: 14,
+  });
   const noDeps = destinations.length === 0;
 
   function submit() {
@@ -295,19 +300,19 @@ function ScheduleBackup({
         `mutation($input: CreateBackupInput!) { createBackup(input: $input) }`,
         {
           input: {
-            name,
+            name: fields.name,
             targetKind: "project",
             projectId,
-            destinationId,
-            schedule,
-            retentionDays: retention,
+            destinationId: fields.destinationId,
+            schedule: fields.schedule,
+            retentionDays: fields.retention,
           },
         },
       );
       if (res.ok) {
         toast.success("Backup schedule created");
         setOpen(false);
-        setName("");
+        setFields((f) => ({ ...f, name: "" }));
         router.refresh();
       } else {
         toast.error(res.error);
@@ -346,60 +351,178 @@ function ScheduleBackup({
             Periodically back up this project to an S3 destination.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nightly project backup"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Destination</Label>
-            <Select value={destinationId} onValueChange={setDestinationId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {destinations.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <SimpleTooltip content="Standard cron expression (UTC)">
-                <Label className="cursor-help underline decoration-dotted underline-offset-4">
-                  Schedule (cron)
-                </Label>
-              </SimpleTooltip>
-              <Input
-                value={schedule}
-                onChange={(e) => setSchedule(e.target.value)}
-                className="font-mono text-xs"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Retention (days)</Label>
-              <Input
-                type="number"
-                value={retention}
-                onChange={(e) => setRetention(Number(e.target.value) || 7)}
-                min={1}
-              />
-            </div>
-          </div>
-        </div>
+        <ScheduleFormFields
+          fields={fields}
+          onChange={setFields}
+          destinations={destinations}
+        />
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending || !name.trim() || !destinationId}>
+          <Button
+            onClick={submit}
+            disabled={pending || !fields.name.trim() || !fields.destinationId}
+          >
             {pending ? "Creating…" : "Create schedule"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Edit a project backup schedule                                      */
+/* ------------------------------------------------------------------ */
+
+/** The editable settings of a schedule, shared by the create and edit forms. */
+type ScheduleFields = {
+  name: string;
+  destinationId: string;
+  schedule: string;
+  retention: number;
+};
+
+function ScheduleFormFields({
+  fields,
+  onChange,
+  destinations,
+}: {
+  fields: ScheduleFields;
+  onChange: React.Dispatch<React.SetStateAction<ScheduleFields>>;
+  destinations: Destination[];
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Name</Label>
+        <Input
+          value={fields.name}
+          onChange={(e) => onChange((f) => ({ ...f, name: e.target.value }))}
+          placeholder="Nightly project backup"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Destination</Label>
+        <Select
+          value={fields.destinationId}
+          onValueChange={(v) => onChange((f) => ({ ...f, destinationId: v }))}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select…" />
+          </SelectTrigger>
+          <SelectContent>
+            {destinations.map((d) => (
+              <SelectItem key={d.id} value={d.id}>
+                {d.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <SimpleTooltip content="Standard cron expression (UTC)">
+            <Label className="cursor-help underline decoration-dotted underline-offset-4">
+              Schedule (cron)
+            </Label>
+          </SimpleTooltip>
+          <Input
+            value={fields.schedule}
+            onChange={(e) =>
+              onChange((f) => ({ ...f, schedule: e.target.value }))
+            }
+            className="font-mono text-xs"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Retention (days)</Label>
+          <Input
+            type="number"
+            value={fields.retention}
+            onChange={(e) =>
+              onChange((f) => ({ ...f, retention: Number(e.target.value) || 7 }))
+            }
+            min={1}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditScheduleDialog({
+  schedule,
+  destinations,
+  open,
+  onOpenChange,
+}: {
+  schedule: BackupDTO;
+  destinations: Destination[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  // Seeded from the current schedule on mount; the parent remounts this dialog
+  // (via `key`) each time it opens, so these initial values are always fresh and
+  // a cancelled edit never leaks stale input into the next open.
+  const [fields, setFields] = React.useState<ScheduleFields>({
+    name: schedule.name,
+    destinationId: schedule.destinationId,
+    schedule: schedule.schedule,
+    retention: schedule.retentionDays,
+  });
+
+  function submit() {
+    startTransition(async () => {
+      const res = await gqlAction(
+        `mutation($id: String!, $input: UpdateBackupInput!) { updateBackup(id: $id, input: $input) }`,
+        {
+          id: schedule.id,
+          input: {
+            name: fields.name,
+            destinationId: fields.destinationId,
+            schedule: fields.schedule,
+            retentionDays: fields.retention,
+          },
+        },
+      );
+      if (res.ok) {
+        toast.success("Backup schedule updated");
+        onOpenChange(false);
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit schedule</DialogTitle>
+          <DialogDescription>
+            Change this schedule&apos;s name, destination, cron and retention. The
+            project it backs up can&apos;t be changed.
+          </DialogDescription>
+        </DialogHeader>
+        <ScheduleFormFields
+          fields={fields}
+          onChange={setFields}
+          destinations={destinations}
+        />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={submit}
+            disabled={pending || !fields.name.trim() || !fields.destinationId}
+          >
+            {pending ? "Saving…" : "Save changes"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -411,10 +534,17 @@ function ScheduleBackup({
 /* Schedule row (toggle + run + delete)                                */
 /* ------------------------------------------------------------------ */
 
-function ScheduleRow({ schedule }: { schedule: BackupDTO }) {
+function ScheduleRow({
+  schedule,
+  destinations,
+}: {
+  schedule: BackupDTO;
+  destinations: Destination[];
+}) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [editOpen, setEditOpen] = React.useState(false);
 
   function run() {
     startTransition(async () => {
@@ -484,6 +614,15 @@ function ScheduleRow({ schedule }: { schedule: BackupDTO }) {
           <Button
             variant="ghost"
             size="icon-sm"
+            onClick={() => setEditOpen(true)}
+            title="Edit this schedule"
+            aria-label="Edit schedule"
+          >
+            <Pencil className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={() => setConfirmOpen(true)}
             title="Delete this schedule"
             aria-label="Delete schedule"
@@ -491,6 +630,15 @@ function ScheduleRow({ schedule }: { schedule: BackupDTO }) {
             <Trash2 className="size-4 text-destructive" />
           </Button>
         </div>
+        {/* key on `editOpen` so each open remounts the dialog with fresh state
+            seeded from the current schedule — no reset effect needed. */}
+        <EditScheduleDialog
+          key={editOpen ? "edit-open" : "edit-closed"}
+          schedule={schedule}
+          destinations={destinations}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
         <ConfirmAction
           open={confirmOpen}
           onOpenChange={setConfirmOpen}

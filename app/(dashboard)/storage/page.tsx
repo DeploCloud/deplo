@@ -174,7 +174,14 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 </TableHeader>
                 <TableBody>
                   {backups.map((b) => (
-                    <BackupRow key={b.id} backup={b} />
+                    <BackupRow
+                      key={b.id}
+                      backup={b}
+                      destinations={destinations.map((d) => ({
+                        id: d.id,
+                        name: d.name,
+                      }))}
+                    />
                   ))}
                 </TableBody>
               </Table>

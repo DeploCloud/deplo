@@ -663,6 +663,56 @@ export async function toggleBackup(
   });
 }
 
+/**
+ * Edit a schedule's settings: name, destination, cron expression and retention.
+ * The target binding (kind + database/project) is fixed at creation — pointing a
+ * schedule at a different target is a different schedule, so it is not editable
+ * here. The cron scheduler re-reads each schedule from the store every tick, so a
+ * changed `schedule` takes effect on the next tick (no re-registration needed).
+ */
+export async function updateBackup(
+  id: string,
+  input: {
+    name: string;
+    destinationId: string;
+    schedule: string;
+    retentionDays: number;
+  },
+): Promise<BackupDTO> {
+  const { membership } = await requireCapability("manage_infra");
+  const teamId = membership.teamId;
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  if (!input.name.trim()) throw new Error("Name is required");
+  if (!input.destinationId) throw new Error("Select a destination");
+
+  // The (possibly changed) destination must belong to this team.
+  if (
+    !read().s3Destinations.some(
+      (x) => x.id === input.destinationId && x.teamId === teamId,
+    )
+  )
+    throw new Error("Select a destination");
+
+  let updated: Backup | undefined;
+  mutate((d) => {
+    const b = d.backups.find((x) => x.id === id && x.teamId === teamId);
+    if (!b) throw new Error("Not found");
+    b.name = input.name.trim();
+    b.destinationId = input.destinationId;
+    b.schedule = input.schedule || "0 3 * * *";
+    b.retentionDays = Math.max(1, input.retentionDays || 7);
+    updated = b;
+  });
+  recordActivity(
+    "backup",
+    `Updated backup schedule ${updated!.name}`,
+    user.name,
+    null,
+    teamId,
+  );
+  return toDTO(updated!);
+}
+
 export async function deleteBackup(id: string): Promise<void> {
   const teamId = (await requireCapability("manage_infra")).teamId;
   mutate((d) => {
