@@ -43,7 +43,7 @@ function legacyDoc(): Record<string, unknown> {
     domains: [],
     databases: [{ id: "db_1", name: "pg", type: "postgres" }],
     s3Destinations: [{ id: "s3_1", name: "r2" }],
-    backups: [{ id: "bkp_1", name: "nightly" }],
+    backups: [{ id: "bkp_1", name: "nightly", databaseId: "db_1" }],
     apiTokens: [{ id: "tok_1", name: "ci" }],
     activities: [{ id: "act_1", type: "project", message: "x", actor: "Owner", projectId: null }],
     notificationSettings: {
@@ -151,6 +151,42 @@ test("migrate: stamps teamId on legacy per-team collections", () => {
   assert.equal(d.sharedEnvGroups[0].teamId, "team_1");
   assert.equal(d.registries[0].teamId, "team_1");
   assert.equal(d.githubApps[0].teamId, "team_1");
+});
+
+test("migrate: backfills backup target fields on legacy schedules", () => {
+  const d = legacyDoc() as unknown as DeploData;
+  migrate(d);
+  // A pre-project-backup schedule could only target a database.
+  assert.equal(d.backups[0].targetKind, "database");
+  assert.equal(d.backups[0].projectId, null);
+  assert.equal(d.backups[0].databaseId, "db_1");
+});
+
+test("migrate: does not overwrite an explicit project backup target", () => {
+  const d = legacyDoc() as unknown as DeploData;
+  (d.backups[0] as unknown as Record<string, unknown>).targetKind = "project";
+  (d.backups[0] as unknown as Record<string, unknown>).projectId = "prj_9";
+  (d.backups[0] as unknown as Record<string, unknown>).databaseId = null;
+  migrate(d);
+  assert.equal(d.backups[0].targetKind, "project");
+  assert.equal(d.backups[0].projectId, "prj_9");
+});
+
+test("migrate: tolerates a document predating the backupRuns collection", () => {
+  const d = legacyDoc() as unknown as DeploData;
+  // The fixture has no `backupRuns` (it predates the feature). migrate() must
+  // not throw even when normalize() hasn't backfilled the collection yet.
+  assert.equal((d as Record<string, unknown>).backupRuns, undefined);
+  assert.doesNotThrow(() => migrate(d));
+});
+
+test("migrate: stamps teamId on backupRuns when present", () => {
+  const d = legacyDoc() as unknown as DeploData;
+  (d as unknown as Record<string, unknown>).backupRuns = [
+    { id: "run_1", backupId: "bkp_1", objectKey: "k", status: "success" },
+  ];
+  migrate(d);
+  assert.equal(d.backupRuns[0].teamId, "team_1");
 });
 
 test("migrate: backfills API-token userId to the team's owner", () => {

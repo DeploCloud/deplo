@@ -97,11 +97,20 @@ export function migrate(data: DeploData): DeploData {
     stamp(data.databases, firstTeamId);
     stamp(data.s3Destinations, firstTeamId);
     stamp(data.backups, firstTeamId);
+    stamp(data.backupRuns, firstTeamId);
     stamp(data.apiTokens, firstTeamId);
     stamp(data.activities, firstTeamId);
     stamp(data.sharedEnvGroups, firstTeamId);
     stamp(data.registries, firstTeamId);
     stamp(data.githubApps, firstTeamId);
+  }
+
+  // 2c. Backfill backup-target fields. Before project backups, a schedule could
+  //     only target a database, so a legacy row has no `targetKind`/`projectId`.
+  //     Default to a database target with no project. Idempotent.
+  for (const b of data.backups) {
+    if (!b.targetKind) b.targetKind = "database";
+    if (b.projectId === undefined) b.projectId = null;
   }
 
   // 2b. Backfill `userId` on API tokens written before tokens carried a
@@ -149,7 +158,14 @@ export function migrate(data: DeploData): DeploData {
   return data;
 }
 
-function stamp<T extends { teamId?: string }>(rows: T[], teamId: string): void {
+function stamp<T extends { teamId?: string }>(
+  rows: T[] | undefined,
+  teamId: string,
+): void {
+  // Tolerate a collection added after this document was written: `normalize()`
+  // backfills missing collections before `migrate()` runs in production, but a
+  // direct `migrate()` call (e.g. tests) may pass a document predating one.
+  if (!Array.isArray(rows)) return;
   for (const r of rows) {
     if (!r.teamId) r.teamId = teamId;
   }

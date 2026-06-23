@@ -8,6 +8,13 @@
       "when": 1781605842470,
       "tag": "0000_friendly_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782208146461,
+      "tag": "0001_volatile_joshua_kane",
+      "breakpoints": true
     }
   ]
 }

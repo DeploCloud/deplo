@@ -18,6 +18,7 @@ export function buildSeed(): DeploData {
     databases: [],
     s3Destinations: [],
     backups: [],
+    backupRuns: [],
     apiTokens: [],
     activities: [],
     // Per-team, keyed by team id. Empty until a team saves its first settings.

@@ -56,7 +56,11 @@ export async function createBackup(input: {
     id: newId("bkp"),
     teamId,
     name: input.name.trim(),
+    // Step 1 leaves the existing create flow database-only; Step 3 generalizes
+    // this to accept a `targetKind`/`projectId` from the caller.
+    targetKind: "database",
     databaseId: input.databaseId,
+    projectId: null,
     destinationId: input.destinationId,
     schedule: input.schedule || "0 3 * * *",
     retentionDays: Math.max(1, input.retentionDays || 7),

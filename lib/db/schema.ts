@@ -70,4 +70,30 @@ export const deploState = pgTable("deplo_state", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const schema = { user, session, account, verification, deploState };
+/**
+ * Cross-process mutex for the backup scheduler (Step 6). The JSONB document
+ * store can't provide a real lease — concurrent `next start` instances would
+ * each fire a due backup. One row per named lease holds the current owner and a
+ * heartbeat; a tick claims a lease via an atomic CAS (insert-or-steal-if-stale)
+ * before running, so a due backup fires at most once and a crashed owner's stale
+ * lease is re-armed. In file-backend dev (no Postgres) this degrades to an
+ * in-process `globalThis` lock.
+ */
+export const schedulerLease = pgTable("scheduler_lease", {
+  /** Lease name, e.g. "backup-scheduler". One row per distinct lease. */
+  name: text("name").primaryKey(),
+  /** Identifier of the process/instance currently holding the lease. */
+  owner: text("owner").notNull(),
+  /** Last heartbeat; a lease older than the staleness window is reclaimable. */
+  heartbeatAt: timestamp("heartbeat_at").notNull().defaultNow(),
+  acquiredAt: timestamp("acquired_at").notNull().defaultNow(),
+});
+
+export const schema = {
+  user,
+  session,
+  account,
+  verification,
+  deploState,
+  schedulerLease,
+};

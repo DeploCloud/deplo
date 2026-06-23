@@ -861,12 +861,24 @@ export interface S3Destination {
   createdAt: string;
 }
 
+/** What a backup schedule / run targets. */
+export type BackupTargetKind = "database" | "project";
+
+export type BackupRunStatus = "running" | "success" | "failed";
+
 export interface Backup {
   id: ID;
   /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
   teamId: ID;
   name: string;
+  /**
+   * Whether this schedule backs up a database or a project. Legacy rows (which
+   * could only target a database) are backfilled to `"database"` on hydrate.
+   */
+  targetKind: BackupTargetKind;
   databaseId: ID | null;
+  /** Set when `targetKind === "project"`; otherwise null. */
+  projectId: ID | null;
   destinationId: ID;
   schedule: string; // cron
   retentionDays: number;
@@ -874,6 +886,31 @@ export interface Backup {
   lastStatus: "success" | "failed" | "running" | "never";
   enabled: boolean;
   createdAt: string;
+}
+
+/**
+ * One executed backup — the record of a single dump+upload (or restore source).
+ * Stored as an array in `DeploData` (no SQL migration); the source of truth for
+ * artifact listing and restore. `backupId` is null for an ad-hoc "back up now"
+ * run with no owning schedule.
+ */
+export interface BackupRun {
+  id: ID;
+  /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
+  teamId: ID;
+  /** The schedule this run came from, or null for an ad-hoc run. */
+  backupId: ID | null;
+  targetKind: BackupTargetKind;
+  databaseId: ID | null;
+  projectId: ID | null;
+  destinationId: ID;
+  /** S3 object key: `deplo/<teamId>/<kind>/<targetId>/<ISO-timestamp>.<ext>`. */
+  objectKey: string;
+  sizeBytes: number;
+  status: BackupRunStatus;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
 }
 
 export interface ApiToken {
@@ -1078,6 +1115,8 @@ export interface DeploData {
   databases: Database[];
   s3Destinations: S3Destination[];
   backups: Backup[];
+  /** Executed backup runs (artifact history). Backfilled to [] on hydrate. */
+  backupRuns: BackupRun[];
   apiTokens: ApiToken[];
   activities: Activity[];
   /**
