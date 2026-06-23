@@ -59,12 +59,16 @@ export interface S3WithSecrets {
 }
 
 /**
- * Load a team's S3 destination with its creds decrypted, for the executor. Scoped
- * to the active team (mirrors every other team-scoped read). Throws when the id
- * is unknown / not in this team so a backup can't target a foreign bucket.
+ * Load a destination with its creds decrypted for a SPECIFIC team — the
+ * session-free core. Throws when the id is unknown / not in `teamId` so a backup
+ * can't target a foreign bucket. The scheduler (Step 6) runs with NO request
+ * context, so it must call this with the schedule's own `teamId` rather than the
+ * cookie-derived active team; the interactive {@link getS3WithSecrets} wraps it.
  */
-export async function getS3WithSecrets(id: string): Promise<S3WithSecrets> {
-  const teamId = await requireActiveTeamId();
+export function getS3WithSecretsForTeam(
+  teamId: string,
+  id: string,
+): S3WithSecrets {
   const s = read().s3Destinations.find((x) => x.id === id && x.teamId === teamId);
   if (!s) throw new Error("Destination not found");
   return {
@@ -72,6 +76,17 @@ export async function getS3WithSecrets(id: string): Promise<S3WithSecrets> {
     accessKey: decryptSecret(s.accessKeyEnc),
     secretKey: decryptSecret(s.secretKeyEnc),
   };
+}
+
+/**
+ * Load the ACTIVE team's S3 destination with its creds decrypted, for the
+ * interactive executor (manual "Run now" / restore). Scoped to the active team
+ * via the session (mirrors every other team-scoped read). The unattended
+ * scheduler uses {@link getS3WithSecretsForTeam} instead (no session).
+ */
+export async function getS3WithSecrets(id: string): Promise<S3WithSecrets> {
+  const teamId = await requireActiveTeamId();
+  return getS3WithSecretsForTeam(teamId, id);
 }
 
 /**

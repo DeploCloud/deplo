@@ -11,8 +11,13 @@
  *    leaves it stuck `running`, which retention also never prunes. We mark stale
  *    `running` runs `failed` on boot so a hung backup never lies indefinitely.
  *
- * Node runtime only: the reconcile touches the `server-only` store. The Edge
- * runtime has neither, so guard on NEXT_RUNTIME.
+ * It also STARTS the backup scheduler (PLAN backups Step 6) — the once-a-minute
+ * loop that fires due cron `schedule`s. Boot is the natural home: it runs once
+ * per server instance, after the reconcile has settled any orphaned runs, and the
+ * loop is lease-guarded so multiple instances don't double-fire.
+ *
+ * Node runtime only: the reconcile + scheduler touch the `server-only` store. The
+ * Edge runtime has neither, so guard on NEXT_RUNTIME.
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
@@ -23,8 +28,12 @@ export async function register(): Promise<void> {
     reconcileInFlightDeployments();
     const { reconcileInFlightBackupRuns } = await import("./lib/data/backups");
     reconcileInFlightBackupRuns();
+    // Start the backup scheduler after the reconcile so a boot tick never trips
+    // over an orphaned `running` run. Idempotent + lease-guarded internally.
+    const { startBackupScheduler } = await import("./lib/backups/scheduler");
+    startBackupScheduler();
   } catch (e) {
-    // Never let a boot-time reconcile failure crash the server.
+    // Never let a boot-time reconcile/scheduler failure crash the server.
     console.error("[deplo] startup reconcile failed:", e);
   }
 }

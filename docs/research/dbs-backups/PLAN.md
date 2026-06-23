@@ -371,7 +371,57 @@ the `removeVolumes` flag.
 
 ---
 
-## Step 6 — Scheduler (so cron schedules fire)
+## Step 6 — Scheduler (so cron schedules fire) ✅ DONE
+
+> **Built + tested.** The cron `schedule` stored since Step 1 now actually fires.
+> `npm run lint` clean, `npm test` green (382 tests, +33 new). No new `tsc`
+> errors (the one pre-existing `lib/migrate.test.ts` strict-cast error predates
+> this work). The hard parts — the atomic lease CAS (verified race-free against a
+> live Postgres 16) and the session-free executor path — were adversarially
+> reviewed.
+>
+> **What shipped:**
+> - [lib/backups/cron.ts](../../../lib/backups/cron.ts) (+ `cron.test.ts`): a
+>   dependency-free 5-field cron evaluator — `*`, lists, ranges, steps, `7==0`
+>   Sunday, and the Vixie DOM/DOW **union** rule. Pure + minute-precision UTC, so
+>   it answers one question (`cronMatches(expr, date)`) against fixed `Date`s. An
+>   unparseable expression degrades to "never matches" — never throws — so one
+>   malformed schedule can't crash the tick.
+> - [lib/backups/lease.ts](../../../lib/backups/lease.ts) (+ `lease.test.ts`):
+>   the cross-process mutex. Postgres path is one atomic `INSERT … ON CONFLICT DO
+>   UPDATE … WHERE (owner = me OR heartbeat stale) RETURNING owner` — two
+>   instances racing the same tick can never both win, and a crashed owner's lease
+>   (heartbeat older than `LEASE_STALE_MS` = 2h) is stealable so a dead run never
+>   blocks forever. The pure `canAcquire(...)` CAS rule is unit-tested; in dev (no
+>   `DEPLO_DATABASE_URL`) it degrades to a `globalThis` in-process lock (safe —
+>   `next start` is single-process). Reuses the `scheduler_lease` table already
+>   migrated in Step 1.
+> - [lib/backups/scheduler.ts](../../../lib/backups/scheduler.ts) (+
+>   `scheduler.test.ts`): a `globalThis` singleton
+>   (`Symbol.for("deplo.backup.scheduler")`) started once at boot. Each
+>   `runSchedulerTick()` claims the lease, reads enabled `backups`, fires those
+>   due this minute via `runScheduledBackup`, and dedups per-minute (stamps the
+>   minute key BEFORE awaiting, so an overlapping tick can't double-fire). A
+>   `ticking` reentrancy guard stops a slow tick overlapping the next; the loop is
+>   `unref()`-ed so it never pins the process open on its own.
+> - [lib/data/backups.ts](../../../lib/data/backups.ts): `runScheduledBackup()` —
+>   the **session-free** twin of `runBackup`, sharing the one `executeBackup` so
+>   an unattended run records the same `BackupRun` history + retention. It passes
+>   the schedule's own `teamId` (the authority is the schedule, created earlier
+>   under `manage_infra`) since the tick has NO request context.
+> - [lib/data/s3.ts](../../../lib/data/s3.ts): split out
+>   `getS3WithSecretsForTeam(teamId, id)` — the session-free creds loader the
+>   executor now uses. **This fixed a latent Step-3 bug**: the executor went
+>   through the cookie-bound `getS3WithSecrets` (→ `requireActiveTeamId` → reads
+>   cookies), so an unattended scheduler run would have thrown "No active team"
+>   before ever dumping. Every `executeBackup`/`pruneRetention`/`restore`/delete
+>   path now resolves creds by explicit `teamId`; the interactive
+>   `getS3WithSecrets` is a thin wrapper that still derives the active team.
+> - [instrumentation.ts](../../../instrumentation.ts): starts the scheduler in
+>   `register()` (Node runtime only) **after** the boot reconcile, so a boot tick
+>   never trips over an orphaned `running` run. The start is synchronous and the
+>   first tick is floated, so `register()` stays non-blocking (per the Next 16
+>   instrumentation contract: `register` must complete before the server serves).
 
 - A `globalThis` singleton (`Symbol.for("deplo.backup.scheduler")`) started from
   `instrumentation.ts` `register()` (Node runtime only — guard `NEXT_RUNTIME`). Once per
@@ -387,10 +437,10 @@ the `removeVolumes` flag.
 ## Files to create / modify (representative)
 
 **Create**
-- `app/(dashboard)/projects/[slug]/backups/page.tsx`
-- `components/projects/project-backups.tsx`
-- `lib/backups/scheduler.ts` (+ cron matcher) (Step 6)
-- `lib/db/migrations/000X_scheduler_lease.sql` (Drizzle — lease only)
+- `app/(dashboard)/projects/[slug]/backups/page.tsx` ✅ (Step 5)
+- `components/projects/project-backups.tsx` ✅ (Step 5)
+- `lib/backups/scheduler.ts` + `lib/backups/cron.ts` + `lib/backups/lease.ts` ✅ (Step 6)
+- `lib/db/migrations/0001_volatile_joshua_kane.sql` (Drizzle — `scheduler_lease`) ✅ (Step 1)
 - `docs/adr/0007-…md` ✅ (done)
 
 **Modify**
@@ -405,7 +455,7 @@ the `removeVolumes` flag.
 - `components/shared/confirm-action.tsx` (typed variant)
 - `components/projects/project-tabs.tsx`, `app/(dashboard)/projects/[slug]/layout.tsx`
 - `app/(dashboard)/storage/page.tsx`
-- `instrumentation.ts` (start the scheduler)
+- `instrumentation.ts` (start the scheduler) ✅ (Step 6)
 - `CONTEXT.md` ✅ (Database / Backup / Backup run terms added) + regenerated `schema.graphql`
 
 **Cross-repo (cannot build here)** — `../deplo-agent`
@@ -419,7 +469,13 @@ the `removeVolumes` flag.
 1. **Typecheck/lint/tests**: `npm run lint && npx tsc --noEmit`; `node --test` for affected
    `lib/**`. Unit tests for: the cron matcher, the object-key builder, retention pruning, the
    project-descriptor builder (named + compose-stack volume resolution, host-mount exclusion),
-   and the lease CAS.
+   and the lease CAS. ✅ **All present + green** — `npm run lint` clean, `npm test` 382 tests
+   pass; `cron.test.ts` (matcher incl. Vixie union + malformed-degrades-to-never),
+   `lease.test.ts` (CAS rule + in-process steal/renew/deny), `scheduler.test.ts`
+   (due-selection, per-minute dedup, lease-blocks-double-run), plus the existing
+   `backup-objectkey.test.ts` + `project-backup-descriptor.test.ts`. (`tsc` has one
+   pre-existing strict-cast error in `lib/migrate.test.ts` that predates this work; tests run
+   via `tsx`.)
 2. **DB-on-agent (Step 0)**: create a DB choosing a server; confirm the container comes up on
    that server's agent (`readStack`/console), connection string unchanged, start/stop/delete
    route through the agent, and delete reclaims the data volume (`removeVolumes`).
@@ -431,7 +487,11 @@ the `removeVolumes` flag.
    compose-stack), write data, back up (volumes + files + snapshot), change the data, restore,
    confirm data returns and the stack restarts; verify via the project **Backups** tab.
 6. **Scheduler**: set `* * * * *`, confirm an unattended run fires within a minute, the lease
-   prevents a double-run, retention prunes old runs + S3 objects.
+   prevents a double-run, retention prunes old runs + S3 objects. ✅ Logic unit-tested in
+   `scheduler.test.ts` (due → one `BackupRun`; same-minute dedup; lease held elsewhere → no
+   run) + `lease.test.ts` (the CAS, verified race-free against live Postgres). The live "fires
+   within a minute" wall-clock check + S3-object prune still want a manual run against a real
+   destination (agent-gated, like items 3–5).
 7. **Capability gate**: against an agent without `"backup"`, every real path surfaces
    `AgentBackupUnsupportedError` ("update the agent") — not a fake success.
 8. **Run the app** (`/run`) to click through the project Backups tab and storage flows.

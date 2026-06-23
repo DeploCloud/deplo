@@ -9,7 +9,7 @@ import {
   connectBackupAgent,
   mapBackupUnsupported,
 } from "../infra/agent-client";
-import { getS3WithSecrets, s3TargetFor } from "./s3";
+import { getS3WithSecretsForTeam, s3TargetFor } from "./s3";
 import {
   buildProjectDescriptor,
   type ProjectBackupDescriptor,
@@ -317,7 +317,7 @@ async function executeBackup(
   let failure: string | null = null;
   let objectKey = "";
   try {
-    const creds = await getS3WithSecrets(opts.destinationId);
+    const creds = getS3WithSecretsForTeam(teamId, opts.destinationId);
     const target = await resolveTarget(teamId, opts.kind, opts.databaseId, opts.projectId);
     label = target.label;
     activityProjectId = target.projectId;
@@ -460,7 +460,7 @@ async function pruneRetention(
   );
   const toDelete = doomed.filter((r) => r.status === "success" && r.objectKey);
   if (toDelete.length) {
-    const creds = await getS3WithSecrets(destinationId);
+    const creds = getS3WithSecretsForTeam(teamId, destinationId);
     const conn = await connectBackupAgent(target.serverId);
     try {
       for (const r of toDelete) {
@@ -513,6 +513,34 @@ export async function runBackup(id: string): Promise<void> {
 }
 
 /**
+ * Run a backup SCHEDULE unattended (Step 6 scheduler) — the session-free twin of
+ * {@link runBackup}. The scheduler tick fires with NO request context, so there
+ * is no `requireCapability`/`requireActiveTeamId` to lean on: it has already
+ * claimed the cross-process lease and read the enabled schedule straight off the
+ * store, so it passes the row's own `teamId` (the authority is the schedule
+ * itself, created earlier under `manage_infra`) and a synthetic "Scheduler"
+ * actor. Shares the one {@link executeBackup} with the manual paths, so an
+ * unattended run records the same `BackupRun` history + retention. Never throws —
+ * a failed run is recorded `failed` by the executor and the failure is swallowed
+ * so one bad schedule can't abort the tick's remaining backups.
+ */
+export async function runScheduledBackup(backup: Backup): Promise<void> {
+  try {
+    await executeBackup(backup.teamId, "Scheduler", {
+      backupId: backup.id,
+      kind: backup.targetKind,
+      databaseId: backup.databaseId,
+      projectId: backup.projectId,
+      destinationId: backup.destinationId,
+      retentionDays: backup.retentionDays,
+    });
+  } catch {
+    // executeBackup already recorded the run `failed` + logged the activity; the
+    // re-thrown error is for the interactive callers, not the scheduler.
+  }
+}
+
+/**
  * Ad-hoc "Back up now" for a project with no owning schedule — shares the
  * executor with `backupId: null`. Used by the project Backups tab (Step 5).
  * `retentionDays` defaults to the conventional 7 (no schedule to read it from).
@@ -557,7 +585,7 @@ export async function restoreBackup(runId: string): Promise<void> {
   if (run.status !== "success")
     throw new Error("This backup did not complete successfully and cannot be restored");
 
-  const creds = await getS3WithSecrets(run.destinationId);
+  const creds = getS3WithSecretsForTeam(teamId, run.destinationId);
   const target = await resolveTarget(
     teamId,
     run.targetKind,
@@ -662,7 +690,7 @@ export async function deleteBackupArtifacts(input: {
   serverId: string;
 }): Promise<number> {
   const teamId = await requireActiveTeamId();
-  const creds = await getS3WithSecrets(input.destinationId);
+  const creds = getS3WithSecretsForTeam(teamId, input.destinationId);
   const prefix = targetPrefix(teamId, input.kind, input.targetId);
 
   let deleted = 0;
