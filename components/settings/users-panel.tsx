@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   UserPlus,
-  Copy,
   LinkIcon,
   ShieldCheck,
   Ban,
@@ -33,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
 import type {
@@ -50,6 +50,7 @@ export function UsersPanel({
   links: RegistrationLinkDTO[];
   currentUserId: string;
 }) {
+  const [registerOpen, setRegisterOpen] = React.useState(false);
   const pendingLinks = links.filter((l) => l.status === "pending");
   return (
     <div className="space-y-4">
@@ -62,11 +63,22 @@ export function UsersPanel({
               and edit their global permissions.
             </CardDescription>
           </div>
-          <RegisterUserDialog />
+          <Button size="sm" onClick={() => setRegisterOpen(true)}>
+            <UserPlus className="size-4" />
+            Register user
+          </Button>
+          <RegisterUserDialog
+            open={registerOpen}
+            onOpenChange={setRegisterOpen}
+          />
         </CardHeader>
         <CardContent className="space-y-3">
           {users.map((u) => (
-            <UserRow key={u.userId} user={u} isSelf={u.userId === currentUserId} />
+            <UserRow
+              key={u.userId}
+              user={u}
+              isSelf={u.userId === currentUserId}
+            />
           ))}
         </CardContent>
       </Card>
@@ -74,7 +86,9 @@ export function UsersPanel({
       {pendingLinks.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Pending registration links</CardTitle>
+            <CardTitle className="text-base">
+              Pending registration links
+            </CardTitle>
             <CardDescription>
               Single-use links that haven&apos;t been used yet.
             </CardDescription>
@@ -113,7 +127,9 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
             <p className="text-sm font-medium">
               @{user.username}
               {isSelf && (
-                <span className="ml-2 text-xs text-muted-foreground">(you)</span>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  (you)
+                </span>
               )}
             </p>
             {user.name && user.name !== user.username && (
@@ -297,7 +313,10 @@ function EditUserDialog({
               <DialogTitle className="flex items-center gap-2">
                 <Avatar className="size-8">
                   <AvatarFallback
-                    style={{ backgroundColor: detail.avatarColor, color: "#000" }}
+                    style={{
+                      backgroundColor: detail.avatarColor,
+                      color: "#000",
+                    }}
                   >
                     {detail.username.slice(0, 2).toUpperCase()}
                   </AvatarFallback>
@@ -392,7 +411,8 @@ function EditUserDialog({
               />
               {isSelf && (
                 <p className="text-xs text-muted-foreground">
-                  You can&apos;t change your own admin status or suspend yourself.
+                  You can&apos;t change your own admin status or suspend
+                  yourself.
                 </p>
               )}
               <ToggleRow
@@ -437,7 +457,9 @@ function EditUserDialog({
               </Button>
               <Button
                 onClick={save}
-                disabled={pending || (password.length > 0 && password.length < 8)}
+                disabled={
+                  pending || (password.length > 0 && password.length < 8)
+                }
               >
                 {pending ? "Saving…" : "Save changes"}
               </Button>
@@ -477,96 +499,11 @@ function ToggleRow({
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-muted-foreground">{detail}</p>
       </div>
-      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+      <Switch
+        checked={checked}
+        onCheckedChange={onChange}
+        disabled={disabled}
+      />
     </div>
-  );
-}
-
-function RegisterUserDialog() {
-  const router = useRouter();
-  const [open, setOpen] = React.useState(false);
-  const [pending, startTransition] = React.useTransition();
-  const [link, setLink] = React.useState<string | null>(null);
-
-  function mint() {
-    startTransition(async () => {
-      const res = await gqlAction<
-        { mintRegistrationLink: string },
-        { link: string }
-      >(
-        `mutation { mintRegistrationLink }`,
-        {},
-        (d) => ({ link: d.mintRegistrationLink }),
-      );
-      if (res.ok && res.data) {
-        setLink(res.data.link);
-        router.refresh();
-      } else if (!res.ok) {
-        toast.error(res.error);
-      }
-    });
-  }
-
-  function copy() {
-    if (link) {
-      navigator.clipboard.writeText(link);
-      toast.success("Registration link copied");
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (!o) setLink(null);
-      }}
-    >
-      <Button size="sm" onClick={() => setOpen(true)}>
-        <UserPlus className="size-4" />
-        Register user
-      </Button>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Register a new user</DialogTitle>
-          <DialogDescription>
-            Generate a single-use link. Whoever opens it creates their own
-            account and team — like the first-run setup.
-          </DialogDescription>
-        </DialogHeader>
-        {link ? (
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              Share this link. It works once and expires in 14 days.
-            </p>
-            <div className="flex gap-2">
-              <Input readOnly value={link} className="font-mono text-xs" />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={copy}
-                aria-label="Copy link"
-              >
-                <Copy className="size-4" />
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            A fresh link is generated each time and can only be used once.
-          </p>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            {link ? "Done" : "Cancel"}
-          </Button>
-          {!link && (
-            <Button onClick={mint} disabled={pending}>
-              {pending ? "Generating…" : "Generate link"}
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

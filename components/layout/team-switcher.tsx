@@ -12,18 +12,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import type { Team, TeamSummary } from "@/lib/types";
 
@@ -37,7 +27,6 @@ export function TeamSwitcher({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [createOpen, setCreateOpen] = React.useState(false);
-  const [newName, setNewName] = React.useState("");
 
   function switchTo(teamId: string) {
     if (teamId === team.id) return;
@@ -47,24 +36,6 @@ export function TeamSwitcher({
         { teamId },
       );
       if (res.ok) {
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
-  }
-
-  function create() {
-    startTransition(async () => {
-      const res = await gqlAction<{ createTeam: Team }, Team>(
-        `mutation($name: String!) { createTeam(name: $name) { id } }`,
-        { name: newName },
-        (d) => d.createTeam,
-      );
-      if (res.ok) {
-        toast.success("Team created");
-        setCreateOpen(false);
-        setNewName("");
         router.refresh();
       } else {
         toast.error(res.error);
@@ -106,7 +77,8 @@ export function TeamSwitcher({
               <span className="flex flex-col">
                 <span className="truncate">{t.name}</span>
                 <span className="text-xs capitalize text-muted-foreground">
-                  {t.role} · {t.memberCount} member{t.memberCount === 1 ? "" : "s"}
+                  {t.role} · {t.memberCount} member
+                  {t.memberCount === 1 ? "" : "s"}
                 </span>
               </span>
               {t.id === team.id && <Check className="ml-auto size-4" />}
@@ -126,39 +98,7 @@ export function TeamSwitcher({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create a new team</DialogTitle>
-            <DialogDescription>
-              A team is an isolated workspace for projects, domains, databases
-              and members. You&apos;ll be its owner.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="new-team-name">Team name</Label>
-            <Input
-              id="new-team-name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Acme Inc"
-              autoFocus
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setCreateOpen(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={create} disabled={pending || !newName.trim()}>
-              {pending ? "Creating…" : "Create team"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateTeamDialog open={createOpen} onOpenChange={setCreateOpen} />
     </>
   );
 }
