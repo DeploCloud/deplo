@@ -5,6 +5,7 @@ import { assertUser } from "../auth";
 import { hostFacts } from "../infra/host";
 import { connectAgent } from "../infra/agent-client";
 import { markServerSeen } from "./servers";
+import { isAgentOutdated, reportedAgentVersion, resolveExpectedAgentVersion } from "../version";
 import type { Server } from "../types";
 
 /**
@@ -37,10 +38,44 @@ export interface ServerMetrics {
   load: [number, number, number];
   uptimeSec: number;
   containers: number;
+  /**
+   * The agent version this server is running, as last reported (refreshed on this
+   * same poll's Hello). Null until the agent has called home. Carried in the live
+   * payload so the version badge — and the outdated check below — update without a
+   * page reload: when an operator clicks "Check for updates" and a newer release
+   * exists, the next poll (~1s) flips every open Servers tab's badge to outdated.
+   */
+  agentVersion: string | null;
+  /**
+   * The agent version every server should be running — the latest GitHub release,
+   * resolved once per poll and stamped onto every server's snapshot. Carried live
+   * so a freshly-resolved "latest" (after a "Check for updates" bust) reaches the
+   * badges through the poll, not just a page refresh.
+   */
+  expectedAgentVersion: string;
+  /** True when agentVersion is strictly behind expectedAgentVersion (live). */
+  agentOutdated: boolean;
   ts: number;
 }
 
-function unavailable(serverId: string): ServerMetrics {
+/**
+ * The live agent-version triple stamped onto every snapshot. `server` may be
+ * absent (a server we couldn't even look up) — then the version is unknown and,
+ * per isAgentOutdated, never flagged outdated.
+ */
+function agentVersionFields(
+  expected: string,
+  server?: Server,
+): Pick<ServerMetrics, "agentVersion" | "expectedAgentVersion" | "agentOutdated"> {
+  const agentVersion = server ? reportedAgentVersion(server) : null;
+  return {
+    agentVersion,
+    expectedAgentVersion: expected,
+    agentOutdated: isAgentOutdated(agentVersion, expected),
+  };
+}
+
+function unavailable(serverId: string, expected: string, server?: Server): ServerMetrics {
   const facts = hostFacts();
   return {
     serverId,
@@ -59,6 +94,7 @@ function unavailable(serverId: string): ServerMetrics {
     load: [0, 0, 0],
     uptimeSec: 0,
     containers: 0,
+    ...agentVersionFields(expected, server),
     ts: Date.now(),
   };
 }
@@ -74,7 +110,7 @@ function unavailable(serverId: string): ServerMetrics {
  * poll per viewer. Acceptable at current scale; a connection pool is a Part C+
  * optimisation (TODO) if the fleet/viewer count makes the churn matter.
  */
-async function measureRemote(server: Server): Promise<ServerMetrics> {
+async function measureRemote(server: Server, expected: string): Promise<ServerMetrics> {
   const conn = await connectAgent(server.id);
   try {
     // Empty dataDir => the agent measures its own configured --data-dir.
@@ -85,9 +121,14 @@ async function measureRemote(server: Server): Promise<ServerMetrics> {
     // deploy. Best-effort: a Hello failure doesn't fail the metrics snapshot;
     // we just keep the last-known traefik flag for the payload.
     let traefik = server.traefikEnabled;
+    // The agent version reported on THIS poll's Hello (if it succeeds). Used for
+    // the live outdated check so a just-updated agent self-corrects in the same
+    // snapshot, rather than carrying the pre-poll stored value.
+    let liveAgentVersion: string | null = reportedAgentVersion(server);
     try {
       const hello = await conn.hello();
       traefik = hello.traefikRunning;
+      if (hello.agentVersion) liveAgentVersion = hello.agentVersion;
       // Persist the live value (read-live-not-stored, like health). The badge's
       // server-rendered render reads this on the next page load; the live payload
       // below updates it without a reload.
@@ -112,6 +153,9 @@ async function measureRemote(server: Server): Promise<ServerMetrics> {
       load: [m.load1, m.load5, m.load15],
       uptimeSec: Number(m.uptimeSec),
       containers: m.runningContainers,
+      agentVersion: liveAgentVersion,
+      expectedAgentVersion: expected,
+      agentOutdated: isAgentOutdated(liveAgentVersion, expected),
       ts: Date.now(),
     };
   } finally {
@@ -119,13 +163,14 @@ async function measureRemote(server: Server): Promise<ServerMetrics> {
   }
 }
 
-async function metricsFor(server: Server): Promise<ServerMetrics> {
+async function metricsFor(server: Server, expected: string): Promise<ServerMetrics> {
   try {
-    return await measureRemote(server);
+    return await measureRemote(server, expected);
   } catch {
     // Unreachable / unprovisioned agent, or any transport error: report offline
-    // rather than a fabricated snapshot.
-    return unavailable(server.id);
+    // rather than a fabricated snapshot. Still carry the version fields from the
+    // stored value so an offline-but-outdated server stays flagged.
+    return unavailable(server.id, expected, server);
   }
 }
 
@@ -133,12 +178,16 @@ export async function getServerMetrics(serverId: string): Promise<ServerMetrics>
   await assertUser();
   const server = read().servers.find((s) => s.id === serverId);
   if (!server) throw new Error("Server not found");
-  return metricsFor(server);
+  return metricsFor(server, await resolveExpectedAgentVersion());
 }
 
 export async function getAllServerMetrics(): Promise<ServerMetrics[]> {
   await assertUser();
-  return Promise.all(read().servers.map((s) => metricsFor(s)));
+  // Resolve "latest" once per poll (memoised) and stamp it onto every snapshot —
+  // a "Check for updates" bust resolved a fresh value, so this poll carries it to
+  // every open Servers tab's badge.
+  const expected = await resolveExpectedAgentVersion();
+  return Promise.all(read().servers.map((s) => metricsFor(s, expected)));
 }
 
 /**
@@ -153,6 +202,7 @@ export async function getAllServerMetrics(): Promise<ServerMetrics[]> {
 export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
   await assertUser();
   const facts = hostFacts();
+  const expected = await resolveExpectedAgentVersion();
   return read().servers.map((s) => ({
     serverId: s.id,
     // Cheap hydration hint from the stored status; the first live poll replaces
@@ -174,6 +224,9 @@ export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
     load: [0, 0, 0],
     uptimeSec: 0,
     containers: 0,
+    // Stored version + the resolved "latest" — keeps the hydration badge identical
+    // to what the RSC card renders, so the first poll doesn't visibly flip it.
+    ...agentVersionFields(expected, s),
     ts: Date.now(),
   }));
 }

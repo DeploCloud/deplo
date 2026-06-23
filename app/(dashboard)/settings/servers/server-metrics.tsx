@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { gql } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
+import { AgentVersionBadge } from "./agent-version-badge";
 
 /** Poll cadence. The collector itself takes ~1.2s, so ticks may overlap; the
  *  in-flight guard below skips a tick whenever the previous call is still
@@ -84,7 +85,7 @@ export function ServerMetricsProvider({
       busy = true;
       try {
         const data = await gql<{ allServerMetrics: ServerMetrics[] }>(
-          `query { allServerMetrics { serverId online traefik cpu memPct diskPct } }`,
+          `query { allServerMetrics { serverId online traefik cpu memPct diskPct agentVersion expectedAgentVersion agentOutdated } }`,
         );
         if (!active || !data.allServerMetrics) return;
         setMetrics(
@@ -162,6 +163,34 @@ export function LiveServerMetrics({
         caption={`${diskGb} GB disk`}
       />
     </>
+  );
+}
+
+/** Live agent-version badge: reads version / expected / outdated from the same
+ *  metrics poll so the badge updates without a page reload. This is what makes
+ *  "Check for updates" flip an outdated server's badge within ~1s — the poll's
+ *  expectedAgentVersion picks up the freshly-resolved "latest" and recomputes
+ *  outdated server-side. Falls back to the server-rendered values before the
+ *  first poll resolves, keeping SSR/CSR markup identical (no hydration mismatch). */
+export function LiveAgentVersionBadge({
+  serverId,
+  initialVersion,
+  initialExpected,
+  initialOutdated,
+}: {
+  serverId: string;
+  initialVersion: string | null;
+  initialExpected: string;
+  initialOutdated: boolean;
+}) {
+  const map = React.useContext(MetricsContext);
+  const live = map[serverId];
+  return (
+    <AgentVersionBadge
+      version={live?.agentVersion ?? initialVersion}
+      expected={live?.expectedAgentVersion ?? initialExpected}
+      outdated={live?.agentOutdated ?? initialOutdated}
+    />
   );
 }
 

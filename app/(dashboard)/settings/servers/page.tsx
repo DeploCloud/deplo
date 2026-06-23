@@ -22,12 +22,12 @@ import {
   resolveExpectedAgentVersion,
 } from "@/lib/version";
 import type { Server } from "@/lib/types";
-import { AgentVersionBadge } from "./agent-version-badge";
 import { CheckUpdatesButton } from "./check-updates-button";
 import {
   ServerMetricsProvider,
   LiveServerMetrics,
   LiveTraefikBadge,
+  LiveAgentVersionBadge,
 } from "./server-metrics";
 
 export const metadata = { title: "Servers" };
@@ -69,10 +69,11 @@ function ServerCard({
             serverId={server.id}
             initial={server.traefikEnabled}
           />
-          <AgentVersionBadge
-            version={agentVersion}
-            expected={expectedAgentVersion}
-            outdated={outdated}
+          <LiveAgentVersionBadge
+            serverId={server.id}
+            initialVersion={agentVersion}
+            initialExpected={expectedAgentVersion}
+            initialOutdated={outdated}
           />
         </div>
       </CardHeader>

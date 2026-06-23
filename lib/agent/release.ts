@@ -80,8 +80,24 @@ function parseChecksums(text: string): Map<string, string> {
   return out;
 }
 
-/** In-process memo so a single render doesn't fan out to GitHub per field/server. */
-let cache: { at: number; release: AgentRelease | null } | null = null;
+/**
+ * In-process memo so a single render doesn't fan out to GitHub per field/server.
+ *
+ * Stored on globalThis, NOT as a plain module-level `let`, for the same reason
+ * pubSub is (see lib/graphql/pubsub.ts): Next.js evaluates server modules in more
+ * than one module registry — the RSC graph (the Servers page render) and the
+ * route-handler/server-action graph (the /api/graphql resolver) are separate, so
+ * a module-level `let cache` would exist as TWO independent variables. Then the
+ * "Check for updates" mutation (route-handler graph) would bust ONE memo while the
+ * RSC re-render that follows reads the OTHER — still holding the stale "latest" —
+ * and the outdated badges would never flip. A single shared cell keyed off a
+ * global Symbol makes the bust visible to every graph in this process.
+ */
+const CACHE_KEY = Symbol.for("deplo.agent.release.cache");
+type ReleaseCacheCell = { value: { at: number; release: AgentRelease | null } | null };
+const cacheCell: ReleaseCacheCell = ((globalThis as Record<symbol, unknown>)[
+  CACHE_KEY
+] ??= { value: null }) as ReleaseCacheCell;
 /**
  * Short TTL: the memo only exists to coalesce the GitHub calls within a single
  * render (many server cards / GraphQL fields resolve the same release). It is NOT
@@ -108,10 +124,11 @@ function now(): number {
  * a restart always re-resolves; nothing is pinned in Next's on-disk Data Cache.
  */
 export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> {
+  const cache = cacheCell.value;
   if (cache && now() - cache.at < CACHE_TTL_MS) return cache.release;
 
   const release = await fetchLatestRelease();
-  cache = { at: now(), release };
+  cacheCell.value = { at: now(), release };
   return release;
 }
 
@@ -125,7 +142,7 @@ export async function resolveLatestAgentRelease(): Promise<AgentRelease | null> 
  * memo is a COMPLETE bust — there is no on-disk Data Cache layer to also defeat.
  */
 export async function refreshAgentRelease(): Promise<AgentRelease | null> {
-  cache = null;
+  cacheCell.value = null;
   return resolveLatestAgentRelease();
 }
 
@@ -188,5 +205,5 @@ async function fetchLatestRelease(): Promise<AgentRelease | null> {
 
 /** Test-only: drop the in-process memo so a test can stub a fresh fetch. */
 export function __resetReleaseCacheForTests(): void {
-  cache = null;
+  cacheCell.value = null;
 }

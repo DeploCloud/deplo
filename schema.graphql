@@ -1190,12 +1190,15 @@ type Server {
 A live resource-usage snapshot for one server (CPU, memory, disk, network, load and running-container count).
 """
 type ServerMetrics {
+  agentOutdated: Boolean
+  agentVersion: String
   containers: Int
   cpu: Float
   cpuCores: Int
   diskPct: Float
   diskTotal: Float
   diskUsed: Float
+  expectedAgentVersion: String
 
   """Load averages over [1m, 5m, 15m]."""
   load: [Float!]

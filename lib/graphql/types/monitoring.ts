@@ -38,6 +38,12 @@ const ServerMetricsRef = builder
       }),
       uptimeSec: t.exposeInt("uptimeSec"),
       containers: t.exposeInt("containers"),
+      // Live agent-version trio, so the version/outdated badge updates with the
+      // poll (no reload): a "Check for updates" that resolves a newer release
+      // flips every open Servers tab's badge to outdated on the next poll.
+      agentVersion: t.exposeString("agentVersion", { nullable: true }),
+      expectedAgentVersion: t.exposeString("expectedAgentVersion"),
+      agentOutdated: t.exposeBoolean("agentOutdated"),
       // Epoch milliseconds; expose as Float to avoid 32-bit Int overflow.
       ts: t.exposeFloat("ts"),
     }),
