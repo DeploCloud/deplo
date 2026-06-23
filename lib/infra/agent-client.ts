@@ -54,6 +54,11 @@ const FILES_TIMEOUT_MS = 15_000;
 const STREAM_DEADLINE_MS = 30 * 60_000; // logs/attach are long-lived
 const GATEWAY_TIMEOUT_MS = 4 * 60_000; // gateway compose-up + sshd-wait + reconcile (Part D)
 const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000; // agent downloads + verifies + swaps its own binary
+// Stack lifecycle verbs (reroute/start/stop/destroy). The agent caps its own
+// compose up/down at ~90-120s; this is that plus dial/network slack. A deadline
+// is mandatory: these run under the per-DB lifecycle lock (lib/data/keyed-mutex),
+// so a hung RPC with no deadline would wedge every future op for that database.
+const STACK_DEADLINE_MS = 3 * 60_000;
 
 /** Plain structural shapes the agent returns — mapped 1:1 by the data layer. */
 export interface AgentConsoleInstance {
@@ -134,8 +139,16 @@ export interface AgentConnection {
   /** Stack lifecycle on the agent (Part C: stop/start; destroy from Part B). */
   stopStack(slug: string): Promise<{ ok: boolean; error: string }>;
   startStack(slug: string): Promise<{ ok: boolean; error: string }>;
-  /** Tear down a stack on the agent (P6 teardown / lifecycle). */
-  destroyStack(slug: string): Promise<{ ok: boolean; error: string }>;
+  /** Tear down a stack on the agent (P6 teardown / lifecycle). `removeVolumes`
+   *  (default false) also drops the stack's named volumes (`down -v`) and removes
+   *  the compose file — used by database deletion so the data volume is reclaimed
+   *  rather than orphaned. An agent too old to understand the flag ignores it
+   *  (protobuf skips the unknown field) and falls back to a volume-orphaning
+   *  `down`; the caller logs that the volume needs a manual sweep. */
+  destroyStack(
+    slug: string,
+    removeVolumes?: boolean,
+  ): Promise<{ ok: boolean; error: string }>;
   /** Re-apply routing to a running stack WITHOUT a rebuild: the control plane
    *  re-renders the stack YAML (+ env + compose mounts) and the agent writes it
    *  and `compose up`s in place. Replaces the old in-process reroute. */
@@ -606,22 +619,36 @@ function dial(target: DialTarget): AgentConnection {
     },
     stopStack(slug: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        client.stopStack({ slug }, (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
+        // `removeVolumes` is part of StackRef but meaningless for start/stop —
+        // these only toggle the running state, never touch volumes.
+        client.stopStack(
+          { slug, removeVolumes: false },
+          new Metadata(),
+          { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },
     startStack(slug: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        client.startStack({ slug }, (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
+        client.startStack(
+          { slug, removeVolumes: false },
+          new Metadata(),
+          { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },
-    destroyStack(slug: string) {
+    destroyStack(slug: string, removeVolumes = false) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        client.destroyStack({ slug }, (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
+        client.destroyStack(
+          { slug, removeVolumes },
+          new Metadata(),
+          { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },
@@ -639,6 +666,8 @@ function dial(target: DialTarget): AgentConnection {
             env: req.env,
             mounts: req.mounts,
           },
+          new Metadata(),
+          { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
             err
               ? reject(toAgentError(err))
@@ -648,7 +677,7 @@ function dial(target: DialTarget): AgentConnection {
     },
     readStack(slug: string) {
       return new Promise<{ exists: boolean; yaml: string }>((resolve, reject) => {
-        client.readStack({ slug }, (err, resp) =>
+        client.readStack({ slug, removeVolumes: false }, (err, resp) =>
           err
             ? reject(toAgentError(err))
             : resolve({ exists: resp.exists, yaml: resp.yaml }),

@@ -176,6 +176,7 @@ input CreateBackupInput {
 input CreateDatabaseInput {
   exposedPublicly: Boolean
   name: String!
+  serverId: ID
   type: DatabaseType!
   version: String!
 }

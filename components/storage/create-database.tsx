@@ -30,6 +30,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useRouter } from "next/navigation";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseType } from "@/lib/types";
@@ -48,16 +53,30 @@ const TYPES: {
   { id: "clickhouse", name: "ClickHouse", icon: BarChart3, versions: ["24", "23"] },
 ];
 
-export function CreateDatabase() {
+export function CreateDatabase({
+  servers,
+}: {
+  servers: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState<DatabaseType>("postgres");
   const [version, setVersion] = React.useState("16");
+  const [serverId, setServerId] = React.useState<string>(servers[0]?.id ?? "");
   const [exposed, setExposed] = React.useState(false);
 
   const current = TYPES.find((t) => t.id === type)!;
+  const noServers = servers.length === 0;
+  // The useState initializer runs only on mount, but `servers` arrives via a
+  // soft router.refresh() that reconciles this component in place (no remount) —
+  // e.g. when a server finishes provisioning while the page is open (0→1). Derive
+  // the effective id from the live prop so a stale "" never blocks a valid submit
+  // (which would otherwise be unrecoverable without a full reload, since the
+  // <Select> only renders for >1 server).
+  const effectiveServerId =
+    servers.find((s) => s.id === serverId)?.id ?? servers[0]?.id ?? "";
 
   function onTypeChange(v: string) {
     const t = v as DatabaseType;
@@ -71,7 +90,7 @@ export function CreateDatabase() {
         `mutation($input: CreateDatabaseInput!) {
           createDatabase(input: $input) { id }
         }`,
-        { input: { name, type, version, exposedPublicly: exposed } },
+        { input: { name, type, version, serverId: effectiveServerId || null, exposedPublicly: exposed } },
         (d) => d.createDatabase,
       );
       if (res.ok) {
@@ -87,12 +106,33 @@ export function CreateDatabase() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="size-4" />
-          New Database
-        </Button>
-      </DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {noServers ? (
+            // Disabled buttons swallow pointer events, so wrap in a focusable
+            // span to keep the tooltip reachable. No DialogTrigger here means a
+            // click can never open the dialog while no server is provisioned.
+            <span tabIndex={0}>
+              <Button size="sm" disabled>
+                <Plus className="size-4" />
+                New Database
+              </Button>
+            </span>
+          ) : (
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="size-4" />
+                New Database
+              </Button>
+            </DialogTrigger>
+          )}
+        </TooltipTrigger>
+        <TooltipContent>
+          {noServers
+            ? "Provision a server first"
+            : "Create a managed database"}
+        </TooltipContent>
+      </Tooltip>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create database</DialogTitle>
@@ -145,6 +185,23 @@ export function CreateDatabase() {
               </Select>
             </div>
           </div>
+          {servers.length > 1 && (
+            <div className="space-y-2">
+              <Label>Server</Label>
+              <Select value={serverId} onValueChange={setServerId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {servers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-lg border border-border p-3">
             <div>
               <p className="text-sm font-medium">Expose publicly</p>
@@ -159,7 +216,7 @@ export function CreateDatabase() {
           <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending || !name.trim()}>
+          <Button onClick={submit} disabled={pending || !name.trim() || !effectiveServerId}>
             {pending ? "Creating…" : "Create database"}
           </Button>
         </DialogFooter>

@@ -658,6 +658,15 @@ export interface DeployResult {
 
 export interface StackRef {
   slug: string;
+  /**
+   * Tear down the stack's named volumes too (`docker compose down -v`) and remove
+   * the on-disk compose file. Only DestroyStack honours it; StopStack/StartStack/
+   * ReadStack ignore it. Used by database deletion so a DB's data volume is
+   * reclaimed rather than orphaned. Added after the agent's initial release —
+   * forward-compatible: an older agent ignores the unknown field and falls back to
+   * a volume-orphaning `down`. Defaults to false, so app teardown is unchanged.
+   */
+  removeVolumes: boolean;
 }
 
 export interface StackResult {
@@ -3327,13 +3336,16 @@ export const DeployResult: MessageFns<DeployResult> = {
 };
 
 function createBaseStackRef(): StackRef {
-  return { slug: "" };
+  return { slug: "", removeVolumes: false };
 }
 
 export const StackRef: MessageFns<StackRef> = {
   encode(message: StackRef, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.slug !== "") {
       writer.uint32(10).string(message.slug);
+    }
+    if (message.removeVolumes !== false) {
+      writer.uint32(16).bool(message.removeVolumes);
     }
     return writer;
   },
@@ -3353,6 +3365,14 @@ export const StackRef: MessageFns<StackRef> = {
           message.slug = reader.string();
           continue;
         }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.removeVolumes = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3363,13 +3383,23 @@ export const StackRef: MessageFns<StackRef> = {
   },
 
   fromJSON(object: any): StackRef {
-    return { slug: isSet(object.slug) ? globalThis.String(object.slug) : "" };
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      removeVolumes: isSet(object.removeVolumes)
+        ? globalThis.Boolean(object.removeVolumes)
+        : isSet(object.remove_volumes)
+        ? globalThis.Boolean(object.remove_volumes)
+        : false,
+    };
   },
 
   toJSON(message: StackRef): unknown {
     const obj: any = {};
     if (message.slug !== "") {
       obj.slug = message.slug;
+    }
+    if (message.removeVolumes !== false) {
+      obj.removeVolumes = message.removeVolumes;
     }
     return obj;
   },
@@ -3380,6 +3410,7 @@ export const StackRef: MessageFns<StackRef> = {
   fromPartial<I extends Exact<DeepPartial<StackRef>, I>>(object: I): StackRef {
     const message = createBaseStackRef();
     message.slug = object.slug ?? "";
+    message.removeVolumes = object.removeVolumes ?? false;
     return message;
   },
 };

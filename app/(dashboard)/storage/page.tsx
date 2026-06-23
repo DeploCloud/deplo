@@ -2,6 +2,7 @@ import { Database, Cloud, Archive } from "lucide-react";
 import { listDatabases } from "@/lib/data/databases";
 import { listS3 } from "@/lib/data/s3";
 import { listBackups } from "@/lib/data/backups";
+import { listServers } from "@/lib/data/servers";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -28,11 +29,19 @@ import { BackupRow } from "@/components/storage/backup-row";
 export const metadata = { title: "Storage" };
 
 export default async function StoragePage() {
-  const [databases, destinations, backups] = await Promise.all([
+  const [databases, destinations, backups, servers] = await Promise.all([
     listDatabases(),
     listS3(),
     listBackups(),
+    listServers(),
   ]);
+
+  // Only provisioned servers can host a database (provisioning routes through a
+  // live agent). A server is provisioned once its agent has called home and
+  // pinned a cert fingerprint.
+  const dbServers = servers
+    .filter((s) => Boolean(s.agent?.certFingerprint))
+    .map((s) => ({ id: s.id, name: s.name }));
 
   return (
     <div className="space-y-6">
@@ -70,14 +79,14 @@ export default async function StoragePage() {
               PostgreSQL, MySQL, MongoDB, Redis and more provisioned on your
               servers.
             </p>
-            <CreateDatabase />
+            <CreateDatabase servers={dbServers} />
           </div>
           {databases.length === 0 ? (
             <EmptyState
               icon={Database}
               title="No databases yet"
               description="Create a managed database to connect to your apps."
-              action={<CreateDatabase />}
+              action={<CreateDatabase servers={dbServers} />}
             />
           ) : (
             <div className="grid gap-4 md:grid-cols-2">

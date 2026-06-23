@@ -56,6 +56,9 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
     name: t.string({ required: true }),
     type: t.field({ type: DatabaseTypeEnum, required: true }),
     version: t.string({ required: true }),
+    // The server to provision the database on. Optional: omitted defaults to the
+    // sole server when there is exactly one (Step 0 — DB-on-agent).
+    serverId: t.id({ required: false }),
     exposedPublicly: t.boolean({ required: false }),
   }),
 });
@@ -94,6 +97,7 @@ builder.mutationFields((t) => ({
         name: input.name,
         type: input.type,
         version: input.version,
+        serverId: input.serverId ?? undefined,
         exposedPublicly: input.exposedPublicly ?? undefined,
       }),
   }),

@@ -156,7 +156,12 @@ unreachable **fails clearly with NO in-process fallback** (no synthetic containe
 no wrong-disk teardown) — this holds for EVERY server, the host running Deplo included. The legacy
 direct-Docker deploy/logs/console/files/metrics path has been **removed entirely**; build methods
 the agent can't run (heavy builders) are a clear deploy error, not a local fallback. Routing changes
-and the "View full compose" preview also go through the owning agent (`Reroute`/`ReadStack`). Agent
+and the "View full compose" preview also go through the owning agent (`Reroute`/`ReadStack`). A planned **backup** capability adds `Backup`/`Restore` (server-streaming, like deploy) plus
+`S3Check`/`S3Delete` and a `removeVolumes` flag on `DestroyStack`, so dumps/archives and the
+S3 transfer happen agent-side (an S3 client in the binary); the control plane preflights the
+capability and degrades with `AgentBackupUnsupportedError` until it ships
+([ADR-0007](../docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md)).
+Agent
 code in its own repo (**DeploCloud/deplo-agent**), contract in
 [`proto/agent.proto`](../proto/agent.proto), control-plane side in [`lib/agent/`](../lib/agent/) +
 [`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts) +
@@ -239,6 +244,38 @@ adds/verifies it), and never appears in the Domains tab. `DevConfig` stores only
 production primary domain, so the two routers never collide.
 _Avoid_: preview domain (it is not a `Domain`), dev domain, auto domain (that is the
 production sslip.io domain).
+
+**Database**:
+A managed datastore container (`postgres`/`mysql`/`mariadb`/`mongodb`/`redis`/`clickhouse`)
+keyed by slug `db-<name>` on the `deplo` network, so apps reach it by a stable DNS name and
+the connection string never changes. **Agent-provisioned like a project** — it has a chosen
+`serverId` and is materialised on the owning agent via `Reroute` (`up -d`), started/stopped
+via `StartStack`/`StopStack`, and **deleted via `DestroyStack(removeVolumes: true)`** so its
+data volume is reclaimed (a plain `DestroyStack` would orphan it). The control plane never
+touches the host Docker socket for a DB. See
+[ADR-0007](../docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md).
+_Avoid_: DB instance, datastore (use "database"), local database (none are local now — every
+DB lives on an agent, the Deplo host included).
+
+**Backup**:
+A **schedule**: a cron expression + S3 destination + retention, targeting **one** thing via
+`targetKind` — a `Database` or a `Project` (never a project's linked databases; those are
+backed up as databases). Stored metadata only; running it produces a **backup run**. A
+backup never holds artifacts itself.
+_Avoid_: backup job (that is a run), snapshot (reserve for a point-in-time artifact, which is
+a run), dump (that is the DB-specific artifact contents).
+
+**Backup run**:
+One **executed** backup — the artifact record you restore *from*. A `BackupRun` row
+(`running`→`success`/`failed`) carries the S3 `objectKey`, size, and timestamps; the dump or
+archive itself lives **only** in S3 (the agent streams it there via multipart PUT, never
+through the control plane). The run history is the source of truth for the UI's artifact
+list (`ListBackupArtifacts` on the agent is deferred). Restore is **in-place and
+destructive** — DB drop-and-recreate per engine, project wipe-and-untar (stop → wipe → untar
+→ `Reroute` snapshot, a full data+config restore) — and so requires a typed confirmation. See
+[ADR-0007](../docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md).
+_Avoid_: backup (that is the schedule), artifact (use for the S3 object specifically),
+restore point.
 
 ### SSH access
 
