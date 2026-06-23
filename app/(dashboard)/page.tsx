@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ProjectsGrid } from "@/components/projects/projects-grid";
 import { ProjectSearch } from "@/components/projects/project-search";
+import { AddNewMenu } from "@/components/shared/add-new-menu";
 import { timeAgo } from "@/lib/utils";
 
 export default async function OverviewPage(props: PageProps<"/">) {
@@ -16,19 +17,22 @@ export default async function OverviewPage(props: PageProps<"/">) {
   const viewRaw = Array.isArray(viewParam) ? viewParam[0] : viewParam;
   const view = viewRaw === "list" ? "list" : "grid";
 
-  const [projects, activity, canManageOrder] = await Promise.all([
-    listProjects(),
-    listActivity(6),
-    (async () =>
-      (await isInstanceAdmin()) || (await hasCapability("manage_team")))(),
-  ]);
+  const [projects, activity, isAdmin, canManageTeam, canManageMembers] =
+    await Promise.all([
+      listProjects(),
+      listActivity(6),
+      isInstanceAdmin(),
+      hasCapability("manage_team"),
+      hasCapability("manage_members"),
+    ]);
+  const canManageOrder = isAdmin || canManageTeam;
 
   const filtered = query
     ? projects.filter(
         (p) =>
           p.name.toLowerCase().includes(query) ||
           p.repo?.repo.toLowerCase().includes(query) ||
-          p.productionUrl?.toLowerCase().includes(query)
+          p.productionUrl?.toLowerCase().includes(query),
       )
     : projects;
 
@@ -47,7 +51,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
           </CardHeader>
           <CardContent className="space-y-3">
             {activity.length === 0 && (
-              <p className="text-xs text-muted-foreground">No recent activity.</p>
+              <p className="text-xs text-muted-foreground">
+                No recent activity.
+              </p>
             )}
             {activity.map((a) => (
               <div key={a.id} className="flex items-start gap-2.5 text-xs">
@@ -87,12 +93,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
       <div className="order-1 space-y-5 lg:order-1">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-          <Button asChild size="sm">
-            <Link href="/new">
-              <Plus className="size-4" />
-              Add New
-            </Link>
-          </Button>
+          <AddNewMenu canManageMembers={canManageMembers} isAdmin={isAdmin} />
         </div>
 
         <ProjectSearch initialQuery={query} initialView={view} />
@@ -129,7 +130,13 @@ export default async function OverviewPage(props: PageProps<"/">) {
           )
         ) : (
           <ProjectsGrid
-            key={filtered.map((p) => p.id).join(",")}
+            // Key on grid membership (the *set* of ids), not their order, so a
+            // reorder doesn't remount the grid — that lets the jiggle/edit mode
+            // survive a drop — while adding/removing a project still re-seeds it.
+            key={filtered
+              .map((p) => p.id)
+              .sort()
+              .join(",")}
             projects={filtered}
             view={view}
             canReorder={canReorder}

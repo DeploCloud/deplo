@@ -225,10 +225,31 @@
   animation: deplo-slide-in-left 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* iOS-style "jiggle" for the project grid's reorder (edit) mode. Applied to an
+ * inner wrapper so it composes with — and never fights — the translate transform
+ * dnd-kit writes on the outer (sortable) element while dragging/reflowing. Cards
+ * are given a small per-card negative animation-delay so adjacent ones wiggle
+ * slightly out of phase, like the iOS home-screen edit mode. */
+@keyframes deplo-jiggle {
+  0%,
+  100% {
+    transform: rotate(-0.55deg) translateY(-0.25px);
+  }
+  50% {
+    transform: rotate(0.55deg) translateY(0.25px);
+  }
+}
+
+.animate-jiggle {
+  animation: deplo-jiggle 0.22s ease-in-out infinite;
+  transform-origin: center center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,
-  .animate-slide-in-left {
+  .animate-slide-in-left,
+  .animate-jiggle {
     animation: none;
   }
   *,
