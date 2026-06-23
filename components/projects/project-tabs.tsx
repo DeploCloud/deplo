@@ -16,6 +16,7 @@ export function ProjectTabs({
   devEligible = false,
   canManageEnv = true,
   showFiles = false,
+  canBackup = false,
 }: {
   slug: string;
   running?: boolean;
@@ -26,6 +27,9 @@ export function ProjectTabs({
   /** The Files tab is shown only when the project has an on-disk files dir and
    *  the viewer holds the manage_files capability (resolved server-side). */
   showFiles?: boolean;
+  /** The Backups tab is shown only to members with the manage_infra capability
+   *  (backup/restore are infra ops; the page guards server-side too). */
+  canBackup?: boolean;
 }) {
   const pathname = usePathname();
   const base = `/projects/${slug}`;
@@ -98,6 +102,17 @@ export function ProjectTabs({
             label: "Files",
             href: `${base}/files`,
             active: matchSub("/files"),
+          },
+        ]
+      : []),
+    // Backups (schedule + run + restore the project's volumes/files) — only for
+    // members holding manage_infra. The page guards server-side too.
+    ...(canBackup
+      ? [
+          {
+            label: "Backups",
+            href: `${base}/backups`,
+            active: matchSub("/backups"),
           },
         ]
       : []),

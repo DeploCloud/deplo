@@ -12,6 +12,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { ActionResult } from "@/lib/result";
 
 export function ConfirmAction({
@@ -23,6 +25,8 @@ export function ConfirmAction({
   confirmLabel = "Confirm",
   variant = "destructive",
   successMessage,
+  confirmText,
+  extra,
   onConfirm,
 }: {
   /** Uncontrolled: render a trigger that opens the dialog. */
@@ -35,16 +39,43 @@ export function ConfirmAction({
   confirmLabel?: string;
   variant?: "destructive" | "default";
   successMessage?: string;
+  /**
+   * Typed confirmation: when set, the confirm button stays disabled until the
+   * user types this exact string (case-sensitive). Used for irreversible,
+   * in-place actions — restore (overwrites the live target) and
+   * delete-with-artifacts — so the operator can't fire one with a stray click.
+   * The phrase to type is surfaced for the operator; pass the target's slug/name.
+   */
+  confirmText?: string;
+  /**
+   * Extra content rendered between the description and the footer — e.g. a
+   * "also delete S3 artifacts" checkbox on a delete dialog. Keep it controlled
+   * by the caller; this component only lays it out.
+   */
+  extra?: React.ReactNode;
   onConfirm: () => Promise<ActionResult<unknown>>;
 }) {
   const [internalOpen, setInternalOpen] = React.useState(false);
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
-  const setOpen = (v: boolean) =>
-    isControlled ? onOpenChange?.(v) : setInternalOpen(v);
   const [pending, startTransition] = React.useTransition();
+  const [typed, setTyped] = React.useState("");
+
+  // Reset the typed phrase on close so a previous attempt never leaves a stale,
+  // already-matching value behind the next time the dialog opens. `onOpenChange`
+  // is notified in BOTH modes (even uncontrolled), so a wrapper like
+  // DeleteWithArtifacts can reset its own state on close regardless of who owns
+  // the open flag.
+  const setOpen = (v: boolean) => {
+    if (!v) setTyped("");
+    onOpenChange?.(v);
+    if (!isControlled) setInternalOpen(v);
+  };
+
+  const typedOk = !confirmText || typed === confirmText;
 
   function handleConfirm() {
+    if (!typedOk) return;
     startTransition(async () => {
       const res = await onConfirm();
       if (res.ok) {
@@ -64,11 +95,37 @@ export function ConfirmAction({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {extra}
+        {confirmText && (
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">
+              Type{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
+                {confirmText}
+              </code>{" "}
+              to confirm
+            </Label>
+            <Input
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              // Submit on Enter when the phrase matches — mirrors a normal form.
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && typedOk && !pending) handleConfirm();
+              }}
+            />
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button variant={variant} onClick={handleConfirm} disabled={pending}>
+          <Button
+            variant={variant}
+            onClick={handleConfirm}
+            disabled={pending || !typedOk}
+          >
             {pending ? "Working…" : confirmLabel}
           </Button>
         </DialogFooter>

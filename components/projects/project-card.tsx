@@ -43,7 +43,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ProjectLogo } from "@/components/shared/project-logo";
 import { StatusDot } from "@/components/shared/status-badge";
-import { ConfirmAction } from "@/components/shared/confirm-action";
+import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ProjectSummary } from "@/lib/data/projects";
@@ -314,21 +314,22 @@ export function ProjectCard({
   );
 
   const confirm = (
-    <ConfirmAction
+    <DeleteWithArtifacts
       open={confirmOpen}
       onOpenChange={setConfirmOpen}
+      targetKind="project"
+      targetId={project.id}
+      targetName={project.name}
       title={`Delete ${project.name}?`}
       description="This permanently removes the project, its deployments, domains and environment variables. This action cannot be undone."
       confirmLabel="Delete project"
       successMessage="Project deleted"
-      onConfirm={async () => {
-        const res = await gqlAction(
-          `mutation($id: String!) { deleteProject(id: $id) }`,
-          { id: project.id },
-        );
-        if (res.ok) router.push("/");
-        return res;
-      }}
+      deleteMutation={() =>
+        gqlAction(`mutation($id: String!) { deleteProject(id: $id) }`, {
+          id: project.id,
+        })
+      }
+      onDeleted={() => router.push("/")}
     />
   );
 

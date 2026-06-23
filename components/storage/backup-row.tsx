@@ -3,9 +3,16 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Play, Trash2, MoreHorizontal } from "lucide-react";
+import {
+  Play,
+  Trash2,
+  MoreHorizontal,
+  RotateCcw,
+  Database as DatabaseIcon,
+  Boxes,
+  Loader2,
+} from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -24,6 +31,7 @@ import {
 } from "@/components/ui/context-menu";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { RestoreRunsDialog } from "@/components/storage/restore-runs-dialog";
 import { timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { BackupDTO } from "@/lib/data/backups";
@@ -48,6 +56,11 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [restoreOpen, setRestoreOpen] = React.useState(false);
+
+  const isProject = backup.targetKind === "project";
+  const targetName = isProject ? backup.projectName : backup.databaseName;
+  const targetId = isProject ? backup.projectId : backup.databaseId;
 
   function run() {
     startTransition(async () => {
@@ -82,6 +95,16 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
         <Play className="size-4" />
         Run now
       </K.Item>
+      <K.Item
+        onSelect={(e: Event) => {
+          e.preventDefault();
+          setRestoreOpen(true);
+        }}
+        title="Restore from a recent backup"
+      >
+        <RotateCcw className="size-4" />
+        Restore…
+      </K.Item>
       <K.Separator />
       <K.Item
         variant="destructive"
@@ -101,7 +124,14 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
     <TableRow onContextMenu={(e) => e.stopPropagation()}>
       <TableCell className="font-medium">{backup.name}</TableCell>
       <TableCell className="text-muted-foreground">
-        {backup.databaseName ?? ""}
+        <span className="flex items-center gap-1.5">
+          {isProject ? (
+            <Boxes className="size-3.5 shrink-0" />
+          ) : (
+            <DatabaseIcon className="size-3.5 shrink-0" />
+          )}
+          {targetName ?? <span className="italic">deleted</span>}
+        </span>
       </TableCell>
       <TableCell className="text-muted-foreground">
         {backup.destinationName}
@@ -115,6 +145,11 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
       <TableCell>
         {backup.lastStatus === "never" ? (
           <span className="text-xs text-muted-foreground">Never run</span>
+        ) : backup.lastStatus === "running" ? (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Running
+          </span>
         ) : (
           <span className="flex items-center gap-1.5 text-xs">
             <StatusDot status={backup.lastStatus} />
@@ -136,7 +171,7 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuContent align="end" className="w-44">
             {menu(DROPDOWN_KIT)}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -156,6 +191,16 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
             return res;
           }}
         />
+        {/* Restore from a recent run of this schedule's target. */}
+        {targetId && (
+          <RestoreRunsDialog
+            open={restoreOpen}
+            onOpenChange={setRestoreOpen}
+            targetKind={backup.targetKind}
+            targetId={targetId}
+            targetName={targetName ?? backup.name}
+          />
+        )}
       </TableCell>
     </TableRow>
   );
@@ -163,7 +208,7 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-      <ContextMenuContent className="w-40">
+      <ContextMenuContent className="w-44">
         {menu(CONTEXT_KIT)}
       </ContextMenuContent>
     </ContextMenu>

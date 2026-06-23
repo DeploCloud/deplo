@@ -716,6 +716,90 @@ export async function backupDestinationsForTarget(input: {
 }
 
 /**
+ * Wipe EVERY S3 artifact of one target across all the destinations it ever ran
+ * to — the "also delete backup artifacts" branch of DB/project deletion (Step 5).
+ * Sweeps each distinct destination via {@link deleteBackupArtifacts}, performed
+ * by the target's OWN owning agent (the host that produced the dumps, so its
+ * agent is the natural one to reach S3). Returns the total objects removed plus
+ * any destinations whose sweep failed.
+ *
+ * Capability mirrors the target's OWN delete gate so this can never become a
+ * privilege escalation OR an unexpected hard block: a database's artifacts need
+ * `manage_infra` (like `deleteDatabase`), a project's need `deploy` (like
+ * `deleteProject`). Run BEFORE the target row is deleted, so it still resolves to
+ * its owning server.
+ *
+ * A partial failure is NOT swallowed: the call returns the failing destinations,
+ * and the GraphQL resolver throws on a non-empty `failedDestinations` so the
+ * delete flow aborts (a half-done "delete with backups" that silently leaves a
+ * bucket full is worse than a retryable no-op).
+ */
+export async function deleteAllBackupArtifacts(input: {
+  kind: BackupTargetKind;
+  targetId: string;
+}): Promise<{ deleted: number; failedDestinations: string[] }> {
+  // Gate on the same capability the target's own deletion requires, enforced in
+  // the data layer (the real gate) rather than relying on a single static
+  // GraphQL authScope that can't vary by kind.
+  const { teamId } = await requireCapability(
+    input.kind === "database" ? "manage_infra" : "deploy",
+  );
+  // Resolve the owning server straight off the target row — no agent round-trip
+  // (a project's full descriptor needs `readStack`, which we don't need just to
+  // delete objects). A missing/foreign row yields no server and nothing to do.
+  const serverId =
+    input.kind === "database"
+      ? (read().databases.find(
+          (x) => x.id === input.targetId && x.teamId === teamId,
+        )?.serverId ?? null)
+      : (read().projects.find(
+          (x) => x.id === input.targetId && x.teamId === teamId,
+        )?.serverId ?? null);
+
+  const destinations = await backupDestinationsForTarget(input);
+  if (destinations.length === 0) return { deleted: 0, failedDestinations: [] };
+  if (!serverId) {
+    // The target row is gone (or never ours) yet run records linger — there is no
+    // owning agent left to reach the buckets. Drop the orphaned records so history
+    // matches reality, and report the destinations as failed (their objects can't
+    // be swept from here) so the caller doesn't claim a clean wipe.
+    mutate((d) => {
+      d.backupRuns = d.backupRuns.filter(
+        (r) =>
+          !(
+            r.teamId === teamId &&
+            r.targetKind === input.kind &&
+            (input.kind === "database"
+              ? r.databaseId === input.targetId
+              : r.projectId === input.targetId)
+          ),
+      );
+    });
+    return { deleted: 0, failedDestinations: destinations };
+  }
+
+  let deleted = 0;
+  const failedDestinations: string[] = [];
+  for (const destinationId of destinations) {
+    try {
+      deleted += await deleteBackupArtifacts({
+        kind: input.kind,
+        targetId: input.targetId,
+        destinationId,
+        serverId,
+      });
+    } catch (e) {
+      console.warn(
+        `[backups] failed to delete artifacts for ${input.kind} ${input.targetId} ` +
+          `in destination ${destinationId}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      failedDestinations.push(destinationId);
+    }
+  }
+  return { deleted, failedDestinations };
+}
+
+/**
  * The longest a real backup could still be running before we call a `running`
  * record orphaned: the agent caps each dump/upload step at ~30min, plus generous
  * slack for a volume-heavy project + dial. A `running` run older than this is one

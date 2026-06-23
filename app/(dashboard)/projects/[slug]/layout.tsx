@@ -21,6 +21,9 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
   const canManageEnv = await hasCapability("manage_env");
+  // Backups are infra ops (provision a dump, overwrite-restore in place), gated
+  // on manage_infra — same capability the GraphQL mutations enforce.
+  const canBackup = await hasCapability("manage_infra");
   // The Files tab only appears when the caller can manage files AND the project
   // actually has an on-disk files dir (projectFilesExist returns false for both
   // a missing capability and a missing directory, so this one call covers both).
@@ -100,6 +103,7 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
         devEligible={isDevEligible(project.source)}
         canManageEnv={canManageEnv}
         showFiles={showFiles}
+        canBackup={canBackup}
       />
 
       {props.children}

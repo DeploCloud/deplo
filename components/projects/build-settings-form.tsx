@@ -50,7 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ConfirmAction } from "@/components/shared/confirm-action";
+import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import {
   BuildConfigFields,
   applyFrameworkToBuild,
@@ -802,24 +802,26 @@ export function BuildSettingsForm({
           </CardDescription>
         </CardHeader>
         <CardFooter className="justify-end">
-          <ConfirmAction
+          <DeleteWithArtifacts
             trigger={
               <Button variant="destructive" size="sm">
                 <Trash2 className="size-4" />
                 Delete Project
               </Button>
             }
+            targetKind="project"
+            targetId={projectId}
+            targetName={initialName}
             title={`Delete ${initialName}?`}
             description="This permanently removes the project, deployments, domains and environment variables. This cannot be undone."
             confirmLabel="Delete project"
-            onConfirm={async () => {
-              const res = await gqlAction(
-                `mutation($id: String!) { deleteProject(id: $id) }`,
-                { id: projectId },
-              );
-              if (res.ok) router.push("/");
-              return res;
-            }}
+            successMessage="Project deleted"
+            deleteMutation={() =>
+              gqlAction(`mutation($id: String!) { deleteProject(id: $id) }`, {
+                id: projectId,
+              })
+            }
+            onDeleted={() => router.push("/")}
           />
         </CardFooter>
       </Card>

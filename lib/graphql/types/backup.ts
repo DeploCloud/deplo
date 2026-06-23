@@ -8,6 +8,7 @@ import {
   listBackupRuns,
   toggleBackup,
   deleteBackup,
+  deleteAllBackupArtifacts,
   type BackupDTO,
 } from "@/lib/data/backups";
 import type { BackupRun } from "@/lib/types";
@@ -232,6 +233,45 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { id }) => {
       await deleteBackup(id);
       return true;
+    },
+  }),
+  deleteBackupArtifacts: t.field({
+    type: "Int",
+    // The precise capability VARIES by target kind (project → deploy, database →
+    // manage_infra, mirroring each target's own delete gate), which a single
+    // static authScope can't express — so the outer gate is just loggedIn and
+    // `deleteAllBackupArtifacts` enforces the exact per-kind capability in the
+    // data layer (the builder's documented defense-in-depth model). This avoids
+    // the mismatch where a static manage_infra scope would hard-block a
+    // deploy-only member from deleting a project they're otherwise allowed to.
+    authScopes: { loggedIn: true },
+    description:
+      "Delete ALL of a target's S3 backup artifacts (across every destination " +
+      "it ran to) plus their run records. The 'also delete backups' branch of " +
+      "deleting a database or project. Returns the number of objects removed. " +
+      "Throws if any destination's sweep failed (so the caller can abort the " +
+      "target deletion rather than orphan bucket objects).",
+    args: {
+      targetKind: t.arg({ type: BackupTargetKindEnum, required: true }),
+      targetId: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { targetKind, targetId }) => {
+      const { deleted, failedDestinations } = await deleteAllBackupArtifacts({
+        kind: targetKind,
+        targetId,
+      });
+      // A partial sweep is a failure: surface it so the delete flow aborts and
+      // the operator can retry, rather than deleting the target over a bucket we
+      // could not fully clear.
+      if (failedDestinations.length > 0) {
+        throw new Error(
+          `Could not delete every backup artifact (failed for ` +
+            `${failedDestinations.length} destination` +
+            `${failedDestinations.length === 1 ? "" : "s"}). The ${targetKind} ` +
+            `was not deleted — check the destination is reachable and retry.`,
+        );
+      }
+      return deleted;
     },
   }),
 }));

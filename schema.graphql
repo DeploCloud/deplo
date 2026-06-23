@@ -681,6 +681,11 @@ type Mutation {
   """Delete a backup schedule. Returns true."""
   deleteBackup(id: String!): Boolean
 
+  """
+  Delete ALL of a target's S3 backup artifacts (across every destination it ran to) plus their run records. The 'also delete backups' branch of deleting a database or project. Returns the number of objects removed. Throws if any destination's sweep failed (so the caller can abort the target deletion rather than orphan bucket objects).
+  """
+  deleteBackupArtifacts(targetId: String!, targetKind: BackupTargetKind!): Int
+
   """Tear down the database container + volume. Returns true."""
   deleteDatabase(id: String!): Boolean
 

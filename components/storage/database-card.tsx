@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/context-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CopyButton } from "@/components/shared/copy-button";
-import { ConfirmAction } from "@/components/shared/confirm-action";
+import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { formatBytes, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
@@ -184,21 +184,22 @@ export function DatabaseCard({ db }: { db: DatabaseDTO }) {
         </div>
       </CardContent>
 
-      <ConfirmAction
+      <DeleteWithArtifacts
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
+        targetKind="database"
+        targetId={db.id}
+        targetName={db.name}
         title={`Delete ${db.name}?`}
-        description="This permanently destroys the database container and all its data, including any backups schedules attached to it."
+        description="This permanently destroys the database container and all its data, including any backup schedules attached to it."
         confirmLabel="Delete database"
         successMessage="Database deleted"
-        onConfirm={async () => {
-          const res = await gqlAction(
-            `mutation($id: String!) { deleteDatabase(id: $id) }`,
-            { id: db.id },
-          );
-          if (res.ok) router.refresh();
-          return res;
-        }}
+        deleteMutation={() =>
+          gqlAction(`mutation($id: String!) { deleteDatabase(id: $id) }`, {
+            id: db.id,
+          })
+        }
+        onDeleted={() => router.refresh()}
       />
     </Card>
   );

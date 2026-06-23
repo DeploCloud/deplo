@@ -3,6 +3,7 @@ import { listDatabases } from "@/lib/data/databases";
 import { listS3 } from "@/lib/data/s3";
 import { listBackups } from "@/lib/data/backups";
 import { listServers } from "@/lib/data/servers";
+import { listProjects } from "@/lib/data/projects";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -40,12 +41,14 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   const initialTab =
     newKind === "s3" ? "s3" : newKind === "backup" ? "backups" : "databases";
 
-  const [databases, destinations, backups, servers] = await Promise.all([
-    listDatabases(),
-    listS3(),
-    listBackups(),
-    listServers(),
-  ]);
+  const [databases, destinations, backups, servers, projects] =
+    await Promise.all([
+      listDatabases(),
+      listS3(),
+      listBackups(),
+      listServers(),
+      listProjects(),
+    ]);
 
   // Only provisioned servers can host a database (provisioning routes through a
   // live agent). A server is provisioned once its agent has called home and
@@ -140,6 +143,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
             </p>
             <CreateBackup
               databases={databases.map((d) => ({ id: d.id, name: d.name }))}
+              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
               destinations={destinations.map((d) => ({
                 id: d.id,
                 name: d.name,
@@ -159,7 +163,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>Database</TableHead>
+                    <TableHead>Target</TableHead>
                     <TableHead>Destination</TableHead>
                     <TableHead>Schedule</TableHead>
                     <TableHead>Retention</TableHead>
