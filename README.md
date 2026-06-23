@@ -74,10 +74,12 @@ docker run -d --name deplo \
 
 ```bash
 bun install
+export DEPLO_DATABASE_URL=postgres://deplo:password@localhost:5432/deplo
+bun run db:push      # create the Better Auth and state tables
 bun run dev          # http://localhost:3000
 ```
 
-On first run a local JSON store is seeded at `.deplo/data.json` (gitignored) with a demo team, servers and projects.
+PostgreSQL is the only control-plane data store, so `DEPLO_DATABASE_URL` (or `DATABASE_URL`) is required — the app fails fast at startup without it. On first run the database is seeded with a demo team, servers and projects.
 
 | | Development login |
 | --- | --- |
@@ -109,11 +111,11 @@ On first run a local JSON store is seeded at `.deplo/data.json` (gitignored) wit
 
 1. **Docker** — every app, database and service is a container; Deplo generates a `docker-compose.yml` per workload (`lib/deploy/compose.ts`).
 2. **Traefik** — one reverse proxy routes each domain to the right container and issues TLS via Let's Encrypt (`lib/deploy/traefik.ts`).
-3. **Postgres** — when `DEPLO_DATABASE_URL` is set it is the system of record and backs Better Auth; otherwise a zero-config local JSON store is used.
+3. **Postgres** — the one system of record for all control-plane data and Better Auth. `DEPLO_DATABASE_URL` is required; there is no file-based fallback.
 
 ## ⚙️ Configuration
 
-Set `DEPLO_DATABASE_URL` to switch to Postgres for all control-plane data and enable Better Auth at `/api/auth/*`:
+`DEPLO_DATABASE_URL` is **required** — Deplo stores all control-plane data in PostgreSQL and enables Better Auth at `/api/auth/*`. Set it (and `DEPLO_SECRET`) before running:
 
 ```bash
 export DEPLO_DATABASE_URL=postgres://deplo:password@localhost:5432/deplo
@@ -128,9 +130,9 @@ Copy `.env.example` to `.env` and fill in the important variables:
 | --- | --- |
 | `DEPLO_SECRET` | **Required in production.** Root secret deriving all session-signing and AES-256-GCM encryption keys; reused as the Better Auth secret. |
 | `DEPLO_PUBLIC_URL` | Public URL the dashboard is served from (cookies, TLS detection, install command). |
-| `DEPLO_DATABASE_URL` | Postgres connection string. When set, enables Postgres and Better Auth. |
+| `DEPLO_DATABASE_URL` | **Required.** Postgres connection string. Deplo's only control-plane data store; also backs Better Auth. |
 | `DEPLO_DATABASE_POOL_MAX` | Optional cap on the Postgres connection pool (default 10). |
-| `DEPLO_DATA_DIR` | Where the local JSON store lives when Postgres is not configured (default `./.deplo`). |
+| `DEPLO_DATA_DIR` | Host-visible directory for build/upload staging the Docker daemon must see (default `/data`, `./.deplo` in dev). Not a data store. |
 | `DEPLO_ACME_EMAIL` | Email used for Let's Encrypt in the generated installer. |
 
 ## 🔄 Releases & CI

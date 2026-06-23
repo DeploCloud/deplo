@@ -1,41 +1,44 @@
 import "server-only";
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  renameSync,
-} from "node:fs";
-import { join } from "node:path";
 import type { DeploData } from "./types";
 import { buildSeed } from "./seed";
 import { migrate } from "./migrate";
-import { isPostgresEnabled } from "./db/pg";
+import { isPostgresEnabled, isTestEnv } from "./db/pg";
 import { loadDocument, saveDocument } from "./db/document-store";
 
 /**
- * Control-plane store with two interchangeable backends behind one API:
- *
- *  - Postgres (when `DEPLO_DATABASE_URL` is set)  the production system of
- *    record. The document is hydrated into an in-memory cache once per process
- *    so reads stay synchronous; mutations write through to Postgres.
- *  - Local JSON file (default)  zero-config, so the app runs with no database.
+ * Control-plane store. PostgreSQL is the ONE system of record: the document is
+ * hydrated into an in-memory cache once per process so reads stay synchronous,
+ * and every mutation writes through to Postgres.
  *
  * `read()`/`mutate()` are synchronous (the data-access layer depends on that).
- * In Postgres mode, call `ensureStoreReady()` (awaited in the dashboard layout
- * and the auth resolver) before the first read so the cache is hydrated.
+ * Call `ensureStoreReady()` (awaited in the dashboard layout and the auth
+ * resolver) before the first read so the cache is hydrated from Postgres.
+ *
+ * Configuration is mandatory: outside `node --test`, the store REQUIRES
+ * `DEPLO_DATABASE_URL` (see `lib/db/pg.ts`). There is no file-based fallback.
+ * Under `node --test` only, with no database configured, persistence is a no-op
+ * and the document lives purely in memory so the data-layer tests run without a
+ * Postgres instance.
  */
 
-const DATA_DIR = process.env.DEPLO_DATA_DIR || join(process.cwd(), ".deplo");
-const DATA_FILE = join(DATA_DIR, "data.json");
 const USE_PG = isPostgresEnabled();
+
+if (!USE_PG && !isTestEnv()) {
+  // Fail fast at module load: a real run with no database is a misconfiguration,
+  // not a silent fall-through to ephemeral in-memory data.
+  throw new Error(
+    "DEPLO_DATABASE_URL is required. Deplo uses PostgreSQL as its only " +
+      "control-plane data store; set DEPLO_DATABASE_URL (or DATABASE_URL) to " +
+      "a Postgres connection string."
+  );
+}
 
 /**
  * Backfill collections added in later versions so a document persisted by an
  * older build never yields `undefined` where the data layer expects an array.
- * Runs on every hydrate from either backend; mutates and returns the same
- * object. Add new top-level collections here when the schema grows.
+ * Runs on every hydrate; mutates and returns the same object. Add new top-level
+ * collections here when the schema grows.
  */
 function normalize(data: DeploData): DeploData {
   const seed = buildSeed();
@@ -92,35 +95,6 @@ const state: StoreState = (g[STORE_KEY] ??= {
 });
 
 /* ------------------------------------------------------------------ */
-/* JSON file backend                                                   */
-/* ------------------------------------------------------------------ */
-
-function ensureDir() {
-  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-}
-
-function loadFromFile(): DeploData {
-  ensureDir();
-  if (existsSync(DATA_FILE)) {
-    try {
-      return normalize(JSON.parse(readFileSync(DATA_FILE, "utf8")) as DeploData);
-    } catch {
-      // corrupt file  fall through to reseed
-    }
-  }
-  const seeded = buildSeed();
-  persistToFile(seeded);
-  return seeded;
-}
-
-function persistToFile(data: DeploData) {
-  ensureDir();
-  const tmp = `${DATA_FILE}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
-  renameSync(tmp, DATA_FILE);
-}
-
-/* ------------------------------------------------------------------ */
 /* Postgres backend (write-through, serialized)                        */
 /* ------------------------------------------------------------------ */
 
@@ -140,10 +114,18 @@ function queuePostgresWrite(data: DeploData) {
 
 /**
  * Hydrate the in-memory cache from Postgres. Idempotent and safe to call from
- * multiple concurrent requests  the work happens at most once.
+ * multiple concurrent requests — the work happens at most once. In the
+ * test-only in-memory mode (no Postgres) this seeds the cache and returns
+ * without touching any backend.
  */
 export async function ensureStoreReady(): Promise<void> {
-  if (!USE_PG || state.hydrated) return;
+  if (state.hydrated) return;
+  if (!USE_PG) {
+    // Test-only in-memory mode: seed once, never persist.
+    if (!state.cache) state.cache = buildSeed();
+    state.hydrated = true;
+    return;
+  }
   if (!state.hydrating) {
     state.hydrating = (async () => {
       const existing = await loadDocument();
@@ -185,7 +167,8 @@ function load(): DeploData {
     if (!state.cache) state.cache = buildSeed();
     return state.cache;
   }
-  state.cache = loadFromFile();
+  // Test-only in-memory mode.
+  state.cache = buildSeed();
   return state.cache;
 }
 
@@ -203,7 +186,6 @@ export function mutate<T>(fn: (data: DeploData) => T): T {
   const result = fn(data);
   state.dirty = true;
   if (USE_PG) queuePostgresWrite(data);
-  else persistToFile(data);
   return result;
 }
 
@@ -213,6 +195,5 @@ export function reseed(): DeploData {
   state.hydrated = true;
   state.dirty = true;
   if (USE_PG) queuePostgresWrite(state.cache);
-  else persistToFile(state.cache);
   return state.cache;
 }

@@ -4,10 +4,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// Isolate the store onto a throwaway data dir BEFORE the store module loads
-// (it captures DATA_DIR at import time), so this test never touches a real
-// .deplo/data.json. The store + build modules are imported lazily inside the
-// tests because the test runner transpiles to CJS (no top-level await).
+// No DEPLO_DATABASE_URL → the store runs in its test-only in-memory mode (no
+// Postgres, no disk). DEPLO_DATA_DIR points build staging at a throwaway dir,
+// set BEFORE the store + build modules load. Those modules are imported lazily
+// inside the tests because the runner transpiles to CJS (no top-level await).
 process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-reconcile-"));
 delete process.env.DEPLO_DATABASE_URL;
 delete process.env.DATABASE_URL;

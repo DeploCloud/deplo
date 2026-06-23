@@ -12,12 +12,13 @@ import { join } from "node:path";
  * `failed` BackupRun WITHOUT any network: the run record is our proof the tick
  * fired that schedule. The cron matcher + lease CAS have their own focused tests.
  *
- * The store is the zero-config JSON-file backend pointed at a temp dir (no
- * DEPLO_DATABASE_URL), so the lease also takes its in-process path — exactly the
- * single-process `next start` shape Step 6 targets.
+ * With no DEPLO_DATABASE_URL the store runs in its test-only in-memory mode and
+ * the lease takes its in-process path — exactly the single-process `next start`
+ * shape Step 6 targets.
  */
 
-// Point the store at a throwaway dir BEFORE it (transitively) loads.
+// No DEPLO_DATABASE_URL → in-memory store (test-only). DEPLO_DATA_DIR points
+// build/upload staging at a throwaway dir; set BEFORE the modules load.
 const dataDir = mkdtempSync(join(tmpdir(), "deplo-sched-"));
 process.env.DEPLO_DATA_DIR = dataDir;
 delete process.env.DEPLO_DATABASE_URL;

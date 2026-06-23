@@ -16,9 +16,9 @@ import { getPool, isPostgresEnabled } from "../db/pg";
  * heartbeat is older than the staleness window is considered crashed and may be
  * STOLEN by another instance — so a dead owner never blocks the schedule forever.
  *
- * Dev (no Postgres): `next start` and `next dev` are single-process, so the lock
- * degrades to an in-process `globalThis` singleton — a real mutex within the one
- * process, which is all a single-process dev box needs.
+ * Test-only in-memory mode (no Postgres): the lock degrades to an in-process
+ * `globalThis` singleton — a real mutex within the one process. This path is
+ * exercised by the scheduler/lease tests; every real run is Postgres-backed.
  */
 
 /** A lease is reclaimable once its heartbeat is older than this. */

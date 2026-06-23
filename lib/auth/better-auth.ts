@@ -9,11 +9,12 @@ import { schema } from "@/lib/db/schema";
 /**
  * Better Auth configuration.
  *
- * Enabled only when Postgres is configured (Better Auth needs a database for its
- * user / session / account tables). It is constructed lazily so the app builds
- * and runs without a database, and exposes the standard credential endpoints at
- * `/api/auth/*`. `DEPLO_SECRET` is reused as the signing secret so there is one
- * root secret to manage.
+ * Postgres is Deplo's only data store, so Better Auth is the auth path for every
+ * real run; it is constructed lazily and exposes the standard credential
+ * endpoints at `/api/auth/*`. `DEPLO_SECRET` is reused as the signing secret so
+ * there is one root secret to manage. `getAuth()` returns null only in the
+ * test-only in-memory mode (no `DEPLO_DATABASE_URL`), where Better Auth has no
+ * database to back its user / session / account tables.
  */
 
 function createAuth() {

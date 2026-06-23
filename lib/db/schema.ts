@@ -76,8 +76,8 @@ export const deploState = pgTable("deplo_state", {
  * each fire a due backup. One row per named lease holds the current owner and a
  * heartbeat; a tick claims a lease via an atomic CAS (insert-or-steal-if-stale)
  * before running, so a due backup fires at most once and a crashed owner's stale
- * lease is re-armed. In file-backend dev (no Postgres) this degrades to an
- * in-process `globalThis` lock.
+ * lease is re-armed. In the test-only in-memory mode (no Postgres) this degrades
+ * to an in-process `globalThis` lock.
  */
 export const schedulerLease = pgTable("scheduler_lease", {
   /** Lease name, e.g. "backup-scheduler". One row per distinct lease. */

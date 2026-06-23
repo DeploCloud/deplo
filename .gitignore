@@ -41,7 +41,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# deplo control-plane data store (local JSON persistence)
+# deplo dev build/upload staging dir (DEPLO_DATA_DIR; not a data store)
 /.deplo/
 .claude
 

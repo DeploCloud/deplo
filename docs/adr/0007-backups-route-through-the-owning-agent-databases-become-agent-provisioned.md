@@ -81,8 +81,8 @@ whole-document write stays cheap. The **only** relational addition is the schedu
 mutex: the single-JSONB-document store offers no cross-process compare-and-set, so the
 once-a-minute tick (a `globalThis` singleton started from `instrumentation.ts`) claims due
 backups via a **Postgres advisory lock / dedicated lease row** with a heartbeat/timeout (a
-crashed run's lease expires and is re-armed). In file-backend dev mode (no Postgres) the lock
-degrades to in-process — acceptable because `next start` is single-process.
+crashed run's lease expires and is re-armed). In the test-only in-memory mode (no Postgres)
+the lock degrades to in-process — acceptable because the tests are single-process.
 
 ## Consequences
 
