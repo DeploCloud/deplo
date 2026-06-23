@@ -3,10 +3,14 @@ import {
   listBackups,
   createBackup,
   runBackup,
+  runProjectBackup,
+  restoreBackup,
+  listBackupRuns,
   toggleBackup,
   deleteBackup,
   type BackupDTO,
 } from "@/lib/data/backups";
+import type { BackupRun } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /* Enums                                                               */
@@ -19,18 +23,37 @@ const BackupStatusEnum = builder.enumType("BackupStatus", {
   values: ["success", "failed", "running", "never"] as const,
 });
 
+// What a schedule / run targets. Local to this domain (mirrors how
+// DatabaseStatus lives in database.ts) rather than the shared enums file.
+const BackupTargetKindEnum = builder.enumType("BackupTargetKind", {
+  values: ["database", "project"] as const,
+});
+
+// A single run's terminal/in-flight state — distinct from `BackupStatus`
+// (which has the schedule-only `"never"`). Local to this domain.
+const BackupRunStatusEnum = builder.enumType("BackupRunStatus", {
+  values: ["running", "success", "failed"] as const,
+});
+
 /* ------------------------------------------------------------------ */
 /* Object types                                                        */
 /* ------------------------------------------------------------------ */
 
 export const BackupRef = builder.objectRef<BackupDTO>("Backup").implement({
-  description: "A scheduled database backup to an S3 destination.",
+  description:
+    "A scheduled backup of a database or project to an S3 destination.",
   fields: (t) => ({
     id: t.exposeID("id"),
     teamId: t.exposeID("teamId"),
     name: t.exposeString("name"),
+    targetKind: t.field({
+      type: BackupTargetKindEnum,
+      resolve: (b) => b.targetKind,
+    }),
     databaseId: t.exposeID("databaseId", { nullable: true }),
     databaseName: t.exposeString("databaseName", { nullable: true }),
+    projectId: t.exposeID("projectId", { nullable: true }),
+    projectName: t.exposeString("projectName", { nullable: true }),
     destinationId: t.exposeID("destinationId"),
     destinationName: t.exposeString("destinationName"),
     schedule: t.exposeString("schedule", { description: "Cron expression." }),
@@ -45,6 +68,41 @@ export const BackupRef = builder.objectRef<BackupDTO>("Backup").implement({
   }),
 });
 
+export const BackupRunRef = builder
+  .objectRef<BackupRun>("BackupRun")
+  .implement({
+    description:
+      "One executed backup — a single dump+upload artifact, and the source " +
+      "for an in-place restore.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      teamId: t.exposeID("teamId"),
+      backupId: t.exposeID("backupId", {
+        nullable: true,
+        description: "The owning schedule, or null for an ad-hoc run.",
+      }),
+      targetKind: t.field({
+        type: BackupTargetKindEnum,
+        resolve: (r) => r.targetKind,
+      }),
+      databaseId: t.exposeID("databaseId", { nullable: true }),
+      projectId: t.exposeID("projectId", { nullable: true }),
+      destinationId: t.exposeID("destinationId"),
+      objectKey: t.exposeString("objectKey", {
+        description: "S3 object key of the uploaded artifact.",
+      }),
+      // Float, not Int — a backup artifact can exceed 2^31 bytes (>2 GB).
+      sizeBytes: t.exposeFloat("sizeBytes"),
+      status: t.field({
+        type: BackupRunStatusEnum,
+        resolve: (r) => r.status,
+      }),
+      error: t.exposeString("error", { nullable: true }),
+      startedAt: t.exposeString("startedAt"),
+      finishedAt: t.exposeString("finishedAt", { nullable: true }),
+    }),
+  });
+
 /* ------------------------------------------------------------------ */
 /* Inputs                                                              */
 /* ------------------------------------------------------------------ */
@@ -52,7 +110,12 @@ export const BackupRef = builder.objectRef<BackupDTO>("Backup").implement({
 const CreateBackupInputType = builder.inputType("CreateBackupInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
+    // Which kind of target this schedule backs up. Optional: omitted defaults to
+    // "database" (legacy schedules could only target a database).
+    targetKind: t.field({ type: BackupTargetKindEnum, required: false }),
     databaseId: t.string({ required: false }),
+    // Set when targetKind is "project"; otherwise leave null.
+    projectId: t.string({ required: false }),
     destinationId: t.string({ required: true }),
     schedule: t.string({ required: true }),
     retentionDays: t.int({ required: true }),
@@ -70,6 +133,22 @@ builder.queryFields((t) => ({
     description: "All backup schedules in the active team, newest first.",
     resolve: () => listBackups(),
   }),
+  backupRuns: t.field({
+    type: [BackupRunRef],
+    authScopes: { loggedIn: true },
+    description:
+      "Recorded backup runs for one target (a project OR a database), " +
+      "newest first. Pass exactly one of projectId / databaseId.",
+    args: {
+      projectId: t.arg.string({ required: false }),
+      databaseId: t.arg.string({ required: false }),
+    },
+    resolve: (_r, { projectId, databaseId }) =>
+      listBackupRuns({
+        projectId: projectId ?? undefined,
+        databaseId: databaseId ?? undefined,
+      }),
+  }),
 }));
 
 /* ------------------------------------------------------------------ */
@@ -85,7 +164,9 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { input }) => {
       await createBackup({
         name: input.name,
+        targetKind: input.targetKind ?? undefined,
         databaseId: input.databaseId ?? null,
+        projectId: input.projectId ?? null,
         destinationId: input.destinationId,
         schedule: input.schedule,
         retentionDays: input.retentionDays,
@@ -100,6 +181,33 @@ builder.mutationFields((t) => ({
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await runBackup(id);
+      return true;
+    },
+  }),
+  runProjectBackup: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Run an ad-hoc backup of a project now (no owning schedule). Returns " +
+      "true.",
+    args: {
+      projectId: t.arg.string({ required: true }),
+      destinationId: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { projectId, destinationId }) => {
+      await runProjectBackup(projectId, destinationId);
+      return true;
+    },
+  }),
+  restoreBackup: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Restore a backup run in place (overwrites the live target). Returns " +
+      "true.",
+    args: { runId: t.arg.string({ required: true }) },
+    resolve: async (_r, { runId }) => {
+      await restoreBackup(runId);
       return true;
     },
   }),

@@ -85,7 +85,7 @@ type AuthPayload {
   viewer: Viewer
 }
 
-"""A scheduled database backup to an S3 destination."""
+"""A scheduled backup of a database or project to an S3 destination."""
 type Backup {
   createdAt: String
   databaseId: ID
@@ -97,11 +97,42 @@ type Backup {
   lastRunAt: String
   lastStatus: BackupStatus
   name: String
+  projectId: ID
+  projectName: String
   retentionDays: Int
 
   """Cron expression."""
   schedule: String
+  targetKind: BackupTargetKind
   teamId: ID
+}
+
+"""
+One executed backup — a single dump+upload artifact, and the source for an in-place restore.
+"""
+type BackupRun {
+  """The owning schedule, or null for an ad-hoc run."""
+  backupId: ID
+  databaseId: ID
+  destinationId: ID
+  error: String
+  finishedAt: String
+  id: ID
+
+  """S3 object key of the uploaded artifact."""
+  objectKey: String
+  projectId: ID
+  sizeBytes: Float
+  startedAt: String
+  status: BackupRunStatus
+  targetKind: BackupTargetKind
+  teamId: ID
+}
+
+enum BackupRunStatus {
+  failed
+  running
+  success
 }
 
 enum BackupStatus {
@@ -109,6 +140,11 @@ enum BackupStatus {
   never
   running
   success
+}
+
+enum BackupTargetKind {
+  database
+  project
 }
 
 """Partial build configuration; only the provided fields are changed."""
@@ -169,8 +205,10 @@ input CreateBackupInput {
   databaseId: String
   destinationId: String!
   name: String!
+  projectId: String
   retentionDays: Int!
   schedule: String!
+  targetKind: BackupTargetKind
 }
 
 input CreateDatabaseInput {
@@ -769,6 +807,11 @@ type Mutation {
   """DESTRUCTIVE: replace the workspace with a fresh copy of the source."""
   resetDevWorkspace(projectId: String!): DevInfo
 
+  """
+  Restore a backup run in place (overwrites the live target). Returns true.
+  """
+  restoreBackup(runId: String!): Boolean
+
   """Reveal the full (unmasked) connection string for a database."""
   revealConnection(id: String!): String
 
@@ -788,6 +831,11 @@ type Mutation {
 
   """Run a backup schedule manually now. Returns true."""
   runBackup(id: String!): Boolean
+
+  """
+  Run an ad-hoc backup of a project now (no owning schedule). Returns true.
+  """
+  runProjectBackup(destinationId: String!, projectId: String!): Boolean
 
   """Replace the active team's notification settings."""
   saveNotificationSettings(input: JSON!): NotificationSettings
@@ -999,6 +1047,11 @@ type Query {
 
   """The remote catalog of installable apps."""
   appCatalog: [AppListing!]
+
+  """
+  Recorded backup runs for one target (a project OR a database), newest first. Pass exactly one of projectId / databaseId.
+  """
+  backupRuns(databaseId: String, projectId: String): [BackupRun!]
 
   """All backup schedules in the active team, newest first."""
   backups: [Backup!]
