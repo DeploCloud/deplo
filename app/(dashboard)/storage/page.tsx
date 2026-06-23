@@ -28,7 +28,18 @@ import { BackupRow } from "@/components/storage/backup-row";
 
 export const metadata = { title: "Storage" };
 
-export default async function StoragePage() {
+export default async function StoragePage(props: PageProps<"/storage">) {
+  // "New ▸ …" actions (the global context menu / Overview) link here with
+  // ?new=database|s3|backup so the matching create dialog opens straight away on
+  // the right tab.
+  const { new: newParam } = await props.searchParams;
+  const newKind = Array.isArray(newParam) ? newParam[0] : newParam;
+  const autoOpenDatabase = newKind === "database";
+  const autoOpenS3 = newKind === "s3";
+  const autoOpenBackup = newKind === "backup";
+  const initialTab =
+    newKind === "s3" ? "s3" : newKind === "backup" ? "backups" : "databases";
+
   const [databases, destinations, backups, servers] = await Promise.all([
     listDatabases(),
     listS3(),
@@ -50,7 +61,7 @@ export default async function StoragePage() {
         description="Managed databases, S3 destinations and scheduled backups."
       />
 
-      <Tabs defaultValue="databases">
+      <Tabs defaultValue={initialTab}>
         <UnderlineTabsList>
           <UnderlineTabsTrigger value="databases">
             Databases
@@ -79,7 +90,7 @@ export default async function StoragePage() {
               PostgreSQL, MySQL, MongoDB, Redis and more provisioned on your
               servers.
             </p>
-            <CreateDatabase servers={dbServers} />
+            <CreateDatabase servers={dbServers} autoOpen={autoOpenDatabase} />
           </div>
           {databases.length === 0 ? (
             <EmptyState
@@ -103,7 +114,7 @@ export default async function StoragePage() {
             <p className="text-sm text-muted-foreground">
               Connect any S3-compatible storage for backups and assets.
             </p>
-            <CreateS3 />
+            <CreateS3 autoOpen={autoOpenS3} />
           </div>
           {destinations.length === 0 ? (
             <EmptyState
@@ -133,6 +144,7 @@ export default async function StoragePage() {
                 id: d.id,
                 name: d.name,
               }))}
+              autoOpen={autoOpenBackup}
             />
           </div>
           {backups.length === 0 ? (

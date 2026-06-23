@@ -94,7 +94,15 @@ function ServerCard({
   );
 }
 
-export default async function ServersPage() {
+export default async function ServersPage(
+  props: PageProps<"/settings/servers">,
+) {
+  // The global "New ▸ Add server" action links here with ?new=1 to open the
+  // register dialog straight away.
+  const { new: newParam } = await props.searchParams;
+  const autoOpenServer =
+    (Array.isArray(newParam) ? newParam[0] : newParam) === "1";
+
   // Cheap last-known metrics so the page renders instantly; the cards poll live
   // values every second and replace these (see ServerMetricsProvider).
   const [servers, allMetrics, expectedAgentVersion] = await Promise.all([
@@ -122,7 +130,7 @@ export default async function ServersPage() {
               provisions itself — Deplo never needs SSH access to your servers.
             </CardDescription>
           </div>
-          <AddServer />
+          <AddServer autoOpen={autoOpenServer} />
         </CardHeader>
       </Card>
 

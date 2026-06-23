@@ -265,6 +265,12 @@ export async function updateMember(input: {
       (x) => x.userId === input.userId && x.teamId === teamId,
     );
     if (!m) throw new Error("Member not found");
+    // The team's owner is immutable: their role and permissions can't be
+    // changed by anyone (including themselves), so the founder can never be
+    // demoted or lock themselves out of their own team.
+    if (m.role === "owner") {
+      throw new Error("The team owner's role and permissions can't be changed.");
+    }
     assertAdminCoverage(d.memberships, teamId, input.userId, caps);
     m.role = input.role;
     m.capabilities = caps;
@@ -284,6 +290,10 @@ export async function removeMember(userId: string): Promise<void> {
       (x) => x.userId === userId && x.teamId === teamId,
     );
     if (!m) throw new Error("Member not found");
+    // The team's owner can never be removed (the founder is permanent).
+    if (m.role === "owner") {
+      throw new Error("The team owner can't be removed.");
+    }
     assertAdminCoverage(d.memberships, teamId, userId, null);
     username = d.users.find((u) => u.id === userId)?.username ?? "";
     d.memberships = d.memberships.filter((x) => x.id !== m.id);

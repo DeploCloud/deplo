@@ -55,12 +55,27 @@ const TYPES: {
 
 export function CreateDatabase({
   servers,
+  autoOpen = false,
 }: {
   servers: { id: string; name: string }[];
+  /**
+   * Open the dialog on mount — used when arriving from the Overview "New
+   * database" action (which links to /storage?new=database). Ignored when no
+   * server is provisioned yet, since the form can't be submitted anyway.
+   */
+  autoOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(autoOpen && servers.length > 0);
   const [pending, startTransition] = React.useTransition();
+
+  // Arrived via ?new=database → drop the param so a refresh or Back doesn't
+  // reopen the dialog. router.replace is not a setState, so this stays clear of
+  // the effect-lint; runs once on mount.
+  React.useEffect(() => {
+    if (autoOpen) router.replace("/storage", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState<DatabaseType>("postgres");
   const [version, setVersion] = React.useState("16");

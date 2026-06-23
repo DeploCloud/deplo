@@ -26,10 +26,14 @@ export function CodeBlock({
           </span>
         </div>
       )}
+      {/* Copy sits in the top-right; the scroll area below reserves room (pr-12)
+          so a long first line never slides under it. */}
       <div className="absolute right-2 top-2 z-10">
         <CopyButton value={code} />
       </div>
-      <pre className="overflow-x-auto p-4 text-xs leading-relaxed">
+      {/* Bounded box that scrolls on BOTH axes — long lines scroll sideways and a
+          tall block scrolls vertically, instead of stretching/overflowing the page. */}
+      <pre className="max-h-[60vh] overflow-auto p-4 pr-12 text-xs leading-relaxed">
         <code className="font-mono text-zinc-200">{code}</code>
       </pre>
     </div>
@@ -43,7 +47,10 @@ export function CommandLine({ command }: { command: string }) {
       <span className="select-none font-mono text-sm text-muted-foreground">
         $
       </span>
-      <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-sm text-zinc-200">
+      {/* min-w-0 lets this flex child actually shrink so the nowrap command
+          scrolls WITHIN the row instead of forcing the container wider (the
+          classic flexbox min-width:auto overflow). The copy button stays put. */}
+      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-sm text-zinc-200">
         {command}
       </code>
       <CopyButton value={command} />

@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Menu,
   Rocket,
+  Sparkles,
   Database,
   LayoutTemplate,
   Globe,
@@ -16,6 +17,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -82,18 +86,26 @@ export function Topbar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem asChild>
-              <Link href="/new" className="cursor-pointer">
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="cursor-pointer">
                 <Rocket className="size-4" />
-                Project
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/templates" className="cursor-pointer">
-                <LayoutTemplate className="size-4" />
-                From Template
-              </Link>
-            </DropdownMenuItem>
+                New project
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem asChild>
+                  <Link href="/new" className="cursor-pointer">
+                    <Sparkles className="size-4" />
+                    From Scratch
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/templates" className="cursor-pointer">
+                    <LayoutTemplate className="size-4" />
+                    From Template
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuItem asChild>
               <Link href="/storage" className="cursor-pointer">
                 <Database className="size-4" />

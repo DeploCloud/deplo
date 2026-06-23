@@ -147,10 +147,85 @@ export async function importEnv(
     )
       value = value.slice(1, -1);
     if (!KEY_RE.test(key)) continue;
-    await upsertEnv({ projectId, key, value, targets, type: "secret" });
+    // Imported vars are PLAIN by default — never silently marked secret. A user
+    // can flip individual vars to secret afterwards from the table.
+    await upsertEnv({ projectId, key, value, targets, type: "plain" });
     count++;
   }
   return count;
+}
+
+/**
+ * Replace a project's whole env set from the ".env editor": upsert every entry
+ * and delete the ones the editor dropped, in a single atomic write.
+ *
+ *  - New keys are created as PLAIN (never secret by default) with `defaultTargets`.
+ *  - Existing keys keep their `type` and `targets` (the flat editor can't express
+ *    them); only the value changes.
+ *  - A SECRET whose incoming value is still the mask (the editor hides secret
+ *    values) is left untouched — so editing the file never clobbers a secret you
+ *    couldn't see. Changing a secret's masked value to anything else updates it
+ *    (and it stays secret).
+ */
+export async function setProjectEnv(
+  projectId: string,
+  entries: { key: string; value: string }[],
+  defaultTargets: EnvTarget[],
+): Promise<number> {
+  const { membership } = await requireCapability("manage_env");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const project = read().projects.find(
+    (p) => p.id === projectId && p.teamId === membership.teamId,
+  );
+  if (!project) throw new Error("Project not found");
+  if (defaultTargets.length === 0) {
+    throw new Error("Select at least one environment for new variables");
+  }
+
+  // Validate + dedupe (last assignment of a key wins), dropping invalid names.
+  const wanted = new Map<string, string>();
+  for (const e of entries) {
+    const key = e.key.trim();
+    if (!KEY_RE.test(key)) continue;
+    wanted.set(key, e.value);
+  }
+
+  mutate((d) => {
+    const byKey = new Map(
+      d.envVars.filter((e) => e.projectId === projectId).map((e) => [e.key, e]),
+    );
+    for (const [key, value] of wanted) {
+      const existing = byKey.get(key);
+      if (existing) {
+        // Skip an unchanged secret (its masked value came back verbatim).
+        if (existing.type === "secret" && value === MASK) continue;
+        existing.valueEnc = encryptSecret(value);
+        existing.updatedAt = nowIso();
+      } else {
+        d.envVars.push({
+          id: newId("env"),
+          projectId,
+          key,
+          valueEnc: encryptSecret(value),
+          targets: defaultTargets,
+          type: "plain",
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+        });
+      }
+    }
+    // Drop variables removed in the editor.
+    d.envVars = d.envVars.filter(
+      (e) => e.projectId !== projectId || wanted.has(e.key),
+    );
+  });
+  recordActivity(
+    "env",
+    `Edited environment (${wanted.size} variable${wanted.size === 1 ? "" : "s"})`,
+    user.name,
+    projectId,
+  );
+  return wanted.size;
 }
 
 export async function deleteEnv(id: string): Promise<void> {

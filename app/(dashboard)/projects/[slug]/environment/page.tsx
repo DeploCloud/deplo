@@ -5,7 +5,6 @@ import { hasCapability } from "@/lib/membership";
 import { listEnv } from "@/lib/data/env";
 import { listSharedEnvGroupsForProject } from "@/lib/data/shared-env";
 import { EnvManager } from "@/components/env/env-manager";
-import { ProjectSharedEnv } from "@/components/env/project-shared-env";
 import { EmptyState } from "@/components/shared/empty-state";
 
 export const metadata = { title: "Environment Variables" };
@@ -35,9 +34,10 @@ export default async function ProjectEnvPage(
   ]);
 
   return (
-    <div className="space-y-8">
-      <EnvManager projectId={project.id} vars={vars} />
-      <ProjectSharedEnv projectId={project.id} groups={sharedGroups} />
-    </div>
+    <EnvManager
+      projectId={project.id}
+      vars={vars}
+      sharedGroups={sharedGroups}
+    />
   );
 }

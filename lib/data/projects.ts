@@ -175,6 +175,8 @@ function summarize(p: Project): ProjectSummary {
     // Projects created before the logo field have it absent; surface an explicit
     // null so every consumer reads a defined `string | null`.
     logo: np.logo ?? null,
+    // Same for the folder grouping: absent (pre-folders) ⇒ ungrouped (null).
+    folderId: np.folderId ?? null,
     latestDeployment: latest,
     domainCount: d.domains.filter((x) => x.projectId === np.id).length,
   };
@@ -357,6 +359,9 @@ export async function createProject(
     name: input.name.trim(),
     slug,
     teamId: membership.teamId,
+    // New projects start ungrouped (top level); a folder is assigned later from
+    // the Overview (drag-into-folder or the card's "Move to folder" menu).
+    folderId: null,
     serverId: server.id,
     framework: input.framework,
     // Defaulted from a template's logo (a /templates path); ignore anything that
@@ -935,4 +940,84 @@ export async function deleteProject(id: string): Promise<void> {
     d.domains = d.domains.filter((x) => x.projectId !== id);
   });
   recordActivity("project", `Deleted project ${project.name}`, user.name, null);
+}
+
+/** Run `fn` over `items` with at most `limit` in flight at once. */
+async function mapLimit<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      await fn(items[next++]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+}
+
+/**
+ * Bulk-delete several projects. Tears down each project's stack with BOUNDED
+ * concurrency (so a large multi-select can't flood one server's agent with
+ * simultaneous teardowns), then removes ALL their records in a SINGLE store write
+ * — one document persist + one activity row, instead of N independent
+ * `deleteProject` round-trips. Team-scoped; unknown/foreign ids are ignored.
+ * Returns the number actually deleted.
+ */
+export async function deleteProjects(ids: string[]): Promise<number> {
+  const { membership } = await requireCapability("deploy");
+  const user = read().users.find((u) => u.id === membership.userId)!;
+  const idSet = new Set(ids);
+  const projects = read().projects.filter(
+    (x) => idSet.has(x.id) && x.teamId === membership.teamId,
+  );
+  if (projects.length === 0) return 0;
+
+  // Tear down stacks ≤4 at a time. A throw/unreachable for one project must not
+  // abort the others or the record removal (P6: never leave records pinned).
+  const unreachable: string[] = [];
+  await mapLimit(projects, 4, async (project) => {
+    const tornDown = await teardownProject(project.slug).catch(() => false);
+    if (!tornDown) {
+      const server = read().servers.find((s) => s.id === project.serverId);
+      if (server) unreachable.push(`${project.name} (${server.name})`);
+    }
+    await agentTeardownDev(project).catch(() => {});
+    await removeProjectDevSshUsers(project.id).catch(() => {});
+    await removeUploads(project.id).catch(() => {});
+  });
+
+  const gone = new Set(projects.map((p) => p.id));
+  mutate((d) => {
+    d.projects = d.projects.filter((x) => !gone.has(x.id));
+    const team = d.teams.find((t) => t.id === membership.teamId);
+    if (team?.projectOrder)
+      team.projectOrder = team.projectOrder.filter((pid) => !gone.has(pid));
+    const depIds = d.deployments
+      .filter((x) => gone.has(x.projectId))
+      .map((x) => x.id);
+    d.deployments = d.deployments.filter((x) => !gone.has(x.projectId));
+    for (const depId of depIds) delete d.logs[depId];
+    d.envVars = d.envVars.filter((x) => !gone.has(x.projectId));
+    d.domains = d.domains.filter((x) => !gone.has(x.projectId));
+  });
+  recordActivity(
+    "project",
+    `Deleted ${projects.length} project${projects.length === 1 ? "" : "s"}`,
+    user.name,
+    null,
+  );
+  if (unreachable.length) {
+    recordActivity(
+      "project",
+      `Some servers were unreachable during bulk delete — leftover containers may ` +
+        `remain and must be removed manually: ${unreachable.join(", ")}`,
+      user.name,
+      null,
+    );
+  }
+  return projects.length;
 }

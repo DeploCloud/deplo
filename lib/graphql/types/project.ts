@@ -19,6 +19,7 @@ import {
   startProject,
   rebuildProject,
   deleteProject,
+  deleteProjects,
   reorderProjects,
   setProjectVolumes,
   findProjectSummaryBySlugForTeam,
@@ -104,6 +105,7 @@ export const ProjectRef = builder
       name: t.exposeString("name"),
       slug: t.exposeString("slug"),
       teamId: t.exposeID("teamId"),
+      folderId: t.exposeID("folderId", { nullable: true }),
       serverId: t.exposeID("serverId"),
       framework: t.exposeString("framework"),
       logo: t.exposeString("logo", { nullable: true }),
@@ -512,6 +514,14 @@ builder.mutationFields((t) => ({
       await deleteProject(id);
       return true;
     },
+  }),
+  deleteProjects: t.field({
+    type: "Int",
+    authScopes: { capability: "deploy" },
+    description:
+      "Bulk-delete several projects (bounded-concurrency teardown + one write). Returns how many were deleted.",
+    args: { ids: t.arg.idList({ required: true }) },
+    resolve: (_r, { ids }) => deleteProjects(ids.map(String)),
   }),
   renderComposeStack: t.field({
     type: "String",

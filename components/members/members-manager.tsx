@@ -23,8 +23,16 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +41,26 @@ import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import type { Capability, Role } from "@/lib/types";
 import type { MemberDTO } from "@/lib/data/members";
+
+/**
+ * The menu-primitive set used to render a member row's actions once and reuse
+ * them for BOTH the ⋯ dropdown (left-click) and the right-click context menu —
+ * same items, same handlers, no duplication. Radix dropdown and context menus
+ * share an isomorphic API, so the renderer just takes whichever set applies.
+ */
+type MenuKit = {
+  Item: React.ElementType;
+  Separator: React.ElementType;
+};
+
+const DROPDOWN_KIT: MenuKit = {
+  Item: DropdownMenuItem,
+  Separator: DropdownMenuSeparator,
+};
+const CONTEXT_KIT: MenuKit = {
+  Item: ContextMenuItem,
+  Separator: ContextMenuSeparator,
+};
 
 export function MembersManager({
   members,
@@ -90,6 +118,9 @@ function MemberRow({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [editOpen, setEditOpen] = React.useState(false);
+  // The team owner is immutable — no edit/remove controls (the data layer
+  // enforces this too). They keep their "Owner" role badge.
+  const isOwner = member.role === "owner";
 
   function remove() {
     startTransition(async () => {
@@ -106,8 +137,43 @@ function MemberRow({
     });
   }
 
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-border p-3">
+  // The row's actions, rendered once for whichever menu primitive is passed.
+  // Each item carries a native `title` so hovering it for ~a second explains
+  // what it does (reliable inside menus, unlike a nested styled tooltip).
+  const menu = (K: MenuKit) => (
+    <>
+      <K.Item
+        onSelect={(e: Event) => {
+          e.preventDefault();
+          setEditOpen(true);
+        }}
+        title="Adjust this member's role and capabilities"
+      >
+        <Pencil className="size-4" />
+        Edit permissions
+      </K.Item>
+      {!isSelf && (
+        <K.Item
+          variant="destructive"
+          disabled={pending}
+          onSelect={(e: Event) => {
+            e.preventDefault();
+            remove();
+          }}
+          title="Remove this member from the team"
+        >
+          <Trash2 className="size-4" />
+          Remove
+        </K.Item>
+      )}
+    </>
+  );
+
+  const row = (
+    <div
+      onContextMenu={(e) => e.stopPropagation()}
+      className="flex items-center justify-between rounded-lg border border-border p-3"
+    >
       <div className="flex items-center gap-3">
         <Avatar>
           <AvatarFallback
@@ -132,7 +198,7 @@ function MemberRow({
         <Badge variant="outline" className="capitalize">
           {member.role}
         </Badge>
-        {canManage && (
+        {canManage && !isOwner && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" aria-label="Member menu">
@@ -140,28 +206,7 @@ function MemberRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setEditOpen(true);
-                }}
-              >
-                <Pencil className="size-4" />
-                Edit permissions
-              </DropdownMenuItem>
-              {!isSelf && (
-                <DropdownMenuItem
-                  variant="destructive"
-                  disabled={pending}
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    remove();
-                  }}
-                >
-                  <Trash2 className="size-4" />
-                  Remove
-                </DropdownMenuItem>
-              )}
+              {menu(DROPDOWN_KIT)}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -175,6 +220,19 @@ function MemberRow({
         />
       )}
     </div>
+  );
+
+  // The owner row (and rows the viewer can't manage) has no actions, so it
+  // gets no right-click menu — the global shell menu still opens there.
+  if (!canManage || isOwner) return row;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent className="w-44">
+        {menu(CONTEXT_KIT)}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 

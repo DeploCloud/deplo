@@ -16,6 +16,10 @@ import {
   Loader2,
   RotateCcw,
   UploadCloud,
+  Container,
+  Globe,
+  Users,
+  Server,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,16 +84,93 @@ const PRESETS: DevImagePreset[] = [
   "java",
 ];
 
-const STATUS_VARIANT: Record<
+/**
+ * Presentational metadata for each container status: a human label, the
+ * coloured dot class, and whether the dot should pulse (transient states).
+ * The colour vocabulary matches the app's shared StatusDot — green = live,
+ * amber = transitioning, red = error, muted = off/stopped.
+ */
+const STATUS_META: Record<
   DevStatus,
-  "default" | "secondary" | "destructive" | "outline"
+  { label: string; dot: string; pulse: boolean }
 > = {
-  off: "outline",
-  starting: "secondary",
-  running: "default",
-  stopped: "secondary",
-  error: "destructive",
+  off: { label: "Off", dot: "bg-muted-foreground", pulse: false },
+  starting: { label: "Starting", dot: "bg-[var(--warning)]", pulse: true },
+  running: { label: "Running", dot: "bg-[var(--success)]", pulse: false },
+  stopped: { label: "Stopped", dot: "bg-muted-foreground", pulse: false },
+  error: { label: "Error", dot: "bg-destructive", pulse: false },
 };
+
+/** A coloured status dot + label, styled like the app's shared StatusBadge. */
+function StatusIndicator({ status }: { status: DevStatus }) {
+  const meta = STATUS_META[status] ?? STATUS_META.off;
+  return (
+    <Badge variant="outline" className="gap-1.5 py-1">
+      <span className="relative flex size-2.5 shrink-0">
+        {meta.pulse && (
+          <span
+            className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${meta.dot}`}
+          />
+        )}
+        <span
+          className={`relative inline-flex size-2.5 rounded-full ${meta.dot}`}
+        />
+      </span>
+      {meta.label}
+    </Badge>
+  );
+}
+
+/**
+ * An inline monospace chip that copies `value` to the clipboard on click and
+ * toasts `copiedMessage`. Used for the device code, tunnel name and SSH
+ * command — keeps the copy affordance consistent across the page.
+ */
+function CopyChip({
+  value,
+  copiedMessage,
+  children,
+  className = "",
+}: {
+  value: string;
+  copiedMessage: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`inline-flex items-center gap-1 rounded bg-background px-1.5 py-0.5 font-mono text-foreground transition-colors hover:bg-muted ${className}`}
+      onClick={() =>
+        navigator.clipboard
+          ?.writeText(value)
+          .then(() => toast.success(copiedMessage))
+          .catch(() => {})
+      }
+    >
+      {children} <Copy className="size-3" />
+    </button>
+  );
+}
+
+/** A small label + helper-text block reused at the top of grouped sections. */
+function SectionField({
+  label,
+  hint,
+  children,
+}: {
+  label: React.ReactNode;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      {children}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
 
 export function DevModeFields({
   projectId,
@@ -212,18 +293,24 @@ export function DevModeFields({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Dev Mode</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Code2 className="size-4 text-muted-foreground" /> Dev Mode
+          </CardTitle>
           <CardDescription>
             A live, editable dev container with hot reload and SSH access,
             alongside your production stack.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Dev mode is available only for projects with editable source
-            (GitHub, Git, or Upload). This project deploys from a prebuilt image
-            or a Compose stack, so there is no source tree to develop against.
-          </p>
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-10 text-center">
+            <Code2 className="size-8 text-muted-foreground/60" />
+            <p className="max-w-md text-sm text-muted-foreground">
+              Dev mode is available only for projects with editable source
+              (GitHub, Git, or Upload). This project deploys from a prebuilt
+              image or a Compose stack, so there is no source tree to develop
+              against.
+            </p>
+          </div>
         </CardContent>
       </Card>
     );
@@ -392,24 +479,33 @@ export function DevModeFields({
       {/* Dev Mode — enable toggle + container lifecycle */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Dev Mode</CardTitle>
-          <CardDescription>
-            A live, editable dev container with hot reload and SSH access,
-            alongside your production stack.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Enable + status */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label className="text-sm font-medium">Enable dev mode</Label>
-              <p className="text-sm text-muted-foreground">
-                Run a live, editable dev container alongside production, with
-                hot reload and SSH access. The workspace persists across
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1.5">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Code2 className="size-4 text-muted-foreground" /> Dev Mode
+              </CardTitle>
+              <CardDescription>
+                A live, editable dev container with hot reload and SSH access,
+                alongside your production stack. The workspace persists across
                 restarts.
+              </CardDescription>
+            </div>
+            {enabled && <StatusIndicator status={dev.status} />}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Enable toggle */}
+          <div className="flex items-center justify-between rounded-lg border border-border p-4">
+            <div className="space-y-0.5 pr-4">
+              <Label htmlFor="dev-enable" className="text-sm font-medium">
+                Enable dev mode
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Run the dev container alongside your production stack.
               </p>
             </div>
             <Switch
+              id="dev-enable"
               checked={enabled}
               onCheckedChange={toggleEnabled}
               disabled={pending}
@@ -417,56 +513,66 @@ export function DevModeFields({
           </div>
 
           {enabled && (
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant={STATUS_VARIANT[dev.status]}>{dev.status}</Badge>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={start}
-                disabled={pending}
-              >
-                <Play className="size-4" />
-                {dev.status === "running" ? "Restart" : "Start"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={stop}
-                disabled={pending}
-              >
-                <Square className="size-4" />
-                Stop
-              </Button>
-              <ConfirmAction
-                trigger={
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-destructive hover:text-destructive"
-                    disabled={pending}
-                  >
-                    <RotateCcw className="size-4" />
-                    Reset from source
-                  </Button>
-                }
-                title="Reset workspace from source?"
-                description="This replaces ALL files in the dev workspace with a fresh copy of the current deploy source, and reinstalls dependencies. Any uncommitted changes in the dev container are permanently lost. Use this after changing the deploy source."
-                confirmLabel="Replace all files"
-                onConfirm={resetWorkspace}
-              />
-              <ConfirmAction
-                variant="default"
-                trigger={
-                  <Button size="sm" variant="outline" disabled={pending}>
-                    <UploadCloud className="size-4" />
-                    Deploy current files
-                  </Button>
-                }
-                title="Deploy the current dev files to production?"
-                description="This builds and deploys the files exactly as they are RIGHT NOW in the dev workspace — including uncommitted edits — and replaces the live production app with the result. Dependencies are reinstalled during the build, exactly like a normal deploy. It does NOT push to git or change your deploy source; it only ships this snapshot. The previous production version stays in your deployment history."
-                confirmLabel="Build & deploy now"
-                onConfirm={deployFromWorkspace}
-              />
+            <div className="space-y-3 border-t border-border pt-5">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Container lifecycle</p>
+                <p className="text-xs text-muted-foreground">
+                  Start, restart, or stop the container. Reset rebuilds the
+                  workspace from source; deploy ships the current files to
+                  production.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={start}
+                  disabled={pending}
+                >
+                  <Play className="size-4" />
+                  {dev.status === "running" ? "Restart" : "Start"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={stop}
+                  disabled={pending}
+                >
+                  <Square className="size-4" />
+                  Stop
+                </Button>
+                <span className="mx-1 hidden h-5 w-px bg-border sm:inline-block" />
+                <ConfirmAction
+                  trigger={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-destructive hover:text-destructive"
+                      disabled={pending}
+                    >
+                      <RotateCcw className="size-4" />
+                      Reset from source
+                    </Button>
+                  }
+                  title="Reset workspace from source?"
+                  description="This replaces ALL files in the dev workspace with a fresh copy of the current deploy source, and reinstalls dependencies. Any uncommitted changes in the dev container are permanently lost. Use this after changing the deploy source."
+                  confirmLabel="Replace all files"
+                  onConfirm={resetWorkspace}
+                />
+                <ConfirmAction
+                  variant="default"
+                  trigger={
+                    <Button size="sm" variant="outline" disabled={pending}>
+                      <UploadCloud className="size-4" />
+                      Deploy current files
+                    </Button>
+                  }
+                  title="Deploy the current dev files to production?"
+                  description="This builds and deploys the files exactly as they are RIGHT NOW in the dev workspace — including uncommitted edits — and replaces the live production app with the result. Dependencies are reinstalled during the build, exactly like a normal deploy. It does NOT push to git or change your deploy source; it only ships this snapshot. The previous production version stays in your deployment history."
+                  confirmLabel="Build & deploy now"
+                  onConfirm={deployFromWorkspace}
+                />
+              </div>
             </div>
           )}
         </CardContent>
@@ -479,10 +585,10 @@ export function DevModeFields({
               <Code2 className="size-4" /> VS Code
             </UnderlineTabsTrigger>
             <UnderlineTabsTrigger value="container">
-              Container
+              <Container className="size-4" /> Container
             </UnderlineTabsTrigger>
             <UnderlineTabsTrigger value="preview">
-              Preview &amp; Env
+              <Globe className="size-4" /> Preview &amp; Env
             </UnderlineTabsTrigger>
             <UnderlineTabsTrigger value="ssh">
               <Terminal className="size-4" /> SSH Access
@@ -494,7 +600,8 @@ export function DevModeFields({
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Code2 className="size-4" /> Open in VS Code
+                <Code2 className="size-4 text-muted-foreground" /> Open in VS
+                Code
               </CardTitle>
               <CardDescription>
                 Runs a secure tunnel inside the dev container (no inbound
@@ -502,49 +609,58 @@ export function DevModeFields({
                 <span className="font-mono">vscode.dev</span>.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-end gap-3">
-              {tunnelChecking ? (
-                <Button size="sm" variant="outline" disabled>
-                  <Loader2 className="size-4 animate-spin" />
-                  Checking VS Code tunnel…
-                </Button>
-              ) : !tunnel?.running ? (
-                <Button
-                  size="sm"
-                  onClick={openInVscode}
-                  disabled={pending || tunnelBusy || dev.status !== "running"}
-                >
-                  {tunnelBusy ? (
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium">Remote tunnel</p>
+                  <p className="text-xs text-muted-foreground">
+                    {tunnel?.connected
+                      ? "Connected — open the editor below."
+                      : tunnel?.loginUrl
+                        ? "Waiting for you to authorize the device."
+                        : dev.status === "running"
+                          ? "Start a tunnel to edit this workspace in VS Code."
+                          : "Start the dev container first."}
+                  </p>
+                </div>
+                {tunnelChecking ? (
+                  <Button size="sm" variant="outline" disabled>
                     <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Code2 className="size-4" />
-                  )}
-                  Open in VS Code
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={closeTunnel}
-                  disabled={pending}
-                >
-                  <Square className="size-4" />
-                  {tunnel.connected ? "Close tunnel" : "Cancel"}
-                </Button>
-              )}
-            </div>
-
-            {dev.status !== "running" && !tunnel && (
-              <p className="text-xs text-muted-foreground">
-                Start the dev container first.
-              </p>
-            )}
+                    Checking VS Code tunnel…
+                  </Button>
+                ) : !tunnel?.running ? (
+                  <Button
+                    size="sm"
+                    onClick={openInVscode}
+                    disabled={pending || tunnelBusy || dev.status !== "running"}
+                  >
+                    {tunnelBusy ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Code2 className="size-4" />
+                    )}
+                    Open in VS Code
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={closeTunnel}
+                    disabled={pending}
+                  >
+                    <Square className="size-4" />
+                    {tunnel.connected ? "Close tunnel" : "Cancel"}
+                  </Button>
+                )}
+              </div>
 
             {/* Device-code step (awaiting authorization) */}
             {tunnel?.loginUrl && !tunnel.connected && (
-              <div className="rounded-md bg-muted/50 p-3 text-sm">
-                <p className="mb-2 font-medium">Authorize this device</p>
+              <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm">
+                <p className="mb-3 flex items-center gap-1.5 font-medium">
+                  <KeyRound className="size-4 text-muted-foreground" />
+                  Authorize this device
+                </p>
                 <ol className="ml-4 list-decimal space-y-1.5 text-muted-foreground">
                   <li>
                     Open{" "}
@@ -559,21 +675,16 @@ export function DevModeFields({
                   </li>
                   <li className="flex items-center gap-2">
                     Enter the code:
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 rounded bg-background px-2 py-0.5 font-mono text-foreground"
-                      onClick={() =>
-                        navigator.clipboard
-                          ?.writeText(tunnel.loginCode ?? "")
-                          .then(() => toast.success("Code copied"))
-                          .catch(() => {})
-                      }
+                    <CopyChip
+                      value={tunnel.loginCode ?? ""}
+                      copiedMessage="Code copied"
+                      className="px-2 py-0.5"
                     >
-                      {tunnel.loginCode} <Copy className="size-3" />
-                    </button>
+                      {tunnel.loginCode}
+                    </CopyChip>
                   </li>
                 </ol>
-                <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Loader2 className="size-3 animate-spin" /> Waiting for
                   authorization…
                 </p>
@@ -582,8 +693,11 @@ export function DevModeFields({
 
             {/* Connected — only now is the editor URL real and reachable */}
             {tunnel?.connected && tunnel.tunnelUrl && (
-              <div className="space-y-2 rounded-md bg-muted/50 p-3 text-sm">
-                <p className="font-medium text-foreground">Tunnel connected</p>
+              <div className="space-y-2.5 rounded-lg border border-[var(--success)]/30 bg-[var(--success)]/5 p-4 text-sm">
+                <p className="flex items-center gap-1.5 font-medium text-foreground">
+                  <span className="inline-flex size-2.5 rounded-full bg-[var(--success)]" />
+                  Tunnel connected
+                </p>
                 <div className="space-y-1.5 text-muted-foreground">
                   <p>
                     <span className="text-foreground">In the browser:</span>{" "}
@@ -614,18 +728,12 @@ export function DevModeFields({
                       const tn =
                         tunnel.tunnelUrl?.match(/tunnel\/([^/]+)/)?.[1] ?? "";
                       return (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded bg-background px-1.5 py-0.5 font-mono text-foreground"
-                          onClick={() =>
-                            navigator.clipboard
-                              ?.writeText(tn)
-                              .then(() => toast.success("Tunnel name copied"))
-                              .catch(() => {})
-                          }
+                        <CopyChip
+                          value={tn}
+                          copiedMessage="Tunnel name copied"
                         >
-                          {tn} <Copy className="size-3" />
-                        </button>
+                          {tn}
+                        </CopyChip>
                       );
                     })()}
                   </p>
@@ -648,8 +756,9 @@ export function DevModeFields({
           <TabsContent value="container" className="mt-0">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
-                Container Configuration
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Container className="size-4 text-muted-foreground" /> Container
+                Configuration
               </CardTitle>
               <CardDescription>
                 The base image and port the dev container runs on.
@@ -658,8 +767,15 @@ export function DevModeFields({
             <CardContent className="space-y-4">
               {/* Base image + port */}
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Base image</Label>
+                <SectionField
+                  label="Base image"
+                  hint={
+                    <>
+                      Runs on official base{" "}
+                      <code className="font-mono">{dev.resolvedImage}</code>.
+                    </>
+                  }
+                >
                   <Select
                     value={imageKind === "custom" ? "custom" : image}
                     onValueChange={(v) => {
@@ -691,28 +807,25 @@ export function DevModeFields({
                       placeholder="e.g. node:22-bookworm"
                     />
                   )}
-                  <p className="text-xs text-muted-foreground">
-                    Runs on official base{" "}
-                    <code className="font-mono">{dev.resolvedImage}</code>.
-                  </p>
-                </div>
+                </SectionField>
 
-                <div className="space-y-2">
-                  <Label>Dev port</Label>
+                <SectionField
+                  label="Dev port"
+                  hint="The port your dev server listens on. Defaults to the production port."
+                >
                   <Input
                     type="number"
                     value={port}
                     onChange={(e) => setPort(Number(e.target.value) || 0)}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    The port your dev server listens on. Defaults to the
-                    production port.
-                  </p>
-                </div>
+                </SectionField>
               </div>
 
-              <div className="space-y-2 rounded-md bg-muted/50 p-3">
-                <Label className="text-sm">Running your dev server</Label>
+              <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-4">
+                <Label className="flex items-center gap-1.5 text-sm">
+                  <Terminal className="size-3.5 text-muted-foreground" />
+                  Running your dev server
+                </Label>
                 <p className="text-xs text-muted-foreground">
                   The container does <strong>not</strong> auto-start a dev
                   server — you run it yourself over SSH or the VS Code terminal,
@@ -746,7 +859,10 @@ export function DevModeFields({
           <TabsContent value="preview" className="mt-0">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Preview &amp; Environment</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Globe className="size-4 text-muted-foreground" /> Preview &amp;
+                Environment
+              </CardTitle>
               <CardDescription>
                 How the dev app is routed publicly and which env vars it
                 inherits.
@@ -754,17 +870,18 @@ export function DevModeFields({
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Preview route */}
-              <div className="flex items-center justify-between rounded-md border border-border p-3">
-                <div className="space-y-1">
-                  <Label className="text-sm">Preview URL</Label>
-                  <p className="text-xs text-muted-foreground">
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
+                <div className="min-w-0 space-y-1">
+                  <Label className="text-sm font-medium">Preview URL</Label>
+                  <p className="truncate text-xs text-muted-foreground">
                     {previewEnabled ? (
                       <a
                         href={dev.previewUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="font-mono underline"
+                        className="inline-flex items-center gap-1 font-mono underline"
                       >
+                        <ExternalLink className="size-3" />
                         {dev.previewUrl}
                       </a>
                     ) : (
@@ -780,11 +897,12 @@ export function DevModeFields({
               </div>
 
               {/* Env cliff note */}
-              <p className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
-                <strong>Heads up:</strong> the dev container inherits only env
-                entries tagged <code className="font-mono">development</code> —
-                its own <code className="font-mono">development</code> vars plus
-                any attached shared group that targets{" "}
+              <p className="rounded-lg border border-border bg-muted/40 p-4 text-xs text-muted-foreground">
+                <strong className="text-foreground">Heads up:</strong> the dev
+                container inherits only env entries tagged{" "}
+                <code className="font-mono">development</code> — its own{" "}
+                <code className="font-mono">development</code> vars plus any
+                attached shared group that targets{" "}
                 <code className="font-mono">development</code>. Production and
                 preview-only entries are not included.
               </p>
@@ -803,87 +921,123 @@ export function DevModeFields({
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Terminal className="size-4" /> SSH Access
+                <Terminal className="size-4 text-muted-foreground" /> SSH Access
               </CardTitle>
               <CardDescription>
                 Each user reaches only this project&apos;s dev container,
                 landing as <code className="font-mono">devuser</code> in{" "}
                 <code className="font-mono">/workspace</code>. A key is the
-                default; a password is an opt-in. All users share one host and
-                port: <code className="font-mono">{host}:2222</code>.
+                default; a password is an opt-in.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {users.length > 0 && (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Username</TableHead>
-                      <TableHead>Auth</TableHead>
-                      <TableHead>Connect</TableHead>
-                      <TableHead className="w-10" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.map((u) => {
-                      const cmd = `ssh ${u.username}@${host} -p 2222`;
-                      return (
-                        <TableRow key={u.id}>
-                          <TableCell className="font-mono">
-                            {u.username}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-1">
-                              {u.publicKey && (
-                                <Badge variant="outline" className="gap-1">
-                                  <KeyRound className="size-3" /> key
-                                </Badge>
-                              )}
-                              {u.hasPassword && (
-                                <Badge variant="outline">password</Badge>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <button
-                              type="button"
-                              className="flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
-                              onClick={() => {
-                                navigator.clipboard
-                                  ?.writeText(cmd)
-                                  .then(() => toast.success("Copied"))
-                                  .catch(() => {});
-                              }}
-                            >
-                              <Copy className="size-3" /> {cmd}
-                            </button>
-                          </TableCell>
-                          <TableCell>
-                            <ConfirmAction
-                              trigger={
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-8"
-                                >
-                                  <Trash2 className="size-4" />
-                                </Button>
-                              }
-                              title={`Remove ${u.username}?`}
-                              description="Their SSH access is revoked immediately. This cannot be undone."
-                              confirmLabel="Remove user"
-                              onConfirm={() => removeUser(u.id, u.username)}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+            <CardContent className="space-y-4">
+              {/* Shared host / port */}
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <Server className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="text-muted-foreground">
+                    Shared host &amp; port
+                  </span>
+                </div>
+                <CopyChip
+                  value={`${host}:2222`}
+                  copiedMessage="Host copied"
+                  className="text-xs"
+                >
+                  {host}:2222
+                </CopyChip>
+              </div>
+
+              {/* Users */}
+              {users.length > 0 ? (
+                <div className="overflow-hidden rounded-lg border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Username</TableHead>
+                        <TableHead>Auth</TableHead>
+                        <TableHead>Connect</TableHead>
+                        <TableHead className="w-10" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {users.map((u) => {
+                        const cmd = `ssh ${u.username}@${host} -p 2222`;
+                        return (
+                          <TableRow key={u.id}>
+                            <TableCell className="font-mono">
+                              {u.username}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-1">
+                                {u.publicKey && (
+                                  <Badge variant="outline" className="gap-1">
+                                    <KeyRound className="size-3" /> key
+                                  </Badge>
+                                )}
+                                {u.hasPassword && (
+                                  <Badge variant="outline">password</Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <button
+                                type="button"
+                                className="flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() => {
+                                  navigator.clipboard
+                                    ?.writeText(cmd)
+                                    .then(() => toast.success("Copied"))
+                                    .catch(() => {});
+                                }}
+                              >
+                                <Copy className="size-3" /> {cmd}
+                              </button>
+                            </TableCell>
+                            <TableCell>
+                              <ConfirmAction
+                                trigger={
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-8"
+                                  >
+                                    <Trash2 className="size-4" />
+                                  </Button>
+                                }
+                                title={`Remove ${u.username}?`}
+                                description="Their SSH access is revoked immediately. This cannot be undone."
+                                confirmLabel="Remove user"
+                                onConfirm={() => removeUser(u.id, u.username)}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-8 text-center">
+                  <Users className="size-6 text-muted-foreground/60" />
+                  <p className="text-sm text-muted-foreground">
+                    No SSH users yet. Add one below to connect to the dev
+                    container.
+                  </p>
+                </div>
               )}
 
               {/* Add user */}
-              <div className="space-y-3 rounded-md border border-border p-3">
+              <div className="space-y-3 rounded-lg border border-border p-4">
+                <div className="space-y-0.5">
+                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <Plus className="size-3.5 text-muted-foreground" /> Add SSH
+                    user
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Provide a key (recommended), a password, or both.
+                  </p>
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Username</Label>

@@ -6,6 +6,10 @@ import {
   Plus,
   ChevronDown,
   Rocket,
+  Sparkles,
+  LayoutTemplate,
+  FolderPlus,
+  Database,
   Users,
   UserPlus,
   UserCog,
@@ -16,10 +20,14 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
+import { CreateFolderDialog } from "@/components/projects/create-folder-dialog";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 
@@ -35,12 +43,16 @@ import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
  */
 export function AddNewMenu({
   canManageMembers,
+  canManageFolders,
   isAdmin,
 }: {
   canManageMembers: boolean;
+  /** Whether the viewer may create folders (instance admin or manage_team). */
+  canManageFolders: boolean;
   isAdmin: boolean;
 }) {
   const [teamOpen, setTeamOpen] = React.useState(false);
+  const [folderOpen, setFolderOpen] = React.useState(false);
   const [memberOpen, setMemberOpen] = React.useState(false);
   const [userOpen, setUserOpen] = React.useState(false);
 
@@ -55,12 +67,46 @@ export function AddNewMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuItem asChild>
-            <Link href="/new" className="cursor-pointer">
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="cursor-pointer">
               <Rocket className="size-4" />
               New project
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem asChild>
+                <Link href="/new" className="cursor-pointer">
+                  <Sparkles className="size-4" />
+                  From Scratch
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/templates" className="cursor-pointer">
+                  <LayoutTemplate className="size-4" />
+                  From Template
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuItem asChild>
+            {/* Opens the create-database modal straight away on the Storage
+                page (the databases tab) via the ?new=database param. */}
+            <Link href="/storage?new=database" className="cursor-pointer">
+              <Database className="size-4" />
+              New database
             </Link>
           </DropdownMenuItem>
+          {canManageFolders && (
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={(e) => {
+                e.preventDefault();
+                setFolderOpen(true);
+              }}
+            >
+              <FolderPlus className="size-4" />
+              New folder
+            </DropdownMenuItem>
+          )}
 
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Team</DropdownMenuLabel>
@@ -107,6 +153,9 @@ export function AddNewMenu({
       </DropdownMenu>
 
       <CreateTeamDialog open={teamOpen} onOpenChange={setTeamOpen} />
+      {canManageFolders && (
+        <CreateFolderDialog open={folderOpen} onOpenChange={setFolderOpen} />
+      )}
       {canManageMembers && (
         <AddMemberDialog open={memberOpen} onOpenChange={setMemberOpen} />
       )}

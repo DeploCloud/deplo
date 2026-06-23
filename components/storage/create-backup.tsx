@@ -34,13 +34,23 @@ import { gqlAction } from "@/lib/graphql-client";
 export function CreateBackup({
   databases,
   destinations,
+  autoOpen = false,
 }: {
   databases: { id: string; name: string }[];
   destinations: { id: string; name: string }[];
+  /** Open on mount — used by the global "New ▸ Schedule backup" menu
+   *  (which links to /storage?new=backup). */
+  autoOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(autoOpen);
   const [pending, startTransition] = React.useTransition();
+
+  // Drop the ?new=backup param after opening so a refresh/Back doesn't reopen it.
+  React.useEffect(() => {
+    if (autoOpen) router.replace("/storage", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [name, setName] = React.useState("");
   const [databaseId, setDatabaseId] = React.useState<string>(
     databases[0]?.id ?? ""

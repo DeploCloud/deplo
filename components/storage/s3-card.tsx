@@ -13,6 +13,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { timeAgo } from "@/lib/utils";
@@ -27,6 +34,22 @@ const PROVIDER_LABEL: Record<string, string> = {
   wasabi: "Wasabi",
   minio: "MinIO",
   other: "S3-compatible",
+};
+
+/** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
+ *  right-click context menu (see the note in project-card.tsx). */
+type MenuKit = {
+  Item: React.ElementType;
+  Separator: React.ElementType;
+};
+
+const DROPDOWN_KIT: MenuKit = {
+  Item: DropdownMenuItem,
+  Separator: DropdownMenuSeparator,
+};
+const CONTEXT_KIT: MenuKit = {
+  Item: ContextMenuItem,
+  Separator: ContextMenuSeparator,
 };
 
 export function S3Card({ dest }: { dest: S3DestinationDTO }) {
@@ -47,8 +70,36 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
     });
   }
 
-  return (
-    <Card>
+  // The destination's actions, rendered once for whichever menu primitive is
+  // passed — the ⋯ dropdown and the right-click context menu share these items
+  // and handlers. Each item carries a native `title` like the project card.
+  const menu = (K: MenuKit) => (
+    <>
+      <K.Item
+        onClick={test}
+        disabled={pending}
+        title="Verify this destination's credentials and reachability"
+      >
+        <PlugZap className="size-4" />
+        Test connection
+      </K.Item>
+      <K.Separator />
+      <K.Item
+        variant="destructive"
+        onSelect={(e: Event) => {
+          e.preventDefault();
+          setConfirmOpen(true);
+        }}
+        title="Remove this destination — bucket contents are not affected"
+      >
+        <Trash2 className="size-4" />
+        Remove
+      </K.Item>
+    </>
+  );
+
+  const cardInner = (
+    <Card onContextMenu={(e) => e.stopPropagation()}>
       <CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -71,21 +122,7 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={test} disabled={pending}>
-                  <PlugZap className="size-4" />
-                  Test connection
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setConfirmOpen(true);
-                  }}
-                >
-                  <Trash2 className="size-4" />
-                  Remove
-                </DropdownMenuItem>
+                {menu(DROPDOWN_KIT)}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -114,6 +151,13 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
           </div>
         </dl>
       </CardContent>
+    </Card>
+  );
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{cardInner}</ContextMenuTrigger>
+      <ContextMenuContent className="w-48">{menu(CONTEXT_KIT)}</ContextMenuContent>
 
       <ConfirmAction
         open={confirmOpen}
@@ -131,6 +175,6 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
           return res;
         }}
       />
-    </Card>
+    </ContextMenu>
   );
 }

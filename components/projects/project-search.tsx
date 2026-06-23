@@ -12,23 +12,32 @@ export type ProjectView = "grid" | "list";
 export function ProjectSearch({
   initialQuery,
   initialView,
+  initialFolder = "",
 }: {
   initialQuery: string;
   initialView: ProjectView;
+  /** The open folder id, preserved across view toggles (dropped when searching). */
+  initialFolder?: string;
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState(initialQuery);
   const [view, setView] = React.useState<ProjectView>(initialView);
 
-  // Build the dashboard URL from query + view, omitting defaults (empty query,
-  // grid view) so the address bar stays clean.
-  const buildHref = React.useCallback((nextQ: string, nextView: ProjectView) => {
-    const params = new URLSearchParams();
-    if (nextQ.trim()) params.set("q", nextQ.trim());
-    if (nextView === "list") params.set("view", "list");
-    const qs = params.toString();
-    return qs ? `/?${qs}` : "/";
-  }, []);
+  // Build the dashboard URL from query + view (+ open folder), omitting defaults
+  // (empty query, grid view) so the address bar stays clean. A query is a GLOBAL
+  // search, so it drops the folder scope; with no query the folder is preserved
+  // so toggling the view doesn't kick you out of an open folder.
+  const buildHref = React.useCallback(
+    (nextQ: string, nextView: ProjectView) => {
+      const params = new URLSearchParams();
+      if (nextQ.trim()) params.set("q", nextQ.trim());
+      else if (initialFolder) params.set("folder", initialFolder);
+      if (nextView === "list") params.set("view", "list");
+      const qs = params.toString();
+      return qs ? `/?${qs}` : "/";
+    },
+    [initialFolder],
+  );
 
   // Debounce text input -> URL. `view` is read via ref so a stale closure here
   // never clobbers a view chosen mid-debounce.

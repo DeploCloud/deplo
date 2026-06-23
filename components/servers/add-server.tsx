@@ -26,13 +26,20 @@ import { gqlAction } from "@/lib/graphql-client";
  * single-use token and is shown only once, so this is a two-step dialog:
  * register → reveal command (the dialog stays open on the command screen).
  */
-export function AddServer() {
+export function AddServer({ autoOpen = false }: { autoOpen?: boolean } = {}) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(autoOpen);
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
   const [host, setHost] = React.useState("");
   const [command, setCommand] = React.useState<string | null>(null);
+
+  // Opened via the global "New ▸ Add server" menu (?new=1) → drop the param so a
+  // refresh/Back doesn't reopen it.
+  React.useEffect(() => {
+    if (autoOpen) router.replace("/settings/servers", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function reset() {
     setName("");

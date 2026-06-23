@@ -398,6 +398,11 @@ enum DomainStatus {
   valid
 }
 
+input EnvEntryInput {
+  key: String!
+  value: String!
+}
+
 enum EnvTarget {
   development
   preview
@@ -458,6 +463,21 @@ type FileEntry {
   name: String
   path: String
   size: Int
+}
+
+"""
+A team-wide grouping of projects on the Overview. Projects reference their folder via `Project.folderId`; folders nest via `parentId` (a tree).
+"""
+type Folder {
+  color: String
+  createdAt: String
+  id: ID
+  name: String
+  parentId: ID
+  projectCount: Int
+  subfolderCount: Int
+  teamId: ID
+  updatedAt: String
 }
 
 input GitRepoInput {
@@ -601,6 +621,11 @@ type Mutation {
   """Create a backup schedule. Returns true."""
   createBackup(input: CreateBackupInput!): Boolean
   createDatabase(input: CreateDatabaseInput!): Database
+
+  """
+  Create a folder in the active team; nest it by passing a parent folder id.
+  """
+  createFolder(color: String, name: String!, parentId: ID): Folder
   createProject(input: CreateProjectInput!): Project
 
   """Create a new (empty) folder in the project files tree."""
@@ -624,11 +649,19 @@ type Mutation {
   """Delete an env var. Returns true."""
   deleteEnv(id: String!): Boolean
 
+  """Delete a folder; its projects fall back to the top level."""
+  deleteFolder(id: ID!): Boolean
+
   """Delete the project and tear down its stack. Returns true."""
   deleteProject(id: String!): Boolean
 
   """Delete a file or folder (recursively). Returns true."""
   deleteProjectFile(path: String!, projectId: String!): Boolean
+
+  """
+  Bulk-delete several projects (bounded-concurrency teardown + one write). Returns how many were deleted.
+  """
+  deleteProjects(ids: [ID!]!): Int
 
   """Delete a registry credential. Returns true."""
   deleteRegistry(id: String!): Boolean
@@ -670,6 +703,21 @@ type Mutation {
   """
   mintRegistrationLink: String
 
+  """
+  Move a folder under a new parent folder, or to the top level when parentId is omitted/null. Rejects moving a folder into itself or a descendant.
+  """
+  moveFolder(id: ID!, parentId: ID): Boolean
+
+  """
+  Move a project into a folder, or back to the top level when folderId is omitted/null.
+  """
+  moveProjectToFolder(folderId: ID, projectId: ID!): Boolean
+
+  """
+  Bulk-move several projects into a folder (or to the top level when folderId is omitted/null) in one write. Returns how many moved.
+  """
+  moveProjectsToFolder(folderId: ID, projectIds: [ID!]!): Int
+
   """Promote a preview deployment to production."""
   promoteDeployment(id: String!): Boolean
   rebuildProject(id: String!): Project
@@ -701,6 +749,9 @@ type Mutation {
   Disconnect and remove a remote server (revokes trust, best-effort teardown). Returns a warning string if the agent was unreachable, else null.
   """
   removeServer(id: String!): String
+
+  """Rename a folder."""
+  renameFolder(id: ID!, name: String!): Boolean
   renameProject(id: String!, name: String!): Project
 
   """Rename or move a file/folder within the project files tree."""
@@ -708,6 +759,9 @@ type Mutation {
 
   """Render the docker-compose stack a project would deploy."""
   renderComposeStack(projectId: String!): String
+
+  """Set the team-wide display order of folders in Overview."""
+  reorderFolders(folderIds: [ID!]!): Boolean
 
   """Set the team-wide display order of projects in Overview."""
   reorderProjects(projectIds: [ID!]!): Boolean
@@ -742,9 +796,19 @@ type Mutation {
   saveSharedEnvGroup(input: SaveSharedEnvGroupInput!): SharedEnvGroup
   setDatabaseRunning(id: String!, running: Boolean!): Database
 
+  """
+  Set a folder's accent colour (hex, e.g. #3b82f6), or clear it back to the default when color is omitted/null.
+  """
+  setFolderColor(color: String, id: ID!): Boolean
+
   """Make this domain its project's primary (canonical) host. Returns true."""
   setPrimaryDomain(id: String!): Boolean
   setProjectAutoDeploy(id: String!, value: Boolean!): Project
+
+  """
+  Replace a project's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.
+  """
+  setProjectEnv(defaultTargets: [EnvTarget!]!, entries: [EnvEntryInput!]!, projectId: String!): Int
 
   """
   Replace a single-container project's volumes (named, project-files, and host bind mounts).
@@ -857,6 +921,7 @@ type Project {
   deployments: [Deployment!]
   dockerImage: String
   domainCount: Int
+  folderId: ID
   framework: String
   id: ID
   latestDeployment: Deployment
@@ -963,6 +1028,9 @@ type Query {
 
   """Env vars of a single project (requires manage_env)."""
   env(projectId: String!): [EnvVar!]
+
+  """All folders in the active team, in display order."""
+  folders: [Folder!]
 
   """Connected GitHub Apps in the active team."""
   githubApps: [GithubApp!]

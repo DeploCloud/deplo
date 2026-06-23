@@ -6,6 +6,7 @@ import {
   revealEnv,
   upsertEnv,
   importEnv,
+  setProjectEnv,
   deleteEnv,
   type ProjectEnvGroup,
 } from "@/lib/data/env";
@@ -85,6 +86,15 @@ const UpsertEnvInputType = builder.inputType("UpsertEnvInput", {
   }),
 });
 
+// One KEY=VALUE pair for the ".env editor" (setProjectEnv). `type`/`targets` are
+// not expressed here: existing vars keep theirs, new ones default to plain.
+const EnvEntryInputType = builder.inputType("EnvEntryInput", {
+  fields: (t) => ({
+    key: t.string({ required: true }),
+    value: t.string({ required: true }),
+  }),
+});
+
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
 /* ------------------------------------------------------------------ */
@@ -148,6 +158,23 @@ builder.mutationFields((t) => ({
     },
     resolve: (_r, { projectId, blob, targets }) =>
       importEnv(projectId, blob, targets),
+  }),
+  setProjectEnv: t.field({
+    type: "Int",
+    authScopes: { capability: "manage_env" },
+    description:
+      "Replace a project's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.",
+    args: {
+      projectId: t.arg.string({ required: true }),
+      entries: t.arg({ type: [EnvEntryInputType], required: true }),
+      defaultTargets: t.arg({ type: [EnvTargetEnum], required: true }),
+    },
+    resolve: (_r, { projectId, entries, defaultTargets }) =>
+      setProjectEnv(
+        projectId,
+        entries.map((e) => ({ key: e.key, value: e.value })),
+        defaultTargets,
+      ),
   }),
   revealEnv: t.field({
     type: "String",

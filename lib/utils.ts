@@ -87,6 +87,65 @@ export function hostVolumeName(slug: string, name: string): string {
   return `deplo-${slug}-${name}`;
 }
 
+/**
+ * Validate a user-typed colour without throwing — accepts `#rgb`/`#rrggbb`
+ * (with or without the leading `#`, any case). Used for live client-side input
+ * validation; {@link normalizeHexColor} is the throwing, normalising sibling
+ * used at the trust boundary (the data layer).
+ */
+export function isHexColor(input: string): boolean {
+  return /^#?(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(input.trim());
+}
+
+/**
+ * Normalise a colour to a canonical lowercase `#rrggbb`, expanding the `#rgb`
+ * shorthand and tolerating a missing `#`. Throws on anything that is not a valid
+ * hex colour, so callers can persist the result verbatim and every stored colour
+ * is the same shape (cheap parsing in {@link readableTextColor}).
+ */
+export function normalizeHexColor(input: string): string {
+  const raw = input.trim().replace(/^#/, "").toLowerCase();
+  if (!/^(?:[0-9a-f]{3}|[0-9a-f]{6})$/.test(raw)) {
+    throw new Error("Enter a valid hex colour, e.g. #3b82f6.");
+  }
+  const full =
+    raw.length === 3
+      ? raw
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : raw;
+  return `#${full}`;
+}
+
+/**
+ * Pick the readable foreground (`#000000` or `#ffffff`) for text/icons placed on
+ * a solid `hex` background — automatic contrast. Uses the WCAG relative
+ * luminance with the 0.179 crossover (the luminance at which black and white
+ * text have equal contrast), so a folder's chosen colour never produces an
+ * unreadable label. Defensive: an unparseable colour falls back to dark text.
+ */
+export function readableTextColor(hex: string): "#000000" | "#ffffff" {
+  // Parse defensively (no throwing): tolerate a missing `#`, any case, and the
+  // `#rgb` shorthand; anything unparseable falls back to dark text.
+  const raw = hex.trim().replace(/^#/, "").toLowerCase();
+  const full = /^[0-9a-f]{3}$/.test(raw)
+    ? raw
+        .split("")
+        .map((c) => c + c)
+        .join("")
+    : raw;
+  if (!/^[0-9a-f]{6}$/.test(full)) return "#000000";
+  const n = parseInt(full, 16);
+  const channels = [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff].map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  const lum =
+    0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  return lum > 0.179 ? "#000000" : "#ffffff";
+}
+
 /** Deterministic short id for client-only keys (not for security). */
 export function shortId(length = 8): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";

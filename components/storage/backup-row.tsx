@@ -15,11 +15,34 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { BackupDTO } from "@/lib/data/backups";
+
+/** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
+ *  right-click context menu (see the note in project-card.tsx). */
+type MenuKit = {
+  Item: React.ElementType;
+  Separator: React.ElementType;
+};
+
+const DROPDOWN_KIT: MenuKit = {
+  Item: DropdownMenuItem,
+  Separator: DropdownMenuSeparator,
+};
+const CONTEXT_KIT: MenuKit = {
+  Item: ContextMenuItem,
+  Separator: ContextMenuSeparator,
+};
 
 export function BackupRow({ backup }: { backup: BackupDTO }) {
   const router = useRouter();
@@ -50,8 +73,32 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
     });
   }
 
-  return (
-    <TableRow>
+  // Backup actions, rendered once for whichever menu primitive is passed. Each
+  // item carries a native `title` so hovering it explains what it does. "Run now"
+  // is disabled while a mutation is in flight; delete confirms before removing.
+  const menu = (K: MenuKit) => (
+    <>
+      <K.Item onSelect={run} disabled={pending} title="Run this backup now">
+        <Play className="size-4" />
+        Run now
+      </K.Item>
+      <K.Separator />
+      <K.Item
+        variant="destructive"
+        onSelect={(e: Event) => {
+          e.preventDefault();
+          setConfirmOpen(true);
+        }}
+        title="Delete this backup schedule"
+      >
+        <Trash2 className="size-4" />
+        Delete
+      </K.Item>
+    </>
+  );
+
+  const row = (
+    <TableRow onContextMenu={(e) => e.stopPropagation()}>
       <TableCell className="font-medium">{backup.name}</TableCell>
       <TableCell className="text-muted-foreground">
         {backup.databaseName ?? ""}
@@ -90,21 +137,7 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
-            <DropdownMenuItem onClick={run} disabled={pending}>
-              <Play className="size-4" />
-              Run now
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={(e) => {
-                e.preventDefault();
-                setConfirmOpen(true);
-              }}
-            >
-              <Trash2 className="size-4" />
-              Delete
-            </DropdownMenuItem>
+            {menu(DROPDOWN_KIT)}
           </DropdownMenuContent>
         </DropdownMenu>
         <ConfirmAction
@@ -125,5 +158,14 @@ export function BackupRow({ backup }: { backup: BackupDTO }) {
         />
       </TableCell>
     </TableRow>
+  );
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent className="w-40">
+        {menu(CONTEXT_KIT)}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

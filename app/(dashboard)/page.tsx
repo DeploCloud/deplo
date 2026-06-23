@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Plus, Rocket, Bell, Eye, ArrowUpRight } from "lucide-react";
+import { Plus, Rocket, Folder, Bell, Eye, ArrowUpRight } from "lucide-react";
 import { listProjects } from "@/lib/data/projects";
+import { listFolders } from "@/lib/data/folders";
 import { listActivity } from "@/lib/data/activity";
 import { isInstanceAdmin, hasCapability } from "@/lib/membership";
 import { Button } from "@/components/ui/button";
@@ -12,14 +13,21 @@ import { AddNewMenu } from "@/components/shared/add-new-menu";
 import { timeAgo } from "@/lib/utils";
 
 export default async function OverviewPage(props: PageProps<"/">) {
-  const { q, view: viewParam } = await props.searchParams;
+  const {
+    q,
+    view: viewParam,
+    folder: folderParam,
+  } = await props.searchParams;
   const query = (Array.isArray(q) ? q[0] : q)?.toLowerCase() ?? "";
   const viewRaw = Array.isArray(viewParam) ? viewParam[0] : viewParam;
   const view = viewRaw === "list" ? "list" : "grid";
+  const folderId =
+    (Array.isArray(folderParam) ? folderParam[0] : folderParam) ?? "";
 
-  const [projects, activity, isAdmin, canManageTeam, canManageMembers] =
+  const [projects, folders, activity, isAdmin, canManageTeam, canManageMembers] =
     await Promise.all([
       listProjects(),
+      listFolders(),
       listActivity(6),
       isInstanceAdmin(),
       hasCapability("manage_team"),
@@ -27,19 +35,69 @@ export default async function OverviewPage(props: PageProps<"/">) {
     ]);
   const canManageOrder = isAdmin || canManageTeam;
 
-  const filtered = query
-    ? projects.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.repo?.repo.toLowerCase().includes(query) ||
-          p.productionUrl?.toLowerCase().includes(query),
-      )
-    : projects;
+  // What the grid shows:
+  //  - searching: every matching project, flat, across all folders (folders
+  //    hidden) so a project inside a folder is still findable;
+  //  - a folder open: that folder's direct projects + its child folders;
+  //  - otherwise (top level): ungrouped projects + the top-level folders.
+  const openFolder =
+    !query && folderId ? folders.find((f) => f.id === folderId) ?? null : null;
+
+  const matches = (p: (typeof projects)[number]) =>
+    p.name.toLowerCase().includes(query) ||
+    Boolean(p.repo?.repo.toLowerCase().includes(query)) ||
+    Boolean(p.productionUrl?.toLowerCase().includes(query));
+
+  const visibleProjects = query
+    ? projects.filter(matches)
+    : openFolder
+      ? projects.filter((p) => p.folderId === openFolder.id)
+      : projects.filter((p) => !p.folderId);
+  // Folders nest: show the children of the open folder, or the top-level folders
+  // (no parent) at the root. Hidden entirely during a search.
+  const visibleFolders = query
+    ? []
+    : openFolder
+      ? folders.filter((f) => (f.parentId ?? null) === openFolder.id)
+      : folders.filter((f) => (f.parentId ?? null) === null);
+
+  // Breadcrumb trail from the top level down to (and including) the open folder,
+  // walking `parentId` up. Guarded against a stale cycle so it always terminates.
+  const folderById = new Map(folders.map((f) => [f.id, f]));
+  const folderPath: { id: string; name: string }[] = [];
+  {
+    const seen = new Set<string>();
+    let cur = openFolder;
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      folderPath.unshift({ id: cur.id, name: cur.name });
+      cur = cur.parentId ? folderById.get(cur.parentId) ?? null : null;
+    }
+  }
+
+  const allFolders = folders.map((f) => ({ id: f.id, name: f.name }));
+  const allProjectIds = projects.map((p) => p.id);
 
   // Drag-to-reorder writes a team-wide order, so it is gated on permission; it is
   // also disabled mid-search (reordering a filtered list would persist a partial
-  // order). When off, the grid renders exactly as before.
+  // order). When off, the grid renders statically.
   const canReorder = canManageOrder && !query;
+
+  const nothingToShow =
+    visibleProjects.length === 0 && visibleFolders.length === 0;
+  // Re-seed the grid's optimistic state only on a structural change (navigation,
+  // search, add/remove of a project or folder) — never on a pure reorder/move,
+  // so a drag survives its own drop. See ProjectsGrid.
+  const gridKey = [
+    view,
+    query,
+    openFolder?.id ?? "",
+    [...allProjectIds].sort().join(","),
+    folders
+      .map((f) => f.id)
+      .sort()
+      .join(","),
+  ].join("|");
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
@@ -93,17 +151,38 @@ export default async function OverviewPage(props: PageProps<"/">) {
       <div className="order-1 space-y-5 lg:order-1">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-          <AddNewMenu canManageMembers={canManageMembers} isAdmin={isAdmin} />
+          <AddNewMenu
+            canManageMembers={canManageMembers}
+            canManageFolders={canManageOrder}
+            isAdmin={isAdmin}
+          />
         </div>
 
-        <ProjectSearch initialQuery={query} initialView={view} />
+        <ProjectSearch
+          initialQuery={query}
+          initialView={view}
+          initialFolder={openFolder?.id ?? ""}
+        />
 
-        {filtered.length === 0 ? (
+        {nothingToShow ? (
           query ? (
             <EmptyState
               icon={Rocket}
               title="No projects match your search"
               description={`Nothing found for “${query}”.`}
+            />
+          ) : openFolder ? (
+            <EmptyState
+              icon={Folder}
+              title={`${openFolder.name} is empty`}
+              description="Drag projects onto this folder from All projects, or use a project’s “Move to folder” menu."
+              action={
+                <Button asChild variant="outline">
+                  <Link href={view === "list" ? "/?view=list" : "/"}>
+                    Back to all projects
+                  </Link>
+                </Button>
+              }
             />
           ) : (
             <EmptyState
@@ -130,16 +209,24 @@ export default async function OverviewPage(props: PageProps<"/">) {
           )
         ) : (
           <ProjectsGrid
-            // Key on grid membership (the *set* of ids), not their order, so a
-            // reorder doesn't remount the grid — that lets the jiggle/edit mode
-            // survive a drop — while adding/removing a project still re-seeds it.
-            key={filtered
-              .map((p) => p.id)
-              .sort()
-              .join(",")}
-            projects={filtered}
+            key={gridKey}
+            projects={visibleProjects}
+            allProjectIds={allProjectIds}
+            folders={visibleFolders}
+            allFolders={allFolders}
+            openFolder={
+              openFolder
+                ? {
+                    id: openFolder.id,
+                    name: openFolder.name,
+                    parentId: openFolder.parentId ?? null,
+                  }
+                : null
+            }
+            folderPath={folderPath}
             view={view}
             canReorder={canReorder}
+            canManageFolders={canManageOrder}
           />
         )}
       </div>

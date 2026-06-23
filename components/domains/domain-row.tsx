@@ -38,6 +38,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import {
@@ -51,14 +58,38 @@ import type { Domain } from "@/lib/types";
 
 type Row = Domain & { projectName: string; projectSlug: string };
 
+/**
+ * The menu-primitive set used to render the row's action list once and reuse it
+ * for BOTH the ⋯ dropdown (left-click) and the right-click context menu — same
+ * items, same handlers, no duplication. Radix dropdown and context menus share
+ * an isomorphic API, so the renderer just takes whichever component set applies.
+ */
+type MenuKit = {
+  Item: React.ElementType;
+  Separator: React.ElementType;
+};
+
+const DROPDOWN_KIT: MenuKit = {
+  Item: DropdownMenuItem,
+  Separator: DropdownMenuSeparator,
+};
+const CONTEXT_KIT: MenuKit = {
+  Item: ContextMenuItem,
+  Separator: ContextMenuSeparator,
+};
+
 /** Service names declared in a compose file, parsed in the browser (js-yaml is
  * a client-safe dep). [] for a missing/malformed compose ⇒ single-image edit. */
 function composeServices(compose?: string | null): string[] {
   if (!compose || !compose.trim()) return [];
   try {
-    const doc = yaml.load(compose) as { services?: Record<string, unknown> } | undefined;
+    const doc = yaml.load(compose) as
+      | { services?: Record<string, unknown> }
+      | undefined;
     const svc = doc?.services;
-    return svc && typeof svc === "object" && !Array.isArray(svc) ? Object.keys(svc) : [];
+    return svc && typeof svc === "object" && !Array.isArray(svc)
+      ? Object.keys(svc)
+      : [];
   } catch {
     return [];
   }
@@ -158,222 +189,242 @@ export function DomainRow({
     });
   }
 
-  return (
-    <TableRow>
-      <TableCell>
-        <div className="flex flex-wrap items-center gap-2">
-          <a
-            href={`${scheme}://${domain.name}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="cursor-pointer font-medium hover:underline"
-          >
-            {domain.name}
-          </a>
-          {domain.primary && (
-            <Badge variant="secondary" className="gap-1">
-              <Star className="size-3" />
-              Primary
-            </Badge>
-          )}
-          {domain.port != null && (
-            <Badge variant="outline" className="gap-1 font-mono">
-              <Network className="size-3" />:{domain.port}
-            </Badge>
-          )}
-          {effectiveProvider === "none" ? (
-            <Badge variant="outline" className="gap-1">
-              <ShieldOff className="size-3 text-muted-foreground" />
-              HTTP
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="gap-1">
-              <ShieldCheck className="size-3 text-success" />
-              {effectiveProvider === "cloudflare" ? "Cloudflare" : "Let's Encrypt"}
-            </Badge>
-          )}
-          {middlewares.length > 0 && (
-            <Badge
-              variant="outline"
-              className="gap-1"
-              title={middlewares.join(", ")}
-            >
-              <Layers className="size-3" />
-              {middlewares.length === 1
-                ? middlewares[0]
-                : `${middlewares.length} middlewares`}
-            </Badge>
-          )}
-          {domain.pathPrefix && (
-            <Badge
-              variant="outline"
-              className="gap-1 font-mono"
-              title={
-                domain.stripPrefix
-                  ? `path ${domain.pathPrefix} (stripped)`
-                  : `path ${domain.pathPrefix}`
-              }
-            >
-              <Route className="size-3" />
-              {domain.pathPrefix}
-            </Badge>
-          )}
-        </div>
-        {domain.redirectTo && (
-          <p className="text-xs text-muted-foreground">→ {domain.redirectTo}</p>
-        )}
-      </TableCell>
-      <TableCell>
-        <Link
-          href={`/projects/${domain.projectSlug}`}
-          className="cursor-pointer text-sm text-muted-foreground hover:text-foreground"
+  // The row's actions, rendered once for whichever menu primitive is passed.
+  // Shared by the ⋯ dropdown (left-click) and the right-click context menu.
+  const menu = (K: MenuKit) => (
+    <>
+      <K.Item asChild>
+        <a
+          href={`${scheme}://${domain.name}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="cursor-pointer"
         >
-          {domain.projectName}
-        </Link>
-      </TableCell>
-      <TableCell>
-        <StatusBadge status={domain.status} />
-      </TableCell>
-      <TableCell className="text-right">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Domain menu">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem asChild>
+          <ExternalLink className="size-4" />
+          Visit
+        </a>
+      </K.Item>
+      <K.Item
+        onSelect={(e: Event) => {
+          e.preventDefault();
+          openEdit();
+        }}
+      >
+        <Pencil className="size-4" />
+        Edit
+      </K.Item>
+      {domain.status !== "valid" && (
+        <K.Item
+          onClick={() =>
+            call(
+              () =>
+                gqlAction<{ verifyDomain: { id: string } }, undefined>(
+                  `mutation($id: String!) { verifyDomain(id: $id) { id } }`,
+                  { id: domain.id },
+                  () => undefined,
+                ),
+              "Domain verified",
+            )
+          }
+          disabled={pending}
+        >
+          <RefreshCw className="size-4" />
+          Verify
+        </K.Item>
+      )}
+      {!domain.primary && (
+        <K.Item
+          onClick={() =>
+            call(
+              () =>
+                gqlAction<{ setPrimaryDomain: boolean }, undefined>(
+                  `mutation($id: String!) { setPrimaryDomain(id: $id) }`,
+                  { id: domain.id },
+                  () => undefined,
+                ),
+              "Set as primary",
+            )
+          }
+          disabled={pending}
+        >
+          <Star className="size-4" />
+          Set as primary
+        </K.Item>
+      )}
+      <K.Separator />
+      <K.Item
+        variant="destructive"
+        onSelect={(e: Event) => {
+          e.preventDefault();
+          setConfirmOpen(true);
+        }}
+      >
+        <Trash2 className="size-4" />
+        Remove
+      </K.Item>
+    </>
+  );
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <TableRow onContextMenu={(e) => e.stopPropagation()}>
+          <TableCell>
+            <div className="flex flex-wrap items-center gap-2">
               <a
                 href={`${scheme}://${domain.name}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="cursor-pointer"
+                className="cursor-pointer font-medium hover:underline"
               >
-                <ExternalLink className="size-4" />
-                Visit
+                {domain.name}
               </a>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault();
-                openEdit();
-              }}
-            >
-              <Pencil className="size-4" />
-              Edit
-            </DropdownMenuItem>
-            {domain.status !== "valid" && (
-              <DropdownMenuItem
-                onClick={() =>
-                  call(
-                    () =>
-                      gqlAction<{ verifyDomain: { id: string } }, undefined>(
-                        `mutation($id: String!) { verifyDomain(id: $id) { id } }`,
-                        { id: domain.id },
-                        () => undefined,
-                      ),
-                    "Domain verified",
-                  )
-                }
-                disabled={pending}
-              >
-                <RefreshCw className="size-4" />
-                Verify
-              </DropdownMenuItem>
-            )}
-            {!domain.primary && (
-              <DropdownMenuItem
-                onClick={() =>
-                  call(
-                    () =>
-                      gqlAction<{ setPrimaryDomain: boolean }, undefined>(
-                        `mutation($id: String!) { setPrimaryDomain(id: $id) }`,
-                        { id: domain.id },
-                        () => undefined,
-                      ),
-                    "Set as primary",
-                  )
-                }
-                disabled={pending}
-              >
-                <Star className="size-4" />
-                Set as primary
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={(e) => {
-                e.preventDefault();
-                setConfirmOpen(true);
-              }}
-            >
-              <Trash2 className="size-4" />
-              Remove
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <ConfirmAction
-          open={confirmOpen}
-          onOpenChange={setConfirmOpen}
-          title={`Remove ${domain.name}?`}
-          description="The domain will stop routing to this project. You can re-add it later."
-          confirmLabel="Remove domain"
-          successMessage="Domain removed"
-          onConfirm={async () => {
-            const res = await gqlAction<{ removeDomain: boolean }>(
-              `mutation($id: String!) { removeDomain(id: $id) }`,
-              { id: domain.id },
-            );
-            // No revalidatePath on the GraphQL API — refresh so the removed row
-            // disappears from the RSC-rendered list.
-            if (res.ok) router.refresh();
-            return res;
-          }}
-        />
-        <Dialog open={editOpen} onOpenChange={setEditOpen}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto text-left">
-            <DialogHeader>
-              <DialogTitle>Edit domain</DialogTitle>
-              <DialogDescription>
-                Routing for <span className="font-medium">{domain.projectName}</span>.
-                Changes apply instantly when the project is running, otherwise on
-                the next deploy.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor={`edit-name-${domain.id}`}>Domain</Label>
-                <Input
-                  id={`edit-name-${domain.id}`}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="app.example.com"
-                  className="font-mono text-sm"
-                />
-              </div>
-              <DomainConfigFields
-                state={config}
-                onChange={setConfig}
-                services={services}
-                idPrefix={`edit-${domain.id}`}
-              />
+              {domain.primary && (
+                <Badge variant="secondary" className="gap-1">
+                  <Star className="size-3" />
+                  Primary
+                </Badge>
+              )}
+              {domain.port != null && (
+                <Badge variant="outline" className="gap-1 font-mono">
+                  <Network className="size-3" />:{domain.port}
+                </Badge>
+              )}
+              {effectiveProvider === "none" ? (
+                <Badge variant="outline" className="gap-1">
+                  <ShieldOff className="size-3 text-muted-foreground" />
+                  HTTP
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="gap-1">
+                  <ShieldCheck className="size-3 text-success" />
+                  {effectiveProvider === "cloudflare"
+                    ? "Cloudflare"
+                    : "Let's Encrypt"}
+                </Badge>
+              )}
+              {middlewares.length > 0 && (
+                <Badge
+                  variant="outline"
+                  className="gap-1"
+                  title={middlewares.join(", ")}
+                >
+                  <Layers className="size-3" />
+                  {middlewares.length === 1
+                    ? middlewares[0]
+                    : `${middlewares.length} middlewares`}
+                </Badge>
+              )}
+              {domain.pathPrefix && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 font-mono"
+                  title={
+                    domain.stripPrefix
+                      ? `path ${domain.pathPrefix} (stripped)`
+                      : `path ${domain.pathPrefix}`
+                  }
+                >
+                  <Route className="size-3" />
+                  {domain.pathPrefix}
+                </Badge>
+              )}
             </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setEditOpen(false)}
-                disabled={pending}
-              >
-                Cancel
-              </Button>
-              <Button onClick={saveEdit} disabled={pending || !name.trim()}>
-                {pending ? "Saving…" : "Save changes"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </TableCell>
-    </TableRow>
+            {domain.redirectTo && (
+              <p className="text-xs text-muted-foreground">
+                → {domain.redirectTo}
+              </p>
+            )}
+          </TableCell>
+          <TableCell>
+            <Link
+              href={`/projects/${domain.projectSlug}`}
+              className="cursor-pointer text-sm text-muted-foreground hover:text-foreground"
+            >
+              {domain.projectName}
+            </Link>
+          </TableCell>
+          <TableCell>
+            <StatusBadge status={domain.status} />
+          </TableCell>
+          <TableCell className="text-right">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="Domain menu">
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {menu(DROPDOWN_KIT)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <ConfirmAction
+              open={confirmOpen}
+              onOpenChange={setConfirmOpen}
+              title={`Remove ${domain.name}?`}
+              description="The domain will stop routing to this project. You can re-add it later."
+              confirmLabel="Remove domain"
+              successMessage="Domain removed"
+              onConfirm={async () => {
+                const res = await gqlAction<{ removeDomain: boolean }>(
+                  `mutation($id: String!) { removeDomain(id: $id) }`,
+                  { id: domain.id },
+                );
+                // No revalidatePath on the GraphQL API — refresh so the removed row
+                // disappears from the RSC-rendered list.
+                if (res.ok) router.refresh();
+                return res;
+              }}
+            />
+            <Dialog open={editOpen} onOpenChange={setEditOpen}>
+              <DialogContent className="max-h-[85vh] overflow-y-auto text-left">
+                <DialogHeader>
+                  <DialogTitle>Edit domain</DialogTitle>
+                  <DialogDescription>
+                    Routing for{" "}
+                    <span className="font-medium">{domain.projectName}</span>.
+                    Changes apply instantly when the project is running,
+                    otherwise on the next deploy.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor={`edit-name-${domain.id}`}>Domain</Label>
+                    <Input
+                      id={`edit-name-${domain.id}`}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="app.example.com"
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                  <DomainConfigFields
+                    state={config}
+                    onChange={setConfig}
+                    services={services}
+                    idPrefix={`edit-${domain.id}`}
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setEditOpen(false)}
+                    disabled={pending}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={saveEdit} disabled={pending || !name.trim()}>
+                    {pending ? "Saving…" : "Save changes"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </TableCell>
+        </TableRow>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-48">
+        {menu(CONTEXT_KIT)}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

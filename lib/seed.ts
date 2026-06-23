@@ -6,6 +6,7 @@ export function buildSeed(): DeploData {
   return {
     users: [],
     teams: [],
+    folders: [],
     memberships: [],
     invites: [],
     registrationLinks: [],

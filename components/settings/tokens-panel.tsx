@@ -22,6 +22,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -147,31 +153,48 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
             </TableHeader>
             <TableBody>
               {tokens.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell className="font-medium">{t.name}</TableCell>
-                  <TableCell>
-                    <code className="font-mono text-xs text-muted-foreground">
-                      {t.prefix}…
-                    </code>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {t.lastUsedAt ? timeAgo(t.lastUsedAt) : "Never"}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {timeAgo(t.createdAt)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => setRevokeId(t.id)}
-                      aria-label="Revoke token"
+                <ContextMenu key={t.id}>
+                  <ContextMenuTrigger asChild>
+                    <TableRow onContextMenu={(e) => e.stopPropagation()}>
+                      <TableCell className="font-medium">{t.name}</TableCell>
+                      <TableCell>
+                        <code className="font-mono text-xs text-muted-foreground">
+                          {t.prefix}…
+                        </code>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {t.lastUsedAt ? timeAgo(t.lastUsedAt) : "Never"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {timeAgo(t.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => setRevokeId(t.id)}
+                          aria-label="Revoke token"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  </ContextMenuTrigger>
+                  {/* Right-click mirrors the row's single inline action (the
+                      Trash2 button), calling the SAME handler so it opens the
+                      shared revoke confirm dialog. */}
+                  <ContextMenuContent className="w-48">
+                    <ContextMenuItem
+                      variant="destructive"
+                      onSelect={() => setRevokeId(t.id)}
+                      title="Revoke this token — clients using it lose access"
                     >
                       <Trash2 className="size-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                      Revoke token
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               ))}
             </TableBody>
           </Table>
@@ -194,7 +217,7 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-3 py-2">
-            <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
+            <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
               {createdToken}
             </code>
             {createdToken && <CopyButton value={createdToken} />}

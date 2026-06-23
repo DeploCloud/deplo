@@ -18,7 +18,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -27,6 +26,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CopyButton } from "@/components/shared/copy-button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -41,6 +47,22 @@ const DB_ICONS: Record<string, LucideIcon> = {
   mongodb: Leaf,
   redis: MemoryStick,
   clickhouse: BarChart3,
+};
+
+/** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
+ *  right-click context menu (see the note in project-card.tsx). */
+type MenuKit = {
+  Item: React.ElementType;
+  Separator: React.ElementType;
+};
+
+const DROPDOWN_KIT: MenuKit = {
+  Item: DropdownMenuItem,
+  Separator: DropdownMenuSeparator,
+};
+const CONTEXT_KIT: MenuKit = {
+  Item: ContextMenuItem,
+  Separator: ContextMenuSeparator,
 };
 
 export function DatabaseCard({ db }: { db: DatabaseDTO }) {
@@ -81,8 +103,30 @@ export function DatabaseCard({ db }: { db: DatabaseDTO }) {
     });
   }
 
-  return (
-    <Card>
+  // The card's actions, rendered once for whichever menu primitive is passed —
+  // the ⋯ dropdown (left-click) and the right-click context menu share them.
+  const menu = (K: MenuKit) => (
+    <>
+      <K.Item onSelect={toggleRunning} disabled={pending}>
+        {running ? <Square className="size-4" /> : <Play className="size-4" />}
+        {running ? "Stop" : "Start"}
+      </K.Item>
+      <K.Separator />
+      <K.Item
+        variant="destructive"
+        onSelect={(e: Event) => {
+          e.preventDefault();
+          setConfirmOpen(true);
+        }}
+      >
+        <Trash2 className="size-4" />
+        Delete
+      </K.Item>
+    </>
+  );
+
+  const cardInner = (
+    <Card onContextMenu={(e) => e.stopPropagation()}>
       <CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -105,21 +149,7 @@ export function DatabaseCard({ db }: { db: DatabaseDTO }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={toggleRunning} disabled={pending}>
-                  {running ? <Square className="size-4" /> : <Play className="size-4" />}
-                  {running ? "Stop" : "Start"}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setConfirmOpen(true);
-                  }}
-                >
-                  <Trash2 className="size-4" />
-                  Delete
-                </DropdownMenuItem>
+                {menu(DROPDOWN_KIT)}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -137,7 +167,7 @@ export function DatabaseCard({ db }: { db: DatabaseDTO }) {
             </button>
           </div>
           <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-2.5 py-1.5">
-            <code className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
+            <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
               {revealed ?? db.connectionStringMasked}
             </code>
             {revealed && <CopyButton value={revealed} />}
@@ -171,5 +201,12 @@ export function DatabaseCard({ db }: { db: DatabaseDTO }) {
         }}
       />
     </Card>
+  );
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{cardInner}</ContextMenuTrigger>
+      <ContextMenuContent className="w-44">{menu(CONTEXT_KIT)}</ContextMenuContent>
+    </ContextMenu>
   );
 }

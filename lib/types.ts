@@ -174,6 +174,12 @@ export interface Team {
    * `listProjects` filters to live projects and appends any not listed here.
    */
   projectOrder?: ID[];
+  /**
+   * Team-wide display order of FOLDERS in the Overview grid (folder ids, first =
+   * leftmost). Folders render before ungrouped projects. Absent ⇒ fall back to
+   * newest-first. Stale/missing ids are tolerated exactly like {@link projectOrder}.
+   */
+  folderOrder?: ID[];
   createdAt: string;
 }
 
@@ -181,6 +187,38 @@ export interface Team {
 export interface TeamSummary extends Team {
   role: string;
   memberCount: number;
+}
+
+/**
+ * A team-wide grouping of projects shown on the Overview. A project belongs to
+ * at most one folder (via {@link Project.folderId}); folders themselves NEST via
+ * {@link parentId}, forming a tree within the team. Managing folders —
+ * create/rename/delete, moving a project or a folder in or out, reordering — is
+ * gated like the team-wide project order: an instance admin or a member with
+ * `manage_team`.
+ */
+export interface Folder {
+  id: ID;
+  teamId: ID;
+  name: string;
+  /**
+   * Parent folder id for nesting, or null/absent when this folder sits at the
+   * top level. A folder's children are the folders whose `parentId` equals this
+   * folder's id. Cycles (a folder under its own descendant) are rejected at the
+   * move boundary; a `parentId` with no matching folder is tolerated and treated
+   * as top-level.
+   */
+  parentId?: ID | null;
+  /**
+   * Optional accent colour for the folder tile on the Overview, stored as a
+   * normalised `#rrggbb` hex string. Absent/null ⇒ the default neutral tile.
+   * The readable foreground (icon/label) is DERIVED from it at render time via
+   * {@link readableTextColor}, never stored — so contrast always tracks the
+   * colour and a custom HEX can't end up unreadable.
+   */
+  color?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type ServerStatus = "online" | "offline" | "provisioning" | "error";
@@ -566,6 +604,13 @@ export interface Project {
   name: string;
   slug: string;
   teamId: ID;
+  /**
+   * The folder this project lives in on the Overview, or null/absent when it
+   * sits at the top level (ungrouped). Folders are a team-wide, single-level
+   * grouping (see {@link Folder}); a project belongs to at most one. A folderId
+   * with no matching folder is tolerated and treated as ungrouped.
+   */
+  folderId?: ID | null;
   serverId: ID;
   framework: FrameworkId;
   /**
@@ -1100,6 +1145,7 @@ export interface GithubInstallation {
 export interface DeploData {
   users: User[];
   teams: Team[];
+  folders: Folder[];
   /** Per-team membership join rows — who belongs to which team and with what capabilities. */
   memberships: Membership[];
   /** Outstanding & historical team invitations. */

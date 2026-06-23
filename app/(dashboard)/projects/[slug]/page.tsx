@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { describeProjectSource } from "@/components/projects/project-source";
 import { timeAgo } from "@/lib/utils";
 
 export default async function ProjectOverview(
@@ -25,6 +26,11 @@ export default async function ProjectOverview(
 
   const deployments = await listDeployments({ projectId: project.id });
   const prod = project.latestDeployment;
+  // What backs this project — a git repo (real branch/commit) or a compose
+  // stack / docker image / upload (no git, so no branch). Same source of truth
+  // as the Overview card, so the page never invents a "main" branch for a
+  // compose project. See components/projects/project-source.tsx.
+  const src = describeProjectSource(project);
 
   return (
     <div className="space-y-6">
@@ -67,16 +73,28 @@ export default async function ProjectOverview(
               <div className="space-y-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Source</p>
-                  <p className="flex items-center gap-1.5 text-sm">
-                    <GitBranch className="size-3.5" />
-                    {prod.branch}
-                    <code className="ml-1 font-mono text-xs text-muted-foreground">
-                      {prod.commitSha.slice(0, 7)}
-                    </code>
-                  </p>
-                  <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
-                    {prod.commitMessage}
-                  </p>
+                  {src.isGit ? (
+                    // Git deploy: a real branch + commit are meaningful.
+                    <>
+                      <p className="flex items-center gap-1.5 text-sm">
+                        <GitBranch className="size-3.5 shrink-0" />
+                        {prod.branch}
+                        <code className="ml-1 font-mono text-xs text-muted-foreground">
+                          {prod.commitSha.slice(0, 7)}
+                        </code>
+                      </p>
+                      <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
+                        {prod.commitMessage}
+                      </p>
+                    </>
+                  ) : (
+                    // No git (compose / image / upload): show what the project
+                    // actually IS instead of a fabricated branch.
+                    <p className="flex items-center gap-1.5 text-sm">
+                      <src.Icon className="size-3.5 shrink-0" />
+                      <span className="min-w-0 truncate">{src.label}</span>
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Build time</p>
@@ -108,9 +126,20 @@ export default async function ProjectOverview(
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              No production deployment yet.
-            </p>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                No production deployment yet.
+              </p>
+              {/* Even before the first deploy, show where this project comes
+                  from (its git repo, a compose stack, an image or an upload). */}
+              <div>
+                <p className="text-xs text-muted-foreground">Source</p>
+                <p className="mt-1 flex items-center gap-1.5 text-sm">
+                  <src.Icon className="size-3.5 shrink-0" />
+                  <span className="min-w-0 truncate">{src.label}</span>
+                </p>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -37,10 +37,17 @@ const PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
   { id: "other", name: "Other S3-compatible", endpointHint: "https://..." },
 ];
 
-export function CreateS3() {
+export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(autoOpen);
   const [pending, startTransition] = React.useTransition();
+
+  // Arrived via ?new=s3 (e.g. the global "New ▸ S3 destination" menu) → drop the
+  // param so a refresh or Back doesn't reopen the dialog. Mirrors CreateDatabase.
+  React.useEffect(() => {
+    if (autoOpen) router.replace("/storage", { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [provider, setProvider] = React.useState<S3Provider>("cloudflare-r2");
   const [form, setForm] = React.useState({
     name: "",

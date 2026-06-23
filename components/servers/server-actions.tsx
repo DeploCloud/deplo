@@ -25,6 +25,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { CommandLine } from "@/components/shared/code-block";
@@ -46,6 +53,27 @@ import { gqlAction } from "@/lib/graphql-client";
  *     the agent was unreachable (the stack/containers on that host must be cleaned
  *     by hand); shown so the operator knows.
  */
+
+/**
+ * The menu-primitive set used to render the server's action list once and reuse
+ * it for BOTH the ⋯ dropdown (left-click) and the right-click context menu —
+ * same items, same handlers, no duplication. Radix dropdown and context menus
+ * share an isomorphic API, so the renderer just takes whichever set applies.
+ */
+type MenuKit = {
+  Item: React.ElementType;
+  Separator: React.ElementType;
+};
+
+const DROPDOWN_KIT: MenuKit = {
+  Item: DropdownMenuItem,
+  Separator: DropdownMenuSeparator,
+};
+const CONTEXT_KIT: MenuKit = {
+  Item: ContextMenuItem,
+  Separator: ContextMenuSeparator,
+};
+
 export function ServerActions({
   serverId,
   serverName,
@@ -140,53 +168,83 @@ export function ServerActions({
     });
   }
 
-  return (
+  // The server's actions, rendered once for whichever menu primitive is passed.
+  // Shared by the ⋯ dropdown (left-click) and the right-click context menu so
+  // the two can never drift apart.
+  const menu = (K: MenuKit) => (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8 shrink-0"
-            aria-label="Server actions"
-          >
-            <MoreVertical className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          {outdated ? (
-            <>
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setConfirmUpdate(true);
-                }}
-                disabled={pending}
-              >
-                <CircleFadingArrowUp className="size-4" />
-                Update agent to v{expectedVersion}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          ) : null}
-          <DropdownMenuItem onSelect={() => reissue()} disabled={pending}>
-            <KeyRound className="size-4" />
-            {provisioning ? "Show install command" : "Reissue install command"}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            onSelect={(e) => {
+      {outdated ? (
+        <>
+          <K.Item
+            onSelect={(e: Event) => {
               e.preventDefault();
-              setConfirmRemove(true);
+              setConfirmUpdate(true);
             }}
             disabled={pending}
+            title="Update the agent binary in place to the latest release"
           >
-            <Trash2 className="size-4" />
-            Remove server
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <CircleFadingArrowUp className="size-4" />
+            Update agent to v{expectedVersion}
+          </K.Item>
+          <K.Separator />
+        </>
+      ) : null}
+      <K.Item
+        onSelect={() => reissue()}
+        disabled={pending}
+        title="Mint a fresh one-time bootstrap/install command for this server"
+      >
+        <KeyRound className="size-4" />
+        {provisioning ? "Show install command" : "Reissue install command"}
+      </K.Item>
+      <K.Separator />
+      <K.Item
+        variant="destructive"
+        onSelect={(e: Event) => {
+          e.preventDefault();
+          setConfirmRemove(true);
+        }}
+        disabled={pending}
+        title="Revoke the agent's trust and tear down its containers"
+      >
+        <Trash2 className="size-4" />
+        Remove server
+      </K.Item>
+    </>
+  );
+
+  return (
+    <>
+      {/* The ⋯ dropdown is also the right-click surface: right-clicking it opens
+          the SAME actions as a context menu, and stops propagation so the global
+          shell context menu doesn't also fire on top of it. */}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            className="contents"
+            onContextMenu={(e) => e.stopPropagation()}
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 shrink-0"
+                  aria-label="Server actions"
+                >
+                  <MoreVertical className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {menu(DROPDOWN_KIT)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-56">
+          {menu(CONTEXT_KIT)}
+        </ContextMenuContent>
+      </ContextMenu>
 
       {/* Reissued install command (shown once; embeds a fresh single-use token). */}
       <Dialog

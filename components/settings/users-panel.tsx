@@ -72,14 +72,16 @@ export function UsersPanel({
             onOpenChange={setRegisterOpen}
           />
         </CardHeader>
-        <CardContent className="space-y-3">
-          {users.map((u) => (
-            <UserRow
-              key={u.userId}
-              user={u}
-              isSelf={u.userId === currentUserId}
-            />
-          ))}
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {users.map((u) => (
+              <UserRow
+                key={u.userId}
+                user={u}
+                isSelf={u.userId === currentUserId}
+              />
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -111,11 +113,11 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
       <button
         onClick={() => setOpen(true)}
         className={cn(
-          "flex w-full items-center justify-between rounded-lg border border-border p-3 text-left transition-colors hover:bg-accent",
+          "flex h-full flex-col gap-3 rounded-lg border border-border p-4 text-left transition-colors hover:border-foreground/20 hover:bg-accent",
           user.suspended && "opacity-60",
         )}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex w-full items-center gap-3">
           <Avatar>
             <AvatarFallback
               style={{ backgroundColor: user.avatarColor, color: "#000" }}
@@ -123,21 +125,24 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
               {user.username.slice(0, 2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <div>
-            <p className="text-sm font-medium">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">
               @{user.username}
               {isSelf && (
-                <span className="ml-2 text-xs text-muted-foreground">
+                <span className="ml-1.5 text-xs text-muted-foreground">
                   (you)
                 </span>
               )}
             </p>
             {user.name && user.name !== user.username && (
-              <p className="text-xs text-muted-foreground">{user.name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {user.name}
+              </p>
             )}
           </div>
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           {user.isInstanceAdmin && (
             <Badge variant="secondary" className="gap-1">
               <ShieldCheck className="size-3" />
@@ -153,7 +158,6 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
           <Badge variant="outline">
             {user.teamCount} team{user.teamCount === 1 ? "" : "s"}
           </Badge>
-          <ChevronRight className="size-4 text-muted-foreground" />
         </div>
       </button>
       {open && (
