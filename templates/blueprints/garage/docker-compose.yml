@@ -4,7 +4,6 @@ services:
     volumes:
       - ./garage.toml:/etc/garage.toml
       - garage-storage:/var/lib/garage
-      - garage-storage:/var/lib/garage
     restart: unless-stopped
     ports:
       - 3900
