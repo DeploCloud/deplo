@@ -296,6 +296,50 @@ export function deployPhaseToJSON(object: DeployPhase): string {
   }
 }
 
+/**
+ * What a backup/restore targets. A DATABASE is dumped via the engine's tool
+ * (`docker exec`); a PROJECT is the tar of its volumes + files + the compose/
+ * env snapshot. New kinds are new enum cases, never a redesign (D6).
+ */
+export enum BackupKind {
+  BACKUP_KIND_UNSPECIFIED = 0,
+  BACKUP_KIND_DATABASE = 1,
+  BACKUP_KIND_PROJECT = 2,
+  UNRECOGNIZED = -1,
+}
+
+export function backupKindFromJSON(object: any): BackupKind {
+  switch (object) {
+    case 0:
+    case "BACKUP_KIND_UNSPECIFIED":
+      return BackupKind.BACKUP_KIND_UNSPECIFIED;
+    case 1:
+    case "BACKUP_KIND_DATABASE":
+      return BackupKind.BACKUP_KIND_DATABASE;
+    case 2:
+    case "BACKUP_KIND_PROJECT":
+      return BackupKind.BACKUP_KIND_PROJECT;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return BackupKind.UNRECOGNIZED;
+  }
+}
+
+export function backupKindToJSON(object: BackupKind): string {
+  switch (object) {
+    case BackupKind.BACKUP_KIND_UNSPECIFIED:
+      return "BACKUP_KIND_UNSPECIFIED";
+    case BackupKind.BACKUP_KIND_DATABASE:
+      return "BACKUP_KIND_DATABASE";
+    case BackupKind.BACKUP_KIND_PROJECT:
+      return "BACKUP_KIND_PROJECT";
+    case BackupKind.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
 export interface HelloRequest {
   /** The contract version the control plane speaks. */
   contractVersion: ContractVersion;
@@ -320,6 +364,9 @@ export interface HelloResponse {
    * supports (Part A: a localhost agent that handles the Dockerfile build +
    * single-image compose-up path). Absent capability => control plane keeps the
    * local fallback path. Forward-compatible: new capabilities are new entries.
+   * The "backup" capability gates the Backup/Restore/S3Check/S3Delete RPCs: the
+   * control plane preflights it (AgentBackupUnsupportedError when absent) so an
+   * older agent gives a clear "update the agent" message, never a fake success.
    */
   capabilities: string[];
   /**
@@ -781,6 +828,203 @@ export interface SelfUpdateResponse {
    * freshly-swapped binary, which reuses the existing mTLS materials.
    */
   restarting: boolean;
+}
+
+/**
+ * The S3 destination the agent reads/writes with — the DECRYPTED creds (the
+ * control plane decrypts via decryptSecret and sends plaintext over mTLS; the
+ * agent never holds the encryption key, mirroring Deploy's env handling) plus
+ * the bucket coordinates and the exact object key. `object_key` is built by the
+ * control plane (deplo/<teamId>/<kind>/<targetId>/<ISO-timestamp>.<ext>) and is
+ * opaque to the agent. For S3Check it may be empty (a bucket-level probe); for
+ * S3Delete `object_key` is the key/prefix to remove.
+ */
+export interface S3Target {
+  /** e.g. s3.amazonaws.com or a MinIO host:port */
+  endpoint: string;
+  /** e.g. us-east-1 ("" => the SDK default) */
+  region: string;
+  bucket: string;
+  /** decrypted; never logged */
+  accessKey: string;
+  /** decrypted; never logged */
+  secretKey: string;
+  /** the exact object key (PUT/GET target) */
+  objectKey: string;
+  /**
+   * Whether to address the bucket path-style (bucket in the URL path, not the
+   * host). MinIO / many S3-compatibles need this; AWS uses virtual-host style.
+   * The control plane decides from the destination's provider.
+   */
+  pathStyle: boolean;
+}
+
+/**
+ * The database descriptor for a DATABASE backup/restore. The control plane
+ * resolves the container name + engine details from its store; the agent stays
+ * dumb about Deplo's DB model and just runs the right tool inside the container.
+ */
+export interface DatabaseDescriptor {
+  /**
+   * The DB container to `docker exec` into (the agent re-derives nothing — it
+   * execs exactly this name). For a Deplo DB this is the compose container of
+   * the db-<name> stack.
+   */
+  container: string;
+  /**
+   * The engine, lower-case: "postgres" | "mysql" | "mariadb" | "mongodb" |
+   * "redis" | "clickhouse". Selects the dump/restore tool + flags.
+   */
+  dbType: string;
+  /** The logical database name to dump/restore (the default DB for the engine). */
+  dbName: string;
+  /** The superuser the dump tool authenticates as inside the container. */
+  user: string;
+  /**
+   * The engine password, decrypted by the control plane. The agent keeps it OFF
+   * the host docker-client's argv (which is world-readable via ps/proc) wherever
+   * the engine's tool can read it from an env var instead: postgres PGPASSWORD,
+   * mysql/mariadb MYSQL_PWD, redis REDISCLI_AUTH — forwarded into the container
+   * via a valueless `docker exec -e NAME`, so the value rides only in the host
+   * process's env. mongodump/mongorestore have no password env var, so for mongo
+   * the password is still passed as `-p <pw>` on argv (a bounded, host-local
+   * residual; the agent masks it out of any error string it logs). Empty when the
+   * container trusts local socket auth.
+   */
+  password: string;
+}
+
+/**
+ * The project descriptor for a PROJECT backup/restore. The control plane resolves
+ * the persistent state's three shapes into a flat name list (host bind mounts
+ * excluded) so the agent stays dumb about Deplo's volume-naming scheme.
+ */
+export interface ProjectDescriptor {
+  /**
+   * The project slug — keys the files dir (<stack-dir>/files/<slug>) and the
+   * stack the restore re-Reroutes.
+   */
+  slug: string;
+  /**
+   * The host volume names to tar: the named-volume shape (hostVolumeName =
+   * deplo-<slug>-<name>) AND the compose-stack volumes the control plane parsed
+   * out of the rendered YAML. Host bind mounts are NOT here (excluded). A helper
+   * container mounts each read-only to tar it.
+   */
+  volumeNames: string[];
+  /**
+   * Whether to include the project files dir (<stack-dir>/files/<slug>) in the
+   * archive. False when the project has no files dir.
+   */
+  includeFiles: boolean;
+  /**
+   * The rendered compose YAML snapshot, captured into the archive so a restore
+   * can re-Reroute the EXACT config that was backed up (full data + config
+   * restore). Opaque to the agent.
+   */
+  composeYaml: string;
+  /**
+   * The decrypted env snapshot for the re-Reroute on restore. Stored in the
+   * archive; the env secrets are written 0600 like every other env-file. Empty
+   * for single-image projects that bake env into the compose.
+   */
+  envSnapshot: { [key: string]: string };
+  /**
+   * Compose mount files (template config) to re-materialise on restore, mirroring
+   * RerouteRequest.mounts. Empty for single-image projects.
+   */
+  mounts: MountFile[];
+}
+
+export interface ProjectDescriptor_EnvSnapshotEntry {
+  key: string;
+  value: string;
+}
+
+export interface BackupRequest {
+  kind: BackupKind;
+  s3?:
+    | S3Target
+    | undefined;
+  /** Exactly one of these is set, per `kind`. */
+  database?: DatabaseDescriptor | undefined;
+  project?: ProjectDescriptor | undefined;
+}
+
+/**
+ * One event in the backup stream. Exactly one arm is set; the terminal arm is
+ * always `result`. Mirrors the Deploy stream's log/result shape so the control
+ * plane reuses the same SSE plumbing.
+ */
+export interface BackupEvent {
+  log?: LogLine | undefined;
+  result?: BackupResult | undefined;
+}
+
+export interface BackupResult {
+  /** True => the dump+upload completed and the object is in the bucket. */
+  ok: boolean;
+  /** A human-readable reason on failure (empty on success). */
+  error: string;
+  /**
+   * The object key written (echoes S3Target.object_key on success) and its size
+   * in bytes — recorded on the control plane's BackupRun.
+   */
+  objectKey: string;
+  sizeBytes: number;
+}
+
+export interface RestoreRequest {
+  kind: BackupKind;
+  /** object_key points at the artifact to restore FROM */
+  s3?: S3Target | undefined;
+  database?: DatabaseDescriptor | undefined;
+  project?: ProjectDescriptor | undefined;
+}
+
+export interface RestoreEvent {
+  log?: LogLine | undefined;
+  result?: RestoreResult | undefined;
+}
+
+export interface RestoreResult {
+  ok: boolean;
+  error: string;
+}
+
+export interface S3CheckRequest {
+  /** Bucket coordinates + creds; object_key is ignored (this is a bucket probe). */
+  s3?: S3Target | undefined;
+}
+
+export interface S3CheckResponse {
+  /** True when the bucket is reachable AND writable with these creds. */
+  ok: boolean;
+  /**
+   * "" on success; a human-readable reason otherwise (bad creds, no bucket,
+   * network) — surfaced as the destination's status detail.
+   */
+  error: string;
+}
+
+export interface S3DeleteRequest {
+  /** s3.object_key is the key (or, with `prefix`, the prefix) to remove. */
+  s3?:
+    | S3Target
+    | undefined;
+  /**
+   * When true, delete EVERY object under s3.object_key as a prefix (retention /
+   * delete-with-artifacts of a whole target's folder). When false, delete the
+   * single exact key. Defaults to a single-key delete.
+   */
+  prefix: boolean;
+}
+
+export interface S3DeleteResponse {
+  ok: boolean;
+  error: string;
+  /** How many objects were deleted (0 when already absent — still ok, idempotent). */
+  deleted: number;
 }
 
 export interface FollowLogsRequest {
@@ -4259,6 +4503,1451 @@ export const SelfUpdateResponse: MessageFns<SelfUpdateResponse> = {
     const message = createBaseSelfUpdateResponse();
     message.version = object.version ?? "";
     message.restarting = object.restarting ?? false;
+    return message;
+  },
+};
+
+function createBaseS3Target(): S3Target {
+  return { endpoint: "", region: "", bucket: "", accessKey: "", secretKey: "", objectKey: "", pathStyle: false };
+}
+
+export const S3Target: MessageFns<S3Target> = {
+  encode(message: S3Target, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.endpoint !== "") {
+      writer.uint32(10).string(message.endpoint);
+    }
+    if (message.region !== "") {
+      writer.uint32(18).string(message.region);
+    }
+    if (message.bucket !== "") {
+      writer.uint32(26).string(message.bucket);
+    }
+    if (message.accessKey !== "") {
+      writer.uint32(34).string(message.accessKey);
+    }
+    if (message.secretKey !== "") {
+      writer.uint32(42).string(message.secretKey);
+    }
+    if (message.objectKey !== "") {
+      writer.uint32(50).string(message.objectKey);
+    }
+    if (message.pathStyle !== false) {
+      writer.uint32(56).bool(message.pathStyle);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): S3Target {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseS3Target();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.endpoint = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.region = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.bucket = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.accessKey = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.secretKey = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.objectKey = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 56) {
+            break;
+          }
+
+          message.pathStyle = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): S3Target {
+    return {
+      endpoint: isSet(object.endpoint) ? globalThis.String(object.endpoint) : "",
+      region: isSet(object.region) ? globalThis.String(object.region) : "",
+      bucket: isSet(object.bucket) ? globalThis.String(object.bucket) : "",
+      accessKey: isSet(object.accessKey)
+        ? globalThis.String(object.accessKey)
+        : isSet(object.access_key)
+        ? globalThis.String(object.access_key)
+        : "",
+      secretKey: isSet(object.secretKey)
+        ? globalThis.String(object.secretKey)
+        : isSet(object.secret_key)
+        ? globalThis.String(object.secret_key)
+        : "",
+      objectKey: isSet(object.objectKey)
+        ? globalThis.String(object.objectKey)
+        : isSet(object.object_key)
+        ? globalThis.String(object.object_key)
+        : "",
+      pathStyle: isSet(object.pathStyle)
+        ? globalThis.Boolean(object.pathStyle)
+        : isSet(object.path_style)
+        ? globalThis.Boolean(object.path_style)
+        : false,
+    };
+  },
+
+  toJSON(message: S3Target): unknown {
+    const obj: any = {};
+    if (message.endpoint !== "") {
+      obj.endpoint = message.endpoint;
+    }
+    if (message.region !== "") {
+      obj.region = message.region;
+    }
+    if (message.bucket !== "") {
+      obj.bucket = message.bucket;
+    }
+    if (message.accessKey !== "") {
+      obj.accessKey = message.accessKey;
+    }
+    if (message.secretKey !== "") {
+      obj.secretKey = message.secretKey;
+    }
+    if (message.objectKey !== "") {
+      obj.objectKey = message.objectKey;
+    }
+    if (message.pathStyle !== false) {
+      obj.pathStyle = message.pathStyle;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<S3Target>, I>>(base?: I): S3Target {
+    return S3Target.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<S3Target>, I>>(object: I): S3Target {
+    const message = createBaseS3Target();
+    message.endpoint = object.endpoint ?? "";
+    message.region = object.region ?? "";
+    message.bucket = object.bucket ?? "";
+    message.accessKey = object.accessKey ?? "";
+    message.secretKey = object.secretKey ?? "";
+    message.objectKey = object.objectKey ?? "";
+    message.pathStyle = object.pathStyle ?? false;
+    return message;
+  },
+};
+
+function createBaseDatabaseDescriptor(): DatabaseDescriptor {
+  return { container: "", dbType: "", dbName: "", user: "", password: "" };
+}
+
+export const DatabaseDescriptor: MessageFns<DatabaseDescriptor> = {
+  encode(message: DatabaseDescriptor, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.container !== "") {
+      writer.uint32(10).string(message.container);
+    }
+    if (message.dbType !== "") {
+      writer.uint32(18).string(message.dbType);
+    }
+    if (message.dbName !== "") {
+      writer.uint32(26).string(message.dbName);
+    }
+    if (message.user !== "") {
+      writer.uint32(34).string(message.user);
+    }
+    if (message.password !== "") {
+      writer.uint32(42).string(message.password);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DatabaseDescriptor {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDatabaseDescriptor();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.container = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.dbType = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.dbName = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.user = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.password = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DatabaseDescriptor {
+    return {
+      container: isSet(object.container) ? globalThis.String(object.container) : "",
+      dbType: isSet(object.dbType)
+        ? globalThis.String(object.dbType)
+        : isSet(object.db_type)
+        ? globalThis.String(object.db_type)
+        : "",
+      dbName: isSet(object.dbName)
+        ? globalThis.String(object.dbName)
+        : isSet(object.db_name)
+        ? globalThis.String(object.db_name)
+        : "",
+      user: isSet(object.user) ? globalThis.String(object.user) : "",
+      password: isSet(object.password) ? globalThis.String(object.password) : "",
+    };
+  },
+
+  toJSON(message: DatabaseDescriptor): unknown {
+    const obj: any = {};
+    if (message.container !== "") {
+      obj.container = message.container;
+    }
+    if (message.dbType !== "") {
+      obj.dbType = message.dbType;
+    }
+    if (message.dbName !== "") {
+      obj.dbName = message.dbName;
+    }
+    if (message.user !== "") {
+      obj.user = message.user;
+    }
+    if (message.password !== "") {
+      obj.password = message.password;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<DatabaseDescriptor>, I>>(base?: I): DatabaseDescriptor {
+    return DatabaseDescriptor.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<DatabaseDescriptor>, I>>(object: I): DatabaseDescriptor {
+    const message = createBaseDatabaseDescriptor();
+    message.container = object.container ?? "";
+    message.dbType = object.dbType ?? "";
+    message.dbName = object.dbName ?? "";
+    message.user = object.user ?? "";
+    message.password = object.password ?? "";
+    return message;
+  },
+};
+
+function createBaseProjectDescriptor(): ProjectDescriptor {
+  return { slug: "", volumeNames: [], includeFiles: false, composeYaml: "", envSnapshot: {}, mounts: [] };
+}
+
+export const ProjectDescriptor: MessageFns<ProjectDescriptor> = {
+  encode(message: ProjectDescriptor, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    for (const v of message.volumeNames) {
+      writer.uint32(18).string(v!);
+    }
+    if (message.includeFiles !== false) {
+      writer.uint32(24).bool(message.includeFiles);
+    }
+    if (message.composeYaml !== "") {
+      writer.uint32(34).string(message.composeYaml);
+    }
+    globalThis.Object.entries(message.envSnapshot).forEach(([key, value]: [string, string]) => {
+      ProjectDescriptor_EnvSnapshotEntry.encode({ key: key as any, value }, writer.uint32(42).fork()).join();
+    });
+    for (const v of message.mounts) {
+      MountFile.encode(v!, writer.uint32(50).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ProjectDescriptor {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseProjectDescriptor();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.volumeNames.push(reader.string());
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.includeFiles = reader.bool();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.composeYaml = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          const entry5 = ProjectDescriptor_EnvSnapshotEntry.decode(reader, reader.uint32());
+          if (entry5.value !== undefined) {
+            message.envSnapshot[entry5.key] = entry5.value;
+          }
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.mounts.push(MountFile.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ProjectDescriptor {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      volumeNames: globalThis.Array.isArray(object?.volumeNames)
+        ? object.volumeNames.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.volume_names)
+        ? object.volume_names.map((e: any) => globalThis.String(e))
+        : [],
+      includeFiles: isSet(object.includeFiles)
+        ? globalThis.Boolean(object.includeFiles)
+        : isSet(object.include_files)
+        ? globalThis.Boolean(object.include_files)
+        : false,
+      composeYaml: isSet(object.composeYaml)
+        ? globalThis.String(object.composeYaml)
+        : isSet(object.compose_yaml)
+        ? globalThis.String(object.compose_yaml)
+        : "",
+      envSnapshot: isObject(object.envSnapshot)
+        ? (globalThis.Object.entries(object.envSnapshot) as [string, any][]).reduce(
+          (acc: { [key: string]: string }, [key, value]: [string, any]) => {
+            acc[key] = globalThis.String(value);
+            return acc;
+          },
+          {},
+        )
+        : isObject(object.env_snapshot)
+        ? (globalThis.Object.entries(object.env_snapshot) as [string, any][]).reduce(
+          (acc: { [key: string]: string }, [key, value]: [string, any]) => {
+            acc[key] = globalThis.String(value);
+            return acc;
+          },
+          {},
+        )
+        : {},
+      mounts: globalThis.Array.isArray(object?.mounts)
+        ? object.mounts.map((e: any) => MountFile.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ProjectDescriptor): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.volumeNames?.length) {
+      obj.volumeNames = message.volumeNames;
+    }
+    if (message.includeFiles !== false) {
+      obj.includeFiles = message.includeFiles;
+    }
+    if (message.composeYaml !== "") {
+      obj.composeYaml = message.composeYaml;
+    }
+    if (message.envSnapshot) {
+      const entries = globalThis.Object.entries(message.envSnapshot) as [string, string][];
+      if (entries.length > 0) {
+        obj.envSnapshot = {};
+        entries.forEach(([k, v]) => {
+          obj.envSnapshot[k] = v;
+        });
+      }
+    }
+    if (message.mounts?.length) {
+      obj.mounts = message.mounts.map((e) => MountFile.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ProjectDescriptor>, I>>(base?: I): ProjectDescriptor {
+    return ProjectDescriptor.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ProjectDescriptor>, I>>(object: I): ProjectDescriptor {
+    const message = createBaseProjectDescriptor();
+    message.slug = object.slug ?? "";
+    message.volumeNames = object.volumeNames?.map((e) => e) || [];
+    message.includeFiles = object.includeFiles ?? false;
+    message.composeYaml = object.composeYaml ?? "";
+    message.envSnapshot = (globalThis.Object.entries(object.envSnapshot ?? {}) as [string, string][]).reduce(
+      (acc: { [key: string]: string }, [key, value]: [string, string]) => {
+        if (value !== undefined) {
+          acc[key] = globalThis.String(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    message.mounts = object.mounts?.map((e) => MountFile.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseProjectDescriptor_EnvSnapshotEntry(): ProjectDescriptor_EnvSnapshotEntry {
+  return { key: "", value: "" };
+}
+
+export const ProjectDescriptor_EnvSnapshotEntry: MessageFns<ProjectDescriptor_EnvSnapshotEntry> = {
+  encode(message: ProjectDescriptor_EnvSnapshotEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== "") {
+      writer.uint32(18).string(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ProjectDescriptor_EnvSnapshotEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseProjectDescriptor_EnvSnapshotEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ProjectDescriptor_EnvSnapshotEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? globalThis.String(object.value) : "",
+    };
+  },
+
+  toJSON(message: ProjectDescriptor_EnvSnapshotEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== "") {
+      obj.value = message.value;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ProjectDescriptor_EnvSnapshotEntry>, I>>(
+    base?: I,
+  ): ProjectDescriptor_EnvSnapshotEntry {
+    return ProjectDescriptor_EnvSnapshotEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ProjectDescriptor_EnvSnapshotEntry>, I>>(
+    object: I,
+  ): ProjectDescriptor_EnvSnapshotEntry {
+    const message = createBaseProjectDescriptor_EnvSnapshotEntry();
+    message.key = object.key ?? "";
+    message.value = object.value ?? "";
+    return message;
+  },
+};
+
+function createBaseBackupRequest(): BackupRequest {
+  return { kind: 0, s3: undefined, database: undefined, project: undefined };
+}
+
+export const BackupRequest: MessageFns<BackupRequest> = {
+  encode(message: BackupRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.kind !== 0) {
+      writer.uint32(8).int32(message.kind);
+    }
+    if (message.s3 !== undefined) {
+      S3Target.encode(message.s3, writer.uint32(18).fork()).join();
+    }
+    if (message.database !== undefined) {
+      DatabaseDescriptor.encode(message.database, writer.uint32(26).fork()).join();
+    }
+    if (message.project !== undefined) {
+      ProjectDescriptor.encode(message.project, writer.uint32(34).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): BackupRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseBackupRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.kind = reader.int32() as any;
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.s3 = S3Target.decode(reader, reader.uint32());
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.database = DatabaseDescriptor.decode(reader, reader.uint32());
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.project = ProjectDescriptor.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): BackupRequest {
+    return {
+      kind: isSet(object.kind) ? backupKindFromJSON(object.kind) : 0,
+      s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined,
+      database: isSet(object.database) ? DatabaseDescriptor.fromJSON(object.database) : undefined,
+      project: isSet(object.project) ? ProjectDescriptor.fromJSON(object.project) : undefined,
+    };
+  },
+
+  toJSON(message: BackupRequest): unknown {
+    const obj: any = {};
+    if (message.kind !== 0) {
+      obj.kind = backupKindToJSON(message.kind);
+    }
+    if (message.s3 !== undefined) {
+      obj.s3 = S3Target.toJSON(message.s3);
+    }
+    if (message.database !== undefined) {
+      obj.database = DatabaseDescriptor.toJSON(message.database);
+    }
+    if (message.project !== undefined) {
+      obj.project = ProjectDescriptor.toJSON(message.project);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<BackupRequest>, I>>(base?: I): BackupRequest {
+    return BackupRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<BackupRequest>, I>>(object: I): BackupRequest {
+    const message = createBaseBackupRequest();
+    message.kind = object.kind ?? 0;
+    message.s3 = (object.s3 !== undefined && object.s3 !== null) ? S3Target.fromPartial(object.s3) : undefined;
+    message.database = (object.database !== undefined && object.database !== null)
+      ? DatabaseDescriptor.fromPartial(object.database)
+      : undefined;
+    message.project = (object.project !== undefined && object.project !== null)
+      ? ProjectDescriptor.fromPartial(object.project)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseBackupEvent(): BackupEvent {
+  return { log: undefined, result: undefined };
+}
+
+export const BackupEvent: MessageFns<BackupEvent> = {
+  encode(message: BackupEvent, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.log !== undefined) {
+      LogLine.encode(message.log, writer.uint32(10).fork()).join();
+    }
+    if (message.result !== undefined) {
+      BackupResult.encode(message.result, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): BackupEvent {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseBackupEvent();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.log = LogLine.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.result = BackupResult.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): BackupEvent {
+    return {
+      log: isSet(object.log) ? LogLine.fromJSON(object.log) : undefined,
+      result: isSet(object.result) ? BackupResult.fromJSON(object.result) : undefined,
+    };
+  },
+
+  toJSON(message: BackupEvent): unknown {
+    const obj: any = {};
+    if (message.log !== undefined) {
+      obj.log = LogLine.toJSON(message.log);
+    }
+    if (message.result !== undefined) {
+      obj.result = BackupResult.toJSON(message.result);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<BackupEvent>, I>>(base?: I): BackupEvent {
+    return BackupEvent.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<BackupEvent>, I>>(object: I): BackupEvent {
+    const message = createBaseBackupEvent();
+    message.log = (object.log !== undefined && object.log !== null) ? LogLine.fromPartial(object.log) : undefined;
+    message.result = (object.result !== undefined && object.result !== null)
+      ? BackupResult.fromPartial(object.result)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseBackupResult(): BackupResult {
+  return { ok: false, error: "", objectKey: "", sizeBytes: 0 };
+}
+
+export const BackupResult: MessageFns<BackupResult> = {
+  encode(message: BackupResult, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.ok !== false) {
+      writer.uint32(8).bool(message.ok);
+    }
+    if (message.error !== "") {
+      writer.uint32(18).string(message.error);
+    }
+    if (message.objectKey !== "") {
+      writer.uint32(26).string(message.objectKey);
+    }
+    if (message.sizeBytes !== 0) {
+      writer.uint32(32).int64(message.sizeBytes);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): BackupResult {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseBackupResult();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.ok = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.objectKey = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.sizeBytes = longToNumber(reader.int64());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): BackupResult {
+    return {
+      ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+      objectKey: isSet(object.objectKey)
+        ? globalThis.String(object.objectKey)
+        : isSet(object.object_key)
+        ? globalThis.String(object.object_key)
+        : "",
+      sizeBytes: isSet(object.sizeBytes)
+        ? globalThis.Number(object.sizeBytes)
+        : isSet(object.size_bytes)
+        ? globalThis.Number(object.size_bytes)
+        : 0,
+    };
+  },
+
+  toJSON(message: BackupResult): unknown {
+    const obj: any = {};
+    if (message.ok !== false) {
+      obj.ok = message.ok;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    if (message.objectKey !== "") {
+      obj.objectKey = message.objectKey;
+    }
+    if (message.sizeBytes !== 0) {
+      obj.sizeBytes = Math.round(message.sizeBytes);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<BackupResult>, I>>(base?: I): BackupResult {
+    return BackupResult.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<BackupResult>, I>>(object: I): BackupResult {
+    const message = createBaseBackupResult();
+    message.ok = object.ok ?? false;
+    message.error = object.error ?? "";
+    message.objectKey = object.objectKey ?? "";
+    message.sizeBytes = object.sizeBytes ?? 0;
+    return message;
+  },
+};
+
+function createBaseRestoreRequest(): RestoreRequest {
+  return { kind: 0, s3: undefined, database: undefined, project: undefined };
+}
+
+export const RestoreRequest: MessageFns<RestoreRequest> = {
+  encode(message: RestoreRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.kind !== 0) {
+      writer.uint32(8).int32(message.kind);
+    }
+    if (message.s3 !== undefined) {
+      S3Target.encode(message.s3, writer.uint32(18).fork()).join();
+    }
+    if (message.database !== undefined) {
+      DatabaseDescriptor.encode(message.database, writer.uint32(26).fork()).join();
+    }
+    if (message.project !== undefined) {
+      ProjectDescriptor.encode(message.project, writer.uint32(34).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestoreRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRestoreRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.kind = reader.int32() as any;
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.s3 = S3Target.decode(reader, reader.uint32());
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.database = DatabaseDescriptor.decode(reader, reader.uint32());
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.project = ProjectDescriptor.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RestoreRequest {
+    return {
+      kind: isSet(object.kind) ? backupKindFromJSON(object.kind) : 0,
+      s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined,
+      database: isSet(object.database) ? DatabaseDescriptor.fromJSON(object.database) : undefined,
+      project: isSet(object.project) ? ProjectDescriptor.fromJSON(object.project) : undefined,
+    };
+  },
+
+  toJSON(message: RestoreRequest): unknown {
+    const obj: any = {};
+    if (message.kind !== 0) {
+      obj.kind = backupKindToJSON(message.kind);
+    }
+    if (message.s3 !== undefined) {
+      obj.s3 = S3Target.toJSON(message.s3);
+    }
+    if (message.database !== undefined) {
+      obj.database = DatabaseDescriptor.toJSON(message.database);
+    }
+    if (message.project !== undefined) {
+      obj.project = ProjectDescriptor.toJSON(message.project);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestoreRequest>, I>>(base?: I): RestoreRequest {
+    return RestoreRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestoreRequest>, I>>(object: I): RestoreRequest {
+    const message = createBaseRestoreRequest();
+    message.kind = object.kind ?? 0;
+    message.s3 = (object.s3 !== undefined && object.s3 !== null) ? S3Target.fromPartial(object.s3) : undefined;
+    message.database = (object.database !== undefined && object.database !== null)
+      ? DatabaseDescriptor.fromPartial(object.database)
+      : undefined;
+    message.project = (object.project !== undefined && object.project !== null)
+      ? ProjectDescriptor.fromPartial(object.project)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseRestoreEvent(): RestoreEvent {
+  return { log: undefined, result: undefined };
+}
+
+export const RestoreEvent: MessageFns<RestoreEvent> = {
+  encode(message: RestoreEvent, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.log !== undefined) {
+      LogLine.encode(message.log, writer.uint32(10).fork()).join();
+    }
+    if (message.result !== undefined) {
+      RestoreResult.encode(message.result, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestoreEvent {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRestoreEvent();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.log = LogLine.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.result = RestoreResult.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RestoreEvent {
+    return {
+      log: isSet(object.log) ? LogLine.fromJSON(object.log) : undefined,
+      result: isSet(object.result) ? RestoreResult.fromJSON(object.result) : undefined,
+    };
+  },
+
+  toJSON(message: RestoreEvent): unknown {
+    const obj: any = {};
+    if (message.log !== undefined) {
+      obj.log = LogLine.toJSON(message.log);
+    }
+    if (message.result !== undefined) {
+      obj.result = RestoreResult.toJSON(message.result);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestoreEvent>, I>>(base?: I): RestoreEvent {
+    return RestoreEvent.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestoreEvent>, I>>(object: I): RestoreEvent {
+    const message = createBaseRestoreEvent();
+    message.log = (object.log !== undefined && object.log !== null) ? LogLine.fromPartial(object.log) : undefined;
+    message.result = (object.result !== undefined && object.result !== null)
+      ? RestoreResult.fromPartial(object.result)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseRestoreResult(): RestoreResult {
+  return { ok: false, error: "" };
+}
+
+export const RestoreResult: MessageFns<RestoreResult> = {
+  encode(message: RestoreResult, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.ok !== false) {
+      writer.uint32(8).bool(message.ok);
+    }
+    if (message.error !== "") {
+      writer.uint32(18).string(message.error);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestoreResult {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRestoreResult();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.ok = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RestoreResult {
+    return {
+      ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+    };
+  },
+
+  toJSON(message: RestoreResult): unknown {
+    const obj: any = {};
+    if (message.ok !== false) {
+      obj.ok = message.ok;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestoreResult>, I>>(base?: I): RestoreResult {
+    return RestoreResult.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestoreResult>, I>>(object: I): RestoreResult {
+    const message = createBaseRestoreResult();
+    message.ok = object.ok ?? false;
+    message.error = object.error ?? "";
+    return message;
+  },
+};
+
+function createBaseS3CheckRequest(): S3CheckRequest {
+  return { s3: undefined };
+}
+
+export const S3CheckRequest: MessageFns<S3CheckRequest> = {
+  encode(message: S3CheckRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.s3 !== undefined) {
+      S3Target.encode(message.s3, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): S3CheckRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseS3CheckRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.s3 = S3Target.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): S3CheckRequest {
+    return { s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined };
+  },
+
+  toJSON(message: S3CheckRequest): unknown {
+    const obj: any = {};
+    if (message.s3 !== undefined) {
+      obj.s3 = S3Target.toJSON(message.s3);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<S3CheckRequest>, I>>(base?: I): S3CheckRequest {
+    return S3CheckRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<S3CheckRequest>, I>>(object: I): S3CheckRequest {
+    const message = createBaseS3CheckRequest();
+    message.s3 = (object.s3 !== undefined && object.s3 !== null) ? S3Target.fromPartial(object.s3) : undefined;
+    return message;
+  },
+};
+
+function createBaseS3CheckResponse(): S3CheckResponse {
+  return { ok: false, error: "" };
+}
+
+export const S3CheckResponse: MessageFns<S3CheckResponse> = {
+  encode(message: S3CheckResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.ok !== false) {
+      writer.uint32(8).bool(message.ok);
+    }
+    if (message.error !== "") {
+      writer.uint32(18).string(message.error);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): S3CheckResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseS3CheckResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.ok = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): S3CheckResponse {
+    return {
+      ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+    };
+  },
+
+  toJSON(message: S3CheckResponse): unknown {
+    const obj: any = {};
+    if (message.ok !== false) {
+      obj.ok = message.ok;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<S3CheckResponse>, I>>(base?: I): S3CheckResponse {
+    return S3CheckResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<S3CheckResponse>, I>>(object: I): S3CheckResponse {
+    const message = createBaseS3CheckResponse();
+    message.ok = object.ok ?? false;
+    message.error = object.error ?? "";
+    return message;
+  },
+};
+
+function createBaseS3DeleteRequest(): S3DeleteRequest {
+  return { s3: undefined, prefix: false };
+}
+
+export const S3DeleteRequest: MessageFns<S3DeleteRequest> = {
+  encode(message: S3DeleteRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.s3 !== undefined) {
+      S3Target.encode(message.s3, writer.uint32(10).fork()).join();
+    }
+    if (message.prefix !== false) {
+      writer.uint32(16).bool(message.prefix);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): S3DeleteRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseS3DeleteRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.s3 = S3Target.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.prefix = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): S3DeleteRequest {
+    return {
+      s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined,
+      prefix: isSet(object.prefix) ? globalThis.Boolean(object.prefix) : false,
+    };
+  },
+
+  toJSON(message: S3DeleteRequest): unknown {
+    const obj: any = {};
+    if (message.s3 !== undefined) {
+      obj.s3 = S3Target.toJSON(message.s3);
+    }
+    if (message.prefix !== false) {
+      obj.prefix = message.prefix;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<S3DeleteRequest>, I>>(base?: I): S3DeleteRequest {
+    return S3DeleteRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<S3DeleteRequest>, I>>(object: I): S3DeleteRequest {
+    const message = createBaseS3DeleteRequest();
+    message.s3 = (object.s3 !== undefined && object.s3 !== null) ? S3Target.fromPartial(object.s3) : undefined;
+    message.prefix = object.prefix ?? false;
+    return message;
+  },
+};
+
+function createBaseS3DeleteResponse(): S3DeleteResponse {
+  return { ok: false, error: "", deleted: 0 };
+}
+
+export const S3DeleteResponse: MessageFns<S3DeleteResponse> = {
+  encode(message: S3DeleteResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.ok !== false) {
+      writer.uint32(8).bool(message.ok);
+    }
+    if (message.error !== "") {
+      writer.uint32(18).string(message.error);
+    }
+    if (message.deleted !== 0) {
+      writer.uint32(24).int64(message.deleted);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): S3DeleteResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseS3DeleteResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.ok = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.deleted = longToNumber(reader.int64());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): S3DeleteResponse {
+    return {
+      ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+      deleted: isSet(object.deleted) ? globalThis.Number(object.deleted) : 0,
+    };
+  },
+
+  toJSON(message: S3DeleteResponse): unknown {
+    const obj: any = {};
+    if (message.ok !== false) {
+      obj.ok = message.ok;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    if (message.deleted !== 0) {
+      obj.deleted = Math.round(message.deleted);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<S3DeleteResponse>, I>>(base?: I): S3DeleteResponse {
+    return S3DeleteResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<S3DeleteResponse>, I>>(object: I): S3DeleteResponse {
+    const message = createBaseS3DeleteResponse();
+    message.ok = object.ok ?? false;
+    message.error = object.error ?? "";
+    message.deleted = object.deleted ?? 0;
     return message;
   },
 };
@@ -7830,6 +9519,79 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): SelfUpdateResponse => SelfUpdateResponse.decode(value),
   },
   /**
+   * Back up a database or a project to S3, streaming progress. DATABASE → the
+   * agent `docker exec`s the engine's dump tool (per the format table in
+   * docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and uploads
+   * it to S3 via a multipart PUT (minio-go), so no temp file and no
+   * control-plane round-trip. PROJECT → the agent tars the project's named +
+   * compose-stack volumes (via a throwaway helper container that mounts them),
+   * the project files dir, and the rendered compose/env snapshot, gzip-compresses,
+   * and uploads. Host bind mounts are EXCLUDED (shared cross-tenant paths,
+   * outside Deplo). The terminal BackupResult carries the final object key +
+   * byte size the control plane records on the BackupRun.
+   */
+  backup: {
+    path: "/deplo.agent.v1.Agent/Backup" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: BackupRequest): Buffer => Buffer.from(BackupRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): BackupRequest => BackupRequest.decode(value),
+    responseSerialize: (value: BackupEvent): Buffer => Buffer.from(BackupEvent.encode(value).finish()),
+    responseDeserialize: (value: Buffer): BackupEvent => BackupEvent.decode(value),
+  },
+  /**
+   * Restore a database or project from a previously-uploaded S3 object, IN
+   * PLACE, streaming progress. DATABASE → download the object, decompress, and
+   * restore per the format table — drop-and-recreate, guaranteed by the dump
+   * format (pg `--clean --if-exists`, mysql `--add-drop-table`, mongo `--drop`)
+   * so a restore overwrites rather than appends. PROJECT → stop the stack, wipe
+   * + untar the volumes + files, re-`Reroute` the snapshot compose/env (which
+   * restarts the stack) = full data + config in place. A restart failure (e.g.
+   * a snapshot image that no longer exists) is reported clearly on the stream
+   * rather than silently leaving the stack down.
+   */
+  restore: {
+    path: "/deplo.agent.v1.Agent/Restore" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: RestoreRequest): Buffer => Buffer.from(RestoreRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RestoreRequest => RestoreRequest.decode(value),
+    responseSerialize: (value: RestoreEvent): Buffer => Buffer.from(RestoreEvent.encode(value).finish()),
+    responseDeserialize: (value: Buffer): RestoreEvent => RestoreEvent.decode(value),
+  },
+  /**
+   * Verify S3 connectivity + the destination bucket for the "Test connection"
+   * button (makes lib/data/s3.ts testS3 real). The agent HEADs/stats the bucket
+   * with the supplied creds and reports reachable + writable, with a human
+   * message on failure. Any agent advertising "backup" can serve it — it needs
+   * no Docker, only the S3 client — so the control plane can run it on any
+   * reachable backup-capable server.
+   */
+  s3Check: {
+    path: "/deplo.agent.v1.Agent/S3Check" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: S3CheckRequest): Buffer => Buffer.from(S3CheckRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): S3CheckRequest => S3CheckRequest.decode(value),
+    responseSerialize: (value: S3CheckResponse): Buffer => Buffer.from(S3CheckResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): S3CheckResponse => S3CheckResponse.decode(value),
+  },
+  /**
+   * Delete S3 objects by exact key or by prefix. Backs retention pruning (the
+   * control plane deletes objects older than retentionDays for a backup) and
+   * the "delete artifacts too" branch of target deletion. Idempotent: a missing
+   * object is not an error. Returns how many objects were removed.
+   */
+  s3Delete: {
+    path: "/deplo.agent.v1.Agent/S3Delete" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: S3DeleteRequest): Buffer => Buffer.from(S3DeleteRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): S3DeleteRequest => S3DeleteRequest.decode(value),
+    responseSerialize: (value: S3DeleteResponse): Buffer => Buffer.from(S3DeleteResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): S3DeleteResponse => S3DeleteResponse.decode(value),
+  },
+  /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
    * byte chunks. Output-only — there is no stdin. The control plane proxies these
    * chunks straight into the unchanged SSE log route. Closing the stream (browser
@@ -8192,6 +9954,47 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   selfUpdate: handleUnaryCall<SelfUpdateRequest, SelfUpdateResponse>;
   /**
+   * Back up a database or a project to S3, streaming progress. DATABASE → the
+   * agent `docker exec`s the engine's dump tool (per the format table in
+   * docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and uploads
+   * it to S3 via a multipart PUT (minio-go), so no temp file and no
+   * control-plane round-trip. PROJECT → the agent tars the project's named +
+   * compose-stack volumes (via a throwaway helper container that mounts them),
+   * the project files dir, and the rendered compose/env snapshot, gzip-compresses,
+   * and uploads. Host bind mounts are EXCLUDED (shared cross-tenant paths,
+   * outside Deplo). The terminal BackupResult carries the final object key +
+   * byte size the control plane records on the BackupRun.
+   */
+  backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
+  /**
+   * Restore a database or project from a previously-uploaded S3 object, IN
+   * PLACE, streaming progress. DATABASE → download the object, decompress, and
+   * restore per the format table — drop-and-recreate, guaranteed by the dump
+   * format (pg `--clean --if-exists`, mysql `--add-drop-table`, mongo `--drop`)
+   * so a restore overwrites rather than appends. PROJECT → stop the stack, wipe
+   * + untar the volumes + files, re-`Reroute` the snapshot compose/env (which
+   * restarts the stack) = full data + config in place. A restart failure (e.g.
+   * a snapshot image that no longer exists) is reported clearly on the stream
+   * rather than silently leaving the stack down.
+   */
+  restore: handleServerStreamingCall<RestoreRequest, RestoreEvent>;
+  /**
+   * Verify S3 connectivity + the destination bucket for the "Test connection"
+   * button (makes lib/data/s3.ts testS3 real). The agent HEADs/stats the bucket
+   * with the supplied creds and reports reachable + writable, with a human
+   * message on failure. Any agent advertising "backup" can serve it — it needs
+   * no Docker, only the S3 client — so the control plane can run it on any
+   * reachable backup-capable server.
+   */
+  s3Check: handleUnaryCall<S3CheckRequest, S3CheckResponse>;
+  /**
+   * Delete S3 objects by exact key or by prefix. Backs retention pruning (the
+   * control plane deletes objects older than retentionDays for a backup) and
+   * the "delete artifacts too" branch of target deletion. Idempotent: a missing
+   * object is not an error. Returns how many objects were removed.
+   */
+  s3Delete: handleUnaryCall<S3DeleteRequest, S3DeleteResponse>;
+  /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
    * byte chunks. Output-only — there is no stdin. The control plane proxies these
    * chunks straight into the unchanged SSE log route. Closing the stream (browser
@@ -8495,6 +10298,85 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SelfUpdateResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Back up a database or a project to S3, streaming progress. DATABASE → the
+   * agent `docker exec`s the engine's dump tool (per the format table in
+   * docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and uploads
+   * it to S3 via a multipart PUT (minio-go), so no temp file and no
+   * control-plane round-trip. PROJECT → the agent tars the project's named +
+   * compose-stack volumes (via a throwaway helper container that mounts them),
+   * the project files dir, and the rendered compose/env snapshot, gzip-compresses,
+   * and uploads. Host bind mounts are EXCLUDED (shared cross-tenant paths,
+   * outside Deplo). The terminal BackupResult carries the final object key +
+   * byte size the control plane records on the BackupRun.
+   */
+  backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;
+  backup(
+    request: BackupRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<BackupEvent>;
+  /**
+   * Restore a database or project from a previously-uploaded S3 object, IN
+   * PLACE, streaming progress. DATABASE → download the object, decompress, and
+   * restore per the format table — drop-and-recreate, guaranteed by the dump
+   * format (pg `--clean --if-exists`, mysql `--add-drop-table`, mongo `--drop`)
+   * so a restore overwrites rather than appends. PROJECT → stop the stack, wipe
+   * + untar the volumes + files, re-`Reroute` the snapshot compose/env (which
+   * restarts the stack) = full data + config in place. A restart failure (e.g.
+   * a snapshot image that no longer exists) is reported clearly on the stream
+   * rather than silently leaving the stack down.
+   */
+  restore(request: RestoreRequest, options?: Partial<CallOptions>): ClientReadableStream<RestoreEvent>;
+  restore(
+    request: RestoreRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<RestoreEvent>;
+  /**
+   * Verify S3 connectivity + the destination bucket for the "Test connection"
+   * button (makes lib/data/s3.ts testS3 real). The agent HEADs/stats the bucket
+   * with the supplied creds and reports reachable + writable, with a human
+   * message on failure. Any agent advertising "backup" can serve it — it needs
+   * no Docker, only the S3 client — so the control plane can run it on any
+   * reachable backup-capable server.
+   */
+  s3Check(
+    request: S3CheckRequest,
+    callback: (error: ServiceError | null, response: S3CheckResponse) => void,
+  ): ClientUnaryCall;
+  s3Check(
+    request: S3CheckRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: S3CheckResponse) => void,
+  ): ClientUnaryCall;
+  s3Check(
+    request: S3CheckRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: S3CheckResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Delete S3 objects by exact key or by prefix. Backs retention pruning (the
+   * control plane deletes objects older than retentionDays for a backup) and
+   * the "delete artifacts too" branch of target deletion. Idempotent: a missing
+   * object is not an error. Returns how many objects were removed.
+   */
+  s3Delete(
+    request: S3DeleteRequest,
+    callback: (error: ServiceError | null, response: S3DeleteResponse) => void,
+  ): ClientUnaryCall;
+  s3Delete(
+    request: S3DeleteRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: S3DeleteResponse) => void,
+  ): ClientUnaryCall;
+  s3Delete(
+    request: S3DeleteRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: S3DeleteResponse) => void,
   ): ClientUnaryCall;
   /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw

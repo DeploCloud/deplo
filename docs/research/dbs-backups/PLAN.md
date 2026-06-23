@@ -97,28 +97,55 @@ The user wants:
 
 | RPC | Type | Status |
 | --- | --- | --- |
-| `Backup(BackupRequest) → stream BackupEvent` | server-stream | **new** |
-| `Restore(RestoreRequest) → stream RestoreEvent` | server-stream | **new** |
-| `S3Check(S3CheckRequest) → S3CheckResponse` | unary | **new** |
-| `S3Delete(S3DeleteRequest) → S3DeleteResponse` | unary | **new** (backs retention + delete-with-artifacts) |
-| `DestroyStack` + `removeVolumes` field | unary | **modify** |
-| `"backup"` in `HelloResponse.capabilities` | — | **modify** |
-| S3 client dependency (`minio-go`) | — | **new** |
+| `Backup(BackupRequest) → stream BackupEvent` | server-stream | **done** (Step 2) |
+| `Restore(RestoreRequest) → stream RestoreEvent` | server-stream | **done** (Step 2) |
+| `S3Check(S3CheckRequest) → S3CheckResponse` | unary | **done** (Step 2) |
+| `S3Delete(S3DeleteRequest) → S3DeleteResponse` | unary | **done** (Step 2; backs retention + delete-with-artifacts) |
+| `DestroyStack` + `removeVolumes` field | unary | **done** (agent commit `0167147`) |
+| `"backup"` in `HelloResponse.capabilities` | — | **done** (Step 2) |
+| S3 client dependency (`minio-go`) | — | **done** (Step 2) |
 
 > `ProvisionStack` / `ListBackupArtifacts` from earlier drafts are **dropped/deferred**.
+> Step 2 also shipped the Go impl + unit/E2E tests in `../deplo-agent` and the
+> regenerated TS client ([lib/agent/gen/agent.ts](../../../lib/agent/gen/agent.ts))
+> + control-plane wiring ([agent-client.ts](../../../lib/infra/agent-client.ts):
+> `backup`/`restore`/`s3Check`/`s3Delete`, `BACKUP_DEADLINE_MS`,
+> `AgentBackupUnsupportedError`, `connectBackupAgent`/`mapBackupUnsupported`).
+> All six DB engines (postgres/mysql/mariadb/mongodb/redis/clickhouse) + the
+> **project-volume** round-trip are E2E-verified (overwrite proven). Step 2 also
+> fixed a pre-existing bug in [database-compose.ts](../../../lib/deploy/database-compose.ts):
+> the data volume was mounted at `/var/lib/<type>` for every engine, but redis
+> (`/data`), mongodb (`/data/db`) and mariadb (`/var/lib/mysql`) write elsewhere —
+> so their data wasn't persisted and a restore would land outside the volume. Now
+> mapped per-engine (`DB_DATA_DIRS`). The compose already sets
+> `restart: unless-stopped`, which the redis restore's reload depends on.
 
 ### Per-engine dump/restore format (the Backup⇄Restore contract)
 
 | Engine | Dump | Restore | Object ext |
 | --- | --- | --- | --- |
-| postgres | `pg_dump -Fc` | `pg_restore --clean --if-exists` | `.dump.zst` |
-| mysql / mariadb | `mysqldump --add-drop-table` | `mysql` | `.sql.zst` |
-| mongodb | `mongodump --archive` | `mongorestore --drop --archive` | `.archive.zst` |
-| redis | `redis-cli --rdb` (SAVE/dump) | `redis-cli` restore / RDB load | `.rdb.zst` |
-| clickhouse | per-table `SELECT … FORMAT Native` / `clickhouse-backup` | inverse | `.zst` |
-| project | `tar` volumes + files + snapshot | wipe + untar + `Reroute` | `.tar.zst` |
+| postgres | `pg_dump -Fc` | `pg_restore --clean --if-exists` | `.dump.gz` |
+| mysql / mariadb | `mysqldump --add-drop-table --databases` | `mysql` | `.sql.gz` |
+| mongodb | `mongodump --archive` | `mongorestore --drop --archive` | `.archive.gz` |
+| redis | `redis-cli --rdb -` (RDB to stdout) | file-swap + `SHUTDOWN NOSAVE` reload | `.rdb.gz` |
+| clickhouse | per-table `SHOW CREATE` + `FORMAT SQLInsert` → SQL script | `clickhouse-client --multiquery` | `.sql.gz` |
+| project | `tar` volumes + files + snapshot | wipe + untar + `Reroute` | `.tar.gz` |
 
 > Object-key convention: `deplo/<teamId>/<kind>/<targetId>/<ISO-timestamp>.<ext>`.
+>
+> **Compression (Step 2 decision):** dumps/archives are **gzip**-compressed
+> in-process by the agent (Go stdlib `compress/gzip`), so the object extension is
+> `.gz`, not the earlier draft's `.zst` — no external compressor dependency, and
+> the same stream is gunzipped on restore.
+>
+> **All six engines are real + E2E-verified** (drop-and-recreate overwrite proven
+> against live containers): postgres, mysql, mariadb, mongodb, redis, clickhouse.
+> Two engines use a DEDICATED path rather than the single-`docker exec`-pipe shape:
+> **redis** (an RDB can't be piped to a restore tool's stdin — restore is disable-
+> save → FLUSHALL → write `/data/dump.rdb` → `SHUTDOWN NOSAVE` → supervisor reload,
+> so the DB container MUST have a restart policy) and **clickhouse** (a database is
+> many tables — dump assembles a per-table DROP/CREATE/INSERT SQL script, restore
+> replays it via `--multiquery`).
 
 ---
 
@@ -180,7 +207,16 @@ Extend [lib/types.ts](../../../lib/types.ts):
 
 ---
 
-## Step 2 — Agent RPCs: Backup, Restore, S3Check, S3Delete (contract)
+## Step 2 — Agent RPCs: Backup, Restore, S3Check, S3Delete (contract) ✅ DONE
+
+> **Built here, not just specced.** The PLAN assumed the Go agent + proto could
+> not be built in this environment. They can: Go 1.26 + `protoc` +
+> `protoc-gen-go`/`-grpc` + ts-proto are all present, so Step 2 shipped a **full
+> Go implementation + unit tests** (`go build`/`vet`/`test` all green) and the
+> stubs were **regenerated on both sides** (`make proto`), not left as a paper
+> contract. `DestroyStack.removeVolumes` was already done earlier (agent commit
+> `0167147`). Decisions: dumps run via `docker exec` into the DB container; the
+> S3 transfer uses `minio-go`; compression is in-process **gzip** (`.gz`).
 
 In `../deplo-agent` add to `proto/agent.proto` + the Go impl, then **regenerate**
 [lib/agent/gen/agent.ts](../../../lib/agent/gen/agent.ts) here (`make proto`). New/changed:

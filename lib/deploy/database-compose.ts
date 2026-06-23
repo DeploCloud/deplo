@@ -24,6 +24,28 @@ const DB_PORTS: Record<DatabaseType, number> = {
   clickhouse: 8123,
 };
 
+/**
+ * The in-container path each engine's image actually writes its data to. The
+ * named data volume MUST mount here or the data is not persisted (it lives in
+ * the container's ephemeral layer and is lost on recreation) — and a backup
+ * restore that writes to the engine's real data dir would land outside the
+ * volume. These are the official images' documented data dirs:
+ *  - postgres  /var/lib/postgresql/data
+ *  - mysql     /var/lib/mysql
+ *  - mariadb   /var/lib/mysql   (mariadb image reuses the mysql layout)
+ *  - mongodb   /data/db
+ *  - redis     /data
+ *  - clickhouse /var/lib/clickhouse
+ */
+const DB_DATA_DIRS: Record<DatabaseType, string> = {
+  postgres: "/var/lib/postgresql/data",
+  mysql: "/var/lib/mysql",
+  mariadb: "/var/lib/mysql",
+  mongodb: "/data/db",
+  redis: "/data",
+  clickhouse: "/var/lib/clickhouse",
+};
+
 export function generateDatabaseCompose(input: {
   name: string;
   type: DatabaseType;
@@ -70,7 +92,7 @@ services:
     networks:
       - deplo
 ${command}${envBlock}${ports}    volumes:
-      - ${name}-data:/var/lib/${type === "postgres" ? "postgresql/data" : type}
+      - ${name}-data:${DB_DATA_DIRS[type]}
     healthcheck:
       test: ["CMD-SHELL", "exit 0"]
       interval: 10s

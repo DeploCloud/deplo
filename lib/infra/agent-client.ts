@@ -17,6 +17,11 @@ import {
   type DeployRequest,
   type DeployEvent,
   type ReattachRequest,
+  type BackupRequest,
+  type BackupEvent,
+  type RestoreRequest,
+  type RestoreEvent,
+  type S3Target,
   type LogChunk,
   type AttachInput,
   type AttachOutput,
@@ -52,6 +57,12 @@ const DEPLOY_DEADLINE_MS = 30 * 60_000; // a build can be long
 const CONSOLE_TIMEOUT_MS = 30_000; // exec runs in-container; match docker.ts exec
 const FILES_TIMEOUT_MS = 15_000;
 const STREAM_DEADLINE_MS = 30 * 60_000; // logs/attach are long-lived
+// A dump+upload (or download+restore) of a large DB or volume-heavy project can
+// be long; the agent caps each step at ~30min, this is that plus dial slack.
+const BACKUP_DEADLINE_MS = 60 * 60_000;
+// S3Check/S3Delete are quick bucket ops, but a slow/unreachable S3 endpoint must
+// time out rather than hang the request that triggered it.
+const S3_OP_DEADLINE_MS = 60_000;
 const GATEWAY_TIMEOUT_MS = 4 * 60_000; // gateway compose-up + sshd-wait + reconcile (Part D)
 const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000; // agent downloads + verifies + swaps its own binary
 // Stack lifecycle verbs (reroute/start/stop/destroy). The agent caps its own
@@ -170,6 +181,26 @@ export interface AgentConnection {
     binaries: Record<string, { url: string; sha256: string }>,
   ): Promise<{ version: string; restarting: boolean }>;
 
+  // ---- Backups: dump/restore to S3 + the S3 affordances (ADR-0007) ----
+  /** Dump a database or project to S3, streaming progress; yields BackupEvents
+   *  until the terminal result (objectKey + sizeBytes on success). The agent
+   *  runs the engine's dump tool / tars the project's volumes+files+snapshot,
+   *  gzip-compresses, and uploads itself — the bytes never round-trip here. */
+  backup(req: BackupRequest): AsyncGenerator<BackupEvent, void, unknown>;
+  /** Restore a database or project from an S3 object, in place; yields
+   *  RestoreEvents until the terminal result. DB = drop-and-recreate; project =
+   *  stop → wipe + untar volumes/files → re-Reroute the snapshot. */
+  restore(req: RestoreRequest): AsyncGenerator<RestoreEvent, void, unknown>;
+  /** Verify S3 connectivity + that the bucket is writable (makes testS3 real). */
+  s3Check(s3: S3Target): Promise<{ ok: boolean; error: string }>;
+  /** Delete a single object (or, with `prefix`, a whole target folder) from S3 —
+   *  backs retention pruning + delete-with-artifacts. Idempotent; returns the
+   *  count removed. `s3.objectKey` is the key or prefix. */
+  s3Delete(
+    s3: S3Target,
+    prefix?: boolean,
+  ): Promise<{ ok: boolean; error: string; deleted: number }>;
+
   // ---- Part C: console observability ----
   /** Live `docker logs -f` as an output-only AttachHandle (reuses the SSE session
    *  plumbing). `write` is a no-op; `close()` cancels the stream + the grpc client. */
@@ -273,6 +304,21 @@ export class AgentUnreachableError extends Error {}
  * changes — every layer above it is already wired.
  */
 export class AgentUpdateUnsupportedError extends Error {}
+
+/**
+ * The reachable agent does not (yet) implement the backup RPCs (Backup /
+ * Restore / S3Check / S3Delete) — it doesn't advertise the `"backup"`
+ * capability in Hello, or it answers the call with gRPC UNIMPLEMENTED.
+ *
+ * Backups route through the OWNING server's agent (ADR-0007): the real dump +
+ * S3 upload, the connectivity check, and object deletion all run agent-side via
+ * RPCs that ship in a `deplo-agent` release. Until a server runs an agent new
+ * enough to answer them, the data layer surfaces THIS error — distinct from
+ * {@link AgentUnreachableError} (the agent IS up, it just can't back up yet) —
+ * so the UI says "update the agent on this server" rather than faking a success
+ * or emitting a confusing UNIMPLEMENTED. Mirrors {@link AgentUpdateUnsupportedError}.
+ */
+export class AgentBackupUnsupportedError extends Error {}
 
 /**
  * gRPC status codes that mean "the agent is down / not answering" rather than
@@ -380,11 +426,14 @@ function dial(target: DialTarget): AgentConnection {
     "grpc.max_send_message_length": 256 * 1024 * 1024,
   });
 
-  /** Bridge a grpc server-stream into a backpressured async generator. */
-  async function* streamEvents(
-    stream: ClientReadableStream<DeployEvent>,
-  ): AsyncGenerator<DeployEvent, void, unknown> {
-    const queue: DeployEvent[] = [];
+  /** Bridge a grpc server-stream into a backpressured async generator. Generic
+   *  over the event type so the deploy/reattach/startDev streams AND the
+   *  backup/restore streams (same one-request-many-events shape) reuse it. A
+   *  transport-down error is normalised so consumers catch AgentUnreachableError. */
+  async function* streamEvents<E>(
+    stream: ClientReadableStream<E>,
+  ): AsyncGenerator<E, void, unknown> {
+    const queue: E[] = [];
     let done = false;
     let failure: Error | null = null;
     let wake: (() => void) | null = null;
@@ -392,12 +441,12 @@ function dial(target: DialTarget): AgentConnection {
       wake?.();
       wake = null;
     };
-    stream.on("data", (ev: DeployEvent) => {
+    stream.on("data", (ev: E) => {
       queue.push(ev);
       signal();
     });
     stream.on("error", (err: Error) => {
-      failure = err;
+      failure = toAgentError(err);
       done = true;
       signal();
     });
@@ -701,6 +750,44 @@ function dial(target: DialTarget): AgentConnection {
       });
     },
 
+    // ---- Backups: dump/restore to S3 + the S3 affordances (ADR-0007) ----
+    backup(req: BackupRequest) {
+      return streamEvents(
+        client.backup(req, { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) }),
+      );
+    },
+    restore(req: RestoreRequest) {
+      return streamEvents(
+        client.restore(req, { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) }),
+      );
+    },
+    s3Check(s3: S3Target) {
+      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
+        client.s3Check(
+          { s3 },
+          new Metadata(),
+          { deadline: new Date(Date.now() + S3_OP_DEADLINE_MS) },
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
+        );
+      });
+    },
+    s3Delete(s3: S3Target, prefix = false) {
+      return new Promise<{ ok: boolean; error: string; deleted: number }>(
+        (resolve, reject) => {
+          client.s3Delete(
+            { s3, prefix },
+            new Metadata(),
+            { deadline: new Date(Date.now() + S3_OP_DEADLINE_MS) },
+            (err, resp) =>
+              err
+                ? reject(toAgentError(err))
+                : resolve({ ok: resp.ok, error: resp.error, deleted: resp.deleted }),
+          );
+        },
+      );
+    },
+
     // ---- Part C: console observability ----
     followLogs(projectId: string, container: string, tail: number) {
       return logsHandle(
@@ -930,6 +1017,72 @@ function dial(target: DialTarget): AgentConnection {
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
   const target = await resolveTarget(serverId);
   return dial(target);
+}
+
+/** The capability an agent advertises in Hello once it can dump/restore to S3
+ *  (mirrors the "backup" entry in the agent's server.Capabilities). */
+const BACKUP_CAPABILITY = "backup";
+
+/**
+ * Open a connection to the agent owning `serverId` AND preflight that it can do
+ * backups — the entry point every real backup/restore path uses (Step 3). It
+ * dials, confirms the agent answers Hello, and checks the `"backup"` capability;
+ * if the agent is too old (no capability), it closes the connection and throws
+ * {@link AgentBackupUnsupportedError} so the caller surfaces "update the agent"
+ * rather than a fake success — exactly the contract gate the PLAN locked. On
+ * success the LIVE connection is returned (caller must `close()` it). Mirrors
+ * the self-update preflight ({@link selfUpdateServerAgent}).
+ *
+ * The capability check is the PRIMARY gate and catches the common case here. But
+ * the actual backup/restore/s3* RPCs run AFTER this returns (on the live
+ * connection), so a just-old-enough agent that advertises `"backup"` yet rejects
+ * an RPC with gRPC UNIMPLEMENTED wouldn't be caught here — the data layer (Step 3)
+ * must wrap those RPC calls with {@link mapBackupUnsupported} to get the same
+ * actionable error.
+ *
+ * Throws:
+ *  - {@link AgentUnreachableError} when the server is unknown / not provisioned /
+ *    offline (the data layer surfaces "not provisioned / unreachable").
+ *  - {@link AgentBackupUnsupportedError} when the reachable agent doesn't
+ *    advertise `"backup"` — the UI tells the operator to update the agent.
+ */
+export async function connectBackupAgent(
+  serverId: string,
+): Promise<AgentConnection> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(BACKUP_CAPABILITY)) {
+      throw new AgentBackupUnsupportedError(
+        `The agent on this server is too old to back up to S3. ` +
+          `Update the agent on this server, then try again.`,
+      );
+    }
+  } catch (e) {
+    conn.close();
+    throw mapBackupUnsupported(e);
+  }
+  return conn;
+}
+
+/**
+ * Map a backup/restore/s3* RPC error to {@link AgentBackupUnsupportedError} when
+ * it is a gRPC UNIMPLEMENTED (an agent that advertised `"backup"` but is too old
+ * to actually serve the RPC), passing every other error through unchanged. The
+ * data layer (Step 3) wraps each `conn.backup()/restore()/s3Check()/s3Delete()`
+ * call with this — `connectBackupAgent`'s capability preflight is the primary
+ * gate, this is the backstop for the RPC itself. Idempotent on an already-mapped
+ * error.
+ */
+export function mapBackupUnsupported(e: unknown): Error {
+  if (e instanceof AgentBackupUnsupportedError) return e;
+  if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
+    return new AgentBackupUnsupportedError(
+      `The agent on this server is too old to back up to S3. ` +
+        `Update the agent on this server, then try again.`,
+    );
+  }
+  return e instanceof Error ? e : new Error(String(e));
 }
 
 /**
