@@ -250,7 +250,55 @@ the `removeVolumes` flag.
 
 ---
 
-## Step 3 — Data layer: real execution + restore + runs
+## Step 3 — Data layer: real execution + restore + runs ✅ DONE
+
+> **Built + tested.** The whole control-plane data layer is real now — no stub
+> survives. New pure helpers (object-key + retention policy, project-descriptor
+> volume resolution) are unit-tested; the executor/restore/retention paths route
+> through the capability-gated agent and degrade with `AgentBackupUnsupportedError`
+> rather than faking success. `npm run lint && npx tsc --noEmit` clean; the test
+> suite is green (355 tests).
+>
+> **What shipped:**
+> - [lib/data/backups.ts](../../../lib/data/backups.ts): one `executeBackup`
+>   shared by `runBackup` (schedule) / `runProjectBackup` (ad-hoc) / Step 6
+>   scheduler — appends a `running` `BackupRun` BEFORE the dump (so a resolution or
+>   dump failure is recorded `failed`, never thrown without a trace), consumes the
+>   agent `backup` stream to its terminal result, finalizes the run + schedule,
+>   then prunes. `restoreBackup(runId)`, `listBackupRuns`, `deleteBackupArtifacts`
+>   (+ `backupDestinationsForTarget` to sweep every bucket), and
+>   `reconcileInFlightBackupRuns` (boot reconciler, wired in
+>   [instrumentation.ts](../../../instrumentation.ts), mirrors
+>   `reconcileInFlightDeployments` — a restart can't leave a run lying `running`).
+> - [lib/data/project-backup-descriptor.ts](../../../lib/data/project-backup-descriptor.ts):
+>   resolves the three persistent-state shapes to host volume names — named
+>   volumes via `hostVolumeName` (`deplo-<slug>-<name>`); compose-stack volumes
+>   parsed from the rendered YAML's TOP-LEVEL `volumes:` block applying Docker
+>   Compose's own naming (`deplo-<slug>_<key>` default, explicit `name:` /
+>   `external:` honored) — host mounts excluded, env snapshot decrypted. Every
+>   resolved name is validated against the agent's `volumeNamePattern` up front
+>   (`assertSafeVolumeNames`), so an interpolated/illegal compose volume name
+>   (`name: ${VAR}`) fails with guidance instead of an opaque mid-stream agent
+>   error.
+> - [lib/data/backup-objectkey.ts](../../../lib/data/backup-objectkey.ts): the
+>   pure object-key/extension builder + `selectDoomedRuns` retention policy
+>   (age + per-target cap, always keeps the newest success, never prunes a
+>   `running` run). Retention + delete-with-artifacts are **destination-scoped**
+>   (a target with runs in two buckets doesn't lose the other bucket's records /
+>   orphan its objects), and a run record is dropped only once its object is
+>   *confirmed* gone (a transient `S3Delete` failure retries next prune).
+> - [lib/data/s3.ts](../../../lib/data/s3.ts): `getS3WithSecrets` (decrypted
+>   creds, server-only) + `s3TargetFor` (the one destination→`S3Target` map, incl.
+>   per-provider `pathStyle`) + a REAL `testS3` via `S3Check` on the first
+>   reachable backup-capable agent.
+> - [lib/deploy/database-compose.ts](../../../lib/deploy/database-compose.ts): the
+>   DB service now has a deterministic `container_name: db-<name>` (so the DB
+>   descriptor's `container` == `db.host`, no fragile compose-index name), and
+>   clickhouse gets `CLICKHOUSE_DB=<name>` (it lacked it — so the descriptor
+>   dumped a database the compose never created: a silent empty backup + no-op
+>   restore, now fixed and asserted in the compose test). The DB descriptor's
+>   `user` is engine-derived (mysql/mariadb = `root`, not the connection string's
+>   `app`); the password is parsed from the decrypted connection string.
 
 [lib/data/backups.ts](../../../lib/data/backups.ts):
 

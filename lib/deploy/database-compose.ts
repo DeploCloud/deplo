@@ -70,7 +70,16 @@ export function generateDatabaseCompose(input: {
       `MONGO_INITDB_ROOT_PASSWORD=${password}`,
     ],
     redis: [],
-    clickhouse: ["CLICKHOUSE_USER=app", `CLICKHOUSE_PASSWORD=${password}`],
+    // CLICKHOUSE_DB creates the logical database at provision time, like
+    // POSTGRES_DB / MYSQL_DATABASE above. Without it the image only has the
+    // built-in `default` DB, so the connection string's `db-<name>` database —
+    // and every backup that dumps it — would target a database that never
+    // exists (a silent empty backup + no-op restore).
+    clickhouse: [
+      "CLICKHOUSE_USER=app",
+      `CLICKHOUSE_PASSWORD=${password}`,
+      `CLICKHOUSE_DB=${name}`,
+    ],
   };
   const command =
     type === "redis"
@@ -88,6 +97,7 @@ export function generateDatabaseCompose(input: {
 services:
   ${name}:
     image: ${image}
+    container_name: ${name}
     restart: unless-stopped
     networks:
       - deplo

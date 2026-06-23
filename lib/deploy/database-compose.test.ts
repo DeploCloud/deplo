@@ -68,3 +68,26 @@ test("generateDatabaseCompose: redis still sets requirepass via command override
   assert.ok(yaml.includes("redis-server --requirepass s3cret"));
   assert.ok(yaml.includes("- cache-data:/data"));
 });
+
+// The logical database the backup descriptor dumps (dbName == db.host == the
+// compose `name`) MUST be created at provision time, or a backup silently dumps
+// a database that doesn't exist. Postgres/mysql/mariadb/clickhouse create it via
+// an env var; mongo creates it lazily on first write; redis has no logical DB.
+const DB_CREATE_ENV: Partial<Record<DatabaseType, string>> = {
+  postgres: "POSTGRES_DB=mydb",
+  mysql: "MYSQL_DATABASE=mydb",
+  mariadb: "MARIADB_DATABASE=mydb",
+  clickhouse: "CLICKHOUSE_DB=mydb",
+};
+for (const [type, envLine] of Object.entries(DB_CREATE_ENV) as [
+  DatabaseType,
+  string,
+][]) {
+  test(`generateDatabaseCompose(${type}): creates the logical database via ${envLine.split("=")[0]}`, () => {
+    const yaml = generateDatabaseCompose({ name: "mydb", type, version: "1", password: "pw" });
+    assert.ok(
+      yaml.includes(envLine),
+      `${type} must create the db-name database the backup descriptor dumps; got:\n${yaml}`,
+    );
+  });
+}
