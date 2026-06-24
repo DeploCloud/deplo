@@ -10,7 +10,7 @@ import {
   startSessionFor,
 } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/auth";
-import { consumeRegistrationLinkInDraft } from "@/lib/data/members";
+import { consumeRegistrationLink } from "@/lib/data/members";
 import { ensureStoreReady } from "@/lib/store";
 import { normalizeUsername, validateUsername } from "@/lib/username";
 import { rateLimit } from "@/lib/security";
@@ -165,9 +165,10 @@ builder.mutationFields((t) => ({
       const usernameError = validateUsername(username);
       if (usernameError) throw new Error(usernameError);
 
-      // The token is consumed INSIDE the same atomic mutate() that creates the
-      // account+team (via the guard), closing the check-create-consume TOCTOU.
-      const { user, team } = createAccountWithTeam(
+      // The token is consumed INSIDE the same atomic db.transaction that creates
+      // the account+team (via the guard), closing the check-create-consume
+      // TOCTOU: the conditional UPDATE matches the pending link exactly once.
+      const { user, team } = await createAccountWithTeam(
         {
           username,
           name: parsed.data.name,
@@ -176,8 +177,8 @@ builder.mutationFields((t) => ({
           teamName: parsed.data.teamName,
         },
         {
-          guard: (data) =>
-            consumeRegistrationLinkInDraft(data, parsed.data.token, username),
+          guard: (tx) =>
+            consumeRegistrationLink(tx, parsed.data.token, username),
         },
       );
       await startSessionFor(user.id, team.id);

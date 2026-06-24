@@ -2,7 +2,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 import { read, mutate } from "../store";
-import { assertUser } from "../auth";
+import { assertUser, getCurrentUser } from "../auth";
 import { requireCapability } from "../membership";
 import { newId, nowIso } from "../ids";
 import { resolvePublicBaseUrl } from "../public-url";
@@ -67,7 +67,7 @@ export interface AddServerResult {
  */
 export async function addServer(input: AddServerInput): Promise<AddServerResult> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const host = input.host.trim();
 
   const { rawToken, stored } = mintBootstrap();
@@ -145,7 +145,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
  */
 export async function removeServer(id: string): Promise<{ warning: string | null }> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const server = read().servers.find((s) => s.id === id);
   if (!server) throw new Error("Server not found");
 
@@ -210,7 +210,7 @@ export async function removeServer(id: string): Promise<{ warning: string | null
  */
 export async function updateServerAgent(id: string): Promise<{ version: string }> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const server = read().servers.find((s) => s.id === id);
   if (!server) throw new Error("Server not found");
   if (!server.agent?.certFingerprint)

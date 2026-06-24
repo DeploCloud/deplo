@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { encryptSecret } from "../crypto";
@@ -82,7 +83,7 @@ export async function createGithubApp(
   conversion: ManifestConversion,
 ): Promise<GithubApp> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const app: GithubApp = {
     id: newId("gha"),
     teamId: membership.teamId,
@@ -121,7 +122,7 @@ export async function upsertInstallation(input: {
   avatarUrl: string;
 }): Promise<GithubInstallation> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   // The App this installation attaches to must belong to the caller's active
   // team — otherwise a member of team B could refresh/repoint an installation
   // of team A's GitHub App (cross-tenant write).
@@ -174,7 +175,7 @@ export async function latestGithubApp(): Promise<GithubApp | null> {
 
 export async function removeGithubApp(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const app = (read().githubApps ?? []).find(
     (a) => a.id === id && a.teamId === membership.teamId,
   );

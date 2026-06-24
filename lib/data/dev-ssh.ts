@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { encryptSecret } from "../crypto";
@@ -67,7 +68,7 @@ export async function createDevSshUser(input: {
   password?: string | null;
 }): Promise<DevSshUserDTO> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const project = read().projects.find(
     (p) => p.id === input.projectId && p.teamId === membership.teamId,
   );
@@ -130,7 +131,7 @@ export async function createDevSshUser(input: {
  */
 export async function removeDevSshUser(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const record = read().devSshUsers.find((u) => u.id === id);
   if (!record) throw new Error("SSH user not found");
   const project = read().projects.find(

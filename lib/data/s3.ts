@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -127,7 +128,7 @@ export async function createS3(input: {
   secretKey: string;
 }): Promise<S3DestinationDTO> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   if (!input.name.trim()) throw new Error("Name is required");
   if (!input.bucket.trim()) throw new Error("Bucket is required");
   if (!input.accessKey || !input.secretKey)
@@ -237,7 +238,7 @@ async function checkOnAnyBackupAgent(
 
 export async function deleteS3(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const s = read().s3Destinations.find(
     (x) => x.id === id && x.teamId === membership.teamId,
   );

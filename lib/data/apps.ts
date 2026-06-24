@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { and, desc, eq } from "drizzle-orm";
 
 import { read } from "../store";
+import { getCurrentUser } from "../auth";
 import { getDb } from "../db/client";
 import { installedApps as installedAppsTable } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
@@ -147,7 +148,7 @@ export async function appRuntimeStatus(
  */
 export async function installApp(catalogId: string): Promise<InstalledAppDTO> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const teamId = membership.teamId;
 
   const catalog = await fetchCatalog();
@@ -228,7 +229,7 @@ export async function installApp(catalogId: string): Promise<InstalledAppDTO> {
  */
 export async function uninstallApp(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const teamId = membership.teamId;
   const app = await findApp(id, teamId);
   if (!app) throw new Error("App not installed");

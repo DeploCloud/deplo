@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -53,7 +54,7 @@ export async function getLogs(deploymentId: string): Promise<LogLine[]> {
 /** Trigger a fresh production build + deploy of the latest commit. */
 export async function redeploy(projectId: string): Promise<Deployment> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const project = read().projects.find(
     (x) => x.id === projectId && x.teamId === membership.teamId,
   );
@@ -84,7 +85,7 @@ export async function cancelDeployment(id: string): Promise<void> {
 
 export async function promoteToProduction(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const existing = read().deployments.find((x) => x.id === id);
   if (!existing) throw new Error("Deployment not found");
   const inTeam = read().projects.some(

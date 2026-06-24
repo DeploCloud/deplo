@@ -2,7 +2,15 @@ import "server-only";
 
 import { cache } from "react";
 import { cookies } from "next/headers";
-import { read, ensureStoreReady } from "./store";
+import { and, eq, inArray } from "drizzle-orm";
+import { ensureStoreReady } from "./store";
+import { getDb } from "./db/client";
+import {
+  memberships as membershipsTable,
+  membershipCapabilities as membershipCapabilitiesTable,
+  teams as teamsTable,
+  users as usersTable,
+} from "./db/schema/control-plane";
 import { assertUser, getCurrentUser } from "./auth";
 import type { Capability, Membership, Team } from "./types";
 import { CAPABILITY_META } from "./membership-shared";
@@ -23,27 +31,100 @@ export {
  * a signed-by-membership cookie and cached. Data functions call
  * `getActiveTeamId()` internally and filter their reads/writes by it; mutating
  * actions call `requireCapability(...)` to gate on the member's permissions.
+ *
+ * Identity (`users`/`teams`/`memberships`) is relational (relational-store PLAN
+ * cut-set (b)). `teamsForUser`/`membershipFor`/`hasGrant` query Postgres via
+ * `getDb()` and are therefore **async** — every caller awaits them. A
+ * `Membership.capabilities` array is reassembled from the
+ * `membership_capabilities` junction on read.
  */
 
 const ACTIVE_TEAM_COOKIE = "deplo_team";
 const ACTIVE_TEAM_TTL_SECONDS = 60 * 60 * 24 * 365; // 1 year
 
-/** All teams the given user is a member of, in creation order. */
-export function teamsForUser(userId: string): Team[] {
-  const d = read();
-  const teamIds = new Set(
-    d.memberships.filter((m) => m.userId === userId).map((m) => m.teamId),
-  );
-  return d.teams.filter((t) => teamIds.has(t.id));
+/**
+ * Reassemble the `capabilities` array for a set of memberships from the junction
+ * in ONE query (batch-load, never per-membership — relational-store PLAN §6
+ * "N+1 on capabilities"). Returns a map of membershipId → capabilities.
+ */
+async function capabilitiesByMembership(
+  membershipIds: string[],
+): Promise<Map<string, Capability[]>> {
+  const byId = new Map<string, Capability[]>();
+  if (membershipIds.length === 0) return byId;
+  const rows = await getDb()
+    .select({
+      membershipId: membershipCapabilitiesTable.membershipId,
+      capability: membershipCapabilitiesTable.capability,
+    })
+    .from(membershipCapabilitiesTable)
+    .where(inArray(membershipCapabilitiesTable.membershipId, membershipIds));
+  for (const r of rows) {
+    const list = byId.get(r.membershipId) ?? [];
+    list.push(r.capability as Capability);
+    byId.set(r.membershipId, list);
+  }
+  return byId;
 }
 
-/** The user's membership in a specific team, or null. */
-export function membershipFor(userId: string, teamId: string): Membership | null {
-  return (
-    read().memberships.find(
-      (m) => m.userId === userId && m.teamId === teamId,
-    ) ?? null
-  );
+/** All teams the given user is a member of, in creation order. */
+export async function teamsForUser(userId: string): Promise<Team[]> {
+  const rows = await getDb()
+    .select({
+      id: teamsTable.id,
+      name: teamsTable.name,
+      slug: teamsTable.slug,
+      plan: teamsTable.plan,
+      createdAt: teamsTable.createdAt,
+    })
+    .from(teamsTable)
+    .innerJoin(
+      membershipsTable,
+      eq(membershipsTable.teamId, teamsTable.id),
+    )
+    .where(eq(membershipsTable.userId, userId))
+    .orderBy(teamsTable.createdAt);
+  return rows.map((t) => ({
+    id: t.id,
+    name: t.name,
+    slug: t.slug,
+    plan: t.plan as Team["plan"],
+    createdAt: t.createdAt,
+  }));
+}
+
+/** The user's membership in a specific team (with capabilities), or null. */
+export async function membershipFor(
+  userId: string,
+  teamId: string,
+): Promise<Membership | null> {
+  const rows = await getDb()
+    .select({
+      id: membershipsTable.id,
+      userId: membershipsTable.userId,
+      teamId: membershipsTable.teamId,
+      role: membershipsTable.role,
+      createdAt: membershipsTable.createdAt,
+    })
+    .from(membershipsTable)
+    .where(
+      and(
+        eq(membershipsTable.userId, userId),
+        eq(membershipsTable.teamId, teamId),
+      ),
+    )
+    .limit(1);
+  const m = rows[0];
+  if (!m) return null;
+  const caps = (await capabilitiesByMembership([m.id])).get(m.id) ?? [];
+  return {
+    id: m.id,
+    userId: m.userId,
+    teamId: m.teamId,
+    role: m.role as Membership["role"],
+    capabilities: caps,
+    createdAt: m.createdAt,
+  };
 }
 
 /**
@@ -56,7 +137,7 @@ export const getActiveTeamId = cache(async (): Promise<string | null> => {
   await ensureStoreReady();
   const user = await getCurrentUser();
   if (!user) return null;
-  const teams = teamsForUser(user.id);
+  const teams = await teamsForUser(user.id);
   if (teams.length === 0) return null;
   // A bearer-token request is scoped to the token's team — provided it is one
   // the principal actually belongs to (defense-in-depth against a stale token).
@@ -92,7 +173,7 @@ export interface ActiveMembership {
 export async function requireMembership(): Promise<ActiveMembership> {
   const user = await assertUser();
   const teamId = await requireActiveTeamId();
-  const membership = membershipFor(user.id, teamId);
+  const membership = await membershipFor(user.id, teamId);
   if (!membership) throw new Error("Not a member of this team");
   return { userId: user.id, teamId, membership };
 }
@@ -103,7 +184,7 @@ export async function hasCapability(cap: Capability): Promise<boolean> {
   if (!user) return false;
   const teamId = await getActiveTeamId();
   if (!teamId) return false;
-  const m = membershipFor(user.id, teamId);
+  const m = await membershipFor(user.id, teamId);
   return Boolean(m && m.capabilities.includes(cap));
 }
 
@@ -116,7 +197,7 @@ export async function currentCapabilities(): Promise<Capability[]> {
   if (!user) return [];
   const teamId = await getActiveTeamId();
   if (!teamId) return [];
-  return membershipFor(user.id, teamId)?.capabilities ?? [];
+  return (await membershipFor(user.id, teamId))?.capabilities ?? [];
 }
 
 /**
@@ -165,12 +246,21 @@ export async function requireInstanceAdmin(): Promise<{ userId: string }> {
  * only), so resolve them from the raw stored user. Instance admins hold every
  * grant implicitly. Returns `false` for an unauthenticated caller.
  */
-function hasGrant(
+async function hasGrant(
   user: { id: string } | null,
   flag: "canExposePorts" | "canMountHostVolumes",
-): boolean {
+): Promise<boolean> {
   if (!user) return false;
-  const raw = read().users.find((u) => u.id === user.id);
+  const rows = await getDb()
+    .select({
+      isInstanceAdmin: usersTable.isInstanceAdmin,
+      canExposePorts: usersTable.canExposePorts,
+      canMountHostVolumes: usersTable.canMountHostVolumes,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, user.id))
+    .limit(1);
+  const raw = rows[0];
   return Boolean(raw && (raw.isInstanceAdmin || raw[flag]));
 }
 
@@ -187,7 +277,7 @@ export async function canExposePorts(): Promise<boolean> {
 /** Throwing variant — gate any action that publishes container ports. */
 export async function requireExposePorts(): Promise<{ userId: string }> {
   const user = await assertUser();
-  if (!hasGrant(user, "canExposePorts"))
+  if (!(await hasGrant(user, "canExposePorts")))
     throw new Error("You don't have permission to publish ports");
   return { userId: user.id };
 }
@@ -200,7 +290,7 @@ export async function canMountHostVolumes(): Promise<boolean> {
 /** Throwing variant — gate any host bind mount behind this. */
 export async function requireMountHostVolumes(): Promise<{ userId: string }> {
   const user = await assertUser();
-  if (!hasGrant(user, "canMountHostVolumes"))
+  if (!(await hasGrant(user, "canMountHostVolumes")))
     throw new Error("You don't have permission to mount host volumes");
   return { userId: user.id };
 }
@@ -208,7 +298,7 @@ export async function requireMountHostVolumes(): Promise<{ userId: string }> {
 /** Set the active-team cookie. Validates membership before writing. */
 export async function setActiveTeam(teamId: string): Promise<void> {
   const user = await assertUser();
-  if (!membershipFor(user.id, teamId)) {
+  if (!(await membershipFor(user.id, teamId))) {
     throw new Error("Not a member of this team");
   }
   const store = await cookies();

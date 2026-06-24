@@ -13,6 +13,7 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runBackfill } from "../db/backfill/engine";
 import { leafCutSetCopy } from "../db/backfill/cut-sets/leaf";
+import { identityCutSetCopy } from "../db/backfill/cut-sets/identity";
 import { CUT_SETS } from "../db/backfill/markers";
 import { runWithIdentity } from "../auth/request-context";
 import { capabilitiesForRole } from "../membership-shared";
@@ -103,17 +104,15 @@ function doc(): DeploData {
 test("leaf backfill → async data layer reads back the copied rows", async () => {
   const d = doc();
 
-  // 1) Run the cut-set's backfill (copy from the JSONB doc into pglite).
+  // 1) Run the cut-set backfills (copy from the JSONB doc into pglite). The leaf
+  //    cut-set copies the four leaf collections; the identity cut-set (b) copies
+  //    users/teams/memberships(+caps) so the authz backbone (requireActiveTeamId)
+  //    resolves relationally — both are relational as of Step 3.
   await runBackfill(db, CUT_SETS.leaf, d, leafCutSetCopy);
+  await runBackfill(db, CUT_SETS.identity, d, identityCutSetCopy);
 
-  // 2) Mirror identity into the JSONB store so requireActiveTeamId resolves
-  //    (identity is still JSONB this step; the leaf collections are now in pglite).
+  // 2) Reset the JSONB store so no stale identity lingers (identity is relational).
   store.reseed();
-  store.mutate((s) => {
-    s.teams = d.teams;
-    s.users = d.users;
-    s.memberships = d.memberships;
-  });
 
   // 3) Read each leaf collection through the LIVE async data functions.
   await runWithIdentity({ userId: USER, teamId: TEAM }, async () => {

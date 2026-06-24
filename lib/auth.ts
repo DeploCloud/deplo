@@ -3,23 +3,25 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { read, mutate, ensureStoreReady } from "./store";
+import { count, eq, or, sql } from "drizzle-orm";
+import { ensureStoreReady } from "./store";
+import { getDb, type DbTx } from "./db/client";
+import {
+  memberships as membershipsTable,
+  membershipCapabilities as membershipCapabilitiesTable,
+  teams as teamsTable,
+  users as usersTable,
+} from "./db/schema/control-plane";
 import {
   hashPassword,
   verifyPassword,
   signSession,
   verifySession,
 } from "./crypto";
-import type {
-  DeploData,
-  Membership,
-  PublicUser,
-  Role,
-  Team,
-  User,
-} from "./types";
+import type { PublicUser, Team, User } from "./types";
 import { capabilitiesForRole } from "./membership-shared";
-import { normalizeUsername, validateUsername, uniqueUsername } from "./username";
+import { ensureTeamOrderStub } from "./data/team-order";
+import { normalizeUsername, validateUsername } from "./username";
 import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
 
@@ -43,13 +45,32 @@ async function setActiveTeamCookie(teamId: string) {
   });
 }
 
-function toPublic(u: User): PublicUser {
+/** Columns projected for a {@link PublicUser} — never `password_hash`. */
+const PUBLIC_USER_COLS = {
+  id: usersTable.id,
+  email: usersTable.email,
+  username: usersTable.username,
+  name: usersTable.name,
+  role: usersTable.role,
+  isInstanceAdmin: usersTable.isInstanceAdmin,
+  avatarColor: usersTable.avatarColor,
+} as const;
+
+function toPublic(u: {
+  id: string;
+  email: string;
+  username: string;
+  name: string;
+  role: string;
+  isInstanceAdmin: boolean | null;
+  avatarColor: string;
+}): PublicUser {
   return {
     id: u.id,
     email: u.email,
     username: u.username,
     name: u.name,
-    role: u.role,
+    role: u.role as PublicUser["role"],
     isInstanceAdmin: u.isInstanceAdmin ?? false,
     avatarColor: u.avatarColor,
   };
@@ -58,28 +79,34 @@ function toPublic(u: User): PublicUser {
 const AVATAR_COLORS = ["#50e3c2", "#f5a623", "#7928ca", "#ff0080", "#0070f3"];
 
 /** True if a username is already in use (case-insensitive, normalized). */
-export function isUsernameTaken(username: string): boolean {
+export async function isUsernameTaken(username: string): Promise<boolean> {
   const n = normalizeUsername(username);
-  return read().users.some((u) => u.username === n);
+  const rows = await getDb()
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.username, n))
+    .limit(1);
+  return rows.length > 0;
 }
 
 /**
- * Create a brand-new account AND its own team in one mutation, returning the
+ * Create a brand-new account AND its own team in one transaction, returning the
  * new user + team. Shared by first-run setup and the register link (public
  * signup was removed — accounts after the first require an invite). The
  * registrant is the OWNER of their team. Validates the username +
  * team name and enforces global uniqueness of both. Does NOT set cookies — the
  * caller signs the user in (so this stays usable from non-request contexts).
  *
- * `opts.guard` runs INSIDE the same atomic mutate() that persists the new
- * account, BEFORE anything is pushed. The register-link flow uses it to consume
- * the single-use token atomically with creation — if it throws, nothing is
- * persisted, closing the check-create-consume TOCTOU where a concurrent
- * double-submit could mint two accounts from one link. `opts.isInstanceAdmin`
- * marks the account a global admin (the very first account, or an admin-minted
- * one if you choose).
+ * `opts.guard` runs INSIDE the same `db.transaction` that persists the new
+ * account, BEFORE any insert. The register-link flow uses it to consume the
+ * single-use token atomically with creation via a conditional `UPDATE …
+ * RETURNING` — if it throws (the loser of a concurrent double-submit updates 0
+ * rows), the whole transaction rolls back, closing the check-create-consume
+ * TOCTOU where a concurrent double-submit could mint two accounts from one link.
+ * `opts.isInstanceAdmin` marks the account a global admin (the very first
+ * account, or an admin-minted one if you choose).
  */
-export function createAccountWithTeam(
+export async function createAccountWithTeam(
   input: {
     username: string;
     name: string;
@@ -87,8 +114,11 @@ export function createAccountWithTeam(
     password: string;
     teamName: string;
   },
-  opts: { guard?: (data: DeploData) => void; isInstanceAdmin?: boolean } = {},
-): { user: User; team: Team } {
+  opts: {
+    guard?: (tx: DbTx) => Promise<void>;
+    isInstanceAdmin?: boolean;
+  } = {},
+): Promise<{ user: User; team: Team }> {
   const username = normalizeUsername(input.username);
   const usernameError = validateUsername(username);
   if (usernameError) throw new Error(usernameError);
@@ -101,7 +131,7 @@ export function createAccountWithTeam(
 
   const teamName = input.teamName.trim();
   if (!teamName) throw new Error("Team name is required");
-  const slug =
+  const slugBase =
     teamName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -111,54 +141,113 @@ export function createAccountWithTeam(
     throw new Error("Choose a password of at least 8 characters");
 
   const now = new Date().toISOString();
-  const d = read();
-  const team: Team = {
-    id: `team_${randomBytes(8).toString("hex")}`,
-    name: teamName,
-    slug, // finalised inside mutate against the live draft
-    plan: "pro",
-    createdAt: now,
-  };
-  const user: User = {
-    id: `usr_${randomBytes(8).toString("hex")}`,
-    email,
-    username,
-    name,
-    passwordHash: hashPassword(input.password),
-    role: "owner",
-    avatarColor: AVATAR_COLORS[d.users.length % AVATAR_COLORS.length],
-    createdAt: now,
-    isInstanceAdmin: opts.isInstanceAdmin ?? false,
-    suspended: false,
-  };
-  const ownerMembership: Membership = {
-    id: `mbr_${randomBytes(8).toString("hex")}`,
-    userId: user.id,
-    teamId: team.id,
-    role: "owner",
-    capabilities: capabilitiesForRole("owner"),
-    createdAt: now,
-  };
-  // All uniqueness checks + the optional token consume + the writes happen in
-  // ONE synchronous mutate() with no await inside, so the whole critical
-  // section is atomic against concurrent requests.
-  mutate((data) => {
-    if (opts.guard) opts.guard(data); // e.g. consume the registration token
-    if (data.users.some((u) => u.username === username))
+  const passwordHash = hashPassword(input.password);
+
+  // The optional token consume + all uniqueness re-checks + the writes happen in
+  // ONE db.transaction, so the whole critical section is atomic against
+  // concurrent requests. The UNIQUE(lower(email))/UNIQUE(username)/UNIQUE(slug)
+  // indexes backstop the in-tx checks; the registration-link consume (guard) is
+  // a conditional UPDATE that matches at most once.
+  const result = await getDb().transaction(async (tx) => {
+    if (opts.guard) await opts.guard(tx); // e.g. consume the registration token
+
+    // Uniqueness re-checks inside the tx (friendly errors; the unique indexes
+    // are the race backstop).
+    const dup = await tx
+      .select({ username: usersTable.username, email: usersTable.email })
+      .from(usersTable)
+      .where(
+        or(
+          eq(usersTable.username, username),
+          eq(sql`lower(${usersTable.email})`, email),
+        ),
+      )
+      .limit(1);
+    if (dup[0]?.username === username)
       throw new Error("That username is taken");
-    if (data.users.some((u) => u.email.toLowerCase() === email))
-      throw new Error("An account with this email already exists");
-    if (data.teams.some((t) => t.name.toLowerCase() === teamName.toLowerCase()))
-      throw new Error("That team name is taken");
-    const takenSlugs = new Set(data.teams.map((t) => t.slug));
-    let finalSlug = slug;
-    for (let i = 2; takenSlugs.has(finalSlug); i++) finalSlug = `${slug}-${i}`;
-    team.slug = finalSlug;
-    data.teams.push(team);
-    data.users.push(user);
-    data.memberships.push(ownerMembership);
+    if (dup[0]) throw new Error("An account with this email already exists");
+
+    const teamDup = await tx
+      .select({ id: teamsTable.id })
+      .from(teamsTable)
+      .where(eq(sql`lower(${teamsTable.name})`, teamName.toLowerCase()))
+      .limit(1);
+    if (teamDup[0]) throw new Error("That team name is taken");
+
+    // Slug dedupe against live rows.
+    const takenSlugs = new Set(
+      (await tx.select({ slug: teamsTable.slug }).from(teamsTable)).map(
+        (r) => r.slug,
+      ),
+    );
+    let finalSlug = slugBase;
+    for (let i = 2; takenSlugs.has(finalSlug); i++) finalSlug = `${slugBase}-${i}`;
+
+    // Avatar color from the in-tx user count (deterministic, no cache read).
+    const n = (await tx.select({ n: count() }).from(usersTable))[0]!.n;
+    const avatarColor = AVATAR_COLORS[n % AVATAR_COLORS.length];
+
+    const team: Team = {
+      id: `team_${randomBytes(8).toString("hex")}`,
+      name: teamName,
+      slug: finalSlug,
+      plan: "pro",
+      createdAt: now,
+    };
+    const user: User = {
+      id: `usr_${randomBytes(8).toString("hex")}`,
+      email,
+      username,
+      name,
+      passwordHash,
+      role: "owner",
+      avatarColor,
+      createdAt: now,
+      isInstanceAdmin: opts.isInstanceAdmin ?? false,
+      suspended: false,
+    };
+    const membershipId = `mbr_${randomBytes(8).toString("hex")}`;
+    const ownerCaps = capabilitiesForRole("owner");
+
+    // FK-ordered inserts: team → user → membership → membership_capabilities.
+    await tx.insert(teamsTable).values({
+      id: team.id,
+      name: team.name,
+      slug: team.slug,
+      plan: team.plan,
+      createdAt: team.createdAt,
+    });
+    await tx.insert(usersTable).values({
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      name: user.name,
+      passwordHash: user.passwordHash,
+      role: user.role,
+      isInstanceAdmin: user.isInstanceAdmin ?? false,
+      suspended: false,
+      avatarColor: user.avatarColor,
+      createdAt: user.createdAt,
+    });
+    await tx.insert(membershipsTable).values({
+      id: membershipId,
+      userId: user.id,
+      teamId: team.id,
+      role: "owner",
+      createdAt: now,
+    });
+    await tx
+      .insert(membershipCapabilitiesTable)
+      .values(ownerCaps.map((c) => ({ membershipId, capability: c })));
+
+    return { user, team };
   });
-  return { user, team };
+  // Bridge the not-yet-migrated team-ordering fields (cut-set c) onto a JSONB
+  // stub so a brand-new team's project/folder order has a home until cut-set (c)
+  // migrates those arrays to junctions. The relational rows above are
+  // authoritative; this carries only projectOrder/folderOrder.
+  ensureTeamOrderStub(result.team.id);
+  return result;
 }
 
 /**
@@ -175,7 +264,12 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
     ? override.userId
     : verifySession((await cookies()).get(SESSION_COOKIE)?.value)?.uid;
   if (!uid) return null;
-  const user = read().users.find((u) => u.id === uid);
+  const rows = await getDb()
+    .select({ ...PUBLIC_USER_COLS, suspended: usersTable.suspended })
+    .from(usersTable)
+    .where(eq(usersTable.id, uid))
+    .limit(1);
+  const user = rows[0];
   // A suspended account loses access immediately, even with a live session.
   if (!user || user.suspended) return null;
   return toPublic(user);
@@ -194,7 +288,8 @@ export async function requireUser(): Promise<PublicUser> {
 /** True on a fresh install with no account yet  the setup wizard is required. */
 export async function isSetupNeeded(): Promise<boolean> {
   await ensureStoreReady();
-  return read().users.length === 0;
+  const n = (await getDb().select({ n: count() }).from(usersTable))[0]!.n;
+  return n === 0;
 }
 
 /** Throwing variant for server actions / route handlers. */
@@ -225,9 +320,17 @@ export async function login(
   password: string
 ): Promise<{ ok: boolean; error?: string }> {
   await ensureStoreReady();
-  const user = read().users.find(
-    (u) => u.email.toLowerCase() === email.toLowerCase().trim()
-  );
+  const normalized = email.toLowerCase().trim();
+  const rows = await getDb()
+    .select({
+      id: usersTable.id,
+      passwordHash: usersTable.passwordHash,
+      suspended: usersTable.suspended,
+    })
+    .from(usersTable)
+    .where(eq(sql`lower(${usersTable.email})`, normalized))
+    .limit(1);
+  const user = rows[0];
   // Always run a hash comparison to reduce user-enumeration timing signal.
   const stored =
     user?.passwordHash ??
@@ -255,7 +358,8 @@ export async function completeSetup(input: {
   password: string;
 }): Promise<{ ok: boolean; error?: string }> {
   await ensureStoreReady();
-  if (read().users.length > 0)
+  const existing = (await getDb().select({ n: count() }).from(usersTable))[0]!.n;
+  if (existing > 0)
     return { ok: false, error: "Setup has already been completed" };
 
   let user: User;
@@ -263,7 +367,7 @@ export async function completeSetup(input: {
   try {
     // First account + its team, with all the username/team-name validation.
     // The very first account is the instance admin.
-    ({ user, team } = createAccountWithTeam(
+    ({ user, team } = await createAccountWithTeam(
       {
         username: input.username,
         name: input.name,
