@@ -411,6 +411,21 @@ export async function insertEnvVars(db: DbReader, vars: EnvVar[]): Promise<void>
   if (targets.length > 0) await db.insert(envVarTargets).values(targets);
 }
 
+/**
+ * Load a project only if it belongs to `teamId` (the standard ownership gate as
+ * a single call): the full assembled {@link Project} or null when absent / not
+ * owned. The relational replacement for the old
+ * `read().projects.find(p => p.id === id && p.teamId === teamId)`.
+ */
+export async function loadTeamProject(
+  projectId: string,
+  teamId: string,
+  db: DbReader = getDb(),
+): Promise<Project | null> {
+  const p = await loadProjectGraph(projectId, db);
+  return p && p.teamId === teamId ? p : null;
+}
+
 /** True if a project belongs to a team (the standard ownership gate). */
 export async function projectInTeam(
   projectId: string,

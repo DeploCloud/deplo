@@ -2,6 +2,7 @@ import "server-only";
 
 import { read } from "../store";
 import { requireActiveTeamId, requireCapability } from "../membership";
+import { loadTeamProject } from "./project-graph-load";
 import { isDockerLevelStderr } from "../infra/docker";
 import {
   connectAgent,
@@ -139,7 +140,7 @@ async function listInstancesForDisplay(p: Project): Promise<ConsoleInstance[]> {
 
 export async function getLogsInfo(projectId: string): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
-  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  const p = await loadTeamProject(projectId, teamId);
   if (!p) return null;
   const instances = await listInstancesForDisplay(p);
   return { running: instances.some((i) => i.running), instances };
@@ -160,7 +161,7 @@ export interface ConsoleInfo {
 
 export async function getConsoleInfo(projectId: string): Promise<ConsoleInfo | null> {
   const teamId = await requireActiveTeamId();
-  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  const p = await loadTeamProject(projectId, teamId);
   if (!p) return null;
   const instances = await listInstancesForDisplay(p);
   const def = instances[0];
@@ -184,7 +185,7 @@ export async function getShellLabel(
   target?: string,
 ): Promise<string> {
   const teamId = await requireActiveTeamId();
-  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  const p = await loadTeamProject(projectId, teamId);
   if (!p) return "raw exec (no shell)";
   // Display-grade list: an unreachable remote degrades to a not-running
   // placeholder, so we return "raw exec (no shell)" below rather than throwing.
@@ -198,7 +199,7 @@ export async function getShellLabel(
 
 export async function getAttachInfo(projectId: string): Promise<AttachInfo | null> {
   const teamId = await requireActiveTeamId();
-  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  const p = await loadTeamProject(projectId, teamId);
   if (!p) return null;
   const instances = await listInstancesForDisplay(p);
   // Default target: exposed/running first thanks to listInstances ordering.
@@ -246,7 +247,7 @@ export async function resolveAttachTarget(
   // Attaching to PID 1 (full-duplex, stdin to the live container) is a
   // deploy-class operation — never available to a view-only member.
   const { teamId } = await requireCapability("deploy");
-  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  const p = await loadTeamProject(projectId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
 
   let instances: ConsoleInstance[];
@@ -282,7 +283,7 @@ export async function resolveLogsTarget(
   | { ok: false; reason: "not-found" | "no-instance" | "unreachable" }
 > {
   const teamId = await requireActiveTeamId();
-  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  const p = await loadTeamProject(projectId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
 
   let instances: ConsoleInstance[];
@@ -307,7 +308,7 @@ export async function execInContainer(
   // Running arbitrary commands in the live container is RCE — gate on deploy,
   // never bare team membership (a viewer must never reach this).
   const { teamId } = await requireCapability("deploy");
-  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  const p = await loadTeamProject(projectId, teamId);
   if (!p) return { output: "Error: project not found" };
 
   const command = rawCommand.trim();

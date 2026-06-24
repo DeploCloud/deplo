@@ -2,9 +2,12 @@ import "server-only";
 
 import { readdir, cp } from "node:fs/promises";
 import { join } from "node:path";
-import { read } from "../store";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
+import {
+  loadEnvVarsForProject,
+  loadSharedEnvGroupsForProject,
+} from "../data/project-graph-load";
 import { dataVolumeHostMountpoint } from "./builders";
 import {
   devCommandFor,
@@ -109,15 +112,15 @@ export function defaultDevConfig(project: Project): DevConfig {
  * `resolveEnvEntries` seam with the production stack — only the target differs —
  * so the two runtimes can never drift on what `development` inherits.
  */
-function devEnv(projectId: string): Record<string, string> {
-  const d = read();
+async function devEnv(projectId: string): Promise<Record<string, string>> {
+  // env vars + attached shared groups are relational (cut-set c); load the
+  // bounded set and decrypt at this edge (the `development` target).
+  const [vars, groups] = await Promise.all([
+    loadEnvVarsForProject(projectId),
+    loadSharedEnvGroupsForProject(projectId),
+  ]);
   const out: Record<string, string> = {};
-  for (const e of resolveEnvEntries(
-    "development",
-    projectId,
-    d.envVars,
-    d.sharedEnvGroups ?? [],
-  )) {
+  for (const e of resolveEnvEntries("development", projectId, vars, groups)) {
     out[e.key] = decryptSecret(e.valueEnc);
   }
   return out;
@@ -266,7 +269,7 @@ export async function renderDevCompose(project: Project): Promise<string> {
     // login profile so the user can pass --allowed-hosts "$DEPLO_DEV_PREVIEW_HOST".
     DEPLO_DEV_PREVIEW_HOST: previewHost,
     ...seedEnv(project),
-    ...devEnv(project.id),
+    ...(await devEnv(project.id)),
   };
   const envYaml = Object.entries(env)
     .map(([k, v]) => `      ${k}: ${yamlValue(v)}`)

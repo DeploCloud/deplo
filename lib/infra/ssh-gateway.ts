@@ -1,6 +1,11 @@
 import "server-only";
 
+import { eq } from "drizzle-orm";
+
 import { read } from "../store";
+import { getDb } from "../db/client";
+import { projects as projectsTable } from "../db/schema/control-plane";
+import { loadProjectGraph } from "../data/project-graph-load";
 import { decryptSecret } from "../crypto";
 import { connectAgent } from "./agent-client";
 import type { AgentGatewayConfig, AgentGatewayStep } from "./agent-client";
@@ -55,26 +60,24 @@ function gatewayConfig(): AgentGatewayConfig {
   };
 }
 
-/** Look up the dev container name for a user's project (for the map file). */
-function devContainerForProject(projectId: string): GatewayTarget | null {
-  const p = read().projects.find((x) => x.id === projectId);
-  if (!p) return null;
-  return { slug: p.slug, container: `deplo-dev-${p.slug}` };
-}
-
-/** The owning server id of a dev SSH user (via its project). */
-function serverIdForUser(user: DevSshUser): string | null {
-  const p = read().projects.find((x) => x.id === user.projectId);
+/** The owning server id of a dev SSH user (via its project, relational). */
+async function serverIdForUser(user: DevSshUser): Promise<string | null> {
+  const p = await loadProjectGraph(user.projectId);
   return p?.serverId ?? null;
 }
 
 /** Render one user's provision step-list (the pure projection). The password is
  *  decrypted just-in-time and baked into the right step's stdin; the cleartext
  *  never leaves this call frame as ciphertext. Returns [] if the user's project
- *  (and thus its dev container target) is gone. */
-function userProvisionSteps(user: DevSshUser): AgentGatewayStep[] {
-  const target = devContainerForProject(user.projectId);
-  if (!target) return [];
+ *  (and thus its dev container target) is gone. `slugByProject` is the resolved
+ *  project→slug map (relational) so this stays a pure projection. */
+function userProvisionSteps(
+  user: DevSshUser,
+  slugByProject: Map<string, string>,
+): AgentGatewayStep[] {
+  const slug = slugByProject.get(user.projectId);
+  if (!slug) return [];
+  const target: GatewayTarget = { slug, container: `deplo-dev-${slug}` };
   return provisionSteps(
     {
       username: user.username,
@@ -86,17 +89,19 @@ function userProvisionSteps(user: DevSshUser): AgentGatewayStep[] {
 }
 
 /** The full reconcile set for a server: every stored DevSshUser whose project
- *  lives on that server (the store's truth — ADR-0002), each as its step-list.
- *  Sending the WHOLE set lets a freshly-created gateway rebuild its projection. */
-function serverUserSteps(serverId: string): AgentGatewayStep[][] {
-  const projectIds = new Set(
-    read()
-      .projects.filter((p) => p.serverId === serverId)
-      .map((p) => p.id),
-  );
+ *  lives on that server (devSshUsers JSONB; projects relational — ADR-0002), each
+ *  as its step-list. Sending the WHOLE set lets a freshly-created gateway rebuild
+ *  its projection. */
+async function serverUserSteps(serverId: string): Promise<AgentGatewayStep[][]> {
+  // The server's projects (relational), as a projectId → slug map.
+  const projectRows = await getDb()
+    .select({ id: projectsTable.id, slug: projectsTable.slug })
+    .from(projectsTable)
+    .where(eq(projectsTable.serverId, serverId));
+  const slugByProject = new Map(projectRows.map((p) => [p.id, p.slug] as const));
   return read()
-    .devSshUsers.filter((u) => projectIds.has(u.projectId))
-    .map(userProvisionSteps)
+    .devSshUsers.filter((u) => slugByProject.has(u.projectId))
+    .map((u) => userProvisionSteps(u, slugByProject))
     .filter((steps) => steps.length > 0);
 }
 
@@ -106,9 +111,10 @@ function serverUserSteps(serverId: string): AgentGatewayStep[][] {
  * user of that server into it. Idempotent. Mirrors the old in-process ensureGateway.
  */
 export async function ensureGateway(serverId: string): Promise<void> {
+  const steps = await serverUserSteps(serverId);
   const conn = await connectAgent(serverId);
   try {
-    await conn.ensureGateway(gatewayConfig(), serverUserSteps(serverId));
+    await conn.ensureGateway(gatewayConfig(), steps);
   } finally {
     conn.close();
   }
@@ -121,11 +127,12 @@ export async function ensureGateway(serverId: string): Promise<void> {
  * follows. Resolves the server from the user's project.
  */
 export async function provisionUser(user: DevSshUser): Promise<void> {
-  const serverId = serverIdForUser(user);
+  const serverId = await serverIdForUser(user);
   if (!serverId) return;
+  const steps = await serverUserSteps(serverId);
   const conn = await connectAgent(serverId);
   try {
-    await conn.provisionSshUser(gatewayConfig(), serverUserSteps(serverId));
+    await conn.provisionSshUser(gatewayConfig(), steps);
   } finally {
     conn.close();
   }

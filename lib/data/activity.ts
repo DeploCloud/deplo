@@ -30,23 +30,40 @@ export function recordActivity(
   projectId: string | null = null,
   teamId: string | null = null,
 ) {
-  const d = read();
-  const resolvedTeamId =
-    teamId ??
-    (projectId
-      ? d.projects.find((p) => p.id === projectId)?.teamId ?? null
-      : null) ??
-    d.teams[0]?.id ??
-    "";
+  // Best-effort + fire-and-forget (PLAN §1: an audit-log insert must never roll
+  // back the user's action). The team is resolved RELATIONALLY from the project
+  // when no explicit teamId is given (projects moved to Postgres in cut-set c, so
+  // the old `read().projects.find` would resolve nothing). The whole write is
+  // floated so a sync caller stays sync and an insert failure is swallowed.
+  void writeActivity(type, message, actor, projectId, teamId).catch((e) =>
+    console.error("[deplo] recordActivity failed:", e),
+  );
+}
+
+async function writeActivity(
+  type: ActivityType,
+  message: string,
+  actor: string,
+  projectId: string | null,
+  teamId: string | null,
+): Promise<void> {
+  let resolved = teamId;
+  if (!resolved && projectId) {
+    const { loadProjectGraph } = await import("./project-graph-load");
+    resolved = (await loadProjectGraph(projectId))?.teamId ?? null;
+  }
+  // Last-resort fallback so a row is never written team-less (invisible to every
+  // team) — the first JSONB team (activities are still JSONB this cut-set).
+  const finalTeamId = resolved ?? read().teams[0]?.id ?? "";
   mutate((data) =>
     data.activities.push({
       id: newId("act"),
-      teamId: resolvedTeamId,
+      teamId: finalTeamId,
       type,
       message,
       actor,
       projectId,
       createdAt: nowIso(),
-    })
+    }),
   );
 }

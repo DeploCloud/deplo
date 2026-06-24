@@ -17,6 +17,7 @@ import { resolveEnvEntries } from "./env-resolve";
 import { recordActivity } from "../data/activity";
 import {
   loadDeployment,
+  loadDomainsForProject,
   loadProjectGraph,
   loadProjectGraphBySlug,
   loadEnvVarsForProject,
@@ -1176,7 +1177,7 @@ export function parseStackVolumes(
 export async function rerouteProject(
   projectId: string,
 ): Promise<"rerouted" | "unchanged" | "deferred"> {
-  const project = read().projects.find((p) => p.id === projectId);
+  const project = await loadProjectGraph(projectId);
   if (!project) return "deferred";
   const slug = project.slug;
   const name = `deplo-${slug}`;
@@ -1287,8 +1288,7 @@ export async function rerouteProject(
 export async function renderProjectStack(
   projectId: string,
 ): Promise<string | null> {
-  const store = read();
-  const project = store.projects.find((p) => p.id === projectId);
+  const project = await loadProjectGraph(projectId);
   if (!project) return null;
   const slug = project.slug;
   const name = `deplo-${slug}`;
@@ -1302,8 +1302,7 @@ export async function renderProjectStack(
     const routes = await routableRoutes(projectId);
     const domains = routes.length
       ? routes.map((d) => d.name)
-      : store.domains
-          .filter((d) => d.projectId === projectId)
+      : (await loadDomainsForProject(projectId))
           .sort((a, b) => Number(b.primary) - Number(a.primary))
           .map((d) => d.name);
     return buildComposeStack({

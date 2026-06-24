@@ -2,10 +2,10 @@ import "server-only";
 
 import { realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
-import { read } from "../store";
 import { requireCapability, hasCapability, getActiveTeamId } from "../membership";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
+import { loadTeamProject } from "./project-graph-load";
 import { connectAgent, type AgentConnection } from "../infra/agent-client";
 
 /**
@@ -102,8 +102,8 @@ async function requireProjectInTeam(
   projectId: string,
 ): Promise<{ slug: string; teamId: string; serverId: string }> {
   const { teamId } = await requireCapability("manage_files");
-  const project = read().projects.find((p) => p.id === projectId);
-  if (!project || project.teamId !== teamId) {
+  const project = await loadTeamProject(projectId, teamId);
+  if (!project) {
     throw new Error("Project not found");
   }
   return { slug: project.slug, teamId, serverId: project.serverId };
@@ -141,8 +141,9 @@ function toEntry(e: {
 export async function projectFilesExist(projectId: string): Promise<boolean> {
   if (!(await hasCapability("manage_files"))) return false;
   const teamId = await getActiveTeamId();
-  const project = read().projects.find((p) => p.id === projectId);
-  if (!project || !teamId || project.teamId !== teamId) return false;
+  if (!teamId) return false;
+  const project = await loadTeamProject(projectId, teamId);
+  if (!project) return false;
   // Ask the owning agent — the files dir is on its host's disk (PLAN Part C, D9),
   // the host running Deplo included. An unreachable agent yields false so the tab
   // is hidden (never a 500 during the project layout render).

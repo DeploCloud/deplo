@@ -1,7 +1,10 @@
 import "server-only";
 
 import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
 import { read, mutate } from "../store";
+import { getDb } from "../db/client";
+import { projects as projectsTable } from "../db/schema/control-plane";
 import { assertUser, getCurrentUser } from "../auth";
 import { requireCapability } from "../membership";
 import { newId, nowIso } from "../ids";
@@ -154,7 +157,13 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   if (!server) throw new Error("Server not found");
 
   // (b) Block while projects are assigned — a conscious decision by the operator.
-  if (read().projects.some((p) => p.serverId === id))
+  // Projects are relational now; count this server's projects directly.
+  const assigned = await getDb()
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(eq(projectsTable.serverId, id))
+    .limit(1);
+  if (assigned.length > 0)
     throw new Error("Move or delete projects on this server first");
 
   // Snapshot the trust material BEFORE revoking. `read()` returns the live cache,
