@@ -148,6 +148,9 @@ async function runCutSetBackfills(): Promise<void> {
   const { identityCutSetCopy } = await import(
     "./db/backfill/cut-sets/identity"
   );
+  const { projectGraphCutSetCopy } = await import(
+    "./db/backfill/cut-sets/project-graph"
+  );
   const { CUT_SETS } = await import("./db/backfill/markers");
   const db = getDb();
   const owner = `pid-${process.pid}`;
@@ -163,6 +166,14 @@ async function runCutSetBackfills(): Promise<void> {
   // its copy no-ops over those via onConflictDoNothing.
   await awaitBackfill(db, CUT_SETS.identity, owner, () =>
     runBackfill(db, CUT_SETS.identity, doc, identityCutSetCopy),
+  );
+
+  // Cut-set (c) — project graph (Step 4). Ordered AFTER identity: its NOT-NULL
+  // team FKs are now owned relationally by (b). It seeds `servers` (owned by no
+  // cut-set) for the project RESTRICT FK, prunes the live deleteProject orphans,
+  // and migrates the team ordering arrays to the junctions.
+  await awaitBackfill(db, CUT_SETS.projectGraph, owner, () =>
+    runBackfill(db, CUT_SETS.projectGraph, doc, projectGraphCutSetCopy),
   );
 }
 
