@@ -12,7 +12,6 @@ import {
   projectExposes as projectExposesTable,
   projectMounts as projectMountsTable,
   projectVolumes as projectVolumesTable,
-  sharedEnvGroupProjects,
   teamProjectOrder,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
@@ -98,17 +97,13 @@ export interface ProjectSummary extends Project {
   domainCount: number;
 }
 
-// The pure read-time normalizers (`deriveVolumeName`/`normalizeVolumes`/
-// `normalizeProject`) moved to `./normalize-project` so the project-graph backfill
-// can apply the IDENTICAL normalization before exploding a legacy row into the
-// strict child tables (relational-store PLAN §7). Re-exported here so this file's
-// internal call sites — and the test that imports `deriveVolumeName` — are
-// unchanged.
-import {
-  deriveVolumeName,
-  normalizeProject,
-  normalizeVolumes,
-} from "./normalize-project";
+// The pure read-time normalizers moved to `./normalize-project` so the
+// project-graph backfill can apply the IDENTICAL normalization before exploding a
+// legacy row into the strict child tables (relational-store PLAN §7). The live
+// READ path no longer normalizes (relational rows are already in the current
+// model — the backfill/live writes store normalized rows). `deriveVolumeName` is
+// still used by `validateVolumes` here and re-exported for the volume tests.
+import { deriveVolumeName } from "./normalize-project";
 
 export { deriveVolumeName };
 

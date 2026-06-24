@@ -611,7 +611,9 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-async function* projectStatusStream(
+// Exported for the cut-set (c) SSE test (PLAN §6 "Add a test that drives the
+// generator across >1 ping"): it must stay cookie-free across iteration ticks.
+export async function* projectStatusStream(
   slug: string,
   teamId: string | null,
 ): AsyncGenerator<ProjectSummary> {

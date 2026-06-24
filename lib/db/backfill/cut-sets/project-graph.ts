@@ -1,4 +1,5 @@
 import { count, eq, inArray } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
 
 import type { DeploData, Project } from "../../../types";
 import { normalizeProject } from "../../../data/normalize-project";
@@ -321,11 +322,7 @@ async function seedServers(tx: BackfillTx, data: DeploData): Promise<void> {
 /* Reconcile (element-granular)                                         */
 /* ------------------------------------------------------------------ */
 
-async function rowCount(
-  tx: BackfillTx,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  table: any,
-): Promise<number> {
+async function rowCount(tx: BackfillTx, table: PgTable): Promise<number> {
   const r = await tx.select({ n: count() }).from(table);
   return r[0]?.n ?? 0;
 }

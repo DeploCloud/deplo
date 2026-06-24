@@ -4,7 +4,6 @@ import { resolve4, resolveCname } from "node:dns/promises";
 import { and, eq, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import type { DbTx } from "../db/client";
 import {
   domains as domainsTable,
   domainMiddlewares as domainMiddlewaresTable,
