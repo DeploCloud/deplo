@@ -40,17 +40,16 @@ import type {
  * The ONE place that maps the project-graph relational rows ↔ the domain objects
  * (`Project`, `Domain`, `EnvVar`, `Deployment`, `SharedEnvGroup`, `Folder`)
  * (relational-store PLAN cut-set (c), §1 "No JSONB anywhere — total
- * normalization"). The live data layer (read path) and the per-cut-set backfill
- * (write path + element-granular reconcile) both go through here, so the two can
- * never drift on how a project's 5–6 child tables fold into one object — the same
- * anti-drift rationale as `notification-row.ts` for the leaf cut-set.
+ * normalization"). Every reader (the read path) and writer (insert / update) in
+ * the data layer goes through here, so reads and writes can never drift on how a
+ * project's 5–6 child tables fold into one object — the same anti-drift rationale
+ * as `notification-row.ts` for `notification_settings`.
  *
  * `assemble*` turns a parent row + its (already-loaded) child rows into a domain
  * object; `*ToRows` turns a domain object into the flat row + ordered child rows
  * an insert needs. Both halves are PURE — no DB, no store — so the assembler runs
- * in the row-batch-loader, the backfill copy, and the reconcile alike. The child
- * rows arrive pre-grouped by the caller (the loader batch-loads with a single
- * `inArray`; the backfill holds the source arrays in hand).
+ * in the row-batch-loader and the write path alike. The child rows arrive
+ * pre-grouped by the caller (the loader batch-loads with a single `inArray`).
  */
 
 /* ------------------------------------------------------------------ */
@@ -286,13 +285,13 @@ function volumeRowToMount(v: ProjectVolumeRow): VolumeMount {
 }
 
 /* ------------------------------------------------------------------ */
-/* Project: object → rows (for insert / backfill)                      */
+/* Project: object → rows (for insert)                                 */
 /* ------------------------------------------------------------------ */
 
 /**
  * The full row-set for ONE project, FK-ordered for insertion: the flat parent
- * first, then the 1-to-1 children, then the ordered lists. The backfill and
- * `createProject` both build this and insert each non-empty array.
+ * first, then the 1-to-1 children, then the ordered lists. `createProject` builds
+ * this and inserts each non-empty array.
  */
 export interface ProjectRowSet {
   project: ProjectInsert;
@@ -332,8 +331,8 @@ export function projectToRow(p: Project): ProjectInsert {
     status: p.status,
     autoDeploy: p.autoDeploy,
     // `latest_deployment_id` is a forward FK to a deployment that may not exist
-    // yet at project-insert time; the caller (createProject / backfill) sets it in
-    // a second pass after deployments land, or leaves it null.
+    // yet at project-insert time; the caller (createProject) sets it in a second
+    // pass after deployments land, or leaves it null.
     latestDeploymentId: null,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,

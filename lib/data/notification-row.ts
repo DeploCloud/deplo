@@ -5,11 +5,10 @@ import type { NotificationEvent, NotificationSettings } from "../types";
 
 /**
  * The ONE flat-columns ↔ nested-object mapping for `notification_settings`
- * (relational-store PLAN §2 "notification_settings"), shared by the backfill
- * cut-set (`lib/db/backfill/cut-sets/leaf.ts`) and the live data layer
- * (`lib/data/notifications.ts`) so the two can't drift. Pure — no `server-only`,
- * no store, no db handle — so both a `server-only` module and a backfill helper
- * can import it.
+ * (relational-store PLAN §2 "notification_settings"), shared by every reader and
+ * writer in the data layer (`lib/data/notifications.ts`) so reads and writes can't
+ * drift. Pure — no `server-only`, no store, no db handle — so a `server-only`
+ * module can import it freely.
  *
  * The relational table flattens the `{channels, events}` object into one boolean/
  * text column per field (no JSONB map). `settingsToRow` explodes the object into

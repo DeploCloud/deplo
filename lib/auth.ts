@@ -4,7 +4,6 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { count, eq, or, sql } from "drizzle-orm";
-import { ensureStoreReady } from "./store";
 import { getDb, type DbTx } from "./db/client";
 import {
   memberships as membershipsTable,
@@ -254,7 +253,6 @@ export async function createAccountWithTeam(
  * Returns null when unauthenticated. Never throws.
  */
 export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
-  await ensureStoreReady();
   // A bearer-token request (the public GraphQL API) supplies its principal via
   // the request-context override and carries no session cookie.
   const override = currentIdentity();
@@ -285,7 +283,6 @@ export async function requireUser(): Promise<PublicUser> {
 
 /** True on a fresh install with no account yet  the setup wizard is required. */
 export async function isSetupNeeded(): Promise<boolean> {
-  await ensureStoreReady();
   const n = (await getDb().select({ n: count() }).from(usersTable))[0]!.n;
   return n === 0;
 }
@@ -317,7 +314,6 @@ export async function login(
   email: string,
   password: string
 ): Promise<{ ok: boolean; error?: string }> {
-  await ensureStoreReady();
   const normalized = email.toLowerCase().trim();
   const rows = await getDb()
     .select({
@@ -355,7 +351,6 @@ export async function completeSetup(input: {
   email: string;
   password: string;
 }): Promise<{ ok: boolean; error?: string }> {
-  await ensureStoreReady();
   const existing = (await getDb().select({ n: count() }).from(usersTable))[0]!.n;
   if (existing > 0)
     return { ok: false, error: "Setup has already been completed" };

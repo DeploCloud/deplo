@@ -22,8 +22,6 @@
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   try {
-    const { ensureStoreReady } = await import("./lib/store");
-    await ensureStoreReady();
     // The deployment reconcile is now async (relational). It marks orphaned
     // queued/building deploys error; it may be floated (genuinely fire-and-forget
     // — nothing downstream at boot depends on it). The BACKUP reconcile, by

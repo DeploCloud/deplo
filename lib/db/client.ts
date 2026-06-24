@@ -23,13 +23,13 @@ import { schema } from "./schema";
  * `*_at` columns read back as canonical `T…Z` strings because they use the
  * `isoTimestamptz` custom type ([./schema/columns.ts](./schema/columns.ts)), which
  * canonicalises in Drizzle's own codec layer. (The `pg.ts` global parser still
- * serves the legacy raw-query path in `document-store.ts`/`lease.ts`.)
+ * serves the raw-query path in `lease.ts`.)
  *
- * Pinned on `globalThis` with the same `Symbol.for` pattern as `lib/store.ts`'s
- * `STORE_KEY` (and `keyed-mutex.ts` / `lease.ts`): in `next dev` the RSC and
- * route-handler layers compile into SEPARATE module registries, so a plain
- * module-level `const db` would exist as two independent clients in one process.
- * Pinning collapses them onto one Drizzle instance over the one shared pool.
+ * Pinned on `globalThis` with a `Symbol.for` key (the same pattern as
+ * `keyed-mutex.ts` / `lease.ts`): in `next dev` the RSC and route-handler layers
+ * compile into SEPARATE module registries, so a plain module-level `const db`
+ * would exist as two independent clients in one process. Pinning collapses them
+ * onto one Drizzle instance over the one shared pool.
  *
  * Access tables through thin per-table queries colocated with their data module
  * (e.g. `lib/data/projects.ts` owns its `projects` queries directly via this

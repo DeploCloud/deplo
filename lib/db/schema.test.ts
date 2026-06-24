@@ -9,12 +9,16 @@ import { makeTestDb, type TestDb } from "./test-harness";
  * Step 1 schema test (relational-store PLAN §9 Step 1: "a `schema.test.ts`
  * asserts the table set matches the design").
  *
- * It applies the REAL generated migrations (0000…0003) to a fresh pglite via the
+ * It applies the REAL generated migrations (0000…0004) to a fresh pglite via the
  * shared test harness, then reads `information_schema` so the assertions are
  * against the DDL production actually runs — not the Drizzle declarations in
  * isolation. This catches a table/enum/constraint that was declared but never made
  * it into a generated migration (the `db:generate` drift the PLAN §10 guards
  * against), and a stray table a migration created that the design never asked for.
+ *
+ * Migration 0004 (PLAN Step 7) dropped the legacy `deplo_state` JSONB table and
+ * the `store_migration` backfill bookkeeping table; neither is in the expected
+ * set below, and the test proves they no longer exist after the journal replays.
  */
 
 let db: TestDb;
@@ -33,13 +37,16 @@ after(async () => {
 /* The exact expected table set                                        */
 /* ------------------------------------------------------------------ */
 
-/** Legacy + Better-Auth tables that survive the migration (schema/auth, legacy). */
+/**
+ * Better-Auth tables (schema/auth) + the live `scheduler_lease` mutex
+ * (schema/scheduler) — the non-control-plane tables that survive. The legacy
+ * `deplo_state` JSONB table was dropped in PLAN Step 7 (migration 0004).
+ */
 const PRE_EXISTING = [
   "account",
   "session",
   "user",
   "verification",
-  "deplo_state",
   "scheduler_lease",
 ] as const;
 
@@ -91,8 +98,6 @@ const CONTROL_PLANE = [
   "shared_env_group_targets",
   "github_apps",
   "github_installation",
-  // bookkeeping
-  "store_migration",
 ] as const;
 
 async function publicTables(): Promise<Set<string>> {

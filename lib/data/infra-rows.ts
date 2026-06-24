@@ -19,16 +19,16 @@ import type {
 
 /**
  * The ONE relational-rows ↔ domain-objects mapping for the infra/integrations
- * cut-set (e) (relational-store PLAN Step 6): `servers`, `github_apps`,
- * `github_installation`, `dev_ssh_user`, `activities`. Both the live data layer
- * (reads, `lib/data/{servers,github,dev-ssh,activity}.ts`, `lib/github/app.ts`)
- * and the backfill (`lib/db/backfill/cut-sets/infra.ts`, write + reconcile) go
- * through here, so the two can't drift on how a row folds into a domain object —
- * the same anti-drift seam `backup-rows.ts` is for cut-set (d),
- * `project-graph-rows.ts` for (c), and `notification-row.ts` for the leaf.
+ * tables (relational-store PLAN Step 6 cut-set (e)): `servers`, `github_apps`,
+ * `github_installation`, `dev_ssh_user`, `activities`. Every reader and writer in
+ * the data layer (`lib/data/{servers,github,dev-ssh,activity}.ts`,
+ * `lib/github/app.ts`) goes through here, so reads and writes can't drift on how a
+ * row folds into a domain object — the same anti-drift seam `backup-rows.ts` is
+ * for the backups tables, `project-graph-rows.ts` for the project graph, and
+ * `notification-row.ts` for `notification_settings`.
  *
- * Pure — no `server-only`, no store, no db handle — so a `server-only` module and
- * a backfill helper can both import it. Load-bearing details:
+ * Pure — no `server-only`, no store, no db handle — so a `server-only` module can
+ * import it freely. Load-bearing details:
  *
  *  - **`servers` flattens two nested objects.** `ServerAgent` (present once
  *    provisioned) → `agent_*` columns, `ServerBootstrap` (present only while

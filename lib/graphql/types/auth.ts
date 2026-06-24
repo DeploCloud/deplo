@@ -11,7 +11,6 @@ import {
 } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/auth";
 import { consumeRegistrationLink } from "@/lib/data/members";
-import { ensureStoreReady } from "@/lib/store";
 import { normalizeUsername, validateUsername } from "@/lib/username";
 import { rateLimit } from "@/lib/security";
 
@@ -147,7 +146,6 @@ builder.mutationFields((t) => ({
       const parsed = registerSchema.safeParse(args);
       if (!parsed.success)
         throw new Error(parsed.error.issues[0]?.message ?? "Invalid");
-      await ensureStoreReady();
       const h = await headers();
       const ip =
         h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
