@@ -20,7 +20,6 @@ import {
 } from "./crypto";
 import type { PublicUser, Team, User } from "./types";
 import { capabilitiesForRole } from "./membership-shared";
-import { ensureTeamOrderStub } from "./data/team-order";
 import { normalizeUsername, validateUsername } from "./username";
 import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
@@ -242,11 +241,10 @@ export async function createAccountWithTeam(
 
     return { user, team };
   });
-  // Bridge the not-yet-migrated team-ordering fields (cut-set c) onto a JSONB
-  // stub so a brand-new team's project/folder order has a home until cut-set (c)
-  // migrates those arrays to junctions. The relational rows above are
-  // authoritative; this carries only projectOrder/folderOrder.
-  ensureTeamOrderStub(result.team.id);
+  // Team ordering (project/folder) is now the `team_project_order` /
+  // `team_folder_order` junctions (cut-set c) — a brand-new team simply has no
+  // order rows yet and `listProjects`/`listFolders` fall back to newest-first.
+  // The old JSONB team-order stub bridge is retired.
   return result;
 }
 

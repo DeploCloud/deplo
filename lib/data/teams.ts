@@ -17,7 +17,6 @@ import {
   capabilitiesForRole,
 } from "../membership";
 import { recordActivity } from "./activity";
-import { ensureTeamOrderStub } from "./team-order";
 import type { Team } from "../types";
 
 function slugify(s: string): string {
@@ -168,9 +167,8 @@ export async function createTeam(input: { name: string }): Promise<Team> {
       );
     return t;
   });
-  // Bridge the not-yet-migrated team-ordering fields (cut-set c) — see
-  // ensureTeamOrderStub. The relational row above is authoritative.
-  ensureTeamOrderStub(team.id);
+  // Team ordering moved to the team_project_order/team_folder_order junctions
+  // (cut-set c); a new team starts with no order rows. The JSONB stub is retired.
   // Switch the active team to the freshly created one.
   await setActiveTeam(team.id);
   recordActivity("member", `Created team ${team.name}`, user.name, null, team.id);
