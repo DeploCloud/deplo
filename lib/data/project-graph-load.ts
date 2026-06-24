@@ -17,13 +17,18 @@ import {
   projectExposes,
   projectMounts,
   projectVolumes,
+  sharedEnvGroups,
+  sharedEnvGroupProjects,
+  sharedEnvGroupTargets,
+  sharedEnvGroupVars,
 } from "../db/schema/control-plane";
-import type { Deployment, Domain, EnvVar, Project } from "../types";
+import type { Deployment, Domain, EnvVar, Project, SharedEnvGroup } from "../types";
 import {
   assembleDeployment,
   assembleDomain,
   assembleEnvVar,
   assembleProject,
+  assembleSharedEnvGroup,
   domainToRow,
   domainMiddlewaresToRows,
   envVarToRow,
@@ -34,6 +39,7 @@ import {
   type EnvVarTargetRow,
   type ProjectChildRows,
   type ProjectRow,
+  type SharedEnvGroupRow,
 } from "./project-graph-rows";
 
 /**
@@ -417,4 +423,92 @@ export async function projectInTeam(
     .where(and(eq(projects.id, projectId), eq(projects.teamId, teamId)))
     .limit(1);
   return rows.length > 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared env groups                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Assemble shared env groups from parent rows, batch-loading the 3 child sets. */
+async function assembleSharedEnvGroups(
+  db: DbReader,
+  rows: SharedEnvGroupRow[],
+): Promise<SharedEnvGroup[]> {
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  const [vars, projectsRows, targets] = await Promise.all([
+    db.select().from(sharedEnvGroupVars).where(inArray(sharedEnvGroupVars.groupId, ids)),
+    db
+      .select()
+      .from(sharedEnvGroupProjects)
+      .where(inArray(sharedEnvGroupProjects.groupId, ids)),
+    db
+      .select()
+      .from(sharedEnvGroupTargets)
+      .where(inArray(sharedEnvGroupTargets.groupId, ids)),
+  ]);
+  const varsBy = groupBy(vars, (v) => v.groupId);
+  const projBy = groupBy(projectsRows, (p) => p.groupId);
+  const tgtBy = groupBy(targets, (t) => t.groupId);
+  return rows.map((r) =>
+    assembleSharedEnvGroup(r, varsBy.get(r.id) ?? [], projBy.get(r.id) ?? [], tgtBy.get(r.id) ?? []),
+  );
+}
+
+function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
+  const out = new Map<K, T[]>();
+  for (const item of items) {
+    const k = key(item);
+    const list = out.get(k) ?? [];
+    list.push(item);
+    out.set(k, list);
+  }
+  return out;
+}
+
+/** Every shared env group in a team (with children). */
+export async function loadSharedEnvGroupsForTeam(
+  teamId: string,
+  db: DbReader = getDb(),
+): Promise<SharedEnvGroup[]> {
+  const rows = await db
+    .select()
+    .from(sharedEnvGroups)
+    .where(eq(sharedEnvGroups.teamId, teamId));
+  return assembleSharedEnvGroups(db, rows);
+}
+
+/** A single shared env group by id (with children), null if absent. */
+export async function loadSharedEnvGroup(
+  id: string,
+  db: DbReader = getDb(),
+): Promise<SharedEnvGroup | null> {
+  const rows = await db
+    .select()
+    .from(sharedEnvGroups)
+    .where(eq(sharedEnvGroups.id, id))
+    .limit(1);
+  const [g] = await assembleSharedEnvGroups(db, rows);
+  return g ?? null;
+}
+
+/**
+ * Shared env groups ATTACHED to a project (with children) — the bounded set the
+ * deploy/dev env resolution needs, joined through the `shared_env_group_projects`
+ * junction (so it never loads the whole team's groups into the build).
+ */
+export async function loadSharedEnvGroupsForProject(
+  projectId: string,
+  db: DbReader = getDb(),
+): Promise<SharedEnvGroup[]> {
+  const attached = await db
+    .select({ groupId: sharedEnvGroupProjects.groupId })
+    .from(sharedEnvGroupProjects)
+    .where(eq(sharedEnvGroupProjects.projectId, projectId));
+  if (attached.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(sharedEnvGroups)
+    .where(inArray(sharedEnvGroups.id, attached.map((a) => a.groupId)));
+  return assembleSharedEnvGroups(db, rows);
 }
