@@ -81,6 +81,17 @@ type StoreState = {
    * we discard it in favour of the durable Postgres document.
    */
   dirty: boolean;
+  /**
+   * Single-flight for the relational-store cut-set backfills (relational-store
+   * PLAN §7, Step 2+). Separate from hydration: a migrated cut-set copies from
+   * the freshly-hydrated JSONB into its relational tables at most once per
+   * process, gated by the `store_migration` marker. `backfilled` flips true once
+   * every wired cut-set's gate has returned; `backfilling` is the in-flight run
+   * (re-armed to null on failure so the next ensureStoreReady retries — a backfill
+   * failure must NOT 500 the request path, PLAN §8).
+   */
+  backfilled: boolean;
+  backfilling: Promise<void> | null;
 };
 
 const STORE_KEY = Symbol.for("deplo.store.singleton");
@@ -92,6 +103,8 @@ const state: StoreState = (g[STORE_KEY] ??= {
   hydrating: null,
   writeChain: Promise.resolve(),
   dirty: false,
+  backfilled: false,
+  backfilling: null,
 });
 
 /* ------------------------------------------------------------------ */
@@ -113,17 +126,49 @@ function queuePostgresWrite(data: DeploData) {
 }
 
 /**
- * Hydrate the in-memory cache from Postgres. Idempotent and safe to call from
- * multiple concurrent requests — the work happens at most once. In the
- * test-only in-memory mode (no Postgres) this seeds the cache and returns
- * without touching any backend.
+ * Run every wired relational-store cut-set backfill once (relational-store PLAN
+ * §7, Step 2+). Each cut-set copies its collections from the freshly-hydrated
+ * JSONB (`state.cache`) into its relational tables, gated cross-process by the
+ * `store_migration` marker + scheduler-lease so it runs at most once even across
+ * a rolling-restart double-boot.
+ *
+ * It must NEVER throw out to the caller: `ensureStoreReady` is awaited on the
+ * request path (auth, webhooks, agent bootstrap) and a single-flight that caches
+ * a rejected promise would 500 the process for its whole life. A failure here is
+ * caught, logged, and the single-flight re-armed so the NEXT ensureStoreReady
+ * retries (the marker makes a successful re-run a no-op). Dynamically imported so
+ * the relational layer never loads on the test in-memory path (guarded by the
+ * USE_PG caller) and to avoid a static import cycle through `lib/store`.
+ */
+async function runCutSetBackfills(): Promise<void> {
+  const { getDb } = await import("./db/client");
+  const { awaitBackfill } = await import("./db/backfill/gate");
+  const { runBackfill } = await import("./db/backfill/engine");
+  const { leafCutSetCopy } = await import("./db/backfill/cut-sets/leaf");
+  const { CUT_SETS } = await import("./db/backfill/markers");
+  const db = getDb();
+  const owner = `pid-${process.pid}`;
+  const doc = state.cache!;
+
+  // Cut-set (a) — leaf collections (Step 2). Add later cut-sets here in order.
+  await awaitBackfill(db, CUT_SETS.leaf, owner, () =>
+    runBackfill(db, CUT_SETS.leaf, doc, leafCutSetCopy),
+  );
+}
+
+/**
+ * Hydrate the in-memory cache from Postgres AND run the relational-store cut-set
+ * backfills. Idempotent and safe to call from multiple concurrent requests — the
+ * work happens at most once. In the test-only in-memory mode (no Postgres) this
+ * seeds the cache and returns without touching any backend (no backfill).
  */
 export async function ensureStoreReady(): Promise<void> {
-  if (state.hydrated) return;
+  if (state.hydrated && state.backfilled) return;
   if (!USE_PG) {
-    // Test-only in-memory mode: seed once, never persist.
+    // Test-only in-memory mode: seed once, never persist, no relational backfill.
     if (!state.cache) state.cache = buildSeed();
     state.hydrated = true;
+    state.backfilled = true;
     return;
   }
   if (!state.hydrating) {
@@ -148,6 +193,29 @@ export async function ensureStoreReady(): Promise<void> {
     })();
   }
   await state.hydrating;
+
+  // Relational-store cut-set backfills run AFTER hydration (they copy from the
+  // freshly-hydrated, normalized JSONB). Gated by its own single-flight so it
+  // runs once even under concurrent callers, and re-armed on failure so a
+  // transient DB blip doesn't permanently cache a rejection.
+  if (!state.backfilled) {
+    if (!state.backfilling) {
+      state.backfilling = runCutSetBackfills().then(
+        () => {
+          state.backfilled = true;
+        },
+        (err) => {
+          console.error(
+            "[deplo] relational-store backfill failed; will retry on the next ensureStoreReady:",
+            err,
+          );
+          // Re-arm so the next call retries (the marker makes a good run a no-op).
+          state.backfilling = null;
+        },
+      );
+    }
+    await state.backfilling;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -193,6 +261,11 @@ export function mutate<T>(fn: (data: DeploData) => T): T {
 export function reseed(): DeploData {
   state.cache = buildSeed();
   state.hydrated = true;
+  // A reseed replaces the whole document; treat the relational backfill as
+  // settled too so the next ensureStoreReady doesn't re-run a copy over the
+  // fresh seed. (Used by tests in in-memory mode, where USE_PG is false and no
+  // relational backfill runs anyway.)
+  state.backfilled = true;
   state.dirty = true;
   if (USE_PG) queuePostgresWrite(state.cache);
   return state.cache;
