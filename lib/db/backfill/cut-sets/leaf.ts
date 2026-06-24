@@ -1,11 +1,8 @@
 import { count, eq } from "drizzle-orm";
 
-import type {
-  DeploData,
-  NotificationEvent,
-  NotificationSettings,
-} from "../../../types";
+import type { DeploData, NotificationSettings } from "../../../types";
 import { defaultNotificationSettings } from "../../../types";
+import { settingsToRow } from "../../../data/notification-row";
 import { appSlug } from "../../../apps/runtime";
 import {
   apiTokens,
@@ -45,42 +42,10 @@ import { seedIdentityRoots } from "../roots";
  * resolution.
  */
 
-/* ------------------------------------------------------------------ */
-/* Notification settings: map row <-> flat columns                     */
-/* ------------------------------------------------------------------ */
-
-/**
- * One boolean column per {@link NotificationEvent}, declared `satisfies
- * Record<NotificationEvent, …>` so adding a new event to the union fails to
- * compile here until the backfill maps it — a settings event can't be silently
- * dropped (PLAN §7 "exhaustive … coverage").
- */
-const EVENT_COLUMN = {
-  deployment_failed: notificationSettings.deploymentFailed,
-  deployment_succeeded: notificationSettings.deploymentSucceeded,
-  server_offline: notificationSettings.serverOffline,
-  high_resource_usage: notificationSettings.highResourceUsage,
-  update_available: notificationSettings.updateAvailable,
-} satisfies Record<NotificationEvent, unknown>;
-
-/** Map a {@link NotificationSettings} object to its flat `notification_settings` row. */
-function notificationRow(teamId: string, s: NotificationSettings) {
-  return {
-    teamId,
-    pushEnabled: s.channels.push.enabled,
-    emailEnabled: s.channels.email.enabled,
-    emailAddress: s.channels.email.address,
-    discordEnabled: s.channels.discord.enabled,
-    discordWebhookUrl: s.channels.discord.webhookUrl,
-    webhookEnabled: s.channels.webhook.enabled,
-    webhookUrl: s.channels.webhook.url,
-    deploymentFailed: s.events.deployment_failed,
-    deploymentSucceeded: s.events.deployment_succeeded,
-    serverOffline: s.events.server_offline,
-    highResourceUsage: s.events.high_resource_usage,
-    updateAvailable: s.events.update_available,
-  };
-}
+// The flat-columns ↔ nested-object mapping (with its compile-time
+// exhaustiveness guard over every NotificationEvent) lives in
+// `lib/data/notification-row.ts` — the ONE shared mapping this cut-set's copy
+// and the live data layer both use, so the two can't drift (PLAN §2/§7).
 
 /* ------------------------------------------------------------------ */
 /* Copy                                                                */
@@ -141,7 +106,7 @@ async function copyLeaf(tx: BackfillTx, data: DeploData): Promise<void> {
   if (settingsEntries.length > 0) {
     await tx
       .insert(notificationSettings)
-      .values(settingsEntries.map(([teamId, s]) => notificationRow(teamId, s)));
+      .values(settingsEntries.map(([teamId, s]) => settingsToRow(teamId, s)));
   }
 
   await reconcileLeaf(tx, data);
@@ -240,16 +205,12 @@ export async function reconcileLeaf(
       .limit(1);
     const got = persisted[0];
     if (!got) fail(`notification_settings missing row for team ${teamId}`);
-    const want = notificationRow(teamId, raw as NotificationSettings);
+    const want = settingsToRow(teamId, raw as NotificationSettings);
     for (const key of Object.keys(want) as (keyof typeof want)[]) {
       if (got[key] !== want[key])
         fail(`notification_settings.${key} for ${teamId}: ${got[key]} != ${want[key]}`);
     }
   }
-
-  // Touch EVENT_COLUMN so the exhaustiveness guard is retained (it is the
-  // compile-time proof that every NotificationEvent maps to a column).
-  void EVENT_COLUMN;
 }
 
 /* ------------------------------------------------------------------ */

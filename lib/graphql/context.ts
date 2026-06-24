@@ -39,10 +39,10 @@ export interface GraphQLContext {
 export async function buildContext(
   request: Request,
 ): Promise<GraphQLContext> {
-  // In Postgres mode the in-memory store is hydrated lazily; `authenticateToken`
-  // reads it synchronously, so the cache must be ready before the first bearer
-  // request or the token lookup runs against an empty seed. (The cookie path
-  // already awaits this inside getCurrentUser.)
+  // Ensure the store/backfill gate has run before the first request: the cookie
+  // path awaits this inside getCurrentUser, but the bearer path below queries the
+  // relational `api_tokens` table (populated by the leaf backfill that
+  // ensureStoreReady gates), so it must be ready first.
   await ensureStoreReady();
 
   const auth = request.headers.get("authorization");
@@ -51,7 +51,7 @@ export async function buildContext(
     : null;
 
   if (bearer) {
-    const identity = authenticateToken(bearer);
+    const identity = await authenticateToken(bearer);
     if (!identity) {
       return {
         viewer: null,

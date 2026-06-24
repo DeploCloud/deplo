@@ -1,17 +1,32 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { eq } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import { notificationSettings } from "../db/schema/control-plane";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { defaultNotificationSettings } from "../types";
+import { rowToSettings, settingsToRow } from "./notification-row";
 import type { NotificationChannel, NotificationSettings } from "../types";
 
 /** Default config, also used to backfill stores seeded before this feature. */
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings =
   defaultNotificationSettings();
 
+/** The active team's row, or `null` when it has none (read falls back to default). */
+async function settingsRowFor(teamId: string): Promise<NotificationSettings | null> {
+  const rows = await getDb()
+    .select()
+    .from(notificationSettings)
+    .where(eq(notificationSettings.teamId, teamId))
+    .limit(1);
+  return rows[0] ? rowToSettings(rows[0]) : null;
+}
+
 export async function getNotificationSettings(): Promise<NotificationSettings> {
   const teamId = await requireActiveTeamId();
-  return read().notificationSettings[teamId] ?? defaultNotificationSettings();
+  // Absent row = never configured → the default (PLAN §2 "Missing row = default").
+  return (await settingsRowFor(teamId)) ?? defaultNotificationSettings();
 }
 
 export async function updateNotificationSettings(
@@ -19,10 +34,14 @@ export async function updateNotificationSettings(
 ): Promise<NotificationSettings> {
   // Notifications are an infra-level team setting.
   const teamId = (await requireCapability("manage_infra")).teamId;
-  return mutate((d) => {
-    d.notificationSettings[teamId] = next;
-    return d.notificationSettings[teamId];
-  });
+  const row = settingsToRow(teamId, next);
+  // One row per team (team_id PK): upsert so the first save inserts and later
+  // saves overwrite — never a duplicate row.
+  await getDb()
+    .insert(notificationSettings)
+    .values(row)
+    .onConflictDoUpdate({ target: notificationSettings.teamId, set: row });
+  return next;
 }
 
 /**
@@ -39,7 +58,7 @@ export async function sendTestNotification(
   // to the team's configured Discord/webhook endpoints.
   const teamId = (await requireCapability("manage_infra")).teamId;
   const c =
-    read().notificationSettings[teamId]?.channels ??
+    (await settingsRowFor(teamId))?.channels ??
     DEFAULT_NOTIFICATION_SETTINGS.channels;
 
   const title = "Deplo test alert";

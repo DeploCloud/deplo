@@ -37,6 +37,35 @@ export type DrizzleClient = NodePgDatabase<typeof schema>;
 const CLIENT_KEY = Symbol.for("deplo.db.client.singleton");
 const g = globalThis as unknown as { [CLIENT_KEY]?: DrizzleClient };
 
+/**
+ * Test-only override (relational-store PLAN §8 "Engine parameterization", Step
+ * 2). The data layer calls `getDb()` with no `db` argument, so a `node --test`
+ * run needs a seam to point it at the pglite client `makeTestDb()` builds instead
+ * of the node-postgres pool (which would require a real Postgres). When set,
+ * `getDb()` returns it. Mirrors `lib/backups/lease.ts`'s `__resetLocalLeases()`
+ * test hook. Null in every real run, so production never pays for the branch
+ * beyond one comparison.
+ */
+let testOverride: DrizzleClient | null = null;
+
 export function getDb(): DrizzleClient {
+  if (testOverride) return testOverride;
   return (g[CLIENT_KEY] ??= drizzle(getPool(), { schema }));
+}
+
+/**
+ * Test-only: route every `getDb()` at the given client (a pglite
+ * `PgliteDatabase<typeof schema>` from `makeTestDb()`). The two Drizzle clients
+ * expose the same query surface (`select`/`insert`/`update`/`delete`/
+ * `transaction`) over the same `schema`; the structural mismatch is only in the
+ * driver HKT, so the harness passes it through this widening seam. Call in a
+ * test `before`; pair with {@link __resetTestDb} in `after`.
+ */
+export function __setTestDb(db: unknown): void {
+  testOverride = db as DrizzleClient;
+}
+
+/** Test-only: clear the {@link __setTestDb} override. */
+export function __resetTestDb(): void {
+  testOverride = null;
 }

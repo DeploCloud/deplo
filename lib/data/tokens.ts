@@ -1,10 +1,12 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { and, desc, eq } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import { apiTokens } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { sha256Hex, randomToken } from "../crypto";
-import type { ApiToken } from "../types";
 
 export interface ApiTokenDTO {
   id: string;
@@ -14,21 +16,22 @@ export interface ApiTokenDTO {
   createdAt: string;
 }
 
-function toDTO(t: ApiToken): ApiTokenDTO {
-  return {
-    id: t.id,
-    name: t.name,
-    prefix: t.prefix,
-    lastUsedAt: t.lastUsedAt,
-    createdAt: t.createdAt,
-  };
-}
+/** The non-secret projection — never selects `token_hash` (relational-store PLAN §1 "Secrets"). */
+const DTO_COLUMNS = {
+  id: apiTokens.id,
+  name: apiTokens.name,
+  prefix: apiTokens.prefix,
+  lastUsedAt: apiTokens.lastUsedAt,
+  createdAt: apiTokens.createdAt,
+} as const;
 
 export async function listTokens(): Promise<ApiTokenDTO[]> {
   const teamId = await requireActiveTeamId();
-  return read()
-    .apiTokens.filter((t) => t.teamId === teamId)
-    .map(toDTO);
+  return getDb()
+    .select(DTO_COLUMNS)
+    .from(apiTokens)
+    .where(eq(apiTokens.teamId, teamId))
+    .orderBy(desc(apiTokens.createdAt));
 }
 
 /** Returns the raw token ONCE; only the hash is persisted. */
@@ -36,19 +39,23 @@ export async function createToken(name: string): Promise<{ raw: string; token: A
   const { teamId, userId } = await requireCapability("manage_infra");
   if (!name.trim()) throw new Error("Name is required");
   const raw = `deplo_${randomToken(24)}`;
-  const t: ApiToken = {
+  const token: ApiTokenDTO = {
     id: newId("tok"),
-    teamId,
-    // The token acts as its creator for user-scoped fields on bearer requests.
-    userId,
     name: name.trim(),
-    tokenHash: sha256Hex(raw),
     prefix: raw.slice(0, 12),
     lastUsedAt: null,
     createdAt: nowIso(),
   };
-  mutate((d) => d.apiTokens.push(t));
-  return { raw, token: toDTO(t) };
+  await getDb()
+    .insert(apiTokens)
+    .values({
+      ...token,
+      teamId,
+      // The token acts as its creator for user-scoped fields on bearer requests.
+      userId,
+      tokenHash: sha256Hex(raw),
+    });
+  return { raw, token };
 }
 
 /**
@@ -56,28 +63,36 @@ export async function createToken(name: string): Promise<{ raw: string; token: A
  * does not match a live token. Bumps `lastUsedAt`. The GraphQL request context
  * uses this to authenticate external API clients. Never throws.
  */
-export function authenticateToken(
+export async function authenticateToken(
   raw: string,
-): { userId: string; teamId: string } | null {
+): Promise<{ userId: string; teamId: string } | null> {
   if (!raw.startsWith("deplo_")) return null;
   const hash = sha256Hex(raw);
-  const match = read().apiTokens.find((t) => t.tokenHash === hash);
+  const rows = await getDb()
+    .select({
+      id: apiTokens.id,
+      userId: apiTokens.userId,
+      teamId: apiTokens.teamId,
+    })
+    .from(apiTokens)
+    .where(eq(apiTokens.tokenHash, hash))
+    .limit(1);
+  const match = rows[0];
   if (!match) return null;
   // Fire-and-forget usage stamp; a failed write must not block the request.
-  try {
-    mutate((d) => {
-      const t = d.apiTokens.find((x) => x.id === match.id);
-      if (t) t.lastUsedAt = nowIso();
+  void getDb()
+    .update(apiTokens)
+    .set({ lastUsedAt: nowIso() })
+    .where(eq(apiTokens.id, match.id))
+    .catch(() => {
+      /* usage tracking is best-effort */
     });
-  } catch {
-    /* usage tracking is best-effort */
-  }
   return { userId: match.userId, teamId: match.teamId };
 }
 
 export async function revokeToken(id: string): Promise<void> {
   const teamId = (await requireCapability("manage_infra")).teamId;
-  mutate((d) => {
-    d.apiTokens = d.apiTokens.filter((x) => !(x.id === id && x.teamId === teamId));
-  });
+  await getDb()
+    .delete(apiTokens)
+    .where(and(eq(apiTokens.id, id), eq(apiTokens.teamId, teamId)));
 }

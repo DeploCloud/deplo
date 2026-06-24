@@ -1,7 +1,11 @@
 import "server-only";
 
 import { headers } from "next/headers";
-import { read, mutate } from "../store";
+import { and, desc, eq } from "drizzle-orm";
+
+import { read } from "../store";
+import { getDb } from "../db/client";
+import { installedApps as installedAppsTable } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -42,12 +46,15 @@ export interface InstalledAppDTO {
   createdAt: string;
 }
 
-function installedApps(): InstalledApp[] {
-  return read().installedApps ?? [];
-}
+/** The stored fields of an installed app — a `installed_apps` row. */
+type AppRow = Pick<
+  InstalledApp,
+  "id" | "teamId" | "catalogId" | "slug" | "version" | "createdAt"
+>;
 
 /** Resolve a team's slug — seeds the deterministic app slug at INSTALL time. */
 function teamSlug(teamId: string): string {
+  // Team slugs live in the JSONB teams collection (cut-set b — authoritative this step).
   const team = read().teams.find((t) => t.id === teamId);
   if (!team) throw new Error("Active team not found");
   return team.slug;
@@ -58,8 +65,18 @@ function teamSlug(teamId: string): string {
  * deriving it for legacy rows written before `slug` was stored (the team has
  * not been renamed yet, so the derived value still matches the live container).
  */
-function appSlugFor(app: InstalledApp): string {
+function appSlugFor(app: AppRow): string {
   return app.slug || appSlug(app.catalogId, teamSlug(app.teamId));
+}
+
+/** Fetch one installed-app row scoped to the active team, or null. */
+async function findApp(id: string, teamId: string): Promise<AppRow | null> {
+  const rows = await getDb()
+    .select()
+    .from(installedAppsTable)
+    .where(and(eq(installedAppsTable.id, id), eq(installedAppsTable.teamId, teamId)))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 /** Deplo's public base URL, preferring DEPLO_PUBLIC_URL, else the request host. */
@@ -67,7 +84,7 @@ async function publicBaseUrl(): Promise<string> {
   return resolvePublicBaseUrl(await headers());
 }
 
-async function toDTO(app: InstalledApp): Promise<InstalledAppDTO> {
+async function toDTO(app: AppRow): Promise<InstalledAppDTO> {
   const slug = appSlugFor(app);
   const base = await publicBaseUrl();
   return {
@@ -92,9 +109,11 @@ export async function getAppCatalog(): Promise<AppListing[]> {
 /** All apps the active team has installed, newest first, with live status. */
 export async function listInstalledApps(): Promise<InstalledAppDTO[]> {
   const teamId = await requireActiveTeamId();
-  const rows = installedApps()
-    .filter((a) => a.teamId === teamId)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  const rows = await getDb()
+    .select()
+    .from(installedAppsTable)
+    .where(eq(installedAppsTable.teamId, teamId))
+    .orderBy(desc(installedAppsTable.createdAt));
   return Promise.all(rows.map(toDTO));
 }
 
@@ -103,7 +122,7 @@ export async function appRuntimeStatus(
   id: string,
 ): Promise<"running" | "stopped" | "error"> {
   const teamId = await requireActiveTeamId();
-  const app = installedApps().find((a) => a.id === id && a.teamId === teamId);
+  const app = await findApp(id, teamId);
   if (!app) throw new Error("App not installed");
   return appStatus(appSlugFor(app));
 }
@@ -153,9 +172,18 @@ export async function installApp(catalogId: string): Promise<InstalledAppDTO> {
   // create a fresh one. The slug is FROZEN — reuse the existing row's slug so a
   // reinstall after a team rename still targets the original container; only a
   // brand-new install derives the slug from the current team slug.
-  const existing = installedApps().find(
-    (a) => a.teamId === teamId && a.catalogId === catalogId,
-  );
+  const existing = (
+    await getDb()
+      .select()
+      .from(installedAppsTable)
+      .where(
+        and(
+          eq(installedAppsTable.teamId, teamId),
+          eq(installedAppsTable.catalogId, catalogId),
+        ),
+      )
+      .limit(1)
+  )[0];
   const slug = existing ? appSlugFor(existing) : appSlug(catalogId, teamSlug(teamId));
   await startAppStack({
     slug,
@@ -165,14 +193,13 @@ export async function installApp(catalogId: string): Promise<InstalledAppDTO> {
     isReinstall: !!existing,
   });
 
-  let row: InstalledApp;
+  let row: AppRow;
   if (existing) {
     row = { ...existing, slug, version: manifest.version };
-    mutate((d) => {
-      d.installedApps = (d.installedApps ?? []).map((a) =>
-        a.id === existing.id ? row : a,
-      );
-    });
+    await getDb()
+      .update(installedAppsTable)
+      .set({ slug, version: manifest.version })
+      .where(eq(installedAppsTable.id, existing.id));
   } else {
     row = {
       id: newId("app"),
@@ -182,10 +209,7 @@ export async function installApp(catalogId: string): Promise<InstalledAppDTO> {
       version: manifest.version,
       createdAt: nowIso(),
     };
-    mutate((d) => {
-      d.installedApps ??= [];
-      d.installedApps.push(row);
-    });
+    await getDb().insert(installedAppsTable).values(row);
   }
   recordActivity(
     "member",
@@ -206,13 +230,13 @@ export async function uninstallApp(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const user = read().users.find((u) => u.id === membership.userId)!;
   const teamId = membership.teamId;
-  const app = installedApps().find((a) => a.id === id && a.teamId === teamId);
+  const app = await findApp(id, teamId);
   if (!app) throw new Error("App not installed");
 
   await destroyAppContainer(appSlugFor(app));
-  mutate((d) => {
-    d.installedApps = (d.installedApps ?? []).filter((a) => a.id !== id);
-  });
+  await getDb()
+    .delete(installedAppsTable)
+    .where(and(eq(installedAppsTable.id, id), eq(installedAppsTable.teamId, teamId)));
   recordActivity(
     "member",
     `Uninstalled app ${app.catalogId}`,
@@ -225,8 +249,7 @@ export async function uninstallApp(id: string): Promise<void> {
 /** Start a stopped app's container (`manage_infra`). */
 export async function startApp(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
-  const teamId = membership.teamId;
-  const app = installedApps().find((a) => a.id === id && a.teamId === teamId);
+  const app = await findApp(id, membership.teamId);
   if (!app) throw new Error("App not installed");
   await startAppContainer(appSlugFor(app));
 }
@@ -234,8 +257,7 @@ export async function startApp(id: string): Promise<void> {
 /** Stop a running app's container (`manage_infra`). */
 export async function stopApp(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
-  const teamId = membership.teamId;
-  const app = installedApps().find((a) => a.id === id && a.teamId === teamId);
+  const app = await findApp(id, membership.teamId);
   if (!app) throw new Error("App not installed");
   await stopAppContainer(appSlugFor(app));
 }

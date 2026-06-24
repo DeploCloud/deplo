@@ -1,11 +1,15 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { and, desc, eq } from "drizzle-orm";
+
+import { read } from "../store";
+import { getDb } from "../db/client";
+import { registries as registriesTable } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret } from "../crypto";
-import type { Registry, RegistryType } from "../types";
+import type { RegistryType } from "../types";
 
 export interface RegistryDTO {
   id: string;
@@ -24,27 +28,24 @@ export const REGISTRY_HOSTS: Record<RegistryType, string> = {
   generic: "",
 };
 
-function registries(): Registry[] {
-  return read().registries ?? [];
-}
-
-function toDTO(r: Registry): RegistryDTO {
-  return {
-    id: r.id,
-    name: r.name,
-    type: r.type,
-    registryUrl: r.registryUrl,
-    username: r.username,
-    createdAt: r.createdAt,
-  };
-}
+/** The non-secret projection — never selects `password_enc`. */
+const DTO_COLUMNS = {
+  id: registriesTable.id,
+  name: registriesTable.name,
+  type: registriesTable.type,
+  registryUrl: registriesTable.registryUrl,
+  username: registriesTable.username,
+  createdAt: registriesTable.createdAt,
+} as const;
 
 export async function listRegistries(): Promise<RegistryDTO[]> {
   const teamId = await requireActiveTeamId();
-  return registries()
-    .filter((r) => r.teamId === teamId)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .map(toDTO);
+  // Newest-first sort pushed into SQL (matches registries_team_created_idx).
+  return getDb()
+    .select(DTO_COLUMNS)
+    .from(registriesTable)
+    .where(eq(registriesTable.teamId, teamId))
+    .orderBy(desc(registriesTable.createdAt)) as Promise<RegistryDTO[]>;
 }
 
 export async function addRegistry(input: {
@@ -55,6 +56,8 @@ export async function addRegistry(input: {
   password: string;
 }): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
+  // The actor's display name for the activity log lives in the JSONB users
+  // collection (cut-set b — still authoritative this step).
   const user = read().users.find((u) => u.id === membership.userId)!;
   const name = input.name.trim();
   if (!name) throw new Error("Enter a name");
@@ -63,30 +66,33 @@ export async function addRegistry(input: {
   if (!input.username.trim()) throw new Error("Enter a username");
   if (!input.password) throw new Error("Enter a password or access token");
 
-  const registry: Registry = {
-    id: newId("reg"),
-    teamId: membership.teamId,
-    name,
-    type: input.type,
-    registryUrl,
-    username: input.username.trim(),
-    passwordEnc: encryptSecret(input.password),
-    createdAt: nowIso(),
-  };
-  mutate((d) => {
-    d.registries ??= [];
-    d.registries.push(registry);
-  });
+  await getDb()
+    .insert(registriesTable)
+    .values({
+      id: newId("reg"),
+      teamId: membership.teamId,
+      name,
+      type: input.type,
+      registryUrl,
+      username: input.username.trim(),
+      passwordEnc: encryptSecret(input.password),
+      createdAt: nowIso(),
+    });
   recordActivity("member", `Added registry ${name}`, user.name, null, membership.teamId);
 }
 
 export async function deleteRegistry(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const user = read().users.find((u) => u.id === membership.userId)!;
-  const r = registries().find((x) => x.id === id && x.teamId === membership.teamId);
+  const rows = await getDb()
+    .select({ name: registriesTable.name })
+    .from(registriesTable)
+    .where(and(eq(registriesTable.id, id), eq(registriesTable.teamId, membership.teamId)))
+    .limit(1);
+  const r = rows[0];
   if (!r) throw new Error("Registry not found");
-  mutate((d) => {
-    d.registries = (d.registries ?? []).filter((x) => x.id !== id);
-  });
+  await getDb()
+    .delete(registriesTable)
+    .where(and(eq(registriesTable.id, id), eq(registriesTable.teamId, membership.teamId)));
   recordActivity("member", `Removed registry ${r.name}`, user.name, null, membership.teamId);
 }
