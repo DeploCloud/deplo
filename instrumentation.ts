@@ -34,7 +34,9 @@ export async function register(): Promise<void> {
       console.error("[deplo] deployment reconcile failed:", e),
     );
     const { reconcileInFlightBackupRuns } = await import("./lib/data/backups");
-    reconcileInFlightBackupRuns();
+    // AWAITED (now relational/async): the backup reconcile MUST complete before
+    // the scheduler's first tick reads a `running` run it never settled.
+    await reconcileInFlightBackupRuns();
     // Start the backup scheduler after the reconcile so a boot tick never trips
     // over an orphaned `running` run. Idempotent + lease-guarded internally.
     const { startBackupScheduler } = await import("./lib/backups/scheduler");

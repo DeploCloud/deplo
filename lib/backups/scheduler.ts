@@ -3,7 +3,11 @@ import "server-only";
 import { hostname } from "node:os";
 import { randomBytes } from "node:crypto";
 
-import { read } from "../store";
+import { eq } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import { backups as backupsTable } from "../db/schema/control-plane";
+import { assembleBackup } from "../data/backup-rows";
 import { runScheduledBackup } from "../data/backups";
 import { cronMatches } from "./cron";
 import {
@@ -85,15 +89,21 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
     if (!held) return;
 
     const key = minuteKey(now);
-    // Snapshot the enabled, well-formed schedules due this minute. Reading is
-    // synchronous; the run itself awaits, so capture the list up front.
-    const due = read().backups.filter(
-      (b) =>
-        b.enabled &&
-        b.schedule &&
-        cronMatches(b.schedule, now) &&
-        state.lastFired.get(b.id) !== key,
-    );
+    // Snapshot the enabled, well-formed schedules due this minute. The enabled
+    // filter is pushed into SQL; `cronMatches` (and the per-minute dedup) stay in
+    // memory. Capture the list up front, then await each run.
+    const enabledRows = await getDb()
+      .select()
+      .from(backupsTable)
+      .where(eq(backupsTable.enabled, true));
+    const due = enabledRows
+      .map(assembleBackup)
+      .filter(
+        (b) =>
+          b.schedule &&
+          cronMatches(b.schedule, now) &&
+          state.lastFired.get(b.id) !== key,
+      );
 
     for (const b of due) {
       // Stamp BEFORE awaiting so a re-entrant/overlapping tick in the same minute

@@ -151,6 +151,7 @@ async function runCutSetBackfills(): Promise<void> {
   const { projectGraphCutSetCopy } = await import(
     "./db/backfill/cut-sets/project-graph"
   );
+  const { backupsCutSetCopy } = await import("./db/backfill/cut-sets/backups");
   const { CUT_SETS } = await import("./db/backfill/markers");
   const db = getDb();
   const owner = `pid-${process.pid}`;
@@ -174,6 +175,14 @@ async function runCutSetBackfills(): Promise<void> {
   // and migrates the team ordering arrays to the junctions.
   await awaitBackfill(db, CUT_SETS.projectGraph, owner, () =>
     runBackfill(db, CUT_SETS.projectGraph, doc, projectGraphCutSetCopy),
+  );
+
+  // Cut-set (d) — backups (Step 5). Ordered LAST: a backup target FKs a database /
+  // project / destination, so it copies `s3_destination` + `databases` first, then
+  // `backups` + `backup_runs`, pruning schedules with a dead target/destination and
+  // NULLing a run's dead target/owning-schedule FKs.
+  await awaitBackfill(db, CUT_SETS.backups, owner, () =>
+    runBackfill(db, CUT_SETS.backups, doc, backupsCutSetCopy),
   );
 }
 

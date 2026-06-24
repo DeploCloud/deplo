@@ -53,7 +53,7 @@ import {
   coerceImageKind,
   sanitizeTargets,
 } from "../normalize";
-import { seedIdentityRoots } from "../roots";
+import { seedIdentityRoots, seedServers } from "../roots";
 
 /**
  * Cut-set (c) — project graph (relational-store PLAN §3 "Cut-set (c)", Step 4).
@@ -297,41 +297,6 @@ async function copyProjectGraph(tx: BackfillTx, data: DeploData): Promise<void> 
   // volume ids and the structural-equality check would fail forever (a permanent
   // rollback loop). Threading the one array makes copy and reconcile agree.
   await reconcileProjectGraph(tx, data, liveProjects);
-}
-
-/** Seed the `servers` rows a project's RESTRICT FK references, idempotently. */
-async function seedServers(tx: BackfillTx, data: DeploData): Promise<void> {
-  if (data.servers.length === 0) return;
-  await tx
-    .insert(servers)
-    .values(
-      data.servers.map((s) => ({
-        id: s.id,
-        name: s.name,
-        host: s.host,
-        type: s.type,
-        status: s.status,
-        ip: s.ip,
-        dockerVersion: s.dockerVersion,
-        traefikEnabled: s.traefikEnabled,
-        cpuCores: s.cpuCores,
-        memoryMb: s.memoryMb,
-        diskGb: s.diskGb,
-        cpuUsage: s.cpuUsage,
-        memoryUsage: s.memoryUsage,
-        diskUsage: s.diskUsage,
-        agentPort: s.agent?.port ?? null,
-        agentCertFingerprint: s.agent?.certFingerprint ?? null,
-        agentCertPem: s.agent?.certPem ?? null,
-        agentVersion: s.agent?.version ?? null,
-        bootstrapTokenHash: s.bootstrap?.tokenHash ?? null,
-        bootstrapExpiresAt: s.bootstrap?.expiresAt ?? null,
-        bootstrapUsedAt: s.bootstrap?.usedAt ?? null,
-        lastSeenAt: s.lastSeenAt ?? null,
-        createdAt: s.createdAt,
-      })),
-    )
-    .onConflictDoNothing();
 }
 
 /* ------------------------------------------------------------------ */

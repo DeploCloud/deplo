@@ -1,6 +1,11 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { and, desc, eq } from "drizzle-orm";
+
+import { read } from "../store";
+import { getDb } from "../db/client";
+import { databases as databasesTable } from "../db/schema/control-plane";
+import { assembleDatabase, databaseToRow } from "./backup-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
@@ -48,23 +53,39 @@ function toDTO(db: Database): DatabaseDTO {
   };
 }
 
+/** Load one team-scoped database row, assembled, or null. */
+async function loadDatabase(
+  id: string,
+  teamId: string,
+): Promise<Database | null> {
+  const rows = await getDb()
+    .select()
+    .from(databasesTable)
+    .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)))
+    .limit(1);
+  return rows[0] ? assembleDatabase(rows[0]) : null;
+}
+
 export async function listDatabases(): Promise<DatabaseDTO[]> {
   const teamId = await requireActiveTeamId();
-  return read()
-    .databases.filter((d) => d.teamId === teamId)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .map(toDTO);
+  // Newest-first sort pushed into SQL.
+  const rows = await getDb()
+    .select()
+    .from(databasesTable)
+    .where(eq(databasesTable.teamId, teamId))
+    .orderBy(desc(databasesTable.createdAt));
+  return rows.map((r) => toDTO(assembleDatabase(r)));
 }
 
 export async function getDatabase(id: string): Promise<DatabaseDTO | null> {
   const teamId = await requireActiveTeamId();
-  const db = read().databases.find((x) => x.id === id && x.teamId === teamId);
+  const db = await loadDatabase(id, teamId);
   return db ? toDTO(db) : null;
 }
 
 export async function getConnectionString(id: string): Promise<string> {
   const teamId = await requireActiveTeamId();
-  const db = read().databases.find((x) => x.id === id && x.teamId === teamId);
+  const db = await loadDatabase(id, teamId);
   if (!db) throw new Error("Not found");
   return decryptSecret(db.connectionStringEnc);
 }
@@ -129,7 +150,7 @@ export async function createDatabase(input: {
     sizeMb: 0,
     createdAt: nowIso(),
   };
-  mutate((d) => d.databases.push(db));
+  await getDb().insert(databasesTable).values(databaseToRow(db));
   await recordActivity("database", `Created database ${name} (${input.type})`, user.name, null);
 
   // Provision the real container on the owning server's agent in the background;
@@ -140,14 +161,16 @@ export async function createDatabase(input: {
     version: input.version,
     password,
     exposePort: input.exposedPublicly ?? false,
-  }).catch(() => {
-    mutate((d) => {
-      const x = d.databases.find((y) => y.id === db.id);
-      if (x) x.status = "error";
-    });
+  }).catch(async () => {
+    // Mark the row errored — but only if it still exists (a concurrent delete may
+    // have raced the floated provision; an UPDATE matching no row is a safe no-op).
+    await getDb()
+      .update(databasesTable)
+      .set({ status: "error" })
+      .where(eq(databasesTable.id, db.id));
   });
 
-  return toDTO(read().databases.find((x) => x.id === db.id)!);
+  return toDTO(db);
 }
 
 /**
@@ -182,7 +205,7 @@ async function provisionDatabase(
   // acquired the lock, there is nothing to provision — bail without creating a
   // stack the control plane no longer tracks.
   await withKeyedLock(id, async () => {
-    if (!read().databases.some((x) => x.id === id)) return; // deleted before us
+    if (!(await databaseExists(id))) return; // deleted before us
     const conn = await connectAgent(serverId);
     try {
       const res = await conn.reroute({
@@ -195,11 +218,23 @@ async function provisionDatabase(
     } finally {
       conn.close();
     }
-    mutate((d) => {
-      const db = d.databases.find((x) => x.id === id);
-      if (db) db.status = "running";
-    });
+    // A single UPDATE; if the row was deleted while the agent provisioned (under
+    // the lock this can't happen, but the UPDATE is a safe no-op regardless).
+    await getDb()
+      .update(databasesTable)
+      .set({ status: "running" })
+      .where(eq(databasesTable.id, id));
   });
+}
+
+/** Whether a database row still exists (id-only existence probe, not team-scoped). */
+async function databaseExists(id: string): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: databasesTable.id })
+    .from(databasesTable)
+    .where(eq(databasesTable.id, id))
+    .limit(1);
+  return rows.length > 0;
 }
 
 export async function setDatabaseRunning(
@@ -207,7 +242,7 @@ export async function setDatabaseRunning(
   running: boolean
 ): Promise<void> {
   const teamId = (await requireCapability("manage_infra")).teamId;
-  const db = read().databases.find((x) => x.id === id && x.teamId === teamId);
+  const db = await loadDatabase(id, teamId);
   if (!db) throw new Error("Not found");
   const host = db.host;
   const serverId = db.serverId;
@@ -218,7 +253,7 @@ export async function setDatabaseRunning(
   await withKeyedLock(id, async () => {
     // Re-read under the lock — the DB may have been deleted, or just finished
     // provisioning, while we waited our turn.
-    const cur = read().databases.find((x) => x.id === id && x.teamId === teamId);
+    const cur = await loadDatabase(id, teamId);
     if (!cur) throw new Error("Not found");
     // The compose project doesn't exist until provisioning finishes, so start/stop
     // against a still-provisioning DB would fail on the agent with a confusing
@@ -241,19 +276,17 @@ export async function setDatabaseRunning(
     } finally {
       conn.close();
     }
-    mutate((d) => {
-      const x = d.databases.find((y) => y.id === id);
-      if (x) x.status = running ? "running" : "stopped";
-    });
+    await getDb()
+      .update(databasesTable)
+      .set({ status: running ? "running" : "stopped" })
+      .where(eq(databasesTable.id, id));
   });
 }
 
 export async function deleteDatabase(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const user = (await getCurrentUser())!;
-  const db = read().databases.find(
-    (x) => x.id === id && x.teamId === membership.teamId,
-  );
+  const db = await loadDatabase(id, membership.teamId);
   if (!db) throw new Error("Not found");
   // Serialize the whole teardown on the DB's lifecycle lock. The race this closes:
   // createDatabase fires provisionDatabase (`compose up -d`) as a floated task, so
@@ -264,7 +297,7 @@ export async function deleteDatabase(id: string): Promise<void> {
   await withKeyedLock(id, async () => {
     // Re-check under the lock: a concurrent delete (or never-finished provision
     // that bailed) may have already removed the row. Idempotent → just return.
-    if (!read().databases.some((x) => x.id === id)) return;
+    if (!(await databaseExists(id))) return;
     // Tear down the real container + data volume on the owning agent via
     // `removeVolumes` (`down -v` + remove the compose file). Best-effort: we still
     // remove the row (the operator asked to delete it) even when the volume could
@@ -296,10 +329,11 @@ export async function deleteDatabase(id: string): Promise<void> {
         `need a manual cleanup on the host.`;
     }
     if (orphanWarning) console.warn(`[databases] ${orphanWarning}`);
-    mutate((d) => {
-      d.databases = d.databases.filter((x) => x.id !== id);
-      d.backups = d.backups.filter((b) => b.databaseId !== id);
-    });
+    // One DELETE — the agent teardown above ran OUTSIDE any transaction (PLAN §1
+    // rule (a)). The `backups.database_id` FK CASCADE removes dependent backup
+    // SCHEDULES automatically (was a manual `d.backups` filter); `backup_runs`'
+    // `database_id` is SET NULL so run history outlives the deleted database.
+    await getDb().delete(databasesTable).where(eq(databasesTable.id, id));
     await recordActivity(
       "database",
       orphanWarning

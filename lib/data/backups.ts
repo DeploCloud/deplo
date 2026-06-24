@@ -1,6 +1,21 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import {
+  backups as backupsTable,
+  backupRuns as backupRunsTable,
+  databases as databasesTable,
+  s3Destination as s3DestinationTable,
+} from "../db/schema/control-plane";
+import {
+  assembleBackup,
+  assembleBackupRun,
+  assembleDatabase,
+  backupToRow,
+  backupRunToRow,
+} from "./backup-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
@@ -21,6 +36,7 @@ import {
   buildObjectKey,
   targetPrefix,
   selectDoomedRuns,
+  type RunForRetention,
 } from "./backup-objectkey";
 import { BackupKind } from "../agent/gen/agent";
 import type {
@@ -47,30 +63,76 @@ export interface BackupDTO extends Backup {
   destinationName: string;
 }
 
+/** Resolve the display name of a database by id (team-scoped), or null. */
+async function databaseNameFor(
+  id: string | null,
+  teamId: string,
+): Promise<string | null> {
+  if (!id) return null;
+  const rows = await getDb()
+    .select({ name: databasesTable.name })
+    .from(databasesTable)
+    .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)))
+    .limit(1);
+  return rows[0]?.name ?? null;
+}
+
+/** The owning server of a team's database `id`, or null. */
+async function databaseServerId(
+  id: string,
+  teamId: string,
+): Promise<string | null> {
+  const rows = await getDb()
+    .select({ serverId: databasesTable.serverId })
+    .from(databasesTable)
+    .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)))
+    .limit(1);
+  return rows[0]?.serverId ?? null;
+}
+
+/** Whether a team owns the S3 destination `id`. */
+async function destinationExists(id: string, teamId: string): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: s3DestinationTable.id })
+    .from(s3DestinationTable)
+    .where(and(eq(s3DestinationTable.id, id), eq(s3DestinationTable.teamId, teamId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** Resolve the display name of an S3 destination by id (team-scoped), or "". */
+async function destinationNameFor(id: string, teamId: string): Promise<string> {
+  const rows = await getDb()
+    .select({ name: s3DestinationTable.name })
+    .from(s3DestinationTable)
+    .where(and(eq(s3DestinationTable.id, id), eq(s3DestinationTable.teamId, teamId)))
+    .limit(1);
+  return rows[0]?.name ?? "";
+}
+
 async function toDTO(b: Backup): Promise<BackupDTO> {
-  const d = read();
-  // `databases`/`s3Destinations` stay JSONB (cut-set d); the project NAME is
-  // relational now (cut-set c) — look it up via the project graph.
+  // Every related collection is relational now: the database/destination names by
+  // point lookup, the project name via the project graph (cut-set c).
   const projectName = b.projectId
     ? ((await loadProjectGraph(b.projectId))?.name ?? null)
     : null;
   return {
     ...b,
-    databaseName: b.databaseId
-      ? (d.databases.find((x) => x.id === b.databaseId)?.name ?? null)
-      : null,
+    databaseName: await databaseNameFor(b.databaseId, b.teamId),
     projectName,
-    destinationName:
-      d.s3Destinations.find((x) => x.id === b.destinationId)?.name ?? "",
+    destinationName: await destinationNameFor(b.destinationId, b.teamId),
   };
 }
 
 export async function listBackups(): Promise<BackupDTO[]> {
   const teamId = await requireActiveTeamId();
-  const rows = read()
-    .backups.filter((b) => b.teamId === teamId)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  return Promise.all(rows.map(toDTO));
+  // Newest-first sort pushed into SQL.
+  const rows = await getDb()
+    .select()
+    .from(backupsTable)
+    .where(eq(backupsTable.teamId, teamId))
+    .orderBy(desc(backupsTable.createdAt));
+  return Promise.all(rows.map((r) => toDTO(assembleBackup(r))));
 }
 
 export async function createBackup(input: {
@@ -94,16 +156,15 @@ export async function createBackup(input: {
 
   // The chosen destination + the target (database OR project) must belong to this
   // team. Exactly one target is set, matching `targetKind`.
-  const d0 = read();
-  if (!d0.s3Destinations.some((x) => x.id === input.destinationId && x.teamId === teamId))
+  if (!(await destinationExists(input.destinationId, teamId)))
     throw new Error("Select a destination");
   if (targetKind === "database") {
     if (!databaseId) throw new Error("Select a database to back up");
-    if (!d0.databases.some((x) => x.id === databaseId && x.teamId === teamId))
+    if (!(await databaseNameFor(databaseId, teamId)))
       throw new Error("Database not found");
   } else {
     if (!projectId) throw new Error("Select a project to back up");
-    if (!d0.projects.some((x) => x.id === projectId && x.teamId === teamId))
+    if (!(await loadTeamProject(projectId, teamId)))
       throw new Error("Project not found");
   }
 
@@ -122,7 +183,7 @@ export async function createBackup(input: {
     enabled: true,
     createdAt: nowIso(),
   };
-  mutate((d) => d.backups.push(b));
+  await getDb().insert(backupsTable).values(backupToRow(b));
   await recordActivity(
     "backup",
     `Created backup schedule ${b.name}`,
@@ -228,8 +289,13 @@ async function resolveTarget(
 ): Promise<ResolvedTarget> {
   if (kind === "database") {
     if (!databaseId) throw new Error("Backup has no database target");
-    const db = read().databases.find((x) => x.id === databaseId && x.teamId === teamId);
-    if (!db) throw new Error("Database not found");
+    const dbRows = await getDb()
+      .select()
+      .from(databasesTable)
+      .where(and(eq(databasesTable.id, databaseId), eq(databasesTable.teamId, teamId)))
+      .limit(1);
+    if (!dbRows[0]) throw new Error("Database not found");
+    const db = assembleDatabase(dbRows[0]);
     return {
       serverId: db.serverId,
       kind,
@@ -303,14 +369,17 @@ async function executeBackup(
     startedAt,
     finishedAt: null,
   };
-  mutate((d) => {
-    d.backupRuns.push(run);
+  // START transaction (short): persist the `running` run + stamp the owning
+  // schedule. This is the FIRST of the two short transactions; the long agent
+  // dump runs BETWEEN them, never inside a tx (PLAN §1 rule (a) — never hold a
+  // connection + locks across a gRPC call).
+  await getDb().transaction(async (tx) => {
+    await tx.insert(backupRunsTable).values(backupRunToRow(run));
     if (opts.backupId) {
-      const b = d.backups.find((x) => x.id === opts.backupId);
-      if (b) {
-        b.lastRunAt = startedAt;
-        b.lastStatus = "running";
-      }
+      await tx
+        .update(backupsTable)
+        .set({ lastRunAt: startedAt, lastStatus: "running" })
+        .where(eq(backupsTable.id, opts.backupId));
     }
   });
 
@@ -322,7 +391,7 @@ async function executeBackup(
   let failure: string | null = null;
   let objectKey = "";
   try {
-    const creds = getS3WithSecretsForTeam(teamId, opts.destinationId);
+    const creds = await getS3WithSecretsForTeam(teamId, opts.destinationId);
     const target = await resolveTarget(teamId, opts.kind, opts.databaseId, opts.projectId);
     label = target.label;
     activityProjectId = target.projectId;
@@ -335,11 +404,12 @@ async function executeBackup(
       at: new Date(startedAt),
     });
     // Record the resolved key on the running record now, so a crash mid-dump
-    // leaves the (single) object's key behind for a sweep.
-    mutate((d) => {
-      const r = d.backupRuns.find((x) => x.id === runId);
-      if (r) r.objectKey = objectKey;
-    });
+    // leaves the (single) object's key behind for a sweep. A single UPDATE —
+    // outside any transaction (the agent dump follows immediately).
+    await getDb()
+      .update(backupRunsTable)
+      .set({ objectKey })
+      .where(eq(backupRunsTable.id, runId));
 
     const req: BackupRequest = {
       kind: opts.kind === "database" ? BackupKind.BACKUP_KIND_DATABASE : BackupKind.BACKUP_KIND_PROJECT,
@@ -381,26 +451,31 @@ async function executeBackup(
   }
 
   const finishedAt = nowIso();
-  const finished = mutate((d): BackupRun => {
-    const r = d.backupRuns.find((x) => x.id === runId)!;
-    if (failure) {
-      r.status = "failed";
-      r.error = failure;
-    } else {
-      r.status = "success";
-      r.error = null;
-      r.objectKey = result!.objectKey;
-      r.sizeBytes = result!.sizeBytes;
-    }
-    r.finishedAt = finishedAt;
+  // TERMINAL transaction (short): flip the run to its final status + stamp the
+  // schedule. The SECOND of the two short transactions; the agent dump completed
+  // above, outside any tx (PLAN §1 rule (a)).
+  const finished = await getDb().transaction(async (tx): Promise<BackupRun> => {
+    const set = failure
+      ? { status: "failed" as const, error: failure, finishedAt }
+      : {
+          status: "success" as const,
+          error: null,
+          objectKey: result!.objectKey,
+          sizeBytes: result!.sizeBytes,
+          finishedAt,
+        };
+    const updated = await tx
+      .update(backupRunsTable)
+      .set(set)
+      .where(eq(backupRunsTable.id, runId))
+      .returning();
     if (opts.backupId) {
-      const b = d.backups.find((x) => x.id === opts.backupId);
-      if (b) {
-        b.lastRunAt = finishedAt;
-        b.lastStatus = failure ? "failed" : "success";
-      }
+      await tx
+        .update(backupsTable)
+        .set({ lastRunAt: finishedAt, lastStatus: failure ? "failed" : "success" })
+        .where(eq(backupsTable.id, opts.backupId));
     }
-    return { ...r };
+    return assembleBackupRun(updated[0]!);
   });
 
   await recordActivity(
@@ -442,14 +517,14 @@ async function pruneRetention(
   destinationId: string,
   retentionDays: number,
 ): Promise<void> {
-  const candidates = read().backupRuns.filter(
-    (r) =>
-      r.teamId === teamId &&
-      r.destinationId === destinationId &&
-      r.targetKind === target.kind &&
-      (target.kind === "database"
-        ? r.databaseId === target.databaseId
-        : r.projectId === target.projectId),
+  // Candidates carry their `seq` (the bigint identity) so `selectDoomedRuns` ranks
+  // newest-first by `(startedAt, seq)` — a same-millisecond tie ordered by
+  // timestamp alone could keep/delete the WRONG object (PLAN §5).
+  const candidates = await loadRunsForTarget(
+    teamId,
+    destinationId,
+    target.kind,
+    target.kind === "database" ? target.databaseId : target.projectId,
   );
   const doomed = selectDoomedRuns(candidates, {
     retentionDays,
@@ -465,7 +540,7 @@ async function pruneRetention(
   );
   const toDelete = doomed.filter((r) => r.status === "success" && r.objectKey);
   if (toDelete.length) {
-    const creds = getS3WithSecretsForTeam(teamId, destinationId);
+    const creds = await getS3WithSecretsForTeam(teamId, destinationId);
     const conn = await connectBackupAgent(target.serverId);
     try {
       for (const r of toDelete) {
@@ -491,9 +566,35 @@ async function pruneRetention(
   }
 
   if (removable.size === 0) return;
-  mutate((d) => {
-    d.backupRuns = d.backupRuns.filter((r) => !removable.has(r.id));
-  });
+  await getDb()
+    .delete(backupRunsTable)
+    .where(inArray(backupRunsTable.id, [...removable]));
+}
+
+/**
+ * Load a target's runs in ONE destination, carrying `seq` for retention ranking.
+ * Exactly one of `databaseId`/`projectId` is set (matching `kind`); team-scoped.
+ */
+async function loadRunsForTarget(
+  teamId: string,
+  destinationId: string,
+  kind: BackupTargetKind,
+  targetId: string | null,
+): Promise<RunForRetention[]> {
+  const rows = await getDb()
+    .select()
+    .from(backupRunsTable)
+    .where(
+      and(
+        eq(backupRunsTable.teamId, teamId),
+        eq(backupRunsTable.destinationId, destinationId),
+        eq(backupRunsTable.targetKind, kind),
+        kind === "database"
+          ? eq(backupRunsTable.databaseId, targetId ?? "")
+          : eq(backupRunsTable.projectId, targetId ?? ""),
+      ),
+    );
+  return rows.map((r) => ({ ...assembleBackupRun(r), seq: r.seq }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -505,7 +606,7 @@ export async function runBackup(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
-  const b = read().backups.find((x) => x.id === id && x.teamId === teamId);
+  const b = await loadBackup(id, teamId);
   if (!b) throw new Error("Not found");
   await executeBackup(teamId, user.name, {
     backupId: b.id,
@@ -515,6 +616,16 @@ export async function runBackup(id: string): Promise<void> {
     destinationId: b.destinationId,
     retentionDays: b.retentionDays,
   });
+}
+
+/** Load one team-scoped backup schedule, assembled, or null. */
+async function loadBackup(id: string, teamId: string): Promise<Backup | null> {
+  const rows = await getDb()
+    .select()
+    .from(backupsTable)
+    .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)))
+    .limit(1);
+  return rows[0] ? assembleBackup(rows[0]) : null;
 }
 
 /**
@@ -558,10 +669,9 @@ export async function runProjectBackup(
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
-  const d0 = read();
-  if (!d0.projects.some((x) => x.id === projectId && x.teamId === teamId))
+  if (!(await loadTeamProject(projectId, teamId)))
     throw new Error("Project not found");
-  if (!d0.s3Destinations.some((x) => x.id === destinationId && x.teamId === teamId))
+  if (!(await destinationExists(destinationId, teamId)))
     throw new Error("Select a destination");
   return executeBackup(teamId, user.name, {
     backupId: null,
@@ -585,12 +695,17 @@ export async function restoreBackup(runId: string): Promise<void> {
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
 
-  const run = read().backupRuns.find((r) => r.id === runId && r.teamId === teamId);
-  if (!run) throw new Error("Backup run not found");
+  const runRows = await getDb()
+    .select()
+    .from(backupRunsTable)
+    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)))
+    .limit(1);
+  if (!runRows[0]) throw new Error("Backup run not found");
+  const run = assembleBackupRun(runRows[0]);
   if (run.status !== "success")
     throw new Error("This backup did not complete successfully and cannot be restored");
 
-  const creds = getS3WithSecretsForTeam(teamId, run.destinationId);
+  const creds = await getS3WithSecretsForTeam(teamId, run.destinationId);
   const target = await resolveTarget(
     teamId,
     run.targetKind,
@@ -643,17 +758,21 @@ export async function listBackupRuns(filter: {
   databaseId?: string;
 }): Promise<BackupRun[]> {
   const teamId = await requireActiveTeamId();
-  return read()
-    .backupRuns.filter(
-      (r) =>
-        r.teamId === teamId &&
-        (filter.projectId
-          ? r.projectId === filter.projectId
-          : filter.databaseId
-            ? r.databaseId === filter.databaseId
-            : false),
-    )
-    .sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+  // Exactly one of projectId/databaseId selects the target; neither ⇒ no runs.
+  const targetWhere = filter.projectId
+    ? eq(backupRunsTable.projectId, filter.projectId)
+    : filter.databaseId
+      ? eq(backupRunsTable.databaseId, filter.databaseId)
+      : null;
+  if (!targetWhere) return [];
+  // Newest-first by (started_at, seq) DESC, pushed into SQL (matches
+  // backup_runs_team_started_idx) — deterministic under a same-ms tie (PLAN §5).
+  const rows = await getDb()
+    .select()
+    .from(backupRunsTable)
+    .where(and(eq(backupRunsTable.teamId, teamId), targetWhere))
+    .orderBy(desc(backupRunsTable.startedAt), desc(backupRunsTable.seq));
+  return rows.map(assembleBackupRun);
 }
 
 export async function toggleBackup(
@@ -661,11 +780,12 @@ export async function toggleBackup(
   enabled: boolean,
 ): Promise<void> {
   const teamId = (await requireCapability("manage_infra")).teamId;
-  mutate((d) => {
-    const b = d.backups.find((x) => x.id === id && x.teamId === teamId);
-    if (!b) throw new Error("Not found");
-    b.enabled = enabled;
-  });
+  const updated = await getDb()
+    .update(backupsTable)
+    .set({ enabled })
+    .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)))
+    .returning({ id: backupsTable.id });
+  if (updated.length === 0) throw new Error("Not found");
 }
 
 /**
@@ -691,38 +811,36 @@ export async function updateBackup(
   if (!input.destinationId) throw new Error("Select a destination");
 
   // The (possibly changed) destination must belong to this team.
-  if (
-    !read().s3Destinations.some(
-      (x) => x.id === input.destinationId && x.teamId === teamId,
-    )
-  )
+  if (!(await destinationExists(input.destinationId, teamId)))
     throw new Error("Select a destination");
 
-  let updated: Backup | undefined;
-  mutate((d) => {
-    const b = d.backups.find((x) => x.id === id && x.teamId === teamId);
-    if (!b) throw new Error("Not found");
-    b.name = input.name.trim();
-    b.destinationId = input.destinationId;
-    b.schedule = input.schedule || "0 3 * * *";
-    b.retentionDays = Math.max(1, input.retentionDays || 7);
-    updated = b;
-  });
+  const updated = await getDb()
+    .update(backupsTable)
+    .set({
+      name: input.name.trim(),
+      destinationId: input.destinationId,
+      schedule: input.schedule || "0 3 * * *",
+      retentionDays: Math.max(1, input.retentionDays || 7),
+    })
+    .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)))
+    .returning();
+  if (updated.length === 0) throw new Error("Not found");
+  const b = assembleBackup(updated[0]!);
   await recordActivity(
     "backup",
-    `Updated backup schedule ${updated!.name}`,
+    `Updated backup schedule ${b.name}`,
     user.name,
     null,
     teamId,
   );
-  return await toDTO(updated!);
+  return await toDTO(b);
 }
 
 export async function deleteBackup(id: string): Promise<void> {
   const teamId = (await requireCapability("manage_infra")).teamId;
-  mutate((d) => {
-    d.backups = d.backups.filter((x) => !(x.id === id && x.teamId === teamId));
-  });
+  await getDb()
+    .delete(backupsTable)
+    .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)));
 }
 
 /**
@@ -745,9 +863,10 @@ export async function deleteBackupArtifacts(input: {
   serverId: string;
 }): Promise<number> {
   const teamId = await requireActiveTeamId();
-  const creds = getS3WithSecretsForTeam(teamId, input.destinationId);
+  const creds = await getS3WithSecretsForTeam(teamId, input.destinationId);
   const prefix = targetPrefix(teamId, input.kind, input.targetId);
 
+  // The prefix-delete (RPC) runs BEFORE the record delete — outside any tx.
   let deleted = 0;
   const conn = await connectBackupAgent(input.serverId);
   try {
@@ -757,20 +876,28 @@ export async function deleteBackupArtifacts(input: {
     conn.close();
   }
 
-  mutate((d) => {
-    d.backupRuns = d.backupRuns.filter(
-      (r) =>
-        !(
-          r.teamId === teamId &&
-          r.destinationId === input.destinationId &&
-          r.targetKind === input.kind &&
-          (input.kind === "database"
-            ? r.databaseId === input.targetId
-            : r.projectId === input.targetId)
-        ),
+  // Drop the run records for THIS target in THIS destination (the bucket we just
+  // swept) — records in other destinations (whose objects survive) stay.
+  await getDb()
+    .delete(backupRunsTable)
+    .where(
+      and(
+        eq(backupRunsTable.teamId, teamId),
+        eq(backupRunsTable.destinationId, input.destinationId),
+        runTargetWhere(input.kind, input.targetId),
+      ),
     );
-  });
   return deleted;
+}
+
+/** The `backup_runs` WHERE clause selecting one target (database OR project). */
+function runTargetWhere(kind: BackupTargetKind, targetId: string) {
+  return and(
+    eq(backupRunsTable.targetKind, kind),
+    kind === "database"
+      ? eq(backupRunsTable.databaseId, targetId)
+      : eq(backupRunsTable.projectId, targetId),
+  )!;
 }
 
 /**
@@ -783,19 +910,13 @@ export async function backupDestinationsForTarget(input: {
   targetId: string;
 }): Promise<string[]> {
   const teamId = await requireActiveTeamId();
-  const ids = new Set<string>();
-  for (const r of read().backupRuns) {
-    if (
-      r.teamId === teamId &&
-      r.targetKind === input.kind &&
-      (input.kind === "database"
-        ? r.databaseId === input.targetId
-        : r.projectId === input.targetId)
-    ) {
-      ids.add(r.destinationId);
-    }
-  }
-  return [...ids];
+  const rows = await getDb()
+    .selectDistinct({ destinationId: backupRunsTable.destinationId })
+    .from(backupRunsTable)
+    .where(
+      and(eq(backupRunsTable.teamId, teamId), runTargetWhere(input.kind, input.targetId)),
+    );
+  return rows.map((r) => r.destinationId);
 }
 
 /**
@@ -832,9 +953,7 @@ export async function deleteAllBackupArtifacts(input: {
   // delete objects). A missing/foreign row yields no server and nothing to do.
   const serverId =
     input.kind === "database"
-      ? (read().databases.find(
-          (x) => x.id === input.targetId && x.teamId === teamId,
-        )?.serverId ?? null)
+      ? ((await databaseServerId(input.targetId, teamId)) ?? null)
       : ((await loadTeamProject(input.targetId, teamId))?.serverId ?? null);
 
   const destinations = await backupDestinationsForTarget(input);
@@ -844,18 +963,14 @@ export async function deleteAllBackupArtifacts(input: {
     // owning agent left to reach the buckets. Drop the orphaned records so history
     // matches reality, and report the destinations as failed (their objects can't
     // be swept from here) so the caller doesn't claim a clean wipe.
-    mutate((d) => {
-      d.backupRuns = d.backupRuns.filter(
-        (r) =>
-          !(
-            r.teamId === teamId &&
-            r.targetKind === input.kind &&
-            (input.kind === "database"
-              ? r.databaseId === input.targetId
-              : r.projectId === input.targetId)
-          ),
+    await getDb()
+      .delete(backupRunsTable)
+      .where(
+        and(
+          eq(backupRunsTable.teamId, teamId),
+          runTargetWhere(input.kind, input.targetId),
+        ),
       );
-    });
     return { deleted: 0, failedDestinations: destinations };
   }
 
@@ -899,27 +1014,44 @@ const RUN_ORPHAN_AFTER_MS = 90 * 60_000;
  * {@link RUN_ORPHAN_AFTER_MS}, so it can never race a genuinely in-flight run.
  * Returns how many it reconciled.
  */
-export function reconcileInFlightBackupRuns(): number {
-  const cutoff = Date.now() - RUN_ORPHAN_AFTER_MS;
-  let reconciled = 0;
+export async function reconcileInFlightBackupRuns(): Promise<number> {
+  const cutoffIso = new Date(Date.now() - RUN_ORPHAN_AFTER_MS).toISOString();
   const finishedAt = nowIso();
-  mutate((d) => {
-    const orphanedBackupIds = new Set<string>();
-    for (const r of d.backupRuns) {
-      if (r.status === "running" && new Date(r.startedAt).getTime() < cutoff) {
-        r.status = "failed";
-        r.error = "Interrupted by a control-plane restart and marked failed.";
-        r.finishedAt = finishedAt;
-        reconciled++;
-        if (r.backupId) orphanedBackupIds.add(r.backupId);
-      }
-    }
+  const reconciled = await getDb().transaction(async (tx) => {
+    // Flip stale `running` runs to `failed` (the partial index
+    // `backup_runs_running_idx` serves this). RETURNING their owning schedule ids
+    // so the second statement can settle those schedules.
+    const flipped = await tx
+      .update(backupRunsTable)
+      .set({
+        status: "failed",
+        error: "Interrupted by a control-plane restart and marked failed.",
+        finishedAt,
+      })
+      .where(
+        and(
+          eq(backupRunsTable.status, "running"),
+          lt(backupRunsTable.startedAt, cutoffIso),
+        ),
+      )
+      .returning({ backupId: backupRunsTable.backupId });
+
+    const orphanedBackupIds = [
+      ...new Set(flipped.map((r) => r.backupId).filter((id): id is string => !!id)),
+    ];
     // A schedule stuck on `lastStatus:"running"` for an orphaned run settles too.
-    for (const b of d.backups) {
-      if (b.lastStatus === "running" && orphanedBackupIds.has(b.id)) {
-        b.lastStatus = "failed";
-      }
+    if (orphanedBackupIds.length > 0) {
+      await tx
+        .update(backupsTable)
+        .set({ lastStatus: "failed" })
+        .where(
+          and(
+            eq(backupsTable.lastStatus, "running"),
+            inArray(backupsTable.id, orphanedBackupIds),
+          ),
+        );
     }
+    return flipped.length;
   });
   if (reconciled > 0) {
     console.warn(

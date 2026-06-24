@@ -1,6 +1,15 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { and, desc, eq } from "drizzle-orm";
+
+import { read } from "../store";
+import { getDb } from "../db/client";
+import {
+  backups as backupsTable,
+  backupRuns as backupRunsTable,
+  s3Destination as s3Table,
+} from "../db/schema/control-plane";
+import { assembleS3, s3ToRow } from "./backup-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
@@ -66,17 +75,27 @@ export interface S3WithSecrets {
  * context, so it must call this with the schedule's own `teamId` rather than the
  * cookie-derived active team; the interactive {@link getS3WithSecrets} wraps it.
  */
-export function getS3WithSecretsForTeam(
+export async function getS3WithSecretsForTeam(
   teamId: string,
   id: string,
-): S3WithSecrets {
-  const s = read().s3Destinations.find((x) => x.id === id && x.teamId === teamId);
+): Promise<S3WithSecrets> {
+  const s = await loadS3(id, teamId);
   if (!s) throw new Error("Destination not found");
   return {
     destination: s,
     accessKey: decryptSecret(s.accessKeyEnc),
     secretKey: decryptSecret(s.secretKeyEnc),
   };
+}
+
+/** Load one team-scoped S3 destination row, assembled, or null. */
+async function loadS3(id: string, teamId: string): Promise<S3Destination | null> {
+  const rows = await getDb()
+    .select()
+    .from(s3Table)
+    .where(and(eq(s3Table.id, id), eq(s3Table.teamId, teamId)))
+    .limit(1);
+  return rows[0] ? assembleS3(rows[0]) : null;
 }
 
 /**
@@ -112,10 +131,13 @@ export function s3TargetFor(s: S3WithSecrets, objectKey: string): S3Target {
 
 export async function listS3(): Promise<S3DestinationDTO[]> {
   const teamId = await requireActiveTeamId();
-  return read()
-    .s3Destinations.filter((s) => s.teamId === teamId)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .map(toDTO);
+  // Newest-first sort pushed into SQL (matches s3_destination_team_created_idx).
+  const rows = await getDb()
+    .select()
+    .from(s3Table)
+    .where(eq(s3Table.teamId, teamId))
+    .orderBy(desc(s3Table.createdAt));
+  return rows.map((r) => toDTO(assembleS3(r)));
 }
 
 export async function createS3(input: {
@@ -147,7 +169,7 @@ export async function createS3(input: {
     status: "unverified",
     createdAt: nowIso(),
   };
-  mutate((d) => d.s3Destinations.push(s));
+  await getDb().insert(s3Table).values(s3ToRow(s));
   await recordActivity("s3", `Connected S3 destination ${s.name}`, user.name, null);
   return toDTO(s);
 }
@@ -167,7 +189,7 @@ export async function createS3(input: {
  */
 export async function testS3(id: string): Promise<S3DestinationDTO> {
   const teamId = (await requireCapability("manage_infra")).teamId;
-  const cur = read().s3Destinations.find((x) => x.id === id && x.teamId === teamId);
+  const cur = await loadS3(id, teamId);
   if (!cur) throw new Error("Not found");
 
   const creds = await getS3WithSecrets(id);
@@ -175,16 +197,18 @@ export async function testS3(id: string): Promise<S3DestinationDTO> {
   // requires one — a sentinel that documents intent.
   const target = s3TargetFor(creds, "deplo/.s3check");
 
+  // The agent probe (RPC) runs BEFORE the status write (PLAN §1 rule (a) — never
+  // inside a transaction); the status is persisted from the live verdict.
   const { ok } = await checkOnAnyBackupAgent(target);
 
-  return toDTO(
-    mutate((d) => {
-      const s = d.s3Destinations.find((x) => x.id === id && x.teamId === teamId);
-      if (!s) throw new Error("Not found");
-      s.status = ok ? "connected" : "error";
-      return s;
-    }),
-  );
+  const status = ok ? "connected" : "error";
+  const updated = await getDb()
+    .update(s3Table)
+    .set({ status })
+    .where(and(eq(s3Table.id, id), eq(s3Table.teamId, teamId)))
+    .returning();
+  if (updated.length === 0) throw new Error("Not found");
+  return toDTO(assembleS3(updated[0]!));
 }
 
 /**
@@ -238,14 +262,30 @@ async function checkOnAnyBackupAgent(
 
 export async function deleteS3(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
+  const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
-  const s = read().s3Destinations.find(
-    (x) => x.id === id && x.teamId === membership.teamId,
-  );
+  const s = await loadS3(id, teamId);
   if (!s) throw new Error("Not found");
-  mutate((d) => {
-    d.s3Destinations = d.s3Destinations.filter((x) => x.id !== id);
-    d.backups = d.backups.filter((b) => b.destinationId !== id);
+  // `s3_destination` ← `backups.destination_id` / `backup_runs.destination_id` are
+  // both RESTRICT (a destination must never be silently cascade-deleted out from
+  // under live schedules / restore points), so the dependent rows are removed
+  // EXPLICITLY in one transaction (PLAN §1 "deleteS3 (s3_destination + backups
+  // cascade)"). The JSONB version dropped dependent SCHEDULES but orphaned run
+  // history with a dangling destinationId; the RESTRICT FK forbids that, so the
+  // run records go too — this removes only control-plane records, not the S3
+  // objects (the "delete artifacts too" flow handles those separately).
+  await getDb().transaction(async (tx) => {
+    await tx
+      .delete(backupRunsTable)
+      .where(
+        and(eq(backupRunsTable.destinationId, id), eq(backupRunsTable.teamId, teamId)),
+      );
+    await tx
+      .delete(backupsTable)
+      .where(and(eq(backupsTable.destinationId, id), eq(backupsTable.teamId, teamId)));
+    await tx
+      .delete(s3Table)
+      .where(and(eq(s3Table.id, id), eq(s3Table.teamId, teamId)));
   });
   await recordActivity("s3", `Removed S3 destination ${s.name}`, user.name, null);
 }
