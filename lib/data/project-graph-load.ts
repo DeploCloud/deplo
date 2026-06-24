@@ -24,6 +24,8 @@ import {
   assembleDomain,
   assembleEnvVar,
   assembleProject,
+  domainToRow,
+  domainMiddlewaresToRows,
   envVarToRow,
   envVarTargetsToRows,
   type DomainMiddlewareRow,
@@ -309,6 +311,13 @@ export async function loadDomain(
   const rows = await db.select().from(domains).where(eq(domains.id, id)).limit(1);
   const [d] = await assembleDomains(db, rows);
   return d ?? null;
+}
+
+/** Insert a {@link Domain} + its ordered middleware rows (the shared write seam). */
+export async function insertDomain(db: DbReader, domain: Domain): Promise<void> {
+  await db.insert(domains).values(domainToRow(domain));
+  const mw = domainMiddlewaresToRows(domain);
+  if (mw.length > 0) await db.insert(domainMiddlewares).values(mw);
 }
 
 /** Every domain across a set of projects, batch-loaded (for listDomains). */

@@ -1,7 +1,15 @@
 import "server-only";
 
 import { resolve4, resolveCname } from "node:dns/promises";
-import { read, mutate } from "../store";
+import { and, eq, sql } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import type { DbTx } from "../db/client";
+import {
+  domains as domainsTable,
+  domainMiddlewares as domainMiddlewaresTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
@@ -18,6 +26,15 @@ import {
 } from "../deploy/domains";
 import { usesComposeStack } from "../utils";
 import { portFor } from "../deploy/ports";
+import {
+  insertDomain,
+  loadDomain,
+  loadDomainsForProject,
+  loadDomainsForProjects,
+  loadProjectGraph,
+  projectInTeam,
+} from "./project-graph-load";
+import { domainToRow, domainMiddlewaresToRows } from "./project-graph-rows";
 import type { CertProvider, Domain, DomainEntrypoint } from "../types";
 
 const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
@@ -54,7 +71,7 @@ export function autoDomainName(slug: string, ip: string): string {
  * sslip.io hostname for the slug is generated. The first domain on a project is
  * marked primary. Idempotent: returns the existing primary if one exists.
  */
-export function ensureAutoDomain(
+export async function ensureAutoDomain(
   projectId: string,
   opts: {
     slug: string;
@@ -68,8 +85,8 @@ export function ensureAutoDomain(
      * a compose auto domain always names the service it routes to. */
     defaultService?: string | null;
   },
-): string {
-  const existing = read().domains.filter((d) => d.projectId === projectId);
+): Promise<string> {
+  const existing = await loadDomainsForProject(projectId);
   const primary = existing.find((d) => d.primary) ?? existing[0];
   if (primary) {
     // Self-heal an auto-generated sslip.io domain that still encodes a stale or
@@ -82,10 +99,10 @@ export function ensureAutoDomain(
       if (embedded && embedded !== opts.ip) {
         const fixed = rehostSslip(primary.name, opts.ip);
         if (fixed !== primary.name) {
-          mutate((d) => {
-            const x = d.domains.find((y) => y.id === primary.id);
-            if (x) x.name = fixed;
-          });
+          await getDb()
+            .update(domainsTable)
+            .set({ name: fixed })
+            .where(eq(domainsTable.id, primary.id));
           return fixed;
         }
       }
@@ -114,7 +131,7 @@ export function ensureAutoDomain(
     ...(opts.defaultService ? { service: opts.defaultService } : {}),
     createdAt: nowIso(),
   };
-  mutate((d) => d.domains.push(domain));
+  await insertDomain(getDb(), domain);
   return name;
 }
 
@@ -124,21 +141,19 @@ export function ensureAutoDomain(
  * Runs without an authenticated user (called from the fire-and-forget deploy).
  * Idempotent: a domain with the same name is left as-is.
  */
-export function ensureExtraDomain(
+export async function ensureExtraDomain(
   projectId: string,
   rawName: string,
   route: { port: number; service?: string | null },
-): void {
+): Promise<void> {
   const name = rawName
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
   if (!name || !DOMAIN_RE.test(name)) return;
-  const exists = read().domains.some(
-    (d) => d.projectId === projectId && d.name === name,
-  );
-  if (exists) return;
+  const existing = await loadDomainsForProject(projectId);
+  if (existing.some((d) => d.name === name)) return;
   const domain: Domain = {
     id: newId("dom"),
     projectId,
@@ -155,21 +170,34 @@ export function ensureExtraDomain(
     ...(route.service ? { service: route.service } : {}),
     createdAt: nowIso(),
   };
-  mutate((d) => d.domains.push(domain));
+  await insertDomain(getDb(), domain);
 }
 
 export async function listDomains(
   projectId?: string,
 ): Promise<(Domain & { projectName: string; projectSlug: string })[]> {
   const teamId = await requireActiveTeamId();
-  const d = read();
   // Only the active team's projects own routable domains; a projectId filter
   // that points outside the team resolves to no project and so yields nothing.
   const teamProjects = new Map(
-    d.projects.filter((p) => p.teamId === teamId).map((p) => [p.id, p]),
+    (
+      await getDb()
+        .select({
+          id: projectsTable.id,
+          name: projectsTable.name,
+          slug: projectsTable.slug,
+        })
+        .from(projectsTable)
+        .where(eq(projectsTable.teamId, teamId))
+    ).map((p) => [p.id, p] as const),
   );
-  return d.domains
-    .filter((x) => (!projectId || x.projectId === projectId) && teamProjects.has(x.projectId))
+  const ids = projectId
+    ? teamProjects.has(projectId)
+      ? [projectId]
+      : []
+    : [...teamProjects.keys()];
+  const domains = await loadDomainsForProjects(ids);
+  return domains
     .sort((a, b) => Number(b.primary) - Number(a.primary))
     .map((x) => {
       const p = teamProjects.get(x.projectId);
@@ -206,17 +234,28 @@ export async function addDomain(
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
   if (!DOMAIN_RE.test(clean)) throw new Error("Enter a valid domain name");
-  const project = read().projects.find(
-    (p) => p.id === projectId && p.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
+  const project = await loadProjectGraph(projectId);
+  if (!project || project.teamId !== membership.teamId)
+    throw new Error("Project not found");
   const isCompose = usesComposeStack(project);
 
   // A path lets several rows share one hostname (e.g. `app.com` for `/` and
   // `app.com` for `/api`), so uniqueness is on (host + path), not host alone —
   // the long-standing single-row case is `pathPrefix === ""` on both sides.
   const pathPrefix = normalizePath(config.pathPrefix);
-  if (read().domains.some((x) => x.name === clean && (x.pathPrefix ?? "") === pathPrefix))
+  // Friendly pre-check (the `(name, coalesce(path_prefix,'')) UNIQUE` index is
+  // the real guard against a concurrent double-add).
+  const dup = await getDb()
+    .select({ id: domainsTable.id })
+    .from(domainsTable)
+    .where(
+      and(
+        eq(domainsTable.name, clean),
+        eq(sql`coalesce(${domainsTable.pathPrefix}, '')`, pathPrefix),
+      ),
+    )
+    .limit(1);
+  if (dup.length > 0)
     throw new Error(
       pathPrefix ? "Domain + path already added" : "Domain already added",
     );
@@ -230,13 +269,14 @@ export async function addDomain(
   // Strip is only meaningful with a path (a stripprefix middleware needs a
   // prefix to strip), so drop it otherwise — the router grammar does the same.
   const stripPrefix = Boolean(pathPrefix && config.stripPrefix);
+  // First domain on the project becomes primary.
+  const isFirst = (await loadDomainsForProject(projectId)).length === 0;
   const domain: Domain = {
     id: newId("dom"),
     projectId,
     name: clean,
     status: "pending",
-    primary:
-      read().domains.filter((x) => x.projectId === projectId).length === 0,
+    primary: isFirst,
     redirectTo: null,
     ssl: false,
     // Always store a concrete port so no domain is ever portless. Compose
@@ -256,7 +296,7 @@ export async function addDomain(
     ...(service ? { service } : {}),
     createdAt: nowIso(),
   };
-  mutate((d) => d.domains.push(domain));
+  await insertDomain(getDb(), domain);
   recordActivity("domain", `Added domain ${clean}`, user.name, projectId);
   return domain;
 }
@@ -380,12 +420,11 @@ export async function updateDomain(
 ): Promise<string> {
   const { membership } = await requireCapability("manage_domains");
   const user = (await getCurrentUser())!;
-  const current = read().domains.find((x) => x.id === id);
+  const current = await loadDomain(id);
   if (!current) throw new Error("Not found");
-  const project = read().projects.find(
-    (p) => p.id === current.projectId && p.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
+  const project = await loadProjectGraph(current.projectId);
+  if (!project || project.teamId !== membership.teamId)
+    throw new Error("Project not found");
 
   const isCompose = usesComposeStack(project);
 
@@ -418,63 +457,60 @@ export async function updateDomain(
     if (!nextService) throw new Error("Select the service this domain routes to");
     if (nextPort == null) throw new Error("Service port is required");
   }
-  // Uniqueness on (host + path) against every OTHER domain.
-  if (
-    read().domains.some(
-      (x) => x.id !== id && x.name === nextName && (x.pathPrefix ?? "") === nextPath,
-    )
-  )
+  // Uniqueness on (host + path) against every OTHER domain (the partial-unique
+  // index is the real guard; this is the friendly pre-check).
+  const dup = await getDb()
+    .select({ id: domainsTable.id })
+    .from(domainsTable)
+    .where(
+      and(
+        eq(domainsTable.name, nextName),
+        eq(sql`coalesce(${domainsTable.pathPrefix}, '')`, nextPath),
+      ),
+    );
+  if (dup.some((x) => x.id !== id))
     throw new Error(
       nextPath ? "Domain + path already added" : "Domain already added",
     );
 
-  const dom = mutate((d) => {
-    const x = d.domains.find((y) => y.id === id);
-    if (!x) throw new Error("Not found");
-    x.name = nextName;
-    if (patch.port !== undefined) x.port = patch.port;
-    // Entrypoint tri-state: a value stores manual mode, `null` clears to auto
-    // (so domainTlsConfig derives it), `undefined` leaves it unchanged.
-    if (patch.entrypoint !== undefined) {
-      if (patch.entrypoint === null) delete x.entrypoint;
-      else x.entrypoint = patch.entrypoint;
-    }
-    if (patch.certProvider !== undefined) x.certProvider = patch.certProvider;
-    if (patch.middlewares !== undefined) {
-      const mws = normalizeMiddlewares(patch.middlewares);
-      // Drop the field entirely when the chain is empty, so a cleared list
-      // re-renders byte-identically to a domain that never had middlewares.
-      if (mws.length) x.middlewares = mws;
-      else delete x.middlewares;
-    }
-    // Path / strip / service all use delete-when-empty so a cleared value
-    // serialises byte-identically to a domain that never had one.
-    if (patch.pathPrefix !== undefined) {
-      if (nextPath) x.pathPrefix = nextPath;
-      else delete x.pathPrefix;
-    }
-    // Strip needs a path; recompute against the path now in effect (whether this
-    // edit changed it or not) so clearing the path also drops a stale strip.
-    if (patch.stripPrefix !== undefined || patch.pathPrefix !== undefined) {
-      const effPath = patch.pathPrefix !== undefined ? nextPath : x.pathPrefix ?? "";
-      const strip = Boolean(effPath) && (patch.stripPrefix ?? x.stripPrefix ?? false);
-      if (strip) x.stripPrefix = true;
-      else delete x.stripPrefix;
-    }
-    if (patch.service !== undefined) {
-      if (nextService) x.service = nextService;
-      else delete x.service;
-    }
-    // A renamed custom domain points at a new host whose DNS we haven't checked:
-    // drop it back to pending so it stops routing until re-verified. An auto
-    // sslip.io host always resolves, so it stays valid. (verifyDomain re-issues
-    // the cert; routableRoutes only serves `valid` hosts.)
-    if (renamed && x.source !== "auto") {
-      x.status = "pending";
-      x.ssl = false;
-    }
-    return x;
+  // Build the next domain object from `current` + the patch (delete-when-empty →
+  // a NULL column), then write the flat row + replace the middleware child rows.
+  const next: Domain = { ...current, name: nextName };
+  if (patch.port !== undefined) next.port = patch.port ?? undefined;
+  // Entrypoint tri-state: a value stores manual mode, `null` clears to auto, and
+  // `undefined` leaves it unchanged.
+  if (patch.entrypoint !== undefined)
+    next.entrypoint = patch.entrypoint ?? undefined;
+  if (patch.certProvider !== undefined) next.certProvider = patch.certProvider;
+  if (patch.middlewares !== undefined) {
+    const mws = normalizeMiddlewares(patch.middlewares);
+    next.middlewares = mws.length ? mws : undefined;
+  }
+  if (patch.pathPrefix !== undefined)
+    next.pathPrefix = nextPath || undefined;
+  // Strip needs a path; recompute against the path now in effect.
+  if (patch.stripPrefix !== undefined || patch.pathPrefix !== undefined) {
+    const effPath = patch.pathPrefix !== undefined ? nextPath : current.pathPrefix ?? "";
+    const strip = Boolean(effPath) && (patch.stripPrefix ?? current.stripPrefix ?? false);
+    next.stripPrefix = strip ? true : undefined;
+  }
+  if (patch.service !== undefined) next.service = nextService ?? undefined;
+  // A renamed custom domain points at a new host whose DNS we haven't checked:
+  // drop it back to pending so it stops routing until re-verified. An auto
+  // sslip.io host always resolves, so it stays valid.
+  if (renamed && next.source !== "auto") {
+    next.status = "pending";
+    next.ssl = false;
+  }
+
+  await getDb().transaction(async (tx) => {
+    await tx.update(domainsTable).set(domainToRow(next)).where(eq(domainsTable.id, id));
+    // Whole-set replace of the ordered middleware child rows.
+    await tx.delete(domainMiddlewaresTable).where(eq(domainMiddlewaresTable.domainId, id));
+    const mwRows = domainMiddlewaresToRows(next);
+    if (mwRows.length > 0) await tx.insert(domainMiddlewaresTable).values(mwRows);
   });
+  const dom = next;
   recordActivity(
     "domain",
     renamed
@@ -493,12 +529,10 @@ export async function updateDomain(
  */
 export async function verifyDomain(id: string): Promise<Domain> {
   const { membership } = await requireCapability("manage_domains");
-  const dom = read().domains.find((x) => x.id === id);
+  const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
-  const project = read().projects.find(
-    (p) => p.id === dom.projectId && p.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
+  if (!(await projectInTeam(dom.projectId, membership.teamId)))
+    throw new Error("Project not found");
 
   const target = instanceHost();
   let ok = false;
@@ -514,13 +548,13 @@ export async function verifyDomain(id: string): Promise<Domain> {
     }
   }
 
-  return mutate((d) => {
-    const x = d.domains.find((y) => y.id === id);
-    if (!x) throw new Error("Not found");
-    x.status = ok ? "valid" : "misconfigured";
-    x.ssl = ok;
-    return x;
-  });
+  const updated = await getDb()
+    .update(domainsTable)
+    .set({ status: ok ? "valid" : "misconfigured", ssl: ok })
+    .where(eq(domainsTable.id, id))
+    .returning();
+  if (updated.length === 0) throw new Error("Not found");
+  return { ...dom, status: ok ? "valid" : "misconfigured", ssl: ok };
 }
 
 /**
@@ -533,8 +567,8 @@ export async function verifyDomain(id: string): Promise<Domain> {
  * host. Store-direct (no auth) so the deploy engine can call it like
  * [[ensure-auto-domain]] does. Empty when the project has no valid domain.
  */
-export function routableDomains(projectId: string): string[] {
-  return routableRoutes(projectId).map((d) => d.name);
+export async function routableDomains(projectId: string): Promise<string[]> {
+  return (await routableRoutes(projectId)).map((d) => d.name);
 }
 
 /** A routable hostname plus everything its Traefik router needs: the per-domain
@@ -591,9 +625,11 @@ export function defaultRoute(name: string): RoutableDomain {
  * the project's default port". Same `valid`-only filtering rationale as
  * {@link routableDomains}.
  */
-export function routableRoutes(projectId: string): RoutableDomain[] {
-  return read()
-    .domains.filter((d) => d.projectId === projectId && d.status === "valid")
+export async function routableRoutes(
+  projectId: string,
+): Promise<RoutableDomain[]> {
+  return (await loadDomainsForProject(projectId))
+    .filter((d) => d.status === "valid")
     .sort((a, b) => Number(b.primary) - Number(a.primary))
     .map((d) => ({
       name: d.name,
@@ -616,19 +652,20 @@ export function routableRoutes(projectId: string): RoutableDomain[] {
  */
 export async function setPrimaryDomain(id: string): Promise<string> {
   const { membership } = await requireCapability("manage_domains");
-  const dom = read().domains.find((x) => x.id === id);
+  const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
-  const project = read().projects.find(
-    (p) => p.id === dom.projectId && p.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
-  return mutate((d) => {
-    const target = d.domains.find((x) => x.id === id);
-    if (!target) throw new Error("Not found");
-    for (const x of d.domains)
-      if (x.projectId === target.projectId) x.primary = x.id === id;
-    return target.projectId;
-  });
+  if (!(await projectInTeam(dom.projectId, membership.teamId)))
+    throw new Error("Project not found");
+  // The multi-row primary flip is ONE atomic statement (PLAN §4): set is_primary
+  // = (id == target) for every domain on the project. The partial-unique
+  // `(project_id) WHERE is_primary` backstops it, so two concurrent flips can't
+  // both win (the loser's commit violates the constraint). No count-then-decide
+  // race: the single UPDATE is the decision.
+  await getDb()
+    .update(domainsTable)
+    .set({ isPrimary: sql`${domainsTable.id} = ${id}` })
+    .where(eq(domainsTable.projectId, dom.projectId));
+  return dom.projectId;
 }
 
 /**
@@ -640,29 +677,27 @@ export async function setPrimaryDomain(id: string): Promise<string> {
  * remaining domain when none is flagged primary (e.g. the primary was removed),
  * and clears the URL when the last domain is gone.
  */
-export function syncProductionUrl(projectId: string): void {
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === projectId);
-    if (!p) return;
-    const domains = d.domains.filter((x) => x.projectId === projectId);
-    const primary = domains.find((x) => x.primary) ?? domains[0];
-    p.productionUrl = primary ? `https://${primary.name}` : null;
-    p.updatedAt = nowIso();
-  });
+export async function syncProductionUrl(projectId: string): Promise<void> {
+  const domains = await loadDomainsForProject(projectId);
+  const primary = domains.find((x) => x.primary) ?? domains[0];
+  await getDb()
+    .update(projectsTable)
+    .set({
+      productionUrl: primary ? `https://${primary.name}` : null,
+      updatedAt: nowIso(),
+    })
+    .where(eq(projectsTable.id, projectId));
 }
 
 export async function removeDomain(id: string): Promise<string> {
   const { membership } = await requireCapability("manage_domains");
   const user = (await getCurrentUser())!;
-  const dom = read().domains.find((x) => x.id === id);
+  const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
-  const project = read().projects.find(
-    (p) => p.id === dom.projectId && p.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
-  mutate((d) => {
-    d.domains = d.domains.filter((x) => x.id !== id);
-  });
+  if (!(await projectInTeam(dom.projectId, membership.teamId)))
+    throw new Error("Project not found");
+  // The domain_middlewares child rows CASCADE on the domain delete.
+  await getDb().delete(domainsTable).where(eq(domainsTable.id, id));
   recordActivity(
     "domain",
     `Removed domain ${dom.name}`,
