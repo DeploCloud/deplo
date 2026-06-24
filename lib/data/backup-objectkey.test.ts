@@ -7,6 +7,7 @@ import {
   targetPrefix,
   buildObjectKey,
   selectDoomedRuns,
+  type RunForRetention,
 } from "./backup-objectkey";
 import type { BackupRun } from "../types";
 
@@ -145,4 +146,44 @@ test("retention: nothing to prune within window and under cap", () => {
   const runs = [run("a", 0), run("b", 1), run("c", 2)];
   const doomed = selectDoomedRuns(runs, { retentionDays: 7, maxPerTarget: 50, now: NOW });
   assert.deepEqual(doomed, []);
+});
+
+/* ------------------------------------------------------------------ */
+/* Retention seq tiebreak (PLAN §5) — same-millisecond runs               */
+/* ------------------------------------------------------------------ */
+
+/** Two runs at the SAME instant, ordered only by their DB `seq`. */
+const sameMsRun = (
+  id: string,
+  seq: number,
+  over: Partial<BackupRun> = {},
+): RunForRetention => ({ ...run(id, 30), seq, ...over });
+
+test("retention: a same-ms tie keeps the higher-seq success (newest), prunes the rest", () => {
+  // Three successes ALL at the same (old) instant: timestamp alone can't order
+  // them, so without seq the "newest success to keep" is non-deterministic and
+  // could delete the live object. With seq, the highest-seq run is newest.
+  const runs = [sameMsRun("low", 1), sameMsRun("mid", 2), sameMsRun("high", 3)];
+  const doomed = selectDoomedRuns(runs, { retentionDays: 7, maxPerTarget: 50, now: NOW });
+  // "high" (seq 3) is the kept newest success; the two older same-ms runs are doomed.
+  assert.deepEqual(doomed.map((r) => r.id).sort(), ["low", "mid"]);
+});
+
+test("retention: same-ms tiebreak is independent of input array order", () => {
+  // Same three runs, shuffled — seq, not array position, decides "newest".
+  const runs = [sameMsRun("mid", 2), sameMsRun("high", 3), sameMsRun("low", 1)];
+  const doomed = selectDoomedRuns(runs, { retentionDays: 7, maxPerTarget: 50, now: NOW });
+  assert.deepEqual(doomed.map((r) => r.id).sort(), ["low", "mid"]);
+});
+
+test("retention: the cap counts newest-first by (startedAt, seq) under a tie", () => {
+  // Five same-instant runs, cap 2 → the 2 newest (highest seq) survive the cap,
+  // plus the kept-newest rule overlaps with the highest. Deterministic via seq.
+  const runs = [
+    sameMsRun("s1", 1), sameMsRun("s2", 2), sameMsRun("s3", 3),
+    sameMsRun("s4", 4), sameMsRun("s5", 5),
+  ];
+  const doomed = selectDoomedRuns(runs, { retentionDays: 365, maxPerTarget: 2, now: NOW });
+  // newest-first = s5,s4,s3,s2,s1; idx>=2 (s3,s2,s1) are over the cap.
+  assert.deepEqual(doomed.map((r) => r.id).sort(), ["s1", "s2", "s3"]);
 });

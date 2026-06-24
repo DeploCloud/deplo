@@ -998,6 +998,89 @@ scheduler-test rewrite. *Test:* backup start/terminal atomicity, retention picks
 right object under a same-millisecond tie, reconcile-before-scheduler ordering, backfill
 fidelity.
 
+#### STEP 5 RESULT (2026-06-24) — DONE ✅
+
+Cut-set (d) shipped: `databases` + `s3_destination` + `backups` + `backup_runs` are
+all relational, migrated atomically with
+[lib/data/databases.ts](../../../lib/data/databases.ts),
+[lib/data/s3.ts](../../../lib/data/s3.ts),
+[lib/data/backups.ts](../../../lib/data/backups.ts),
+[lib/backups/scheduler.ts](../../../lib/backups/scheduler.ts), and the boot
+reconcile in [instrumentation.ts](../../../instrumentation.ts). **Full suite 480
+pass / 0 fail** (+27: backfill 5, databases 3, s3 4, backups 9, retention seq-tiebreak
++5, scheduler rewrite kept 6 — minus a couple folded), `tsc` clean (only the
+pre-existing `migrate.test.ts` cast), `eslint` clean (one pre-existing s3 `toDTO`
+warning), `db:generate` reports "no schema changes" (Step 1 emitted the tables).
+Highlights and decisions:
+
+- **One shared row-assembler is the anti-drift seam.**
+  [lib/data/backup-rows.ts](../../../lib/data/backup-rows.ts) is the ONE place
+  mapping the four collections' relational rows ↔ domain objects
+  (`assemble*` / `*ToRow`, each `*ToRow` exhaustive via `satisfies Record<keyof …>`);
+  the live data layer (read), the scheduler, and the backfill (write + reconcile)
+  all go through it (the same rationale as `project-graph-rows.ts` for cut-set (c)
+  and `notification-row.ts` for the leaf). The load-bearing asymmetry it isolates:
+  `BackupRun` (domain) has no `seq`, but `backup_runs` carries a DB-generated
+  `bigint identity seq` — `backupRunToRow` never writes it, `assembleBackupRun`
+  drops it, and retention reads it via a dedicated `RunForRetention` projection.
+- **`seq` tiebreak closes the same-millisecond retention hazard (PLAN §5).**
+  `selectDoomedRuns` ([backup-objectkey.ts](../../../lib/data/backup-objectkey.ts))
+  now ranks newest-first by `(startedAt, seq)` DESC, not `startedAt` alone — a
+  same-ms tie ordered by timestamp could keep/`S3Delete` the WRONG object. The
+  retention candidate query selects `seq`; `listBackupRuns` pushes
+  `ORDER BY started_at DESC, seq DESC` into SQL (matches `backup_runs_team_started_idx`).
+  A unit test drives three same-instant runs and asserts the highest-`seq` success
+  is kept regardless of input order.
+- **The two-tx `executeBackup` is preserved exactly (PLAN §1 rule (a)).** The START
+  write (insert `running` run + stamp the schedule) and the TERMINAL write (flip the
+  run + settle the schedule) are each a short `db.transaction`; the gRPC
+  `conn.backup()` dump + the retention `s3Delete` loop run BETWEEN them, never inside
+  a tx. The mid-flight objectKey record is a single UPDATE. A data-layer test drives
+  the full path with an unreachable agent and asserts both transactions ran (the run
+  is recorded `running` then flipped `failed`, the schedule's `lastRunAt`/`lastStatus`
+  stamped). Same shape preserved for `deleteDatabase`/`testS3`/`deleteBackupArtifacts`
+  (agent RPC outside the row write).
+- **The FK cascades replace the hand-maintained orphan filters.** `deleteDatabase`
+  is now one `DELETE` (agent teardown OUTSIDE it); the `backups.database_id` CASCADE
+  removes dependent schedules and `backup_runs.database_id` SET NULL keeps run
+  history (was a manual `d.backups` filter that orphaned runs). `deleteS3` is one
+  transaction deleting dependent schedules AND runs explicitly — `destination_id` is
+  RESTRICT (a destination must never be silently cascade-removed from under live
+  schedules/restore points), and the JSONB version orphaned run history with a
+  dangling `destinationId`, which the RESTRICT FK now forbids. Data-layer tests
+  assert no orphans on either path.
+- **Backfill (cut-set d) runs LAST + prunes the legacy orphans.**
+  [lib/db/backfill/cut-sets/backups.ts](../../../lib/db/backfill/cut-sets/backups.ts)
+  copies FK-ordered (`s3_destination` → `databases` → `backups` → `backup_runs`),
+  seeding identity + `servers` roots idempotently (`seedServers` extracted to
+  [roots.ts](../../../lib/db/backfill/roots.ts), shared with cut-set (c)). It PRUNES
+  a schedule whose target (database/project) or destination is dead (the
+  `deleteDatabase`/`deleteProject` orphan leaks the RESTRICT FK + `target_kind` XOR
+  forbid), and for a run (history outlives its target via SET-NULL FKs) NULLs a dead
+  `databaseId`/`projectId`/`backupId` while pruning a run whose RESTRICT
+  `destinationId` is gone. Runs insert in source-array order so `seq` reproduces
+  insertion order. The element-granular reconcile asserts post-prune counts, the
+  schedule XOR, and every FK resolves. Tests cover fidelity, the prune cases, the
+  run-FK NULLing, idempotent re-run, fresh-install-zero, and rollback-on-mismatch.
+- **Boot ordering: backup reconcile AWAITED before the scheduler.**
+  `reconcileInFlightBackupRuns` went sync→async (one tx: flip stale `running` runs
+  `failed` RETURNING their schedule ids, then settle those stuck schedules);
+  `instrumentation.ts` now `await`s it before `startBackupScheduler()` so the first
+  tick never reads an un-reconciled `running` run. The scheduler reads enabled
+  schedules via a relational `enabled` query (cron match + per-minute dedup stay in
+  memory).
+- **Test backend:** `backup-test-helpers.ts` seeds databases/s3/schedules/runs
+  relationally; `scheduler.test.ts` was rewritten off the deleted `store.read/mutate`
+  onto the pglite harness (PLAN §8 "rewrite store-coupled tests in the cut-set"),
+  resetting the `globalThis` scheduler singleton between cases.
+- **Cut-set CLOSURE was clean.** An adversarial scan for stale JSONB reads of these
+  four collections outside the migrated modules found NONE — every reader/writer was
+  already one of `databases.ts`/`s3.ts`/`backups.ts`/`scheduler.ts`/`instrumentation.ts`;
+  the GraphQL resolvers + pages call only the (unchanged-signature) public data-layer
+  functions, and `project-backup-descriptor.ts` already reads relational project-graph
+  data. The only signature changes (`getS3WithSecretsForTeam` sync→async,
+  `reconcileInFlightBackupRuns` sync→async) have no callers outside the cut-set.
+
 **Step 6 — Cutover: delete the cache and JSONB write path.** Remove the `globalThis`
 `StoreState` cache, `queuePostgresWrite`, `writeChain`, `state.dirty`, the `load()`
 seed-then-adopt crutch, and `read`/`mutate`. `ensureStoreReady()` keeps only the

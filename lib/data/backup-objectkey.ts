@@ -1,6 +1,17 @@
 import type { BackupRun, BackupTargetKind, DatabaseType } from "../types";
 
 /**
+ * A {@link BackupRun} plus its DB-generated `seq` (the `bigint identity` on
+ * `backup_runs`, PLAN §5) — the shape retention ranks. `seq` totally orders runs
+ * written in the same millisecond (a lexicographic `startedAt` sort ties them and
+ * could `S3Delete` the WRONG object on a same-ms tie), so it is the tiebreaker
+ * after `startedAt`. The relational `pruneRetention` query selects `seq`; a unit
+ * test may omit it (the comparator falls back to insertion order for a missing
+ * `seq`, preserving the legacy behaviour it asserts).
+ */
+export type RunForRetention = BackupRun & { seq?: number };
+
+/**
  * Object-key + artifact-extension helpers for backups. Pure (no store, no
  * `server-only`) so they unit-test in isolation and can be shared by the
  * executor, the retention pruner, and any future lister.
@@ -91,15 +102,27 @@ export function buildObjectKey(input: {
  *
  * Failed runs own no S3 object, so the caller only issues `S3Delete` for the
  * doomed runs that succeeded — but it still drops the failed run records here, so
- * a long tail of failures can't grow the JSONB array unbounded.
+ * a long tail of failures can't grow the table unbounded.
+ *
+ * "Newest first" is `(startedAt, seq)` DESC, NOT `startedAt` alone (PLAN §5): two
+ * runs written in the same millisecond tie on the timestamp, and ordering them by
+ * timestamp alone is non-deterministic — it could pick the wrong "newest
+ * successful run to keep" and then `S3Delete` the live object. The DB-generated
+ * `seq` (`bigint identity`) breaks that tie by insertion order. The relational
+ * `pruneRetention` selects `seq`; if a caller omits it (a unit test asserting the
+ * legacy timestamp-only behaviour), the tie falls back to the input order.
  */
 export function selectDoomedRuns(
-  runs: BackupRun[],
+  runs: RunForRetention[],
   opts: { retentionDays: number; maxPerTarget: number; now: Date },
-): BackupRun[] {
-  const ordered = [...runs].sort((a, b) =>
-    a.startedAt < b.startedAt ? 1 : a.startedAt > b.startedAt ? -1 : 0,
-  ); // newest first
+): RunForRetention[] {
+  const ordered = [...runs].sort((a, b) => {
+    if (a.startedAt !== b.startedAt) return a.startedAt < b.startedAt ? 1 : -1;
+    // Same-millisecond tie: `seq` DESC (newer insertion first). Absent seq keeps
+    // the input order (stable for the legacy unit test).
+    if (a.seq !== undefined && b.seq !== undefined) return b.seq - a.seq;
+    return 0;
+  }); // newest first
   const cutoff = opts.now.getTime() - opts.retentionDays * 24 * 60 * 60 * 1000;
   const newestSuccessId = ordered.find((r) => r.status === "success")?.id ?? null;
   return ordered.filter((r, idx) => {

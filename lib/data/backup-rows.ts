@@ -1,0 +1,222 @@
+import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+
+import {
+  backups,
+  backupRuns,
+  databases,
+  s3Destination,
+} from "../db/schema/control-plane";
+import type {
+  Backup,
+  BackupRun,
+  BackupRunStatus,
+  BackupTargetKind,
+  Database,
+  DatabaseStatus,
+  DatabaseType,
+  S3Destination,
+  S3Provider,
+  S3Status,
+} from "../types";
+
+/**
+ * The ONE relational-rows ↔ domain-objects mapping for the backups cut-set (d)
+ * (relational-store PLAN §3 cut-set (d) / §2 the data aggregate): `databases`,
+ * `s3_destination`, `backups`, `backup_runs`. Both the live data layer (reads,
+ * `lib/data/{databases,s3,backups}.ts`) and the backfill
+ * (`lib/db/backfill/cut-sets/backups.ts`, write + reconcile) go through here, so
+ * the two can't drift on how a row folds into a domain object — the same
+ * anti-drift seam `project-graph-rows.ts` is for cut-set (c) and
+ * `notification-row.ts` is for the leaf cut-set.
+ *
+ * Pure — no `server-only`, no store, no db handle — so a `server-only` module and
+ * a backfill helper can both import it. These four collections are FLAT (no nested
+ * objects, lists, or junctions), so each mapping is a column↔field rename; the
+ * load-bearing detail is the `seq` asymmetry: `BackupRun` (the domain type) has no
+ * `seq`, but `backup_runs` carries a DB-generated `bigint identity seq` (PLAN §5).
+ * {@link backupRunToRow} therefore NEVER writes `seq` (the DB assigns it in
+ * insertion order); {@link assembleBackupRun} drops it (the domain object never
+ * carries it — retention reads it via a dedicated projection, not the DTO).
+ */
+
+export type DatabaseRow = InferSelectModel<typeof databases>;
+export type DatabaseInsert = InferInsertModel<typeof databases>;
+export type S3DestinationRow = InferSelectModel<typeof s3Destination>;
+export type S3DestinationInsert = InferInsertModel<typeof s3Destination>;
+export type BackupRow = InferSelectModel<typeof backups>;
+export type BackupInsert = InferInsertModel<typeof backups>;
+export type BackupRunRow = InferSelectModel<typeof backupRuns>;
+export type BackupRunInsert = InferInsertModel<typeof backupRuns>;
+
+/* ------------------------------------------------------------------ */
+/* databases                                                           */
+/* ------------------------------------------------------------------ */
+
+/** Explode a {@link Database} into its `databases` row (exhaustive via satisfies). */
+export function databaseToRow(d: Database): DatabaseInsert {
+  return {
+    id: d.id,
+    teamId: d.teamId,
+    name: d.name,
+    type: d.type,
+    version: d.version,
+    status: d.status,
+    serverId: d.serverId,
+    host: d.host,
+    port: d.port,
+    connectionStringEnc: d.connectionStringEnc,
+    exposedPublicly: d.exposedPublicly,
+    sizeMb: d.sizeMb,
+    createdAt: d.createdAt,
+  } satisfies Record<keyof Database, unknown> as DatabaseInsert;
+}
+
+/** Reassemble a `databases` row into a {@link Database}. */
+export function assembleDatabase(row: DatabaseRow): Database {
+  return {
+    id: row.id,
+    teamId: row.teamId,
+    name: row.name,
+    type: row.type as DatabaseType,
+    version: row.version,
+    status: row.status as DatabaseStatus,
+    serverId: row.serverId,
+    host: row.host,
+    port: row.port,
+    connectionStringEnc: row.connectionStringEnc,
+    exposedPublicly: row.exposedPublicly,
+    sizeMb: row.sizeMb,
+    createdAt: row.createdAt,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* s3_destination                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Explode an {@link S3Destination} into its `s3_destination` row. */
+export function s3ToRow(s: S3Destination): S3DestinationInsert {
+  return {
+    id: s.id,
+    teamId: s.teamId,
+    name: s.name,
+    provider: s.provider,
+    endpoint: s.endpoint,
+    region: s.region,
+    bucket: s.bucket,
+    accessKeyEnc: s.accessKeyEnc,
+    secretKeyEnc: s.secretKeyEnc,
+    status: s.status,
+    createdAt: s.createdAt,
+  } satisfies Record<keyof S3Destination, unknown> as S3DestinationInsert;
+}
+
+/** Reassemble an `s3_destination` row into an {@link S3Destination}. */
+export function assembleS3(row: S3DestinationRow): S3Destination {
+  return {
+    id: row.id,
+    teamId: row.teamId,
+    name: row.name,
+    provider: row.provider as S3Provider,
+    endpoint: row.endpoint,
+    region: row.region,
+    bucket: row.bucket,
+    accessKeyEnc: row.accessKeyEnc,
+    secretKeyEnc: row.secretKeyEnc,
+    status: row.status as S3Status,
+    createdAt: row.createdAt,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* backups (schedule)                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Explode a {@link Backup} schedule into its `backups` row. */
+export function backupToRow(b: Backup): BackupInsert {
+  return {
+    id: b.id,
+    teamId: b.teamId,
+    name: b.name,
+    targetKind: b.targetKind,
+    databaseId: b.databaseId,
+    projectId: b.projectId,
+    destinationId: b.destinationId,
+    schedule: b.schedule,
+    retentionDays: b.retentionDays,
+    lastRunAt: b.lastRunAt,
+    lastStatus: b.lastStatus,
+    enabled: b.enabled,
+    createdAt: b.createdAt,
+  } satisfies Record<keyof Backup, unknown> as BackupInsert;
+}
+
+/** Reassemble a `backups` row into a {@link Backup} schedule. */
+export function assembleBackup(row: BackupRow): Backup {
+  return {
+    id: row.id,
+    teamId: row.teamId,
+    name: row.name,
+    targetKind: row.targetKind as BackupTargetKind,
+    databaseId: row.databaseId,
+    projectId: row.projectId,
+    destinationId: row.destinationId,
+    schedule: row.schedule,
+    retentionDays: row.retentionDays,
+    lastRunAt: row.lastRunAt,
+    lastStatus: row.lastStatus as Backup["lastStatus"],
+    enabled: row.enabled,
+    createdAt: row.createdAt,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* backup_runs (history)                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Explode a {@link BackupRun} into its `backup_runs` row. NEVER writes `seq` — it
+ * is a `bigint identity` the DB assigns in insertion order (PLAN §5), so a copy /
+ * insert in source-array order reproduces the run history's order. (`seq` is
+ * `generatedAlwaysAsIdentity`, so even passing it would be rejected.)
+ */
+export function backupRunToRow(r: BackupRun): BackupRunInsert {
+  return {
+    id: r.id,
+    teamId: r.teamId,
+    backupId: r.backupId,
+    targetKind: r.targetKind,
+    databaseId: r.databaseId,
+    projectId: r.projectId,
+    destinationId: r.destinationId,
+    objectKey: r.objectKey,
+    sizeBytes: r.sizeBytes,
+    status: r.status,
+    error: r.error,
+    startedAt: r.startedAt,
+    finishedAt: r.finishedAt,
+  } satisfies Record<keyof BackupRun, unknown> as BackupRunInsert;
+}
+
+/**
+ * Reassemble a `backup_runs` row into a {@link BackupRun}. Drops `seq` (the domain
+ * object never carries it — retention reads it via a dedicated `seq`-bearing
+ * projection, {@link import("./backup-objectkey").RunForRetention}).
+ */
+export function assembleBackupRun(row: BackupRunRow): BackupRun {
+  return {
+    id: row.id,
+    teamId: row.teamId,
+    backupId: row.backupId,
+    targetKind: row.targetKind as BackupTargetKind,
+    databaseId: row.databaseId,
+    projectId: row.projectId,
+    destinationId: row.destinationId,
+    objectKey: row.objectKey,
+    sizeBytes: row.sizeBytes,
+    status: row.status as BackupRunStatus,
+    error: row.error,
+    startedAt: row.startedAt,
+    finishedAt: row.finishedAt,
+  };
+}
