@@ -88,6 +88,22 @@ function isSecretKey(key: string): boolean {
   return /pass|secret|token|key|api|private|credential|dsn|url/i.test(key);
 }
 
+/**
+ * True if `err` is a Postgres unique-violation (SQLSTATE 23505) on the named
+ * constraint. Drizzle wraps the driver error; the original is on `.cause`, and
+ * both node-postgres and pglite expose `.code` + `.constraint` (or the
+ * constraint name in the message). Used to retry the optimistic slug pick.
+ */
+function isUniqueViolation(err: unknown, constraint: string): boolean {
+  for (let e: unknown = err; e; e = (e as { cause?: unknown }).cause) {
+    const o = e as { code?: string; constraint?: string; message?: string };
+    if (o.code === "23505") {
+      return o.constraint === constraint || (o.message?.includes(constraint) ?? false);
+    }
+  }
+  return false;
+}
+
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -339,15 +355,25 @@ export async function createProject(
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  // slug is globally UNIQUE in the relational table; pick the first free suffix.
+  // slug is globally UNIQUE in the relational table; pick the first free suffix
+  // optimistically. The pick races a concurrent same-name create (both read the
+  // same snapshot, pick the same suffix) — so the INSERT is retried below on a
+  // `projects_slug_uq` violation, advancing the suffix each time. `nextSlug`
+  // continues the suffix sequence past whatever the pre-check already considered.
   const existing = new Set(
     (await getDb().select({ slug: projectsTable.slug }).from(projectsTable)).map(
       (r) => r.slug,
     ),
   );
-  let slug = slugBase || `project-${newId("").slice(1, 6)}`;
+  const slugRoot = slugBase || `project-${newId("").slice(1, 6)}`;
   let i = 1;
-  while (existing.has(slug)) slug = `${slugBase}-${i++}`;
+  let slug = slugRoot;
+  while (existing.has(slug)) slug = `${slugRoot}-${i++}`;
+  const nextSlug = (): string => {
+    let s = `${slugRoot}-${i++}`;
+    while (existing.has(s)) s = `${slugRoot}-${i++}`;
+    return s;
+  };
 
   // Servers are still JSONB-authoritative (no cut-set migrated them); their
   // relational rows are mirrored by `ensureServerRow` so a project's `server_id`
@@ -441,19 +467,35 @@ export async function createProject(
   // method-settings, exposes, mounts) + initial env (PLAN cut-set (c) Decision 15).
   // The domain + deploy fire AFTER commit so a failed insert leaves no orphan
   // auto-domain and no deploy job for a project that didn't persist.
-  await getDb().transaction(async (tx) => {
-    await tx.insert(projectsTable).values(projectToRow(project));
-    await tx.insert(projectBuildTable).values(buildToRow(project.id, project.build));
-    await tx
-      .insert(projectBuildMethodSettingsTable)
-      .values(methodSettingsToRow(project.id, project.build.methodSettings));
-    const exposeRows = exposesToRows(project.id, project.exposes);
-    if (exposeRows.length > 0) await tx.insert(projectExposesTable).values(exposeRows);
-    const mountRows = mountsToRows(project.id, project.mounts);
-    if (mountRows.length > 0) await tx.insert(projectMountsTable).values(mountRows);
-    if (projectEnvVars.length > 0) await insertEnvVars(tx, projectEnvVars);
-  });
-  recordActivity("project", `Created project ${project.name}`, user.name, project.id);
+  //
+  // The optimistic slug pick races a concurrent same-name create, so the whole tx
+  // is retried (bounded) on a `projects_slug_uq` violation, advancing to the next
+  // free suffix — the `UNIQUE(slug)` constraint is the real arbiter, the in-app
+  // pick is just a friendly first guess.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await getDb().transaction(async (tx) => {
+        await tx.insert(projectsTable).values(projectToRow(project));
+        await tx.insert(projectBuildTable).values(buildToRow(project.id, project.build));
+        await tx
+          .insert(projectBuildMethodSettingsTable)
+          .values(methodSettingsToRow(project.id, project.build.methodSettings));
+        const exposeRows = exposesToRows(project.id, project.exposes);
+        if (exposeRows.length > 0) await tx.insert(projectExposesTable).values(exposeRows);
+        const mountRows = mountsToRows(project.id, project.mounts);
+        if (mountRows.length > 0) await tx.insert(projectMountsTable).values(mountRows);
+        if (projectEnvVars.length > 0) await insertEnvVars(tx, projectEnvVars);
+      });
+      break;
+    } catch (e) {
+      if (attempt < 5 && isUniqueViolation(e, "projects_slug_uq")) {
+        project.slug = slug = nextSlug();
+        continue;
+      }
+      throw e;
+    }
+  }
+  await recordActivity("project", `Created project ${project.name}`, user.name, project.id);
 
   // POST-COMMIT (PLAN cut-set (c) "post-commit deploy"): register the generated
   // sslip.io domain so it shows up in the Domains section immediately and the
@@ -521,7 +563,7 @@ export async function updateProjectBuild(
         .where(eq(projectBuildMethodSettingsTable.projectId, id));
     }
   });
-  recordActivity("project", `Updated build settings`, user.name, id);
+  await recordActivity("project", `Updated build settings`, user.name, id);
 }
 
 export interface UpdateSourceInput {
@@ -628,7 +670,7 @@ export async function updateProjectSource(
       if (rows.length > 0) await tx.insert(projectExposesTable).values(rows);
     }
   });
-  recordActivity("project", `Updated deploy source`, user.name, id);
+  await recordActivity("project", `Updated deploy source`, user.name, id);
 }
 
 /**
@@ -830,7 +872,7 @@ export async function setProjectVolumes(
       .set({ updatedAt: nowIso() })
       .where(eq(projectsTable.id, id));
   });
-  recordActivity("project", `Updated volumes`, user.name, id);
+  await recordActivity("project", `Updated volumes`, user.name, id);
 }
 
 /**
@@ -861,7 +903,7 @@ export async function setProjectUpload(
     dockerImage: null,
     updatedAt: nowIso(),
   });
-  recordActivity("project", `Uploaded ${upload.filename}`, user.name, id);
+  await recordActivity("project", `Uploaded ${upload.filename}`, user.name, id);
 }
 
 export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
@@ -879,7 +921,7 @@ export async function renameProject(id: string, name: string): Promise<void> {
     name: name.trim(),
     updatedAt: nowIso(),
   });
-  recordActivity("project", `Renamed project to ${name}`, user.name, id);
+  await recordActivity("project", `Renamed project to ${name}`, user.name, id);
 }
 
 /**
@@ -925,7 +967,7 @@ export async function updateProjectLogo(
     if (!exists) throw new Error("Project not found");
     return;
   }
-  recordActivity("project", `Updated project logo`, user.name, id);
+  await recordActivity("project", `Updated project logo`, user.name, id);
 }
 
 /** Set a project's status and notify every live subscriber. */
@@ -949,7 +991,7 @@ export async function stopProject(id: string): Promise<void> {
   // local label on the clicking user's button. We settle to "idle" once the
   // stop returns (success or failure: the intent was to stop).
   await setProjectStatus(id, "stopping");
-  recordActivity("project", `Stopping ${project.name}`, user.name, id);
+  await recordActivity("project", `Stopping ${project.name}`, user.name, id);
   try {
     await stopContainer(project.slug);
   } catch (e) {
@@ -982,7 +1024,7 @@ export async function startProject(id: string): Promise<void> {
     );
   }
   await setProjectStatus(id, "active");
-  recordActivity("project", `Started ${project.name}`, user.name, id);
+  await recordActivity("project", `Started ${project.name}`, user.name, id);
 }
 
 /** Rebuild the image from the current source and redeploy (real build). */
@@ -1012,7 +1054,7 @@ export async function deleteProject(id: string): Promise<void> {
   const tornDown = await teardownProject(project.slug);
   const server = read().servers.find((s) => s.id === project.serverId);
   if (!tornDown && server) {
-    recordActivity(
+    await recordActivity(
       "project",
       `Deleted ${project.name} but its server (${server.name}) was unreachable — ` +
         `leftover containers on that host must be removed manually.`,
@@ -1034,7 +1076,7 @@ export async function deleteProject(id: string): Promise<void> {
   // fixed in cut-set (c)"). backups.project_id is SET NULL (history outlives the
   // project), so no project-target backup is orphaned either.
   await getDb().delete(projectsTable).where(eq(projectsTable.id, id));
-  recordActivity("project", `Deleted project ${project.name}`, user.name, null);
+  await recordActivity("project", `Deleted project ${project.name}`, user.name, null);
 }
 
 /** Run `fn` over `items` with at most `limit` in flight at once. */
@@ -1091,14 +1133,14 @@ export async function deleteProjects(ids: string[]): Promise<number> {
   // (no orphan); backups.project_id SET NULL keeps history.
   const gone = projects.map((p) => p.id);
   await getDb().delete(projectsTable).where(inArray(projectsTable.id, gone));
-  recordActivity(
+  await recordActivity(
     "project",
     `Deleted ${projects.length} project${projects.length === 1 ? "" : "s"}`,
     user.name,
     null,
   );
   if (unreachable.length) {
-    recordActivity(
+    await recordActivity(
       "project",
       `Some servers were unreachable during bulk delete — leftover containers may ` +
         `remain and must be removed manually: ${unreachable.join(", ")}`,

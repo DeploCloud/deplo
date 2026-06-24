@@ -102,7 +102,7 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
   // Mirror the relational `servers` row so a project's `server_id` FK resolves
   // (servers stay JSONB-authoritative; cut-set (c) bridge — see server-row.ts).
   await ensureServerRow(server);
-  recordActivity("member", `Connected server ${server.name}`, user.name, null, membership.teamId);
+  await recordActivity("member", `Connected server ${server.name}`, user.name, null, membership.teamId);
 
   return {
     server,
@@ -204,7 +204,7 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   // Drop the mirrored relational row (the (b) blocks removal while projects are
   // assigned, so its RESTRICT FK has no dependents at this point).
   await deleteServerRow(id);
-  recordActivity("member", `Removed server ${server.name}`, user.name, null, membership.teamId);
+  await recordActivity("member", `Removed server ${server.name}`, user.name, null, membership.teamId);
   return { warning };
 }
 
@@ -246,7 +246,7 @@ export async function updateServerAgent(id: string): Promise<{ version: string }
     const s = d.servers.find((x) => x.id === id);
     if (s?.agent) s.agent.version = result.version;
   });
-  recordActivity(
+  await recordActivity(
     "member",
     `Updated agent on ${server.name} to v${result.version}`,
     user.name,

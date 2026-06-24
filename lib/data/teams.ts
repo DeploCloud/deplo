@@ -171,7 +171,7 @@ export async function createTeam(input: { name: string }): Promise<Team> {
   // (cut-set c); a new team starts with no order rows. The JSONB stub is retired.
   // Switch the active team to the freshly created one.
   await setActiveTeam(team.id);
-  recordActivity("member", `Created team ${team.name}`, user.name, null, team.id);
+  await recordActivity("member", `Created team ${team.name}`, user.name, null, team.id);
   return team;
 }
 

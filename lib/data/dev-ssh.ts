@@ -116,7 +116,7 @@ export async function createDevSshUser(input: {
   });
   await provisionUser(record);
 
-  recordActivity(
+  await recordActivity(
     "project",
     `Added SSH user ${username}`,
     user.name,
@@ -145,7 +145,7 @@ export async function removeDevSshUser(id: string): Promise<void> {
   });
   await deprovisionUser(serverId, record.username).catch(() => {});
 
-  recordActivity(
+  await recordActivity(
     "project",
     `Removed SSH user ${record.username}`,
     user.name,

@@ -212,7 +212,7 @@ export async function installApp(catalogId: string): Promise<InstalledAppDTO> {
     };
     await getDb().insert(installedAppsTable).values(row);
   }
-  recordActivity(
+  await recordActivity(
     "member",
     `${existing ? "Reinstalled" : "Installed"} app ${listing.name}`,
     user.name,
@@ -238,7 +238,7 @@ export async function uninstallApp(id: string): Promise<void> {
   await getDb()
     .delete(installedAppsTable)
     .where(and(eq(installedAppsTable.id, id), eq(installedAppsTable.teamId, teamId)));
-  recordActivity(
+  await recordActivity(
     "member",
     `Uninstalled app ${app.catalogId}`,
     user.name,

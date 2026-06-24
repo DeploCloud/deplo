@@ -100,7 +100,7 @@ export async function createGithubApp(
   mutate((d) => {
     (d.githubApps ??= []).push(app);
   });
-  recordActivity("member", `Connected GitHub App ${app.name}`, user.name, null, membership.teamId);
+  await recordActivity("member", `Connected GitHub App ${app.name}`, user.name, null, membership.teamId);
   return app;
 }
 
@@ -156,7 +156,7 @@ export async function upsertInstallation(input: {
     d.githubInstallations.push(created);
     result = created;
   });
-  recordActivity(
+  await recordActivity(
     "member",
     `Installed GitHub App on ${input.accountLogin}`,
     user.name,
@@ -186,5 +186,5 @@ export async function removeGithubApp(id: string): Promise<void> {
       (i) => i.appId !== id,
     );
   });
-  recordActivity("member", `Removed GitHub App ${app.name}`, user.name, null, membership.teamId);
+  await recordActivity("member", `Removed GitHub App ${app.name}`, user.name, null, membership.teamId);
 }

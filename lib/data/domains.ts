@@ -296,7 +296,7 @@ export async function addDomain(
     createdAt: nowIso(),
   };
   await insertDomain(getDb(), domain);
-  recordActivity("domain", `Added domain ${clean}`, user.name, projectId);
+  await recordActivity("domain", `Added domain ${clean}`, user.name, projectId);
   return domain;
 }
 
@@ -510,7 +510,7 @@ export async function updateDomain(
     if (mwRows.length > 0) await tx.insert(domainMiddlewaresTable).values(mwRows);
   });
   const dom = next;
-  recordActivity(
+  await recordActivity(
     "domain",
     renamed
       ? `Updated domain ${current.name} → ${dom.name}`
@@ -655,15 +655,31 @@ export async function setPrimaryDomain(id: string): Promise<string> {
   if (!dom) throw new Error("Not found");
   if (!(await projectInTeam(dom.projectId, membership.teamId)))
     throw new Error("Project not found");
-  // The multi-row primary flip is ONE atomic statement (PLAN §4): set is_primary
-  // = (id == target) for every domain on the project. The partial-unique
-  // `(project_id) WHERE is_primary` backstops it, so two concurrent flips can't
-  // both win (the loser's commit violates the constraint). No count-then-decide
-  // race: the single UPDATE is the decision.
-  await getDb()
-    .update(domainsTable)
-    .set({ isPrimary: sql`${domainsTable.id} = ${id}` })
-    .where(eq(domainsTable.projectId, dom.projectId));
+  // The multi-row primary flip is CLEAR-then-SET in one transaction (PLAN §4).
+  // A single `SET is_primary = (id = $target)` UPDATE is NOT safe: the
+  // `(project_id) WHERE is_primary` index is a plain (non-deferrable) unique, and
+  // Postgres checks each updated tuple's index entry as it processes that row —
+  // if the executor sets the NEW target true before clearing the OLD primary,
+  // their two live `is_primary=true` entries collide (a transient duplicate-key
+  // abort whose likelihood depends on physical scan order). Clearing every
+  // primary first guarantees no two rows are ever simultaneously primary, so the
+  // index can't transiently collide; the partial-unique still backstops two
+  // concurrent flips (the loser aborts cleanly).
+  await getDb().transaction(async (tx) => {
+    await tx
+      .update(domainsTable)
+      .set({ isPrimary: false })
+      .where(
+        and(
+          eq(domainsTable.projectId, dom.projectId),
+          eq(domainsTable.isPrimary, true),
+        ),
+      );
+    await tx
+      .update(domainsTable)
+      .set({ isPrimary: true })
+      .where(eq(domainsTable.id, id));
+  });
   return dom.projectId;
 }
 
@@ -697,7 +713,7 @@ export async function removeDomain(id: string): Promise<string> {
     throw new Error("Project not found");
   // The domain_middlewares child rows CASCADE on the domain delete.
   await getDb().delete(domainsTable).where(eq(domainsTable.id, id));
-  recordActivity(
+  await recordActivity(
     "domain",
     `Removed domain ${dom.name}`,
     user.name,

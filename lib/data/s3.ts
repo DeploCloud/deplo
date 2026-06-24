@@ -148,7 +148,7 @@ export async function createS3(input: {
     createdAt: nowIso(),
   };
   mutate((d) => d.s3Destinations.push(s));
-  recordActivity("s3", `Connected S3 destination ${s.name}`, user.name, null);
+  await recordActivity("s3", `Connected S3 destination ${s.name}`, user.name, null);
   return toDTO(s);
 }
 
@@ -247,5 +247,5 @@ export async function deleteS3(id: string): Promise<void> {
     d.s3Destinations = d.s3Destinations.filter((x) => x.id !== id);
     d.backups = d.backups.filter((b) => b.destinationId !== id);
   });
-  recordActivity("s3", `Removed S3 destination ${s.name}`, user.name, null);
+  await recordActivity("s3", `Removed S3 destination ${s.name}`, user.name, null);
 }

@@ -156,7 +156,7 @@ export async function upsertEnv(input: {
       ]);
     }
   });
-  recordActivity("env", `Updated env var ${key}`, user.name, input.projectId);
+  await recordActivity("env", `Updated env var ${key}`, user.name, input.projectId);
 }
 
 /** Bulk import from a .env style blob. */
@@ -258,7 +258,7 @@ export async function setProjectEnv(
     if (removed.length > 0)
       await tx.delete(envVarsTable).where(inArray(envVarsTable.id, removed));
   });
-  recordActivity(
+  await recordActivity(
     "env",
     `Edited environment (${wanted.size} variable${wanted.size === 1 ? "" : "s"})`,
     user.name,
@@ -276,5 +276,5 @@ export async function deleteEnv(id: string): Promise<void> {
     throw new Error("Not found");
   // The env_var_targets child rows CASCADE on the delete.
   await getDb().delete(envVarsTable).where(eq(envVarsTable.id, id));
-  recordActivity("env", `Deleted env var ${e.key}`, user.name, e.projectId);
+  await recordActivity("env", `Deleted env var ${e.key}`, user.name, e.projectId);
 }

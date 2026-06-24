@@ -192,7 +192,7 @@ export async function saveSharedEnvGroup(input: {
     }
     await insertSharedEnvChildren(tx, group);
   });
-  recordActivity("env", `Updated shared variables ${name}`, user.name, null, membership.teamId);
+  await recordActivity("env", `Updated shared variables ${name}`, user.name, null, membership.teamId);
 }
 
 /** Insert a group's 3 child sets (vars / project junction / targets). */
@@ -280,7 +280,7 @@ export async function setSharedEnvGroupAttachment(
     .update(sharedEnvGroupsTable)
     .set({ updatedAt: nowIso() })
     .where(eq(sharedEnvGroupsTable.id, groupId));
-  recordActivity(
+  await recordActivity(
     "env",
     `${attached ? "Attached" : "Detached"} shared variables ${g.name}`,
     user.name,
@@ -295,5 +295,5 @@ export async function deleteSharedEnvGroup(id: string): Promise<void> {
   if (!g || g.teamId !== membership.teamId) throw new Error("Group not found");
   // The 3 child sets CASCADE on the group delete.
   await getDb().delete(sharedEnvGroupsTable).where(eq(sharedEnvGroupsTable.id, id));
-  recordActivity("env", `Deleted shared variables ${g.name}`, user.name, null, membership.teamId);
+  await recordActivity("env", `Deleted shared variables ${g.name}`, user.name, null, membership.teamId);
 }

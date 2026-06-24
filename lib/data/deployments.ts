@@ -135,7 +135,7 @@ export async function promoteToProduction(id: string): Promise<void> {
       })
       .where(eq(projectsTable.id, dep[0]!.projectId));
   });
-  recordActivity(
+  await recordActivity(
     "deployment",
     `Promoted deployment to production`,
     user.name,

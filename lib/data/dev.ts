@@ -144,7 +144,7 @@ export async function enableDev(projectId: string): Promise<void> {
     ? { ...p.dev, enabled: true }
     : { ...defaultDevConfig(p), enabled: true };
   await writeDevRow(projectId, next);
-  recordActivity("project", "Enabled dev mode", user.name, projectId);
+  await recordActivity("project", "Enabled dev mode", user.name, projectId);
 }
 
 /** Patch a project's dev config (image/command/port/preview). */
@@ -167,7 +167,7 @@ export async function updateDev(
   }
   const base = proj.dev ?? defaultDevConfig(proj);
   await writeDevRow(projectId, { ...base, ...patch });
-  recordActivity("project", "Updated dev settings", user.name, projectId);
+  await recordActivity("project", "Updated dev settings", user.name, projectId);
 }
 
 /**
@@ -187,7 +187,7 @@ export async function disableDev(projectId: string): Promise<void> {
       .set({ enabled: false, status: "off" })
       .where(eq(projectDevTable.projectId, projectId));
   }
-  recordActivity("project", "Disabled dev mode", user.name, projectId);
+  await recordActivity("project", "Disabled dev mode", user.name, projectId);
 }
 
 /** Start (or restart) the dev container. Sets status push-only. */
@@ -216,7 +216,7 @@ export async function startDevContainer(projectId: string): Promise<void> {
   if (read().devSshUsers.some((u) => u.projectId === projectId)) {
     await ensureGateway(p.serverId).catch(() => {});
   }
-  recordActivity("project", "Started dev container", user.name, projectId);
+  await recordActivity("project", "Started dev container", user.name, projectId);
 }
 
 /** Stop the dev container (reversible; workspace kept). */
@@ -226,7 +226,7 @@ export async function stopDevContainer(projectId: string): Promise<void> {
   const p = await requireTeamProject(projectId, membership.teamId);
   await agentStopDev(p);
   await setDevStatus(projectId, "stopped");
-  recordActivity("project", "Stopped dev container", user.name, projectId);
+  await recordActivity("project", "Stopped dev container", user.name, projectId);
 }
 
 /**
@@ -252,7 +252,7 @@ export async function resetDevWorkspace(projectId: string): Promise<void> {
     await setDevStatus(projectId, "error");
     throw e;
   }
-  recordActivity(
+  await recordActivity(
     "project",
     "Reset dev workspace from source",
     user.name,
@@ -309,7 +309,7 @@ export async function deployDevWorkspace(
   // Present tense: the deploy is queued/fire-and-forget — it may still fail
   // during the build, so don't claim past-tense success here. (startDeployment
   // also logs its own "Deploying <name>" row; this adds the provenance.)
-  recordActivity(
+  await recordActivity(
     "deployment",
     "Deploying from dev workspace",
     user.name,
@@ -340,7 +340,7 @@ export async function startTunnel(projectId: string): Promise<VscodeTunnelInfo> 
     throw new Error("Start the dev container before opening it in VS Code");
   }
   const info = await agentStartTunnel(p);
-  recordActivity("project", "Opened dev container in VS Code", user.name, projectId);
+  await recordActivity("project", "Opened dev container in VS Code", user.name, projectId);
   return info;
 }
 
@@ -357,5 +357,5 @@ export async function stopTunnel(projectId: string): Promise<void> {
   const user = (await getCurrentUser())!;
   const p = await requireTeamProject(projectId, membership.teamId);
   await agentStopTunnel(p);
-  recordActivity("project", "Closed VS Code tunnel", user.name, projectId);
+  await recordActivity("project", "Closed VS Code tunnel", user.name, projectId);
 }

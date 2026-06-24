@@ -128,3 +128,54 @@ test("flushes for different deployments don't interleave", async () => {
   assert.deepEqual(one.map((r) => r.text), ["a1", "a2"]);
   assert.deepEqual(two.map((r) => r.text), ["b1"]);
 });
+
+test("a failed flush retries IN ORDER (no inversion across two failed batches)", async () => {
+  // Regression: an earlier drain-and-unshift-on-failure inverted order — two
+  // batches flushed in the same turn where both inserts fail would re-queue the
+  // SECOND batch in front of the first (B…, A…). The peek-insert-shift writer
+  // keeps the failed lines at the buffer HEAD so retries stay ordered.
+  const fail = { n: 2 }; // fail exactly the first two flush inserts
+  const real = db as unknown as {
+    insert: (t: unknown) => { values: (v: unknown) => Promise<unknown> };
+  };
+  const failing = new Proxy(db as object, {
+    get(target, prop, receiver) {
+      if (prop === "insert") {
+        return (table: unknown) =>
+          fail.n > 0
+            ? {
+                values: () => {
+                  fail.n--;
+                  return Promise.reject(new Error("simulated flush failure"));
+                },
+              }
+            : real.insert(table);
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+  __setTestDb(failing);
+  try {
+    // Two synchronous bursts each crossing MAX_BUFFER (200) in the SAME turn:
+    // batch A then batch B, both scheduled before either flush callback runs.
+    for (let i = 0; i < 200; i++) appendLog("dpl_1", line(`A${i}`));
+    for (let i = 0; i < 200; i++) appendLog("dpl_1", line(`B${i}`));
+    // Drain across the two failures + the eventual success.
+    await finalizeDeploymentLogs("dpl_1");
+    await finalizeDeploymentLogs("dpl_1");
+    await finalizeDeploymentLogs("dpl_1");
+    assert.equal(fail.n, 0, "both simulated failures were consumed");
+  } finally {
+    __setTestDb(db); // restore the real client for the rest of the suite
+  }
+  const rows = await db
+    .select()
+    .from(deploymentLogs)
+    .where(eq(deploymentLogs.deploymentId, "dpl_1"))
+    .orderBy(asc(deploymentLogs.id));
+  const expected = [
+    ...Array.from({ length: 200 }, (_, i) => `A${i}`),
+    ...Array.from({ length: 200 }, (_, i) => `B${i}`),
+  ];
+  assert.deepEqual(rows.map((r) => r.text), expected, "enqueue order preserved across retries");
+});

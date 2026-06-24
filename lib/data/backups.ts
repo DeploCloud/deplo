@@ -123,7 +123,7 @@ export async function createBackup(input: {
     createdAt: nowIso(),
   };
   mutate((d) => d.backups.push(b));
-  recordActivity(
+  await recordActivity(
     "backup",
     `Created backup schedule ${b.name}`,
     user.name,
@@ -403,7 +403,7 @@ async function executeBackup(
     return { ...r };
   });
 
-  recordActivity(
+  await recordActivity(
     "backup",
     failure
       ? `Backup of ${label} failed: ${failure}`
@@ -622,7 +622,7 @@ export async function restoreBackup(runId: string): Promise<void> {
     failure = (mapBackupUnsupported(e) as Error).message;
   }
 
-  recordActivity(
+  await recordActivity(
     "backup",
     failure
       ? `Restore of ${target.label} failed: ${failure}`
@@ -708,7 +708,7 @@ export async function updateBackup(
     b.retentionDays = Math.max(1, input.retentionDays || 7);
     updated = b;
   });
-  recordActivity(
+  await recordActivity(
     "backup",
     `Updated backup schedule ${updated!.name}`,
     user.name,

@@ -92,24 +92,37 @@ function scheduleFlush(depId: string, immediate: boolean): Promise<void> {
     b.timer = null;
   }
   if (b.lines.length === 0) return b.chain;
-  // Drain NOW (synchronously) so concurrent enqueues land in the next batch, and
-  // capture the epoch so a clear that fires before this flush commits drops it.
-  const batch = b.lines;
-  b.lines = [];
+  // Capture the epoch so a clear that fires before this flush commits drops it.
+  // The lines are NOT drained synchronously — the chained callback reads the
+  // buffer HEAD at run time and only REMOVES it on a successful insert. New lines
+  // always append to the tail, so the head is always the oldest unflushed lines:
+  // this preserves enqueue order even when a flush fails and a later flush
+  // retries (a drain-and-unshift-on-failure would invert order across two failed
+  // batches). The chain serializes per deployment, so two flush callbacks never
+  // read the buffer concurrently.
   const epochAtDrain = b.epoch;
   b.chain = b.chain.then(async () => {
-    // If the deployment was cleared after we drained, discard the batch.
-    if (bufferFor(depId).epoch !== epochAtDrain) return;
+    const buf = bufferFor(depId);
+    // Cleared after this flush was scheduled ⇒ discard (the clear already emptied
+    // the buffer + DELETEd the rows; nothing to write).
+    if (buf.epoch !== epochAtDrain) return;
+    const batch = buf.lines.slice();
+    if (batch.length === 0) return;
     try {
       await getDb()
         .insert(deploymentLogs)
         .values(batch.map((line) => logLineToRow(depId, line)));
-    } catch (err) {
-      // Best-effort: a failed flush must not crash the deploy. Re-queue the batch
-      // so a later flush retries (unless the deployment was cleared meanwhile).
+      // Remove exactly the lines we wrote (the head), leaving any appended while
+      // the insert was in flight for the next flush. Re-check the epoch: a clear
+      // that landed mid-insert already emptied the buffer, so removing here would
+      // drop fresh lines.
       if (bufferFor(depId).epoch === epochAtDrain) {
-        bufferFor(depId).lines.unshift(...batch);
+        bufferFor(depId).lines.splice(0, batch.length);
       }
+    } catch (err) {
+      // Best-effort: a failed flush must not crash the deploy. The lines stay at
+      // the buffer head (we never removed them), so a later flush retries them IN
+      // ORDER. Nothing to re-queue.
       console.error(`[deplo] deployment_logs flush failed for ${depId}:`, err);
     }
   });

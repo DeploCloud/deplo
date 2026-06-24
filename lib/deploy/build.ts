@@ -388,7 +388,7 @@ export async function startDeployment(
       ...(environment === "production" ? { productionUrl: url } : {}),
     })
     .where(eq(projectsTable.id, projectId));
-  recordActivity("deployment", `Deploying ${project.name}`, opts.creator, projectId);
+  await recordActivity("deployment", `Deploying ${project.name}`, opts.creator, projectId);
   // A new deployment flips the project to "queued" and sets latestDeployment —
   // push it to live subscribers so the header/tabs update without a reload.
   publishProjectChanged(projectId);

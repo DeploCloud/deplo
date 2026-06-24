@@ -355,3 +355,44 @@ test("project-graph backfill: a reconcile mismatch rolls the whole tx back", asy
   assert.equal((await db.select({ n: count() }).from(projects))[0]!.n, 0);
   assert.equal(await markerExists(db, CUT_SETS.projectGraph), false);
 });
+
+/* ------------------------------------------------------------------ */
+/* Legacy hardening — blank volume id + unknown framework (no rollback loop) */
+/* ------------------------------------------------------------------ */
+
+test("project-graph backfill: legacy blank-id volume + unknown framework copy + reconcile (no rollback loop)", async () => {
+  const d = buildSeed();
+  d.teams = [{ id: "team_a", name: "Alpha", slug: "alpha", plan: "pro", createdAt: T0 }];
+  d.users = [
+    {
+      id: "user_1", email: "owner@alpha.io", username: "owner", name: "Owner",
+      passwordHash: "h", role: "owner", isInstanceAdmin: true, avatarColor: "#abc", createdAt: T0,
+    },
+  ];
+  d.servers = [server("srv_1")];
+  // A legacy project: UNKNOWN framework, NO buildMethod/methodSettings (so
+  // normalizeBuildConfig reaches buildConfigFor), and a volume with a BLANK id
+  // (normalizeVolumes mints a fresh random id). Both are the exact shapes that
+  // made copy + reconcile disagree (random id) or throw (unknown framework).
+  const legacy = baseProject({ id: "prj_legacy", teamId: "team_a", serverId: "srv_1" });
+  (legacy as { framework: string }).framework = "totally-unknown-fw";
+  (legacy.build as { framework: string }).framework = "totally-unknown-fw";
+  (legacy.build as { buildMethod?: unknown }).buildMethod = undefined;
+  (legacy.build as { methodSettings?: unknown }).methodSettings = undefined;
+  legacy.volumes = [{ id: "", name: "", mountPath: "/data", readOnly: false }];
+  d.projects = [legacy];
+
+  // Must NOT throw (coerce-not-reject) and must reconcile cleanly (copy threads
+  // the same normalized array, so the minted volume id matches).
+  await runBackfill(db, CUT_SETS.projectGraph, d, projectGraphCutSetCopy);
+  assert.equal(await markerExists(db, CUT_SETS.projectGraph), true);
+  assert.equal((await db.select({ n: count() }).from(projects))[0]!.n, 1);
+  const build = await db.select().from(projectBuild).where(eq(projectBuild.projectId, "prj_legacy"));
+  assert.equal(build[0]!.framework, "other", "unknown framework coerced to 'other'");
+  const vols = await db.select().from(projectVolumes).where(eq(projectVolumes.projectId, "prj_legacy"));
+  assert.equal(vols.length, 1, "the blank-id volume copied (a fresh id minted, matched by reconcile)");
+
+  // Idempotent re-run is still a no-op (proves no rollback loop).
+  await runBackfill(db, CUT_SETS.projectGraph, d, projectGraphCutSetCopy);
+  assert.equal((await db.select({ n: count() }).from(projects))[0]!.n, 1);
+});

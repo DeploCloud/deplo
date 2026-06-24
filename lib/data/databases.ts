@@ -130,7 +130,7 @@ export async function createDatabase(input: {
     createdAt: nowIso(),
   };
   mutate((d) => d.databases.push(db));
-  recordActivity("database", `Created database ${name} (${input.type})`, user.name, null);
+  await recordActivity("database", `Created database ${name} (${input.type})`, user.name, null);
 
   // Provision the real container on the owning server's agent in the background;
   // flips to running/error.
@@ -300,7 +300,7 @@ export async function deleteDatabase(id: string): Promise<void> {
       d.databases = d.databases.filter((x) => x.id !== id);
       d.backups = d.backups.filter((b) => b.databaseId !== id);
     });
-    recordActivity(
+    await recordActivity(
       "database",
       orphanWarning
         ? `Deleted database ${db.name} (warning: ${orphanWarning})`

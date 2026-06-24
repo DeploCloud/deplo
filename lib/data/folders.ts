@@ -220,7 +220,7 @@ export async function createFolder(
       .insert(teamFolderOrder)
       .values({ teamId, folderId: folder.id, position: next });
   });
-  recordActivity("project", `Created folder ${folder.name}`, userName, null, teamId);
+  await recordActivity("project", `Created folder ${folder.name}`, userName, null, teamId);
   const { projectCounts, subfolderCounts } = await teamFoldersWithCounts(teamId);
   return summarizeFolder(folder, projectCounts, subfolderCounts);
 }
@@ -261,7 +261,7 @@ export async function renameFolder(id: string, name: string): Promise<void> {
     if (!(await folderInTeam(id, teamId))) throw new Error("Folder not found");
     return;
   }
-  recordActivity("project", `Renamed folder to ${clean}`, userName, null, teamId);
+  await recordActivity("project", `Renamed folder to ${clean}`, userName, null, teamId);
 }
 
 /**
@@ -287,7 +287,7 @@ export async function setFolderColor(
     .update(foldersTable)
     .set({ color: next, updatedAt: nowIso() })
     .where(eq(foldersTable.id, id));
-  recordActivity(
+  await recordActivity(
     "project",
     next ? `Changed colour of folder ${f.name}` : `Cleared colour of folder ${f.name}`,
     userName,
@@ -326,7 +326,7 @@ export async function moveFolder(
     .update(foldersTable)
     .set({ parentId: parentId ?? null, updatedAt: nowIso() })
     .where(eq(foldersTable.id, id));
-  if (msg) recordActivity("project", msg, userName, null, teamId);
+  if (msg) await recordActivity("project", msg, userName, null, teamId);
 }
 
 /**
@@ -357,7 +357,7 @@ export async function deleteFolder(id: string): Promise<void> {
       .where(and(eq(foldersTable.teamId, teamId), eq(foldersTable.parentId, id)));
     // The team_folder_order row CASCADEs when the folder row is deleted.
     await tx.delete(foldersTable).where(eq(foldersTable.id, id));
-    recordActivity("project", `Deleted folder ${f.name}`, userName, null, teamId);
+    await recordActivity("project", `Deleted folder ${f.name}`, userName, null, teamId);
   });
 }
 
@@ -395,7 +395,7 @@ export async function moveProjectToFolder(
     .update(projectsTable)
     .set({ folderId, updatedAt: nowIso() })
     .where(eq(projectsTable.id, projectId));
-  if (msg) recordActivity("project", msg, userName, projectId, teamId);
+  if (msg) await recordActivity("project", msg, userName, projectId, teamId);
 }
 
 /**
@@ -432,7 +432,7 @@ export async function moveProjectsToFolder(
     .set({ folderId, updatedAt: nowIso() })
     .where(inArray(projectsTable.id, toMove));
   const n = `${toMove.length} project${toMove.length === 1 ? "" : "s"}`;
-  recordActivity(
+  await recordActivity(
     "project",
     folderId ? `Moved ${n} to ${folderName}` : `Moved ${n} out of their folder`,
     userName,

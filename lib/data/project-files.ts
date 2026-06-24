@@ -308,5 +308,5 @@ export async function renameProjectFile(
 /** Record a project-scoped activity line for a files change. */
 async function note(projectId: string, message: string): Promise<void> {
   const user = await getCurrentUser();
-  recordActivity("project", message, user?.email ?? "system", projectId);
+  await recordActivity("project", message, user?.email ?? "system", projectId);
 }

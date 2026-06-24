@@ -294,7 +294,7 @@ export async function addExistingMember(input: {
         .values(caps.map((c) => ({ membershipId, capability: c })));
     }
   });
-  recordActivity(
+  await recordActivity(
     "member",
     `Added ${target.username} to the team`,
     await actorUsername(),
@@ -448,7 +448,7 @@ export async function removeMember(userId: string): Promise<void> {
       .delete(membershipsTable)
       .where(eq(membershipsTable.id, m.id));
   });
-  recordActivity(
+  await recordActivity(
     "member",
     `Removed ${username || "a member"} from the team`,
     await actorUsername(),
@@ -648,7 +648,7 @@ export async function updateUserAdmin(input: {
       .where(eq(usersTable.id, input.userId))
       .limit(1)
   )[0]!;
-  recordActivity(
+  await recordActivity(
     "member",
     `Updated user @${target.username}` +
       (newPassword ? " (password reset)" : ""),

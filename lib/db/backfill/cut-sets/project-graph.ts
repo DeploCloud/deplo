@@ -99,18 +99,29 @@ import { seedIdentityRoots } from "../roots";
 /* ------------------------------------------------------------------ */
 
 /** A project normalized to the current model + coerced enum-ish values, ready to
- *  explode into the strict child tables. */
+ *  explode into the strict child tables.
+ *
+ *  Framework is coerced FIRST — BEFORE `normalizeProject` (which reaches
+ *  `buildConfigFor`/`normalizeBuildConfig`, both of which index
+ *  `FRAMEWORKS[framework]` with NO fallback and would throw on an unknown legacy
+ *  id). Coercing up front upholds the cut-set's "coerce, never reject" invariant
+ *  (PLAN §7) — a legacy project with an unknown framework that also lacks
+ *  buildMethod/methodSettings must NOT crash the backfill. */
 function normalizeForGraph(p: Project): Project {
-  const np = normalizeProject(p);
+  const fw = coerceFramework(p.framework);
+  const coerced: Project = {
+    ...p,
+    framework: fw,
+    build: { ...p.build, framework: coerceFramework(p.build.framework) },
+  };
+  const np = normalizeProject(coerced);
   return {
     ...np,
-    framework: coerceFramework(np.framework),
     build: {
       ...np.build,
-      framework: coerceFramework(np.build.framework),
       buildMethod: coerceBuildMethod(
         np.build.buildMethod,
-        coerceFramework(np.build.framework),
+        np.build.framework as Project["framework"],
       ) as Project["build"]["buildMethod"],
     },
     dev: np.dev
@@ -280,7 +291,12 @@ async function copyProjectGraph(tx: BackfillTx, data: DeploData): Promise<void> 
   if (folderOrderRows.length > 0)
     await tx.insert(teamFolderOrder).values(folderOrderRows);
 
-  await reconcileProjectGraph(tx, data);
+  // Pass the SAME normalized projects the copy inserted into the reconcile —
+  // `normalizeForGraph` mints a fresh random id for a legacy volume with a blank
+  // id (`newId("vol")`), so re-normalizing in reconcile would generate DIFFERENT
+  // volume ids and the structural-equality check would fail forever (a permanent
+  // rollback loop). Threading the one array makes copy and reconcile agree.
+  await reconcileProjectGraph(tx, data, liveProjects);
 }
 
 /** Seed the `servers` rows a project's RESTRICT FK references, idempotently. */
@@ -338,13 +354,20 @@ function fail(msg: string): never {
  * `data` (PLAN §7). Counts are AFTER the orphan prune / order intersection, so
  * the expected values are computed over the SAME live sets the copy inserted.
  * Exported so a test can drive a mismatch the DB constraints alone wouldn't catch.
+ *
+ * `normalizedProjects` is the array the COPY inserted — passed in so reconcile
+ * never re-runs `normalizeForGraph` (which would mint different random volume ids
+ * for blank-id legacy volumes and fail the structural check). The direct test
+ * caller omits it (it only drives count mismatches), so it defaults to
+ * normalizing here.
  */
 export async function reconcileProjectGraph(
   tx: BackfillTx,
   data: DeploData,
+  normalizedProjects?: Project[],
 ): Promise<void> {
   const liveProjectIds = new Set(data.projects.map((p) => p.id));
-  const liveProjects = data.projects.map(normalizeForGraph);
+  const liveProjects = normalizedProjects ?? data.projects.map(normalizeForGraph);
 
   /* (1) projects + 1-to-1 children (one build + method-settings per project). */
   const projectCount = await rowCount(tx, projects);

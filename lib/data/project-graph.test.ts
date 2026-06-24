@@ -34,11 +34,14 @@ import {
   listProjects,
   reorderProjects,
   deleteProject,
+  createProject,
   summarizeForTeam,
 } from "./projects";
 import { addDomain, setPrimaryDomain, listDomains } from "./domains";
 import { upsertEnv, listEnv } from "./env";
 import { saveSharedEnvGroup, setSharedEnvGroupAttachment } from "./shared-env";
+import * as store from "../store";
+import type { Server } from "../types";
 
 /**
  * Step 4 project-graph data-layer tests (relational-store PLAN §3 cut-set (c) /
@@ -241,4 +244,39 @@ test("shared-group attach/detach toggles the junction", async () => {
   assert.equal((await db.select({ n: count() }).from(sharedEnvGroupProjects))[0]!.n, 1);
   await asUser1(() => setSharedEnvGroupAttachment(groupId, "prj_1", false));
   assert.equal((await db.select({ n: count() }).from(sharedEnvGroupProjects))[0]!.n, 0);
+});
+
+/* ------------------------------------------------------------------ */
+/* createProject slug uniqueness under concurrency                     */
+/* ------------------------------------------------------------------ */
+
+test("two concurrent same-name createProject calls both succeed with distinct slugs", async () => {
+  // createProject reads the server picklist from the JSONB store (servers stay
+  // JSONB-authoritative); seed one there. "upload" source skips the post-commit
+  // deploy (no agent dial), keeping the test hermetic.
+  const srv: Server = {
+    id: "srv_1", name: "srv", host: "10.0.0.1", type: "remote", status: "online",
+    ip: "10.0.0.1", dockerVersion: "27", traefikEnabled: true, cpuCores: 4,
+    memoryMb: 8192, diskGb: 100, cpuUsage: 1, memoryUsage: 1, diskUsage: 1,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  store.mutate((d) => {
+    d.servers = [srv];
+  });
+
+  const input = {
+    name: "My App",
+    framework: "node" as const,
+    source: "upload" as const,
+    repo: null,
+  };
+  const [a, b] = await asUser1(() =>
+    Promise.all([createProject(input), createProject(input)]),
+  );
+  // Both persisted, with DISTINCT slugs (the second retried past the unique
+  // violation onto the next free suffix).
+  assert.notEqual(a.slug, b.slug, "concurrent same-name creates get distinct slugs");
+  const rows = await db.select({ slug: projectsTable.slug }).from(projectsTable);
+  assert.equal(rows.length, 2);
+  assert.equal(new Set(rows.map((r) => r.slug)).size, 2, "two unique slugs persisted");
 });
