@@ -15,6 +15,20 @@
       "when": 1782208146461,
       "tag": "0001_volatile_joshua_kane",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782295396833,
+      "tag": "0002_reconcile_timestamptz",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782297146728,
+      "tag": "0003_rich_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

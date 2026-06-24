@@ -685,24 +685,28 @@ prerequisite). This is a **paradigm change**, not config: from the first Drizzle
 
 #### GATE RESULT (2026-06-24) — PASSED ✅, pglite is the test backend
 
-The spike ([lib/db/pglite-spike.test.ts](../../../lib/db/pglite-spike.test.ts),
+The spike (`lib/db/pglite-spike.test.ts`,
 `@electric-sql/pglite@0.5.3` added as a bun devDependency) validated all 8 features
 above: **10 checks green, full suite 392 pass / 0 fail**, the spike coexisting with the
-existing SQL-free in-memory tests. No Testcontainers fallback needed. The spike is a
-**throwaway** (raw `PGlite`, not the not-yet-existing Drizzle client) — delete it once
-Step 0/1 land the real schema + a Drizzle test harness. Two findings carry into the
-next steps:
+existing SQL-free in-memory tests. No Testcontainers fallback needed. The spike was a
+**throwaway** (raw `PGlite`, not the then-nonexistent Drizzle client); **it was deleted
+in Step 1** once [lib/db/test-harness.ts](../../../lib/db/test-harness.ts) landed the
+real schema + a Drizzle test harness, as planned. Two findings carried into the next
+steps:
 
-- **The timestamp choke point must be installed in TWO places, not one.** §1 frames the
-  type parser as a single node-postgres choke point in `pg.ts` (OIDs `1184`/`1114`).
-  pglite does **NOT** use node-postgres's global `pg.types` registry — by default it
-  returns a `timestamptz` as a JS **`Date`** (node-postgres returns a space-separated
-  `'…+00'` string); both break the 15+ lexicographic `createdAt` sorts. pglite has its
-  **own** `parsers` constructor option keyed by the same OIDs. The gate proved the
-  equivalent override (`v && new Date(v).toISOString()`) yields canonical `T…Z` and that
-  mixed-origin timestamps sort correctly. **Step 0 action:** install the parser in both
-  the production node-postgres client (`pg.ts`) **and** the pglite test client, sharing
-  one `isoTimestampParser` helper so the two regimes can't drift.
+- **The timestamp choke point — driver-level parser is NOT enough for the Drizzle read
+  path ([superseded] by Step 1).** This finding said to install the OID parser in two
+  places (the node-postgres `pg.ts` global + the pglite `parsers` option), both keyed by
+  OIDs `1184`/`1114`. The spike validated that against a **raw `PGlite.query()`**. But
+  Step 1 proved the relational data layer reads through **Drizzle**, which installs a
+  **per-query parser override returning the timestamp OIDs unchanged** — so the
+  driver-level parser is **bypassed for every timestamp read through the ORM** (in both
+  node-postgres and pglite). The real fix is `isoTimestamptz`
+  ([lib/db/schema/columns.ts](../../../lib/db/schema/columns.ts)), a custom column type
+  that canonicalises in Drizzle's codec layer (reusing the one `isoTimestampParser`),
+  applied to every `*_at` column. The driver OID parser still installed in `pg.ts`
+  serves the **legacy raw-query path** (`document-store.ts`/`lease.ts`) only. See the
+  Step 1 RESULT (§9) for the full correction.
 - **Plain `timestamp` (no tz) round-trips to a different hour — use `timestamptz`
   everywhere for `*_at`.** In the spike a `timestamp`-without-tz column read back an
   ISO write at a shifted hour (input interpreted without an offset), while `timestamptz`
@@ -791,6 +795,56 @@ normalize/coerce helpers. Nothing reads the new tables yet; no cut-set has run.
 *Test:* a `schema.test.ts` asserts the table set matches the design; an engine test
 seeds a `DeploData` doc and runs one cut-set's backfill against pglite, asserting
 element-granular fidelity + idempotent re-run + fresh-install marks-done-with-zero-rows.
+
+#### STEP 1 RESULT (2026-06-24) — DONE ✅
+
+All 41 control-plane tables (+ `store_migration`) are in
+[lib/db/schema/control-plane.ts](../../../lib/db/schema/control-plane.ts) with every
+child/junction, the three `seq` identity columns, the tri-state sentinels, and the
+FKs/indexes/CHECKs/partial-uniques/expression-indexes/pgEnums from §2;
+`db:generate` emitted [migration 0003](../../../lib/db/migrations) and reports no
+drift. The **backfill engine** lives in [lib/db/backfill/](../../../lib/db/backfill/):
+per-cut-set `store_migration` markers (`markers.ts`), the `scheduler_lease`-CAS +
+poll-for-marker loop with a winner heartbeat (`gate.ts`), the FK-ordered copy
+transaction with the marker written last (`engine.ts`), the shared FK-root seed
+(`roots.ts`), the normalize/coerce helpers (`normalize.ts`), and the leaf cut-set's
+copy + element-granular reconcile (`cut-sets/leaf.ts`). Tests:
+`schema.test.ts` (table set / enums / load-bearing constraints / identity `seq`),
+`backfill/engine.test.ts` (leaf fidelity + idempotent re-run + fresh-install-zero +
+rollback-on-failure + reconcile-drift), `backfill/gate.test.ts` (winner/loser
+blocking). **Full suite 400 pass / 0 fail.** Two refinements made during build:
+
+- **Timestamps need a Drizzle `customType`, not the driver OID parser, for the
+  relational read path.** §1 framed the OID parser as the single choke point, but the
+  data layer reads through Drizzle, which installs a PER-QUERY parser override that
+  returns the timestamp OIDs unchanged — so the process-global `pg.types` parser is
+  bypassed for every timestamp read through the ORM (in BOTH node-postgres and
+  pglite). And Drizzle's own codec doesn't help: `mode:"date"` wraps into a `Date`,
+  `mode:"string"` returns the space-separated `'…+00'` form — neither yields the
+  canonical `T…Z` string the 15+ lexicographic sorts need. The fix is `isoTimestamptz`
+  ([lib/db/schema/columns.ts](../../../lib/db/schema/columns.ts)), a `timestamp with
+  time zone` customType whose `fromDriver` canonicalises in Drizzle's codec layer
+  (reusing the one `isoTimestampParser`), used for every `*_at` column. The driver OID
+  parser stays for the legacy RAW-query path (`document-store.ts`/`lease.ts`) only.
+  The DDL is identical to `timestamptz`. (The `client.ts`/`pg.ts`/`test-harness.ts`
+  comments were corrected to state this accurately — do NOT delete the customType
+  thinking the global parser covers Drizzle reads; it does not.)
+- **A cut-set before identity must seed its FK roots.** The leaf cut-set (a) runs
+  FIRST (PLAN §3) but its `team_id`/`user_id` NOT-NULL FKs reference `teams`/`users`,
+  which cut-set (b) owns. `roots.ts` seeds those root rows idempotently
+  (`ON CONFLICT DO NOTHING`) from the JSONB so the leaf FKs resolve without (a)
+  owning identity; (b)'s later authoritative copy no-ops over the same keys.
+- **The engine normalizes the document before any cut-set explodes it.** Store rows
+  are never rewritten today — `migrate()`/`normalize()` run only on the in-memory
+  hydrate, never persisted — so the live JSONB the backfill copies from still carries
+  raw legacy rows (no `teamId`/`userId`, un-stamped `targetKind`, legacy
+  `notificationSettings`). `runBackfill` calls `normalizeForBackfill` (the same
+  `buildSeed`-backfill + `migrate` the read path uses) FIRST, honoring §7's "normalize
+  BEFORE exploding" for every cut-set in one place — otherwise a legacy instance would
+  FK-violate the NOT-NULL leaf inserts and roll back forever (un-migratable).
+
+The throwaway `lib/db/pglite-spike.test.ts` was deleted (its header mandated this once
+Step 0/1 land the schema + a Drizzle test harness — now `lib/db/test-harness.ts`).
 
 **Step 2 — Cut-set (a): leaf collections.** Migrate `apiTokens`,
 `notificationSettings`, `registries`, `installedApps` **atomically** (schema reads +

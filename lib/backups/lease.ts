@@ -84,36 +84,24 @@ function releaseLocal(name: string, owner: string): void {
 /* Postgres CAS                                                         */
 /* ------------------------------------------------------------------ */
 
-async function ensureLeaseTable(): Promise<void> {
-  // Mirrors lib/db/migrations/0001 + schema.ts. Created on demand so the
-  // scheduler works even before `db:migrate` runs (matches document-store.ts).
-  // Column types mirror the Drizzle migration (0001) + schema.ts exactly —
-  // plain `timestamp` (the Drizzle default), not `timestamptz`. The staleness
-  // comparison is server-side against `now()` so the tz choice is correctness-
-  // neutral, but the on-demand DDL and the migration must not drift.
-  await getPool().query(
-    `CREATE TABLE IF NOT EXISTS scheduler_lease (
-       name text PRIMARY KEY,
-       owner text NOT NULL,
-       heartbeat_at timestamp NOT NULL DEFAULT now(),
-       acquired_at timestamp NOT NULL DEFAULT now()
-     )`,
-  );
-}
-
 /**
  * Atomically claim or renew the lease in Postgres. The single `INSERT … ON
  * CONFLICT DO UPDATE … WHERE` does the whole CAS server-side, so two instances
  * racing the same tick can never both win: the conflicting update only fires when
  * the existing row is ours OR stale, and `RETURNING` tells us whether our row
  * stands. `acquired_at` advances only on a true (re-)acquisition, not a renew.
+ *
+ * Table creation is owned by the Drizzle migrations (`scheduler_lease` is declared
+ * in `schema/legacy.ts` as `timestamptz`). The old on-demand `CREATE TABLE IF NOT
+ * EXISTS` was removed in relational-store Step 0 so a single regime owns the
+ * schema (PLAN §8). The staleness comparison is server-side against `now()`, so
+ * the column tz is correctness-neutral for the CAS itself.
  */
 async function acquirePostgres(
   name: string,
   owner: string,
   staleMs: number,
 ): Promise<boolean> {
-  await ensureLeaseTable();
   const staleSeconds = Math.floor(staleMs / 1000);
   const res = await getPool().query<{ owner: string }>(
     `INSERT INTO scheduler_lease (name, owner, heartbeat_at, acquired_at)
@@ -136,7 +124,6 @@ async function acquirePostgres(
 }
 
 async function releasePostgres(name: string, owner: string): Promise<void> {
-  await ensureLeaseTable();
   // Only the holder releases — a stale-steal by someone else must not be undone.
   await getPool().query(
     `DELETE FROM scheduler_lease WHERE name = $1 AND owner = $2`,

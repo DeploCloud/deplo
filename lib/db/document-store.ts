@@ -9,22 +9,18 @@ import type { DeploData } from "../types";
  * The whole `DeploData` object is stored as one JSONB row. This keeps the
  * existing synchronous data-access layer intact (it reads from an in-memory
  * cache hydrated from here) while making Postgres the durable system of record.
+ *
+ * Table creation is owned by the Drizzle migrations (`deplo_state` is declared in
+ * `schema/legacy.ts`), NOT by on-demand DDL here. The old `CREATE TABLE IF NOT
+ * EXISTS` was removed in relational-store Step 0 so a single regime owns the
+ * schema; `db:migrate` must have run before these functions are reached (a known
+ * operational TODO for non-Docker dev — PLAN §8 "Migration runs as an explicit
+ * step").
  */
 
 const ROW_ID = "singleton";
 
-async function ensureTable(): Promise<void> {
-  await getPool().query(
-    `CREATE TABLE IF NOT EXISTS deplo_state (
-       id text PRIMARY KEY,
-       data jsonb NOT NULL,
-       updated_at timestamptz NOT NULL DEFAULT now()
-     )`
-  );
-}
-
 export async function loadDocument(): Promise<DeploData | null> {
-  await ensureTable();
   const res = await getPool().query<{ data: DeploData }>(
     "SELECT data FROM deplo_state WHERE id = $1",
     [ROW_ID]
@@ -33,7 +29,6 @@ export async function loadDocument(): Promise<DeploData | null> {
 }
 
 export async function saveDocument(data: DeploData): Promise<void> {
-  await ensureTable();
   await getPool().query(
     `INSERT INTO deplo_state (id, data, updated_at)
      VALUES ($1, $2::jsonb, now())
