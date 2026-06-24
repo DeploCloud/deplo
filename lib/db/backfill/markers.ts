@@ -14,12 +14,17 @@ import type { BackfillDb, BackfillTx } from "./types";
  * back both the rows and the marker, and the next boot re-runs the whole copy.
  */
 
-/** The four cut-sets, in migration order (PLAN §3 "The four cut-sets"). */
+/**
+ * The cut-sets, in migration order (PLAN §3 "The four cut-sets" + the cut-set (e)
+ * added at Step 6 for the collections a–d never migrated: servers / github /
+ * dev_ssh_user / activities / invites).
+ */
 export const CUT_SETS = {
   leaf: "backfill_leaf",
   identity: "backfill_identity",
   projectGraph: "backfill_project_graph",
   backups: "backfill_backups",
+  infra: "backfill_infra",
 } as const;
 
 export type CutSet = (typeof CUT_SETS)[keyof typeof CUT_SETS];

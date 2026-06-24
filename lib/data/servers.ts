@@ -1,16 +1,18 @@
 import "server-only";
 
 import { headers } from "next/headers";
-import { eq } from "drizzle-orm";
-import { read, mutate } from "../store";
+import { asc, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { projects as projectsTable } from "../db/schema/control-plane";
+import {
+  projects as projectsTable,
+  servers as serversTable,
+} from "../db/schema/control-plane";
+import { assembleServer, serverToRow } from "./infra-rows";
 import { assertUser, getCurrentUser } from "../auth";
 import { requireCapability } from "../membership";
 import { newId, nowIso } from "../ids";
 import { resolvePublicBaseUrl } from "../public-url";
 import { recordActivity } from "./activity";
-import { ensureServerRow, deleteServerRow } from "./server-row";
 import {
   mintBootstrap,
   installCommand,
@@ -21,17 +23,48 @@ import {
 } from "../agent/bootstrap";
 import type { Server } from "../types";
 
+/**
+ * `servers` is RELATIONAL as of cut-set (e) (relational-store PLAN Step 6). It is
+ * instance-wide infra (no `team_id`), read/written directly through the `servers`
+ * table here. The old JSONB `read().servers`/`mutate()` paths and the
+ * `server-row.ts` mirror bridge (which kept the relational row in sync while
+ * `servers` was JSONB-authoritative for cut-set (c)'s `projects.server_id` FK) are
+ * gone — this module now owns the table outright.
+ */
+
+/**
+ * All servers by creation order (internal; NO auth gate). Exported for the
+ * consumers that iterate every server (metrics fan-out, summary join, S3 dest
+ * server picklist) and already enforce their own auth — they read the relational
+ * `servers` table through this instead of the deleted `read().servers`.
+ */
+export async function listAllServers(): Promise<Server[]> {
+  const rows = await getDb()
+    .select()
+    .from(serversTable)
+    .orderBy(asc(serversTable.createdAt));
+  return rows.map(assembleServer);
+}
+
+/** One server by id (internal; no auth gate). Null when unknown. */
+export async function getServerById(id: string): Promise<Server | null> {
+  const rows = await getDb()
+    .select()
+    .from(serversTable)
+    .where(eq(serversTable.id, id))
+    .limit(1);
+  return rows[0] ? assembleServer(rows[0]) : null;
+}
+
 export async function listServers(): Promise<Server[]> {
   await assertUser();
   // By creation order — every server is a uniform bootstrapped agent now.
-  return [...read().servers].sort((a, b) =>
-    a.createdAt < b.createdAt ? -1 : 1,
-  );
+  return listAllServers();
 }
 
 export async function getServer(id: string): Promise<Server | null> {
   await assertUser();
-  return read().servers.find((x) => x.id === id) || null;
+  return getServerById(id);
 }
 
 /**
@@ -41,7 +74,12 @@ export async function getServer(id: string): Promise<Server | null> {
  */
 export async function getPrimaryServer(): Promise<Server | null> {
   await assertUser();
-  return read().servers[0] ?? null;
+  const rows = await getDb()
+    .select()
+    .from(serversTable)
+    .orderBy(asc(serversTable.createdAt))
+    .limit(1);
+  return rows[0] ? assembleServer(rows[0]) : null;
 }
 
 export interface AddServerInput {
@@ -98,10 +136,7 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
     createdAt: nowIso(),
     bootstrap: stored,
   };
-  mutate((d) => d.servers.push(server));
-  // Mirror the relational `servers` row so a project's `server_id` FK resolves
-  // (servers stay JSONB-authoritative; cut-set (c) bridge — see server-row.ts).
-  await ensureServerRow(server);
+  await getDb().insert(serversTable).values(serverToRow(server));
   await recordActivity("member", `Connected server ${server.name}`, user.name, null, membership.teamId);
 
   return {
@@ -118,7 +153,7 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
  */
 export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   await requireCapability("manage_infra");
-  const server = read().servers.find((s) => s.id === id);
+  const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
   if (server.agent)
     throw new Error("This server is already provisioned; remove it to re-provision");
@@ -126,14 +161,16 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   const { rawToken, stored } = mintBootstrap();
   const baseUrl = resolvePublicBaseUrl(await headers());
   const fingerprint = await controlPlaneCertFingerprint(baseUrl);
-  mutate((d) => {
-    const s = d.servers.find((x) => x.id === id);
-    if (s) {
-      s.bootstrap = stored;
-      s.status = "provisioning";
-    }
-  });
-  const fresh = read().servers.find((s) => s.id === id)!;
+  await getDb()
+    .update(serversTable)
+    .set({
+      bootstrapTokenHash: stored.tokenHash,
+      bootstrapExpiresAt: stored.expiresAt,
+      bootstrapUsedAt: stored.usedAt,
+      status: "provisioning",
+    })
+    .where(eq(serversTable.id, id));
+  const fresh = (await getServerById(id))!;
   return { server: fresh, installCommand: installCommand({ baseUrl, rawToken, fingerprint }) };
 }
 
@@ -153,11 +190,13 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
 export async function removeServer(id: string): Promise<{ warning: string | null }> {
   const { membership } = await requireCapability("manage_infra");
   const user = (await getCurrentUser())!;
-  const server = read().servers.find((s) => s.id === id);
+  const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
 
   // (b) Block while projects are assigned — a conscious decision by the operator.
-  // Projects are relational now; count this server's projects directly.
+  // Projects are relational; count this server's projects directly (also: the
+  // `projects.server_id` FK is RESTRICT, so the DELETE below would fail anyway —
+  // this gives a clear message before the teardown work).
   const assigned = await getDb()
     .select({ id: projectsTable.id })
     .from(projectsTable)
@@ -166,21 +205,18 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   if (assigned.length > 0)
     throw new Error("Move or delete projects on this server first");
 
-  // Snapshot the trust material BEFORE revoking. `read()` returns the live cache,
-  // so `server` is a reference the revoke mutate below clears in place — capture
-  // a frozen copy now (with its original pinned cert) so the teardown can still
-  // dial the agent, and so the "was it provisioned?" decision is the pre-revoke
-  // truth, not the post-revoke "".
+  // The teardown dials the agent with its CURRENT (pre-revoke) trust material, so
+  // capture it before the revoke below clears the pinned cert.
   const snapshot: Server = { ...server, agent: server.agent ? { ...server.agent } : undefined };
   const wasProvisioned = Boolean(server.agent?.certFingerprint) || server.status === "online";
 
   // (a) Revoke trust FIRST, unconditionally: clear the pinned cert so even if
   // every later step fails, the agent's badge is already dead. Persisted before
   // any network call so a crash mid-teardown still leaves trust revoked.
-  mutate((d) => {
-    const s = d.servers.find((x) => x.id === id);
-    if (s?.agent) s.agent.certFingerprint = "";
-  });
+  await getDb()
+    .update(serversTable)
+    .set({ agentCertFingerprint: "" })
+    .where(eq(serversTable.id, id));
 
   // (c) Best-effort remote teardown. Import lazily so removing a server doesn't
   // force the agent-client (and its grpc deps) into modules that never deploy.
@@ -198,12 +234,7 @@ export async function removeServer(id: string): Promise<{ warning: string | null
     }
   }
 
-  mutate((d) => {
-    d.servers = d.servers.filter((s) => s.id !== id);
-  });
-  // Drop the mirrored relational row (the (b) blocks removal while projects are
-  // assigned, so its RESTRICT FK has no dependents at this point).
-  await deleteServerRow(id);
+  await getDb().delete(serversTable).where(eq(serversTable.id, id));
   await recordActivity("member", `Removed server ${server.name}`, user.name, null, membership.teamId);
   return { warning };
 }
@@ -227,7 +258,7 @@ export async function removeServer(id: string): Promise<{ warning: string | null
 export async function updateServerAgent(id: string): Promise<{ version: string }> {
   const { membership } = await requireCapability("manage_infra");
   const user = (await getCurrentUser())!;
-  const server = read().servers.find((s) => s.id === id);
+  const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
   if (!server.agent?.certFingerprint)
     throw new Error("This server is not provisioned yet — finish provisioning before updating its agent");
@@ -242,10 +273,10 @@ export async function updateServerAgent(id: string): Promise<{ version: string }
 
   // Record the new version optimistically; the next Hello (markServerSeen)
   // refreshes it from the live agent regardless, so this is just a faster echo.
-  mutate((d) => {
-    const s = d.servers.find((x) => x.id === id);
-    if (s?.agent) s.agent.version = result.version;
-  });
+  await getDb()
+    .update(serversTable)
+    .set({ agentVersion: result.version })
+    .where(eq(serversTable.id, id));
   await recordActivity(
     "member",
     `Updated agent on ${server.name} to v${result.version}`,
@@ -287,46 +318,46 @@ export interface BootstrapCompletion {
  * (never a self-reported one), then atomically pins the cert fingerprint, clears
  * the bootstrap token (single-use), and flips `provisioning -> online`.
  *
- * The check-sign-consume is split: signing (CSR crypto) happens outside the
- * mutate, then a single mutate re-validates the token is still unused and pins
- * the result, so a double-submit can't provision twice (the loser sees the token
- * already consumed and throws).
+ * The check-sign-consume is split: signing (CSR crypto) happens first, then a
+ * single conditional UPDATE re-validates the token is still unused and pins the
+ * result. The `WHERE bootstrap_used_at IS NULL` predicate makes the consume
+ * single-use under concurrency — a double-submit's loser updates 0 rows and throws
+ * (replacing the old in-memory mutate() re-check).
  */
 export async function completeBootstrap(
   call: BootstrapCallHome,
 ): Promise<BootstrapCompletion> {
-  // Validate against the current store (throws a typed BootstrapError on a bad
+  // Validate against the current servers (throws a typed BootstrapError on a bad
   // / expired / used token).
-  const server = findServerForToken(read().servers, call.token);
+  const server = findServerForToken(await listAllServers(), call.token);
   // The cert SANs are the address WE will dial — the operator-declared host/ip
   // on the row, plus a self-reported host only if it matches (defence in depth).
   const dialHosts = [server.ip, server.host].filter(Boolean);
   const signed = await signBootstrapCsr(call.csrPem, dialHosts);
   const port = call.agentPort && call.agentPort > 0 ? call.agentPort : DEFAULT_AGENT_PORT;
 
-  // Atomic consume + pin: re-find under the lock and re-check the token is still
-  // unused so concurrent call-homes can't both provision.
-  let consumed = false;
-  mutate((d) => {
-    const s = d.servers.find((x) => x.id === server.id);
-    if (!s || !s.bootstrap || s.bootstrap.usedAt) return; // lost the race
-    s.bootstrap.usedAt = nowIso();
-    s.agent = {
-      port,
-      certFingerprint: signed.fingerprint,
-      certPem: signed.certPem,
-      version: "",
-    };
-    s.status = "online";
-    s.lastSeenAt = nowIso();
-    consumed = true;
-  });
-  if (!consumed) {
+  // Atomic consume + pin: the conditional UPDATE only fires while the token is
+  // still unused, so concurrent call-homes can't both provision (the loser
+  // updates 0 rows). `RETURNING id` tells us whether we won.
+  const now = nowIso();
+  const won = await getDb()
+    .update(serversTable)
+    .set({
+      bootstrapUsedAt: now,
+      agentPort: port,
+      agentCertFingerprint: signed.fingerprint,
+      agentCertPem: signed.certPem,
+      agentVersion: "",
+      status: "online",
+      lastSeenAt: now,
+    })
+    .where(
+      sql`${serversTable.id} = ${server.id} and ${serversTable.bootstrapTokenHash} is not null and ${serversTable.bootstrapUsedAt} is null`,
+    )
+    .returning({ id: serversTable.id });
+  if (won.length === 0) {
     throw new Error("bootstrap token was already consumed");
   }
-  // Mirror the now-online server (agent material + status) into the relational row.
-  const provisioned = read().servers.find((s) => s.id === server.id);
-  if (provisioned) await ensureServerRow(provisioned);
   return { certPem: signed.certPem, caPem: signed.caPem };
 }
 
@@ -336,17 +367,25 @@ export async function completeBootstrap(
  * `traefikEnabled` from the live Hello (whether a Traefik proxy is running on the
  * host) — read-live-not-stored, so the badge self-corrects if Traefik later stops
  * or is added, instead of the hardcoded false a remote row is born with.
+ *
+ * Async + self-swallowing (like `recordActivity`): callers fire-and-forget it
+ * (`void markServerSeen(...)`), so a write failure never disrupts the live read.
  */
-export function markServerSeen(
+export async function markServerSeen(
   id: string,
   agentVersion?: string,
   traefikRunning?: boolean,
-): void {
-  mutate((d) => {
-    const s = d.servers.find((x) => x.id === id);
-    if (!s) return;
-    s.lastSeenAt = nowIso();
-    if (agentVersion && s.agent) s.agent.version = agentVersion;
-    if (typeof traefikRunning === "boolean") s.traefikEnabled = traefikRunning;
-  });
+): Promise<void> {
+  try {
+    const set: Record<string, unknown> = { lastSeenAt: nowIso() };
+    // `agentVersion` only applies when an agent exists (the old code guarded with
+    // `if (s.agent)`); a CASE keeps the version pinned to that condition in one
+    // atomic UPDATE — a NULL `agent_port` (unprovisioned) leaves the version NULL.
+    if (agentVersion)
+      set.agentVersion = sql`case when ${serversTable.agentPort} is not null then ${agentVersion} else ${serversTable.agentVersion} end`;
+    if (typeof traefikRunning === "boolean") set.traefikEnabled = traefikRunning;
+    await getDb().update(serversTable).set(set).where(eq(serversTable.id, id));
+  } catch (e) {
+    console.error("[deplo] markServerSeen failed:", e);
+  }
 }

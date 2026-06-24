@@ -2,7 +2,8 @@ import "server-only";
 
 import { eq } from "drizzle-orm";
 
-import { read } from "../store";
+import { getServerById } from "./servers";
+import { projectHasDevSshUsers } from "./dev-ssh";
 import { getDb } from "../db/client";
 import { projectDev as projectDevTable } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
@@ -213,7 +214,7 @@ export async function startDevContainer(projectId: string): Promise<void> {
   // so only when users actually exist, never opening port 2222 otherwise). The
   // gateway is a separate singleton that survives dev-container restarts; this is
   // best-effort drift repair, not a hard dependency of the start.
-  if (read().devSshUsers.some((u) => u.projectId === projectId)) {
+  if (await projectHasDevSshUsers(projectId)) {
     await ensureGateway(p.serverId).catch(() => {});
   }
   await recordActivity("project", "Started dev container", user.name, projectId);
@@ -292,7 +293,7 @@ export async function deployDevWorkspace(
   // a friendly error. For a REMOTE project the workspace lives on the agent, so
   // the check runs THERE (the agent's DEV_WORKSPACE build errors clearly on an
   // empty/missing workspace) — a local check would read the wrong host's disk.
-  const server = read().servers.find((s) => s.id === p.serverId);
+  const server = await getServerById(p.serverId);
   if (server?.type !== "remote" && !(await workspaceHasSource(p.slug))) {
     throw new Error(
       "No files to deploy yet. Start dev mode at least once so the workspace has source.",

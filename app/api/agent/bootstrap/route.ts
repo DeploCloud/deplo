@@ -7,8 +7,8 @@ import { signResponse, BootstrapError } from "@/lib/agent/bootstrap";
  * caller is a brand-new agent that has no session and no mTLS identity yet — its
  * trust comes entirely from the single-use bootstrap token (operator
  * authorisation) + the CSR's proof-of-possession, NOT from a logged-in user. So,
- * like the GitHub webhook, it bypasses getCurrentUser() and hydrates the store
- * itself.
+ * like the GitHub webhook, it bypasses getCurrentUser() and must run the backfill
+ * gate (ensureStoreReady) itself before reading the relational `servers` table.
  *
  * Flow:
  *   1. The agent has already authenticated US (P2/P3): over HTTPS it pinned our

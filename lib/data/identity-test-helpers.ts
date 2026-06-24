@@ -9,15 +9,13 @@ import { capabilitiesForRole } from "../membership-shared";
 import { hashPassword, sha256Hex } from "../crypto";
 import type { TestDb } from "../db/test-harness";
 import type { Capability, Role } from "../types";
-import * as store from "../store";
 
 /**
  * Shared seeding for the identity cut-set (b) data-layer tests (relational-store
  * PLAN Step 3). Identity (`users`/`teams`/`memberships`(+capabilities) +
  * `registrationLinks`) is RELATIONAL: the authz backbone and `getCurrentUser`
- * read pglite. So this seeds the relational identity tables directly and resets
- * the JSONB store (any residual JSONB read path — `recordActivity` team fallback,
- * `getUserDetail` activities — sees a clean document).
+ * read pglite. So this seeds the relational identity tables directly. The JSONB
+ * store is gone (Step 6), so there is nothing else to reset.
  *
  * The caller drives the data functions inside `runWithIdentity({userId, teamId})`
  * so the cookie-free principal/team is visible without a request scope.
@@ -70,8 +68,6 @@ export async function seedIdentity(
 ): Promise<void> {
   const seedTeams = opts.teams ?? DEFAULT_TEAMS;
   const seedUsers = opts.users ?? DEFAULT_USERS;
-
-  store.reseed();
 
   await db.insert(teams).values(
     seedTeams.map((t) => ({

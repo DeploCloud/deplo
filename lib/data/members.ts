@@ -2,7 +2,6 @@ import "server-only";
 
 import { headers } from "next/headers";
 import { and, count, desc, eq, gte, inArray, notInArray, or, sql } from "drizzle-orm";
-import { read } from "../store";
 import { getDb, type DbTx } from "../db/client";
 import {
   memberships as membershipsTable,
@@ -14,7 +13,7 @@ import {
 import { newId, nowIso } from "../ids";
 import { sha256Hex, randomToken, hashPassword } from "../crypto";
 import { getCurrentUser } from "../auth";
-import { recordActivity } from "./activity";
+import { recordActivity, listActivityByActor } from "./activity";
 import {
   requireCapability,
   requireActiveTeamId,
@@ -24,7 +23,6 @@ import {
 } from "../membership";
 import { resolvePublicBaseUrl } from "../public-url";
 import type {
-  Activity,
   Capability,
   RegistrationLink,
   Role,
@@ -539,12 +537,11 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     .from(membershipsTable)
     .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId))
     .where(eq(membershipsTable.userId, userId));
-  // Activity is still JSONB (cut-set c/d); attributed by actor = username.
-  const recentActivity = read()
-    .activities.filter((a: Activity) => a.actor === u.username)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, 10)
-    .map((a) => ({ message: a.message, createdAt: a.createdAt }));
+  // Activity is relational (cut-set e); attributed by actor = username.
+  const recentActivity = (await listActivityByActor(u.username, 10)).map((a) => ({
+    message: a.message,
+    createdAt: a.createdAt,
+  }));
   return {
     userId: u.id,
     username: u.username,

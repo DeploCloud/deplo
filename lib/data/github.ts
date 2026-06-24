@@ -1,6 +1,18 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { and, eq, inArray } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import {
+  githubApps as githubAppsTable,
+  githubInstallation as githubInstallationTable,
+} from "../db/schema/control-plane";
+import {
+  assembleGithubApp,
+  assembleGithubInstallation,
+  githubAppToRow,
+  githubInstallationToRow,
+} from "./infra-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
@@ -9,14 +21,12 @@ import { recordActivity } from "./activity";
 import type { GithubApp, GithubInstallation } from "../types";
 import type { ManifestConversion } from "../github/manifest";
 
-/** Ids of GitHub apps owned by the active team (for installation scoping). */
-function teamAppIds(teamId: string): Set<string> {
-  return new Set(
-    (read().githubApps ?? [])
-      .filter((a) => a.teamId === teamId)
-      .map((a) => a.id),
-  );
-}
+/**
+ * `github_apps` + `github_installation` are RELATIONAL as of cut-set (e)
+ * (relational-store PLAN Step 6). Installations are scoped to a team THROUGH their
+ * parent app (`github_installation` has no `team_id`), so team-filtered queries
+ * join through `github_apps.team_id`.
+ */
 
 /** Client-safe view of a connected App and its installations (no secrets). */
 export interface GithubInstallationDTO {
@@ -63,19 +73,39 @@ function toAppDTO(app: GithubApp, installs: GithubInstallation[]): GithubAppDTO 
 
 export async function listGithubApps(): Promise<GithubAppDTO[]> {
   const teamId = await requireActiveTeamId();
-  const d = read();
-  return (d.githubApps ?? [])
-    .filter((a) => a.teamId === teamId)
-    .map((a) => toAppDTO(a, d.githubInstallations ?? []));
+  const db = getDb();
+  const appRows = await db
+    .select()
+    .from(githubAppsTable)
+    .where(eq(githubAppsTable.teamId, teamId));
+  const apps = appRows.map(assembleGithubApp);
+  if (apps.length === 0) return [];
+  // One query for every installation of the team's apps (no N+1).
+  const installRows = await db
+    .select()
+    .from(githubInstallationTable)
+    .where(
+      inArray(
+        githubInstallationTable.appId,
+        apps.map((a) => a.id),
+      ),
+    );
+  const installs = installRows.map(assembleGithubInstallation);
+  return apps.map((a) => toAppDTO(a, installs));
 }
 
 /** Installations of the active team's connected Apps (for repo source pickers). */
 export async function listGithubInstallations(): Promise<GithubInstallationDTO[]> {
   const teamId = await requireActiveTeamId();
-  const appIds = teamAppIds(teamId);
-  return (read().githubInstallations ?? [])
-    .filter((i) => appIds.has(i.appId))
-    .map(toInstallationDTO);
+  const rows = await getDb()
+    .select({ install: githubInstallationTable })
+    .from(githubInstallationTable)
+    .innerJoin(
+      githubAppsTable,
+      eq(githubAppsTable.id, githubInstallationTable.appId),
+    )
+    .where(eq(githubAppsTable.teamId, teamId));
+  return rows.map((r) => toInstallationDTO(assembleGithubInstallation(r.install)));
 }
 
 /** Persist a newly-created App from its manifest conversion. Secrets encrypted. */
@@ -97,9 +127,7 @@ export async function createGithubApp(
     htmlUrl: conversion.html_url,
     createdAt: nowIso(),
   };
-  mutate((d) => {
-    (d.githubApps ??= []).push(app);
-  });
+  await getDb().insert(githubAppsTable).values(githubAppToRow(app));
   await recordActivity("member", `Connected GitHub App ${app.name}`, user.name, null, membership.teamId);
   return app;
 }
@@ -107,12 +135,19 @@ export async function createGithubApp(
 /** True once the active team has at least one App connected. */
 export async function hasGithubApp(): Promise<boolean> {
   const teamId = await requireActiveTeamId();
-  return (read().githubApps ?? []).some((a) => a.teamId === teamId);
+  const rows = await getDb()
+    .select({ id: githubAppsTable.id })
+    .from(githubAppsTable)
+    .where(eq(githubAppsTable.teamId, teamId))
+    .limit(1);
+  return rows.length > 0;
 }
 
 /**
  * Record (or refresh) an installation of a connected App. Called from the
- * post-install setup redirect. Idempotent on the numeric installation id.
+ * post-install setup redirect. Idempotent on the numeric installation id (the
+ * `github_installation.installation_id` UNIQUE backs the ON CONFLICT upsert; the
+ * existing `created_at` is left untouched on conflict, per PLAN §2).
  */
 export async function upsertInstallation(input: {
   appDbId: string;
@@ -123,39 +158,45 @@ export async function upsertInstallation(input: {
 }): Promise<GithubInstallation> {
   const { membership } = await requireCapability("manage_infra");
   const user = (await getCurrentUser())!;
+  const db = getDb();
   // The App this installation attaches to must belong to the caller's active
   // team — otherwise a member of team B could refresh/repoint an installation
   // of team A's GitHub App (cross-tenant write).
-  const app = (read().githubApps ?? []).find(
-    (a) => a.id === input.appDbId && a.teamId === membership.teamId,
-  );
-  if (!app) throw new Error("GitHub App not found");
-  let result: GithubInstallation | null = null;
-  mutate((d) => {
-    d.githubInstallations ??= [];
-    const existing = d.githubInstallations.find(
-      (i) => i.installationId === input.installationId,
-    );
-    if (existing) {
-      existing.appId = input.appDbId;
-      existing.accountLogin = input.accountLogin;
-      existing.accountType = input.accountType;
-      existing.avatarUrl = input.avatarUrl;
-      result = existing;
-      return;
-    }
-    const created: GithubInstallation = {
-      id: newId("ghi"),
-      appId: input.appDbId,
-      installationId: input.installationId,
-      accountLogin: input.accountLogin,
-      accountType: input.accountType,
-      avatarUrl: input.avatarUrl,
-      createdAt: nowIso(),
-    };
-    d.githubInstallations.push(created);
-    result = created;
-  });
+  const app = await db
+    .select({ id: githubAppsTable.id })
+    .from(githubAppsTable)
+    .where(
+      and(
+        eq(githubAppsTable.id, input.appDbId),
+        eq(githubAppsTable.teamId, membership.teamId),
+      ),
+    )
+    .limit(1);
+  if (app.length === 0) throw new Error("GitHub App not found");
+
+  const created: GithubInstallation = {
+    id: newId("ghi"),
+    appId: input.appDbId,
+    installationId: input.installationId,
+    accountLogin: input.accountLogin,
+    accountType: input.accountType,
+    avatarUrl: input.avatarUrl,
+    createdAt: nowIso(),
+  };
+  const [row] = await db
+    .insert(githubInstallationTable)
+    .values(githubInstallationToRow(created))
+    .onConflictDoUpdate({
+      target: githubInstallationTable.installationId,
+      // Refresh the attaching app + account fields; never touch created_at.
+      set: {
+        appId: input.appDbId,
+        accountLogin: input.accountLogin,
+        accountType: input.accountType,
+        avatarUrl: input.avatarUrl,
+      },
+    })
+    .returning();
   await recordActivity(
     "member",
     `Installed GitHub App on ${input.accountLogin}`,
@@ -163,28 +204,40 @@ export async function upsertInstallation(input: {
     null,
     membership.teamId,
   );
-  return result!;
+  return assembleGithubInstallation(row);
 }
 
 /** Most-recently-created connected App owned by the active team. */
 export async function latestGithubApp(): Promise<GithubApp | null> {
   const teamId = await requireActiveTeamId();
-  const apps = (read().githubApps ?? []).filter((a) => a.teamId === teamId);
+  const rows = await getDb()
+    .select()
+    .from(githubAppsTable)
+    .where(eq(githubAppsTable.teamId, teamId));
+  // Most-recently-created: max createdAt, ties broken by id (deterministic).
+  const apps = rows.map(assembleGithubApp).sort((a, b) =>
+    a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1,
+  );
   return apps[apps.length - 1] ?? null;
 }
 
 export async function removeGithubApp(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const user = (await getCurrentUser())!;
-  const app = (read().githubApps ?? []).find(
-    (a) => a.id === id && a.teamId === membership.teamId,
-  );
-  if (!app) throw new Error("GitHub App not found");
-  mutate((d) => {
-    d.githubApps = (d.githubApps ?? []).filter((a) => a.id !== id);
-    d.githubInstallations = (d.githubInstallations ?? []).filter(
-      (i) => i.appId !== id,
-    );
-  });
-  await recordActivity("member", `Removed GitHub App ${app.name}`, user.name, null, membership.teamId);
+  const db = getDb();
+  const app = await db
+    .select({ id: githubAppsTable.id, name: githubAppsTable.name })
+    .from(githubAppsTable)
+    .where(
+      and(
+        eq(githubAppsTable.id, id),
+        eq(githubAppsTable.teamId, membership.teamId),
+      ),
+    )
+    .limit(1);
+  if (app.length === 0) throw new Error("GitHub App not found");
+  // Deleting the app cascades its installations (github_installation.app_id FK is
+  // ON DELETE CASCADE) — one DELETE replaces the old two-collection JSONB filter.
+  await db.delete(githubAppsTable).where(eq(githubAppsTable.id, id));
+  await recordActivity("member", `Removed GitHub App ${app[0]!.name}`, user.name, null, membership.teamId);
 }

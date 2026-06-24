@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, desc, eq } from "drizzle-orm";
 
-import { read } from "../store";
+import { listAllServers } from "./servers";
 import { getDb } from "../db/client";
 import { databases as databasesTable } from "../db/schema/control-plane";
 import { assembleDatabase, databaseToRow } from "./backup-rows";
@@ -106,7 +106,7 @@ export async function createDatabase(input: {
   // Server selection (Step 0): the caller picks the host; default to the sole
   // server when there is exactly one. The chosen server must exist and be
   // provisioned (have a live agent) — provisioning routes through that agent.
-  const servers = read().servers;
+  const servers = await listAllServers();
   if (servers.length === 0) throw new Error("No server available");
   let server;
   if (input.serverId) {

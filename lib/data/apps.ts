@@ -3,10 +3,12 @@ import "server-only";
 import { headers } from "next/headers";
 import { and, desc, eq } from "drizzle-orm";
 
-import { read } from "../store";
 import { getCurrentUser } from "../auth";
 import { getDb } from "../db/client";
-import { installedApps as installedAppsTable } from "../db/schema/control-plane";
+import {
+  installedApps as installedAppsTable,
+  teams as teamsTable,
+} from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -54,11 +56,16 @@ type AppRow = Pick<
 >;
 
 /** Resolve a team's slug — seeds the deterministic app slug at INSTALL time. */
-function teamSlug(teamId: string): string {
-  // Team slugs live in the JSONB teams collection (cut-set b — authoritative this step).
-  const team = read().teams.find((t) => t.id === teamId);
-  if (!team) throw new Error("Active team not found");
-  return team.slug;
+async function teamSlug(teamId: string): Promise<string> {
+  // Team slugs are relational (cut-set b).
+  const rows = await getDb()
+    .select({ slug: teamsTable.slug })
+    .from(teamsTable)
+    .where(eq(teamsTable.id, teamId))
+    .limit(1);
+  const slug = rows[0]?.slug;
+  if (!slug) throw new Error("Active team not found");
+  return slug;
 }
 
 /**
@@ -66,8 +73,8 @@ function teamSlug(teamId: string): string {
  * deriving it for legacy rows written before `slug` was stored (the team has
  * not been renamed yet, so the derived value still matches the live container).
  */
-function appSlugFor(app: AppRow): string {
-  return app.slug || appSlug(app.catalogId, teamSlug(app.teamId));
+async function appSlugFor(app: AppRow): Promise<string> {
+  return app.slug || appSlug(app.catalogId, await teamSlug(app.teamId));
 }
 
 /** Fetch one installed-app row scoped to the active team, or null. */
@@ -86,7 +93,7 @@ async function publicBaseUrl(): Promise<string> {
 }
 
 async function toDTO(app: AppRow): Promise<InstalledAppDTO> {
-  const slug = appSlugFor(app);
+  const slug = await appSlugFor(app);
   const base = await publicBaseUrl();
   return {
     id: app.id,
@@ -125,7 +132,7 @@ export async function appRuntimeStatus(
   const teamId = await requireActiveTeamId();
   const app = await findApp(id, teamId);
   if (!app) throw new Error("App not installed");
-  return appStatus(appSlugFor(app));
+  return appStatus(await appSlugFor(app));
 }
 
 /* ------------------------------------------------------------------ */
@@ -185,7 +192,9 @@ export async function installApp(catalogId: string): Promise<InstalledAppDTO> {
       )
       .limit(1)
   )[0];
-  const slug = existing ? appSlugFor(existing) : appSlug(catalogId, teamSlug(teamId));
+  const slug = existing
+    ? await appSlugFor(existing)
+    : appSlug(catalogId, await teamSlug(teamId));
   await startAppStack({
     slug,
     manifest,
@@ -234,7 +243,7 @@ export async function uninstallApp(id: string): Promise<void> {
   const app = await findApp(id, teamId);
   if (!app) throw new Error("App not installed");
 
-  await destroyAppContainer(appSlugFor(app));
+  await destroyAppContainer(await appSlugFor(app));
   await getDb()
     .delete(installedAppsTable)
     .where(and(eq(installedAppsTable.id, id), eq(installedAppsTable.teamId, teamId)));
@@ -252,7 +261,7 @@ export async function startApp(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const app = await findApp(id, membership.teamId);
   if (!app) throw new Error("App not installed");
-  await startAppContainer(appSlugFor(app));
+  await startAppContainer(await appSlugFor(app));
 }
 
 /** Stop a running app's container (`manage_infra`). */
@@ -260,5 +269,5 @@ export async function stopApp(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const app = await findApp(id, membership.teamId);
   if (!app) throw new Error("App not installed");
-  await stopAppContainer(appSlugFor(app));
+  await stopAppContainer(await appSlugFor(app));
 }

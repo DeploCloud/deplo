@@ -33,8 +33,7 @@ import {
   type GatewayStep as PbGatewayStep,
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
-import { read } from "../store";
-import { markServerSeen } from "../data/servers";
+import { getServerById, markServerSeen } from "../data/servers";
 import type { Server } from "../types";
 
 /**
@@ -361,7 +360,7 @@ function toAgentError(err: unknown): Error {
  * the caller surfaces "server unreachable / not provisioned" instead of hanging.
  */
 async function resolveTarget(serverId: string): Promise<DialTarget> {
-  const server = read().servers.find((s) => s.id === serverId);
+  const server = await getServerById(serverId);
   if (!server) {
     throw new AgentUnreachableError(`server ${serverId} not found`);
   }
@@ -1103,7 +1102,7 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
     // Heartbeat cache (P5): best-effort, behind the live-read. Also refresh the
     // server's traefikEnabled from this live Hello so the badge reflects reality.
     try {
-      markServerSeen(serverId, resp.agentVersion, resp.traefikRunning);
+      void markServerSeen(serverId, resp.agentVersion, resp.traefikRunning);
     } catch {
       /* unknown id: no row to touch */
     }

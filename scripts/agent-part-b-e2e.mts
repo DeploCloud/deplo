@@ -105,13 +105,21 @@ async function main() {
   if (!pinnedFingerprint) throw new Error("agent never called home");
   console.log("  agent provisioned; pinned fingerprint:", pinnedFingerprint.slice(0, 16) + "…");
 
-  // Dial through the real connectAgent by faking a Server row in the store.
-  const { mutate } = await import("../lib/store");
+  // Dial through the real connectAgent by inserting a Server row directly into the
+  // relational `servers` table (servers are relational as of cut-set (e); the JSONB
+  // store + its `mutate()` are gone — Step 6 cutover).
+  const { getDb } = await import("../lib/db/client");
+  const { servers: serversTable } = await import(
+    "../lib/db/schema/control-plane"
+  );
+  const { serverToRow } = await import("../lib/data/infra-rows");
+  const { eq } = await import("drizzle-orm");
   const { caCertPem } = await import("../lib/agent/pki");
   void (await caCertPem());
-  mutate((d) => {
-    d.servers = d.servers.filter((s) => s.id !== "srv-e2e-remote");
-    d.servers.push({
+  const db = getDb();
+  await db.delete(serversTable).where(eq(serversTable.id, "srv-e2e-remote"));
+  await db.insert(serversTable).values(
+    serverToRow({
       id: "srv-e2e-remote",
       name: "e2e-remote",
       host: AGENT_HOST,
@@ -124,8 +132,8 @@ async function main() {
       cpuUsage: 0, memoryUsage: 0, diskUsage: 0,
       createdAt: new Date(0).toISOString(),
       agent: { port: AGENT_PORT, certFingerprint: pinnedFingerprint, certPem: "", version: "" },
-    } as never);
-  });
+    }),
+  );
 
   // Wait for the gRPC listener (Hello) over the pinned mTLS channel.
   let helloOk = false;

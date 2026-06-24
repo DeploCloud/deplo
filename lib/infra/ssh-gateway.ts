@@ -2,7 +2,7 @@ import "server-only";
 
 import { eq } from "drizzle-orm";
 
-import { read } from "../store";
+import { listDevSshUsersForProjects } from "../data/dev-ssh";
 import { getDb } from "../db/client";
 import { projects as projectsTable } from "../db/schema/control-plane";
 import { loadProjectGraph } from "../data/project-graph-load";
@@ -99,8 +99,8 @@ async function serverUserSteps(serverId: string): Promise<AgentGatewayStep[][]> 
     .from(projectsTable)
     .where(eq(projectsTable.serverId, serverId));
   const slugByProject = new Map(projectRows.map((p) => [p.id, p.slug] as const));
-  return read()
-    .devSshUsers.filter((u) => slugByProject.has(u.projectId))
+  const users = await listDevSshUsersForProjects([...slugByProject.keys()]);
+  return users
     .map((u) => userProvisionSteps(u, slugByProject))
     .filter((steps) => steps.length > 0);
 }

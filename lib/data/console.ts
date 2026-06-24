@@ -1,6 +1,6 @@
 import "server-only";
 
-import { read } from "../store";
+import { getServerById } from "./servers";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { loadTeamProject } from "./project-graph-load";
 import { isDockerLevelStderr } from "../infra/docker";
@@ -18,8 +18,8 @@ import type { Project, Server } from "../types";
  * other. An unknown serverId resolves to undefined and the agent dial then fails
  * clearly as unreachable.
  */
-function serverOf(p: Project): Server | undefined {
-  return read().servers.find((s) => s.id === p.serverId);
+async function serverOf(p: Project): Promise<Server | undefined> {
+  return (await getServerById(p.serverId)) ?? undefined;
 }
 
 /**
@@ -265,7 +265,7 @@ export async function resolveAttachTarget(
   if (!pick) return { ok: false, reason: "no-instance" };
   // Attaching to a stopped container's PID 1 would just hang — refuse early.
   if (!pick.running) return { ok: false, reason: "stopped" };
-  return { ok: true, instance: pick, server: serverOf(p) };
+  return { ok: true, instance: pick, server: await serverOf(p) };
 }
 
 /**
@@ -297,7 +297,7 @@ export async function resolveLogsTarget(
     ? instances.find((i) => i.name === target)
     : instances.find((i) => i.running) ?? instances[0];
   if (!pick) return { ok: false, reason: "no-instance" };
-  return { ok: true, instance: pick, server: serverOf(p) };
+  return { ok: true, instance: pick, server: await serverOf(p) };
 }
 
 export async function execInContainer(

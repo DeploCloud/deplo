@@ -40,8 +40,6 @@ import {
 import { addDomain, setPrimaryDomain, listDomains } from "./domains";
 import { upsertEnv, listEnv } from "./env";
 import { saveSharedEnvGroup, setSharedEnvGroupAttachment } from "./shared-env";
-import * as store from "../store";
-import type { Server } from "../types";
 
 /**
  * Step 4 project-graph data-layer tests (relational-store PLAN §3 cut-set (c) /
@@ -251,19 +249,9 @@ test("shared-group attach/detach toggles the junction", async () => {
 /* ------------------------------------------------------------------ */
 
 test("two concurrent same-name createProject calls both succeed with distinct slugs", async () => {
-  // createProject reads the server picklist from the JSONB store (servers stay
-  // JSONB-authoritative); seed one there. "upload" source skips the post-commit
-  // deploy (no agent dial), keeping the test hermetic.
-  const srv: Server = {
-    id: "srv_1", name: "srv", host: "10.0.0.1", type: "remote", status: "online",
-    ip: "10.0.0.1", dockerVersion: "27", traefikEnabled: true, cpuCores: 4,
-    memoryMb: 8192, diskGb: 100, cpuUsage: 1, memoryUsage: 1, diskUsage: 1,
-    createdAt: "2026-01-01T00:00:00.000Z",
-  };
-  store.mutate((d) => {
-    d.servers = [srv];
-  });
-
+  // createProject reads the server picklist from the relational `servers` table;
+  // `beforeEach`'s `seedServer(db)` already seeded `srv_1`. "upload" source skips
+  // the post-commit deploy (no agent dial), keeping the test hermetic.
   const input = {
     name: "My App",
     framework: "node" as const,

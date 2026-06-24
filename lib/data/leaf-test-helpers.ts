@@ -7,18 +7,15 @@ import {
 import { capabilitiesForRole } from "../membership-shared";
 import type { TestDb } from "../db/test-harness";
 import type { Role } from "../types";
-import * as store from "../store";
 
 /**
  * Shared seeding for the leaf cut-set data-layer tests (relational-store PLAN
- * Step 2). Identity (`users`/`teams`/`memberships`(+capabilities)) is relational
- * as of cut-set (b) (Step 3): `requireActiveTeamId`/`requireCapability`/
- * `getCurrentUser` now read pglite, NOT the JSONB store. So a test that drives a
- * `requireCapability`-gated leaf function seeds the relational identity tables
- * (`teams`/`users`/`memberships`/`membership_capabilities`) — the leaf rows' own
- * NOT-NULL `team_id`/`user_id` FKs resolve against the same `teams`/`users`. The
- * JSONB store is still reseeded (cleared) so any residual JSONB read path
- * (`recordActivity` team fallback) sees a clean document.
+ * Step 2). The whole control plane is relational now (Step 6 deleted the JSONB
+ * `read`/`mutate`): `requireActiveTeamId`/`requireCapability`/`getCurrentUser`
+ * read pglite, and a `requireCapability`-gated leaf function resolves its
+ * NOT-NULL `team_id`/`user_id` FKs against the seeded `teams`/`users`. So this
+ * seeds ONLY the relational identity tables — there is no JSONB store left to
+ * reset.
  *
  * The caller drives the data functions inside `runWithIdentity({userId, teamId})`
  * so the cookie-free principal/team is visible without a request scope.
@@ -50,10 +47,9 @@ const DEFAULT_TEAMS: SeedTeam[] = [
 const DEFAULT_USERS: SeedUser[] = [{ id: USER_1, teamId: TEAM_A, role: "owner" }];
 
 /**
- * Seed identity into BOTH the JSONB store and the pglite FK roots. Defaults to
- * two teams (alpha/beta) and one owner user in alpha — enough for "owner can
- * mutate" + "cross-team isolation" assertions. Call in `beforeEach` AFTER
- * truncating and AFTER `store.reseed()`.
+ * Seed identity into the pglite FK roots. Defaults to two teams (alpha/beta) and
+ * one owner user in alpha — enough for "owner can mutate" + "cross-team
+ * isolation" assertions. Call in `beforeEach` AFTER truncating.
  */
 export async function seedIdentity(
   db: TestDb,
@@ -61,41 +57,6 @@ export async function seedIdentity(
 ): Promise<void> {
   const seedTeams = opts.teams ?? DEFAULT_TEAMS;
   const seedUsers = opts.users ?? DEFAULT_USERS;
-
-  store.reseed();
-  store.mutate((d) => {
-    for (const t of seedTeams) {
-      d.teams.push({
-        id: t.id,
-        name: t.slug,
-        slug: t.slug,
-        plan: "pro",
-        createdAt: T0,
-      });
-    }
-    for (const u of seedUsers) {
-      const role = u.role ?? "owner";
-      d.users.push({
-        id: u.id,
-        email: `${u.id}@example.io`,
-        username: u.id,
-        name: u.id,
-        passwordHash: "h",
-        role,
-        isInstanceAdmin: role === "owner",
-        avatarColor: "#abc",
-        createdAt: T0,
-      });
-      d.memberships.push({
-        id: `mem_${u.id}`,
-        userId: u.id,
-        teamId: u.teamId,
-        role,
-        capabilities: capabilitiesForRole(role),
-        createdAt: T0,
-      });
-    }
-  });
 
   // FK roots in pglite.
   await db.insert(teams).values(

@@ -1,8 +1,11 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { read, ensureStoreReady } from "@/lib/store";
+import { ensureStoreReady } from "@/lib/store";
 import { getDb } from "@/lib/db/client";
-import { projects as projectsTable } from "@/lib/db/schema/control-plane";
+import {
+  githubInstallation as githubInstallationTable,
+  projects as projectsTable,
+} from "@/lib/db/schema/control-plane";
 import { decryptSecret } from "@/lib/crypto";
 import { findAppByAppId } from "@/lib/github/app";
 import { startDeployment } from "@/lib/deploy/build";
@@ -24,7 +27,7 @@ export async function POST(request: Request) {
   const appId = Number(
     request.headers.get("x-github-hook-installation-target-id"),
   );
-  const app = Number.isInteger(appId) ? findAppByAppId(appId) : null;
+  const app = Number.isInteger(appId) ? await findAppByAppId(appId) : null;
   if (!app) {
     // No connected App matches this delivery's target id. Logged because an
     // operator staring at "auto-deploy never fires" has no other way to learn
@@ -69,10 +72,12 @@ export async function POST(request: Request) {
     return new Response("ok", { status: 200 });
   }
 
-  const d = read();
-  const install = (d.githubInstallations ?? []).find(
-    (i) => i.installationId === numericInstall,
-  );
+  const installRows = await getDb()
+    .select()
+    .from(githubInstallationTable)
+    .where(eq(githubInstallationTable.installationId, numericInstall))
+    .limit(1);
+  const install = installRows[0];
   if (!install) {
     console.warn(
       `[github-webhook] no installation row for numeric id ${numericInstall} (repo=${fullName})`,

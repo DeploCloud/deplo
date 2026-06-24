@@ -1,7 +1,14 @@
 import "server-only";
 
 import { createSign } from "node:crypto";
-import { read } from "../store";
+import { eq } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import {
+  githubApps as githubAppsTable,
+  githubInstallation as githubInstallationTable,
+} from "../db/schema/control-plane";
+import { assembleGithubApp, assembleGithubInstallation } from "../data/infra-rows";
 import { decryptSecret } from "../crypto";
 import type { GithubApp, GithubInstallation } from "../types";
 
@@ -51,17 +58,24 @@ interface CachedToken {
 }
 const tokenCache = new Map<string, CachedToken>();
 
-function findInstallation(
+async function findInstallation(
   installationId: string,
-): { app: GithubApp; install: GithubInstallation } | null {
-  const d = read();
-  const install = (d.githubInstallations ?? []).find(
-    (i) => i.id === installationId,
-  );
-  if (!install) return null;
-  const app = (d.githubApps ?? []).find((a) => a.id === install.appId);
-  if (!app) return null;
-  return { app, install };
+): Promise<{ app: GithubApp; install: GithubInstallation } | null> {
+  const db = getDb();
+  const installRows = await db
+    .select()
+    .from(githubInstallationTable)
+    .where(eq(githubInstallationTable.id, installationId))
+    .limit(1);
+  if (!installRows[0]) return null;
+  const install = assembleGithubInstallation(installRows[0]);
+  const appRows = await db
+    .select()
+    .from(githubAppsTable)
+    .where(eq(githubAppsTable.id, install.appId))
+    .limit(1);
+  if (!appRows[0]) return null;
+  return { app: assembleGithubApp(appRows[0]), install };
 }
 
 export interface InstallationAccount {
@@ -79,7 +93,8 @@ export interface InstallationAccount {
 export async function resolveInstallationAccount(
   numericInstallationId: number,
 ): Promise<{ app: GithubApp; account: InstallationAccount } | null> {
-  const apps = read().githubApps ?? [];
+  const appRows = await getDb().select().from(githubAppsTable);
+  const apps = appRows.map(assembleGithubApp);
   for (const app of apps) {
     try {
       const jwt = appJwt(app);
@@ -117,8 +132,13 @@ export async function resolveInstallationAccount(
 }
 
 /** The connected App registered under a given numeric GitHub App id. */
-export function findAppByAppId(appId: number): GithubApp | null {
-  return (read().githubApps ?? []).find((a) => a.appId === appId) ?? null;
+export async function findAppByAppId(appId: number): Promise<GithubApp | null> {
+  const rows = await getDb()
+    .select()
+    .from(githubAppsTable)
+    .where(eq(githubAppsTable.appId, appId))
+    .limit(1);
+  return rows[0] ? assembleGithubApp(rows[0]) : null;
 }
 
 async function githubFetch(
@@ -147,7 +167,7 @@ export async function getInstallationToken(installationId: string): Promise<stri
   const cached = tokenCache.get(installationId);
   if (cached && cached.expiresAt - 60_000 > Date.now()) return cached.token;
 
-  const found = findInstallation(installationId);
+  const found = await findInstallation(installationId);
   if (!found) throw new Error("GitHub installation not found");
   const jwt = appJwt(found.app);
   const res = await fetch(

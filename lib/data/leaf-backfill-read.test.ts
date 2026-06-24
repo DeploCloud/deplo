@@ -17,7 +17,6 @@ import { identityCutSetCopy } from "../db/backfill/cut-sets/identity";
 import { CUT_SETS } from "../db/backfill/markers";
 import { runWithIdentity } from "../auth/request-context";
 import { capabilitiesForRole } from "../membership-shared";
-import * as store from "../store";
 import { listTokens } from "./tokens";
 import { listRegistries } from "./registries";
 import { getNotificationSettings } from "./notifications";
@@ -111,10 +110,8 @@ test("leaf backfill → async data layer reads back the copied rows", async () =
   await runBackfill(db, CUT_SETS.leaf, d, leafCutSetCopy);
   await runBackfill(db, CUT_SETS.identity, d, identityCutSetCopy);
 
-  // 2) Reset the JSONB store so no stale identity lingers (identity is relational).
-  store.reseed();
-
-  // 3) Read each leaf collection through the LIVE async data functions.
+  // 2) Read each leaf collection through the LIVE async data functions (the whole
+  //    control plane is relational now — there is no JSONB store to reset).
   await runWithIdentity({ userId: USER, teamId: TEAM }, async () => {
     const tokens = await listTokens();
     assert.equal(tokens.length, 1);

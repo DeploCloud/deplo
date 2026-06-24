@@ -1,6 +1,6 @@
 import "server-only";
 
-import { read } from "../store";
+import { listAllServers, getServerById } from "./servers";
 import { assertUser } from "../auth";
 import { hostFacts } from "../infra/host";
 import { connectAgent } from "../infra/agent-client";
@@ -132,7 +132,7 @@ async function measureRemote(server: Server, expected: string): Promise<ServerMe
       // Persist the live value (read-live-not-stored, like health). The badge's
       // server-rendered render reads this on the next page load; the live payload
       // below updates it without a reload.
-      markServerSeen(server.id, hello.agentVersion, hello.traefikRunning);
+      await markServerSeen(server.id, hello.agentVersion, hello.traefikRunning);
     } catch {
       /* metrics succeeded; the Hello refresh is best-effort */
     }
@@ -176,7 +176,7 @@ async function metricsFor(server: Server, expected: string): Promise<ServerMetri
 
 export async function getServerMetrics(serverId: string): Promise<ServerMetrics> {
   await assertUser();
-  const server = read().servers.find((s) => s.id === serverId);
+  const server = await getServerById(serverId);
   if (!server) throw new Error("Server not found");
   return metricsFor(server, await resolveExpectedAgentVersion());
 }
@@ -187,7 +187,7 @@ export async function getAllServerMetrics(): Promise<ServerMetrics[]> {
   // a "Check for updates" bust resolved a fresh value, so this poll carries it to
   // every open Servers tab's badge.
   const expected = await resolveExpectedAgentVersion();
-  return Promise.all(read().servers.map((s) => metricsFor(s, expected)));
+  return Promise.all((await listAllServers()).map((s) => metricsFor(s, expected)));
 }
 
 /**
@@ -203,7 +203,7 @@ export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
   await assertUser();
   const facts = hostFacts();
   const expected = await resolveExpectedAgentVersion();
-  return read().servers.map((s) => ({
+  return (await listAllServers()).map((s) => ({
     serverId: s.id,
     // Cheap hydration hint from the stored status; the first live poll replaces
     // it. A not-yet-provisioned server has no agent and reports offline, exactly

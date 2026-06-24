@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { and, eq, inArray } from "drizzle-orm";
-import { read } from "../store";
+import { getServerById } from "../data/servers";
 import { getDb } from "../db/client";
 import {
   deployments as deploymentsTable,
@@ -69,7 +69,7 @@ async function owningServerIdForSlug(slug: string): Promise<string | null> {
   const p = await loadProjectGraphBySlug(slug);
   if (!p) return null;
   // Servers stay JSONB-authoritative; confirm the owning server still exists.
-  const server = read().servers.find((s) => s.id === p.serverId);
+  const server = await getServerById(p.serverId);
   return server ? server.id : null;
 }
 
@@ -337,7 +337,7 @@ export async function startDeployment(
 ): Promise<string> {
   const project = await loadProjectGraph(projectId);
   if (!project) throw new Error("Project not found");
-  const server = read().servers.find((s) => s.id === project.serverId);
+  const server = (await getServerById(project.serverId)) ?? undefined;
   const ip = resolveServerIp(server);
   const environment = opts.environment ?? "production";
   const branch = opts.branch ?? project.repo?.branch ?? "main";
@@ -513,7 +513,7 @@ async function runDeployment(depId: string): Promise<void> {
   }
   const slug = project.slug;
   const name = `deplo-${slug}`;
-  const server = read().servers.find((s) => s.id === project.serverId);
+  const server = (await getServerById(project.serverId)) ?? undefined;
   const ip = resolveServerIp(server);
   const domain =
     dep.environment === "production"

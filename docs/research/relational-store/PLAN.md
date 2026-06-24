@@ -1081,15 +1081,81 @@ Highlights and decisions:
   data. The only signature changes (`getS3WithSecretsForTeam` sync→async,
   `reconcileInFlightBackupRuns` sync→async) have no callers outside the cut-set.
 
-**Step 6 — Cutover: delete the cache and JSONB write path.** Remove the `globalThis`
-`StoreState` cache, `queuePostgresWrite`, `writeChain`, `state.dirty`, the `load()`
-seed-then-adopt crutch, and `read`/`mutate`. `ensureStoreReady()` keeps only the
-backfill gate (now a no-op once all four markers exist). Update the doc comments in
+**Step 6 — Cut-set (e) + cutover: delete the cache and JSONB write path.** FIRST
+migrate the 6 collections cut-sets (a)–(d) never touched (`servers`, `githubApps`,
+`githubInstallations`, `devSshUsers`, `activities`, `invites`) as a NEW cut-set (e) —
+the literal cutover below is impossible while live code still reads/writes them through
+the JSONB doc (see the RESULT). THEN remove the `globalThis` `StoreState` cache,
+`queuePostgresWrite`, `writeChain`, `state.dirty`, the `load()` seed-then-adopt crutch,
+and `read`/`mutate`/`reseed`. `ensureStoreReady()` keeps only the backfill gate (now a
+no-op once all FIVE markers exist). Update the doc comments in
 [lib/store.ts](../../../lib/store.ts) and
 [lib/graphql/context.ts:42](../../../lib/graphql/context.ts#L42). **Leave
 `deploState`/`document-store.ts` in place** (frozen snapshot, rollback artifact for the
 period before any non-leaf cut-set — see §3/§7). *Test:* full `node --test` against
 pglite; manual smoke of register/deploy/backup flows.
+
+#### STEP 6 RESULT (2026-06-24) — DONE ✅ (with a NEW cut-set (e))
+
+**The literal Step 6 ("delete `read`/`mutate`") was NOT executable as written** — cut-sets
+(a)–(d) never migrated **6 collections** (`servers`, `githubApps`, `githubInstallations`,
+`devSshUsers`, `activities`, `invites`), which still lived in the JSONB doc with ~14 live
+`mutate()` + ~35 live `read()` call sites. Per user decision, Step 6 grew a **5th cut-set
+(e)** that migrates those, THEN does the cutover. **Full suite 500 pass / 0 fail** (+20:
+infra data-layer 13, infra backfill 4, bootstrap-consume race 3), `tsc` clean (only the
+pre-existing `migrate.test.ts` cast), `eslint` clean (the pre-existing log-viewer /
+global-error / s3 warnings only), `db:generate` reports "No schema changes" (Step 1 emitted
+every table — cut-set (e) added ZERO DDL). Highlights:
+
+- **Cut-set (e) — infra / integrations.** `servers` + `github_apps`(+`github_installation`)
+  + `dev_ssh_user` + `activities` are relational, migrated atomically with
+  [servers.ts](../../../lib/data/servers.ts), [github.ts](../../../lib/data/github.ts),
+  [github/app.ts](../../../lib/github/app.ts), [dev-ssh.ts](../../../lib/data/dev-ssh.ts),
+  [activity.ts](../../../lib/data/activity.ts), and every reader of them (closure). The ONE
+  shared row-assembler is [infra-rows.ts](../../../lib/data/infra-rows.ts) (the anti-drift
+  seam, same as `backup-rows.ts` for (d)); `serverToRow` flattens the nested
+  `ServerAgent`/`ServerBootstrap` onto columns and `assembleServer` rebuilds them from the
+  `agent_port`/`bootstrap_token_hash` discriminants. The backfill is
+  [cut-sets/infra.ts](../../../lib/db/backfill/cut-sets/infra.ts) (FK-ordered copy, prunes a
+  dead-project `dev_ssh_user` (CASCADE FK), NULLs a dead-project `activity` (SET NULL FK),
+  guards a dangling-app installation, `cleanCapabilities` on invite caps, `seq` in
+  source-array order, element-granular reconcile), wired LAST in `store.ts`'s
+  `runCutSetBackfills` (its FKs reference teams (b) + projects (c)).
+- **`invites` was a DEAD collection.** Zero read/write paths exist anywhere (the only
+  `Invite` mention was a capability *description* string); it is seeded `[]` and never
+  touched. Cut-set (e) carries it backfill-only for fidelity (zero rows in practice).
+- **`completeBootstrap` consume became a conditional UPDATE** (PLAN §1 the
+  single-UPDATE/RETURNING pattern): the old in-memory `mutate()` re-check is now
+  `UPDATE … WHERE bootstrap_token_hash IS NOT NULL AND bootstrap_used_at IS NULL RETURNING`
+  — the loser of a concurrent double call-home updates 0 rows and throws. A
+  two-concurrent-call-home test asserts exactly one wins.
+- **`markServerSeen` / `recordActivity` stay best-effort.** `markServerSeen` went sync→async
+  (swallows its own errors; callers `void`/`await` it); `recordActivity` keeps its identical
+  `(type,message,actor,projectId?,teamId?)` signature — only its body flipped `mutate()`→a
+  Drizzle insert (PLAN §1(c): non-transactional, never rolls back the caller). Its ~60
+  callers are unchanged.
+- **`server-row.ts` bridge RETIRED.** It mirror-wrote a relational `servers` row while
+  servers were JSONB-authoritative (cut-set (c)'s `projects.server_id` FK); cut-set (e) makes
+  `servers` relational-authoritative, so the data layer writes the table directly and the
+  bridge is deleted.
+- **Cutover (the literal Step 6).** [lib/store.ts](../../../lib/store.ts) lost the `globalThis`
+  `StoreState` cache, `queuePostgresWrite`/`writeChain`/`state.dirty`, the `load()`
+  seed-then-adopt crutch, and `read`/`mutate`/`reseed`. What remains is `ensureStoreReady()`
+  — the backfill gate only — now reading its source doc via `loadDocument()` directly (no
+  cache) and a no-op once all FIVE markers exist. `document-store.ts` + the `deplo_state` row
+  stay as the Step-7 rollback artifact.
+- **Closure catch — `apps.ts:teamSlug` was a latent bug.** It read `read().teams`, but teams
+  went relational in cut-set (b) (`createTeam` stopped writing JSONB teams), so a post-(b)
+  team was absent — masked only because the test helpers dual-wrote JSONB+relational.
+  Relationalized as part of the closure (now `getDb().select().from(teams)`).
+- **Test backend:** new `infra-test-helpers.ts` seeds servers/github/dev-ssh/activities
+  relationally; the two `seedIdentity` helpers + the leaf/identity backfill-read tests +
+  `project-graph.test.ts` dropped their now-dead `store.reseed()`/`store.mutate()` calls (the
+  backfill tests already passed the `DeploData` doc to `runBackfill` directly, never the
+  cache). **`npm test` now pins `--test-concurrency=2`** — the default 4-way parallelism on a
+  4-core box thrashed the per-file pglite instances (each replays 4 migrations), losing whole
+  test files non-deterministically; capping concurrency makes the suite deterministic (and
+  surfaced 480→500 tests that the over-parallel run had been dropping).
 
 **Step 7 — (much later) Drop the JSONB legacy.** After production soak, drop
 `deplo_state`, `document-store.ts`, the `store_migration` table, the `normalize`/`migrate`

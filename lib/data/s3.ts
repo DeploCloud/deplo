@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, desc, eq } from "drizzle-orm";
 
-import { read } from "../store";
+import { listAllServers } from "./servers";
 import { getDb } from "../db/client";
 import {
   backups as backupsTable,
@@ -222,7 +222,7 @@ export async function testS3(id: string): Promise<S3DestinationDTO> {
 async function checkOnAnyBackupAgent(
   target: S3Target,
 ): Promise<{ ok: boolean; error: string }> {
-  const servers = read().servers.filter((s) => s.agent?.certFingerprint);
+  const servers = (await listAllServers()).filter((s) => s.agent?.certFingerprint);
   if (servers.length === 0) {
     throw new AgentUnreachableError(
       "No provisioned server is available to verify the bucket.",

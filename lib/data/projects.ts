@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { read } from "../store";
+import { listAllServers, getServerById } from "./servers";
 import { getDb } from "../db/client";
 import {
   domains as domainsTable,
@@ -375,10 +375,9 @@ export async function createProject(
     return s;
   };
 
-  // Servers are still JSONB-authoritative (no cut-set migrated them); their
-  // relational rows are mirrored by `ensureServerRow` so a project's `server_id`
-  // FK resolves. Read the picklist from the JSONB store (the source of truth).
-  const servers = read().servers;
+  // Servers are relational (cut-set (e)); read the picklist for the `server_id`
+  // FK from the `servers` table.
+  const servers = await listAllServers();
   // Default to the first server added; honour an explicit, existing pick. With no
   // server seeded at setup, the list can be empty — surface a clear error so the
   // operator adds (and provisions) a host first.
@@ -595,7 +594,7 @@ export async function updateProjectSource(
     await requireMountHostVolumes();
   }
   const user = (await getCurrentUser())!;
-  const serversById = new Map(read().servers.map((s) => [s.id, s] as const));
+  const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));
   await getDb().transaction(async (tx) => {
     const p = await loadProjectGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("Project not found");
@@ -1052,7 +1051,7 @@ export async function deleteProject(id: string): Promise<void> {
   // operator cleans up the leftover containers by hand. The agent calls run
   // OUTSIDE any DB transaction (PLAN §1 rule (a): never wrap a gRPC dial in a tx).
   const tornDown = await teardownProject(project.slug);
-  const server = read().servers.find((s) => s.id === project.serverId);
+  const server = await getServerById(project.serverId);
   if (!tornDown && server) {
     await recordActivity(
       "project",
@@ -1114,7 +1113,7 @@ export async function deleteProjects(ids: string[]): Promise<number> {
   );
   if (projects.length === 0) return 0;
 
-  const serversById = new Map(read().servers.map((s) => [s.id, s] as const));
+  const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));
   // Tear down stacks ≤4 at a time (agent calls OUTSIDE any tx). A throw/
   // unreachable for one project must not abort the others or the record removal.
   const unreachable: string[] = [];

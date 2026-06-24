@@ -16,7 +16,6 @@ import {
   storeMigration,
 } from "../schema/control-plane";
 import { runWithIdentity } from "../../auth/request-context";
-import * as store from "../../store";
 import { capabilitiesForRole } from "../../membership-shared";
 import { listMembers, listAllUsers, listRegistrationLinks } from "../../data/members";
 import { membershipFor, teamsForUser } from "../../membership";
@@ -47,7 +46,6 @@ beforeEach(async () => {
   await pg.exec(`truncate table
     registration_links, membership_capabilities, memberships, users, teams,
     store_migration restart identity cascade;`);
-  store.reseed();
 });
 
 const TEAM = "team_a";
@@ -97,7 +95,6 @@ function doc(): DeploData {
 test("identity backfill → async data layer reads back the copied rows", async () => {
   const d = doc();
   await runBackfill(db, CUT_SETS.identity, d, identityCutSetCopy);
-  store.reseed();
 
   // teamsForUser / membershipFor read the relational rows.
   const teams = await teamsForUser(USER);
