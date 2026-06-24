@@ -7,6 +7,7 @@ import { requireCapability } from "../membership";
 import { newId, nowIso } from "../ids";
 import { resolvePublicBaseUrl } from "../public-url";
 import { recordActivity } from "./activity";
+import { ensureServerRow, deleteServerRow } from "./server-row";
 import {
   mintBootstrap,
   installCommand,
@@ -95,6 +96,9 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
     bootstrap: stored,
   };
   mutate((d) => d.servers.push(server));
+  // Mirror the relational `servers` row so a project's `server_id` FK resolves
+  // (servers stay JSONB-authoritative; cut-set (c) bridge — see server-row.ts).
+  await ensureServerRow(server);
   recordActivity("member", `Connected server ${server.name}`, user.name, null, membership.teamId);
 
   return {
@@ -188,6 +192,9 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   mutate((d) => {
     d.servers = d.servers.filter((s) => s.id !== id);
   });
+  // Drop the mirrored relational row (the (b) blocks removal while projects are
+  // assigned, so its RESTRICT FK has no dependents at this point).
+  await deleteServerRow(id);
   recordActivity("member", `Removed server ${server.name}`, user.name, null, membership.teamId);
   return { warning };
 }
@@ -308,6 +315,9 @@ export async function completeBootstrap(
   if (!consumed) {
     throw new Error("bootstrap token was already consumed");
   }
+  // Mirror the now-online server (agent material + status) into the relational row.
+  const provisioned = read().servers.find((s) => s.id === server.id);
+  if (provisioned) await ensureServerRow(provisioned);
   return { certPem: signed.certPem, caPem: signed.caPem };
 }
 

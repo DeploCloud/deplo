@@ -1,6 +1,20 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { and, eq, inArray, sql } from "drizzle-orm";
+
+import { read } from "../store";
+import { getDb } from "../db/client";
+import {
+  domains as domainsTable,
+  projects as projectsTable,
+  projectBuild as projectBuildTable,
+  projectBuildMethodSettings as projectBuildMethodSettingsTable,
+  projectExposes as projectExposesTable,
+  projectMounts as projectMountsTable,
+  projectVolumes as projectVolumesTable,
+  sharedEnvGroupProjects,
+  teamProjectOrder,
+} from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
@@ -16,12 +30,13 @@ import {
 } from "../deploy/compose-lint";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
-import { buildConfigFor, normalizeBuildConfig } from "../frameworks";
+import { buildConfigFor } from "../frameworks";
 import type {
   BuildConfig,
   Deployment,
   DeploySource,
   EnvTarget,
+  EnvVar,
   FrameworkId,
   GitRepo,
   Project,
@@ -49,6 +64,25 @@ import { removeUploads } from "../deploy/upload";
 import { removeProjectDevSshUsers } from "./dev-ssh";
 import { isValidLogoValue } from "../projects/logo-shared";
 import { publishProjectChanged } from "../graphql/pubsub";
+import {
+  insertEnvVars,
+  loadDomainsForProject,
+  loadProjectGraph,
+  loadProjectGraphBySlug,
+  loadProjectsByIds,
+  loadProjectsByTeam,
+  preloadSummaries,
+  projectInTeam,
+  type SummaryPreload,
+} from "./project-graph-load";
+import {
+  buildToRow,
+  exposesToRows,
+  methodSettingsToRow,
+  mountsToRows,
+  projectToRow,
+  volumesToRows,
+} from "./project-graph-rows";
 
 /** Heuristic: treat secret-looking keys as masked secrets. */
 function isSecretKey(key: string): boolean {
@@ -102,35 +136,69 @@ export function reconcileStatus(
   return age > STOPPING_STALE_MS ? "idle" : "stopping";
 }
 
-function summarize(p: Project): ProjectSummary {
-  const d = read();
-  const np = normalizeProject(p);
-  np.status = reconcileStatus(np.status, np.updatedAt);
-  const latest = np.latestDeploymentId
-    ? d.deployments.find((x) => x.id === np.latestDeploymentId) || null
-    : null;
+/**
+ * Fold a (relational, already-normalized) project into a {@link ProjectSummary}
+ * — a PURE function over preloaded latest-deployment + domain-count maps (PLAN §6
+ * "`summarize` becomes a pure function over preloaded data"). No DB access, so a
+ * list of N projects costs the bounded batch-load below, not N×(deployment +
+ * domain) round-trips. `reconcileStatus` still self-heals a wedged "stopping".
+ */
+function summarize(p: Project, pre: SummaryPreload): ProjectSummary {
+  const status = reconcileStatus(p.status, p.updatedAt);
   return {
-    ...np,
+    ...p,
+    status,
     // Projects created before the logo field have it absent; surface an explicit
     // null so every consumer reads a defined `string | null`.
-    logo: np.logo ?? null,
+    logo: p.logo ?? null,
     // Same for the folder grouping: absent (pre-folders) ⇒ ungrouped (null).
-    folderId: np.folderId ?? null,
-    latestDeployment: latest,
-    domainCount: d.domains.filter((x) => x.projectId === np.id).length,
+    folderId: p.folderId ?? null,
+    latestDeployment: p.latestDeploymentId
+      ? pre.latestDeployments.get(p.latestDeploymentId) ?? null
+      : null,
+    domainCount: pre.domainCounts.get(p.id) ?? 0,
   };
+}
+
+/**
+ * Update a team-owned project's flat columns, throwing "Project not found" when
+ * the id doesn't belong to the team (the standard ownership gate, now a single
+ * team-scoped UPDATE … RETURNING instead of a find-then-mutate).
+ */
+async function updateProjectOwned(
+  id: string,
+  teamId: string,
+  set: Partial<typeof projectsTable.$inferInsert>,
+): Promise<void> {
+  const updated = await getDb()
+    .update(projectsTable)
+    .set(set)
+    .where(and(eq(projectsTable.id, id), eq(projectsTable.teamId, teamId)))
+    .returning({ id: projectsTable.id });
+  if (updated.length === 0) throw new Error("Project not found");
+}
+
+/** Team-wide manual project order (the `team_project_order` junction), id→rank. */
+async function projectOrderRank(teamId: string): Promise<Map<string, number>> {
+  const rows = await getDb()
+    .select({ projectId: teamProjectOrder.projectId, position: teamProjectOrder.position })
+    .from(teamProjectOrder)
+    .where(eq(teamProjectOrder.teamId, teamId));
+  return new Map(rows.map((r) => [r.projectId, r.position] as const));
 }
 
 export async function listProjects(): Promise<ProjectSummary[]> {
   const teamId = await requireActiveTeamId();
+  const [proj, rank] = await Promise.all([
+    loadProjectsByTeam(teamId),
+    projectOrderRank(teamId),
+  ]);
+  const pre = await preloadSummaries(proj);
   // Honour the team's manual order (Overview drag-and-drop) when present:
   // explicitly-ordered projects come first in that order, anything not listed
   // (a brand-new project, or before any reorder) falls back to newest-first.
-  const order = read().teams.find((t) => t.id === teamId)?.projectOrder ?? [];
-  const rank = new Map(order.map((id, i) => [id, i] as const));
-  return read()
-    .projects.filter((p) => p.teamId === teamId)
-    .map(summarize)
+  return proj
+    .map((p) => summarize(p, pre))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
       const rb = rank.get(b.id) ?? Infinity;
@@ -144,8 +212,10 @@ export async function listProjects(): Promise<ProjectSummary[]> {
  * by design — every member sees the same arrangement — so it is gated like a
  * team setting: an instance admin (who bypasses team capabilities) or a member
  * holding `manage_team`. The incoming ids are sanitised to the caller's own team
- * projects (dropping unknown/duplicate ids), and any team project the client
- * omitted is appended, so the stored order is always total and self-heals.
+ * projects (dropping unknown/duplicate ids); the `team_project_order` junction is
+ * rewritten over the survivors. Any team project the client omitted is appended,
+ * so the stored order stays total — and a dead id can no longer be stored at all
+ * (the FK CASCADE makes the self-healing a DB invariant, PLAN §1).
  */
 export async function reorderProjects(orderedIds: string[]): Promise<void> {
   const teamId = await requireActiveTeamId();
@@ -153,12 +223,13 @@ export async function reorderProjects(orderedIds: string[]): Promise<void> {
   if (!(await isInstanceAdmin())) {
     await requireCapability("manage_team");
   }
-  mutate((d) => {
-    const team = d.teams.find((t) => t.id === teamId);
-    if (!team) return;
-    const teamProjectIds = d.projects
-      .filter((p) => p.teamId === teamId)
-      .map((p) => p.id);
+  await getDb().transaction(async (tx) => {
+    const teamProjectIds = (
+      await tx
+        .select({ id: projectsTable.id })
+        .from(projectsTable)
+        .where(eq(projectsTable.teamId, teamId))
+    ).map((r) => r.id);
     const valid = new Set(teamProjectIds);
     const seen = new Set<string>();
     const next: string[] = [];
@@ -169,22 +240,34 @@ export async function reorderProjects(orderedIds: string[]): Promise<void> {
       }
     }
     for (const id of teamProjectIds) if (!seen.has(id)) next.push(id);
-    team.projectOrder = next;
+    // Whole-set replace: drop the team's order rows, re-insert in the new order.
+    await tx.delete(teamProjectOrder).where(eq(teamProjectOrder.teamId, teamId));
+    if (next.length > 0) {
+      await tx.insert(teamProjectOrder).values(
+        next.map((projectId, position) => ({ teamId, projectId, position })),
+      );
+    }
   });
+}
+
+/** Summarize a single already-loaded project (its own bounded preload). */
+async function summarizeOne(p: Project): Promise<ProjectSummary> {
+  const pre = await preloadSummaries([p]);
+  return summarize(p, pre);
 }
 
 export async function getProjectBySlug(
   slug: string
 ): Promise<ProjectSummary | null> {
   const teamId = await requireActiveTeamId();
-  const p = read().projects.find((x) => x.slug === slug);
-  return p && p.teamId === teamId ? summarize(p) : null;
+  const p = await loadProjectGraphBySlug(slug);
+  return p && p.teamId === teamId ? summarizeOne(p) : null;
 }
 
 export async function getProjectById(id: string): Promise<Project | null> {
   const teamId = await requireActiveTeamId();
-  const p = read().projects.find((x) => x.id === id);
-  return p && p.teamId === teamId ? normalizeProject(p) : null;
+  const p = await loadProjectGraph(id);
+  return p && p.teamId === teamId ? p : null;
 }
 
 /**
@@ -195,22 +278,25 @@ export async function getProjectById(id: string): Promise<Project | null> {
  * `cookies()` is NOT callable across the async-iteration ticks of a long-lived
  * SSE response (it runs after the request scope closes), so the team is passed
  * explicitly rather than re-derived. The same applies to the slug lookup below.
+ * Stays cookie-free: it queries Postgres with the passed `teamId` directly and
+ * never calls `requireActiveTeamId()` / a cookie-reading helper (PLAN §6 "SSE
+ * generators must stay cookie-free").
  */
-export function summarizeForTeam(
+export async function summarizeForTeam(
   id: string,
   teamId: string,
-): ProjectSummary | null {
-  const p = read().projects.find((x) => x.id === id);
-  return p && p.teamId === teamId ? summarize(p) : null;
+): Promise<ProjectSummary | null> {
+  const p = await loadProjectGraph(id);
+  return p && p.teamId === teamId ? summarizeOne(p) : null;
 }
 
 /** Cookie-free slug → summary lookup scoped to an explicit team (see above). */
-export function findProjectSummaryBySlugForTeam(
+export async function findProjectSummaryBySlugForTeam(
   slug: string,
   teamId: string,
-): ProjectSummary | null {
-  const p = read().projects.find((x) => x.slug === slug);
-  return p && p.teamId === teamId ? summarize(p) : null;
+): Promise<ProjectSummary | null> {
+  const p = await loadProjectGraphBySlug(slug);
+  return p && p.teamId === teamId ? summarizeOne(p) : null;
 }
 
 export interface CreateProjectInput {
@@ -258,11 +344,19 @@ export async function createProject(
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  const existing = new Set(read().projects.map((p) => p.slug));
+  // slug is globally UNIQUE in the relational table; pick the first free suffix.
+  const existing = new Set(
+    (await getDb().select({ slug: projectsTable.slug }).from(projectsTable)).map(
+      (r) => r.slug,
+    ),
+  );
   let slug = slugBase || `project-${newId("").slice(1, 6)}`;
   let i = 1;
   while (existing.has(slug)) slug = `${slugBase}-${i++}`;
 
+  // Servers are still JSONB-authoritative (no cut-set migrated them); their
+  // relational rows are mirrored by `ensureServerRow` so a project's `server_id`
+  // FK resolves. Read the picklist from the JSONB store (the source of truth).
   const servers = read().servers;
   // Default to the first server added; honour an explicit, existing pick. With no
   // server seeded at setup, the list can be empty — surface a clear error so the
@@ -293,6 +387,12 @@ export async function createProject(
   input.exposes = hosts.exposes;
   input.env = hosts.env;
 
+  // An "upload" project has no archive at creation (it is uploaded from the
+  // Settings page afterward, which triggers its own deploy via the upload route).
+  // Deploying now would fail with "Nothing to deploy", so it is born idle instead
+  // of queued; everything else starts queued and deploys below.
+  const isUpload = input.source === "upload";
+
   const project: Project = {
     id: newId("prj"),
     name: input.name.trim(),
@@ -318,8 +418,9 @@ export async function createProject(
     exposes: input.exposes?.length ? input.exposes : null,
     mounts: input.mounts?.length ? input.mounts : null,
     build: buildConfigFor(input.framework, input.build),
+    dev: null,
     productionUrl: null,
-    status: "queued",
+    status: isUpload ? "idle" : "queued",
     autoDeploy: input.autoDeploy ?? true,
     latestDeploymentId: null,
     createdAt: nowIso(),
@@ -328,7 +429,7 @@ export async function createProject(
 
   // Initial environment variables (e.g. a template's defaults), encrypted at rest.
   const now = nowIso();
-  const envVars = (input.env ?? [])
+  const projectEnvVars: EnvVar[] = (input.env ?? [])
     .filter((e) => e.key.trim())
     .map((e) => ({
       id: newId("env"),
@@ -341,17 +442,29 @@ export async function createProject(
       updatedAt: now,
     }));
 
-  mutate((d) => {
-    d.projects.push(project);
-    d.envVars.push(...envVars);
+  // One transaction: the project + its FK-coupled children (build,
+  // method-settings, exposes, mounts) + initial env (PLAN cut-set (c) Decision 15).
+  // The domain + deploy fire AFTER commit so a failed insert leaves no orphan
+  // auto-domain and no deploy job for a project that didn't persist.
+  await getDb().transaction(async (tx) => {
+    await tx.insert(projectsTable).values(projectToRow(project));
+    await tx.insert(projectBuildTable).values(buildToRow(project.id, project.build));
+    await tx
+      .insert(projectBuildMethodSettingsTable)
+      .values(methodSettingsToRow(project.id, project.build.methodSettings));
+    const exposeRows = exposesToRows(project.id, project.exposes);
+    if (exposeRows.length > 0) await tx.insert(projectExposesTable).values(exposeRows);
+    const mountRows = mountsToRows(project.id, project.mounts);
+    if (mountRows.length > 0) await tx.insert(projectMountsTable).values(mountRows);
+    if (projectEnvVars.length > 0) await insertEnvVars(tx, projectEnvVars);
   });
   recordActivity("project", `Created project ${project.name}`, user.name, project.id);
 
-  // Register the generated sslip.io domain so it shows up in the project's
-  // Domains section immediately and the deploy routes to the same hostname a
-  // template baked into its env.
+  // POST-COMMIT (PLAN cut-set (c) "post-commit deploy"): register the generated
+  // sslip.io domain so it shows up in the Domains section immediately and the
+  // deploy routes to the same hostname a template baked into its env.
   const ip = resolveServerIp(server);
-  ensureAutoDomain(project.id, {
+  await ensureAutoDomain(project.id, {
     slug,
     ip,
     preferred: input.autoDomain ?? undefined,
@@ -362,26 +475,17 @@ export async function createProject(
     defaultService: project.expose?.service ?? null,
   });
 
-  // An "upload" project has no archive at creation (it is uploaded from the
-  // Settings page afterward, which triggers its own deploy via the upload
-  // route). Deploying now would fail with "Nothing to deploy", so leave it
-  // idle instead of stuck queued / errored.
-  if (project.source === "upload") {
-    mutate((d) => {
-      const p = d.projects.find((x) => x.id === project.id);
-      if (p) p.status = "idle";
-    });
-  } else {
+  if (!isUpload) {
     // Kick off the first real build + deploy. Runs in the background and flips
     // the project to active (or error) once the container is up.
-    startDeployment(project.id, {
+    await startDeployment(project.id, {
       environment: "production",
       creator: user.name,
       commitMessage: input.repo ? "Initial import" : "Initial deployment",
     });
   }
 
-  return summarize(read().projects.find((x) => x.id === project.id)!);
+  return summarizeOne((await loadProjectGraph(project.id))!);
 }
 
 export async function updateProjectBuild(
@@ -393,12 +497,34 @@ export async function updateProjectBuild(
   // published host port, so changing it isn't gated behind the expose-ports
   // grant — any member who can deploy may edit build settings.
   const user = (await getCurrentUser())!;
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
-    if (!p) throw new Error("Project not found");
-    p.build = { ...p.build, ...build };
-    p.framework = build.framework ?? p.framework;
-    p.updatedAt = nowIso();
+  // One tx (PLAN cut-set (c) Decision 15): the parent `project_build` columns
+  // MERGE field-by-field, while a provided `methodSettings` object FULLY REPLACES
+  // the 1-to-1 method-settings row.
+  await getDb().transaction(async (tx) => {
+    const existing = await loadProjectGraph(id, tx);
+    if (!existing || existing.teamId !== membership.teamId)
+      throw new Error("Project not found");
+    const merged: BuildConfig = {
+      ...existing.build,
+      ...build,
+      // methodSettings replaces wholesale when provided, else keep the existing.
+      methodSettings: build.methodSettings ?? existing.build.methodSettings,
+    };
+    await tx
+      .update(projectsTable)
+      .set({ framework: build.framework ?? existing.framework, updatedAt: nowIso() })
+      .where(eq(projectsTable.id, id));
+    await tx
+      .update(projectBuildTable)
+      .set(buildToRow(id, merged))
+      .where(eq(projectBuildTable.projectId, id));
+    if (build.methodSettings) {
+      // Whole-row replace of the method settings.
+      await tx
+        .update(projectBuildMethodSettingsTable)
+        .set(methodSettingsToRow(id, merged.methodSettings))
+        .where(eq(projectBuildMethodSettingsTable.projectId, id));
+    }
   });
   recordActivity("project", `Updated build settings`, user.name, id);
 }
@@ -432,55 +558,80 @@ export async function updateProjectSource(
     await requireMountHostVolumes();
   }
   const user = (await getCurrentUser())!;
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
-    if (!p) throw new Error("Project not found");
-    // Capture the OLD server IP before p.serverId is reassigned, so a move can
+  const serversById = new Map(read().servers.map((s) => [s.id, s] as const));
+  await getDb().transaction(async (tx) => {
+    const p = await loadProjectGraph(id, tx);
+    if (!p || p.teamId !== membership.teamId) throw new Error("Project not found");
+    // Capture the OLD server IP before serverId is reassigned, so a move can
     // re-host the project's auto sslip.io domains onto the new server's IP below.
-    const oldIp = resolveServerIp(d.servers.find((s) => s.id === p.serverId));
+    const oldIp = resolveServerIp(serversById.get(p.serverId));
+    let serverId = p.serverId;
     if (input.serverId) {
-      const server = d.servers.find((s) => s.id === input.serverId);
-      if (!server) throw new Error("Server not found");
-      p.serverId = server.id;
+      if (!serversById.has(input.serverId)) throw new Error("Server not found");
+      serverId = input.serverId;
     }
-    p.source = input.source;
-    p.repo = input.repo;
-    p.dockerImage = input.dockerImage;
-    // Persist compose edits when provided; never clear a stored stack on switch
-    // so the user can flip back to the Compose source and recover it.
-    if (input.compose != null) p.compose = input.compose;
-    if (input.expose !== undefined) p.expose = input.expose;
-    if (input.exposes !== undefined) p.exposes = input.exposes;
+    // `expose` is derived as `exposes[0]`, never stored; an explicit `expose`
+    // input with no `exposes` becomes the single exposes entry.
+    let exposes: Project["exposes"] =
+      input.exposes !== undefined
+        ? input.exposes
+        : input.expose !== undefined
+          ? input.expose
+            ? [input.expose]
+            : null
+          : p.exposes;
 
     // MOVING the project to a different server: its auto sslip.io hosts encode
     // the OLD server's IP, so re-host them onto the new server's IP — otherwise
     // the Domains section (and Traefik's routing target) keeps pointing at the
     // old host. Covers the primary + every extra (web-ui.*) auto domain and the
-    // stored exposes[].host. Applied AFTER input.exposes lands so the final stored
-    // value is rehosted. A no-op when the IP is unchanged or the host isn't sslip.
-    // (Env vars are NOT rewritten here — they live encrypted in d.envVars and a
-    // template's env uses internal service DNS, not the public host; the create
-    // path rehosts env because the values are still plaintext there.)
-    const newIp = resolveServerIp(d.servers.find((s) => s.id === p.serverId));
+    // stored exposes[].host. Applied AFTER exposes lands so the final stored value
+    // is rehosted. A no-op when the IP is unchanged or the host isn't sslip.
+    const newIp = resolveServerIp(serversById.get(serverId));
     if (newIp !== oldIp) {
-      for (const dom of d.domains) {
-        if (
-          dom.projectId === p.id &&
-          dom.source === "auto" &&
-          sslipEmbeddedIp(dom.name) === oldIp
-        ) {
-          dom.name = rehostSslip(dom.name, newIp);
+      // Rehost the project's auto sslip.io domain rows in place.
+      const projectDomains = await loadDomainsForProject(p.id, tx);
+      for (const dom of projectDomains) {
+        if (dom.source === "auto" && sslipEmbeddedIp(dom.name) === oldIp) {
+          await tx
+            .update(domainsTable)
+            .set({ name: rehostSslip(dom.name, newIp) })
+            .where(eq(domainsTable.id, dom.id));
         }
       }
-      if (p.exposes?.length) {
-        p.exposes = p.exposes.map((e) =>
+      if (exposes?.length) {
+        exposes = exposes.map((e) =>
           e.host && sslipEmbeddedIp(e.host) === oldIp
             ? { ...e, host: rehostSslip(e.host, newIp) }
             : e,
         );
       }
     }
-    p.updatedAt = nowIso();
+
+    await tx
+      .update(projectsTable)
+      .set({
+        serverId,
+        source: input.source,
+        repoProvider: input.repo?.provider ?? null,
+        repoUrl: input.repo?.url ?? null,
+        repoRepo: input.repo?.repo ?? null,
+        repoBranch: input.repo?.branch ?? null,
+        repoInstallationId: input.repo?.installationId ?? null,
+        dockerImage: input.dockerImage,
+        // Persist compose edits when provided; never clear a stored stack on
+        // switch so the user can flip back to Compose and recover it.
+        ...(input.compose != null ? { compose: input.compose } : {}),
+        updatedAt: nowIso(),
+      })
+      .where(eq(projectsTable.id, id));
+
+    // Replace the ordered exposes child rows when the input changed them.
+    if (input.exposes !== undefined || input.expose !== undefined) {
+      await tx.delete(projectExposesTable).where(eq(projectExposesTable.projectId, id));
+      const rows = exposesToRows(id, exposes);
+      if (rows.length > 0) await tx.insert(projectExposesTable).values(rows);
+    }
   });
   recordActivity("project", `Updated deploy source`, user.name, id);
 }
@@ -665,17 +816,24 @@ export async function setProjectVolumes(
     await requireMountHostVolumes();
   }
   const user = (await getCurrentUser())!;
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
-    if (!p) throw new Error("Project not found");
+  await getDb().transaction(async (tx) => {
+    const p = await loadProjectGraph(id, tx);
+    if (!p || p.teamId !== membership.teamId) throw new Error("Project not found");
     if (usesComposeStack(p)) {
       throw new Error(
         "Volumes are managed inside the compose file for this project.",
       );
     }
-    // Validate here (inside mutate) so the conflict check can read p.mounts.
-    p.volumes = validateVolumes(volumes, p.mounts);
-    p.updatedAt = nowIso();
+    // Validate against the project's mounts (the conflict check), then whole-set
+    // replace the `project_volumes` ordered child rows.
+    const validated = validateVolumes(volumes, p.mounts);
+    await tx.delete(projectVolumesTable).where(eq(projectVolumesTable.projectId, id));
+    const rows = volumesToRows(id, validated);
+    if (rows.length > 0) await tx.insert(projectVolumesTable).values(rows);
+    await tx
+      .update(projectsTable)
+      .set({ updatedAt: nowIso() })
+      .where(eq(projectsTable.id, id));
   });
   recordActivity("project", `Updated volumes`, user.name, id);
 }
@@ -692,36 +850,39 @@ export async function setProjectUpload(
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
-    if (!p) throw new Error("Project not found");
-    p.source = "upload";
-    p.upload = upload;
-    p.repo = null;
-    p.dockerImage = null;
-    p.updatedAt = nowIso();
+  await updateProjectOwned(id, membership.teamId, {
+    source: "upload",
+    uploadId: upload.id,
+    uploadFilename: upload.filename,
+    uploadPath: upload.path,
+    uploadSize: upload.size,
+    uploadUploadedAt: upload.uploadedAt,
+    // Forget any repo / docker image so the deploy takes the upload branch.
+    repoProvider: null,
+    repoUrl: null,
+    repoRepo: null,
+    repoBranch: null,
+    repoInstallationId: null,
+    dockerImage: null,
+    updatedAt: nowIso(),
   });
   recordActivity("project", `Uploaded ${upload.filename}`, user.name, id);
 }
 
 export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
-    if (!p) throw new Error("Project not found");
-    p.autoDeploy = value;
-    p.updatedAt = nowIso();
+  await updateProjectOwned(id, membership.teamId, {
+    autoDeploy: value,
+    updatedAt: nowIso(),
   });
 }
 
 export async function renameProject(id: string, name: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
-    if (!p) throw new Error("Project not found");
-    p.name = name.trim();
-    p.updatedAt = nowIso();
+  await updateProjectOwned(id, membership.teamId, {
+    name: name.trim(),
+    updatedAt: nowIso(),
   });
   recordActivity("project", `Renamed project to ${name}`, user.name, id);
 }
@@ -747,27 +908,37 @@ export async function updateProjectLogo(
   if (next && !isValidLogoValue(next)) {
     throw new Error("Unsupported logo image");
   }
-  let changed = false;
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
-    if (!p) throw new Error("Project not found");
-    if ((p.logo ?? null) === next) return;
-    p.logo = next;
-    p.updatedAt = nowIso();
-    changed = true;
-  });
-  if (changed) recordActivity("project", `Updated project logo`, user.name, id);
+  // No-op (no updatedAt bump, no activity) when unchanged: only update rows whose
+  // logo actually differs (a team-scoped conditional UPDATE … RETURNING).
+  const updated = await getDb()
+    .update(projectsTable)
+    .set({ logo: next, updatedAt: nowIso() })
+    .where(
+      and(
+        eq(projectsTable.id, id),
+        eq(projectsTable.teamId, membership.teamId),
+        next === null
+          ? sql`${projectsTable.logo} is not null`
+          : sql`${projectsTable.logo} is distinct from ${next}`,
+      ),
+    )
+    .returning({ id: projectsTable.id });
+  // Distinguish "not found / not owned" from "unchanged": a found-but-unchanged
+  // row simply skips the activity below. Verify existence only when nothing changed.
+  if (updated.length === 0) {
+    const exists = await projectInTeam(id, membership.teamId);
+    if (!exists) throw new Error("Project not found");
+    return;
+  }
+  recordActivity("project", `Updated project logo`, user.name, id);
 }
 
-/** Mutate a project's status and notify every live subscriber. */
-function setProjectStatus(id: string, status: ProjectStatus): void {
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === id);
-    if (p) {
-      p.status = status;
-      p.updatedAt = nowIso();
-    }
-  });
+/** Set a project's status and notify every live subscriber. */
+async function setProjectStatus(id: string, status: ProjectStatus): Promise<void> {
+  await getDb()
+    .update(projectsTable)
+    .set({ status, updatedAt: nowIso() })
+    .where(eq(projectsTable.id, id));
   publishProjectChanged(id);
 }
 
@@ -775,15 +946,14 @@ function setProjectStatus(id: string, status: ProjectStatus): void {
 export async function stopProject(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const project = read().projects.find(
-    (x) => x.id === id && x.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
+  const project = await loadProjectGraph(id);
+  if (!project || project.teamId !== membership.teamId)
+    throw new Error("Project not found");
   // Persist "stopping" BEFORE the (up to 60s) container stop so the transition
   // is visible to every client immediately and survives a reload — not just a
   // local label on the clicking user's button. We settle to "idle" once the
   // stop returns (success or failure: the intent was to stop).
-  setProjectStatus(id, "stopping");
+  await setProjectStatus(id, "stopping");
   recordActivity("project", `Stopping ${project.name}`, user.name, id);
   try {
     await stopContainer(project.slug);
@@ -792,22 +962,21 @@ export async function stopProject(id: string): Promise<void> {
     // running on the host, so settling to "idle" would lie. This covers BOTH an
     // unreachable agent (AgentUnreachableError) AND a reachable agent that
     // reported the stop failed (build.ts throws a plain Error on ok:false).
-    setProjectStatus(id, "active");
+    await setProjectStatus(id, "active");
     throw new Error(
       `The stack on ${project.name}'s server was not stopped: ${errMsg(e)}`,
     );
   }
-  setProjectStatus(id, "idle");
+  await setProjectStatus(id, "idle");
 }
 
 /** Start a previously stopped project's container. */
 export async function startProject(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const project = read().projects.find(
-    (x) => x.id === id && x.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
+  const project = await loadProjectGraph(id);
+  if (!project || project.teamId !== membership.teamId)
+    throw new Error("Project not found");
   try {
     await startContainer(project.slug);
   } catch (e) {
@@ -817,7 +986,7 @@ export async function startProject(id: string): Promise<void> {
       `The stack on ${project.name}'s server was not started: ${errMsg(e)}`,
     );
   }
-  setProjectStatus(id, "active");
+  await setProjectStatus(id, "active");
   recordActivity("project", `Started ${project.name}`, user.name, id);
 }
 
@@ -825,11 +994,9 @@ export async function startProject(id: string): Promise<void> {
 export async function rebuildProject(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const project = read().projects.find(
-    (x) => x.id === id && x.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
-  startDeployment(id, {
+  if (!(await projectInTeam(id, membership.teamId)))
+    throw new Error("Project not found");
+  await startDeployment(id, {
     environment: "production",
     creator: user.name,
     commitMessage: "Rebuild container",
@@ -839,14 +1006,14 @@ export async function rebuildProject(id: string): Promise<void> {
 export async function deleteProject(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const project = read().projects.find(
-    (x) => x.id === id && x.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
+  const project = await loadProjectGraph(id);
+  if (!project || project.teamId !== membership.teamId)
+    throw new Error("Project not found");
   // Tear down the running container/stack before dropping the records. A REMOTE
   // whose agent is unreachable can't be torn down now — proceed with the delete
   // anyway (P6 spirit: never leave records pinned to a dead box) and warn so the
-  // operator cleans up the leftover containers by hand.
+  // operator cleans up the leftover containers by hand. The agent calls run
+  // OUTSIDE any DB transaction (PLAN §1 rule (a): never wrap a gRPC dial in a tx).
   const tornDown = await teardownProject(project.slug);
   const server = read().servers.find((s) => s.id === project.serverId);
   if (!tornDown && server) {
@@ -865,19 +1032,13 @@ export async function deleteProject(id: string): Promise<void> {
   await removeProjectDevSshUsers(id).catch(() => {});
   // Drop any uploaded archive backing an "upload" source.
   await removeUploads(id).catch(() => {});
-  mutate((d) => {
-    d.projects = d.projects.filter((x) => x.id !== id);
-    // Drop the deleted id from the team's manual Overview order so it doesn't
-    // linger (listProjects also filters stale ids, but keep the stored list tidy).
-    const team = d.teams.find((t) => t.id === membership.teamId);
-    if (team?.projectOrder)
-      team.projectOrder = team.projectOrder.filter((pid) => pid !== id);
-    const depIds = d.deployments.filter((x) => x.projectId === id).map((x) => x.id);
-    d.deployments = d.deployments.filter((x) => x.projectId !== id);
-    for (const depId of depIds) delete d.logs[depId];
-    d.envVars = d.envVars.filter((x) => x.projectId !== id);
-    d.domains = d.domains.filter((x) => x.projectId !== id);
-  });
+  // One DELETE — the FK CASCADEs do the rest: deployments (+ logs), env_vars
+  // (+ targets), domains (+ middlewares), the 6 project child tables, the
+  // team_project_order rows, AND shared_env_group_projects (the orphan the old
+  // JSONB deleteProject leaked is now impossible — PLAN §7 "the live cascade is
+  // fixed in cut-set (c)"). backups.project_id is SET NULL (history outlives the
+  // project), so no project-target backup is orphaned either.
+  await getDb().delete(projectsTable).where(eq(projectsTable.id, id));
   recordActivity("project", `Deleted project ${project.name}`, user.name, null);
 }
 
@@ -909,19 +1070,21 @@ async function mapLimit<T>(
 export async function deleteProjects(ids: string[]): Promise<number> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const idSet = new Set(ids);
-  const projects = read().projects.filter(
-    (x) => idSet.has(x.id) && x.teamId === membership.teamId,
+  const idSet = [...new Set(ids)];
+  // Team-scoped: only the caller's own projects, fully loaded for teardown.
+  const projects = (await loadProjectsByIds(idSet)).filter(
+    (p) => p.teamId === membership.teamId,
   );
   if (projects.length === 0) return 0;
 
-  // Tear down stacks ≤4 at a time. A throw/unreachable for one project must not
-  // abort the others or the record removal (P6: never leave records pinned).
+  const serversById = new Map(read().servers.map((s) => [s.id, s] as const));
+  // Tear down stacks ≤4 at a time (agent calls OUTSIDE any tx). A throw/
+  // unreachable for one project must not abort the others or the record removal.
   const unreachable: string[] = [];
   await mapLimit(projects, 4, async (project) => {
     const tornDown = await teardownProject(project.slug).catch(() => false);
     if (!tornDown) {
-      const server = read().servers.find((s) => s.id === project.serverId);
+      const server = serversById.get(project.serverId);
       if (server) unreachable.push(`${project.name} (${server.name})`);
     }
     await agentTeardownDev(project).catch(() => {});
@@ -929,20 +1092,10 @@ export async function deleteProjects(ids: string[]): Promise<number> {
     await removeUploads(project.id).catch(() => {});
   });
 
-  const gone = new Set(projects.map((p) => p.id));
-  mutate((d) => {
-    d.projects = d.projects.filter((x) => !gone.has(x.id));
-    const team = d.teams.find((t) => t.id === membership.teamId);
-    if (team?.projectOrder)
-      team.projectOrder = team.projectOrder.filter((pid) => !gone.has(pid));
-    const depIds = d.deployments
-      .filter((x) => gone.has(x.projectId))
-      .map((x) => x.id);
-    d.deployments = d.deployments.filter((x) => !gone.has(x.projectId));
-    for (const depId of depIds) delete d.logs[depId];
-    d.envVars = d.envVars.filter((x) => !gone.has(x.projectId));
-    d.domains = d.domains.filter((x) => !gone.has(x.projectId));
-  });
+  // One DELETE — FK CASCADEs remove every child + the shared-group attachments
+  // (no orphan); backups.project_id SET NULL keeps history.
+  const gone = projects.map((p) => p.id);
+  await getDb().delete(projectsTable).where(inArray(projectsTable.id, gone));
   recordActivity(
     "project",
     `Deleted ${projects.length} project${projects.length === 1 ? "" : "s"}`,
