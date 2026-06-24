@@ -12,8 +12,8 @@
  * `db.id` on one key closes that window: a delete now WAITS for an in-flight
  * provision to finish, then tears the (now fully-created) stack down.
  *
- * Singleton on `globalThis` via `Symbol.for(...)` — the same pattern as the store
- * (lib/store.ts): Next builds the RSC and route-handler module graphs separately,
+ * Singleton on `globalThis` via `Symbol.for(...)` — the same pattern as the
+ * Drizzle client (lib/db/client.ts): Next builds the RSC and route-handler module graphs separately,
  * so a per-module Map would give each graph its own lock and a provision in one
  * graph wouldn't block a delete in the other. The keyed-on-globalThis registry is
  * shared across both. `next start` is single-process, so an in-process lock is a

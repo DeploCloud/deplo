@@ -3,7 +3,6 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { and, eq, inArray } from "drizzle-orm";
-import { ensureStoreReady } from "./store";
 import { getDb } from "./db/client";
 import {
   memberships as membershipsTable,
@@ -134,7 +133,6 @@ export async function membershipFor(
  * Cached per-request so it is cheap to call from many data functions.
  */
 export const getActiveTeamId = cache(async (): Promise<string | null> => {
-  await ensureStoreReady();
   const user = await getCurrentUser();
   if (!user) return null;
   const teams = await teamsForUser(user.id);

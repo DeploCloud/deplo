@@ -20,17 +20,16 @@ import type {
 } from "../types";
 
 /**
- * The ONE relational-rows ↔ domain-objects mapping for the backups cut-set (d)
+ * The ONE relational-rows ↔ domain-objects mapping for the backups tables
  * (relational-store PLAN §3 cut-set (d) / §2 the data aggregate): `databases`,
- * `s3_destination`, `backups`, `backup_runs`. Both the live data layer (reads,
- * `lib/data/{databases,s3,backups}.ts`) and the backfill
- * (`lib/db/backfill/cut-sets/backups.ts`, write + reconcile) go through here, so
- * the two can't drift on how a row folds into a domain object — the same
- * anti-drift seam `project-graph-rows.ts` is for cut-set (c) and
- * `notification-row.ts` is for the leaf cut-set.
+ * `s3_destination`, `backups`, `backup_runs`. Every reader and writer in the data
+ * layer (`lib/data/{databases,s3,backups}.ts`) goes through here, so reads and
+ * writes can't drift on how a row folds into a domain object — the same anti-drift
+ * seam `project-graph-rows.ts` is for the project graph and `notification-row.ts`
+ * is for `notification_settings`.
  *
- * Pure — no `server-only`, no store, no db handle — so a `server-only` module and
- * a backfill helper can both import it. These four collections are FLAT (no nested
+ * Pure — no `server-only`, no store, no db handle — so a `server-only` module can
+ * import it freely. These four collections are FLAT (no nested
  * objects, lists, or junctions), so each mapping is a column↔field rename; the
  * load-bearing detail is the `seq` asymmetry: `BackupRun` (the domain type) has no
  * `seq`, but `backup_runs` carries a DB-generated `bigint identity seq` (PLAN §5).

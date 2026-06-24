@@ -32,7 +32,7 @@ export interface RequestIdentity {
 // from the data layer, possibly the RSC graph) reads the other, and the override
 // would be invisible. Pinning the single store on `globalThis` (one V8 isolate
 // per process) collapses every module instance onto ONE store. Mirrors the
-// pattern in lib/store.ts.
+// pattern in lib/db/client.ts.
 const STORE_KEY = Symbol.for("deplo.request-identity.als");
 const g = globalThis as unknown as {
   [STORE_KEY]?: AsyncLocalStorage<RequestIdentity>;

@@ -24,8 +24,8 @@ import { isoTimestampParser } from "../timestamp-parser";
  * the data layer actually receives: it canonicalises to `T…Z` regardless of how
  * the underlying driver rendered the timestamp, identically for node-postgres and
  * pglite (it does not depend on the driver-level OID parser at all — that parser
- * stays for the legacy raw-query path in `document-store.ts`/`lease.ts`). The
- * decode reuses the one {@link isoTimestampParser} so the two regimes can't drift.
+ * stays for the raw-query path in `lease.ts`). The decode reuses the one
+ * {@link isoTimestampParser} so the two regimes can't drift.
  *
  * `toDriver` passes the ISO string straight through (Postgres parses an ISO 8601
  * string into `timestamptz` natively), so writes carry `nowIso()` verbatim.

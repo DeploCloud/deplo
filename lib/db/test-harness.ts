@@ -29,7 +29,7 @@ import { schema } from "./schema";
  *    so the harness can pull it in directly under `node --test`. By contrast
  *    `client.ts`/`pg.ts` are `server-only`, so the harness builds its OWN client
  *    instead of calling `getDb()`.
- *  - The migrator replays the committed journal (0000…0003) so the test DB is
+ *  - The migrator replays the committed journal (0000…0004) so the test DB is
  *    built from the exact DDL production runs — the enums, partial-unique indexes,
  *    identity columns, and CHECK constraints — not a CREATE a test author wrote.
  *

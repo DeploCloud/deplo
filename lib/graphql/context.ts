@@ -4,7 +4,6 @@ import { getCurrentUser } from "@/lib/auth";
 import { currentCapabilities, getActiveTeamId } from "@/lib/membership";
 import { authenticateToken } from "@/lib/data/tokens";
 import { runWithIdentity, type RequestIdentity } from "@/lib/auth/request-context";
-import { ensureStoreReady } from "@/lib/store";
 import type { Capability, PublicUser } from "@/lib/types";
 
 /**
@@ -39,12 +38,6 @@ export interface GraphQLContext {
 export async function buildContext(
   request: Request,
 ): Promise<GraphQLContext> {
-  // Ensure the store/backfill gate has run before the first request: the cookie
-  // path awaits this inside getCurrentUser, but the bearer path below queries the
-  // relational `api_tokens` table (populated by the leaf backfill that
-  // ensureStoreReady gates), so it must be ready first.
-  await ensureStoreReady();
-
   const auth = request.headers.get("authorization");
   const bearer = auth?.toLowerCase().startsWith("bearer ")
     ? auth.slice(7).trim()

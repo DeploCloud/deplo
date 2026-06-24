@@ -92,8 +92,8 @@ function releaseLocal(name: string, owner: string): void {
  * stands. `acquired_at` advances only on a true (re-)acquisition, not a renew.
  *
  * Table creation is owned by the Drizzle migrations (`scheduler_lease` is declared
- * in `schema/legacy.ts` as `timestamptz`). The old on-demand `CREATE TABLE IF NOT
- * EXISTS` was removed in relational-store Step 0 so a single regime owns the
+ * in `schema/scheduler.ts` as `timestamptz`). The old on-demand `CREATE TABLE IF
+ * NOT EXISTS` was removed in relational-store Step 0 so a single regime owns the
  * schema (PLAN §8). The staleness comparison is server-side against `now()`, so
  * the column tz is correctness-neutral for the CAS itself.
  */

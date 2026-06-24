@@ -1,6 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { ensureStoreReady } from "@/lib/store";
 import { getDb } from "@/lib/db/client";
 import {
   githubInstallation as githubInstallationTable,
@@ -17,11 +16,6 @@ import { startDeployment } from "@/lib/deploy/build";
  * are acknowledged without action.
  */
 export async function POST(request: Request) {
-  // Unauthenticated endpoint: GitHub calls it directly, so it never passes
-  // through the dashboard layout / getCurrentUser() that hydrates the store in
-  // Postgres mode. Hydrate explicitly or a cold worker would drop the push.
-  await ensureStoreReady();
-
   const raw = await request.text();
 
   const appId = Number(

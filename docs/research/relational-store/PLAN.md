@@ -1161,6 +1161,64 @@ every table — cut-set (e) added ZERO DDL). Highlights:
 `deplo_state`, `document-store.ts`, the `store_migration` table, the `normalize`/`migrate`
 JSONB code, and `schema/legacy.ts`. Separate, deferred PR.
 
+#### STEP 7 RESULT (2026-06-24) — DONE ✅
+
+The JSONB legacy is gone. With cut-sets (a)–(e) all relational (Steps 2–6), the
+backfill that copied JSONB→relational is finished, so Step 7 deletes not just the
+rollback artifact but the **entire backfill subsystem and the now-empty store
+shim** that existed only to run it. **Full suite 452 pass / 0 fail** (−48 from
+Step 6's 500: the 8 deleted backfill/migrate test files — `engine`, `gate`,
+`infra-backfill`, `identity-backfill-read`, `cut-sets/backups`,
+`cut-sets/project-graph`, `leaf-backfill-read`, and `migrate.test.ts` — covered the
+removed machinery; every live read path keeps its own per-collection data-layer
+test), `tsc` clean (the one pre-existing `migrate.test.ts` cast is gone with the
+file), `eslint` clean (the pre-existing log-viewer / global-error / s3 warnings
+only), `db:generate` reports "No schema changes" on a re-run (no drift). Highlights
+and decisions:
+
+- **The PLAN's literal "drop `schema/legacy.ts`" was WRONG — `scheduler_lease` is
+  live.** `schema/legacy.ts` held BOTH `deplo_state` (the JSONB rollback artifact →
+  dropped) AND `schedulerLease` (the cross-process backup-scheduler mutex, used at
+  runtime by [lease.ts](../../../lib/backups/lease.ts) → KEPT). Resolution: the
+  `schedulerLease` table moved to its own
+  [schema/scheduler.ts](../../../lib/db/schema/scheduler.ts), only `deploState` was
+  dropped, then `schema/legacy.ts` was deleted. The new
+  [migration 0004](../../../lib/db/migrations) drops ONLY `deplo_state` +
+  `store_migration` — `scheduler_lease` is untouched (the `schema.test.ts`
+  "no extras" assertion + the lease/scheduler tests prove it survives).
+- **The backfill subsystem + `ensureStoreReady` were dead once the JSONB source
+  went, so they were retired too** (Step 7 is more than the one-line PLAN entry).
+  Deleted the whole `lib/db/backfill/` tree (engine, gate, markers, normalize,
+  roots, types, all five cut-sets) and `lib/store.ts`; removed `ensureStoreReady()`
+  and all of its 10 call sites (auth ×4, membership, the two GraphQL paths, the
+  github-webhook + agent-bootstrap routes, and instrumentation boot). The unauth
+  routes that called it only needed the backfill gate, which no longer exists.
+- **The `USE_PG` fail-fast moved from `lib/store.ts` to `lib/db/pg.ts`.** The
+  "`DEPLO_DATABASE_URL` is required outside `node --test`" boot guard was the last
+  live thing in `store.ts`; it became a module-load side effect in
+  [pg.ts](../../../lib/db/pg.ts) (which owns the "is Postgres configured" concept
+  and is imported early on every server entry path), so it still fires at boot —
+  before `getPool()` would throw lazily.
+- **Deleted the JSONB document layer:** `document-store.ts` (`loadDocument` had one
+  caller — the deleted `store.ts`; `saveDocument` had zero), `lib/migrate.ts` (the
+  JSONB forward-`migrate()`, only the backfill engine + its test called it), and
+  `lib/seed.ts` (`buildSeed`, only the backfill + its tests). The `DeploData`
+  interface (the in-memory shape of the JSONB document) was removed from
+  `lib/types.ts` — it had ZERO live references after the backfill went (the
+  row-assemblers build the domain entity types, never the `DeploData` container).
+- **KEPT — the read-time per-entity normalizers are NOT the JSONB migrate.**
+  [normalize-project.ts](../../../lib/data/normalize-project.ts) (`deriveVolumeName`,
+  live in `projects.ts`) and the live coercion helpers (`cleanCapabilities`,
+  `sanitizeTargets`) stay; only the JSONB-*document* normalize/migrate (which ran on
+  hydrate) was deleted. The row-assembler seams (`project-graph-rows.ts`,
+  `backup-rows.ts`, `infra-rows.ts`, `notification-row.ts`) stay as the live
+  read↔write anti-drift mapping — their comments dropped the now-dead backfill half.
+- **`document-store.ts`/`store_migration` are now FULLY gone — there is no rollback
+  artifact left** (the migration is complete and soaked, which is the precondition
+  for this step). The historical migrations 0000–0003 keep their original
+  `deplo_state`/`store_migration` `CREATE` statements untouched; 0004 is a purely
+  additive `DROP`.
+
 ---
 
 ## 10. Risks & rollback

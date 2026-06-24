@@ -16,7 +16,7 @@ import { createPubSub } from "@graphql-yoga/subscription";
  * `subscribe(topic, id)` filter to a single project; a payload-only channel
  * would fan every project's changes out to every subscriber.
  *
- * Why `globalThis`, same as the store (see `lib/store.ts`): in `next dev` the
+ * Why `globalThis`, same as the Drizzle client (see `lib/db/client.ts`): in `next dev` the
  * RSC layer and the route-handler layer are compiled into separate module
  * registries, so a module-level `const pubSub` would exist as TWO independent
  * emitters in ONE process — a publish from the data layer (which runs in the

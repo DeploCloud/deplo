@@ -1098,23 +1098,3 @@ export const githubInstallation = pgTable(
     uniqueIndex("github_installation_installation_id_uq").on(t.installationId),
   ],
 );
-
-/* ================================================================== */
-/* Backfill bookkeeping                                                */
-/* ================================================================== */
-
-/**
- * Per-cut-set backfill markers (PLAN §7 "The engine"). One row per cut-set; a
- * cut-set's backfill is a no-op once its marker exists, and a fresh install
- * writes all markers with zero rows. Names:
- * `backfill_leaf` / `backfill_identity` / `backfill_project_graph` /
- * `backfill_backups`.
- */
-export const storeMigration = pgTable("store_migration", {
-  name: text("name").primaryKey(),
-  // `isoTimestamptz` is a customType, so the server-side default uses `sql` rather
-  // than `.defaultNow()` (which the timestamp builder has but customType lacks).
-  completedAt: isoTimestamptz("completed_at")
-    .notNull()
-    .default(sql`now()`),
-});

@@ -935,9 +935,9 @@ export interface Backup {
 
 /**
  * One executed backup — the record of a single dump+upload (or restore source).
- * Stored as an array in `DeploData` (no SQL migration); the source of truth for
- * artifact listing and restore. `backupId` is null for an ad-hoc "back up now"
- * run with no owning schedule.
+ * Persisted in the `backup_runs` table; the source of truth for artifact listing
+ * and restore. `backupId` is null for an ad-hoc "back up now" run with no owning
+ * schedule.
  */
 export interface BackupRun {
   id: ID;
@@ -1139,46 +1139,6 @@ export interface GithubInstallation {
   accountType: "User" | "Organization";
   avatarUrl: string;
   createdAt: string;
-}
-
-/** Whole persisted database shape. */
-export interface DeploData {
-  users: User[];
-  teams: Team[];
-  folders: Folder[];
-  /** Per-team membership join rows — who belongs to which team and with what capabilities. */
-  memberships: Membership[];
-  /** Outstanding & historical team invitations. */
-  invites: Invite[];
-  /** Single-use new-account registration links (account + own team). */
-  registrationLinks: RegistrationLink[];
-  servers: Server[];
-  projects: Project[];
-  deployments: Deployment[];
-  logs: Record<ID, LogLine[]>; // by deploymentId
-  envVars: EnvVar[];
-  domains: Domain[];
-  databases: Database[];
-  s3Destinations: S3Destination[];
-  backups: Backup[];
-  /** Executed backup runs (artifact history). Backfilled to [] on hydrate. */
-  backupRuns: BackupRun[];
-  apiTokens: ApiToken[];
-  activities: Activity[];
-  /**
-   * Notification settings, keyed by team id. A team with no entry yet falls
-   * back to the default settings (see `defaultNotificationSettings`).
-   */
-  notificationSettings: Record<ID, NotificationSettings>;
-  sharedEnvGroups: SharedEnvGroup[];
-  registries: Registry[];
-  githubApps: GithubApp[];
-  githubInstallations: GithubInstallation[];
-  /** Dev SSH users — the sole source of truth for the SSH gateway projection. */
-  devSshUsers: DevSshUser[];
-  /** Apps a team installed from the app repository (ADR-0005). Host-managed
-   * containers, never projects; status is live, never stored here. */
-  installedApps: InstalledApp[];
 }
 
 /** Default notification settings for a team that has none persisted yet. */
