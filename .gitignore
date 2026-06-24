@@ -45,10 +45,5 @@ next-env.d.ts
 /.deplo/
 .claude
 
-# server agent build artifacts (the binary is built into the image / by `make
-# build`; the generated gRPC stubs in agent/gen and lib/agent/gen ARE committed
-# so the contract + both sides move in one commit — D7).
-/agent/bin/
-
 # this is a bun project (bun.lock is the tracked lockfile); never an npm lockfile
 /package-lock.json
