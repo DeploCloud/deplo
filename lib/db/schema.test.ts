@@ -1,0 +1,179 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+
+import type { PGlite } from "@electric-sql/pglite";
+
+import { makeTestDb, type TestDb } from "./test-harness";
+
+/**
+ * Step 1 schema test (relational-store PLAN §9 Step 1: "a `schema.test.ts`
+ * asserts the table set matches the design").
+ *
+ * It applies the REAL generated migrations (0000…0003) to a fresh pglite via the
+ * shared test harness, then reads `information_schema` so the assertions are
+ * against the DDL production actually runs — not the Drizzle declarations in
+ * isolation. This catches a table/enum/constraint that was declared but never made
+ * it into a generated migration (the `db:generate` drift the PLAN §10 guards
+ * against), and a stray table a migration created that the design never asked for.
+ */
+
+let db: TestDb;
+let pg: PGlite;
+
+before(async () => {
+  ({ db, pg } = await makeTestDb());
+  void db;
+});
+
+after(async () => {
+  await pg.close();
+});
+
+/* ------------------------------------------------------------------ */
+/* The exact expected table set                                        */
+/* ------------------------------------------------------------------ */
+
+/** Legacy + Better-Auth tables that survive the migration (schema/auth, legacy). */
+const PRE_EXISTING = [
+  "account",
+  "session",
+  "user",
+  "verification",
+  "deplo_state",
+  "scheduler_lease",
+] as const;
+
+/** The relational control-plane tables added in Step 1 (PLAN §2). */
+const CONTROL_PLANE = [
+  // identity
+  "users",
+  "teams",
+  "folders",
+  "memberships",
+  "membership_capabilities",
+  "invites",
+  "invite_capabilities",
+  "registration_links",
+  "team_project_order",
+  "team_folder_order",
+  // infra
+  "servers",
+  // projects
+  "projects",
+  "project_build",
+  "project_build_method_settings",
+  "project_dev",
+  "project_exposes",
+  "project_volumes",
+  "project_mounts",
+  "deployments",
+  "deployment_logs",
+  "env_vars",
+  "env_var_targets",
+  "domains",
+  "domain_middlewares",
+  "dev_ssh_user",
+  // data
+  "databases",
+  "s3_destination",
+  "backups",
+  "backup_runs",
+  // per-team leaf
+  "api_tokens",
+  "activities",
+  "notification_settings",
+  "registries",
+  "installed_apps",
+  // integrations
+  "shared_env_groups",
+  "shared_env_group_vars",
+  "shared_env_group_projects",
+  "shared_env_group_targets",
+  "github_apps",
+  "github_installation",
+  // bookkeeping
+  "store_migration",
+] as const;
+
+async function publicTables(): Promise<Set<string>> {
+  const r = await pg.query<{ table_name: string }>(
+    `select table_name from information_schema.tables
+     where table_schema = 'public' and table_type = 'BASE TABLE'`,
+  );
+  return new Set(r.rows.map((x) => x.table_name));
+}
+
+test("schema: every designed table exists and there are no extras", async () => {
+  const expected = new Set<string>([...PRE_EXISTING, ...CONTROL_PLANE]);
+  // The drizzle migrator also creates its bookkeeping table; exclude it.
+  const got = await publicTables();
+  got.delete("__drizzle_migrations");
+
+  const missing = [...expected].filter((t) => !got.has(t)).sort();
+  const extra = [...got].filter((t) => !expected.has(t)).sort();
+
+  assert.deepEqual(missing, [], `missing tables: ${missing.join(", ")}`);
+  assert.deepEqual(extra, [], `unexpected tables: ${extra.join(", ")}`);
+});
+
+test("schema: the three control-plane enums exist with the designed values", async () => {
+  const r = await pg.query<{ enum_name: string; values: string }>(
+    `select t.typname as enum_name,
+            string_agg(e.enumlabel, ',' order by e.enumsortorder) as values
+       from pg_type t
+       join pg_enum e on e.enumtypid = t.oid
+      group by t.typname`,
+  );
+  const byName = new Map(r.rows.map((x) => [x.enum_name, x.values]));
+
+  assert.equal(
+    byName.get("deployment_log_level"),
+    "info,warn,error,debug,command,success",
+  );
+  assert.equal(byName.get("github_account_type"), "User,Organization");
+  assert.equal(byName.get("dev_status"), "off,starting,running,stopped,error");
+});
+
+test("schema: the load-bearing constraints from PLAN §2 are present", async () => {
+  // Partial-unique / expression-unique indexes (the concurrency backstops).
+  const idx = await pg.query<{ indexname: string }>(
+    `select indexname from pg_indexes where schemaname='public'`,
+  );
+  const indexes = new Set(idx.rows.map((x) => x.indexname));
+  for (const name of [
+    "domains_one_primary_uq", // partial UNIQUE WHERE is_primary
+    "invites_team_email_pending_uq", // partial UNIQUE WHERE status='pending'
+    "users_email_lower_uq", // expression UNIQUE lower(email)
+    "domains_name_pathprefix_uq", // expression UNIQUE name + coalesce(path_prefix)
+    "servers_cert_fingerprint_uq", // partial UNIQUE excluding ''/NULL
+    "backup_runs_running_idx", // partial index WHERE status='running'
+  ]) {
+    assert.ok(indexes.has(name), `index ${name} should exist`);
+  }
+
+  // CHECK constraints (the XOR target + the dev-ssh credential).
+  const chk = await pg.query<{ conname: string }>(
+    `select conname from pg_constraint where contype='c'`,
+  );
+  const checks = new Set(chk.rows.map((x) => x.conname));
+  assert.ok(checks.has("backups_target_kind_xor"), "backups XOR check");
+  assert.ok(checks.has("dev_ssh_user_has_credential"), "dev_ssh credential check");
+});
+
+test("schema: the append-only tables carry a bigint identity seq", async () => {
+  for (const table of ["activities", "deployments", "backup_runs"]) {
+    const r = await pg.query<{ is_identity: string; data_type: string }>(
+      `select is_identity, data_type from information_schema.columns
+        where table_schema='public' and table_name=$1 and column_name='seq'`,
+      [table],
+    );
+    assert.equal(r.rows[0]?.is_identity, "YES", `${table}.seq is identity`);
+    assert.equal(r.rows[0]?.data_type, "bigint", `${table}.seq is bigint`);
+  }
+  // deployment_logs reproduces Array.push order via its bigint identity id.
+  const logs = await pg.query<{ is_identity: string }>(
+    `select is_identity from information_schema.columns
+      where table_schema='public' and table_name='deployment_logs' and column_name='id'`,
+  );
+  assert.equal(logs.rows[0]?.is_identity, "YES");
+});

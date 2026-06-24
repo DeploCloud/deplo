@@ -1,6 +1,12 @@
 import "server-only";
 
-import { Pool } from "pg";
+import { Pool, types as pgTypes } from "pg";
+
+import {
+  isoTimestampParser,
+  TIMESTAMP_OID,
+  TIMESTAMPTZ_OID,
+} from "./timestamp-parser";
 
 /**
  * PostgreSQL connection pool.
@@ -14,6 +20,25 @@ import { Pool } from "pg";
  * the synchronous data-layer tests run without provisioning Postgres. See
  * {@link isTestEnv} and `lib/store.ts`.
  */
+
+/**
+ * Install the canonical-ISO timestamp parser as a process-global node-postgres
+ * type override (relational-store PLAN §1). `pg.types.setTypeParser` is global
+ * across every Pool/Client in the process, so a RAW `pool.query(...)` of a
+ * `timestamptz`/`timestamp` column reads back as a lexicographically-sortable
+ * `T…Z` string.
+ *
+ * NOTE: this covers the LEGACY raw-query path only (`document-store.ts` reading
+ * the JSONB `data`, `lease.ts`). It does NOT cover reads through the Drizzle
+ * client: Drizzle installs a per-query parser override that returns the timestamp
+ * OIDs unchanged, bypassing this global. The relational `*_at` columns are
+ * canonicalised instead by the `isoTimestamptz` custom type
+ * ([./schema/columns.ts](./schema/columns.ts)), which reuses this same
+ * `isoTimestampParser` at the ORM codec layer — so the two regimes share one
+ * helper and can't drift (see `timestamp-parser.ts`).
+ */
+pgTypes.setTypeParser(TIMESTAMPTZ_OID, isoTimestampParser);
+pgTypes.setTypeParser(TIMESTAMP_OID, isoTimestampParser);
 
 export function databaseUrl(): string | undefined {
   return process.env.DEPLO_DATABASE_URL || process.env.DATABASE_URL || undefined;
