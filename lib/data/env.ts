@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -86,7 +87,7 @@ export async function upsertEnv(input: {
   type: "plain" | "secret";
 }): Promise<void> {
   const { membership } = await requireCapability("manage_env");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
   if (input.targets.length === 0) throw new Error("Select at least one environment");
@@ -173,7 +174,7 @@ export async function setProjectEnv(
   defaultTargets: EnvTarget[],
 ): Promise<number> {
   const { membership } = await requireCapability("manage_env");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const project = read().projects.find(
     (p) => p.id === projectId && p.teamId === membership.teamId,
   );
@@ -230,7 +231,7 @@ export async function setProjectEnv(
 
 export async function deleteEnv(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_env");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const e = read().envVars.find((x) => x.id === id);
   if (!e) throw new Error("Not found");
   const inTeam = read().projects.some(

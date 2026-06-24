@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
   requireActiveTeamId,
@@ -313,7 +314,7 @@ export async function createProject(
   if (input.compose != null && composeHasHostBindMount(input.compose)) {
     await requireMountHostVolumes();
   }
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const slugBase = input.name
     .toLowerCase()
     .trim()
@@ -453,7 +454,7 @@ export async function updateProjectBuild(
   // build.port is only WHICH container port Traefik routes to (routing), not a
   // published host port, so changing it isn't gated behind the expose-ports
   // grant — any member who can deploy may edit build settings.
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   mutate((d) => {
     const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
@@ -492,7 +493,7 @@ export async function updateProjectSource(
   if (input.compose != null && composeHasHostBindMount(input.compose)) {
     await requireMountHostVolumes();
   }
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   mutate((d) => {
     const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
@@ -725,7 +726,7 @@ export async function setProjectVolumes(
   if (volumes.some((v) => v.type === "host")) {
     await requireMountHostVolumes();
   }
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   mutate((d) => {
     const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
@@ -752,7 +753,7 @@ export async function setProjectUpload(
   upload: UploadArchive,
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   mutate((d) => {
     const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
@@ -777,7 +778,7 @@ export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
 
 export async function renameProject(id: string, name: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   mutate((d) => {
     const p = d.projects.find((x) => x.id === id && x.teamId === membership.teamId);
     if (!p) throw new Error("Project not found");
@@ -803,7 +804,7 @@ export async function updateProjectLogo(
   logo: string | null,
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const next = logo?.trim() ? logo.trim() : null;
   if (next && !isValidLogoValue(next)) {
     throw new Error("Unsupported logo image");
@@ -835,7 +836,7 @@ function setProjectStatus(id: string, status: ProjectStatus): void {
 /** Stop the project's running container. */
 export async function stopProject(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const project = read().projects.find(
     (x) => x.id === id && x.teamId === membership.teamId,
   );
@@ -864,7 +865,7 @@ export async function stopProject(id: string): Promise<void> {
 /** Start a previously stopped project's container. */
 export async function startProject(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const project = read().projects.find(
     (x) => x.id === id && x.teamId === membership.teamId,
   );
@@ -885,7 +886,7 @@ export async function startProject(id: string): Promise<void> {
 /** Rebuild the image from the current source and redeploy (real build). */
 export async function rebuildProject(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const project = read().projects.find(
     (x) => x.id === id && x.teamId === membership.teamId,
   );
@@ -899,7 +900,7 @@ export async function rebuildProject(id: string): Promise<void> {
 
 export async function deleteProject(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const project = read().projects.find(
     (x) => x.id === id && x.teamId === membership.teamId,
   );
@@ -969,7 +970,7 @@ async function mapLimit<T>(
  */
 export async function deleteProjects(ids: string[]): Promise<number> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const idSet = new Set(ids);
   const projects = read().projects.filter(
     (x) => idSet.has(x.id) && x.teamId === membership.teamId,

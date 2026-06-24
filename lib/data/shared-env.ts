@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -121,7 +122,7 @@ export async function saveSharedEnvGroup(input: {
   targets: EnvTarget[];
 }): Promise<void> {
   const { membership } = await requireCapability("manage_env");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const name = input.name.trim();
   if (!name) throw new Error("Enter a name");
   const variables = parseBlob(input.blob);
@@ -202,7 +203,7 @@ export async function setSharedEnvGroupAttachment(
   attached: boolean,
 ): Promise<void> {
   const { membership } = await requireCapability("manage_env");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const exists = read().projects.some(
     (p) => p.id === projectId && p.teamId === membership.teamId,
   );
@@ -230,7 +231,7 @@ export async function setSharedEnvGroupAttachment(
 
 export async function deleteSharedEnvGroup(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_env");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const g = groups().find((x) => x.id === id && x.teamId === membership.teamId);
   if (!g) throw new Error("Group not found");
   mutate((d) => {

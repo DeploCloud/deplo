@@ -861,6 +861,50 @@ backfill fidelity; revert leaves JSONB authoritative.
 race (one wins), two-concurrent-demotion races for admin coverage + active-admin,
 stale-password-login regression (proves the cut-set closed it), backfill fidelity.
 
+#### STEP 3 RESULT (2026-06-24) — DONE ✅
+
+Cut-set (b) shipped: `users` + `teams` + `memberships`(+`membership_capabilities`)
++ `registrationLinks` are relational, migrated atomically with
+[lib/auth.ts](../../../lib/auth.ts), [lib/data/members.ts](../../../lib/data/members.ts),
+[lib/membership.ts](../../../lib/membership.ts),
+[lib/data/teams.ts](../../../lib/data/teams.ts),
+[lib/data/account.ts](../../../lib/data/account.ts), and the GraphQL register
+resolver. **Full suite 434 pass / 0 fail**, `tsc` clean (only the pre-existing
+`migrate.test.ts` cast), `db:generate` no schema changes (Step 1 emitted the
+tables). Highlights and decisions made during build:
+
+- **The authz backbone went sync→async.** `membershipFor`/`teamsForUser`/`hasGrant`
+  now query Postgres; every call site awaits (verified no Promise-truthy bypass).
+  `membershipFor` reassembles `capabilities` from the junction batch-loaded via
+  `inArray` (no N+1). `getActiveTeamId` stays the single per-request `cache()`.
+- **`createAccountWithTeam` is one `db.transaction`** (team→user→membership→caps);
+  its `guard` runs the single-use registration consume as the conditional
+  `UPDATE … WHERE status='pending' AND expires_at>=now() RETURNING` — the loser of
+  a concurrent double-submit updates 0 rows and throws, rolling the whole tx back.
+  A `DbTx` alias ([lib/db/client.ts](../../../lib/db/client.ts)) types the
+  tx-threaded helpers (`consumeRegistrationLink`, `assertAdminCoverage`).
+- **Count-invariants via `SELECT … FOR UPDATE`** (§4): `updateUserAdmin` locks
+  `isInstanceAdmin=true OR id=target`; `assertAdminCoverage` locks the critical-cap
+  holder set. Two-concurrent-demotion tests assert "exactly one wins, invariant
+  holds" (pglite serializes the txs on the event loop — it validates the logic, not
+  real lock contention).
+- **Actor-username — resolve relationally, NOT dual-write (user decision).** The 53
+  `read().users.find(u=>u.id===membership.userId)!` actor lookups in cut-set c/d
+  modules (the actor is always the current user) became `(await getCurrentUser())!`
+  — relational + React-cached. No stale-JSONB identity read remains in live code.
+- **NEW hazard found + fixed — the team-ordering bridge.** `projectOrder`/
+  `folderOrder` are NOT relational `teams` columns (they move to the junctions in
+  cut-set (c)); they still live ONLY on the JSONB team object, read/written by
+  `projects.ts`/`folders.ts`. Since `createTeam`/`createAccountWithTeam` no longer
+  write a JSONB team, a post-(b) team would silently lose its order.
+  [lib/data/team-order.ts](../../../lib/data/team-order.ts) `ensureTeamOrderStub`
+  writes a minimal JSONB stub (id + empty order arrays) on team create as a bridge
+  — **cut-set (c) deletes it** when it migrates those arrays to the junctions.
+- **Test backend:** `leaf-test-helpers` now seeds memberships+caps relationally;
+  new `identity-test-helpers.ts` is the seed pattern for b/c/d. `login()` is not
+  unit-testable (`cookies()` throws outside a request scope) — the regression test
+  asserts the rejection cases + that the accept path reaches the cookie write.
+
 **Step 4 — Cut-set (c): project graph.** `projects` (+5–6 child tables) +
 `deployments` + `domains` + `envVars` + `logs` + `sharedEnvGroups` + **`build.ts`** +
 `dev.ts` + **`folders.ts`** — one PR. Includes `loadProjectGraph`, the `summarize()`

@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, desc, eq } from "drizzle-orm";
 
-import { read } from "../store";
+import { getCurrentUser } from "../auth";
 import { getDb } from "../db/client";
 import { registries as registriesTable } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
@@ -58,7 +58,7 @@ export async function addRegistry(input: {
   const { membership } = await requireCapability("manage_infra");
   // The actor's display name for the activity log lives in the JSONB users
   // collection (cut-set b — still authoritative this step).
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const name = input.name.trim();
   if (!name) throw new Error("Enter a name");
   const registryUrl = (input.registryUrl?.trim() || REGISTRY_HOSTS[input.type]).trim();
@@ -83,7 +83,7 @@ export async function addRegistry(input: {
 
 export async function deleteRegistry(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const rows = await getDb()
     .select({ name: registriesTable.name })
     .from(registriesTable)

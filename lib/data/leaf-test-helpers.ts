@@ -1,4 +1,9 @@
-import { teams, users } from "../db/schema/control-plane";
+import {
+  memberships,
+  membershipCapabilities,
+  teams,
+  users,
+} from "../db/schema/control-plane";
 import { capabilitiesForRole } from "../membership-shared";
 import type { TestDb } from "../db/test-harness";
 import type { Role } from "../types";
@@ -6,14 +11,14 @@ import * as store from "../store";
 
 /**
  * Shared seeding for the leaf cut-set data-layer tests (relational-store PLAN
- * Step 2). In Step 2 only the four leaf collections live in Postgres; identity
- * (`users`/`teams`/`memberships`) is still the JSONB store (cut-set b). So a test
- * that drives a `requireCapability`-gated leaf function must seed BOTH:
- *
- *  - the JSONB store with a user + team + membership (so `requireActiveTeamId` /
- *    `requireCapability` resolve — these still read `read()`), and
- *  - the pglite FK roots `teams`/`users` (so the leaf rows' NOT-NULL
- *    `team_id`/`user_id` FKs resolve).
+ * Step 2). Identity (`users`/`teams`/`memberships`(+capabilities)) is relational
+ * as of cut-set (b) (Step 3): `requireActiveTeamId`/`requireCapability`/
+ * `getCurrentUser` now read pglite, NOT the JSONB store. So a test that drives a
+ * `requireCapability`-gated leaf function seeds the relational identity tables
+ * (`teams`/`users`/`memberships`/`membership_capabilities`) — the leaf rows' own
+ * NOT-NULL `team_id`/`user_id` FKs resolve against the same `teams`/`users`. The
+ * JSONB store is still reseeded (cleared) so any residual JSONB read path
+ * (`recordActivity` team fallback) sees a clean document.
  *
  * The caller drives the data functions inside `runWithIdentity({userId, teamId})`
  * so the cookie-free principal/team is visible without a request scope.
@@ -115,4 +120,22 @@ export async function seedIdentity(
       createdAt: T0,
     })),
   );
+  // Memberships + capabilities are relational as of cut-set (b): the authz
+  // backbone (`membershipFor`/`teamsForUser`/`requireCapability`) reads them.
+  await db.insert(memberships).values(
+    seedUsers.map((u) => ({
+      id: `mem_${u.id}`,
+      userId: u.id,
+      teamId: u.teamId,
+      role: u.role ?? "owner",
+      createdAt: T0,
+    })),
+  );
+  const caps = seedUsers.flatMap((u) =>
+    capabilitiesForRole(u.role ?? "owner").map((c) => ({
+      membershipId: `mem_${u.id}`,
+      capability: c,
+    })),
+  );
+  if (caps.length > 0) await db.insert(membershipCapabilities).values(caps);
 }

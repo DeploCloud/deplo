@@ -2,6 +2,7 @@ import "server-only";
 
 import { resolve4, resolveCname } from "node:dns/promises";
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -198,7 +199,7 @@ export async function addDomain(
   config: DomainConfig = {},
 ): Promise<Domain> {
   const { membership } = await requireCapability("manage_domains");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const clean = name
     .trim()
     .toLowerCase()
@@ -378,7 +379,7 @@ export async function updateDomain(
   patch: DomainPatch,
 ): Promise<string> {
   const { membership } = await requireCapability("manage_domains");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const current = read().domains.find((x) => x.id === id);
   if (!current) throw new Error("Not found");
   const project = read().projects.find(
@@ -652,7 +653,7 @@ export function syncProductionUrl(projectId: string): void {
 
 export async function removeDomain(id: string): Promise<string> {
   const { membership } = await requireCapability("manage_domains");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const dom = read().domains.find((x) => x.id === id);
   if (!dom) throw new Error("Not found");
   const project = read().projects.find(

@@ -1,6 +1,9 @@
 import "server-only";
 
+import type { ExtractTablesWithRelations } from "drizzle-orm";
+import type { PgTransaction } from "drizzle-orm/pg-core";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { NodePgQueryResultHKT } from "drizzle-orm/node-postgres";
 
 import { getPool } from "./pg";
 import { schema } from "./schema";
@@ -33,6 +36,22 @@ import { schema } from "./schema";
  * client) — not a generic ORM-of-an-ORM wrapper.
  */
 export type DrizzleClient = NodePgDatabase<typeof schema>;
+
+/**
+ * A transaction handle yielded by `getDb().transaction(async (tx) => …)`.
+ *
+ * The live data layer's multi-table atomic writes (`createAccountWithTeam`,
+ * `updateUserAdmin`, member edits — relational-store PLAN cut-set (b)) thread
+ * this `tx` into helpers (e.g. `consumeRegistrationLink`). Typed against the
+ * production node-postgres flavour; under `node --test` the same code runs over
+ * the pglite client (the query surface is identical — only the driver HKT
+ * differs, which the `__setTestDb` widening already bridges).
+ */
+export type DbTx = PgTransaction<
+  NodePgQueryResultHKT,
+  typeof schema,
+  ExtractTablesWithRelations<typeof schema>
+>;
 
 const CLIENT_KEY = Symbol.for("deplo.db.client.singleton");
 const g = globalThis as unknown as { [CLIENT_KEY]?: DrizzleClient };

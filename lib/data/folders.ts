@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
   requireActiveTeamId,
@@ -95,11 +96,11 @@ async function requireFolderManage(): Promise<{
   teamId: string;
   userName: string;
 }> {
-  const { userId, teamId } = await requireMembership();
+  const { teamId } = await requireMembership();
   if (!(await isInstanceAdmin())) {
     await requireCapability("manage_team");
   }
-  const userName = read().users.find((u) => u.id === userId)?.name ?? "Someone";
+  const userName = (await getCurrentUser())?.name ?? "Someone";
   return { teamId, userName };
 }
 

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -79,7 +80,7 @@ export async function createBackup(input: {
 }): Promise<BackupDTO> {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   if (!input.name.trim()) throw new Error("Name is required");
   if (!input.destinationId) throw new Error("Select a destination");
 
@@ -499,7 +500,7 @@ async function pruneRetention(
 export async function runBackup(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const b = read().backups.find((x) => x.id === id && x.teamId === teamId);
   if (!b) throw new Error("Not found");
   await executeBackup(teamId, user.name, {
@@ -552,7 +553,7 @@ export async function runProjectBackup(
 ): Promise<BackupRun> {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const d0 = read();
   if (!d0.projects.some((x) => x.id === projectId && x.teamId === teamId))
     throw new Error("Project not found");
@@ -578,7 +579,7 @@ export async function runProjectBackup(
 export async function restoreBackup(runId: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
 
   const run = read().backupRuns.find((r) => r.id === runId && r.teamId === teamId);
   if (!run) throw new Error("Backup run not found");
@@ -681,7 +682,7 @@ export async function updateBackup(
 ): Promise<BackupDTO> {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   if (!input.name.trim()) throw new Error("Name is required");
   if (!input.destinationId) throw new Error("Select a destination");
 

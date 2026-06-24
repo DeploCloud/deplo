@@ -1,6 +1,12 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { count, eq } from "drizzle-orm";
+import { getDb } from "../db/client";
+import {
+  memberships as membershipsTable,
+  membershipCapabilities as membershipCapabilitiesTable,
+  teams as teamsTable,
+} from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { assertUser } from "../auth";
 import {
@@ -11,7 +17,8 @@ import {
   capabilitiesForRole,
 } from "../membership";
 import { recordActivity } from "./activity";
-import type { Membership, Team } from "../types";
+import { ensureTeamOrderStub } from "./team-order";
+import type { Team } from "../types";
 
 function slugify(s: string): string {
   return s
@@ -21,12 +28,33 @@ function slugify(s: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function rowToTeam(t: {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  createdAt: string;
+}): Team {
+  return {
+    id: t.id,
+    name: t.name,
+    slug: t.slug,
+    plan: t.plan as Team["plan"],
+    createdAt: t.createdAt,
+  };
+}
+
 /** The active team. */
 export async function getTeam(): Promise<Team> {
   const teamId = await requireActiveTeamId();
-  const t = read().teams.find((x) => x.id === teamId);
+  const rows = await getDb()
+    .select()
+    .from(teamsTable)
+    .where(eq(teamsTable.id, teamId))
+    .limit(1);
+  const t = rows[0];
   if (!t) throw new Error("No team");
-  return t;
+  return rowToTeam(t);
 }
 
 /** Every team the current user belongs to (for the team switcher). */
@@ -34,17 +62,28 @@ export async function listMyTeams(): Promise<
   (Team & { role: string; memberCount: number })[]
 > {
   const user = await assertUser();
-  const d = read();
-  return teamsForUser(user.id).map((t) => {
-    const mine = d.memberships.find(
-      (m) => m.userId === user.id && m.teamId === t.id,
-    );
-    return {
-      ...t,
-      role: mine?.role ?? "member",
-      memberCount: d.memberships.filter((m) => m.teamId === t.id).length,
-    };
-  });
+  const db = getDb();
+  const teams = await teamsForUser(user.id);
+  if (teams.length === 0) return [];
+
+  // The current user's role per team + each team's member count, in two queries.
+  const mine = await db
+    .select({ teamId: membershipsTable.teamId, role: membershipsTable.role })
+    .from(membershipsTable)
+    .where(eq(membershipsTable.userId, user.id));
+  const roleByTeam = new Map(mine.map((m) => [m.teamId, m.role]));
+
+  const counts = await db
+    .select({ teamId: membershipsTable.teamId, n: count() })
+    .from(membershipsTable)
+    .groupBy(membershipsTable.teamId);
+  const countByTeam = new Map(counts.map((c) => [c.teamId, Number(c.n)]));
+
+  return teams.map((t) => ({
+    ...t,
+    role: roleByTeam.get(t.id) ?? "member",
+    memberCount: countByTeam.get(t.id) ?? 0,
+  }));
 }
 
 export async function updateTeam(input: {
@@ -56,14 +95,26 @@ export async function updateTeam(input: {
   const slug = slugify(input.slug);
   if (!name) throw new Error("Team name is required");
   if (!slug) throw new Error("Slug must contain letters or numbers");
-  return mutate((d) => {
-    const t = d.teams.find((x) => x.id === teamId);
+  return getDb().transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(teamsTable)
+      .where(eq(teamsTable.id, teamId))
+      .limit(1);
+    const t = rows[0];
     if (!t) throw new Error("No team");
-    if (d.teams.some((x) => x.id !== t.id && x.slug === slug))
+    const dup = await tx
+      .select({ id: teamsTable.id })
+      .from(teamsTable)
+      .where(eq(teamsTable.slug, slug))
+      .limit(1);
+    if (dup[0] && dup[0].id !== t.id)
       throw new Error("That slug is already in use");
-    t.name = name;
-    t.slug = slug;
-    return { ...t };
+    await tx
+      .update(teamsTable)
+      .set({ name, slug })
+      .where(eq(teamsTable.id, t.id));
+    return rowToTeam({ ...t, name, slug });
   });
 }
 
@@ -75,30 +126,51 @@ export async function createTeam(input: { name: string }): Promise<Team> {
   const user = await assertUser();
   const name = input.name.trim();
   if (!name) throw new Error("Team name is required");
-  const d = read();
-  let slug = slugify(name) || "team";
-  let i = 1;
-  while (d.teams.some((t) => t.slug === slug)) slug = `${slugify(name)}-${i++}`;
   const now = nowIso();
-  const team: Team = {
-    id: newId("team"),
-    name,
-    slug,
-    plan: "pro",
-    createdAt: now,
-  };
-  const membership: Membership = {
-    id: newId("mbr"),
-    userId: user.id,
-    teamId: team.id,
-    role: "owner",
-    capabilities: capabilitiesForRole("owner"),
-    createdAt: now,
-  };
-  mutate((data) => {
-    data.teams.push(team);
-    data.memberships.push(membership);
+  const team = await getDb().transaction(async (tx) => {
+    const taken = new Set(
+      (await tx.select({ slug: teamsTable.slug }).from(teamsTable)).map(
+        (r) => r.slug,
+      ),
+    );
+    const base = slugify(name) || "team";
+    let slug = base;
+    for (let i = 1; taken.has(slug); i++) slug = `${base}-${i}`;
+    const t: Team = {
+      id: newId("team"),
+      name,
+      slug,
+      plan: "pro",
+      createdAt: now,
+    };
+    const membershipId = newId("mbr");
+    await tx.insert(teamsTable).values({
+      id: t.id,
+      name: t.name,
+      slug: t.slug,
+      plan: t.plan,
+      createdAt: t.createdAt,
+    });
+    await tx.insert(membershipsTable).values({
+      id: membershipId,
+      userId: user.id,
+      teamId: t.id,
+      role: "owner",
+      createdAt: now,
+    });
+    await tx
+      .insert(membershipCapabilitiesTable)
+      .values(
+        capabilitiesForRole("owner").map((c) => ({
+          membershipId,
+          capability: c,
+        })),
+      );
+    return t;
   });
+  // Bridge the not-yet-migrated team-ordering fields (cut-set c) — see
+  // ensureTeamOrderStub. The relational row above is authoritative.
+  ensureTeamOrderStub(team.id);
   // Switch the active team to the freshly created one.
   await setActiveTeam(team.id);
   recordActivity("member", `Created team ${team.name}`, user.name, null, team.id);

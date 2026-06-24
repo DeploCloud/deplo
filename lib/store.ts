@@ -145,6 +145,9 @@ async function runCutSetBackfills(): Promise<void> {
   const { awaitBackfill } = await import("./db/backfill/gate");
   const { runBackfill } = await import("./db/backfill/engine");
   const { leafCutSetCopy } = await import("./db/backfill/cut-sets/leaf");
+  const { identityCutSetCopy } = await import(
+    "./db/backfill/cut-sets/identity"
+  );
   const { CUT_SETS } = await import("./db/backfill/markers");
   const db = getDb();
   const owner = `pid-${process.pid}`;
@@ -153,6 +156,13 @@ async function runCutSetBackfills(): Promise<void> {
   // Cut-set (a) — leaf collections (Step 2). Add later cut-sets here in order.
   await awaitBackfill(db, CUT_SETS.leaf, owner, () =>
     runBackfill(db, CUT_SETS.leaf, doc, leafCutSetCopy),
+  );
+
+  // Cut-set (b) — identity / auth (Step 3). Ordered AFTER the leaf cut-set: it is
+  // the authoritative owner of the teams/users roots the leaf cut-set seeded, and
+  // its copy no-ops over those via onConflictDoNothing.
+  await awaitBackfill(db, CUT_SETS.identity, owner, () =>
+    runBackfill(db, CUT_SETS.identity, doc, identityCutSetCopy),
   );
 }
 

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -106,7 +107,7 @@ export function setDevStatus(projectId: string, status: DevStatus): void {
  */
 export async function enableDev(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const p = requireTeamProject(projectId, membership.teamId);
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
@@ -134,7 +135,7 @@ export async function updateDev(
   >,
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const proj = requireTeamProject(projectId, membership.teamId);
   // Enforce eligibility at the data layer, not just the UI — updateDevAction is
   // a directly-callable server action.
@@ -158,7 +159,7 @@ export async function updateDev(
  */
 export async function disableDev(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const p = requireTeamProject(projectId, membership.teamId);
   await agentStopDev(p).catch(() => {});
   mutate((d) => {
@@ -175,7 +176,7 @@ export async function disableDev(projectId: string): Promise<void> {
 /** Start (or restart) the dev container. Sets status push-only. */
 export async function startDevContainer(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const p = requireTeamProject(projectId, membership.teamId);
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
@@ -204,7 +205,7 @@ export async function startDevContainer(projectId: string): Promise<void> {
 /** Stop the dev container (reversible; workspace kept). */
 export async function stopDevContainer(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const p = requireTeamProject(projectId, membership.teamId);
   await agentStopDev(p);
   setDevStatus(projectId, "stopped");
@@ -218,7 +219,7 @@ export async function stopDevContainer(projectId: string): Promise<void> {
  */
 export async function resetDevWorkspace(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const p = requireTeamProject(projectId, membership.teamId);
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
@@ -257,7 +258,7 @@ export async function deployDevWorkspace(
   projectId: string,
 ): Promise<Deployment> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const p = requireTeamProject(projectId, membership.teamId);
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
@@ -313,7 +314,7 @@ export type { VscodeTunnelInfo } from "../deploy/dev";
  */
 export async function startTunnel(projectId: string): Promise<VscodeTunnelInfo> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const p = requireTeamProject(projectId, membership.teamId);
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
@@ -336,7 +337,7 @@ export async function getTunnel(projectId: string): Promise<VscodeTunnelInfo> {
 /** Stop the VS Code tunnel (the dev container keeps running). */
 export async function stopTunnel(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const p = requireTeamProject(projectId, membership.teamId);
   await agentStopTunnel(p);
   recordActivity("project", "Closed VS Code tunnel", user.name, projectId);

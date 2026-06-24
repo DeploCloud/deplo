@@ -1,6 +1,7 @@
 import "server-only";
 
 import { read, mutate } from "../store";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -77,7 +78,7 @@ export async function createDatabase(input: {
 }): Promise<DatabaseDTO> {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const name = input.name.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
   if (!name) throw new Error("Name is required");
 
@@ -249,7 +250,7 @@ export async function setDatabaseRunning(
 
 export async function deleteDatabase(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
-  const user = read().users.find((u) => u.id === membership.userId)!;
+  const user = (await getCurrentUser())!;
   const db = read().databases.find(
     (x) => x.id === id && x.teamId === membership.teamId,
   );
