@@ -393,9 +393,12 @@ export async function startDeployment(
   publishProjectChanged(projectId);
 
   // Fire-and-forget: the standalone Node server keeps the event loop alive.
+  // runDeployment finalizes its own logs in a finally; this guards a throw from
+  // its pre-try setup (e.g. ensureAutoDomain) and flushes that error line too.
   void runDeployment(depId).catch(async (e) => {
     log(depId, "error", e instanceof Error ? e.message : String(e));
     await setDep(depId, { status: "error" });
+    await finalizeDeploymentLogs(depId);
   });
   return depId;
 }
@@ -828,6 +831,12 @@ async function runDeployment(depId: string): Promise<void> {
     log(depId, "error", e instanceof Error ? e.message : String(e));
     await setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
     await setProject(project.id, { status: "error" });
+  } finally {
+    // GUARANTEED final flush (PLAN §6 Decision 18): every deploy end/error path —
+    // success, build failure, agent-unavailable, a thrown error, or an early
+    // return inside the try — persists the buffered build logs before the
+    // fire-and-forget job exits, instead of relying on the periodic timer.
+    await finalizeDeploymentLogs(depId);
   }
 }
 
