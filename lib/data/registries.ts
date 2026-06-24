@@ -78,7 +78,7 @@ export async function addRegistry(input: {
       passwordEnc: encryptSecret(input.password),
       createdAt: nowIso(),
     });
-  recordActivity("member", `Added registry ${name}`, user.name, null, membership.teamId);
+  await recordActivity("member", `Added registry ${name}`, user.name, null, membership.teamId);
 }
 
 export async function deleteRegistry(id: string): Promise<void> {
@@ -94,5 +94,5 @@ export async function deleteRegistry(id: string): Promise<void> {
   await getDb()
     .delete(registriesTable)
     .where(and(eq(registriesTable.id, id), eq(registriesTable.teamId, membership.teamId)));
-  recordActivity("member", `Removed registry ${r.name}`, user.name, null, membership.teamId);
+  await recordActivity("member", `Removed registry ${r.name}`, user.name, null, membership.teamId);
 }

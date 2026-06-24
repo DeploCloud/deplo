@@ -1,11 +1,25 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { and, eq, inArray } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import {
+  envVars as envVarsTable,
+  envVarTargets as envVarTargetsTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret } from "../crypto";
+import {
+  insertEnvVars,
+  loadEnvVar,
+  loadEnvVarsForProject,
+  loadEnvVarsForProjects,
+  projectInTeam,
+} from "./project-graph-load";
 import type { EnvTarget, EnvVar, EnvVarDTO } from "../types";
 
 const MASK = "••••••••••••";
@@ -34,12 +48,8 @@ function toDTO(e: EnvVar): EnvVarDTO {
 export async function listEnv(projectId: string): Promise<EnvVarDTO[]> {
   const { teamId } = await requireCapability("manage_env");
   // Env vars are owned through their project; an out-of-team project yields none.
-  const inTeam = read().projects.some(
-    (p) => p.id === projectId && p.teamId === teamId,
-  );
-  if (!inTeam) return [];
-  return read()
-    .envVars.filter((e) => e.projectId === projectId)
+  if (!(await projectInTeam(projectId, teamId))) return [];
+  return (await loadEnvVarsForProject(projectId))
     .sort((a, b) => a.key.localeCompare(b.key))
     .map(toDTO);
 }
@@ -52,14 +62,28 @@ export interface ProjectEnvGroup {
 /** Every project's env vars, grouped by project (for the global Variables tab). */
 export async function listAllProjectEnv(): Promise<ProjectEnvGroup[]> {
   const { teamId } = await requireCapability("manage_env");
-  const d = read();
-  return d.projects
-    .filter((p) => p.teamId === teamId)
+  const projects = await getDb()
+    .select({
+      id: projectsTable.id,
+      name: projectsTable.name,
+      slug: projectsTable.slug,
+    })
+    .from(projectsTable)
+    .where(eq(projectsTable.teamId, teamId));
+  // Batch-load every var across the team's projects (one pair of queries), then
+  // group in memory — no per-project round-trip.
+  const all = await loadEnvVarsForProjects(projects.map((p) => p.id));
+  const byProject = new Map<string, EnvVar[]>();
+  for (const e of all) {
+    const list = byProject.get(e.projectId) ?? [];
+    list.push(e);
+    byProject.set(e.projectId, list);
+  }
+  return projects
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((p) => ({
       project: { id: p.id, name: p.name, slug: p.slug },
-      vars: d.envVars
-        .filter((e) => e.projectId === p.id)
+      vars: (byProject.get(p.id) ?? [])
         .sort((a, b) => a.key.localeCompare(b.key))
         .map(toDTO),
     }));
@@ -68,12 +92,9 @@ export async function listAllProjectEnv(): Promise<ProjectEnvGroup[]> {
 /** Reveal a single secret value. Requires `manage_env`; returns plaintext. */
 export async function revealEnv(id: string): Promise<string> {
   const { teamId } = await requireCapability("manage_env");
-  const e = read().envVars.find((x) => x.id === id);
+  const e = await loadEnvVar(id);
   if (!e) throw new Error("Not found");
-  const inTeam = read().projects.some(
-    (p) => p.id === e.projectId && p.teamId === teamId,
-  );
-  if (!inTeam) throw new Error("Not found");
+  if (!(await projectInTeam(e.projectId, teamId))) throw new Error("Not found");
   return decryptSecret(e.valueEnc);
 }
 
@@ -91,35 +112,51 @@ export async function upsertEnv(input: {
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
   if (input.targets.length === 0) throw new Error("Select at least one environment");
-  const project = read().projects.find(
-    (p) => p.id === input.projectId && p.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
+  if (!(await projectInTeam(input.projectId, membership.teamId)))
+    throw new Error("Project not found");
 
-  mutate((d) => {
-    const existing = d.envVars.find(
-      (e) => e.projectId === input.projectId && e.key === key
-    );
-    if (existing) {
-      existing.valueEnc = encryptSecret(input.value);
-      existing.targets = input.targets;
-      existing.type = input.type;
-      existing.updatedAt = nowIso();
+  await getDb().transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: envVarsTable.id })
+      .from(envVarsTable)
+      .where(
+        and(
+          eq(envVarsTable.projectId, input.projectId),
+          eq(envVarsTable.key, key),
+        ),
+      )
+      .limit(1);
+    if (existing.length > 0) {
+      const varId = existing[0]!.id;
+      await tx
+        .update(envVarsTable)
+        .set({
+          valueEnc: encryptSecret(input.value),
+          type: input.type,
+          updatedAt: nowIso(),
+        })
+        .where(eq(envVarsTable.id, varId));
+      // Whole-set replace of the targets junction.
+      await tx.delete(envVarTargetsTable).where(eq(envVarTargetsTable.envVarId, varId));
+      await tx
+        .insert(envVarTargetsTable)
+        .values(input.targets.map((target) => ({ envVarId: varId, target })));
     } else {
-      const e: EnvVar = {
-        id: newId("env"),
-        projectId: input.projectId,
-        key,
-        valueEnc: encryptSecret(input.value),
-        targets: input.targets,
-        type: input.type,
-        createdAt: nowIso(),
-        updatedAt: nowIso(),
-      };
-      d.envVars.push(e);
+      await insertEnvVars(tx, [
+        {
+          id: newId("env"),
+          projectId: input.projectId,
+          key,
+          valueEnc: encryptSecret(input.value),
+          targets: input.targets,
+          type: input.type,
+          createdAt: nowIso(),
+          updatedAt: nowIso(),
+        },
+      ]);
     }
   });
-  recordActivity("env", `Updated env var ${key}`, user.name, input.projectId);
+  await recordActivity("env", `Updated env var ${key}`, user.name, input.projectId);
 }
 
 /** Bulk import from a .env style blob. */
@@ -129,10 +166,8 @@ export async function importEnv(
   targets: EnvTarget[]
 ): Promise<number> {
   const { membership } = await requireCapability("manage_env");
-  const project = read().projects.find(
-    (p) => p.id === projectId && p.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
+  if (!(await projectInTeam(projectId, membership.teamId)))
+    throw new Error("Project not found");
   let count = 0;
   const lines = blob.split("\n");
   for (const raw of lines) {
@@ -175,10 +210,8 @@ export async function setProjectEnv(
 ): Promise<number> {
   const { membership } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
-  const project = read().projects.find(
-    (p) => p.id === projectId && p.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
+  if (!(await projectInTeam(projectId, membership.teamId)))
+    throw new Error("Project not found");
   if (defaultTargets.length === 0) {
     throw new Error("Select at least one environment for new variables");
   }
@@ -191,19 +224,21 @@ export async function setProjectEnv(
     wanted.set(key, e.value);
   }
 
-  mutate((d) => {
-    const byKey = new Map(
-      d.envVars.filter((e) => e.projectId === projectId).map((e) => [e.key, e]),
-    );
+  await getDb().transaction(async (tx) => {
+    const existing = await loadEnvVarsForProject(projectId, tx);
+    const byKey = new Map(existing.map((e) => [e.key, e] as const));
+    const created: EnvVar[] = [];
     for (const [key, value] of wanted) {
-      const existing = byKey.get(key);
-      if (existing) {
+      const e = byKey.get(key);
+      if (e) {
         // Skip an unchanged secret (its masked value came back verbatim).
-        if (existing.type === "secret" && value === MASK) continue;
-        existing.valueEnc = encryptSecret(value);
-        existing.updatedAt = nowIso();
+        if (e.type === "secret" && value === MASK) continue;
+        await tx
+          .update(envVarsTable)
+          .set({ valueEnc: encryptSecret(value), updatedAt: nowIso() })
+          .where(eq(envVarsTable.id, e.id));
       } else {
-        d.envVars.push({
+        created.push({
           id: newId("env"),
           projectId,
           key,
@@ -215,12 +250,15 @@ export async function setProjectEnv(
         });
       }
     }
-    // Drop variables removed in the editor.
-    d.envVars = d.envVars.filter(
-      (e) => e.projectId !== projectId || wanted.has(e.key),
-    );
+    if (created.length > 0) await insertEnvVars(tx, created);
+    // Drop variables removed in the editor (their targets CASCADE).
+    const removed = existing
+      .filter((e) => !wanted.has(e.key))
+      .map((e) => e.id);
+    if (removed.length > 0)
+      await tx.delete(envVarsTable).where(inArray(envVarsTable.id, removed));
   });
-  recordActivity(
+  await recordActivity(
     "env",
     `Edited environment (${wanted.size} variable${wanted.size === 1 ? "" : "s"})`,
     user.name,
@@ -232,14 +270,11 @@ export async function setProjectEnv(
 export async function deleteEnv(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
-  const e = read().envVars.find((x) => x.id === id);
+  const e = await loadEnvVar(id);
   if (!e) throw new Error("Not found");
-  const inTeam = read().projects.some(
-    (p) => p.id === e.projectId && p.teamId === membership.teamId,
-  );
-  if (!inTeam) throw new Error("Not found");
-  mutate((d) => {
-    d.envVars = d.envVars.filter((x) => x.id !== id);
-  });
-  recordActivity("env", `Deleted env var ${e.key}`, user.name, e.projectId);
+  if (!(await projectInTeam(e.projectId, membership.teamId)))
+    throw new Error("Not found");
+  // The env_var_targets child rows CASCADE on the delete.
+  await getDb().delete(envVarsTable).where(eq(envVarsTable.id, id));
+  await recordActivity("env", `Deleted env var ${e.key}`, user.name, e.projectId);
 }

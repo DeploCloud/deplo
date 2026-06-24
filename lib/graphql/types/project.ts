@@ -611,12 +611,17 @@ builder.subscriptionFields((t) => ({
   }),
 }));
 
-async function* projectStatusStream(
+// Exported for the cut-set (c) SSE test (PLAN §6 "Add a test that drives the
+// generator across >1 ping"): it must stay cookie-free across iteration ticks.
+export async function* projectStatusStream(
   slug: string,
   teamId: string | null,
 ): AsyncGenerator<ProjectSummary> {
   if (!teamId) throw new Error("Project not found");
-  const project = findProjectSummaryBySlugForTeam(slug, teamId);
+  // Cookie-free (PLAN §6): both lookups take the explicit `teamId` and query
+  // Postgres directly — they never call a cookie-reading helper, so they remain
+  // callable across the async-iteration ticks of this long-lived SSE response.
+  const project = await findProjectSummaryBySlugForTeam(slug, teamId);
   if (!project) throw new Error("Project not found");
   const projectId = project.id;
 
@@ -627,7 +632,7 @@ async function* projectStatusStream(
   // changed project's id (always this project's, given the keyed channel). If
   // the project was deleted mid-stream, summarizeForTeam returns null → end.
   for await (const changedId of pubSub.subscribe("projectChanged", projectId)) {
-    const next = summarizeForTeam(changedId, teamId);
+    const next = await summarizeForTeam(changedId, teamId);
     if (!next) return;
     yield next;
   }

@@ -1,11 +1,24 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { desc, eq, inArray } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import {
+  deployments as deploymentsTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { startDeployment, destroyStack } from "../deploy/build";
+import {
+  loadDeployment,
+  loadDeploymentsForProject,
+  projectInTeam,
+} from "./project-graph-load";
+import { assembleDeployment } from "./project-graph-rows";
+import { loadDeploymentLogs } from "./deployment-logs";
 import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
 
 export async function listDeployments(filter?: {
@@ -14,96 +27,133 @@ export async function listDeployments(filter?: {
   status?: Deployment["status"];
 }): Promise<(Deployment & { projectName: string; projectSlug: string })[]> {
   const teamId = await requireActiveTeamId();
-  const d = read();
-  const teamProjects = new Map(
-    d.projects.filter((p) => p.teamId === teamId).map((p) => [p.id, p]),
-  );
-  return d.deployments
-    .filter((x) => teamProjects.has(x.projectId))
-    .filter((x) => !filter?.projectId || x.projectId === filter.projectId)
+  // The caller's team projects, by id (the deployment join target + the name/slug
+  // decoration). One query; deployments are scoped to these.
+  const teamProjects = await getDb()
+    .select({
+      id: projectsTable.id,
+      name: projectsTable.name,
+      slug: projectsTable.slug,
+    })
+    .from(projectsTable)
+    .where(eq(projectsTable.teamId, teamId));
+  const byId = new Map(teamProjects.map((p) => [p.id, p] as const));
+  const projectIds = filter?.projectId
+    ? byId.has(filter.projectId)
+      ? [filter.projectId]
+      : []
+    : teamProjects.map((p) => p.id);
+  if (projectIds.length === 0) return [];
+
+  // Newest-first with the deterministic seq tie-break, push-down into SQL.
+  const rows = await getDb()
+    .select()
+    .from(deploymentsTable)
+    .where(inArray(deploymentsTable.projectId, projectIds))
+    .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq));
+
+  return rows
+    .map(assembleDeployment)
     .filter((x) => !filter?.environment || x.environment === filter.environment)
     .filter((x) => !filter?.status || x.status === filter.status)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .map((x) => {
-      const p = teamProjects.get(x.projectId);
+      const p = byId.get(x.projectId);
       return { ...x, projectName: p?.name ?? "", projectSlug: p?.slug ?? "" };
     });
 }
 
 export async function getDeployment(id: string): Promise<Deployment | null> {
   const teamId = await requireActiveTeamId();
-  const dep = read().deployments.find((x) => x.id === id);
+  const dep = await loadDeployment(id);
   if (!dep) return null;
-  const inTeam = read().projects.some(
-    (p) => p.id === dep.projectId && p.teamId === teamId,
-  );
-  return inTeam ? dep : null;
+  return (await projectInTeam(dep.projectId, teamId)) ? dep : null;
 }
 
 export async function getLogs(deploymentId: string): Promise<LogLine[]> {
   const teamId = await requireActiveTeamId();
-  const dep = read().deployments.find((x) => x.id === deploymentId);
+  const dep = await loadDeployment(deploymentId);
   if (!dep) return [];
-  const inTeam = read().projects.some(
-    (p) => p.id === dep.projectId && p.teamId === teamId,
-  );
-  if (!inTeam) return [];
-  return read().logs[deploymentId] || [];
+  if (!(await projectInTeam(dep.projectId, teamId))) return [];
+  return loadDeploymentLogs(deploymentId);
 }
 
 /** Trigger a fresh production build + deploy of the latest commit. */
 export async function redeploy(projectId: string): Promise<Deployment> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const project = read().projects.find(
-    (x) => x.id === projectId && x.teamId === membership.teamId,
-  );
-  if (!project) throw new Error("Project not found");
-  const depId = startDeployment(projectId, {
+  if (!(await projectInTeam(projectId, membership.teamId)))
+    throw new Error("Project not found");
+  const depId = await startDeployment(projectId, {
     environment: "production",
     creator: user.name,
     commitMessage: "Redeploy of latest commit",
   });
-  return read().deployments.find((x) => x.id === depId)!;
+  return (await loadDeployment(depId))!;
 }
 
 export async function cancelDeployment(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  const dep = read().deployments.find((x) => x.id === id);
+  const dep = await loadDeployment(id);
   if (!dep) throw new Error("Deployment not found");
-  const inTeam = read().projects.some(
-    (p) => p.id === dep.projectId && p.teamId === membership.teamId,
-  );
-  if (!inTeam) throw new Error("Deployment not found");
-  mutate((d) => {
-    const target = d.deployments.find((x) => x.id === id);
-    if (!target) throw new Error("Deployment not found");
-    if (target.status === "building" || target.status === "queued")
-      target.status = "canceled";
-  });
+  if (!(await projectInTeam(dep.projectId, membership.teamId)))
+    throw new Error("Deployment not found");
+  // Only a queued/building deployment can be cancelled; a conditional UPDATE so
+  // a terminal one is left as-is.
+  if (dep.status === "building" || dep.status === "queued") {
+    await getDb()
+      .update(deploymentsTable)
+      .set({ status: "canceled" })
+      .where(eq(deploymentsTable.id, id));
+  }
 }
 
 export async function promoteToProduction(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const existing = read().deployments.find((x) => x.id === id);
+  const existing = await loadDeployment(id);
   if (!existing) throw new Error("Deployment not found");
-  const inTeam = read().projects.some(
-    (p) => p.id === existing.projectId && p.teamId === membership.teamId,
-  );
-  if (!inTeam) throw new Error("Deployment not found");
-  mutate((d) => {
-    const dep = d.deployments.find((x) => x.id === id);
-    if (!dep) throw new Error("Deployment not found");
-    dep.environment = "production";
-    const p = d.projects.find((x) => x.id === dep.projectId);
-    if (p) {
-      p.latestDeploymentId = dep.id;
-      p.productionUrl = dep.url;
-      p.updatedAt = nowIso();
-    }
+  if (!(await projectInTeam(existing.projectId, membership.teamId)))
+    throw new Error("Deployment not found");
+  // One tx: flip the deployment to production AND point the project at it.
+  await getDb().transaction(async (tx) => {
+    const dep = await tx
+      .select()
+      .from(deploymentsTable)
+      .where(eq(deploymentsTable.id, id))
+      .limit(1);
+    if (dep.length === 0) throw new Error("Deployment not found");
+    await tx
+      .update(deploymentsTable)
+      .set({ environment: "production" })
+      .where(eq(deploymentsTable.id, id));
+    await tx
+      .update(projectsTable)
+      .set({
+        latestDeploymentId: id,
+        productionUrl: dep[0]!.url,
+        updatedAt: nowIso(),
+      })
+      .where(eq(projectsTable.id, dep[0]!.projectId));
   });
-  recordActivity("deployment", `Promoted deployment to production`, user.name, null, membership.teamId);
+  await recordActivity(
+    "deployment",
+    `Promoted deployment to production`,
+    user.name,
+    null,
+    membership.teamId,
+  );
+}
+
+/**
+ * A project's deployments, newest-first. Thin wrapper over the loader's SQL
+ * push-down so the GraphQL `Project.deployments` resolver doesn't load the whole
+ * history into memory.
+ */
+export async function listProjectDeployments(
+  projectId: string,
+  opts: { limit?: number } = {},
+): Promise<Deployment[]> {
+  return loadDeploymentsForProject(projectId, opts);
 }
 
 /**

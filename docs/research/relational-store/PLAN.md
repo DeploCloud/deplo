@@ -916,6 +916,79 @@ AFTER commit), the ordering junctions, and the **`deleteProject` cascade orphan 
 ids), two-concurrent primary-domain races, SSE generator driven across >1 ping
 (cookie-free), buffered-log final-flush + drain-then-DELETE, backfill fidelity.
 
+#### STEP 4 RESULT (2026-06-24) — DONE ✅
+
+Cut-set (c) shipped: `projects` (+ the 6 child tables: `project_build`,
+`project_build_method_settings`, `project_dev`, `project_exposes`,
+`project_volumes`, `project_mounts`) + `deployments` + `deployment_logs` +
+`domains`(+`domain_middlewares`) + `envVars`(+`env_var_targets`) +
+`sharedEnvGroups`(+ the 3 children) + `folders` + the `team_project_order` /
+`team_folder_order` ordering junctions are all relational. **Full suite 453 pass
+/ 0 fail** (+15: backfill 4, data-layer 7, buffered-log 5, SSE 3 — the reconcile
+rewrite replaced 2 in-memory tests), `tsc` clean (only the pre-existing
+`migrate.test.ts` cast), `eslint` clean, `db:generate` reports no drift (Step 1
+emitted the tables). Highlights and decisions:
+
+- **One shared row-assembler is the anti-drift seam.**
+  [lib/data/project-graph-rows.ts](../../../lib/data/project-graph-rows.ts) is the
+  ONE place mapping the project-graph relational rows ↔ the domain objects
+  (`assemble*` / `*ToRows`); the live data layer (read) and the backfill
+  (write + reconcile) both go through it, so they can't drift on how a project's
+  6 child tables fold into one object (the same rationale as `notification-row.ts`
+  for the leaf cut-set). The pure read-time normalizers moved to
+  [normalize-project.ts](../../../lib/data/normalize-project.ts) so the backfill
+  applies the IDENTICAL normalization before exploding a legacy row.
+- **Batch-load is the read seam.**
+  [lib/data/project-graph-load.ts](../../../lib/data/project-graph-load.ts) holds
+  `loadProjectGraph` (one project + all children in a bounded query set), the
+  child batch-loaders (one `inArray` per child table — no N+1), `preloadSummaries`
+  (latest-deployment + domain-count GROUP BY), and the deployment list push-down
+  (`ORDER BY created_at DESC, seq DESC LIMIT`). `summarize` is now a PURE function
+  over preloaded data.
+- **The `deleteProject` orphan bug is fixed by the DB.** `deleteProject` /
+  `deleteProjects` are now ONE `DELETE` (agent teardown OUTSIDE any tx, PLAN §1
+  rule (a)); the FK CASCADEs remove every child AND the
+  `shared_env_group_projects` attachment (the orphan the JSONB version leaked),
+  and `backups.project_id` is `SET NULL`. A data-layer test asserts no orphans.
+- **`setPrimaryDomain` is the single-UPDATE flip** (`SET is_primary = (id =
+  $target) WHERE project_id`), backstopped by the partial-unique; a
+  two-concurrent-flip test asserts exactly one primary survives.
+- **The buffered `deployment_logs` writer**
+  ([lib/data/deployment-logs.ts](../../../lib/data/deployment-logs.ts)) is the
+  full §6 Decision 18 spec: synchronous fire-and-forget `appendLog` (so `log()`
+  stays a `void` sink), ~250ms/200-line batched multi-row INSERT serialized per
+  `deployment_id`, a **guaranteed final flush in `runDeployment`'s `finally`** on
+  every end/error path, and `clearDeploymentLogs` drain-then-DELETE with an
+  **epoch guard** so a late flush can't resurrect cleared lines. Dedicated tests
+  cover final-flush, ordering, immediate-flush-on-full, and the epoch guard.
+- **`project_dev` tri-state**: row ABSENT = dev never enabled; `enableDev` /
+  `updateDev` upsert it, `disableDev` updates only when a row exists.
+- **Ordering junctions retire the JSONB stub.** `teams.projectOrder` /
+  `folderOrder` are gone; `reorderProjects` / `reorderFolders` rewrite the
+  junctions (dead ids can no longer be stored — the self-healing is a DB
+  invariant). The cut-set (b) `team-order.ts` stub was deleted.
+- **A `servers` bridge keeps the project FK valid.** `servers` is migrated by NO
+  cut-set, but `projects.server_id` RESTRICTs to it; the backfill seeds `servers`,
+  and [server-row.ts](../../../lib/data/server-row.ts) mirror-writes the
+  relational row on `addServer`/bootstrap/remove (servers stay JSONB-authoritative
+  until a future cut-set). Same shape as the team-order bridge.
+- **Cut-set CLOSURE — the big self-review catch.** The PLAN's "migrate the
+  collection AND every reader/writer" rule bit hard: an adversarial pass found
+  STALE JSONB reads of the migrated collections in modules OUTSIDE the obvious
+  scope — `console.ts`, `dev-ssh.ts`, `project-files.ts`, `ssh-gateway.ts`,
+  `servers.ts`, `backups.ts`, `project-backup-descriptor.ts`, `deploy/dev.ts`, the
+  upload route, and the github webhook route — all reading `read().projects`/
+  `deployments`/`envVars`/`sharedEnvGroups`, which are now EMPTY in the JSONB doc.
+  Every one was relationalized (a new `loadTeamProject` helper for the common
+  ownership-gated lookup). `recordActivity` now resolves the project→team
+  relationally, fire-and-forget (stays best-effort).
+- **Test backend:** `project-graph-test-helpers.ts` seeds server/project/
+  deployment relationally; `reconcile.test.ts` was rewritten off `store.mutate`
+  to the Drizzle seed helpers (PLAN §8 "rewrite store-coupled tests in the
+  cut-set"). `instrumentation.ts`'s `reconcileInFlightDeployments` is async +
+  floated (nothing at boot depends on it; the backup reconcile stays ordered
+  before the scheduler — cut-set (d)).
+
 **Step 5 — Cut-set (d): backups (with/after databases + s3).** Migrate `databases` +
 `s3` (their FKs are prerequisites), then `backups` + `backupRuns` — one PR (or two,
 databases+s3 then backups, kept adjacent). Includes the **two-tx `executeBackup`**

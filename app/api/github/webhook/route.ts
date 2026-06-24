@@ -1,5 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import { read, ensureStoreReady } from "@/lib/store";
+import { getDb } from "@/lib/db/client";
+import { projects as projectsTable } from "@/lib/db/schema/control-plane";
 import { decryptSecret } from "@/lib/crypto";
 import { findAppByAppId } from "@/lib/github/app";
 import { startDeployment } from "@/lib/deploy/build";
@@ -77,13 +80,22 @@ export async function POST(request: Request) {
     return new Response("ok", { status: 200 });
   }
 
-  const targets = d.projects.filter(
+  // Projects are relational (cut-set c): the github-source candidates for this
+  // installation, filtered in SQL on the flattened repo_* columns.
+  const githubProjects = await getDb()
+    .select()
+    .from(projectsTable)
+    .where(
+      and(
+        eq(projectsTable.source, "github"),
+        eq(projectsTable.repoInstallationId, install.id),
+      ),
+    );
+  const targets = githubProjects.filter(
     (p) =>
-      p.source === "github" &&
       p.autoDeploy &&
-      p.repo?.repo === fullName &&
-      p.repo?.installationId === install.id &&
-      (p.repo?.branch || "main") === branch,
+      p.repoRepo === fullName &&
+      (p.repoBranch || "main") === branch,
   );
 
   if (targets.length === 0) {
@@ -95,22 +107,20 @@ export async function POST(request: Request) {
       `[github-webhook] no auto-deploy target: repo=${fullName} branch=${branch} ` +
         `install=${install.id}; candidates=` +
         JSON.stringify(
-          d.projects
-            .filter((p) => p.source === "github")
-            .map((p) => ({
-              id: p.id,
-              autoDeploy: p.autoDeploy,
-              repo: p.repo?.repo,
-              branch: p.repo?.branch,
-              installationId: p.repo?.installationId,
-            })),
+          githubProjects.map((p) => ({
+            id: p.id,
+            autoDeploy: p.autoDeploy,
+            repo: p.repoRepo,
+            branch: p.repoBranch,
+            installationId: p.repoInstallationId,
+          })),
         ),
     );
   }
 
   for (const p of targets) {
     try {
-      startDeployment(p.id, {
+      await startDeployment(p.id, {
         environment: "production",
         creator: payload.pusher?.name || "github",
         commitMessage: payload.head_commit?.message || "Push",

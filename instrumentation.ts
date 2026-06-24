@@ -24,8 +24,15 @@ export async function register(): Promise<void> {
   try {
     const { ensureStoreReady } = await import("./lib/store");
     await ensureStoreReady();
+    // The deployment reconcile is now async (relational). It marks orphaned
+    // queued/building deploys error; it may be floated (genuinely fire-and-forget
+    // — nothing downstream at boot depends on it). The BACKUP reconcile, by
+    // contrast, MUST complete before the scheduler's first tick (its comment), so
+    // it stays ordered before startBackupScheduler in cut-set (d).
     const { reconcileInFlightDeployments } = await import("./lib/deploy/build");
-    reconcileInFlightDeployments();
+    void reconcileInFlightDeployments().catch((e) =>
+      console.error("[deplo] deployment reconcile failed:", e),
+    );
     const { reconcileInFlightBackupRuns } = await import("./lib/data/backups");
     reconcileInFlightBackupRuns();
     // Start the backup scheduler after the reconcile so a boot tick never trips

@@ -4,11 +4,31 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
-import { read, mutate } from "../store";
+import { and, eq, inArray } from "drizzle-orm";
+import { read } from "../store";
+import { getDb } from "../db/client";
+import {
+  deployments as deploymentsTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
 import { recordActivity } from "../data/activity";
+import {
+  loadDeployment,
+  loadDomainsForProject,
+  loadProjectGraph,
+  loadProjectGraphBySlug,
+  loadEnvVarsForProject,
+  loadSharedEnvGroupsForProject,
+} from "../data/project-graph-load";
+import {
+  appendLog,
+  clearDeploymentLogs,
+  finalizeDeploymentLogs,
+} from "../data/deployment-logs";
+import { deploymentToRow } from "../data/project-graph-rows";
 import { ensureNetwork } from "../infra/docker";
 import { buildImage } from "./builders";
 import { extractArchive } from "./upload";
@@ -45,9 +65,10 @@ import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
  * server's agent (every project is agent-backed now, the host running Deplo
  * included). Null for an unknown slug / a project whose server row is missing.
  */
-function owningServerIdForSlug(slug: string): string | null {
-  const p = read().projects.find((x) => x.slug === slug);
+async function owningServerIdForSlug(slug: string): Promise<string | null> {
+  const p = await loadProjectGraphBySlug(slug);
   if (!p) return null;
+  // Servers stay JSONB-authoritative; confirm the owning server still exists.
   const server = read().servers.find((s) => s.id === p.serverId);
   return server ? server.id : null;
 }
@@ -55,31 +76,44 @@ function owningServerIdForSlug(slug: string): string | null {
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 const STACK_DIR = join(DATA_DIR, "stacks");
 
+// Enqueue one build-log line. SYNCHRONOUS fire-and-forget into the buffered
+// writer (PLAN §6 Decision 18) so it stays a `void` sink usable as a callback
+// prop; the writer batches + flushes in the background.
 function log(depId: string, level: LogLine["level"], text: string): void {
-  mutate((d) => {
-    (d.logs[depId] ??= []).push({ ts: nowIso(), level, text });
-  });
+  appendLog(depId, { ts: nowIso(), level, text });
 }
 
-function setDep(depId: string, patch: Partial<Deployment>): void {
-  let projectId: string | undefined;
-  mutate((d) => {
-    const x = d.deployments.find((y) => y.id === depId);
-    if (x) {
-      Object.assign(x, patch);
-      projectId = x.projectId;
-    }
-  });
+async function setDep(depId: string, patch: Partial<Deployment>): Promise<void> {
+  const set: Record<string, unknown> = {};
+  if (patch.status !== undefined) set.status = patch.status;
+  if (patch.environment !== undefined) set.environment = patch.environment;
+  if (patch.commitSha !== undefined) set.commitSha = patch.commitSha;
+  if (patch.commitMessage !== undefined) set.commitMessage = patch.commitMessage;
+  if (patch.commitAuthor !== undefined) set.commitAuthor = patch.commitAuthor;
+  if (patch.branch !== undefined) set.branch = patch.branch;
+  if (patch.url !== undefined) set.url = patch.url;
+  if (patch.readyAt !== undefined) set.readyAt = patch.readyAt;
+  if (patch.buildDurationMs !== undefined)
+    set.buildDurationMs = patch.buildDurationMs;
+  const rows = await getDb()
+    .update(deploymentsTable)
+    .set(set)
+    .where(eq(deploymentsTable.id, depId))
+    .returning({ projectId: deploymentsTable.projectId });
   // A deployment's status feeds the project's `latestDeployment` view, so push
   // the owning project to live subscribers when it changes.
+  const projectId = rows[0]?.projectId;
   if (projectId && "status" in patch) publishProjectChanged(projectId);
 }
 
-function setProject(projectId: string, patch: Record<string, unknown>): void {
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === projectId);
-    if (p) Object.assign(p, patch, { updatedAt: nowIso() });
-  });
+async function setProject(
+  projectId: string,
+  patch: Partial<typeof projectsTable.$inferInsert>,
+): Promise<void> {
+  await getDb()
+    .update(projectsTable)
+    .set({ ...patch, updatedAt: nowIso() })
+    .where(eq(projectsTable.id, projectId));
   publishProjectChanged(projectId);
 }
 
@@ -88,15 +122,13 @@ function setProject(projectId: string, patch: Record<string, unknown>): void {
  * `production`, plus attached shared groups that also target `production`.
  * Selection lives in the shared `resolveEnvEntries` seam; we only decrypt here.
  */
-function projectEnv(projectId: string): Record<string, string> {
-  const d = read();
+async function projectEnv(projectId: string): Promise<Record<string, string>> {
+  const [vars, groups] = await Promise.all([
+    loadEnvVarsForProject(projectId),
+    loadSharedEnvGroupsForProject(projectId),
+  ]);
   const out: Record<string, string> = {};
-  for (const e of resolveEnvEntries(
-    "production",
-    projectId,
-    d.envVars,
-    d.sharedEnvGroups ?? [],
-  )) {
+  for (const e of resolveEnvEntries("production", projectId, vars, groups)) {
     out[e.key] = decryptSecret(e.valueEnc);
   }
   return out;
@@ -252,37 +284,39 @@ export function isInFlightStatus(s: Deployment["status"]): boolean {
  *
  * Idempotent and safe to run once at startup. Returns the number reconciled.
  */
-export function reconcileInFlightDeployments(): number {
-  let reconciled = 0;
-  const affectedProjects = new Set<string>();
-  mutate((d) => {
-    for (const dep of d.deployments) {
-      if (isInFlightStatus(dep.status)) {
-        dep.status = "error";
-        reconciled++;
-        affectedProjects.add(dep.projectId);
-        (d.logs[dep.id] ??= []).push({
-          ts: nowIso(),
-          level: "error",
-          text: "Deployment interrupted by a control-plane restart and marked failed.",
-        });
-      }
-    }
-    // A project left mid-deploy settles off the transient build state.
-    for (const p of d.projects) {
-      if ((p.status === "building" || p.status === "queued") && affectedProjects.has(p.id)) {
-        p.status = "error";
-        p.updatedAt = nowIso();
-      }
-    }
-  });
-  for (const projectId of affectedProjects) publishProjectChanged(projectId);
-  if (reconciled > 0) {
-    console.warn(
-      `[deplo] reconciled ${reconciled} interrupted deployment(s) to error on startup`,
-    );
+export async function reconcileInFlightDeployments(): Promise<number> {
+  const db = getDb();
+  // Find the orphaned in-flight deployments, mark them error, and append one
+  // interrupted-log line each (through the buffered writer, finalized below).
+  const inFlight = await db
+    .select({ id: deploymentsTable.id, projectId: deploymentsTable.projectId })
+    .from(deploymentsTable)
+    .where(inArray(deploymentsTable.status, ["queued", "building"]));
+  if (inFlight.length === 0) return 0;
+  const affectedProjects = new Set(inFlight.map((d) => d.projectId));
+  await db
+    .update(deploymentsTable)
+    .set({ status: "error" })
+    .where(inArray(deploymentsTable.status, ["queued", "building"]));
+  for (const dep of inFlight) {
+    log(dep.id, "error", "Deployment interrupted by a control-plane restart and marked failed.");
   }
-  return reconciled;
+  await Promise.all(inFlight.map((d) => finalizeDeploymentLogs(d.id)));
+  // A project left mid-deploy settles off the transient build state.
+  await db
+    .update(projectsTable)
+    .set({ status: "error", updatedAt: nowIso() })
+    .where(
+      and(
+        inArray(projectsTable.id, [...affectedProjects]),
+        inArray(projectsTable.status, ["building", "queued"]),
+      ),
+    );
+  for (const projectId of affectedProjects) publishProjectChanged(projectId);
+  console.warn(
+    `[deplo] reconciled ${inFlight.length} interrupted deployment(s) to error on startup`,
+  );
+  return inFlight.length;
 }
 
 /**
@@ -290,7 +324,7 @@ export function reconcileInFlightDeployments(): number {
  * background. Returns the deployment id immediately; the job updates status and
  * logs as it progresses.
  */
-export function startDeployment(
+export async function startDeployment(
   projectId: string,
   opts: {
     environment?: DeploymentEnvironment;
@@ -300,8 +334,8 @@ export function startDeployment(
     /** Build PRODUCTION from the dev workspace tree instead of the source. */
     buildSource?: "dev-workspace";
   },
-): string {
-  const project = read().projects.find((p) => p.id === projectId);
+): Promise<string> {
+  const project = await loadProjectGraph(projectId);
   if (!project) throw new Error("Project not found");
   const server = read().servers.find((s) => s.id === project.serverId);
   const ip = resolveServerIp(server);
@@ -312,7 +346,7 @@ export function startDeployment(
   // Domains section and baked into a template's env. Previews are ephemeral.
   const domain =
     environment === "production"
-      ? ensureAutoDomain(projectId, {
+      ? await ensureAutoDomain(projectId, {
           slug: project.slug,
           ip,
           // The primary host's default route: compose default expose, else
@@ -341,26 +375,31 @@ export function startDeployment(
     ...(opts.buildSource ? { buildSource: opts.buildSource } : {}),
   };
 
-  mutate((d) => {
-    d.deployments.push(dep);
-    d.logs[depId] = [];
-    const p = d.projects.find((x) => x.id === projectId);
-    if (p) {
-      p.latestDeploymentId = depId;
-      p.status = "queued";
-      p.updatedAt = nowIso();
-      if (environment === "production") p.productionUrl = url;
-    }
-  });
-  recordActivity("deployment", `Deploying ${project.name}`, opts.creator, projectId);
+  // Insert the deployment, then point the project at it (latestDeployment +
+  // queued). A fresh build starts from an empty log stream (drain-then-DELETE).
+  await getDb().insert(deploymentsTable).values(deploymentToRow(dep));
+  await clearDeploymentLogs(depId);
+  await getDb()
+    .update(projectsTable)
+    .set({
+      latestDeploymentId: depId,
+      status: "queued",
+      updatedAt: nowIso(),
+      ...(environment === "production" ? { productionUrl: url } : {}),
+    })
+    .where(eq(projectsTable.id, projectId));
+  await recordActivity("deployment", `Deploying ${project.name}`, opts.creator, projectId);
   // A new deployment flips the project to "queued" and sets latestDeployment —
   // push it to live subscribers so the header/tabs update without a reload.
   publishProjectChanged(projectId);
 
   // Fire-and-forget: the standalone Node server keeps the event loop alive.
-  void runDeployment(depId).catch((e) => {
+  // runDeployment finalizes its own logs in a finally; this guards a throw from
+  // its pre-try setup (e.g. ensureAutoDomain) and flushes that error line too.
+  void runDeployment(depId).catch(async (e) => {
     log(depId, "error", e instanceof Error ? e.message : String(e));
-    setDep(depId, { status: "error" });
+    await setDep(depId, { status: "error" });
+    await finalizeDeploymentLogs(depId);
   });
   return depId;
 }
@@ -465,11 +504,11 @@ async function tryAgent(opts: {
 
 async function runDeployment(depId: string): Promise<void> {
   const started = Date.now();
-  const dep = read().deployments.find((x) => x.id === depId);
+  const dep = await loadDeployment(depId);
   if (!dep) return;
-  const project = read().projects.find((p) => p.id === dep.projectId);
+  const project = await loadProjectGraph(dep.projectId);
   if (!project) {
-    setDep(depId, { status: "error" });
+    await setDep(depId, { status: "error" });
     return;
   }
   const slug = project.slug;
@@ -478,7 +517,7 @@ async function runDeployment(depId: string): Promise<void> {
   const ip = resolveServerIp(server);
   const domain =
     dep.environment === "production"
-      ? ensureAutoDomain(project.id, {
+      ? await ensureAutoDomain(project.id, {
           slug,
           ip,
           defaultPort: project.expose?.port ?? project.build.port,
@@ -488,10 +527,10 @@ async function runDeployment(depId: string): Promise<void> {
   // Production routes to every verified domain (primary first); a preview uses
   // only its ephemeral host (not a registered domain). `domain` is always the
   // canonical primary and the fallback when nothing is verified yet.
-  const routeDomains = routableForDeploy(project.id, dep.environment, domain);
+  const routeDomains = await routableForDeploy(project.id, dep.environment, domain);
 
-  setDep(depId, { status: "building" });
-  setProject(project.id, { status: "building" });
+  await setDep(depId, { status: "building" });
+  await setProject(project.id, { status: "building" });
 
   try {
     await mkdir(STACK_DIR, { recursive: true });
@@ -567,8 +606,8 @@ async function runDeployment(depId: string): Promise<void> {
               `build method. Update the agent (reissue the install command from the ` +
               `server's actions menu).`,
           );
-          setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-          setProject(project.id, { status: "error" });
+          await setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
+          await setProject(project.id, { status: "error" });
           return;
         }
       } catch (e) {
@@ -577,8 +616,8 @@ async function runDeployment(depId: string): Promise<void> {
           "error",
           `Agent unavailable: ${e instanceof Error ? e.message : String(e)}`,
         );
-        setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-        setProject(project.id, { status: "error" });
+        await setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
+        await setProject(project.id, { status: "error" });
         return;
       }
     }
@@ -586,8 +625,10 @@ async function runDeployment(depId: string): Promise<void> {
     // Render the single-image stack the agent brings up. The control plane stays
     // the single source of truth for the compose (D2) and env decryption (D4);
     // both are computed here, once, and handed to the agent.
-    const renderStack = (image: string): { composeYaml: string; env: Record<string, string> } => {
-      const env = projectEnv(project.id);
+    const renderStack = async (
+      image: string,
+    ): Promise<{ composeYaml: string; env: Record<string, string> }> => {
+      const env = await projectEnv(project.id);
       const composeYaml = renderCompose({
         name,
         image,
@@ -625,7 +666,7 @@ async function runDeployment(depId: string): Promise<void> {
         ...treeOpts,
         skipBuild: true, // the agent builds; we only resolve the dir
       });
-      const { composeYaml, env } = renderStack(treeOpts.imageRef);
+      const { composeYaml, env } = await renderStack(treeOpts.imageRef);
       const { outcome } = await tryAgent({
         depId,
         serverId,
@@ -666,7 +707,7 @@ async function runDeployment(depId: string): Promise<void> {
         // the host running Deplo included. The agent builds from its OWN workspace
         // via SOURCE_KIND_DEV_WORKSPACE (same exclude-set + symlink-reject guard
         // copyWorkspaceForBuild applied). No workspace bytes cross the wire.
-        const { composeYaml, env } = renderStack(imageRef);
+        const { composeYaml, env } = await renderStack(imageRef);
         const { outcome } = await tryAgent({
           depId,
           serverId,
@@ -686,7 +727,7 @@ async function runDeployment(depId: string): Promise<void> {
       case "docker-image": {
         imageRef = plan.image;
         // A prebuilt image: the owning agent pulls + runs it on its host.
-        const { composeYaml, env } = renderStack(imageRef);
+        const { composeYaml, env } = await renderStack(imageRef);
         const { outcome } = await tryAgent({
           depId,
           serverId,
@@ -714,7 +755,7 @@ async function runDeployment(depId: string): Promise<void> {
         // deploy id as a placeholder tag (the rendered compose references this
         // same imageRef).
         imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
-        const { composeYaml, env } = renderStack(imageRef);
+        const { composeYaml, env } = await renderStack(imageRef);
         log(depId, "command", `git clone ${repo.url} (${dep.branch}) [on agent]`);
         const attempt = await tryAgent({
           depId,
@@ -733,7 +774,7 @@ async function runDeployment(depId: string): Promise<void> {
         });
         if (attempt.commitSha) {
           commitSha = attempt.commitSha;
-          setDep(depId, { commitSha });
+          await setDep(depId, { commitSha });
         }
         agentOutcome = attempt.outcome === "agent" ? "agent" : "failed";
         break;
@@ -772,25 +813,31 @@ async function runDeployment(depId: string): Promise<void> {
     // `agentOutcome` is always set by the time we get here.
     const buildDurationMs = Date.now() - started;
     if (agentOutcome === "agent") {
-      setDep(depId, {
+      await setDep(depId, {
         status: "ready",
         readyAt: nowIso(),
         buildDurationMs,
         commitSha: commitSha || dep.commitSha,
       });
-      setProject(project.id, {
+      await setProject(project.id, {
         status: "active",
         ...(dep.environment === "production" ? { productionUrl: dep.url } : {}),
       });
       log(depId, "success", `Deployment ready at ${dep.url}`);
     } else {
-      setDep(depId, { status: "error", buildDurationMs });
-      setProject(project.id, { status: "error" });
+      await setDep(depId, { status: "error", buildDurationMs });
+      await setProject(project.id, { status: "error" });
     }
   } catch (e) {
     log(depId, "error", e instanceof Error ? e.message : String(e));
-    setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-    setProject(project.id, { status: "error" });
+    await setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
+    await setProject(project.id, { status: "error" });
+  } finally {
+    // GUARANTEED final flush (PLAN §6 Decision 18): every deploy end/error path —
+    // success, build failure, agent-unavailable, a thrown error, or an early
+    // return inside the try — persists the buffered build logs before the
+    // fire-and-forget job exits, instead of relying on the periodic timer.
+    await finalizeDeploymentLogs(depId);
   }
 }
 
@@ -842,10 +889,10 @@ function composeFilesDir(slug: string): string {
  * the agent) so both deploy a byte-identical stack. Returns the rendered YAML and
  * the files dir the stack's mounts resolve to.
  */
-function prepareComposeStack(opts: ComposeStackOpts): {
+async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   stackYaml: string;
   filesDir: string;
-} {
+}> {
   const { project, name, slug, domain, domains, domainRoutes, environment } =
     opts;
 
@@ -859,7 +906,7 @@ function prepareComposeStack(opts: ComposeStackOpts): {
       // pass that service + port — the row is born complete and renders as the
       // default route (byte-identical to the pre-backfill output).
       if (host && host !== domain)
-        ensureExtraDomain(project.id, host, {
+        await ensureExtraDomain(project.id, host, {
           port: ex.port,
           service: ex.service,
         });
@@ -882,23 +929,23 @@ function prepareComposeStack(opts: ComposeStackOpts): {
 }
 
 /** Apply the terminal status of a compose-stack deploy (via the owning agent). */
-function finishComposeStack(
+async function finishComposeStack(
   opts: ComposeStackOpts,
   running: boolean,
-): void {
+): Promise<void> {
   const { depId, project, domain, environment, started } = opts;
   const buildDurationMs = Date.now() - started;
   const url = `https://${domain}`;
   if (running) {
-    setDep(depId, { status: "ready", readyAt: nowIso(), buildDurationMs });
-    setProject(project.id, {
+    await setDep(depId, { status: "ready", readyAt: nowIso(), buildDurationMs });
+    await setProject(project.id, {
       status: "active",
       ...(environment === "production" ? { productionUrl: url } : {}),
     });
     log(depId, "success", `Deployment ready at ${url}`);
   } else {
-    setDep(depId, { status: "error", buildDurationMs });
-    setProject(project.id, { status: "error" });
+    await setDep(depId, { status: "error", buildDurationMs });
+    await setProject(project.id, { status: "error" });
     log(depId, "error", "Stack did not reach a running state");
   }
 }
@@ -933,7 +980,7 @@ async function deployComposeStackViaAgent(
         "This server's agent is too old to run multi-service compose stacks. " +
           "Update the agent (reissue the install command from the server's actions menu).",
       );
-      finishComposeStack(opts, false);
+      await finishComposeStack(opts, false);
       return;
     }
   } catch (e) {
@@ -942,12 +989,12 @@ async function deployComposeStackViaAgent(
       "error",
       `Remote agent unavailable: ${e instanceof Error ? e.message : String(e)}`,
     );
-    finishComposeStack(opts, false);
+    await finishComposeStack(opts, false);
     return;
   }
 
-  const { stackYaml } = prepareComposeStack(opts);
-  const env = projectEnv(project.id);
+  const { stackYaml } = await prepareComposeStack(opts);
+  const env = await projectEnv(project.id);
 
   const { outcome } = await tryAgent({
     depId,
@@ -964,7 +1011,7 @@ async function deployComposeStackViaAgent(
   });
 
   // tryAgent already logged the failure reason / unreachable-agent message.
-  finishComposeStack(opts, outcome === "agent");
+  await finishComposeStack(opts, outcome === "agent");
 }
 
 
@@ -976,14 +1023,14 @@ async function deployComposeStackViaAgent(
  * the project has no verified domain yet (e.g. the freshly-created auto domain
  * hasn't been marked `valid` on a brand-new project — never emit an empty rule).
  */
-function routableForDeploy(
+async function routableForDeploy(
   projectId: string,
   environment: DeploymentEnvironment,
   primary: string,
-): RoutableDomain[] {
+): Promise<RoutableDomain[]> {
   // A preview routes only to its ephemeral host, on the project default port.
   if (environment !== "production") return [defaultRoute(primary)];
-  const valid = routableRoutes(projectId);
+  const valid = await routableRoutes(projectId);
   if (valid.length === 0) return [defaultRoute(primary)];
   // Keep the canonical primary first even if it isn't flagged `valid` yet (it
   // carries its own port override + TLS choice if it has one; else the defaults).
@@ -1130,14 +1177,14 @@ export function parseStackVolumes(
 export async function rerouteProject(
   projectId: string,
 ): Promise<"rerouted" | "unchanged" | "deferred"> {
-  const project = read().projects.find((p) => p.id === projectId);
+  const project = await loadProjectGraph(projectId);
   if (!project) return "deferred";
   const slug = project.slug;
   const name = `deplo-${slug}`;
-  const serverId = owningServerIdForSlug(slug);
+  const serverId = await owningServerIdForSlug(slug);
   if (!serverId) return "deferred"; // no owning agent (server removed); nothing to do
 
-  const routes = routableRoutes(projectId);
+  const routes = await routableRoutes(projectId);
   if (routes.length === 0) return "deferred"; // never write an empty Host() rule
 
   const hasCompose = Boolean(project.compose && project.compose.trim());
@@ -1180,7 +1227,7 @@ export async function rerouteProject(
       // this a pure routing change — never a rebuild or a silent env/image change.
       const image = readStackImageFromYaml(current.yaml, name);
       if (!image) return "deferred"; // can't safely reroute without the running image
-      const env = readStackEnvFromYaml(current.yaml, name) ?? projectEnv(projectId);
+      const env = readStackEnvFromYaml(current.yaml, name) ?? await projectEnv(projectId);
       // Volumes are read back from the stack (like image/env), NOT from
       // project.volumes — so a domain-only reroute keeps the running mounts and
       // never silently applies a volume edit the user hasn't redeployed.
@@ -1215,7 +1262,7 @@ export async function rerouteProject(
 
     // For a single-image stack the env is baked into the YAML, so send no env-file
     // (mirrors the deploy path); compose stacks interpolate ${VAR} from the env.
-    const env = useCompose && hasCompose ? projectEnv(projectId) : {};
+    const env = useCompose && hasCompose ? await projectEnv(projectId) : {};
     const r = await conn.reroute({ slug, composeYaml: rendered, env, mounts });
     if (!r.ok) throw new Error(r.error || "agent failed to reroute the stack");
     return "rerouted";
@@ -1241,8 +1288,7 @@ export async function rerouteProject(
 export async function renderProjectStack(
   projectId: string,
 ): Promise<string | null> {
-  const store = read();
-  const project = store.projects.find((p) => p.id === projectId);
+  const project = await loadProjectGraph(projectId);
   if (!project) return null;
   const slug = project.slug;
   const name = `deplo-${slug}`;
@@ -1253,11 +1299,10 @@ export async function renderProjectStack(
     // what would be written. A never-deployed compose project still previews:
     // fall back to ALL of the project's domains (not just routable ones) so the
     // Host() rule isn't empty before any domain is verified.
-    const routes = routableRoutes(projectId);
+    const routes = await routableRoutes(projectId);
     const domains = routes.length
       ? routes.map((d) => d.name)
-      : store.domains
-          .filter((d) => d.projectId === projectId)
+      : (await loadDomainsForProject(projectId))
           .sort((a, b) => Number(b.primary) - Number(a.primary))
           .map((d) => d.name);
     return buildComposeStack({
@@ -1279,7 +1324,7 @@ export async function renderProjectStack(
   // Single-image / built: the rendered stack only exists on the OWNING agent's
   // disk after a deploy. Read it back over the wire; null when never deployed or
   // the agent is unreachable (the preview just shows nothing yet).
-  const serverId = owningServerIdForSlug(slug);
+  const serverId = await owningServerIdForSlug(slug);
   if (!serverId) return null;
   const conn = await connectAgent(serverId);
   try {
@@ -1299,7 +1344,7 @@ export async function renderProjectStack(
  * no-op). A no-op when the project/server is gone.
  */
 export async function stopContainer(slug: string): Promise<void> {
-  const serverId = owningServerIdForSlug(slug);
+  const serverId = await owningServerIdForSlug(slug);
   if (!serverId) return;
   const conn = await connectAgent(serverId);
   try {
@@ -1312,7 +1357,7 @@ export async function stopContainer(slug: string): Promise<void> {
 
 /** Start a previously stopped stack via the owning agent's StartStack. */
 export async function startContainer(slug: string): Promise<void> {
-  const serverId = owningServerIdForSlug(slug);
+  const serverId = await owningServerIdForSlug(slug);
   if (!serverId) return;
   const conn = await connectAgent(serverId);
   try {
@@ -1330,7 +1375,7 @@ export async function startContainer(slug: string): Promise<void> {
  * throws so the caller can warn about manual cleanup (P6 spirit).
  */
 export async function destroyStack(slug: string): Promise<void> {
-  const serverId = owningServerIdForSlug(slug);
+  const serverId = await owningServerIdForSlug(slug);
   if (!serverId) return;
   const conn = await connectAgent(serverId);
   try {

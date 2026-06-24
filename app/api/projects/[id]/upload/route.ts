@@ -1,6 +1,8 @@
 import { type NextRequest } from "next/server";
+import { and, eq, inArray } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/auth";
-import { read } from "@/lib/store";
+import { getDb } from "@/lib/db/client";
+import { deployments as deploymentsTable } from "@/lib/db/schema/control-plane";
 import { getProjectById, setProjectUpload } from "@/lib/data/projects";
 import { redeploy } from "@/lib/data/deployments";
 import {
@@ -49,13 +51,19 @@ export async function POST(
   if (!project) return Response.json({ error: "Project not found" }, { status: 404 });
 
   // Refuse to clobber an archive a build is still extracting: one deploy at a
-  // time per project. The client surfaces this 409 message.
-  const inFlight = read().deployments.some(
-    (d) =>
-      d.projectId === projectId &&
-      (d.status === "queued" || d.status === "building"),
-  );
-  if (inFlight) {
+  // time per project. The client surfaces this 409 message. Deployments are
+  // relational now — query the in-flight statuses directly.
+  const inFlightRows = await getDb()
+    .select({ id: deploymentsTable.id })
+    .from(deploymentsTable)
+    .where(
+      and(
+        eq(deploymentsTable.projectId, projectId),
+        inArray(deploymentsTable.status, ["queued", "building"]),
+      ),
+    )
+    .limit(1);
+  if (inFlightRows.length > 0) {
     return Response.json(
       { error: "A deploy is already running — wait for it to finish" },
       { status: 409 },

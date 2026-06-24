@@ -1,10 +1,19 @@
 import "server-only";
 
-import { read, mutate } from "../store";
+import { eq } from "drizzle-orm";
+
+import { read } from "../store";
+import { getDb } from "../db/client";
+import { projectDev as projectDevTable } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
+import {
+  loadProjectGraph,
+  loadDeployment,
+} from "./project-graph-load";
+import { devToRow } from "./project-graph-rows";
 import {
   defaultDevConfig,
   devImage,
@@ -39,16 +48,16 @@ export function isDevEligible(source: DeploySource): boolean {
   return SOURCE_BEARING.includes(source);
 }
 
-function requireProject(id: string): Project {
-  const p = read().projects.find((x) => x.id === id);
+async function requireProject(id: string): Promise<Project> {
+  const p = await loadProjectGraph(id);
   if (!p) throw new Error("Project not found");
   return p;
 }
 
 /** Like {@link requireProject} but also asserts the project is in `teamId`. */
-function requireTeamProject(id: string, teamId: string): Project {
-  const p = read().projects.find((x) => x.id === id && x.teamId === teamId);
-  if (!p) throw new Error("Project not found");
+async function requireTeamProject(id: string, teamId: string): Promise<Project> {
+  const p = await loadProjectGraph(id);
+  if (!p || p.teamId !== teamId) throw new Error("Project not found");
   return p;
 }
 
@@ -70,8 +79,10 @@ export interface DevInfo {
 
 export async function getDevInfo(projectId: string): Promise<DevInfo | null> {
   const teamId = await requireActiveTeamId();
-  const p = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
-  if (!p) return null;
+  const p = await loadProjectGraph(projectId);
+  if (!p || p.teamId !== teamId) return null;
+  // Row ABSENT = dev never enabled (the tri-state). Fall back to a derived
+  // default config for display, but report enabled/status from the real row.
   const dev = p.dev ?? defaultDevConfig(p);
   return {
     enabled: p.dev?.enabled ?? false,
@@ -88,40 +99,52 @@ export async function getDevInfo(projectId: string): Promise<DevInfo | null> {
   };
 }
 
-/** Set the push-only dev status (mirrors setProject in build.ts). */
-export function setDevStatus(projectId: string, status: DevStatus): void {
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === projectId);
-    if (!p || !p.dev) return;
-    p.dev.status = status;
-    if (status === "starting") p.dev.latestStartAt = nowIso();
-    p.updatedAt = nowIso();
-  });
+/**
+ * Set the push-only dev status (mirrors setProject in build.ts). No-op when the
+ * project has no `project_dev` row yet (dev never enabled — matches the old
+ * `!p.dev` guard); enableDev/startDevContainer create the row first.
+ */
+export async function setDevStatus(
+  projectId: string,
+  status: DevStatus,
+): Promise<void> {
+  await getDb()
+    .update(projectDevTable)
+    .set({
+      status,
+      ...(status === "starting" ? { latestStartAt: nowIso() } : {}),
+    })
+    .where(eq(projectDevTable.projectId, projectId));
+}
+
+/** Upsert the `project_dev` row for a project (the 1-to-1 child). */
+async function writeDevRow(projectId: string, dev: DevConfig): Promise<void> {
+  const row = devToRow(projectId, dev);
+  await getDb()
+    .insert(projectDevTable)
+    .values(row)
+    .onConflictDoUpdate({ target: projectDevTable.projectId, set: row });
 }
 
 /**
  * Enable dev mode for a source-bearing project. Seeds a default DevConfig
  * (preset derived from framework, dev command from the framework, port =
- * build.port, preview on). Refuses non-source-bearing projects. Does NOT start
- * the container — that is startDevContainer().
+ * build.port, preview on) into the `project_dev` row, materializing it if dev was
+ * never enabled. Refuses non-source-bearing projects. Does NOT start the
+ * container — that is startDevContainer().
  */
 export async function enableDev(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = requireTeamProject(projectId, membership.teamId);
+  const p = await requireTeamProject(projectId, membership.teamId);
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
-  mutate((d) => {
-    const proj = d.projects.find((x) => x.id === projectId);
-    if (!proj) throw new Error("Project not found");
-    proj.dev = proj.dev
-      ? { ...proj.dev, enabled: true }
-      : defaultDevConfig(proj);
-    proj.dev.enabled = true;
-    proj.updatedAt = nowIso();
-  });
-  recordActivity("project", "Enabled dev mode", user.name, projectId);
+  const next: DevConfig = p.dev
+    ? { ...p.dev, enabled: true }
+    : { ...defaultDevConfig(p), enabled: true };
+  await writeDevRow(projectId, next);
+  await recordActivity("project", "Enabled dev mode", user.name, projectId);
 }
 
 /** Patch a project's dev config (image/command/port/preview). */
@@ -136,20 +159,15 @@ export async function updateDev(
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const proj = requireTeamProject(projectId, membership.teamId);
+  const proj = await requireTeamProject(projectId, membership.teamId);
   // Enforce eligibility at the data layer, not just the UI — updateDevAction is
   // a directly-callable server action.
   if (!isDevEligible(proj.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
-  mutate((d) => {
-    const p = d.projects.find((x) => x.id === projectId);
-    if (!p) throw new Error("Project not found");
-    if (!p.dev) p.dev = defaultDevConfig(p);
-    Object.assign(p.dev, patch);
-    p.updatedAt = nowIso();
-  });
-  recordActivity("project", "Updated dev settings", user.name, projectId);
+  const base = proj.dev ?? defaultDevConfig(proj);
+  await writeDevRow(projectId, { ...base, ...patch });
+  await recordActivity("project", "Updated dev settings", user.name, projectId);
 }
 
 /**
@@ -160,35 +178,34 @@ export async function updateDev(
 export async function disableDev(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = requireTeamProject(projectId, membership.teamId);
+  const p = await requireTeamProject(projectId, membership.teamId);
   await agentStopDev(p).catch(() => {});
-  mutate((d) => {
-    const proj = d.projects.find((x) => x.id === projectId);
-    if (proj?.dev) {
-      proj.dev.enabled = false;
-      proj.dev.status = "off";
-      proj.updatedAt = nowIso();
-    }
-  });
-  recordActivity("project", "Disabled dev mode", user.name, projectId);
+  // Only when a row exists (dev was enabled at some point) — keep the tri-state.
+  if (p.dev) {
+    await getDb()
+      .update(projectDevTable)
+      .set({ enabled: false, status: "off" })
+      .where(eq(projectDevTable.projectId, projectId));
+  }
+  await recordActivity("project", "Disabled dev mode", user.name, projectId);
 }
 
 /** Start (or restart) the dev container. Sets status push-only. */
 export async function startDevContainer(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = requireTeamProject(projectId, membership.teamId);
+  const p = await requireTeamProject(projectId, membership.teamId);
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
   if (!p.dev?.enabled) await enableDev(projectId);
-  setDevStatus(projectId, "starting");
+  await setDevStatus(projectId, "starting");
   try {
-    const fresh = requireProject(projectId);
+    const fresh = await requireProject(projectId);
     await agentStartDev(fresh);
-    setDevStatus(projectId, "running");
+    await setDevStatus(projectId, "running");
   } catch (e) {
-    setDevStatus(projectId, "error");
+    await setDevStatus(projectId, "error");
     throw e;
   }
   // If this project has SSH users, (re)establish the gateway on its server so a
@@ -199,17 +216,17 @@ export async function startDevContainer(projectId: string): Promise<void> {
   if (read().devSshUsers.some((u) => u.projectId === projectId)) {
     await ensureGateway(p.serverId).catch(() => {});
   }
-  recordActivity("project", "Started dev container", user.name, projectId);
+  await recordActivity("project", "Started dev container", user.name, projectId);
 }
 
 /** Stop the dev container (reversible; workspace kept). */
 export async function stopDevContainer(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = requireTeamProject(projectId, membership.teamId);
+  const p = await requireTeamProject(projectId, membership.teamId);
   await agentStopDev(p);
-  setDevStatus(projectId, "stopped");
-  recordActivity("project", "Stopped dev container", user.name, projectId);
+  await setDevStatus(projectId, "stopped");
+  await recordActivity("project", "Stopped dev container", user.name, projectId);
 }
 
 /**
@@ -220,22 +237,22 @@ export async function stopDevContainer(projectId: string): Promise<void> {
 export async function resetDevWorkspace(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = requireTeamProject(projectId, membership.teamId);
+  const p = await requireTeamProject(projectId, membership.teamId);
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
   if (!p.dev?.enabled) {
     throw new Error("Enable dev mode before resetting the workspace");
   }
-  setDevStatus(projectId, "starting");
+  await setDevStatus(projectId, "starting");
   try {
     await agentResetDevWorkspace(p);
-    setDevStatus(projectId, "running");
+    await setDevStatus(projectId, "running");
   } catch (e) {
-    setDevStatus(projectId, "error");
+    await setDevStatus(projectId, "error");
     throw e;
   }
-  recordActivity(
+  await recordActivity(
     "project",
     "Reset dev workspace from source",
     user.name,
@@ -259,7 +276,7 @@ export async function deployDevWorkspace(
 ): Promise<Deployment> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = requireTeamProject(projectId, membership.teamId);
+  const p = await requireTeamProject(projectId, membership.teamId);
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
@@ -282,7 +299,7 @@ export async function deployDevWorkspace(
     );
   }
 
-  const depId = startDeployment(projectId, {
+  const depId = await startDeployment(projectId, {
     environment: "production",
     creator: user.name,
     commitMessage: "Deploy from dev workspace",
@@ -292,14 +309,14 @@ export async function deployDevWorkspace(
   // Present tense: the deploy is queued/fire-and-forget — it may still fail
   // during the build, so don't claim past-tense success here. (startDeployment
   // also logs its own "Deploying <name>" row; this adds the provenance.)
-  recordActivity(
+  await recordActivity(
     "deployment",
     "Deploying from dev workspace",
     user.name,
     projectId,
   );
 
-  const dep = read().deployments.find((x) => x.id === depId);
+  const dep = await loadDeployment(depId);
   if (!dep) throw new Error("Deployment was not created");
   return dep;
 }
@@ -315,7 +332,7 @@ export type { VscodeTunnelInfo } from "../deploy/dev";
 export async function startTunnel(projectId: string): Promise<VscodeTunnelInfo> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = requireTeamProject(projectId, membership.teamId);
+  const p = await requireTeamProject(projectId, membership.teamId);
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
@@ -323,14 +340,14 @@ export async function startTunnel(projectId: string): Promise<VscodeTunnelInfo> 
     throw new Error("Start the dev container before opening it in VS Code");
   }
   const info = await agentStartTunnel(p);
-  recordActivity("project", "Opened dev container in VS Code", user.name, projectId);
+  await recordActivity("project", "Opened dev container in VS Code", user.name, projectId);
   return info;
 }
 
 /** Current tunnel status (device link / connected URL / running). */
 export async function getTunnel(projectId: string): Promise<VscodeTunnelInfo> {
   const teamId = await requireActiveTeamId();
-  const p = requireTeamProject(projectId, teamId);
+  const p = await requireTeamProject(projectId, teamId);
   return agentGetTunnel(p);
 }
 
@@ -338,7 +355,7 @@ export async function getTunnel(projectId: string): Promise<VscodeTunnelInfo> {
 export async function stopTunnel(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = requireTeamProject(projectId, membership.teamId);
+  const p = await requireTeamProject(projectId, membership.teamId);
   await agentStopTunnel(p);
-  recordActivity("project", "Closed VS Code tunnel", user.name, projectId);
+  await recordActivity("project", "Closed VS Code tunnel", user.name, projectId);
 }

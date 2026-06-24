@@ -5,6 +5,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
+import { loadProjectGraph, loadTeamProject } from "./project-graph-load";
 import { decryptSecret } from "../crypto";
 import {
   connectBackupAgent,
@@ -46,16 +47,19 @@ export interface BackupDTO extends Backup {
   destinationName: string;
 }
 
-function toDTO(b: Backup): BackupDTO {
+async function toDTO(b: Backup): Promise<BackupDTO> {
   const d = read();
+  // `databases`/`s3Destinations` stay JSONB (cut-set d); the project NAME is
+  // relational now (cut-set c) — look it up via the project graph.
+  const projectName = b.projectId
+    ? ((await loadProjectGraph(b.projectId))?.name ?? null)
+    : null;
   return {
     ...b,
     databaseName: b.databaseId
       ? (d.databases.find((x) => x.id === b.databaseId)?.name ?? null)
       : null,
-    projectName: b.projectId
-      ? (d.projects.find((x) => x.id === b.projectId)?.name ?? null)
-      : null,
+    projectName,
     destinationName:
       d.s3Destinations.find((x) => x.id === b.destinationId)?.name ?? "",
   };
@@ -63,10 +67,10 @@ function toDTO(b: Backup): BackupDTO {
 
 export async function listBackups(): Promise<BackupDTO[]> {
   const teamId = await requireActiveTeamId();
-  return read()
+  const rows = read()
     .backups.filter((b) => b.teamId === teamId)
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .map(toDTO);
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return Promise.all(rows.map(toDTO));
 }
 
 export async function createBackup(input: {
@@ -119,14 +123,14 @@ export async function createBackup(input: {
     createdAt: nowIso(),
   };
   mutate((d) => d.backups.push(b));
-  recordActivity(
+  await recordActivity(
     "backup",
     `Created backup schedule ${b.name}`,
     user.name,
     null,
     teamId,
   );
-  return toDTO(b);
+  return await toDTO(b);
 }
 
 /* ------------------------------------------------------------------ */
@@ -238,7 +242,7 @@ async function resolveTarget(
     };
   }
   if (!projectId) throw new Error("Backup has no project target");
-  const project = read().projects.find((x) => x.id === projectId && x.teamId === teamId);
+  const project = await loadTeamProject(projectId, teamId);
   if (!project) throw new Error("Project not found");
   const descriptor = await buildProjectDescriptor(project);
   return {
@@ -399,7 +403,7 @@ async function executeBackup(
     return { ...r };
   });
 
-  recordActivity(
+  await recordActivity(
     "backup",
     failure
       ? `Backup of ${label} failed: ${failure}`
@@ -618,7 +622,7 @@ export async function restoreBackup(runId: string): Promise<void> {
     failure = (mapBackupUnsupported(e) as Error).message;
   }
 
-  recordActivity(
+  await recordActivity(
     "backup",
     failure
       ? `Restore of ${target.label} failed: ${failure}`
@@ -704,14 +708,14 @@ export async function updateBackup(
     b.retentionDays = Math.max(1, input.retentionDays || 7);
     updated = b;
   });
-  recordActivity(
+  await recordActivity(
     "backup",
     `Updated backup schedule ${updated!.name}`,
     user.name,
     null,
     teamId,
   );
-  return toDTO(updated!);
+  return await toDTO(updated!);
 }
 
 export async function deleteBackup(id: string): Promise<void> {
@@ -831,9 +835,7 @@ export async function deleteAllBackupArtifacts(input: {
       ? (read().databases.find(
           (x) => x.id === input.targetId && x.teamId === teamId,
         )?.serverId ?? null)
-      : (read().projects.find(
-          (x) => x.id === input.targetId && x.teamId === teamId,
-        )?.serverId ?? null);
+      : ((await loadTeamProject(input.targetId, teamId))?.serverId ?? null);
 
   const destinations = await backupDestinationsForTarget(input);
   if (destinations.length === 0) return { deleted: 0, failedDestinations: [] };

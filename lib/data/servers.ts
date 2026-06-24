@@ -1,12 +1,16 @@
 import "server-only";
 
 import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
 import { read, mutate } from "../store";
+import { getDb } from "../db/client";
+import { projects as projectsTable } from "../db/schema/control-plane";
 import { assertUser, getCurrentUser } from "../auth";
 import { requireCapability } from "../membership";
 import { newId, nowIso } from "../ids";
 import { resolvePublicBaseUrl } from "../public-url";
 import { recordActivity } from "./activity";
+import { ensureServerRow, deleteServerRow } from "./server-row";
 import {
   mintBootstrap,
   installCommand,
@@ -95,7 +99,10 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
     bootstrap: stored,
   };
   mutate((d) => d.servers.push(server));
-  recordActivity("member", `Connected server ${server.name}`, user.name, null, membership.teamId);
+  // Mirror the relational `servers` row so a project's `server_id` FK resolves
+  // (servers stay JSONB-authoritative; cut-set (c) bridge — see server-row.ts).
+  await ensureServerRow(server);
+  await recordActivity("member", `Connected server ${server.name}`, user.name, null, membership.teamId);
 
   return {
     server,
@@ -150,7 +157,13 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   if (!server) throw new Error("Server not found");
 
   // (b) Block while projects are assigned — a conscious decision by the operator.
-  if (read().projects.some((p) => p.serverId === id))
+  // Projects are relational now; count this server's projects directly.
+  const assigned = await getDb()
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(eq(projectsTable.serverId, id))
+    .limit(1);
+  if (assigned.length > 0)
     throw new Error("Move or delete projects on this server first");
 
   // Snapshot the trust material BEFORE revoking. `read()` returns the live cache,
@@ -188,7 +201,10 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   mutate((d) => {
     d.servers = d.servers.filter((s) => s.id !== id);
   });
-  recordActivity("member", `Removed server ${server.name}`, user.name, null, membership.teamId);
+  // Drop the mirrored relational row (the (b) blocks removal while projects are
+  // assigned, so its RESTRICT FK has no dependents at this point).
+  await deleteServerRow(id);
+  await recordActivity("member", `Removed server ${server.name}`, user.name, null, membership.teamId);
   return { warning };
 }
 
@@ -230,7 +246,7 @@ export async function updateServerAgent(id: string): Promise<{ version: string }
     const s = d.servers.find((x) => x.id === id);
     if (s?.agent) s.agent.version = result.version;
   });
-  recordActivity(
+  await recordActivity(
     "member",
     `Updated agent on ${server.name} to v${result.version}`,
     user.name,
@@ -308,6 +324,9 @@ export async function completeBootstrap(
   if (!consumed) {
     throw new Error("bootstrap token was already consumed");
   }
+  // Mirror the now-online server (agent material + status) into the relational row.
+  const provisioned = read().servers.find((s) => s.id === server.id);
+  if (provisioned) await ensureServerRow(provisioned);
   return { certPem: signed.certPem, caPem: signed.caPem };
 }
 

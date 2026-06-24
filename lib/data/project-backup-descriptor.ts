@@ -2,10 +2,13 @@ import "server-only";
 
 import yaml from "js-yaml";
 
-import { read } from "../store";
 import { decryptSecret } from "../crypto";
 import { hostVolumeName, usesComposeStack } from "../utils";
 import { resolveEnvEntries } from "../deploy/env-resolve";
+import {
+  loadEnvVarsForProject,
+  loadSharedEnvGroupsForProject,
+} from "./project-graph-load";
 import { connectAgent } from "../infra/agent-client";
 import type { Project, VolumeMount } from "../types";
 
@@ -44,15 +47,17 @@ export interface ProjectBackupDescriptor {
  * decrypted here because the agent must write the real `.env` on restore; they
  * ride the same mTLS channel as the S3 creds and the DB password.
  */
-export function projectEnvSnapshot(projectId: string): Record<string, string> {
-  const d = read();
+export async function projectEnvSnapshot(
+  projectId: string,
+): Promise<Record<string, string>> {
+  // env vars + attached shared groups are relational (cut-set c); load the
+  // bounded set and decrypt at this edge (mirrors build.ts's `projectEnv`).
+  const [vars, groups] = await Promise.all([
+    loadEnvVarsForProject(projectId),
+    loadSharedEnvGroupsForProject(projectId),
+  ]);
   const out: Record<string, string> = {};
-  for (const e of resolveEnvEntries(
-    "production",
-    projectId,
-    d.envVars,
-    d.sharedEnvGroups ?? [],
-  )) {
+  for (const e of resolveEnvEntries("production", projectId, vars, groups)) {
     out[e.key] = decryptSecret(e.valueEnc);
   }
   return out;
@@ -219,7 +224,7 @@ export async function buildProjectDescriptor(
     // no-ops when it's absent, so include it whenever the project could have one.
     includeFiles: projectHasFilesDir(project),
     composeYaml,
-    envSnapshot: projectEnvSnapshot(project.id),
+    envSnapshot: await projectEnvSnapshot(project.id),
     mounts: (project.mounts ?? []).map((m) => ({
       path: m.filePath,
       content: m.content,

@@ -23,30 +23,41 @@ export async function listActivity(limit = 20): Promise<Activity[]> {
  * deploy with no request context — it falls back to the first team so the row
  * is never written team-less (which would make it invisible to every team).
  */
-export function recordActivity(
+export async function recordActivity(
   type: ActivityType,
   message: string,
   actor: string,
   projectId: string | null = null,
   teamId: string | null = null,
-) {
-  const d = read();
-  const resolvedTeamId =
-    teamId ??
-    (projectId
-      ? d.projects.find((p) => p.id === projectId)?.teamId ?? null
-      : null) ??
-    d.teams[0]?.id ??
-    "";
-  mutate((data) =>
-    data.activities.push({
-      id: newId("act"),
-      teamId: resolvedTeamId,
-      type,
-      message,
-      actor,
-      projectId,
-      createdAt: nowIso(),
-    })
-  );
+): Promise<void> {
+  // Best-effort (PLAN §1: an audit-log insert must never roll back the user's
+  // action — callers do not let a throw here escape). Async because the team is
+  // resolved RELATIONALLY from the project when no explicit teamId is given
+  // (projects moved to Postgres in cut-set c, so the old `read().projects.find`
+  // would resolve nothing). Awaiting it keeps the write inside the request's
+  // lifecycle (no floated query that could outlive a DB connection); any failure
+  // is swallowed so the caller's action still succeeds.
+  try {
+    let resolved = teamId;
+    if (!resolved && projectId) {
+      const { loadProjectGraph } = await import("./project-graph-load");
+      resolved = (await loadProjectGraph(projectId))?.teamId ?? null;
+    }
+    // Last-resort fallback so a row is never written team-less (invisible to
+    // every team) — the first JSONB team (activities are still JSONB this cut-set).
+    const finalTeamId = resolved ?? read().teams[0]?.id ?? "";
+    mutate((data) =>
+      data.activities.push({
+        id: newId("act"),
+        teamId: finalTeamId,
+        type,
+        message,
+        actor,
+        projectId,
+        createdAt: nowIso(),
+      }),
+    );
+  } catch (e) {
+    console.error("[deplo] recordActivity failed:", e);
+  }
 }

@@ -6,6 +6,11 @@ import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
+import {
+  loadProjectGraph,
+  loadTeamProject,
+  projectInTeam,
+} from "./project-graph-load";
 import { provisionUser, deprovisionUser } from "../infra/ssh-gateway";
 import type { DevSshUser, DevSshUserDTO } from "../types";
 
@@ -45,10 +50,7 @@ export async function listDevSshUsers(
   projectId: string,
 ): Promise<DevSshUserDTO[]> {
   const teamId = await requireActiveTeamId();
-  const inTeam = read().projects.some(
-    (p) => p.id === projectId && p.teamId === teamId,
-  );
-  if (!inTeam) return [];
+  if (!(await projectInTeam(projectId, teamId))) return [];
   return read()
     .devSshUsers.filter((u) => u.projectId === projectId)
     .map(toDTO);
@@ -69,9 +71,7 @@ export async function createDevSshUser(input: {
 }): Promise<DevSshUserDTO> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const project = read().projects.find(
-    (p) => p.id === input.projectId && p.teamId === membership.teamId,
-  );
+  const project = await loadTeamProject(input.projectId, membership.teamId);
   if (!project) throw new Error("Project not found");
 
   const publicKey = input.publicKey?.trim() || null;
@@ -116,7 +116,7 @@ export async function createDevSshUser(input: {
   });
   await provisionUser(record);
 
-  recordActivity(
+  await recordActivity(
     "project",
     `Added SSH user ${username}`,
     user.name,
@@ -134,9 +134,7 @@ export async function removeDevSshUser(id: string): Promise<void> {
   const user = (await getCurrentUser())!;
   const record = read().devSshUsers.find((u) => u.id === id);
   if (!record) throw new Error("SSH user not found");
-  const project = read().projects.find(
-    (p) => p.id === record.projectId && p.teamId === membership.teamId,
-  );
+  const project = await loadTeamProject(record.projectId, membership.teamId);
   if (!project) throw new Error("SSH user not found");
   // Resolve the owning server BEFORE the store mutation — deprovision routes to
   // that server's gateway agent.
@@ -147,7 +145,7 @@ export async function removeDevSshUser(id: string): Promise<void> {
   });
   await deprovisionUser(serverId, record.username).catch(() => {});
 
-  recordActivity(
+  await recordActivity(
     "project",
     `Removed SSH user ${record.username}`,
     user.name,
@@ -168,7 +166,7 @@ export async function removeProjectDevSshUsers(
   if (usernames.length === 0) return;
   // Every user of a project lives on the project's server (the gateway runs on
   // the dev container's host). Resolve it before the store mutation.
-  const serverId = read().projects.find((p) => p.id === projectId)?.serverId;
+  const serverId = (await loadProjectGraph(projectId))?.serverId;
   mutate((d) => {
     d.devSshUsers = d.devSshUsers.filter((u) => u.projectId !== projectId);
   });
