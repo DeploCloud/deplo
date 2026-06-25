@@ -362,7 +362,6 @@ function StaticGrid({
           {openFolder && <FolderTrail path={folderPath} view={view} />}
           {folders.length > 0 && (
             <section className="space-y-3">
-              <SectionLabel>Folders</SectionLabel>
               <div className={gridClass(view)}>
                 {folders.map((f) => (
                   <FolderCard
@@ -378,7 +377,6 @@ function StaticGrid({
           )}
           {projects.length > 0 && (
             <section className="space-y-3">
-              {folders.length > 0 && <SectionLabel>Projects</SectionLabel>}
               <div className={gridClass(view)}>
                 {projects.map((p) => (
                   <ProjectCard
@@ -445,19 +443,6 @@ function FolderTrail({
         );
       })}
     </div>
-  );
-}
-
-/**
- * Small uppercase section heading separating the Folders area from the Projects
- * area in the Overview, so folders read as their own group rather than cards at
- * the project level.
- */
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-      {children}
-    </h2>
   );
 }
 
@@ -915,11 +900,10 @@ function SortableGrid({
               dragging={dragging && activeIsProject}
             />
           )}
-          {/* Folders get their own labelled section, above and separate from the
+          {/* Folders get their own section, above and separate from the
               folder-less projects — never interleaved at the same level. */}
           {folderItems.length > 0 && (
             <section className="space-y-3">
-              <SectionLabel>Folders</SectionLabel>
               <SortableContext
                 items={folderItems.map((f) => f.id)}
                 strategy={rectSortingStrategy}
@@ -955,9 +939,6 @@ function SortableGrid({
             </section>
           )}
           <section className="space-y-3">
-            {folderItems.length > 0 && items.length > 0 && (
-              <SectionLabel>Projects</SectionLabel>
-            )}
             <SortableContext
               items={items.map((p) => p.id)}
               strategy={projectStrategy}

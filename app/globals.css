@@ -156,6 +156,15 @@
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+  /* Interactive affordance: every real button (and role=button) shows the hand
+     cursor so anything clickable reads as clickable. Lives in @layer base, so a
+     cursor-* utility on the element (drag handles' cursor-grab, the few
+     cursor-default controls, disabled:cursor-not-allowed) always wins over it.
+     Disabled controls are excluded — they use pointer-events-none anyway. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
 }
 
 @utility container {

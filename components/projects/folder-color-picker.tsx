@@ -70,7 +70,7 @@ export function FolderColorPicker({
           aria-label="Default (no colour)"
           aria-pressed={value == null}
           className={cn(
-            "flex size-8 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground transition",
+            "flex size-8 cursor-pointer items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground transition",
             value == null
               ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
               : "hover:opacity-80",
@@ -93,7 +93,7 @@ export function FolderColorPicker({
                 color: readableTextColor(c.value),
               }}
               className={cn(
-                "flex size-8 items-center justify-center rounded-md border border-black/10 transition",
+                "flex size-8 cursor-pointer items-center justify-center rounded-md border border-black/10 transition",
                 active
                   ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
                   : "hover:opacity-80",
