@@ -40,20 +40,22 @@ export function CodeBlock({
   );
 }
 
-/** Single-line inline command with copy button  for install one-liners. */
+/** Inline command with copy button — for install one-liners. */
 export function CommandLine({ command }: { command: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-[#0a0a0a] px-3 py-2">
-      <span className="select-none font-mono text-sm text-muted-foreground">
+    <div className="flex items-start gap-2 rounded-lg border border-border bg-[#0a0a0a] px-3 py-2">
+      <span className="select-none font-mono text-sm leading-relaxed text-muted-foreground">
         $
       </span>
-      {/* min-w-0 lets this flex child actually shrink so the nowrap command
-          scrolls WITHIN the row instead of forcing the container wider (the
-          classic flexbox min-width:auto overflow). The copy button stays put. */}
-      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-sm text-zinc-200">
+      {/* WRAP the command (break-all) instead of scrolling it: the whole
+          one-liner — long bootstrap token and all — stays visible and fully
+          selectable, so it copies correctly by hand too, with zero horizontal
+          overflow. min-w-0 keeps this flex child from forcing the row wider than
+          its container (the classic flexbox min-width:auto overflow). */}
+      <code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-sm leading-relaxed text-zinc-200">
         {command}
       </code>
-      <CopyButton value={command} />
+      <CopyButton value={command} className="shrink-0" />
     </div>
   );
 }

@@ -146,17 +146,22 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
 }
 
 /**
- * Re-mint a fresh bootstrap token + install command for a server still in
- * `provisioning` (the original token expired, or the operator lost the command).
- * Refuses an already-provisioned server (it has trust material; re-bootstrapping
- * would be a re-provision, which goes through removal first).
+ * Re-mint a fresh bootstrap token + install command for a server — whether it is
+ * still `provisioning` (the original token expired or the operator lost it) OR
+ * already provisioned and online (the operator wants the install command back to
+ * copy it again, e.g. to reinstall or repair the agent on the box). Re-minting
+ * only issues a new single-use token; it does NOT disturb a running agent's pinned
+ * mTLS — the old cert keeps working until/unless the operator actually re-runs the
+ * command, at which point the normal call-home (`completeBootstrap`) re-pins a
+ * fresh cert. Because re-minting is a copy action, a server that is already trusted
+ * KEEPS its current status (online/offline); only a server that never finished its
+ * first call-home is (re)marked `provisioning`.
  */
 export async function reissueBootstrap(id: string): Promise<AddServerResult> {
-  await requireCapability("manage_infra");
+  const { membership } = await requireCapability("manage_infra");
+  const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
-  if (server.agent)
-    throw new Error("This server is already provisioned; remove it to re-provision");
 
   const { rawToken, stored } = mintBootstrap();
   const baseUrl = resolvePublicBaseUrl(await headers());
@@ -167,10 +172,18 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
       bootstrapTokenHash: stored.tokenHash,
       bootstrapExpiresAt: stored.expiresAt,
       bootstrapUsedAt: stored.usedAt,
-      status: "provisioning",
+      // A trusted server (one with a pinned agent cert) stays online/offline — a
+      // re-copy must not knock it back to "provisioning". Only a server still
+      // awaiting its first call-home gets (re)marked provisioning.
+      ...(server.agent ? {} : { status: "provisioning" as const }),
     })
     .where(eq(serversTable.id, id));
   const fresh = (await getServerById(id))!;
+  // Re-minting a single-use bootstrap token arms a ~1h re-pin window — and for an
+  // already-trusted server that window can silently replace its agent cert. Like
+  // addServer/removeServer, leave an audit trail so a re-issue against a live box
+  // is never invisible (the operator-gated act is logged, not hidden).
+  await recordActivity("member", `Reissued install command for server ${server.name}`, user.name, null, membership.teamId);
   return { server: fresh, installCommand: installCommand({ baseUrl, rawToken, fingerprint }) };
 }
 
