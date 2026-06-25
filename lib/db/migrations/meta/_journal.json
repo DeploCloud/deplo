@@ -50,6 +50,20 @@
       "when": 1782382633857,
       "tag": "0006_nosy_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782406282496,
+      "tag": "0007_big_morbius",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782408981734,
+      "tag": "0008_ambitious_diamondback",
+      "breakpoints": true
     }
   ]
 }

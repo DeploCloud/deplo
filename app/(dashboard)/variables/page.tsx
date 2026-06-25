@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Braces, ArrowUpRight, Lock } from "lucide-react";
 import { listAllProjectEnv } from "@/lib/data/env";
 import { listSharedEnvGroups } from "@/lib/data/shared-env";
-import { hasCapability } from "@/lib/membership";
+import { listTeamGlobalEnv, listInstanceEnv } from "@/lib/data/global-env";
+import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -28,6 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SharedEnvManager } from "@/components/env/shared-env-manager";
+import { GlobalEnvManager } from "@/components/env/global-env-manager";
 
 export const metadata = { title: "Environment Variables" };
 
@@ -55,10 +57,15 @@ export default async function VariablesPage(
     );
   }
 
-  const [allProjectGroups, sharedGroups] = await Promise.all([
-    listAllProjectEnv(),
-    listSharedEnvGroups(),
-  ]);
+  const admin = await isInstanceAdmin();
+  const [allProjectGroups, sharedGroups, teamGlobals, instanceGlobals] =
+    await Promise.all([
+      listAllProjectEnv(),
+      listSharedEnvGroups(),
+      listTeamGlobalEnv(),
+      // Instance-wide vars are admin-only; skip the (throwing) read otherwise.
+      admin ? listInstanceEnv() : Promise.resolve([]),
+    ]);
   const projects = allProjectGroups.map((g) => g.project);
 
   // Only surface a project here if it has variables to show: its own vars, or
@@ -70,19 +77,31 @@ export default async function VariablesPage(
     (g) => g.vars.length > 0 || projectsWithSharedGroup.has(g.project.id),
   );
 
-  const defaultTab = tab === "shared" ? "shared" : "project";
+  const allowedTabs = new Set([
+    "project",
+    "shared",
+    "team",
+    ...(admin ? ["instance"] : []),
+  ]);
+  const defaultTab = tab && allowedTabs.has(tab) ? tab : "project";
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Environment Variables"
-        description="Per-project variables and reusable shared groups across your workspace."
+        description="Per-project, team-global and reusable shared variables across your workspace."
       />
 
       <Tabs defaultValue={defaultTab}>
         <UnderlineTabsList>
           <UnderlineTabsTrigger value="project">Project</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="team">Team globals</UnderlineTabsTrigger>
+          {admin && (
+            <UnderlineTabsTrigger value="instance">
+              All teams
+            </UnderlineTabsTrigger>
+          )}
         </UnderlineTabsList>
 
         {/* Project: every project's variables, grouped by project */}
@@ -160,6 +179,18 @@ export default async function VariablesPage(
         <TabsContent value="shared">
           <SharedEnvManager groups={sharedGroups} projects={projects} />
         </TabsContent>
+
+        {/* Team globals: injected into every project in this team */}
+        <TabsContent value="team">
+          <GlobalEnvManager scope="team" vars={teamGlobals} />
+        </TabsContent>
+
+        {/* All teams: instance-wide, admin only */}
+        {admin && (
+          <TabsContent value="instance">
+            <GlobalEnvManager scope="instance" vars={instanceGlobals} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

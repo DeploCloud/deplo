@@ -9,6 +9,7 @@ import {
   loadEnvVarsForProject,
   loadSharedEnvGroupsForProject,
 } from "./project-graph-load";
+import { loadGlobalEnvForProject } from "./global-env";
 import { connectAgent } from "../infra/agent-client";
 import type { Project, VolumeMount } from "../types";
 
@@ -41,23 +42,34 @@ export interface ProjectBackupDescriptor {
 
 /**
  * The exact decrypted env a project runs with in production — the snapshot the
- * restore re-Reroutes. Replicates build.ts's private `projectEnv` (production
+ * restore re-Reroutes. MUST mirror build.ts's private `projectEnv` (production
  * target) so a backup captures EXACTLY what a production deploy would inject:
- * per-project vars + attached shared groups, decrypted at this edge. Secrets are
- * decrypted here because the agent must write the real `.env` on restore; they
- * ride the same mTLS channel as the S3 creds and the DB password.
+ * instance + team globals, per-project vars, and attached shared groups — merged
+ * through the SAME `resolveEnvEntries` seam with the SAME precedence, decrypted at
+ * this edge. (Omitting the globals here silently dropped them from a compose-stack
+ * restore, which interpolates ${VAR} from this snapshot rather than baked YAML.)
+ * Secrets are decrypted here because the agent must write the real `.env` on
+ * restore; they ride the same mTLS channel as the S3 creds and the DB password.
  */
 export async function projectEnvSnapshot(
   projectId: string,
 ): Promise<Record<string, string>> {
-  // env vars + attached shared groups are relational (cut-set c); load the
+  // env vars + attached shared groups + global scopes are relational; load the
   // bounded set and decrypt at this edge (mirrors build.ts's `projectEnv`).
-  const [vars, groups] = await Promise.all([
+  const [vars, groups, globals] = await Promise.all([
     loadEnvVarsForProject(projectId),
     loadSharedEnvGroupsForProject(projectId),
+    loadGlobalEnvForProject(projectId),
   ]);
   const out: Record<string, string> = {};
-  for (const e of resolveEnvEntries("production", projectId, vars, groups)) {
+  for (const e of resolveEnvEntries(
+    "production",
+    projectId,
+    vars,
+    groups,
+    globals.teamGlobals,
+    globals.instanceGlobals,
+  )) {
     out[e.key] = decryptSecret(e.valueEnc);
   }
   return out;

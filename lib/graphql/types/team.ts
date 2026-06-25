@@ -2,6 +2,7 @@ import { builder } from "../builder";
 import {
   getTeam,
   listMyTeams,
+  listAllTeams,
   updateTeam,
   createTeam,
   switchTeam,
@@ -79,6 +80,13 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     description: "Every team the viewer belongs to, for the team switcher.",
     resolve: () => listMyTeams(),
+  }),
+  assignableTeams: t.field({
+    type: [TeamRef],
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Every team in the instance, for the server team-access picker. Requires manage_infra.",
+    resolve: () => listAllTeams(),
   }),
 }));
 

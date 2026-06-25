@@ -84,6 +84,7 @@ const SERVER_FIELDS = {
   cpuUsage: true,
   memoryUsage: true,
   diskUsage: true,
+  allTeams: true,
   createdAt: true,
   agent: true,
   bootstrap: true,
@@ -108,6 +109,7 @@ export function serverToRow(s: Server): ServerInsert {
     cpuUsage: s.cpuUsage,
     memoryUsage: s.memoryUsage,
     diskUsage: s.diskUsage,
+    allTeams: s.allTeams,
     // Flattened ServerAgent (NULL columns when not yet provisioned).
     agentPort: s.agent?.port ?? null,
     agentCertFingerprint: s.agent?.certFingerprint ?? null,
@@ -144,6 +146,7 @@ export function assembleServer(row: ServerRow): Server {
     cpuUsage: row.cpuUsage,
     memoryUsage: row.memoryUsage,
     diskUsage: row.diskUsage,
+    allTeams: row.allTeams,
     createdAt: row.createdAt,
   };
   if (row.agentPort !== null) {

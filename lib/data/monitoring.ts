@@ -1,7 +1,6 @@
 import "server-only";
 
-import { listAllServers, getServerById } from "./servers";
-import { assertUser } from "../auth";
+import { listServersForCurrentTeam, getServer } from "./servers";
 import { hostFacts } from "../infra/host";
 import { connectAgent } from "../infra/agent-client";
 import { markServerSeen } from "./servers";
@@ -131,8 +130,20 @@ async function measureRemote(server: Server, expected: string): Promise<ServerMe
       if (hello.agentVersion) liveAgentVersion = hello.agentVersion;
       // Persist the live value (read-live-not-stored, like health). The badge's
       // server-rendered render reads this on the next page load; the live payload
-      // below updates it without a reload.
-      await markServerSeen(server.id, hello.agentVersion, hello.traefikRunning);
+      // below updates it without a reload. Also persist the host's CAPACITY (from
+      // the metrics RPC, which succeeded) so the Servers page can show specs
+      // statically without a poll.
+      await markServerSeen(
+        server.id,
+        hello.agentVersion,
+        hello.traefikRunning,
+        {
+          cpuCores: m.cpuCores,
+          memoryMb: Math.round(Number(m.memTotal) / (1024 * 1024)),
+          diskGb: Math.round(Number(m.diskTotal) / (1024 * 1024 * 1024)),
+        },
+        hello.dockerVersion,
+      );
     } catch {
       /* metrics succeeded; the Hello refresh is best-effort */
     }
@@ -175,19 +186,21 @@ async function metricsFor(server: Server, expected: string): Promise<ServerMetri
 }
 
 export async function getServerMetrics(serverId: string): Promise<ServerMetrics> {
-  await assertUser();
-  const server = await getServerById(serverId);
+  // Team-scoped: getServer returns null for a server this team can't target, so
+  // a member can't poll the live metrics of a server restricted to other teams.
+  const server = await getServer(serverId);
   if (!server) throw new Error("Server not found");
   return metricsFor(server, await resolveExpectedAgentVersion());
 }
 
 export async function getAllServerMetrics(): Promise<ServerMetrics[]> {
-  await assertUser();
   // Resolve "latest" once per poll (memoised) and stamp it onto every snapshot —
   // a "Check for updates" bust resolved a fresh value, so this poll carries it to
-  // every open Servers tab's badge.
+  // every open Servers tab's badge. Team-scoped to the servers this team can see.
   const expected = await resolveExpectedAgentVersion();
-  return Promise.all((await listAllServers()).map((s) => metricsFor(s, expected)));
+  return Promise.all(
+    (await listServersForCurrentTeam()).map((s) => metricsFor(s, expected)),
+  );
 }
 
 /**
@@ -199,11 +212,60 @@ export async function getAllServerMetrics(): Promise<ServerMetrics[]> {
  * from the store. No sampling, no docker, no sleep — the live values arrive on
  * the first client poll and replace these within ~1s.
  */
+/** Race a promise against a short deadline; rejects if it doesn't settle in time. */
+function withSpecTimeout<T>(p: Promise<T>, ms = 4000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("spec measure timed out")), ms);
+  });
+  return Promise.race([
+    p.finally(() => clearTimeout(timer)),
+    timeout,
+  ]);
+}
+
+/**
+ * Fill in each server's hardware specs (cores / RAM / disk) for a STATIC render —
+ * the Servers page shows capacity without polling. Stored specs are used as-is
+ * (capacity is effectively static and {@link measureRemote} persists it); a
+ * provisioned server that has never been measured (specs still 0) is measured
+ * once here, best-effort, which also persists them for next time. Unprovisioned
+ * servers and unreachable agents keep their zeros (the card shows "—").
+ */
+export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
+  const needsMeasure = servers.some(
+    (s) => s.cpuCores === 0 && Boolean(s.agent?.certFingerprint),
+  );
+  if (!needsMeasure) return servers;
+  const expected = await resolveExpectedAgentVersion();
+  return Promise.all(
+    servers.map(async (s) => {
+      if (s.cpuCores > 0 || !s.agent?.certFingerprint) return s;
+      try {
+        // Bound the one-time measure: this runs SYNCHRONOUSLY in the page render,
+        // so an unreachable provisioned host must degrade to "—" in a few seconds
+        // rather than holding SSR for the full 30s metrics deadline. The detached
+        // measure may still complete and persist specs for the next load.
+        const m = await withSpecTimeout(measureRemote(s, expected));
+        if (m.cpuCores <= 0) return s;
+        return {
+          ...s,
+          cpuCores: m.cpuCores,
+          memoryMb: Math.round(m.memTotal / (1024 * 1024)),
+          diskGb: Math.round(m.diskTotal / (1024 * 1024 * 1024)),
+          traefikEnabled: m.traefik,
+        };
+      } catch {
+        return s;
+      }
+    }),
+  );
+}
+
 export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
-  await assertUser();
   const facts = hostFacts();
   const expected = await resolveExpectedAgentVersion();
-  return (await listAllServers()).map((s) => ({
+  return (await listServersForCurrentTeam()).map((s) => ({
     serverId: s.id,
     // Cheap hydration hint from the stored status; the first live poll replaces
     // it. A not-yet-provisioned server has no agent and reports offline, exactly

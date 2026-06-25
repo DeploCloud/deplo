@@ -288,6 +288,10 @@ export const servers = pgTable(
     bootstrapExpiresAt: isoTimestamptz("bootstrap_expires_at"),
     bootstrapUsedAt: isoTimestamptz("bootstrap_used_at"),
     lastSeenAt: isoTimestamptz("last_seen_at"),
+    // Team access scope. `true` (default) = available to every team — the
+    // historical instance-wide behaviour. `false` restricts the server to the
+    // teams enumerated in `server_teams`. See [Server.allTeams](../../types.ts).
+    allTeams: boolean("all_teams").notNull().default(true),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
@@ -300,6 +304,26 @@ export const servers = pgTable(
       .on(t.bootstrapTokenHash)
       .where(sql`${t.bootstrapTokenHash} is not null`),
   ],
+);
+
+/**
+ * Server → team access junction. Rows here matter ONLY when the server's
+ * `all_teams` is `false`: each row grants ONE team the right to target the
+ * server for its projects/databases. `all_teams = true` ignores this table
+ * entirely (every team has access). Both FKs cascade — dropping a server or a
+ * team prunes its grants. PK on both columns closes the double-grant race.
+ */
+export const serverTeams = pgTable(
+  "server_teams",
+  {
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.serverId, t.teamId] })],
 );
 
 /* ================================================================== */
@@ -565,6 +589,71 @@ export const envVarTargets = pgTable(
     envVarId: text("env_var_id")
       .notNull()
       .references(() => envVars.id, { onDelete: "cascade" }),
+    target: text("target").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.envVarId, t.target] })],
+);
+
+/**
+ * [GlobalEnvVar](../../types.ts) (team scope) — a variable injected into EVERY
+ * project of a team (a team-wide default). Same shape as `env_vars` but keyed on
+ * the team instead of a single project. `UNIQUE(team_id, key)`; `targets` →
+ * junction. Lower deploy precedence than a project's own var (a project can
+ * override it) — see lib/deploy/env-resolve.ts.
+ */
+export const teamGlobalEnvVars = pgTable(
+  "team_global_env_vars",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    valueEnc: text("value_enc").notNull(),
+    type: text("type").notNull(),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("team_global_env_vars_team_key_uq").on(t.teamId, t.key)],
+);
+
+export const teamGlobalEnvVarTargets = pgTable(
+  "team_global_env_var_targets",
+  {
+    envVarId: text("env_var_id")
+      .notNull()
+      .references(() => teamGlobalEnvVars.id, { onDelete: "cascade" }),
+    target: text("target").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.envVarId, t.target] })],
+);
+
+/**
+ * [GlobalEnvVar](../../types.ts) (instance scope) — a variable injected into
+ * EVERY project of EVERY team (an instance-wide default), managed by an instance
+ * admin. No team scope. `UNIQUE(key)`; `targets` → junction. The LOWEST deploy
+ * precedence — any more-specific scope (team-global, project, shared) overrides
+ * it. See lib/deploy/env-resolve.ts.
+ */
+export const instanceEnvVars = pgTable(
+  "instance_env_vars",
+  {
+    id: text("id").primaryKey(),
+    key: text("key").notNull(),
+    valueEnc: text("value_enc").notNull(),
+    type: text("type").notNull(),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("instance_env_vars_key_uq").on(t.key)],
+);
+
+export const instanceEnvVarTargets = pgTable(
+  "instance_env_var_targets",
+  {
+    envVarId: text("env_var_id")
+      .notNull()
+      .references(() => instanceEnvVars.id, { onDelete: "cascade" }),
     target: text("target").notNull(),
   },
   (t) => [primaryKey({ columns: [t.envVarId, t.target] })],

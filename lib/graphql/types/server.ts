@@ -1,12 +1,15 @@
 import { builder } from "../builder";
+import { TeamRef } from "./team";
 import {
   listServers,
   getServer,
   getPrimaryServer,
+  getServerTeams,
   addServer,
   reissueBootstrap,
   removeServer,
   updateServerAgent,
+  setServerTeams,
 } from "@/lib/data/servers";
 import {
   isAgentOutdated,
@@ -54,6 +57,21 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     memoryUsage: t.exposeInt("memoryUsage"),
     diskUsage: t.exposeInt("diskUsage"),
     createdAt: t.exposeString("createdAt"),
+    allTeams: t.exposeBoolean("allTeams", {
+      description:
+        "True (the default) when every team may target this server. False restricts it to `teams` (Settings → Servers → Team access).",
+    }),
+    teams: t.field({
+      type: [TeamRef],
+      // The granted-team NAMES are cross-team info, so gate them to infra
+      // managers (the only ones who edit access) — `allTeams` above stays
+      // readable by all for the count-only badge. No client selects this field
+      // without the capability today.
+      authScopes: { capability: "manage_infra" },
+      description:
+        "Teams explicitly granted access when `allTeams` is false (empty otherwise — every team has access). Requires manage_infra.",
+      resolve: (s) => getServerTeams(s.id),
+    }),
     // Part B: provisioning/trust state, all nullable (absent on a
     // not-yet-provisioned server). Never expose secret-shaped material — only
     // the agent VERSION + a "is it provisioned" signal + the heartbeat cache.
@@ -126,6 +144,20 @@ const AddServerInputType = builder.inputType("AddServerInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     host: t.string({ required: true }),
+    // Team access at registration. Omit / true → all teams. false + teamIds →
+    // restrict to those teams (editable later via setServerTeams).
+    allTeams: t.boolean({ required: false }),
+    teamIds: t.stringList({ required: false }),
+  }),
+});
+
+const SetServerTeamsInputType = builder.inputType("SetServerTeamsInput", {
+  description:
+    "Set which teams may target a server. allTeams: true opens it to every team (clearing specific grants); false restricts it to teamIds.",
+  fields: (t) => ({
+    serverId: t.string({ required: true }),
+    allTeams: t.boolean({ required: true }),
+    teamIds: t.stringList({ required: false }),
   }),
 });
 
@@ -167,7 +199,24 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "manage_infra" },
     args: { input: t.arg({ type: AddServerInputType, required: true }) },
     resolve: (_r, { input }) =>
-      addServer({ name: input.name, host: input.host }),
+      addServer({
+        name: input.name,
+        host: input.host,
+        allTeams: input.allTeams ?? undefined,
+        teamIds: input.teamIds ?? undefined,
+      }),
+  }),
+  setServerTeams: t.field({
+    type: ServerRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has projects or databases on the server would lose access.",
+    args: { input: t.arg({ type: SetServerTeamsInputType, required: true }) },
+    resolve: (_r, { input }) =>
+      setServerTeams(input.serverId, {
+        allTeams: input.allTeams,
+        teamIds: input.teamIds ?? [],
+      }),
   }),
   reissueServerBootstrap: t.field({
     type: AddServerPayloadRef,

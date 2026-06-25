@@ -4,6 +4,7 @@ import { readdir, cp } from "node:fs/promises";
 import { join } from "node:path";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
+import { loadGlobalEnvForProject } from "../data/global-env";
 import {
   loadEnvVarsForProject,
   loadSharedEnvGroupsForProject,
@@ -139,12 +140,20 @@ export function newDevPreviewHost(slug: string, ip = instanceHost()): string {
 async function devEnv(projectId: string): Promise<Record<string, string>> {
   // env vars + attached shared groups are relational (cut-set c); load the
   // bounded set and decrypt at this edge (the `development` target).
-  const [vars, groups] = await Promise.all([
+  const [vars, groups, globals] = await Promise.all([
     loadEnvVarsForProject(projectId),
     loadSharedEnvGroupsForProject(projectId),
+    loadGlobalEnvForProject(projectId),
   ]);
   const out: Record<string, string> = {};
-  for (const e of resolveEnvEntries("development", projectId, vars, groups)) {
+  for (const e of resolveEnvEntries(
+    "development",
+    projectId,
+    vars,
+    groups,
+    globals.teamGlobals,
+    globals.instanceGlobals,
+  )) {
     out[e.key] = decryptSecret(e.valueEnc);
   }
   return out;

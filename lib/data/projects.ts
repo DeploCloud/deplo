@@ -2,7 +2,12 @@ import "server-only";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { listAllServers, getServerById } from "./servers";
+import {
+  listAllServers,
+  listServersForTeam,
+  getServerById,
+  assertServerAccessibleTx,
+} from "./servers";
 import { getDb } from "../db/client";
 import {
   domains as domainsTable,
@@ -378,11 +383,17 @@ export async function createProject(
   };
 
   // Servers are relational (cut-set (e)); read the picklist for the `server_id`
-  // FK from the `servers` table.
-  const servers = await listAllServers();
-  // Default to the first server added; honour an explicit, existing pick. With no
-  // server seeded at setup, the list can be empty — surface a clear error so the
-  // operator adds (and provisions) a host first.
+  // FK from the `servers` table — scoped to the team, so a project can only land
+  // on a server this team may target (every `all_teams` server + its grants).
+  const servers = await listServersForTeam(membership.teamId);
+  // An explicit pick must be one this team can actually use — otherwise a crafted
+  // request could place a project on a server scoped to another team. Reject it
+  // rather than silently falling back to a different server.
+  if (input.serverId && !servers.some((s) => s.id === input.serverId))
+    throw new Error("That server isn't available to this team.");
+  // Default to the first server available to the team; honour the explicit pick.
+  // With no accessible server, surface a clear error so the operator adds (and
+  // provisions) a host — or grants this team access — first.
   const server =
     (input.serverId && servers.find((s) => s.id === input.serverId)) ||
     servers[0];
@@ -471,6 +482,10 @@ export async function createProject(
   for (let attempt = 0; ; attempt++) {
     try {
       await getDb().transaction(async (tx) => {
+        // Re-assert server access inside the tx (SHARE-locks the server row) so a
+        // concurrent setServerTeams restrict can't land this project on a server
+        // the team just lost access to. One side of the race loses cleanly.
+        await assertServerAccessibleTx(tx, server.id, membership.teamId);
         await tx.insert(projectsTable).values(projectToRow(project));
         await tx.insert(projectBuildTable).values(buildToRow(project.id, project.build));
         await tx
@@ -612,7 +627,12 @@ export async function updateProjectSource(
     await requireMountHostVolumes();
   }
   const user = (await getCurrentUser())!;
-  const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));
+  // Team-scoped picklist: a move can only target a server this team may use.
+  // The project's current server is always in here (revoking a team's access is
+  // blocked while it has workloads on the server), so the old-IP lookup is safe.
+  const serversById = new Map(
+    (await listServersForTeam(membership.teamId)).map((s) => [s.id, s] as const),
+  );
   await getDb().transaction(async (tx) => {
     const p = await loadProjectGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("Project not found");

@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, desc, eq } from "drizzle-orm";
 
-import { listAllServers } from "./servers";
+import { listServersForTeam, assertServerAccessibleTx } from "./servers";
 import { getDb } from "../db/client";
 import { databases as databasesTable } from "../db/schema/control-plane";
 import { assembleDatabase, databaseToRow } from "./backup-rows";
@@ -104,9 +104,10 @@ export async function createDatabase(input: {
   if (!name) throw new Error("Name is required");
 
   // Server selection (Step 0): the caller picks the host; default to the sole
-  // server when there is exactly one. The chosen server must exist and be
-  // provisioned (have a live agent) — provisioning routes through that agent.
-  const servers = await listAllServers();
+  // server when there is exactly one. The chosen server must exist, be visible
+  // to this team (every `all_teams` server + its grants), and be provisioned
+  // (have a live agent) — provisioning routes through that agent.
+  const servers = await listServersForTeam(teamId);
   if (servers.length === 0) throw new Error("No server available");
   let server;
   if (input.serverId) {
@@ -150,7 +151,13 @@ export async function createDatabase(input: {
     sizeMb: 0,
     createdAt: nowIso(),
   };
-  await getDb().insert(databasesTable).values(databaseToRow(db));
+  // Re-assert server access inside a tx (SHARE-locks the server row) so a
+  // concurrent setServerTeams restrict can't land this database on a server the
+  // team just lost access to — pairs with setServerTeams' FOR UPDATE lock.
+  await getDb().transaction(async (tx) => {
+    await assertServerAccessibleTx(tx, server.id, teamId);
+    await tx.insert(databasesTable).values(databaseToRow(db));
+  });
   await recordActivity("database", `Created database ${name} (${input.type})`, user.name, null);
 
   // Provision the real container on the owning server's agent in the background;

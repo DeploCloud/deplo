@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getProjectBySlug } from "@/lib/data/projects";
-import { listServers } from "@/lib/data/servers";
+import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
 import { BuildSettingsForm } from "@/components/projects/build-settings-form";
 
@@ -13,7 +13,7 @@ export default async function ProjectSettingsPage(
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
 
-  const servers = (await listServers()).map((s) => ({
+  const servers = (await listServersForCurrentTeam()).map((s) => ({
     id: s.id,
     name: s.name,
     type: s.type,

@@ -2,7 +2,7 @@ import { Database, Cloud, Archive } from "lucide-react";
 import { listDatabases } from "@/lib/data/databases";
 import { listS3 } from "@/lib/data/s3";
 import { listBackups } from "@/lib/data/backups";
-import { listServers } from "@/lib/data/servers";
+import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listProjects } from "@/lib/data/projects";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -46,7 +46,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
       listDatabases(),
       listS3(),
       listBackups(),
-      listServers(),
+      listServersForCurrentTeam(),
       listProjects(),
     ]);
 

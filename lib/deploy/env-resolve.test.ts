@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { groupTargets, resolveEnvEntries } from "./env-resolve";
-import type { SharedEnvGroupLike, TargetedEnvEntry } from "./env-resolve";
+import type {
+  GlobalEnvEntryLike,
+  SharedEnvGroupLike,
+  TargetedEnvEntry,
+} from "./env-resolve";
 
 const PID = "proj-1";
 
@@ -136,4 +140,74 @@ test("shared entries come after project vars so they win on key collision", () =
     ["enc(DATABASE_URL)", "enc(DATABASE_URL)"],
   );
   assert.equal(out.length, 2);
+});
+
+// --- global scopes (team-global + instance-global) ---
+
+function globalEntry(
+  key: string,
+  targets: GlobalEnvEntryLike["targets"],
+  tag = key,
+): GlobalEnvEntryLike {
+  return { key, valueEnc: `enc(${tag})`, targets };
+}
+
+const ALL = ["production", "preview", "development"] as const;
+
+test("globals apply to every project (no projectId filter) for their targets", () => {
+  const team = [globalEntry("TEAM_VAR", ["production"])];
+  const instance = [globalEntry("INST_VAR", ["production"])];
+  assert.deepEqual(
+    keys(resolveEnvEntries("production", PID, [], [], team, instance)),
+    // instance-global emitted first (lowest precedence), then team-global
+    ["INST_VAR", "TEAM_VAR"],
+  );
+});
+
+test("globals respect per-environment targeting", () => {
+  const team = [globalEntry("PROD_ONLY", ["production"])];
+  assert.deepEqual(resolveEnvEntries("development", PID, [], [], team, []), []);
+  assert.deepEqual(
+    keys(resolveEnvEntries("production", PID, [], [], team, [])),
+    ["PROD_ONLY"],
+  );
+});
+
+test("precedence (lowest→highest): all-teams < team < project < shared", () => {
+  const key = "DATABASE_URL";
+  const vars = [envVar(key, [...ALL])];
+  const groups = [group({ variables: [key], targets: [...ALL] })];
+  const team = [globalEntry(key, [...ALL], "team")];
+  const instance = [globalEntry(key, [...ALL], "instance")];
+  const out = resolveEnvEntries("production", PID, vars, groups, team, instance);
+  // Emission order is lowest precedence first; the caller folds into an object so
+  // the LAST wins. So the order must be instance → team → project → shared.
+  assert.deepEqual(
+    out.map((e) => e.valueEnc),
+    ["enc(instance)", "enc(team)", `enc(${key})`, `enc(${key})`],
+  );
+  // Folding to an object (what build.ts/dev.ts do) → shared wins.
+  const folded: Record<string, string> = {};
+  for (const e of out) folded[e.key] = e.valueEnc;
+  assert.equal(folded[key], `enc(${key})`); // the shared group's value
+});
+
+test("a project var overrides a team-global of the same key", () => {
+  const key = "API_URL";
+  const out = resolveEnvEntries(
+    "production",
+    PID,
+    [envVar(key, ["production"])],
+    [],
+    [globalEntry(key, ["production"], "team")],
+    [],
+  );
+  const folded: Record<string, string> = {};
+  for (const e of out) folded[e.key] = e.valueEnc;
+  assert.equal(folded[key], `enc(${key})`); // project wins over team-global
+});
+
+test("omitting the global args preserves the old project+shared behaviour", () => {
+  const vars = [envVar("X", ["production"])];
+  assert.deepEqual(keys(resolveEnvEntries("production", PID, vars, [])), ["X"]);
 });

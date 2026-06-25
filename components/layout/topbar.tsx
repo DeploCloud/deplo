@@ -10,7 +10,7 @@ import {
   Sparkles,
   Database,
   LayoutTemplate,
-  Globe,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +28,7 @@ import { SidebarNav } from "./sidebar-nav";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 import { TeamSwitcher } from "./team-switcher";
+import { isNonTeamSettings } from "./nav-config";
 import type { PublicUser, Team, TeamSummary } from "@/lib/types";
 
 export function Topbar({
@@ -45,6 +46,9 @@ export function Topbar({
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  // Personal/system settings have no team context, so hide the team switcher
+  // there and show a neutral "Settings" label in its place.
+  const hideTeam = isNonTeamSettings(pathname);
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md">
@@ -68,8 +72,16 @@ export function Topbar({
         </SheetContent>
       </Sheet>
 
-      {/* Team switcher */}
-      <TeamSwitcher team={team} teams={teams} />
+      {/* Team switcher — replaced by a neutral label on personal/system settings,
+          which act outside any single team. */}
+      {hideTeam ? (
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <Settings className="size-4 text-muted-foreground" />
+          Settings
+        </span>
+      ) : (
+        <TeamSwitcher team={team} teams={teams} />
+      )}
 
       <span className="hidden text-muted-foreground/40 sm:inline">/</span>
       <span className="hidden text-sm text-muted-foreground sm:inline">
@@ -112,12 +124,6 @@ export function Topbar({
                 Database
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/domains" className="cursor-pointer">
-                <Globe className="size-4" />
-                Domain
-              </Link>
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -130,6 +136,10 @@ export function Topbar({
 
 function breadcrumb(pathname: string): string {
   if (pathname === "/") return "Overview";
-  const seg = pathname.split("/").filter(Boolean)[0] ?? "";
+  const segs = pathname.split("/").filter(Boolean);
+  // Under /settings show the subsection (Account, Servers, …) rather than a
+  // generic "Settings"; elsewhere use the top-level segment.
+  const seg =
+    segs[0] === "settings" && segs.length > 1 ? segs[1] : segs[0] ?? "";
   return seg.charAt(0).toUpperCase() + seg.slice(1);
 }

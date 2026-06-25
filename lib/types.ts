@@ -286,6 +286,14 @@ export interface Server {
   cpuUsage: number;
   memoryUsage: number;
   diskUsage: number;
+  /**
+   * Team access scope. `true` (the default a server is born with) means EVERY
+   * team can target this server for its projects/databases — the historical
+   * instance-wide behaviour. `false` restricts it to the teams listed in the
+   * `server_teams` junction (resolved separately; not carried on this object).
+   * Editable post-install from Settings → Servers; gated by `manage_infra`.
+   */
+  allTeams: boolean;
   createdAt: string;
   /**
    * Agent trust material — present once a server is provisioned (Part B). Absent
@@ -745,6 +753,36 @@ export interface EnvVarDTO {
   id: ID;
   key: string;
   value: string; // masked for secrets unless explicitly revealed
+  masked: boolean;
+  targets: EnvTarget[];
+  type: "plain" | "secret";
+  updatedAt: string;
+}
+
+/**
+ * A GLOBAL environment variable — injected into projects without being attached
+ * per-project. Two scopes: `team` (every project in one team) and `instance`
+ * (every project of every team, instance-admin managed). Both share this shape;
+ * the scope determines storage table, gating, and deploy precedence (instance is
+ * the lowest, then team, then a project's own var, then shared groups).
+ */
+export type GlobalEnvScope = "team" | "instance";
+
+export interface GlobalEnvVar {
+  id: ID;
+  key: string;
+  valueEnc: string; // encrypted at rest
+  targets: EnvTarget[];
+  type: "plain" | "secret";
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** DTO sent to the client: secret values are masked. */
+export interface GlobalEnvVarDTO {
+  id: ID;
+  key: string;
+  value: string; // masked for secrets
   masked: boolean;
   targets: EnvTarget[];
   type: "plain" | "secret";

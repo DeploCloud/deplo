@@ -9,6 +9,7 @@ import {
   Trash2,
   ServerCog,
   CircleFadingArrowUp,
+  Users,
 } from "lucide-react";
 import {
   Dialog,
@@ -36,6 +37,11 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
+import {
+  ServerTeamAccess,
+  type ServerAccess,
+  type TeamOption,
+} from "./server-team-access";
 
 /**
  * Per-server management actions, shown for EVERY server card (the host running
@@ -80,6 +86,10 @@ export function ServerActions({
   provisioning,
   outdated,
   expectedVersion,
+  canManageInfra,
+  teams,
+  accessAllTeams,
+  accessTeamIds,
 }: {
   serverId: string;
   serverName: string;
@@ -89,12 +99,24 @@ export function ServerActions({
   outdated: boolean;
   /** The latest agent version we'd update to, for the menu label + confirm copy. */
   expectedVersion: string;
+  /** Whether the viewer may edit team access (gates the "Team access" item). */
+  canManageInfra: boolean;
+  /** Every team in the instance, for the access picker. */
+  teams: TeamOption[];
+  /** This server's current access scope. */
+  accessAllTeams: boolean;
+  accessTeamIds: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [command, setCommand] = React.useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = React.useState(false);
   const [confirmUpdate, setConfirmUpdate] = React.useState(false);
+  const [accessOpen, setAccessOpen] = React.useState(false);
+  const [access, setAccess] = React.useState<ServerAccess>({
+    allTeams: accessAllTeams,
+    teamIds: accessTeamIds,
+  });
 
   function reissue() {
     startTransition(async () => {
@@ -138,6 +160,41 @@ export function ServerActions({
         version
           ? `${serverName} agent updated to v${version}`
           : `${serverName} agent updated`,
+      );
+      router.refresh();
+    });
+  }
+
+  function openAccess() {
+    // Re-seed from the latest props each open so a prior save is reflected.
+    setAccess({ allTeams: accessAllTeams, teamIds: accessTeamIds });
+    setAccessOpen(true);
+  }
+
+  function saveAccess() {
+    startTransition(async () => {
+      const res = await gqlAction<{ setServerTeams: { id: string } }>(
+        `mutation SetServerTeams($input: SetServerTeamsInput!) {
+          setServerTeams(input: $input) { id }
+        }`,
+        {
+          input: {
+            serverId,
+            allTeams: access.allTeams,
+            teamIds: access.allTeams ? [] : access.teamIds,
+          },
+        },
+      );
+      if (!res.ok) {
+        // Surfaces the "these teams still have projects/databases…" block message.
+        toast.error(res.error);
+        return;
+      }
+      setAccessOpen(false);
+      toast.success(
+        access.allTeams
+          ? `${serverName} is now available to all teams`
+          : `${serverName} team access updated`,
       );
       router.refresh();
     });
@@ -197,6 +254,19 @@ export function ServerActions({
         <KeyRound className="size-4" />
         {provisioning ? "Show install command" : "Reissue install command"}
       </K.Item>
+      {canManageInfra ? (
+        <K.Item
+          onSelect={(e: Event) => {
+            e.preventDefault();
+            openAccess();
+          }}
+          disabled={pending}
+          title="Choose which teams can deploy to this server"
+        >
+          <Users className="size-4" />
+          Team access
+        </K.Item>
+      ) : null}
       <K.Separator />
       <K.Item
         variant="destructive"
@@ -283,6 +353,41 @@ export function ServerActions({
               }}
             >
               Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit team access (all teams ↔ specific teams). */}
+      <Dialog open={accessOpen} onOpenChange={setAccessOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="size-4" />
+              Team access for {serverName}
+            </DialogTitle>
+            <DialogDescription>
+              Choose which teams can deploy projects and databases to this server.
+              You can&rsquo;t remove a team that still has workloads here — move or
+              delete those first.
+            </DialogDescription>
+          </DialogHeader>
+          <ServerTeamAccess
+            value={access}
+            teams={teams}
+            onChange={setAccess}
+            disabled={pending}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAccessOpen(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => saveAccess()} disabled={pending}>
+              {pending ? "Saving…" : "Save access"}
             </Button>
           </DialogFooter>
         </DialogContent>

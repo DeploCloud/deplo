@@ -1,6 +1,6 @@
 import "server-only";
 
-import { count, eq } from "drizzle-orm";
+import { asc, count, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   memberships as membershipsTable,
@@ -83,6 +83,21 @@ export async function listMyTeams(): Promise<
     role: roleByTeam.get(t.id) ?? "member",
     memberCount: countByTeam.get(t.id) ?? 0,
   }));
+}
+
+/**
+ * Every team in the instance, for the server team-access picker. Gated by
+ * `manage_infra` (whoever administers servers chooses which teams may target
+ * them) — this is the one cross-team read that capability grants, so it is kept
+ * minimal (id/name/…) and never exposes membership. Ordered by name.
+ */
+export async function listAllTeams(): Promise<Team[]> {
+  await requireCapability("manage_infra");
+  const rows = await getDb()
+    .select()
+    .from(teamsTable)
+    .orderBy(asc(teamsTable.name));
+  return rows.map(rowToTeam);
 }
 
 export async function updateTeam(input: {

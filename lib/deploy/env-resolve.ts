@@ -31,6 +31,16 @@ export interface SharedEnvGroupLike {
 }
 
 /**
+ * A GLOBAL entry (team-wide or instance-wide). It carries no `projectId` because
+ * it applies to every project — only its `targets` gate which runtime sees it.
+ */
+export interface GlobalEnvEntryLike {
+  key: string;
+  valueEnc: string;
+  targets: EnvTarget[];
+}
+
+/**
  * A group's targets, defaulting legacy records (no `targets` field) to all
  * three. Older groups reached only production; treating them as all-targets
  * preserves that production injection while letting the user opt them out by
@@ -41,18 +51,34 @@ export function groupTargets(g: SharedEnvGroupLike): EnvTarget[] {
 }
 
 /**
- * The ordered, still-encrypted env entries a project inherits for one runtime:
- * its own vars tagged `target`, then every attached shared group that also
- * targets `target`. Later entries win on key collision (shared overrides
- * project-local), matching the object-spread the callers used before.
+ * The ordered, still-encrypted env entries a project inherits for one runtime.
+ * Entries are emitted LOWEST precedence first; the callers fold them into an
+ * object so a later entry wins on a key collision. The order — broadest default
+ * to most specific — is:
+ *
+ *   instance-global  →  team-global  →  project's own  →  attached shared group
+ *
+ * So an all-teams default is overridable by a team default, which a project can
+ * override, and a shared group still overrides everything (its prior behaviour).
+ * The two global layers carry no projectId (they apply to every project); only
+ * their `targets` gate the runtime. Both default to empty so existing callers
+ * that pass only project + shared keep the old two-layer behaviour.
  */
 export function resolveEnvEntries(
   target: EnvTarget,
   projectId: string,
   envVars: TargetedEnvEntry[],
   sharedGroups: SharedEnvGroupLike[],
+  teamGlobals: GlobalEnvEntryLike[] = [],
+  instanceGlobals: GlobalEnvEntryLike[] = [],
 ): { key: string; valueEnc: string }[] {
   const out: { key: string; valueEnc: string }[] = [];
+  for (const e of instanceGlobals) {
+    if (e.targets.includes(target)) out.push({ key: e.key, valueEnc: e.valueEnc });
+  }
+  for (const e of teamGlobals) {
+    if (e.targets.includes(target)) out.push({ key: e.key, valueEnc: e.valueEnc });
+  }
   for (const e of envVars) {
     if (e.projectId === projectId && e.targets.includes(target)) {
       out.push({ key: e.key, valueEnc: e.valueEnc });

@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "prod": "next build && node .next/standalone/server.js",
-    "start": "node .next/standalone/server.js",
+    "prod": "next build && next start",
+    "start": "next start",
     "lint": "eslint",
     "test": "node --require ./lib/test/server-only-shim.cjs --import tsx --test --test-concurrency=2 \"lib/**/*.test.ts\"",
     "db:push": "drizzle-kit push",

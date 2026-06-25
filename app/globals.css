@@ -46,6 +46,11 @@
   --sidebar-foreground: #0a0a0a;
   --sidebar-border: #e4e4e7;
   --sidebar-accent: #f0f0f1;
+
+  /* Skeleton shimmer highlight strength (alpha of --foreground in the sweep).
+     Per-theme: sRGB luminance is compressed near black, so the dark theme needs
+     a larger step to read as the same subtle sweep. */
+  --skeleton-shimmer: 10%;
 }
 
 .dark {
@@ -85,6 +90,8 @@
   --sidebar-foreground: #ededed;
   --sidebar-border: #1f1f1f;
   --sidebar-accent: #161616;
+
+  --skeleton-shimmer: 18%;
 }
 
 @theme inline {
@@ -254,11 +261,48 @@
   transform-origin: center center;
 }
 
+/* Skeleton shimmer — a soft highlight streak sweeps left→right across a loading
+ * placeholder, a step up from the flat opacity blink of animate-pulse. A
+ * translating ::after overlay (the technique production skeleton libs use) keeps
+ * the streak on-screen for the whole cycle — a background-position sweep parks it
+ * off-screen for ~half of every loop. The streak is --foreground at the
+ * per-theme --skeleton-shimmer alpha over the bar's muted base, so it reads as
+ * the same subtle sweep in light and dark. Opt in via the Skeleton component's
+ * `shimmer` prop; stagger a group of bars into a cascading wave by setting the
+ * `--shimmer-delay` custom property per element. */
+@keyframes deplo-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--foreground) var(--skeleton-shimmer), transparent)
+      50%,
+    transparent 100%
+  );
+  animation: deplo-shimmer 1.6s ease-in-out infinite;
+  animation-delay: var(--shimmer-delay, 0s);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,
   .animate-slide-in-left,
-  .animate-jiggle {
+  .animate-jiggle,
+  .animate-shimmer::after {
     animation: none;
   }
   *,

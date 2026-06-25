@@ -1,4 +1,13 @@
-import { Server as ServerIcon } from "lucide-react";
+import { notFound } from "next/navigation";
+import type { ElementType } from "react";
+import {
+  Server as ServerIcon,
+  Cpu,
+  MemoryStick,
+  HardDrive,
+  Boxes,
+  Network,
+} from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusDot } from "@/components/shared/status-badge";
@@ -13,8 +22,10 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { listServers } from "@/lib/data/servers";
-import { getInitialServerMetrics } from "@/lib/data/monitoring";
+import { listAllServers, listAllServerTeamIds } from "@/lib/data/servers";
+import { listAllTeams } from "@/lib/data/teams";
+import { hasCapability } from "@/lib/membership";
+import { hydrateServerSpecs } from "@/lib/data/monitoring";
 import { serverLabel } from "@/lib/utils";
 import {
   isAgentOutdated,
@@ -22,32 +33,70 @@ import {
   resolveExpectedAgentVersion,
 } from "@/lib/version";
 import type { Server } from "@/lib/types";
+import type { TeamOption } from "@/components/servers/server-team-access";
 import { CheckUpdatesButton } from "./check-updates-button";
-import {
-  ServerMetricsProvider,
-  LiveServerMetrics,
-  LiveTraefikBadge,
-  LiveAgentVersionBadge,
-} from "./server-metrics";
+import { AgentVersionBadge } from "./agent-version-badge";
 
 export const metadata = { title: "Servers" };
+
+/** One hardware-spec tile: an icon + label over a big value + unit. */
+function Spec({
+  icon: Icon,
+  label,
+  value,
+  unit,
+}: {
+  icon: ElementType;
+  label: string;
+  value: string;
+  unit: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Icon className="size-3.5" />
+        {label}
+      </div>
+      <div className="mt-1 flex items-baseline gap-1">
+        <span className="text-lg font-semibold tabular-nums">{value}</span>
+        <span className="text-xs text-muted-foreground">{unit}</span>
+      </div>
+    </div>
+  );
+}
 
 function ServerCard({
   server,
   expectedAgentVersion,
+  teams,
+  accessTeamIds,
 }: {
   server: Server;
   expectedAgentVersion: string;
+  teams: TeamOption[];
+  accessTeamIds: string[];
 }) {
   const agentVersion = reportedAgentVersion(server);
   const outdated = isAgentOutdated(agentVersion, expectedAgentVersion);
+  const accessLabel = server.allTeams
+    ? "All teams"
+    : `${accessTeamIds.length} team${accessTeamIds.length === 1 ? "" : "s"}`;
+  // Specs are stored capacity (persisted from the agent); 0 means not-yet-measured
+  // or unprovisioned — show an em dash rather than a misleading "0".
+  const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
+  const num = (n: number) => (n > 0 ? String(n) : "—");
   return (
-    <Card>
+    <Card className="transition-colors hover:border-foreground/20">
       <CardHeader className="space-y-3">
         <div className="flex items-center gap-2">
           <StatusDot status={server.status} />
           <CardTitle className="truncate">{serverLabel(server)}</CardTitle>
-          <Badge variant="secondary">{server.status}</Badge>
+          <Badge variant="secondary" className="capitalize">
+            {server.status}
+          </Badge>
+          <Badge variant="muted" title="Which teams can deploy to this server">
+            {accessLabel}
+          </Badge>
           {/* Every server is a bootstrapped agent now (the host running Deplo
               included), so the management actions apply to all of them. */}
           <div className="ml-auto">
@@ -57,38 +106,53 @@ function ServerCard({
               provisioning={server.status === "provisioning"}
               outdated={outdated}
               expectedVersion={expectedAgentVersion}
+              canManageInfra
+              teams={teams}
+              accessAllTeams={server.allTeams}
+              accessTeamIds={accessTeamIds}
             />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
           <span className="font-mono text-muted-foreground">{server.ip}</span>
-          <span className="text-muted-foreground">
-            Docker {server.dockerVersion}
-          </span>
-          <LiveTraefikBadge
-            serverId={server.id}
-            initial={server.traefikEnabled}
-          />
-          <LiveAgentVersionBadge
-            serverId={server.id}
-            initialVersion={agentVersion}
-            initialExpected={expectedAgentVersion}
-            initialOutdated={outdated}
+          <Badge variant={server.traefikEnabled ? "success" : "muted"}>
+            <Network className="size-3" />
+            Traefik {server.traefikEnabled ? "on" : "off"}
+          </Badge>
+          <AgentVersionBadge
+            version={agentVersion}
+            expected={expectedAgentVersion}
+            outdated={outdated}
           />
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <LiveServerMetrics
-          serverId={server.id}
-          fallback={{
-            cpu: server.cpuUsage,
-            memPct: server.memoryUsage,
-            diskPct: server.diskUsage,
-          }}
-          cpuCores={server.cpuCores}
-          memoryGb={Number((server.memoryMb / 1024).toFixed(0))}
-          diskGb={server.diskGb}
-        />
+      <CardContent>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Spec
+            icon={Cpu}
+            label="CPU"
+            value={num(server.cpuCores)}
+            unit={server.cpuCores === 1 ? "core" : "cores"}
+          />
+          <Spec
+            icon={MemoryStick}
+            label="Memory"
+            value={num(ramGb)}
+            unit="GB RAM"
+          />
+          <Spec
+            icon={HardDrive}
+            label="Disk"
+            value={num(server.diskGb)}
+            unit="GB"
+          />
+          <Spec
+            icon={Boxes}
+            label="Docker"
+            value={server.dockerVersion || "—"}
+            unit="engine"
+          />
+        </div>
       </CardContent>
     </Card>
   );
@@ -97,19 +161,29 @@ function ServerCard({
 export default async function ServersPage(
   props: PageProps<"/settings/servers">,
 ) {
+  // Server administration is an infra-operator concern, and the management view
+  // lists EVERY server (including ones restricted to other teams) — so it is
+  // manage_infra-only. Members reach servers only through the team-scoped deploy
+  // pickers, never this page.
+  if (!(await hasCapability("manage_infra"))) notFound();
+
   // The global "New ▸ Add server" action links here with ?new=1 to open the
   // register dialog straight away.
   const { new: newParam } = await props.searchParams;
   const autoOpenServer =
     (Array.isArray(newParam) ? newParam[0] : newParam) === "1";
 
-  // Cheap last-known metrics so the page renders instantly; the cards poll live
-  // values every second and replace these (see ServerMetricsProvider).
-  const [servers, allMetrics, expectedAgentVersion] = await Promise.all([
-    listServers(),
-    getInitialServerMetrics(),
-    resolveExpectedAgentVersion(),
-  ]);
+  const [serversRaw, expectedAgentVersion, serverTeamIds, teamsRaw] =
+    await Promise.all([
+      listAllServers(),
+      resolveExpectedAgentVersion(),
+      listAllServerTeamIds(),
+      listAllTeams(),
+    ]);
+  // Fill in capacity specs for the static cards (measures an unmeasured server
+  // once, then reuses the persisted values). No per-second polling anymore.
+  const servers = await hydrateServerSpecs(serversRaw);
+  const teams: TeamOption[] = teamsRaw.map((t) => ({ id: t.id, name: t.name }));
 
   return (
     <div className="space-y-6">
@@ -130,7 +204,7 @@ export default async function ServersPage(
               provisions itself — Deplo never needs SSH access to your servers.
             </CardDescription>
           </div>
-          <AddServer autoOpen={autoOpenServer} />
+          <AddServer autoOpen={autoOpenServer} teams={teams} />
         </CardHeader>
       </Card>
 
@@ -141,17 +215,17 @@ export default async function ServersPage(
           description="Run the install command above on a Linux host to add your first server."
         />
       ) : (
-        <ServerMetricsProvider initialMetrics={allMetrics}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {servers.map((server) => (
-              <ServerCard
-                key={server.id}
-                server={server}
-                expectedAgentVersion={expectedAgentVersion}
-              />
-            ))}
-          </div>
-        </ServerMetricsProvider>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {servers.map((server) => (
+            <ServerCard
+              key={server.id}
+              server={server}
+              expectedAgentVersion={expectedAgentVersion}
+              teams={teams}
+              accessTeamIds={serverTeamIds.get(server.id) ?? []}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

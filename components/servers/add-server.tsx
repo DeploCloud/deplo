@@ -18,6 +18,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
+import {
+  ServerTeamAccess,
+  type ServerAccess,
+  type TeamOption,
+} from "./server-team-access";
 
 /**
  * Register a remote server (PLAN Part B, P1). No SSH-in: the operator names the
@@ -26,12 +31,23 @@ import { gqlAction } from "@/lib/graphql-client";
  * single-use token and is shown only once, so this is a two-step dialog:
  * register → reveal command (the dialog stays open on the command screen).
  */
-export function AddServer({ autoOpen = false }: { autoOpen?: boolean } = {}) {
+export function AddServer({
+  autoOpen = false,
+  teams = [],
+}: {
+  autoOpen?: boolean;
+  /** Every team in the instance, for the access picker (empty if not allowed). */
+  teams?: TeamOption[];
+} = {}) {
   const router = useRouter();
   const [open, setOpen] = React.useState(autoOpen);
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
   const [host, setHost] = React.useState("");
+  const [access, setAccess] = React.useState<ServerAccess>({
+    allTeams: true,
+    teamIds: [],
+  });
   const [command, setCommand] = React.useState<string | null>(null);
 
   // Opened via the global "New ▸ Add server" menu (?new=1) → drop the param so a
@@ -44,6 +60,7 @@ export function AddServer({ autoOpen = false }: { autoOpen?: boolean } = {}) {
   function reset() {
     setName("");
     setHost("");
+    setAccess({ allTeams: true, teamIds: [] });
     setCommand(null);
   }
 
@@ -58,7 +75,14 @@ export function AddServer({ autoOpen = false }: { autoOpen?: boolean } = {}) {
             installCommand
           }
         }`,
-        { input: { name, host } },
+        {
+          input: {
+            name,
+            host,
+            allTeams: access.allTeams,
+            teamIds: access.allTeams ? [] : access.teamIds,
+          },
+        },
       );
       if (!res.ok) {
         toast.error(res.error);
@@ -133,6 +157,12 @@ export function AddServer({ autoOpen = false }: { autoOpen?: boolean } = {}) {
                 deployed apps for this server will be routed.
               </p>
             </div>
+            <ServerTeamAccess
+              value={access}
+              teams={teams}
+              onChange={setAccess}
+              disabled={pending}
+            />
           </div>
         )}
 

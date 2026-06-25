@@ -82,14 +82,27 @@ export function SidebarNav({
         if (items.length === 0) return null;
         return (
         <div key={i} className="flex flex-col gap-0.5">
-          {/* Divider between groups (Vercel-style), in place of section titles. */}
-          {i > 0 && (
-            <hr
+          {/* A titled group shows its label as a header; an untitled one falls
+              back to a Vercel-style divider. Collapsed (icon-only) always uses a
+              divider since there's no room for the label. */}
+          {section.title && !collapsed ? (
+            <div
               className={cn(
-                "my-2 border-t border-sidebar-border",
-                collapsed ? "mx-1" : "mx-2"
+                "px-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70",
+                i > 0 && "pt-3"
               )}
-            />
+            >
+              {section.title}
+            </div>
+          ) : (
+            i > 0 && (
+              <hr
+                className={cn(
+                  "my-2 border-t border-sidebar-border",
+                  collapsed ? "mx-1" : "mx-2"
+                )}
+              />
+            )
           )}
           {items.map((item) => {
             const active = isActive(item.href, item.exact);

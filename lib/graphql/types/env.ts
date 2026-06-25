@@ -17,7 +17,9 @@ import type { EnvVarDTO } from "@/lib/types";
 /* ------------------------------------------------------------------ */
 
 // `type` is a two-valued union that is not shared in enums.ts, so it lives here.
-const EnvVarTypeEnum = builder.enumType("EnvVarType", {
+// Exported so the global-env types can reuse the same GraphQL enum (a Pothos enum
+// name must be unique, so there can be only one "EnvVarType").
+export const EnvVarTypeEnum = builder.enumType("EnvVarType", {
   values: ["plain", "secret"] as const,
 });
 

@@ -65,6 +65,7 @@ const CONTROL_PLANE = [
   "team_folder_order",
   // infra
   "servers",
+  "server_teams",
   // projects
   "projects",
   "project_build",
@@ -76,6 +77,10 @@ const CONTROL_PLANE = [
   "deployment_logs",
   "env_vars",
   "env_var_targets",
+  "team_global_env_vars",
+  "team_global_env_var_targets",
+  "instance_env_vars",
+  "instance_env_var_targets",
   "domains",
   "domain_middlewares",
   "dev_ssh_user",

@@ -1,15 +1,18 @@
 import "server-only";
 
 import { headers } from "next/headers";
-import { asc, eq, sql } from "drizzle-orm";
-import { getDb } from "../db/client";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import { getDb, type DrizzleClient, type DbTx } from "../db/client";
 import {
+  databases as databasesTable,
   projects as projectsTable,
+  serverTeams as serverTeamsTable,
   servers as serversTable,
+  teams as teamsTable,
 } from "../db/schema/control-plane";
 import { assembleServer, serverToRow } from "./infra-rows";
-import { assertUser, getCurrentUser } from "../auth";
-import { requireCapability } from "../membership";
+import { getCurrentUser } from "../auth";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { newId, nowIso } from "../ids";
 import { resolvePublicBaseUrl } from "../public-url";
 import { recordActivity } from "./activity";
@@ -21,7 +24,7 @@ import {
   signBootstrapCsr,
   DEFAULT_AGENT_PORT,
 } from "../agent/bootstrap";
-import type { Server } from "../types";
+import type { Server, Team } from "../types";
 
 /**
  * `servers` is RELATIONAL as of cut-set (e) (relational-store PLAN Step 6). It is
@@ -56,15 +59,34 @@ export async function getServerById(id: string): Promise<Server | null> {
   return rows[0] ? assembleServer(rows[0]) : null;
 }
 
+/**
+ * The public, TEAM-SCOPED server read: a viewer sees only the servers their
+ * active team may target (every `all_teams` server + the ones granted to it).
+ * A server restricted to other teams must never leak through this read — the
+ * unscoped list is {@link listAllServers} (internal) / the manage_infra-gated
+ * management page. (Previously this returned every server to any logged-in user,
+ * which leaked a restricted server's metadata to excluded teams.)
+ */
 export async function listServers(): Promise<Server[]> {
-  await assertUser();
-  // By creation order — every server is a uniform bootstrapped agent now.
-  return listAllServers();
+  return listServersForCurrentTeam();
 }
 
 export async function getServer(id: string): Promise<Server | null> {
-  await assertUser();
-  return getServerById(id);
+  const teamId = await requireActiveTeamId();
+  const server = await getServerById(id);
+  if (!server) return null;
+  if (server.allTeams) return server;
+  const granted = await getDb()
+    .select({ teamId: serverTeamsTable.teamId })
+    .from(serverTeamsTable)
+    .where(
+      and(
+        eq(serverTeamsTable.serverId, id),
+        eq(serverTeamsTable.teamId, teamId),
+      ),
+    )
+    .limit(1);
+  return granted.length > 0 ? server : null;
 }
 
 /**
@@ -73,18 +95,99 @@ export async function getServer(id: string): Promise<Server | null> {
  * Callers must tolerate null and prompt the operator to add a server.
  */
 export async function getPrimaryServer(): Promise<Server | null> {
-  await assertUser();
-  const rows = await getDb()
+  // Team-scoped: the first server the active team can target (was: the first
+  // server overall, which leaked existence of an other-team-only server).
+  const servers = await listServersForCurrentTeam();
+  return servers[0] ?? null;
+}
+
+/**
+ * Servers a given team may target for its projects/databases: every `all_teams`
+ * server PLUS the ones explicitly granted to this team via `server_teams`. This
+ * is the CONSUMPTION view (the deploy-target picklist), as opposed to the
+ * management view ({@link listServers}, which is unfiltered so an infra operator
+ * administers every host). Creation order, like the unfiltered list.
+ */
+export async function listServersForTeam(teamId: string): Promise<Server[]> {
+  const db = getDb();
+  const grantedToTeam = db
+    .select({ id: serverTeamsTable.serverId })
+    .from(serverTeamsTable)
+    .where(eq(serverTeamsTable.teamId, teamId));
+  const rows = await db
     .select()
     .from(serversTable)
-    .orderBy(asc(serversTable.createdAt))
-    .limit(1);
-  return rows[0] ? assembleServer(rows[0]) : null;
+    .where(
+      or(eq(serversTable.allTeams, true), inArray(serversTable.id, grantedToTeam)),
+    )
+    .orderBy(asc(serversTable.createdAt));
+  return rows.map(assembleServer);
+}
+
+/** {@link listServersForTeam} for the caller's active team (asserts membership). */
+export async function listServersForCurrentTeam(): Promise<Server[]> {
+  const teamId = await requireActiveTeamId();
+  return listServersForTeam(teamId);
+}
+
+/** The team ids a non-`all_teams` server is restricted to (empty for an unscoped one). */
+export async function getServerTeamIds(serverId: string): Promise<string[]> {
+  const rows = await getDb()
+    .select({ teamId: serverTeamsTable.teamId })
+    .from(serverTeamsTable)
+    .where(eq(serverTeamsTable.serverId, serverId));
+  return rows.map((r) => r.teamId);
+}
+
+/** The teams a server is granted to, with names — for the access editor + badges. */
+export async function getServerTeams(serverId: string): Promise<Team[]> {
+  const rows = await getDb()
+    .select({
+      id: teamsTable.id,
+      name: teamsTable.name,
+      slug: teamsTable.slug,
+      plan: teamsTable.plan,
+      createdAt: teamsTable.createdAt,
+    })
+    .from(serverTeamsTable)
+    .innerJoin(teamsTable, eq(teamsTable.id, serverTeamsTable.teamId))
+    .where(eq(serverTeamsTable.serverId, serverId))
+    .orderBy(asc(teamsTable.name));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    slug: r.slug,
+    plan: r.plan as Team["plan"],
+    createdAt: r.createdAt,
+  }));
+}
+
+/** Every server's granted team ids in one query (serverId → teamIds), for the page. */
+export async function listAllServerTeamIds(): Promise<Map<string, string[]>> {
+  const rows = await getDb()
+    .select({
+      serverId: serverTeamsTable.serverId,
+      teamId: serverTeamsTable.teamId,
+    })
+    .from(serverTeamsTable);
+  const map = new Map<string, string[]>();
+  for (const r of rows) {
+    const list = map.get(r.serverId);
+    if (list) list.push(r.teamId);
+    else map.set(r.serverId, [r.teamId]);
+  }
+  return map;
 }
 
 export interface AddServerInput {
   name: string;
   host: string;
+  /**
+   * Team access at registration. Omitted / `true` → available to all teams.
+   * `false` → restrict to `teamIds` (the install dialog's "Specific teams").
+   */
+  allTeams?: boolean;
+  teamIds?: string[];
 }
 
 /** What addServer returns: the new row plus the one-time install command (P1). */
@@ -118,6 +221,12 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
   // command (P3). Empty over plain HTTP — the agent then uses the HMAC path.
   const fingerprint = await controlPlaneCertFingerprint(baseUrl);
 
+  // Default to instance-wide. When restricting at registration, the junction
+  // grants the named teams; an empty teamIds list means "no team yet" (the
+  // operator wires teams up later from the server's Team access editor).
+  const allTeams = input.allTeams ?? true;
+  const teamIds = allTeams ? [] : [...new Set(input.teamIds ?? [])];
+
   const server: Server = {
     id: newId("srv"),
     name: input.name.trim() || host,
@@ -133,10 +242,17 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
     cpuUsage: 0,
     memoryUsage: 0,
     diskUsage: 0,
+    allTeams,
     createdAt: nowIso(),
     bootstrap: stored,
   };
-  await getDb().insert(serversTable).values(serverToRow(server));
+  await getDb().transaction(async (tx) => {
+    await tx.insert(serversTable).values(serverToRow(server));
+    if (teamIds.length > 0)
+      await tx
+        .insert(serverTeamsTable)
+        .values(teamIds.map((teamId) => ({ serverId: server.id, teamId })));
+  });
   await recordActivity("member", `Connected server ${server.name}`, user.name, null, membership.teamId);
 
   return {
@@ -300,6 +416,159 @@ export async function updateServerAgent(id: string): Promise<{ version: string }
   return result;
 }
 
+/** Distinct team ids that have at least one project OR database on this server. */
+async function teamsWithWorkloadsOnServer(
+  serverId: string,
+  db: DrizzleClient | DbTx = getDb(),
+): Promise<string[]> {
+  const [projTeams, dbTeams] = await Promise.all([
+    db
+      .selectDistinct({ teamId: projectsTable.teamId })
+      .from(projectsTable)
+      .where(eq(projectsTable.serverId, serverId)),
+    db
+      .selectDistinct({ teamId: databasesTable.teamId })
+      .from(databasesTable)
+      .where(eq(databasesTable.serverId, serverId)),
+  ]);
+  return [
+    ...new Set([
+      ...projTeams.map((r) => r.teamId),
+      ...dbTeams.map((r) => r.teamId),
+    ]),
+  ];
+}
+
+/** Resolve team ids to their display names (for the block error message). */
+async function teamNames(
+  ids: string[],
+  db: DrizzleClient | DbTx = getDb(),
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select({ name: teamsTable.name })
+    .from(teamsTable)
+    .where(inArray(teamsTable.id, ids));
+  return rows.map((r) => r.name);
+}
+
+/**
+ * Re-assert, INSIDE a write transaction, that a server is still targetable by a
+ * team — taking a SHARE lock on the server row so the check serializes against a
+ * concurrent {@link setServerTeams} restrict (which takes the row's UPDATE lock).
+ * Callers that place a workload (createProject/createDatabase) use this to close
+ * the TOCTOU window between picking a team-visible server and committing the row.
+ */
+export async function assertServerAccessibleTx(
+  tx: DbTx,
+  serverId: string,
+  teamId: string,
+): Promise<void> {
+  const rows = await tx
+    .select({ allTeams: serversTable.allTeams })
+    .from(serversTable)
+    .where(eq(serversTable.id, serverId))
+    .for("share");
+  if (!rows[0]) throw new Error("Server not found");
+  if (rows[0].allTeams) return;
+  const grant = await tx
+    .select({ teamId: serverTeamsTable.teamId })
+    .from(serverTeamsTable)
+    .where(
+      and(
+        eq(serverTeamsTable.serverId, serverId),
+        eq(serverTeamsTable.teamId, teamId),
+      ),
+    )
+    .limit(1);
+  if (!grant[0]) throw new Error("That server isn't available to this team.");
+}
+
+export interface SetServerTeamsInput {
+  allTeams: boolean;
+  /** The granted teams when `allTeams` is false (ignored when it is true). */
+  teamIds: string[];
+}
+
+/**
+ * Set a server's team access (Settings → Servers → Team access; also the install
+ * dialog's initial choice). `allTeams: true` opens it to every team and clears
+ * any specific grants. `allTeams: false` restricts it to `teamIds`.
+ *
+ * RESTRICTING is BLOCKED when a team that still has projects or databases on this
+ * server would lose access — the operator moves/deletes those first, the same
+ * conscious-teardown rule {@link removeServer} enforces (no silent orphaning of a
+ * team's running workloads onto a server it can no longer target). Widening to
+ * `all_teams` never blocks. Gated by `manage_infra`.
+ */
+export async function setServerTeams(
+  id: string,
+  input: SetServerTeamsInput,
+): Promise<Server> {
+  const { membership } = await requireCapability("manage_infra");
+  const user = (await getCurrentUser())!;
+  const server = await getServerById(id);
+  if (!server) throw new Error("Server not found");
+
+  const allTeams = input.allTeams;
+  const teamIds = allTeams ? [] : [...new Set(input.teamIds)];
+  const selected = new Set(teamIds);
+
+  await getDb().transaction(async (tx) => {
+    // Lock the server row FOR UPDATE so a concurrent create that SHARE-locks it
+    // (assertServerAccessibleTx) serializes against this restrict — the workload
+    // check below then observes every workload committed before we won the lock,
+    // closing the TOCTOU window (no team left orphaned on a server it can't see).
+    const locked = await tx
+      .select({ id: serversTable.id })
+      .from(serversTable)
+      .where(eq(serversTable.id, id))
+      .for("update");
+    if (!locked[0]) throw new Error("Server not found");
+
+    if (!allTeams) {
+      // The chosen teams must exist (clean message instead of a raw FK error).
+      if (teamIds.length > 0) {
+        const known = await tx
+          .select({ id: teamsTable.id })
+          .from(teamsTable)
+          .where(inArray(teamsTable.id, teamIds));
+        if (known.length !== teamIds.length)
+          throw new Error("One or more selected teams no longer exist.");
+      }
+      // Block when a team with workloads on this server would lose its access.
+      const using = await teamsWithWorkloadsOnServer(id, tx);
+      const losing = using.filter((t) => !selected.has(t));
+      if (losing.length > 0) {
+        const names = await teamNames(losing, tx);
+        throw new Error(
+          `These teams still have projects or databases on this server: ${names.join(
+            ", ",
+          )}. Move or delete them before revoking the team's access.`,
+        );
+      }
+    }
+
+    await tx.update(serversTable).set({ allTeams }).where(eq(serversTable.id, id));
+    await tx.delete(serverTeamsTable).where(eq(serverTeamsTable.serverId, id));
+    if (teamIds.length > 0)
+      await tx
+        .insert(serverTeamsTable)
+        .values(teamIds.map((teamId) => ({ serverId: id, teamId })));
+  });
+
+  await recordActivity(
+    "member",
+    allTeams
+      ? `Made server ${server.name} available to all teams`
+      : `Set server ${server.name} access to ${teamIds.length} team${teamIds.length === 1 ? "" : "s"}`,
+    user.name,
+    null,
+    membership.teamId,
+  );
+  return (await getServerById(id))!;
+}
+
 /** What a calling-home agent sends, and what completeBootstrap signs against. */
 export interface BootstrapCallHome {
   /** The raw one-time token from the install command. */
@@ -388,6 +657,8 @@ export async function markServerSeen(
   id: string,
   agentVersion?: string,
   traefikRunning?: boolean,
+  specs?: { cpuCores: number; memoryMb: number; diskGb: number },
+  dockerVersion?: string,
 ): Promise<void> {
   try {
     const set: Record<string, unknown> = { lastSeenAt: nowIso() };
@@ -397,6 +668,20 @@ export async function markServerSeen(
     if (agentVersion)
       set.agentVersion = sql`case when ${serversTable.agentPort} is not null then ${agentVersion} else ${serversTable.agentVersion} end`;
     if (typeof traefikRunning === "boolean") set.traefikEnabled = traefikRunning;
+    // The Docker engine version the agent reports on its Hello — born "" at
+    // registration and only known live, so persist it here (guard on non-empty so
+    // a missing/Docker-unreachable Hello never blanks a good value). Drives the
+    // Servers page's Docker spec tile without a live poll.
+    if (dockerVersion) set.dockerVersion = dockerVersion;
+    // Persist the host's hardware CAPACITY (cores / RAM / disk) the agent reports
+    // alongside its live usage. Capacity is effectively static, so storing it lets
+    // the Servers page render the specs without a live poll. Guard on cpuCores>0 so
+    // a failed/empty measure never zeroes good values.
+    if (specs && specs.cpuCores > 0) {
+      set.cpuCores = specs.cpuCores;
+      set.memoryMb = specs.memoryMb;
+      set.diskGb = specs.diskGb;
+    }
     await getDb().update(serversTable).set(set).where(eq(serversTable.id, id));
   } catch (e) {
     console.error("[deplo] markServerSeen failed:", e);

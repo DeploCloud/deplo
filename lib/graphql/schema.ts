@@ -16,6 +16,7 @@ import "./types/dev";
 import "./types/domain";
 import "./types/enums";
 import "./types/env";
+import "./types/global-env";
 import "./types/folder";
 import "./types/github";
 import "./types/member";

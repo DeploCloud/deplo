@@ -3,7 +3,6 @@ import {
   Rocket,
   ScrollText,
   Database,
-  Globe,
   LayoutTemplate,
   Server,
   Settings,
@@ -79,16 +78,10 @@ export const NAV: NavSection[] = [
         tooltip: "Databases, S3 destinations & backups",
       },
       {
-        label: "Domains",
-        href: "/domains",
-        icon: Globe,
-        tooltip: "Custom domains & TLS certificates",
-      },
-      {
         label: "Variables",
         href: "/variables",
         icon: Braces,
-        tooltip: "Project & shared environment variables",
+        tooltip: "Project, shared & global environment variables",
         requires: "manage_env",
       },
       {
@@ -155,7 +148,9 @@ export const SETTINGS_NAV: NavSection[] = [
       },
     ],
   },
+  // Team — settings scoped to the active team (the team header stays shown here).
   {
+    title: "Team",
     items: [
       {
         label: "General",
@@ -165,27 +160,18 @@ export const SETTINGS_NAV: NavSection[] = [
         exact: true,
       },
       {
-        label: "Account",
-        href: "/settings/account",
-        icon: User,
-        tooltip: "Your personal account",
-      },
-    ],
-  },
-  {
-    title: "Infrastructure",
-    items: [
-      {
         label: "Servers",
         href: "/settings/servers",
         icon: Server,
         tooltip: "Connected servers & Docker hosts",
+        requires: "manage_infra",
       },
       {
         label: "Registries",
         href: "/settings/registries",
         icon: Package,
         tooltip: "Container image registries",
+        requires: "manage_infra",
       },
       {
         label: "Git",
@@ -195,8 +181,16 @@ export const SETTINGS_NAV: NavSection[] = [
       },
     ],
   },
+  // Account — the signed-in user's own settings (no team context).
   {
+    title: "Account",
     items: [
+      {
+        label: "Account",
+        href: "/settings/account",
+        icon: User,
+        tooltip: "Your personal account",
+      },
       {
         label: "Notifications",
         href: "/settings/notifications",
@@ -211,7 +205,9 @@ export const SETTINGS_NAV: NavSection[] = [
       },
     ],
   },
+  // System — instance-wide administration (admins) + posture.
   {
+    title: "System",
     items: [
       {
         label: "Users",
@@ -229,3 +225,23 @@ export const SETTINGS_NAV: NavSection[] = [
     ],
   },
 ];
+
+/**
+ * The settings routes that are NOT team-scoped — the user's own account and the
+ * instance/system pages. On these the topbar hides the team switcher (there is
+ * no team context to act in). Everything else under /settings is team-scoped.
+ */
+export const NON_TEAM_SETTINGS_PREFIXES = [
+  "/settings/account",
+  "/settings/notifications",
+  "/settings/tokens",
+  "/settings/users",
+  "/settings/security",
+];
+
+/** True when the path is a personal/system settings route (team header hidden). */
+export function isNonTeamSettings(pathname: string): boolean {
+  return NON_TEAM_SETTINGS_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  );
+}

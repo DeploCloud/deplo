@@ -14,6 +14,7 @@ import {
 import { newId, nowIso } from "../ids";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
+import { loadGlobalEnvForProject } from "../data/global-env";
 import { recordActivity } from "../data/activity";
 import {
   loadDeployment,
@@ -122,12 +123,20 @@ async function setProject(
  * Selection lives in the shared `resolveEnvEntries` seam; we only decrypt here.
  */
 async function projectEnv(projectId: string): Promise<Record<string, string>> {
-  const [vars, groups] = await Promise.all([
+  const [vars, groups, globals] = await Promise.all([
     loadEnvVarsForProject(projectId),
     loadSharedEnvGroupsForProject(projectId),
+    loadGlobalEnvForProject(projectId),
   ]);
   const out: Record<string, string> = {};
-  for (const e of resolveEnvEntries("production", projectId, vars, groups)) {
+  for (const e of resolveEnvEntries(
+    "production",
+    projectId,
+    vars,
+    groups,
+    globals.teamGlobals,
+    globals.instanceGlobals,
+  )) {
     out[e.key] = decryptSecret(e.valueEnc);
   }
   return out;

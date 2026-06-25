@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { NewProjectWizard } from "@/components/projects/new-project-wizard";
 import { getTemplate } from "@/lib/templates";
 import { getTemplateBlueprint } from "@/lib/templates-blueprint";
-import { listServers } from "@/lib/data/servers";
+import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
 import { instanceHost, productionDomain } from "@/lib/deploy/domains";
 
@@ -32,7 +32,7 @@ export default async function NewProjectPage(props: PageProps<"/new">) {
   const blueprint = template
     ? getTemplateBlueprint(template.id, { domain: autoDomain ?? undefined })
     : null;
-  const servers = (await listServers()).map((s) => ({
+  const servers = (await listServersForCurrentTeam()).map((s) => ({
     id: s.id,
     name: s.name,
     type: s.type,
