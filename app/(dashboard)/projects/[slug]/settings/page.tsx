@@ -43,8 +43,6 @@ export default async function ProjectSettingsPage(
           : null
       }
       compose={project.compose}
-      expose={project.expose}
-      exposes={project.exposes ?? null}
       volumes={project.volumes ?? []}
       serverId={project.serverId}
       servers={servers}

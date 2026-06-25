@@ -43,8 +43,7 @@ import { certResolver, previewDomain, resolveServerIp } from "./domains";
 import { traefikRouterLabels } from "./routing";
 import { buildComposeStack } from "./compose-stack";
 import {
-  ensureAutoDomain,
-  ensureExtraDomain,
+  primaryDomainName,
   routableRoutes,
   defaultRoute,
   type RoutableDomain,
@@ -341,21 +340,19 @@ export async function startDeployment(
   const ip = resolveServerIp(server);
   const environment = opts.environment ?? "production";
   const branch = opts.branch ?? project.repo?.branch ?? "main";
-  // Production routes through the project's registered primary domain (created
-  // here if missing) so the generated hostname is the same one shown in the
-  // Domains section and baked into a template's env. Previews are ephemeral.
+  // Production routes through the project's EXISTING registered primary domain
+  // (created once at project creation). It is NOT resurrected here: a project
+  // whose domains were all deleted deploys with NO domain and NO URL — the
+  // container runs but is unrouted until the user adds a domain back. Previews
+  // are ephemeral and always get their own host.
   const domain =
     environment === "production"
-      ? await ensureAutoDomain(projectId, {
-          slug: project.slug,
-          ip,
-          // The primary host's default route: compose default expose, else
-          // build.port. Keeps the auto domain complete (never portless).
-          defaultPort: project.expose?.port ?? project.build.port,
-          defaultService: project.expose?.service ?? null,
-        })
+      ? await primaryDomainName(projectId)
       : previewDomain(project.slug, newId("").slice(1, 7), ip);
-  const url = `https://${domain}`;
+  // No production domain ⇒ no canonical URL. The deployment record's `url` is a
+  // plain string (informational), so it carries "" when unrouted; the project's
+  // `productionUrl` is nullable and gets a real null below.
+  const url = domain ? `https://${domain}` : "";
   const depId = newId("dpl");
 
   const dep: Deployment = {
@@ -385,7 +382,7 @@ export async function startDeployment(
       latestDeploymentId: depId,
       status: "queued",
       updatedAt: nowIso(),
-      ...(environment === "production" ? { productionUrl: url } : {}),
+      ...(environment === "production" ? { productionUrl: domain ? url : null } : {}),
     })
     .where(eq(projectsTable.id, projectId));
   await recordActivity("deployment", `Deploying ${project.name}`, opts.creator, projectId);
@@ -513,20 +510,18 @@ async function runDeployment(depId: string): Promise<void> {
   }
   const slug = project.slug;
   const name = `deplo-${slug}`;
-  const server = (await getServerById(project.serverId)) ?? undefined;
-  const ip = resolveServerIp(server);
+  // Production routes through the project's EXISTING registered primary domain
+  // (never resurrected — see startDeployment). When the project has no domain,
+  // `domain` is "" and the deploy proceeds UNROUTED (the build still runs; the
+  // container just gets `traefik.enable=false`). A preview uses its ephemeral
+  // host parsed back from the deployment URL.
   const domain =
     dep.environment === "production"
-      ? await ensureAutoDomain(project.id, {
-          slug,
-          ip,
-          defaultPort: project.expose?.port ?? project.build.port,
-          defaultService: project.expose?.service ?? null,
-        })
+      ? await primaryDomainName(project.id)
       : dep.url.replace(/^https?:\/\//, "");
   // Production routes to every verified domain (primary first); a preview uses
-  // only its ephemeral host (not a registered domain). `domain` is always the
-  // canonical primary and the fallback when nothing is verified yet.
+  // only its ephemeral host (not a registered domain). Empty when the project
+  // has no domain — the renderers emit no router (traefik.enable=false).
   const routeDomains = await routableForDeploy(project.id, dep.environment, domain);
 
   await setDep(depId, { status: "building" });
@@ -821,9 +816,17 @@ async function runDeployment(depId: string): Promise<void> {
       });
       await setProject(project.id, {
         status: "active",
-        ...(dep.environment === "production" ? { productionUrl: dep.url } : {}),
+        // No domain ⇒ dep.url is "" ⇒ null productionUrl (the container ran but
+        // is unrouted until a domain is added back).
+        ...(dep.environment === "production" ? { productionUrl: dep.url || null } : {}),
       });
-      log(depId, "success", `Deployment ready at ${dep.url}`);
+      log(
+        depId,
+        "success",
+        dep.url
+          ? `Deployment ready at ${dep.url}`
+          : "Deployment ready (no domain — add one to route traffic)",
+      );
     } else {
       await setDep(depId, { status: "error", buildDurationMs });
       await setProject(project.id, { status: "error" });
@@ -849,8 +852,6 @@ async function runDeployment(depId: string): Promise<void> {
 interface ComposeStackProject {
   id: string;
   compose: string | null;
-  expose: { service: string; port: number } | null;
-  exposes?: { service: string; port: number; host?: string }[] | null;
   mounts?: { filePath: string; content: string }[] | null;
 }
 
@@ -862,8 +863,9 @@ interface ComposeStackOpts {
   domain: string;
   /** Public hostnames to route, primary first (no-host routes answer on all). */
   domains: string[];
-  /** Per-domain service/path overrides (routes that target a chosen compose
-   * service and/or a path prefix); empty ⇒ default expose routing only. */
+  /** Every routable domain (the SOLE source of compose routing): each is one
+   * Traefik router → its named compose service, on its port + path. Empty ⇒ the
+   * stack is built and run but no routers are emitted (unrouted). */
   domainRoutes: RoutableDomain[];
   environment: DeploymentEnvironment;
   started: number;
@@ -893,25 +895,13 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   stackYaml: string;
   filesDir: string;
 }> {
-  const { project, name, slug, domain, domains, domainRoutes, environment } =
-    opts;
+  const { project, name, slug, domainRoutes } = opts;
 
-  // Register every extra hostname a multi-domain template exposes (the primary
-  // domain is already registered by the caller) so each shows up in the project's
-  // Domains section and Traefik gets a router per host. Production only.
-  if (environment === "production") {
-    for (const ex of project.exposes ?? []) {
-      const host = ex.host?.trim();
-      // Each extra host's default route IS the exposes entry it came from, so
-      // pass that service + port — the row is born complete and renders as the
-      // default route (byte-identical to the pre-backfill output).
-      if (host && host !== domain)
-        await ensureExtraDomain(project.id, host, {
-          port: ex.port,
-          service: ex.service,
-        });
-    }
-  }
+  // A multi-domain template's extra hostnames are registered ONCE at project
+  // creation (createProject), NOT here — a deploy never creates domain rows, so
+  // an extra domain the user deletes is never resurrected on the next deploy.
+  // Routing reads the stored, valid domain set (routableForDeploy), independent
+  // of any row this used to create.
 
   const filesDir = composeFilesDir(slug);
   const stackYaml = buildComposeStack({
@@ -919,10 +909,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
     name,
     slug,
     projectId: project.id,
-    domains,
     domainRoutes,
-    expose: project.expose ?? null,
-    exposes: project.exposes ?? undefined,
     filesDir,
   });
   return { stackYaml, filesDir };
@@ -935,14 +922,21 @@ async function finishComposeStack(
 ): Promise<void> {
   const { depId, project, domain, environment, started } = opts;
   const buildDurationMs = Date.now() - started;
-  const url = `https://${domain}`;
+  // No domain ⇒ no URL: the stack ran but is unrouted until a domain is added.
+  const url = domain ? `https://${domain}` : "";
   if (running) {
     await setDep(depId, { status: "ready", readyAt: nowIso(), buildDurationMs });
     await setProject(project.id, {
       status: "active",
-      ...(environment === "production" ? { productionUrl: url } : {}),
+      ...(environment === "production" ? { productionUrl: url || null } : {}),
     });
-    log(depId, "success", `Deployment ready at ${url}`);
+    log(
+      depId,
+      "success",
+      url
+        ? `Deployment ready at ${url}`
+        : "Deployment ready (no domain — add one to route traffic)",
+    );
   } else {
     await setDep(depId, { status: "error", buildDurationMs });
     await setProject(project.id, { status: "error" });
@@ -1019,9 +1013,11 @@ async function deployComposeStackViaAgent(
  * Hostnames to bake into a deploy's Traefik rule. Production routes to every
  * verified domain (primary first) so a later primary-switch / new domain takes
  * effect via a reroute; a preview routes only to its ephemeral host (which is
- * not a registered domain). `primary` is always included as the fallback when
- * the project has no verified domain yet (e.g. the freshly-created auto domain
- * hasn't been marked `valid` on a brand-new project — never emit an empty rule).
+ * not a registered domain). The pending primary is included as a fallback when
+ * the project has a registered-but-not-yet-`valid` domain (e.g. the auto domain
+ * on a brand-new project). When `primary` is "" the project has NO domain at all
+ * (all deleted, never resurrected): production returns NO routes, so the deploy
+ * proceeds unrouted (`traefik.enable=false`) instead of baking an empty rule.
  */
 async function routableForDeploy(
   projectId: string,
@@ -1031,7 +1027,8 @@ async function routableForDeploy(
   // A preview routes only to its ephemeral host, on the project default port.
   if (environment !== "production") return [defaultRoute(primary)];
   const valid = await routableRoutes(projectId);
-  if (valid.length === 0) return [defaultRoute(primary)];
+  // No valid domain: route to the pending primary if there is one, else nothing.
+  if (valid.length === 0) return primary ? [defaultRoute(primary)] : [];
   // Keep the canonical primary first even if it isn't flagged `valid` yet (it
   // carries its own port override + TLS choice if it has one; else the defaults).
   const primaryRoute =
@@ -1208,13 +1205,9 @@ export async function rerouteProject(
         name,
         slug,
         projectId,
-        // Compose stacks route via their own service/port model; per-domain port
-        // overrides apply only to single-image projects, but a domain can pick a
-        // service and/or path prefix (per-route routers).
-        domains: routes.map((d) => d.name),
+        // The `domains` table is the sole routing source: one router per routable
+        // domain → its named compose service.
         domainRoutes: routes,
-        expose: project.expose ?? null,
-        exposes: project.exposes ?? undefined,
         filesDir: composeFilesDir(slug),
       });
       mounts = (project.mounts ?? []).map((m) => ({
@@ -1296,27 +1289,22 @@ export async function renderProjectStack(
   const hasCompose = Boolean(project.compose && project.compose.trim());
   if (usesComposeStack(project) && hasCompose) {
     // Mirror the deploy/reroute call exactly so the preview is byte-faithful to
-    // what would be written. A never-deployed compose project still previews:
-    // fall back to ALL of the project's domains (not just routable ones) so the
-    // Host() rule isn't empty before any domain is verified.
+    // what would be written. The `domains` table is the sole routing source. A
+    // never-deployed compose project still previews: fall back to ALL of the
+    // project's domains (not just `valid` ones) so the preview isn't empty before
+    // any domain is verified.
     const routes = await routableRoutes(projectId);
-    const domains = routes.length
-      ? routes.map((d) => d.name)
+    const domainRoutes: RoutableDomain[] = routes.length
+      ? routes
       : (await loadDomainsForProject(projectId))
           .sort((a, b) => Number(b.primary) - Number(a.primary))
-          .map((d) => d.name);
+          .map((d) => defaultRoute(d.name, d.service ?? null, d.port ?? null));
     return buildComposeStack({
       compose: project.compose ?? "",
       name,
       slug,
       projectId,
-      domains,
-      // Mirror the deploy/reroute call so the preview is byte-faithful. Only
-      // `valid` routes carry per-domain overrides; the all-domains fallback (for
-      // a never-deployed stack) routes via the default expose, no overrides.
-      domainRoutes: routes,
-      expose: project.expose ?? null,
-      exposes: project.exposes ?? undefined,
+      domainRoutes,
       filesDir: composeFilesDir(slug),
     });
   }

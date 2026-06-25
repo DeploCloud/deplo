@@ -15,7 +15,12 @@ import {
   devPresetImage,
 } from "../frameworks";
 import { rejectSymlinks } from "./upload";
-import { certResolver, instanceHost, sslipDomain } from "./domains";
+import {
+  certResolver,
+  instanceHost,
+  nipDomain,
+  randomWords,
+} from "./domains";
 import { portFor } from "./ports";
 import { traefikRouterLabels } from "./routing";
 import type { DevConfig, Project } from "../types";
@@ -69,9 +74,18 @@ function depsVolume(slug: string): string {
 // re-exported here for the existing call sites that import it from this module.
 export { portFor } from "./ports";
 
-/** The computed (label-only) preview URL of a dev container. Never a Domain. */
-export function devPreviewUrl(slug: string, ip = instanceHost()): string {
-  return `https://${sslipDomain(`dev-${slug}`, ip)}`;
+/**
+ * The (label-only) preview URL of a dev container. Never a Domain. Prefers the
+ * STORED preview host (the random-word hostname baked once at enableDev); when
+ * absent (legacy row / dev never enabled) it derives a host for DISPLAY only —
+ * the persisted value is written by the dev-start path, not here.
+ */
+export function devPreviewUrl(
+  project: Pick<Project, "slug" | "dev">,
+  ip = instanceHost(),
+): string {
+  const host = project.dev?.previewHost || newDevPreviewHost(project.slug, ip);
+  return `https://${host}`;
 }
 
 /**
@@ -102,8 +116,18 @@ export function defaultDevConfig(project: Project): DevConfig {
     devCommand: devCommandFor(project.framework),
     port: project.build.port,
     previewEnabled: true,
+    // Generated + persisted when dev is enabled (enableDev); a freshly-derived
+    // default config carries none yet.
+    previewHost: null,
     latestStartAt: null,
   };
+}
+
+/** A fresh dev preview hostname for a project, with random words baked in:
+ * `dev-<slug>-<adjective>-<animal>-<hexip>.nip.io`. Generated ONCE (at enableDev)
+ * and persisted on the dev row; the stored value is read everywhere after. */
+export function newDevPreviewHost(slug: string, ip = instanceHost()): string {
+  return nipDomain(`dev-${slug}`, randomWords(), ip);
 }
 
 /**
@@ -239,8 +263,8 @@ function yamlValue(v: string): string {
  * Render the dev container's compose file (project `deplo-dev-<slug>`). An
  * official base image, a persistent `/workspace` bind, the bind-mounted dev
  * entrypoint, a deps volume, and — when preview is on — a LABEL-only Traefik
- * route to `dev-<slug>.<ip>.sslip.io` (never a Domain row). Ports are NOT
- * published: Traefik fronts HTTP, SSH comes via the gateway.
+ * route to the stored `dev-<slug>-<words>-<hexip>.nip.io` preview host (never a
+ * Domain row). Ports are NOT published: Traefik fronts HTTP, SSH via the gateway.
  */
 export async function renderDevCompose(project: Project): Promise<string> {
   const slug = project.slug;
@@ -259,7 +283,12 @@ export async function renderDevCompose(project: Project): Promise<string> {
     (project.source === "github" || project.source === "git") && project.repo;
   const secretHost = toHost(cloneSecretPath(slug));
 
-  const previewHost = sslipDomain(`dev-${slug}`, instanceHost());
+  // The STORED preview host (random words baked once at enableDev). Resolved
+  // ONCE here and reused for both the env var and the Traefik router label, so
+  // the two can never disagree. Falls back to a derived host if a legacy row has
+  // none (startDevContainer heals it before this, so the fallback is defensive).
+  const previewHost =
+    project.dev?.previewHost || newDevPreviewHost(slug, instanceHost());
   const env: Record<string, string> = {
     // PORT is the routed preview port; the user binds their manual dev server
     // to it. The container does NOT auto-run a dev command.
@@ -285,13 +314,14 @@ export async function renderDevCompose(project: Project): Promise<string> {
     // LABEL-only preview route, via the shared routing module. Distinct router
     // key + distinct host from the production router, so the two never share a
     // Host() rule. Dev pins the deplo `docker.network` and always names its
-    // service (it's a single router on its own host).
-    const host = sslipDomain(`dev-${slug}`, instanceHost());
+    // service (it's a single router on its own host). Reuse the SAME resolved
+    // host as the env var above so the route and the URL the user is told always
+    // match (the words are random — recomputing would diverge).
     const router = `deplo-dev-${slug}`;
     labels.push(
       ...traefikRouterLabels({
         baseKey: router,
-        routes: [{ name: host, port: null }],
+        routes: [{ name: previewHost, port: null }],
         defaultPort: port,
         certResolver: certResolver(),
         dockerNetwork: "deplo",

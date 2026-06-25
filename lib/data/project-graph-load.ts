@@ -14,7 +14,6 @@ import {
   projectBuild,
   projectBuildMethodSettings,
   projectDev,
-  projectExposes,
   projectMounts,
   projectVolumes,
   sharedEnvGroups,
@@ -76,25 +75,19 @@ async function loadChildrenByProjectIds(
       build: null,
       methodSettings: null,
       dev: null,
-      exposes: [],
       volumes: [],
       mounts: [],
     });
   if (ids.length === 0) return out;
 
   // One query per child table over the whole id set (NOT per project).
-  const [builds, settings, devs, exposes, volumes, mounts] = await Promise.all([
+  const [builds, settings, devs, volumes, mounts] = await Promise.all([
     db.select().from(projectBuild).where(inArray(projectBuild.projectId, ids)),
     db
       .select()
       .from(projectBuildMethodSettings)
       .where(inArray(projectBuildMethodSettings.projectId, ids)),
     db.select().from(projectDev).where(inArray(projectDev.projectId, ids)),
-    db
-      .select()
-      .from(projectExposes)
-      .where(inArray(projectExposes.projectId, ids))
-      .orderBy(asc(projectExposes.projectId), asc(projectExposes.position)),
     db
       .select()
       .from(projectVolumes)
@@ -110,7 +103,6 @@ async function loadChildrenByProjectIds(
   for (const b of builds) out.get(b.projectId)!.build = b;
   for (const s of settings) out.get(s.projectId)!.methodSettings = s;
   for (const dv of devs) out.get(dv.projectId)!.dev = dv;
-  for (const e of exposes) out.get(e.projectId)!.exposes.push(e);
   for (const v of volumes) out.get(v.projectId)!.volumes.push(v);
   for (const m of mounts) out.get(m.projectId)!.mounts.push(m);
   return out;

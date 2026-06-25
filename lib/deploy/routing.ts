@@ -110,6 +110,13 @@ export interface RouterLabelOptions {
  * hosts.
  */
 export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
+  // No routes ⇒ the container is deployed but NOT routed (e.g. a project whose
+  // domains were all deleted — Deplo does not resurrect an auto domain). Emit a
+  // single `traefik.enable=false` so the proxy ignores the container entirely,
+  // rather than an empty-host `rule=` that Traefik would reject as invalid. No
+  // router/service/network labels follow — there is nothing to route.
+  if (opts.routes.length === 0) return ["traefik.enable=false"];
+
   const labels: string[] = ["traefik.enable=true"];
   if (opts.dockerNetwork) {
     labels.push(`traefik.docker.network=${opts.dockerNetwork}`);

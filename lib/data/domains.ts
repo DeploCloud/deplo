@@ -16,11 +16,12 @@ import { recordActivity } from "./activity";
 import yaml from "js-yaml";
 import {
   instanceHost,
-  sslipDomain,
+  nipDomain,
+  randomWords,
   isIpv4,
   isLoopbackIp,
-  sslipEmbeddedIp,
-  rehostSslip,
+  nipEmbeddedIp,
+  rehostNip,
   domainTlsConfig,
 } from "../deploy/domains";
 import { usesComposeStack } from "../utils";
@@ -52,13 +53,37 @@ const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
 const SERVICE_UNSUPPORTED =
   "Routing to a named service is only available for compose stacks — single-image projects use the service port field.";
 
+/** True if any project already owns this exact hostname (global uniqueness —
+ * the `domains.name` unique index is the hard backstop; this is the friendly
+ * pre-check that lets generation regenerate instead of hitting the violation). */
+async function domainNameExists(name: string): Promise<boolean> {
+  const hit = await getDb()
+    .select({ id: domainsTable.id })
+    .from(domainsTable)
+    .where(eq(domainsTable.name, name))
+    .limit(1);
+  return hit.length > 0;
+}
+
 /**
- * Generated sslip.io hostname for a project's slug on a given server IP. Pure
- * helper used by both the deploy engine and project creation so the domain
- * baked into a stack always matches the one shown in the Domains section.
+ * A generated nip.io hostname for `label` on `ip` whose `adjective-animal` words
+ * don't collide with ANY existing domain (global uniqueness). Regenerates the
+ * word pair until the candidate is free, bounded so a saturated namespace can't
+ * loop forever (~427k word pairs make a real collision astronomically unlikely;
+ * the bound is a safety valve, not an expected path). The `domains.name` unique
+ * index remains the hard backstop against a concurrent same-name insert.
  */
-export function autoDomainName(slug: string, ip: string): string {
-  return sslipDomain(slug, ip);
+export async function uniqueAutoDomainName(
+  label: string,
+  ip: string,
+): Promise<string> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = nipDomain(label, randomWords(), ip);
+    if (!(await domainNameExists(candidate))) return candidate;
+  }
+  // Exhausted retries (effectively impossible) — fall back to a guaranteed-unique
+  // host by folding a random id segment into the words, so creation never wedges.
+  return nipDomain(label, `${randomWords()}-${newId("").slice(1, 5)}`, ip);
 }
 
 /**
@@ -67,7 +92,7 @@ export function autoDomainName(slug: string, ip: string): string {
  * Runs without an authenticated user (the deploy pipeline is fire-and-forget),
  * so it talks to the store directly. If a `preferred` name is given (e.g. the
  * domain a template baked into its env), it is used as-is; otherwise the
- * sslip.io hostname for the slug is generated. The first domain on a project is
+ * nip.io hostname for the slug is generated. The first domain on a project is
  * marked primary. Idempotent: returns the existing primary if one exists.
  */
 export async function ensureAutoDomain(
@@ -88,15 +113,16 @@ export async function ensureAutoDomain(
   const existing = await loadDomainsForProject(projectId);
   const primary = existing.find((d) => d.primary) ?? existing[0];
   if (primary) {
-    // Self-heal an auto-generated sslip.io domain that still encodes a stale or
+    // Self-heal an auto-generated nip.io domain that still encodes a stale or
     // loopback IP (e.g. created before DEPLO_SERVER_IP was set), so a corrected
     // IP takes effect on the next deploy without the operator deleting the
-    // domain by hand. Only auto domains are touched, and never rewritten toward
-    // a loopback address.
+    // domain by hand. Only the hex IP label is rewritten — the words are kept,
+    // so the host stays recognisably the same project's. Only auto domains are
+    // touched, and never rewritten toward a loopback address.
     if (primary.source === "auto" && isIpv4(opts.ip) && !isLoopbackIp(opts.ip)) {
-      const embedded = sslipEmbeddedIp(primary.name);
+      const embedded = nipEmbeddedIp(primary.name);
       if (embedded && embedded !== opts.ip) {
-        const fixed = rehostSslip(primary.name, opts.ip);
+        const fixed = rehostNip(primary.name, opts.ip);
         if (fixed !== primary.name) {
           await getDb()
             .update(domainsTable)
@@ -109,10 +135,19 @@ export async function ensureAutoDomain(
     return primary.name;
   }
 
-  const name = (opts.preferred?.trim() || autoDomainName(opts.slug, opts.ip))
+  // A template-baked `preferred` host is honored as-is UNLESS it already belongs
+  // to another project (a re-used template domain, or a regenerate-after-delete
+  // that drew the same words) — in which case fall back to a freshly-generated
+  // unique host. Absent a preferred, generate a globally-unique one.
+  const preferred = opts.preferred
+    ?.trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
+  const name =
+    preferred && !(await domainNameExists(preferred))
+      ? preferred
+      : await uniqueAutoDomainName(opts.slug, opts.ip);
   const domain: Domain = {
     id: newId("dom"),
     projectId,
@@ -137,22 +172,39 @@ export async function ensureAutoDomain(
 /**
  * Ensure a secondary (non-primary) domain is registered for a project, e.g. the
  * extra hostnames a multi-domain template exposes (garage-with-ui's web UI).
- * Runs without an authenticated user (called from the fire-and-forget deploy).
- * Idempotent: a domain with the same name is left as-is.
+ * Runs without an authenticated user (called from createProject, alongside the
+ * primary auto domain). Registered ONCE at creation — never on a deploy — so a
+ * deleted extra is never resurrected. Idempotent: a same-named domain on THIS
+ * project is left as-is (so a creation retry won't duplicate it).
+ *
+ * The template-supplied `rawName` is honored when it's globally free. If it
+ * already belongs to another project (two extras drew the same random words, or
+ * a re-used template host), a fresh globally-unique host is generated from the
+ * project's slug + service + `ip` instead — so a word collision regenerates
+ * rather than silently dropping the domain.
  */
 export async function ensureExtraDomain(
   projectId: string,
   rawName: string,
-  route: { port: number; service?: string | null },
+  route: { port: number; service?: string | null; slug: string; ip: string },
 ): Promise<void> {
-  const name = rawName
+  const clean = rawName
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
-  if (!name || !DOMAIN_RE.test(name)) return;
+  if (!clean || !DOMAIN_RE.test(clean)) return;
   const existing = await loadDomainsForProject(projectId);
-  if (existing.some((d) => d.name === name)) return;
+  // Already on this project (idempotent re-run) ⇒ nothing to do.
+  if (existing.some((d) => d.name === clean)) return;
+  // Honor the template host when globally free; otherwise regenerate a unique
+  // one (labelled by slug + service so it stays recognizable) rather than skip.
+  const name = (await domainNameExists(clean))
+    ? await uniqueAutoDomainName(
+        route.service ? `${route.slug}-${route.service}` : route.slug,
+        route.ip,
+      )
+    : clean;
   const domain: Domain = {
     id: newId("dom"),
     projectId,
@@ -170,6 +222,32 @@ export async function ensureExtraDomain(
     createdAt: nowIso(),
   };
   await insertDomain(getDb(), domain);
+}
+
+/**
+ * The hostname of a project's current primary domain, or "" when the project
+ * has no domains at all. Store-direct (no auth) for the deploy engine: the
+ * production deploy routes to this host and NEVER resurrects a deleted auto
+ * domain — an empty string means "deploy unrouted". Prefers the `primary`-flagged
+ * row, falling back to the first domain (mirrors syncProductionUrl's choice).
+ */
+export async function primaryDomainName(projectId: string): Promise<string> {
+  const domains = await loadDomainsForProject(projectId);
+  const primary = domains.find((d) => d.primary) ?? domains[0];
+  return primary?.name ?? "";
+}
+
+/**
+ * The compose service the project's primary domain routes to, or "" when there
+ * is none (single-image projects, or a project with no domains). Used to flag
+ * the "exposed" instance for console ordering — the role the dropped
+ * `project.expose.service` used to fill, now read from the authoritative
+ * `domains` table.
+ */
+export async function primaryDomainService(projectId: string): Promise<string> {
+  const domains = await loadDomainsForProject(projectId);
+  const primary = domains.find((d) => d.primary) ?? domains[0];
+  return primary?.service ?? "";
 }
 
 export async function listDomains(
@@ -496,7 +574,7 @@ export async function updateDomain(
   if (patch.service !== undefined) next.service = nextService ?? undefined;
   // A renamed custom domain points at a new host whose DNS we haven't checked:
   // drop it back to pending so it stops routing until re-verified. An auto
-  // sslip.io host always resolves, so it stays valid.
+  // nip.io host always resolves, so it stays valid.
   if (renamed && next.source !== "auto") {
     next.status = "pending";
     next.ssl = false;
@@ -598,21 +676,27 @@ export interface RoutableDomain {
 
 /**
  * A {@link RoutableDomain} for a bare hostname carrying no per-domain config:
- * the project default port and the long-standing HTTPS/letsencrypt TLS triplet,
- * no path, no strip, the default service. Used for synthetic routes that aren't
- * backed by a stored `Domain` row — a preview's ephemeral host, or the primary
- * fallback when a brand-new project has no `valid` domain yet — so every route
- * handed to the router grammar has the full shape.
+ * the long-standing HTTPS/letsencrypt TLS triplet, no path, no strip. Used for
+ * synthetic routes that aren't backed by a `valid` stored row — a preview's
+ * ephemeral host, the primary fallback when a brand-new project has no `valid`
+ * domain yet, or a never-deployed compose preview — so every route handed to the
+ * router grammar has the full shape. `service`/`port` default to null (the
+ * single-image fallback uses neither); the compose preview passes the stored
+ * row's service + port so the right compose service is routed.
  */
-export function defaultRoute(name: string): RoutableDomain {
+export function defaultRoute(
+  name: string,
+  service: string | null = null,
+  port: number | null = null,
+): RoutableDomain {
   return {
     name,
-    port: null,
+    port,
     ...domainTlsConfig({}),
     middlewares: [],
     pathPrefix: "",
     stripPrefix: false,
-    service: null,
+    service,
   };
 }
 

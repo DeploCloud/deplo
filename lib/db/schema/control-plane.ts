@@ -431,27 +431,11 @@ export const projectDev = pgTable("project_dev", {
   devCommand: text("dev_command").notNull(),
   port: integer("port").notNull(),
   previewEnabled: boolean("preview_enabled").notNull(),
+  // The stored dev preview hostname (random words baked in once); NULLABLE for
+  // legacy rows enabled before this column existed — regenerated on next start.
+  previewHost: text("preview_host"),
   latestStartAt: isoTimestamptz("latest_start_at"),
 });
-
-/**
- * [Project.exposes](../../types.ts) → ordered child `(project_id, position)` of
- * `{service, port, host?}`. `expose := exposes[0]` is derived in the
- * row-assembler, never stored (PLAN §2 `project_exposes`).
- */
-export const projectExposes = pgTable(
-  "project_exposes",
-  {
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
-    position: integer("position").notNull(),
-    service: text("service").notNull(),
-    port: integer("port").notNull(),
-    host: text("host"),
-  },
-  (t) => [primaryKey({ columns: [t.projectId, t.position] })],
-);
 
 /**
  * [VolumeMount](../../types.ts) → ordered child. `type` NULLABLE (the

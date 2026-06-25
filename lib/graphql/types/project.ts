@@ -180,12 +180,15 @@ function remapBuildInput(build: unknown): Record<string, unknown> {
   return settings === undefined ? rest : { ...rest, methodSettings: settings };
 }
 
-const ExposeInput = builder.inputType("ExposeInput", {
-  description: "Which compose service + port Traefik exposes.",
+const ExtraDomainInput = builder.inputType("ExtraDomainInput", {
+  description:
+    "A multi-domain template's extra (non-primary) routed host: the compose " +
+    "service + port it targets and its hostname. Registered as an auto Domain " +
+    "row at creation; the `domains` table is the sole routing source after.",
   fields: (t) => ({
     service: t.string({ required: true }),
     port: t.int({ required: true }),
-    host: t.string({ required: false }),
+    host: t.string({ required: true }),
   }),
 });
 
@@ -240,7 +243,7 @@ const CreateProjectInputType = builder.inputType("CreateProjectInput", {
     env: t.field({ type: [ProjectEnvInput], required: false }),
     composeService: t.string({ required: false }),
     composePort: t.int({ required: false }),
-    exposes: t.field({ type: [ExposeInput], required: false }),
+    extraDomains: t.field({ type: [ExtraDomainInput], required: false }),
     autoDomain: t.string({ required: false }),
     mounts: t.field({ type: [MountInput], required: false }),
   }),
@@ -253,10 +256,8 @@ const UpdateSourceInputType = builder.inputType("UpdateSourceInput", {
     dockerImage: t.string({ required: false }),
     serverId: t.string({ required: false }),
     compose: t.string({ required: false }),
-    // The compose-stack routing the old action carried as composeService/
-    // composePort/exposes — needed so a compose/template deploy keeps routing.
-    expose: t.field({ type: ExposeInput, required: false }),
-    exposes: t.field({ type: [ExposeInput], required: false }),
+    // Routing (the Traefik domains) lives in the `domains` table, managed via the
+    // Domains tab — not threaded through the deploy-source edit.
   }),
 });
 
@@ -337,11 +338,11 @@ builder.mutationFields((t) => ({
         env: input.env?.map((e) => ({ key: e.key, value: e.value })),
         composeService: input.composeService ?? null,
         composePort: input.composePort ?? null,
-        exposes: input.exposes
-          ? input.exposes.map((e) => ({
+        extraDomains: input.extraDomains
+          ? input.extraDomains.map((e) => ({
               service: e.service,
               port: e.port,
-              host: e.host ?? undefined,
+              host: e.host,
             }))
           : null,
         autoDomain: input.autoDomain ?? null,
@@ -408,18 +409,6 @@ builder.mutationFields((t) => ({
         dockerImage: input.dockerImage ?? null,
         serverId: input.serverId ?? undefined,
         compose: input.compose ?? undefined,
-        expose: input.expose
-          ? { service: input.expose.service, port: input.expose.port }
-          : input.expose === null
-            ? null
-            : undefined,
-        exposes: input.exposes
-          ? input.exposes.map((e) => ({
-              service: e.service,
-              port: e.port,
-              host: e.host ?? undefined,
-            }))
-          : undefined,
       });
       return reloadProject(id);
     },

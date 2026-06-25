@@ -3,28 +3,42 @@ import assert from "node:assert/strict";
 
 import yaml from "js-yaml";
 
-import { buildComposeStack, type ComposeStackInput } from "./compose-stack";
+import {
+  buildComposeStack,
+  detectDefaultService,
+  type ComposeStackInput,
+  type ComposeDomainRoute,
+} from "./compose-stack";
 
 /**
- * Port handling is the contract under test: Deplo fronts the routed service via
- * Traefik labels over the `deplo` network, but it must NOT strip the service's
- * published `ports:`. Host publishing is orthogonal to Traefik routing, so a
- * user who publishes a port (a TCP game server, a database, an admin port) keeps
- * it reachable at that host port AND still gets the routing labels.
+ * The `domains` table is the SOLE source of compose routing: each routed domain
+ * (a {@link ComposeDomainRoute}) becomes exactly one Traefik router → its named
+ * compose service. A route with no service (or one not in the stack) is skipped;
+ * no routes ⇒ no routers. Separately, the contract that Deplo must NOT strip a
+ * service's published `ports:` (host publishing is orthogonal to routing) holds.
  */
 
 type Svc = { ports?: unknown[]; networks?: unknown; labels?: unknown };
 type Doc = { services: Record<string, Svc> };
 
-/** Build a stack from compose YAML + overrides and parse the result back. */
+/** A whole-host route to `service` on `port` (no path). */
+function route(
+  name: string,
+  service: string,
+  port: number | null = null,
+): ComposeDomainRoute {
+  return { name, service, port, pathPrefix: "", stripPrefix: false };
+}
+
+/** Build a stack from compose YAML + overrides and parse the result back. The
+ * default routes `web` on the demo host (most tests have a single `web`). */
 function buildDoc(compose: string, extra: Partial<ComposeStackInput> = {}): Doc {
   const out = buildComposeStack({
     compose,
     name: "deplo-demo",
     slug: "demo",
     projectId: "p1",
-    domains: ["demo.1.2.3.4.sslip.io"],
-    expose: { service: "web", port: 80 },
+    domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
     ...extra,
   });
   return yaml.load(out) as Doc;
@@ -36,13 +50,16 @@ function labelsOf(svc: Svc): string[] {
 }
 
 test("routed service keeps its published port (not stripped)", () => {
-  const doc = buildDoc(`
+  const doc = buildDoc(
+    `
 services:
   minecraft:
     image: itzg/minecraft-server:latest
     ports:
       - "25565:25565"
-`, { expose: { service: "minecraft", port: 25565 } });
+`,
+    { domainRoutes: [route("demo.1.2.3.4.nip.io", "minecraft", 25565)] },
+  );
   // The Minecraft regression: the routed port must survive so the game server
   // is reachable at host:25565 (Traefik's HTTP router can't serve raw TCP).
   assert.deepEqual(doc.services.minecraft.ports, ["25565:25565"]);
@@ -89,7 +106,9 @@ services:
   // publishing, so the labels coexist with the kept ports.
   assert.ok(labels.includes("traefik.docker.network=deplo"));
   assert.ok(
-    labels.includes("traefik.http.services.deplo-demo.loadbalancer.server.port=80"),
+    labels.some((l) =>
+      /^traefik\.http\.services\.deplo-demo-web-[^.]*\.loadbalancer\.server\.port=80$/.test(l),
+    ),
   );
   assert.ok((doc.services.web.networks as string[]).includes("deplo"));
   assert.deepEqual(doc.services.web.ports, ["8080:80"]);
@@ -130,68 +149,11 @@ services:
   );
 });
 
-/**
- * Backfill byte-identity contract (the load-bearing guarantee behind making
- * auto/extra domains carry an explicit service+port): a stored domainRoute that
- * merely RESTATES its host's default expose (same service, same port, no path)
- * must render byte-identically to a stack with no such route — otherwise every
- * existing compose deploy would re-render with split per-host routers on its
- * next reroute. Only a route that genuinely diverges becomes a per-host router.
- */
-const WEB_COMPOSE = `
-services:
-  web:
-    image: nginx
-    ports:
-      - "80:80"
-`;
+/* ------------------------------------------------------------------ */
+/* Routing comes ENTIRELY from domainRoutes (the domains table)        */
+/* ------------------------------------------------------------------ */
 
-function buildRaw(compose: string, extra: Partial<ComposeStackInput> = {}): string {
-  return buildComposeStack({
-    compose,
-    name: "deplo-demo",
-    slug: "demo",
-    projectId: "p1",
-    domains: ["demo.1.2.3.4.sslip.io"],
-    expose: { service: "web", port: 80 },
-    ...extra,
-  });
-}
-
-test("a domainRoute restating the default expose renders byte-identically to none", () => {
-  const bare = buildRaw(WEB_COMPOSE);
-  const backfilled = buildRaw(WEB_COMPOSE, {
-    domainRoutes: [
-      {
-        name: "demo.1.2.3.4.sslip.io",
-        service: "web", // == default expose service
-        port: 80, // == default expose port
-        pathPrefix: "",
-        stripPrefix: false,
-      },
-    ],
-  });
-  assert.equal(backfilled, bare);
-});
-
-test("a domainRoute with the default port but no service still renders byte-identically", () => {
-  const bare = buildRaw(WEB_COMPOSE);
-  const backfilled = buildRaw(WEB_COMPOSE, {
-    domainRoutes: [
-      {
-        name: "demo.1.2.3.4.sslip.io",
-        service: null,
-        port: 80, // == default expose port
-        pathPrefix: "",
-        stripPrefix: false,
-      },
-    ],
-  });
-  assert.equal(backfilled, bare);
-});
-
-test("a domainRoute targeting a DIFFERENT service still becomes its own router", () => {
-  const compose = `
+const WEB_API_COMPOSE = `
 services:
   web:
     image: nginx
@@ -202,52 +164,94 @@ services:
     ports:
       - "8080:8080"
 `;
-  const bare = buildRaw(compose);
-  const overridden = buildRaw(compose, {
-    domains: ["demo.1.2.3.4.sslip.io", "api.example.com"],
+
+test("each domain route becomes one router to its named service", () => {
+  const doc = buildDoc(WEB_API_COMPOSE, {
     domainRoutes: [
-      {
-        name: "api.example.com",
-        service: "api", // diverges from the default `web` expose
-        port: 8080,
-        pathPrefix: "",
-        stripPrefix: false,
-      },
+      route("web.1.2.3.4.nip.io", "web", 80),
+      route("api.1.2.3.4.nip.io", "api", 8080),
     ],
   });
-  // The divergent route must change the output (a real per-host router on api).
-  assert.notEqual(overridden, bare);
-  assert.match(overridden, /api\.example\.com/);
+  const web = labelsOf(doc.services.web);
+  const api = labelsOf(doc.services.api);
+  assert.ok(web.some((l) => l.includes("Host(`web.1.2.3.4.nip.io`)")));
+  assert.ok(web.some((l) => /loadbalancer\.server\.port=80$/.test(l)));
+  assert.ok(api.some((l) => l.includes("Host(`api.1.2.3.4.nip.io`)")));
+  assert.ok(api.some((l) => /loadbalancer\.server\.port=8080$/.test(l)));
+  // Each routed service is wired onto the deplo network.
+  assert.ok((doc.services.web.networks as string[]).includes("deplo"));
+  assert.ok((doc.services.api.networks as string[]).includes("deplo"));
 });
 
-test("an extra exposes host backfilled with its own service+port stays byte-identical", () => {
-  const compose = `
-services:
-  web:
-    image: nginx
-    ports:
-      - "80:80"
-  ui:
-    image: ui
-    ports:
-      - "3000:3000"
-`;
-  const exposes = [
-    { service: "web", port: 80, host: "demo.1.2.3.4.sslip.io" },
-    { service: "ui", port: 3000, host: "ui.example.com" },
-  ];
-  const domains = ["demo.1.2.3.4.sslip.io", "ui.example.com"];
-  const bare = buildRaw(compose, { domains, exposes });
-  const backfilled = buildRaw(compose, {
-    domains,
-    exposes,
+test("a route with null port falls back to the service's compose port", () => {
+  const doc = buildDoc(WEB_API_COMPOSE, {
+    domainRoutes: [route("api.1.2.3.4.nip.io", "api", null)],
+  });
+  const api = labelsOf(doc.services.api);
+  // Null port ⇒ read the service's published compose port (8080).
+  assert.ok(api.some((l) => /loadbalancer\.server\.port=8080$/.test(l)));
+});
+
+test("a route whose service is null is skipped (no router emitted)", () => {
+  const doc = buildDoc(WEB_API_COMPOSE, {
+    domainRoutes: [route("orphan.1.2.3.4.nip.io", null as unknown as string)],
+  });
+  // No service named ⇒ no router; neither service gets a Host() rule for it.
+  const all = [...labelsOf(doc.services.web), ...labelsOf(doc.services.api)];
+  assert.ok(!all.some((l) => l.includes("orphan.1.2.3.4.nip.io")));
+});
+
+test("a route whose service is absent from the stack is skipped", () => {
+  const doc = buildDoc(WEB_API_COMPOSE, {
+    domainRoutes: [route("ghost.1.2.3.4.nip.io", "nonesuch", 1234)],
+  });
+  const all = [...labelsOf(doc.services.web), ...labelsOf(doc.services.api)];
+  assert.ok(!all.some((l) => l.includes("ghost.1.2.3.4.nip.io")));
+});
+
+test("no domain routes ⇒ NO Traefik routers (the stack is built but unrouted)", () => {
+  const doc = buildDoc(WEB_API_COMPOSE, { domainRoutes: [] });
+  const all = [...labelsOf(doc.services.web), ...labelsOf(doc.services.api)];
+  // Tracking labels still present, but no router/service/rule labels.
+  assert.ok(all.includes("deplo.managed=true"));
+  assert.ok(!all.some((l) => l.startsWith("traefik.http.routers.")));
+  assert.ok(!all.some((l) => l.includes(".rule=")));
+});
+
+test("a path-scoped route emits a PathPrefix rule + stripprefix middleware", () => {
+  const doc = buildDoc(WEB_API_COMPOSE, {
     domainRoutes: [
-      // Both rows restate their host's pinned exposes entry — pure backfill.
-      { name: "demo.1.2.3.4.sslip.io", service: "web", port: 80, pathPrefix: "", stripPrefix: false },
-      { name: "ui.example.com", service: "ui", port: 3000, pathPrefix: "", stripPrefix: false },
+      { name: "app.1.2.3.4.nip.io", service: "api", port: 8080, pathPrefix: "/api", stripPrefix: true },
     ],
   });
-  assert.equal(backfilled, bare);
+  const api = labelsOf(doc.services.api);
+  assert.ok(api.some((l) => l.includes("PathPrefix(`/api`)")));
+  assert.ok(api.some((l) => l.includes(".stripprefix.prefixes=/api")));
+});
+
+/* ------------------------------------------------------------------ */
+/* detectDefaultService — used at project creation to seed domain 1    */
+/* ------------------------------------------------------------------ */
+
+test("detectDefaultService prefers a service that publishes a port", () => {
+  assert.deepEqual(detectDefaultService(WEB_API_COMPOSE), { service: "web", port: 80 });
+});
+
+test("detectDefaultService falls back to the first service on port 80", () => {
+  assert.deepEqual(
+    detectDefaultService(`
+services:
+  only:
+    image: nginx
+`),
+    { service: "only", port: 80 },
+  );
+});
+
+test("detectDefaultService is null for empty / unparseable compose", () => {
+  assert.equal(detectDefaultService(null), null);
+  assert.equal(detectDefaultService(""), null);
+  assert.equal(detectDefaultService("services: [this is not valid"), null);
 });
 
 /* ------------------------------------------------------------------ */
@@ -263,7 +267,7 @@ test("`./<x>` sources rewrite to the project's files dir; named/flags preserved"
   const doc = buildDoc(
     `
 services:
-  app:
+  web:
     image: nginx
     volumes:
       - ./config.toml:/etc/app/config.toml
@@ -272,7 +276,7 @@ services:
 `,
     { filesDir: "/srv/stacks/files/demo" },
   );
-  const vols = volsOf(doc.services.app as Svc & { volumes?: unknown });
+  const vols = volsOf(doc.services.web as Svc & { volumes?: unknown });
   assert.ok(vols.includes("/srv/stacks/files/demo/config.toml:/etc/app/config.toml"));
   // Nested path + the :ro flag survive the rewrite.
   assert.ok(vols.includes("/srv/stacks/files/demo/nested/dir:/data:ro"));
@@ -284,14 +288,14 @@ test("a `..` escape source is NOT rewritten (left for the host-bind gate to bloc
   const doc = buildDoc(
     `
 services:
-  app:
+  web:
     image: nginx
     volumes:
       - ../sibling/data:/data
 `,
     { filesDir: "/srv/stacks/files/demo" },
   );
-  const vols = volsOf(doc.services.app as Svc & { volumes?: unknown });
+  const vols = volsOf(doc.services.web as Svc & { volumes?: unknown });
   // Unchanged — the gate (isHostBindSource) is what rejects it, not the rewrite.
   assert.ok(vols.includes("../sibling/data:/data"));
 });
@@ -300,13 +304,13 @@ test("an absolute host source is NOT rewritten", () => {
   const doc = buildDoc(
     `
 services:
-  app:
+  web:
     image: nginx
     volumes:
       - /srv/host/data:/data
 `,
     { filesDir: "/srv/stacks/files/demo" },
   );
-  const vols = volsOf(doc.services.app as Svc & { volumes?: unknown });
+  const vols = volsOf(doc.services.web as Svc & { volumes?: unknown });
   assert.ok(vols.includes("/srv/host/data:/data"));
 });

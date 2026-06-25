@@ -3,6 +3,7 @@ import "server-only";
 import { getServerById } from "./servers";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { loadTeamProject } from "./project-graph-load";
+import { primaryDomainService } from "./domains";
 import { isDockerLevelStderr } from "../infra/docker";
 import {
   connectAgent,
@@ -84,9 +85,13 @@ export function containerName(p: Project): string {
  * reachable host with no containers truthfully returns [].
  */
 export async function listInstances(p: Project): Promise<ConsoleInstance[]> {
+  // The "exposed" service to flag for ordering now comes from the project's
+  // primary domain (the `domains` table is the routing source), not a stored
+  // `expose`. Empty for single-image projects / projects with no domain.
+  const exposeService = await primaryDomainService(p.id);
   const conn = await connectAgent(p.serverId);
   try {
-    return await conn.listInstances(p.id, p.slug, p.expose?.service ?? "");
+    return await conn.listInstances(p.id, p.slug, exposeService);
   } finally {
     conn.close();
   }

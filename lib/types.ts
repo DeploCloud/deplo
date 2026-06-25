@@ -498,10 +498,19 @@ export interface DevConfig {
   /** The development PortTarget. Defaults to build.port. */
   port: number;
   /**
-   * Preview route on by default → dev-<slug>.<ip>.sslip.io. A LABEL-only route,
-   * never a Domain row; the URL is computed from slug+IP, not stored/managed.
+   * Preview route on by default. A LABEL-only route, never a Domain row.
    */
   previewEnabled: boolean;
+  /**
+   * The dev preview hostname (`dev-<slug>-<adjective>-<animal>-<hexip>.nip.io`),
+   * generated once with fresh random words when dev mode is first enabled and
+   * STORED here so the env var, the Traefik router label, and the displayed URL
+   * all use one identical host across restarts (the words are random, so they
+   * can't be recomputed consistently — the stored value IS the source of truth).
+   * Null on a legacy row enabled before this field existed; lazily generated and
+   * persisted on the next dev start.
+   */
+  previewHost: string | null;
   latestStartAt: string | null;
 }
 
@@ -632,19 +641,6 @@ export interface Project {
   upload: UploadArchive | null;
   /** Editable docker-compose stack for template/compose deploys (else null). */
   compose: string | null;
-  /**
-   * For multi-service compose/template deploys: which service Traefik exposes
-   * and on which container port. Null for single-image/built projects (the
-   * build config's port is used instead). The first of `exposes`.
-   */
-  expose: { service: string; port: number } | null;
-  /**
-   * Every publicly-routed service in a compose/template stack, each on its own
-   * hostname. Templates like garage-with-ui expose two (an API and a web UI).
-   * `host` is the registered domain Traefik routes to that service; empty/absent
-   * means "the project's primary domain". Null/empty for single-service deploys.
-   */
-  exposes?: { service: string; port: number; host?: string }[] | null;
   /**
    * Config files a template bind-mounts into its stack (e.g. an app's
    * configuration.yml). Written next to the stack at deploy time with the same
@@ -787,9 +783,9 @@ export interface Domain {
   redirectTo: string | null;
   ssl: boolean;
   /**
-   * "auto"  the zero-config sslip.io hostname Deplo generates for every
-   * deployment (already routed, no DNS setup). "custom"  a domain the user
-   * added and must point at this server. Defaults to "custom" when absent.
+   * "auto"  the zero-config nip.io hostname Deplo generates once per project
+   * (already routed, no DNS setup). "custom"  a domain the user added and must
+   * point at this server. Defaults to "custom" when absent.
    */
   source?: "auto" | "custom";
   /**

@@ -27,7 +27,6 @@ import type {
   projectBuild,
   projectBuildMethodSettings,
   projectDev,
-  projectExposes,
   projectMounts,
   projectVolumes,
   sharedEnvGroups,
@@ -61,7 +60,6 @@ export type ProjectBuildRow = typeof projectBuild.$inferSelect;
 export type ProjectBuildMethodSettingsRow =
   typeof projectBuildMethodSettings.$inferSelect;
 export type ProjectDevRow = typeof projectDev.$inferSelect;
-export type ProjectExposeRow = typeof projectExposes.$inferSelect;
 export type ProjectVolumeRow = typeof projectVolumes.$inferSelect;
 export type ProjectMountRow = typeof projectMounts.$inferSelect;
 export type DeploymentRow = typeof deployments.$inferSelect;
@@ -82,7 +80,6 @@ type ProjectBuildInsert = typeof projectBuild.$inferInsert;
 type ProjectBuildMethodSettingsInsert =
   typeof projectBuildMethodSettings.$inferInsert;
 type ProjectDevInsert = typeof projectDev.$inferInsert;
-type ProjectExposeInsert = typeof projectExposes.$inferInsert;
 type ProjectVolumeInsert = typeof projectVolumes.$inferInsert;
 type ProjectMountInsert = typeof projectMounts.$inferInsert;
 type DomainInsert = typeof domains.$inferInsert;
@@ -103,7 +100,6 @@ export interface ProjectChildRows {
   build: ProjectBuildRow | null;
   methodSettings: ProjectBuildMethodSettingsRow | null;
   dev: ProjectDevRow | null;
-  exposes: ProjectExposeRow[];
   volumes: ProjectVolumeRow[];
   mounts: ProjectMountRow[];
 }
@@ -165,15 +161,15 @@ export function assembleDev(dev: ProjectDevRow): DevConfig {
     devCommand: dev.devCommand,
     port: dev.port,
     previewEnabled: dev.previewEnabled,
+    previewHost: dev.previewHost,
     latestStartAt: dev.latestStartAt,
   };
 }
 
 /**
- * Fold a project's flat row + its child rows into a {@link Project}. `expose` is
- * DERIVED as `exposes[0]` (never stored — PLAN §2 `projects`/`project_exposes`),
- * and a NULL/absent optional column becomes the long-standing null/absent shape.
- * The caller has already applied the read-time normalizers (this is the post-
+ * Fold a project's flat row + its child rows into a {@link Project}. A
+ * NULL/absent optional column becomes the long-standing null/absent shape. The
+ * caller has already applied the read-time normalizers (this is the post-
  * normalize shape), so no further migration runs here.
  */
 export function assembleProject(
@@ -185,14 +181,6 @@ export function assembleProject(
     // data-integrity bug, not a tri-state — surface it loudly rather than emit a
     // half-built object the renderer would choke on.
     throw new Error(`project ${row.id} is missing its project_build row`);
-
-  const exposes = [...children.exposes]
-    .sort((a, b) => a.position - b.position)
-    .map((e) => ({
-      service: e.service,
-      port: e.port,
-      ...(e.host != null ? { host: e.host } : {}),
-    }));
 
   const volumes = [...children.volumes]
     .sort((a, b) => a.position - b.position)
@@ -216,10 +204,6 @@ export function assembleProject(
     dockerImage: row.dockerImage,
     upload: assembleUpload(row),
     compose: row.compose,
-    // The first exposed service is the canonical default route for the primary
-    // domain; null when the stack exposes nothing (single-image projects).
-    expose: exposes[0] ? { service: exposes[0].service, port: exposes[0].port } : null,
-    exposes: exposes.length ? exposes : null,
     mounts: mounts.length ? mounts : null,
     volumes: volumes.length ? volumes : null,
     build: assembleBuild(children.build, children.methodSettings),
@@ -298,7 +282,6 @@ export interface ProjectRowSet {
   build: ProjectBuildInsert;
   methodSettings: ProjectBuildMethodSettingsInsert | null;
   dev: ProjectDevInsert | null;
-  exposes: ProjectExposeInsert[];
   volumes: ProjectVolumeInsert[];
   mounts: ProjectMountInsert[];
 }
@@ -386,21 +369,9 @@ export function devToRow(projectId: string, dev: DevConfig): ProjectDevInsert {
     devCommand: dev.devCommand,
     port: dev.port,
     previewEnabled: dev.previewEnabled,
+    previewHost: dev.previewHost ?? null,
     latestStartAt: dev.latestStartAt ?? null,
   };
-}
-
-export function exposesToRows(
-  projectId: string,
-  exposes: Project["exposes"],
-): ProjectExposeInsert[] {
-  return (exposes ?? []).map((e, position) => ({
-    projectId,
-    position,
-    service: e.service,
-    port: e.port,
-    host: e.host ?? null,
-  }));
 }
 
 export function volumesToRows(
@@ -442,7 +413,6 @@ export function projectToRowSet(p: Project): ProjectRowSet {
     build: buildToRow(p.id, p.build),
     methodSettings: ms,
     dev: p.dev ? devToRow(p.id, p.dev) : null,
-    exposes: exposesToRows(p.id, p.exposes),
     volumes: volumesToRows(p.id, p.volumes),
     mounts: mountsToRows(p.id, p.mounts),
   };

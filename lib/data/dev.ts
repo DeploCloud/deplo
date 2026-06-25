@@ -19,9 +19,11 @@ import {
   defaultDevConfig,
   devImage,
   devPreviewUrl,
+  newDevPreviewHost,
   workspaceHasSource,
   type VscodeTunnelInfo,
 } from "../deploy/dev";
+import { resolveServerIp } from "../deploy/domains";
 import {
   agentStartDev,
   agentStopDev,
@@ -94,7 +96,7 @@ export async function getDevInfo(projectId: string): Promise<DevInfo | null> {
     devCommand: dev.devCommand,
     port: dev.port,
     previewEnabled: dev.previewEnabled,
-    previewUrl: devPreviewUrl(p.slug),
+    previewUrl: devPreviewUrl({ slug: p.slug, dev: p.dev }),
     latestStartAt: dev.latestStartAt,
     eligible: isDevEligible(p.source),
   };
@@ -141,9 +143,22 @@ export async function enableDev(projectId: string): Promise<void> {
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
-  const next: DevConfig = p.dev
+  const base: DevConfig = p.dev
     ? { ...p.dev, enabled: true }
     : { ...defaultDevConfig(p), enabled: true };
+  // Bake the random-word preview host ONCE, the first time dev is enabled (or to
+  // heal a legacy row that predates this field). The stored value is the source
+  // of truth for the env var, the Traefik label, and the displayed URL — never
+  // recomputed. Generated against the project's server IP.
+  const next: DevConfig = base.previewHost
+    ? base
+    : {
+        ...base,
+        previewHost: newDevPreviewHost(
+          p.slug,
+          resolveServerIp(await getServerById(p.serverId) ?? undefined),
+        ),
+      };
   await writeDevRow(projectId, next);
   await recordActivity("project", "Enabled dev mode", user.name, projectId);
 }
@@ -200,6 +215,19 @@ export async function startDevContainer(projectId: string): Promise<void> {
     throw new Error("Dev mode is only available for git or upload projects");
   }
   if (!p.dev?.enabled) await enableDev(projectId);
+  // Heal a legacy enabled row that predates the stored preview host: bake one
+  // now so the render (env var + Traefik label) uses a single persisted value
+  // instead of re-deriving a different random host on every restart. (A freshly
+  // enabled row already got one in enableDev above.)
+  else if (p.dev && !p.dev.previewHost) {
+    await writeDevRow(projectId, {
+      ...p.dev,
+      previewHost: newDevPreviewHost(
+        p.slug,
+        resolveServerIp((await getServerById(p.serverId)) ?? undefined),
+      ),
+    });
+  }
   await setDevStatus(projectId, "starting");
   try {
     const fresh = await requireProject(projectId);

@@ -70,7 +70,6 @@ const CONTROL_PLANE = [
   "project_build",
   "project_build_method_settings",
   "project_dev",
-  "project_exposes",
   "project_volumes",
   "project_mounts",
   "deployments",

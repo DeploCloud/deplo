@@ -7,7 +7,7 @@ import { getTemplate } from "@/lib/templates";
 import { getTemplateBlueprint } from "@/lib/templates-blueprint";
 import { listServers } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
-import { instanceHost, sslipDomain } from "@/lib/deploy/domains";
+import { instanceHost, productionDomain } from "@/lib/deploy/domains";
 
 export const metadata = { title: "New Project" };
 
@@ -21,11 +21,13 @@ export default async function NewProjectPage(props: PageProps<"/new">) {
     ?.toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  // Generate the template's public hostname up front and bake it into the
-  // blueprint env so the value the app sees matches the domain Traefik routes
-  // and the one shown in the project's Domains section.
+  // Generate the template's public hostname (with its random words baked in) up
+  // front and thread it into the blueprint env. createProject passes this same
+  // string through as the project's `preferred` auto domain, so the value the
+  // app sees matches the domain Traefik routes and the one shown in the Domains
+  // section — the words generated here are the words that get persisted.
   const autoDomain = template
-    ? sslipDomain(presetName || template.id, instanceHost())
+    ? productionDomain(presetName || template.id, instanceHost())
     : null;
   const blueprint = template
     ? getTemplateBlueprint(template.id, { domain: autoDomain ?? undefined })

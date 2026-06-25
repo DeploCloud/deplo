@@ -9,7 +9,6 @@ import {
   projects as projectsTable,
   projectBuild as projectBuildTable,
   projectBuildMethodSettings as projectBuildMethodSettingsTable,
-  projectExposes as projectExposesTable,
   projectMounts as projectMountsTable,
   projectVolumes as projectVolumesTable,
   teamProjectOrder,
@@ -49,13 +48,13 @@ import {
   stopContainer,
   startContainer,
 } from "../deploy/build";
-import { ensureAutoDomain } from "./domains";
+import { ensureAutoDomain, ensureExtraDomain } from "./domains";
 import {
   resolveServerIp,
   instanceHost,
-  rehostSslip,
+  rehostNip,
   rehostBlueprintHosts,
-  sslipEmbeddedIp,
+  nipEmbeddedIp,
 } from "../deploy/domains";
 import { teardownProject } from "./deployments";
 import { agentTeardownDev } from "../deploy/agent-dev";
@@ -76,12 +75,12 @@ import {
 } from "./project-graph-load";
 import {
   buildToRow,
-  exposesToRows,
   methodSettingsToRow,
   mountsToRows,
   projectToRow,
   volumesToRows,
 } from "./project-graph-rows";
+import { detectDefaultService } from "../deploy/compose-stack";
 
 /** Heuristic: treat secret-looking keys as masked secrets. */
 function isSecretKey(key: string): boolean {
@@ -323,12 +322,15 @@ export interface CreateProjectInput {
   serverId?: string;
   build?: Partial<BuildConfig>;
   autoDeploy?: boolean;
-  /** Compose/template deploys: which service + port Traefik exposes. */
+  /** Compose/template deploys: which service + port the PRIMARY domain routes
+   * to. When absent for a compose project, detectDefaultService picks one. */
   composeService?: string | null;
   composePort?: number | null;
-  /** Every publicly-routed service in the stack (each with its own host). */
-  exposes?: { service: string; port: number; host?: string }[] | null;
-  /** Pre-generated domain a template baked into its env; kept consistent. */
+  /** A multi-domain template's EXTRA (non-primary) routed hosts — each becomes
+   * its own auto Domain row at creation (the primary is the `autoDomain`). The
+   * `domains` table is the sole routing source afterward; there is no `exposes`. */
+  extraDomains?: { service: string; port: number; host: string }[] | null;
+  /** Pre-generated PRIMARY domain a template baked into its env; kept consistent. */
   autoDomain?: string | null;
   /** Template config files to materialise at deploy time. */
   mounts?: { filePath: string; content: string }[] | null;
@@ -389,22 +391,22 @@ export async function createProject(
       "No server available — add a server from Settings → Servers and run its install command first.",
     );
 
-  // A template's generated sslip.io hosts (the primary autoDomain + every
+  // A template's generated nip.io hosts (the primary autoDomain + every
   // exposes[].host, and any env value that embedded ${domain}) are baked in the
   // /new page against the instance IP (instanceHost), because the server isn't
   // known until submit. If this project targets a DIFFERENT server, those hosts
   // would route to (and display) the wrong IP — re-host them onto the target
-  // server's IP. A no-op when the target IP matches and for non-sslip hosts.
+  // server's IP. A no-op when the target IP matches and for non-nip.io hosts.
   // resolveServerIp falls back to instanceHost for a server with no known IP yet,
   // so that case also no-ops rather than rehosting toward a bad address.
   const serverIp = resolveServerIp(server);
   const hosts = rehostBlueprintHosts(
-    { autoDomain: input.autoDomain, exposes: input.exposes, env: input.env },
+    { autoDomain: input.autoDomain, extraDomains: input.extraDomains, env: input.env },
     instanceHost(),
     serverIp,
   );
   input.autoDomain = hosts.autoDomain;
-  input.exposes = hosts.exposes;
+  input.extraDomains = hosts.extraDomains;
   input.env = hosts.env;
 
   // An "upload" project has no archive at creation (it is uploaded from the
@@ -431,11 +433,6 @@ export async function createProject(
     dockerImage: input.dockerImage ?? null,
     upload: null,
     compose: input.compose ?? null,
-    expose:
-      input.composeService && input.composePort
-        ? { service: input.composeService, port: input.composePort }
-        : null,
-    exposes: input.exposes?.length ? input.exposes : null,
     mounts: input.mounts?.length ? input.mounts : null,
     build: buildConfigFor(input.framework, input.build),
     dev: null,
@@ -479,8 +476,6 @@ export async function createProject(
         await tx
           .insert(projectBuildMethodSettingsTable)
           .values(methodSettingsToRow(project.id, project.build.methodSettings));
-        const exposeRows = exposesToRows(project.id, project.exposes);
-        if (exposeRows.length > 0) await tx.insert(projectExposesTable).values(exposeRows);
         const mountRows = mountsToRows(project.id, project.mounts);
         if (mountRows.length > 0) await tx.insert(projectMountsTable).values(mountRows);
         if (projectEnvVars.length > 0) await insertEnvVars(tx, projectEnvVars);
@@ -497,19 +492,46 @@ export async function createProject(
   await recordActivity("project", `Created project ${project.name}`, user.name, project.id);
 
   // POST-COMMIT (PLAN cut-set (c) "post-commit deploy"): register the generated
-  // sslip.io domain so it shows up in the Domains section immediately and the
-  // deploy routes to the same hostname a template baked into its env.
+  // nip.io domain so it shows up in the Domains section immediately and the
+  // deploy routes to the same hostname a template baked into its env. This is
+  // the ONLY place a project's auto domain is born — deploys no longer create
+  // one, so once every domain is deleted none is ever resurrected.
   const ip = resolveServerIp(server);
-  await ensureAutoDomain(project.id, {
+  // The PRIMARY domain's default route: an explicit composeService/composePort
+  // (the wizard's single picker), else — for a compose project — the service
+  // detectDefaultService picks from the stack, else build.port (single-image,
+  // serviceless). After creation the `domains` table (each row's service) is the
+  // sole routing source.
+  const detected =
+    input.composeService && input.composePort
+      ? { service: input.composeService, port: input.composePort }
+      : input.compose
+        ? detectDefaultService(input.compose)
+        : null;
+  const primaryName = await ensureAutoDomain(project.id, {
     slug,
     ip,
     preferred: input.autoDomain ?? undefined,
-    // The primary host routes to the compose default expose (service + port) or,
-    // for a single-image project, to build.port. `expose` is the first of
-    // `exposes`, so it is the canonical default for the primary domain.
-    defaultPort: project.expose?.port ?? project.build.port,
-    defaultService: project.expose?.service ?? null,
+    defaultPort: detected?.port ?? project.build.port,
+    defaultService: detected?.service ?? null,
   });
+
+  // Register every EXTRA hostname a multi-domain template declares (e.g. a web
+  // UI's `web-ui.*` host) — also ONCE, here at creation, never on a deploy. Skip
+  // the primary (already registered above). Each extra carries its own service +
+  // port. Like the primary, a deleted extra is never resurrected by a later
+  // deploy. The `domains` table is the sole routing source from here on.
+  for (const ex of input.extraDomains ?? []) {
+    const host = ex.host.trim();
+    if (host && host !== primaryName)
+      await ensureExtraDomain(project.id, host, {
+        port: ex.port,
+        service: ex.service,
+        // Passed so a globally-colliding template host regenerates a unique one.
+        slug,
+        ip,
+      });
+  }
 
   if (!isUpload) {
     // Kick off the first real build + deploy. Runs in the background and flips
@@ -572,10 +594,6 @@ export interface UpdateSourceInput {
   serverId?: string;
   /** Compose YAML to persist (source === "compose"). Kept when switching away. */
   compose?: string | null;
-  /** Which service + port Traefik exposes for the compose stack. */
-  expose?: { service: string; port: number } | null;
-  /** Every publicly-routed service in the stack (multi-domain templates). */
-  exposes?: { service: string; port: number; host?: string }[] | null;
 }
 
 export async function updateProjectSource(
@@ -584,8 +602,8 @@ export async function updateProjectSource(
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
   // Saving compose YAML that publishes ports (`ports:`/`expose:`) requires the
-  // expose-ports grant. Routing metadata (`expose`/`exposes` — Traefik domains)
-  // is NOT port publishing and is intentionally not gated here.
+  // expose-ports grant. Routing (the Traefik domains) lives in the `domains`
+  // table, not here, and is NOT port publishing — so it isn't gated here.
   if (input.compose != null && composePublishesPorts(input.compose)) {
     await requireExposePorts();
   }
@@ -599,48 +617,32 @@ export async function updateProjectSource(
     const p = await loadProjectGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("Project not found");
     // Capture the OLD server IP before serverId is reassigned, so a move can
-    // re-host the project's auto sslip.io domains onto the new server's IP below.
+    // re-host the project's auto nip.io domains onto the new server's IP below.
     const oldIp = resolveServerIp(serversById.get(p.serverId));
     let serverId = p.serverId;
     if (input.serverId) {
       if (!serversById.has(input.serverId)) throw new Error("Server not found");
       serverId = input.serverId;
     }
-    // `expose` is derived as `exposes[0]`, never stored; an explicit `expose`
-    // input with no `exposes` becomes the single exposes entry.
-    let exposes: Project["exposes"] =
-      input.exposes !== undefined
-        ? input.exposes
-        : input.expose !== undefined
-          ? input.expose
-            ? [input.expose]
-            : null
-          : p.exposes;
 
-    // MOVING the project to a different server: its auto sslip.io hosts encode
-    // the OLD server's IP, so re-host them onto the new server's IP — otherwise
-    // the Domains section (and Traefik's routing target) keeps pointing at the
-    // old host. Covers the primary + every extra (web-ui.*) auto domain and the
-    // stored exposes[].host. Applied AFTER exposes lands so the final stored value
-    // is rehosted. A no-op when the IP is unchanged or the host isn't sslip.
+    // MOVING the project to a different server: its auto nip.io domains encode
+    // the OLD server's IP (as the trailing hex label), so re-host them onto the
+    // new server's IP — otherwise the Domains section (and Traefik's routing
+    // target) keeps pointing at the old host. Only the hex IP is swapped; the
+    // random words are preserved, so the host stays recognisably the same
+    // project's. The `domains` table is the sole routing source, so rehosting its
+    // rows is all that's needed. A no-op when the IP is unchanged or the host
+    // isn't nip.io.
     const newIp = resolveServerIp(serversById.get(serverId));
     if (newIp !== oldIp) {
-      // Rehost the project's auto sslip.io domain rows in place.
       const projectDomains = await loadDomainsForProject(p.id, tx);
       for (const dom of projectDomains) {
-        if (dom.source === "auto" && sslipEmbeddedIp(dom.name) === oldIp) {
+        if (dom.source === "auto" && nipEmbeddedIp(dom.name) === oldIp) {
           await tx
             .update(domainsTable)
-            .set({ name: rehostSslip(dom.name, newIp) })
+            .set({ name: rehostNip(dom.name, newIp) })
             .where(eq(domainsTable.id, dom.id));
         }
-      }
-      if (exposes?.length) {
-        exposes = exposes.map((e) =>
-          e.host && sslipEmbeddedIp(e.host) === oldIp
-            ? { ...e, host: rehostSslip(e.host, newIp) }
-            : e,
-        );
       }
     }
 
@@ -661,13 +663,6 @@ export async function updateProjectSource(
         updatedAt: nowIso(),
       })
       .where(eq(projectsTable.id, id));
-
-    // Replace the ordered exposes child rows when the input changed them.
-    if (input.exposes !== undefined || input.expose !== undefined) {
-      await tx.delete(projectExposesTable).where(eq(projectExposesTable.projectId, id));
-      const rows = exposesToRows(id, exposes);
-      if (rows.length > 0) await tx.insert(projectExposesTable).values(rows);
-    }
   });
   await recordActivity("project", `Updated deploy source`, user.name, id);
 }

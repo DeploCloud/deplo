@@ -1,0 +1,1 @@
+ALTER TABLE "project_dev" ADD COLUMN "preview_host" text;

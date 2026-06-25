@@ -32,28 +32,21 @@ import { traefikRouterLabels } from "./routing";
 
 const NETWORK = "deplo";
 
-/** One publicly-routed service: its name, container port, and the hostname
- * Traefik routes to it. `host` falls back to the stack's primary domain. */
-export interface StackExpose {
-  service: string;
-  port: number;
-  host?: string;
-}
-
 /**
- * A per-domain routing override for a compose stack: this hostname routes to a
- * specific compose `service`, a `port`, and/or a path prefix (optionally
- * stripping it). The container port is the override `port` when set, else the
- * chosen service's compose-declared port. A domain with none of service/port/
- * pathPrefix is left to the default `expose`/`exposes` routing (so existing
- * compose domains stay byte-identical).
+ * One routed hostname for a compose stack — the SOLE source of compose routing
+ * (the `domains` table is authoritative; there is no separate `exposes`). Each
+ * becomes exactly one Traefik router → its named compose `service`, on `port`
+ * (the service's compose-declared port when null), optionally path-scoped. A
+ * route MUST name a service it can wire (a compose domain always does — addDomain
+ * requires it); a route whose service is null or absent from the stack is skipped.
  */
 export interface ComposeDomainRoute {
-  /** The hostname (must be one of `domains`). */
+  /** The hostname this router answers on. */
   name: string;
-  /** Compose service to target; null ⇒ the stack default expose. */
+  /** Compose service to route to. Null ⇒ unroutable (skipped — compose domains
+   * always carry a service). */
   service: string | null;
-  /** Container port override; null ⇒ the chosen service's compose port. */
+  /** Container port; null ⇒ the chosen service's compose-declared port. */
   port: number | null;
   /** Path prefix to match (empty ⇒ whole host). */
   pathPrefix: string;
@@ -68,30 +61,12 @@ export interface ComposeStackInput {
   slug: string;
   projectId: string;
   /**
-   * Public hostnames Traefik routes to this stack, primary first. A route with
-   * no explicit `host` answers on all of these (so secondary verified domains
-   * route to the app instantly); `domains[0]` is the primary canonical host.
+   * The routed domains — one Traefik router each, to the route's named compose
+   * service. The SOLE routing source (from the `domains` table). Empty ⇒ the
+   * stack is built and run but NO routers are emitted (the project is unrouted
+   * until a domain is added).
    */
-  domains: string[];
-  /** Which service + container port to expose; auto-detected when null. */
-  expose: { service: string; port: number } | null;
-  /**
-   * Every service to route publicly, each on its own host. Multi-domain
-   * templates (e.g. garage-with-ui) declare two. When empty, falls back to the
-   * single `expose` (or auto-detection) on the primary domain.
-   */
-  exposes?: StackExpose[];
-  /**
-   * Per-domain routing overrides: a hostname that targets a specific compose
-   * service and/or a path prefix. Each becomes its own per-route router (the
-   * port resolved from the chosen service's compose definition), so one stack
-   * can route `app.com/api` → the api service and `app.com/` → the web service.
-   * Domains absent from this list (or carrying neither a service nor a path)
-   * route via the default `expose`/`exposes` — keeping existing stacks
-   * byte-identical. The host in each route is removed from the default routers'
-   * fallback so the two never answer on the same Host()+path.
-   */
-  domainRoutes?: ComposeDomainRoute[];
+  domainRoutes: ComposeDomainRoute[];
   /**
    * Absolute host directory holding this project's mount files. Compose
    * bind-mounts that reference `./<x>` (the project-files convention) are
@@ -126,6 +101,29 @@ function publishedPort(svc: Service): number | null {
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+/**
+ * Pick a default `{service, port}` to seed a compose project's FIRST domain when
+ * neither the template nor the user named one. Parses the compose YAML and runs
+ * the same heuristic the renderer used to: a service that publishes a port, else
+ * the first service on a conventional web port. Null when the compose is
+ * unparseable or has no services. Used at project creation only — after that the
+ * `domains` table (each row's `service`) is authoritative.
+ */
+export function detectDefaultService(
+  compose: string | null,
+): { service: string; port: number } | null {
+  if (!compose || !compose.trim()) return null;
+  let doc: ComposeDoc;
+  try {
+    doc = (yaml.load(compose) as ComposeDoc) ?? {};
+  } catch {
+    return null;
+  }
+  const services = doc.services;
+  if (!services || typeof services !== "object") return null;
+  return detectExpose(services as Record<string, Service>);
 }
 
 /** Pick the service Traefik should route to when the template did not say. */
@@ -252,7 +250,7 @@ function serviceNetworks(svc: Service): string[] {
 }
 
 export function buildComposeStack(input: ComposeStackInput): string {
-  const { compose, name, slug, projectId, domains } = input;
+  const { compose, name, slug, projectId, domainRoutes } = input;
 
   let doc: ComposeDoc;
   try {
@@ -271,25 +269,9 @@ export function buildComposeStack(input: ComposeStackInput): string {
 
   const services = doc.services;
 
-  // The list of services to route publicly. Prefer the explicit multi-expose
-  // list (templates with several config.domains), fall back to the single
-  // expose, then to auto-detection. Drop any that name a service not present.
-  const requested =
-    input.exposes && input.exposes.length
-      ? input.exposes
-      : input.expose
-        ? [input.expose]
-        : [];
-  let routes: StackExpose[] = requested.filter((e) => services[e.service]);
-  if (routes.length === 0) {
-    const auto = detectExpose(services);
-    if (!auto) throw new Error("Compose file has no services to deploy");
-    routes = [auto];
-  }
-
   // Strip globally-unique container names everywhere, point template file mounts
   // at this project's isolated files dir, and stamp Deplo tracking labels on
-  // EVERY service so the whole stack (not just the exposed one) is discoverable
+  // EVERY service so the whole stack (not just the routed ones) is discoverable
   // by label — otherwise sidecars/databases are invisible to the container
   // count, console, health wait and teardown.
   const tracking = deploLabels(projectId, slug);
@@ -301,110 +283,17 @@ export function buildComposeStack(input: ComposeStackInput): string {
     }
   }
 
-  // Per-domain routing overrides (a host that targets a chosen service, a port,
-  // and/or a path prefix). Resolve each against the compose doc: the target
-  // service is the chosen one (or the stack default expose), and the port is the
-  // override `port` when set, else read from that service's compose definition. A
-  // route is "active" only when it names a service, a port, OR a path; otherwise
-  // it's inert and left to the default routing below (so existing stacks stay
-  // byte-identical).
-  const defaultExpose = routes[0] ?? null;
-  const defaultService = defaultExpose?.service ?? null;
   // Resolve a service's container port from the compose doc. Read BEFORE any
-  // service is wired (wiring deletes `ports`), so capture it now in the map.
+  // service is wired (wiring leaves `ports` intact, but read up front anyway so
+  // the port source is unambiguous). A route without an explicit port falls back
+  // to this.
   const portOf = (service: string): number => {
     const p = publishedPort(services[service] as Service);
     return p ?? 80; // conventional web port when the service declares none
   };
-  // The default route for a host: a pinned `exposes` entry for that exact host,
-  // else the primary default expose. A stored route that merely restates this
-  // default (same service, same port, no path) is the SAME route the default
-  // routing would emit, so it must NOT become a per-domain override — otherwise
-  // a backfilled auto/extra domain (which carries its host's default service +
-  // port for data-completeness) would split the single default router into a
-  // per-host router and change the rendered YAML. Only a route that genuinely
-  // diverges (different service, different port, or any path prefix) overrides.
-  const defaultFor = (host: string): StackExpose | null =>
-    routes.find((e) => e.host?.trim() === host) ?? defaultExpose;
-  const restatesDefault = (r: ComposeDomainRoute): boolean => {
-    if (r.pathPrefix) return false;
-    const def = defaultFor(r.name);
-    if (!def) return false;
-    return (
-      (!r.service || r.service === def.service) &&
-      (r.port == null || r.port === def.port)
-    );
-  };
-  const overrides = (input.domainRoutes ?? [])
-    .filter(
-      (r) =>
-        (r.service || r.port != null || r.pathPrefix) &&
-        domains.includes(r.name) &&
-        !restatesDefault(r),
-    )
-    .map((r) => {
-      const service = (r.service ?? defaultService) ?? "";
-      // The override port wins; else a default-service override reuses the
-      // default expose's port, an explicit service reads its compose port.
-      const port =
-        r.port != null
-          ? r.port
-          : r.service && r.service !== defaultService
-            ? portOf(r.service)
-            : defaultExpose?.port ?? portOf(service);
-      return { ...r, service, port };
-    })
-    // A route whose target service isn't in the stack can't be wired — skip it
-    // rather than emit a router pointing at nothing.
-    .filter((r) => r.service && services[r.service]);
-  // A whole-host takeover (a service/port override with NO path) removes that
-  // host from the default routers' fallback — the override owns the host
-  // entirely. A path-scoped override leaves the host in the fallback (the
-  // default still serves the other paths), disambiguated by Traefik priority
-  // (longer prefix wins, set in the routing grammar).
-  const takenHosts = new Set(
-    overrides.filter((r) => !r.pathPrefix).map((r) => r.name),
-  );
 
-  // A single route reuses the stack name as its router key (stable, matches the
-  // legacy single-service behaviour); multiple routes get a per-route suffix so
-  // each Traefik router/service key is unique even on the same container.
-  const single = routes.length === 1 && overrides.length === 0;
-  const routerKey = (e: StackExpose): string =>
-    single ? name : `${name}-${e.service}-${e.port}`.replace(/[^a-zA-Z0-9_-]/g, "-");
-
-  // Hosts a route pins explicitly (multi-domain templates like garage-with-ui
-  // route a specific service to a specific hostname). A no-host route falls back
-  // to the project's domain list, but MUST NOT swallow another route's pinned
-  // host — two routers answering on the same Host() collide nondeterministically.
-  // Whole-host overrides are excluded from the fallback for the same reason.
-  const pinned = new Set(
-    routes.map((r) => r.host?.trim()).filter((h): h is string => Boolean(h)),
-  );
-  const fallback = domains.filter((d) => !pinned.has(d) && !takenHosts.has(d));
-  // Only the FIRST no-host route may claim the shared fallback domains; a second
-  // no-host route claiming them too would emit a duplicate Host() rule on a
-  // different router → nondeterministic routing. Subsequent no-host routes get
-  // nothing routable (their router is skipped), so multi-domain templates must
-  // pin each service's host explicitly.
-  let fallbackClaimed = false;
-  // The host(s) a route serves: its own pin if set, else every project domain
-  // not pinned elsewhere (so a primary switch / new verified domain routes here
-  // with no redeploy). Guard against an empty rule with the primary domain —
-  // unless that primary was taken over by a whole-host override, in which case
-  // the default router gets nothing (its host is served by the override).
-  const hostsFor = (route: StackExpose): string[] => {
-    const host = route.host?.trim();
-    if (host) return [host];
-    if (fallbackClaimed) return [];
-    fallbackClaimed = true;
-    if (fallback.length) return fallback;
-    const primary = domains.find((d) => !takenHosts.has(d));
-    return primary ? [primary] : [];
-  };
-
-  // Services we've already joined to the network, so a service exposed on two
-  // ports is only network-wired once.
+  // Services we've already joined to the network, so a service routed on two
+  // hosts/ports is only network-wired once.
   const wired = new Set<string>();
   // Join a service to the deplo network (on top of its own networks) so Traefik
   // can reach it and inter-service DNS keeps working. Traefik fronts the routed
@@ -423,43 +312,26 @@ export function buildComposeStack(input: ComposeStackInput): string {
     wired.add(service);
   };
 
-  for (const route of routes) {
-    const target = services[route.service];
-    if (!target) continue;
-    wireService(route.service);
-    // Each route adds its own router on its own host(s). A no-host route after
-    // the first has no hosts left to claim — skip its router rather than emit an
-    // empty rule. Labels merge over the tracking labels.
-    const hosts = hostsFor(route);
-    if (hosts.length === 0) continue;
+  // The `domains` table IS the routing: one Traefik router per routed domain,
+  // each to its named compose service. A route with no service (or a service not
+  // in the stack) can't be wired — skip it rather than emit a router pointing at
+  // nothing. The router key is per-(host,service,path) so the generated
+  // stripprefix middleware name (keyed off it in the routing grammar) is unique
+  // and a path-scoped route coexists with a whole-host route via Traefik priority.
+  for (const route of domainRoutes) {
+    const service = route.service;
+    if (!service || !services[service]) continue;
+    wireService(service);
+    const port = route.port ?? portOf(service);
+    const keySeed = `${name}-${service}-${route.name}${route.pathPrefix}`;
     mergeLabels(
-      target,
-      traefikLabels({
-        router: routerKey(route),
-        domains: hosts,
-        port: route.port,
-      }),
-    );
-  }
-
-  // Per-domain overrides: each routes its host (optionally only a path prefix)
-  // to its chosen service on that service's compose port. The router key is
-  // per-(host,service,path) so the generated stripprefix middleware name (keyed
-  // off it in the routing grammar) is unique; a path-scoped override coexists
-  // with the default host router via Traefik priority.
-  for (const ov of overrides) {
-    const target = services[ov.service];
-    if (!target) continue;
-    wireService(ov.service);
-    const keySeed = `${name}-${ov.service}-${ov.name}${ov.pathPrefix}`;
-    mergeLabels(
-      target,
+      services[service] as Service,
       traefikLabels({
         router: keySeed.replace(/[^a-zA-Z0-9_-]/g, "-"),
-        domains: [ov.name],
-        port: ov.port,
-        pathPrefix: ov.pathPrefix,
-        stripPrefix: ov.stripPrefix,
+        domains: [route.name],
+        port,
+        pathPrefix: route.pathPrefix,
+        stripPrefix: route.stripPrefix,
       }),
     );
   }

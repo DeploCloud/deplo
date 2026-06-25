@@ -38,7 +38,7 @@ export const TRUNCATE_PROJECT_GRAPH = `truncate table
   shared_env_group_targets, shared_env_group_projects, shared_env_group_vars, shared_env_groups,
   deployment_logs, deployments, env_var_targets, env_vars,
   domain_middlewares, domains,
-  project_mounts, project_volumes, project_exposes, project_dev,
+  project_mounts, project_volumes, project_dev,
   project_build_method_settings, project_build, projects,
   folders, servers
   restart identity cascade;`;
@@ -98,8 +98,6 @@ export async function seedProject(
     dockerImage: null,
     upload: null,
     compose: null,
-    expose: null,
-    exposes: null,
     mounts: null,
     volumes: null,
     build,

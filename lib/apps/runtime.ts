@@ -9,7 +9,7 @@ import "server-only";
  * and reads live status with `docker inspect`. An app is labelled
  * `deplo.managed=true` + `deplo.role=app` and reached on the **app path** under
  * Deplo's own host (a Traefik `PathPrefix` router + `stripprefix`), reusing
- * Deplo's TLS — never a per-app domain/sslip.io/cert.
+ * Deplo's TLS — never a per-app domain/nip.io/cert.
  *
  * Router priority: the app's `Host(deplo) && PathPrefix(/apps/<slug>)` router
  * wins over the dashboard's bare `Host(deplo)` router because the dashboard

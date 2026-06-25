@@ -634,3 +634,34 @@ test("single-image: mixed null + explicit-default ports still fold into ONE rout
   );
   assert.ok(!labels.some((l) => l.includes("deplo-app__3000")));
 });
+
+// --- No routes: the container is deployed but NOT routed (a project whose
+// domains were all deleted; Deplo never resurrects an auto domain). The labels
+// must DISABLE Traefik for the container, never emit an empty/invalid Host()
+// rule. ---
+
+test("no routes ⇒ traefik.enable=false and NOTHING else (single-image)", () => {
+  const labels = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [],
+    defaultPort: 3000,
+    certResolver: CR,
+  });
+  assert.deepEqual(labels, ["traefik.enable=false"]);
+});
+
+test("no routes ⇒ no router/rule labels even with dockerNetwork / alwaysService set", () => {
+  const labels = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [],
+    defaultPort: 3000,
+    certResolver: CR,
+    dockerNetwork: "deplo",
+    alwaysService: true,
+  });
+  // Critically: no `...rule=` label at all (an empty-host rule would be invalid
+  // and break Traefik), and no enable=true / docker.network either.
+  assert.deepEqual(labels, ["traefik.enable=false"]);
+  assert.ok(!labels.some((l) => l.includes(".rule=")));
+  assert.ok(!labels.includes("traefik.enable=true"));
+});

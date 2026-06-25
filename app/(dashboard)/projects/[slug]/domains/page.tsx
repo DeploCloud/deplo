@@ -3,7 +3,7 @@ import { Globe } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { listServers } from "@/lib/data/servers";
 import { listDomains } from "@/lib/data/domains";
-import { resolveServerIp, sslipDomain } from "@/lib/deploy/domains";
+import { resolveServerIp, productionDomain } from "@/lib/deploy/domains";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Table,
@@ -27,11 +27,13 @@ export default async function ProjectDomainsPage(
     listDomains(project.id),
     listServers(),
   ]);
-  // A zero-config sslip.io hostname (`<slug>.<server-ip>.sslip.io`) the user can
-  // drop into the Domain field with one click — resolved here so the server-only
-  // IP detection never reaches the client bundle.
+  // A zero-config nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`)
+  // the user can drop into the Domain field with one click — resolved here so the
+  // server-only IP detection never reaches the client bundle. This is a fresh
+  // suggestion for ADDING a domain (the project's own auto domain already exists),
+  // so freshly-generated words are fine.
   const server = servers.find((s) => s.id === project.serverId);
-  const suggestedDomain = sslipDomain(project.slug, resolveServerIp(server));
+  const suggestedDomain = productionDomain(project.slug, resolveServerIp(server));
 
   return (
     <div className="space-y-4">

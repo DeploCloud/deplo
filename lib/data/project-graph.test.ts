@@ -37,7 +37,16 @@ import {
   createProject,
   summarizeForTeam,
 } from "./projects";
-import { addDomain, setPrimaryDomain, listDomains } from "./domains";
+import {
+  addDomain,
+  setPrimaryDomain,
+  listDomains,
+  ensureAutoDomain,
+  ensureExtraDomain,
+  uniqueAutoDomainName,
+} from "./domains";
+import { loadDomainsForProject } from "./project-graph-load";
+import { nipEmbeddedIp } from "../deploy/domains";
 import { upsertEnv, listEnv } from "./env";
 import { saveSharedEnvGroup, setSharedEnvGroupAttachment } from "./shared-env";
 
@@ -267,4 +276,80 @@ test("two concurrent same-name createProject calls both succeed with distinct sl
   const rows = await db.select({ slug: projectsTable.slug }).from(projectsTable);
   assert.equal(rows.length, 2);
   assert.equal(new Set(rows.map((r) => r.slug)).size, 2, "two unique slugs persisted");
+});
+
+/* ------------------------------------------------------------------ */
+/* Generated-domain uniqueness (no duplicate hostnames, globally)      */
+/* ------------------------------------------------------------------ */
+
+const IP = "1.2.3.4";
+
+test("uniqueAutoDomainName never returns a host that already exists globally", async () => {
+  await seedProject(db, { id: "prj_u", slug: "uniq" });
+  // Pre-occupy 25 hosts under the same label+IP so generation must dodge them.
+  const taken = new Set<string>();
+  await asUser1(async () => {
+    for (let i = 0; i < 25; i++) {
+      const name = await uniqueAutoDomainName("uniq", IP);
+      assert.ok(!taken.has(name), `generated a duplicate: ${name}`);
+      taken.add(name);
+      // Persist it so the NEXT call must avoid it too (global check).
+      await ensureExtraDomain("prj_u", name, { port: 80, service: null, slug: "uniq", ip: IP });
+    }
+  });
+  // Every persisted domain name is distinct.
+  const rows = await loadDomainsForProject("prj_u");
+  assert.equal(new Set(rows.map((d) => d.name)).size, rows.length);
+  assert.equal(rows.length, 25);
+});
+
+test("ensureExtraDomain regenerates (not skips) when the template host collides with ANOTHER project", async () => {
+  await seedProject(db, { id: "prj_a", slug: "alpha" });
+  await seedProject(db, { id: "prj_b", slug: "beta" });
+  // Project A claims a host.
+  const shared = `shared-charming-otter-${"01020304"}.nip.io`;
+  await asUser1(() =>
+    ensureExtraDomain("prj_a", shared, { port: 80, service: "web", slug: "alpha", ip: IP }),
+  );
+  // Project B is handed the SAME host by its (hypothetical) template — it must
+  // get a fresh unique host, NOT silently skip and NOT duplicate A's host.
+  await asUser1(() =>
+    ensureExtraDomain("prj_b", shared, { port: 80, service: "web", slug: "beta", ip: IP }),
+  );
+  const bDomains = await loadDomainsForProject("prj_b");
+  assert.equal(bDomains.length, 1, "B got a domain (regenerated, not dropped)");
+  assert.notEqual(bDomains[0].name, shared, "B did not reuse A's colliding host");
+  assert.equal(nipEmbeddedIp(bDomains[0].name), IP, "B's host still encodes the IP");
+  // A keeps the original; the two never share a name.
+  const aDomains = await loadDomainsForProject("prj_a");
+  assert.equal(aDomains[0].name, shared);
+});
+
+test("ensureExtraDomain is idempotent on the SAME project (re-run does not duplicate)", async () => {
+  await seedProject(db, { id: "prj_c", slug: "gamma" });
+  const host = `gamma-bold-lynx-${"01020304"}.nip.io`;
+  await asUser1(async () => {
+    await ensureExtraDomain("prj_c", host, { port: 80, service: "web", slug: "gamma", ip: IP });
+    await ensureExtraDomain("prj_c", host, { port: 80, service: "web", slug: "gamma", ip: IP });
+  });
+  const rows = await loadDomainsForProject("prj_c");
+  assert.equal(rows.length, 1, "the same host on the same project is not duplicated");
+  assert.equal(rows[0].name, host);
+});
+
+test("ensureAutoDomain regenerates when its `preferred` host belongs to another project", async () => {
+  await seedProject(db, { id: "prj_x", slug: "xeno" });
+  await seedProject(db, { id: "prj_y", slug: "yeti" });
+  const preferred = `pref-keen-puma-${"01020304"}.nip.io`;
+  // X claims `preferred` as its primary.
+  const xName = await asUser1(() =>
+    ensureAutoDomain("prj_x", { slug: "xeno", ip: IP, preferred, defaultPort: 80 }),
+  );
+  assert.equal(xName, preferred);
+  // Y is given the SAME preferred — it must regenerate a distinct primary.
+  const yName = await asUser1(() =>
+    ensureAutoDomain("prj_y", { slug: "yeti", ip: IP, preferred, defaultPort: 80 }),
+  );
+  assert.notEqual(yName, preferred, "Y regenerated rather than colliding");
+  assert.equal(nipEmbeddedIp(yName), IP);
 });

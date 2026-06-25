@@ -38,8 +38,8 @@ export interface AddDomainProject {
 }
 
 /** Props for {@link AddDomain}. `suggestedDomain` is a ready-to-use zero-config
- * sslip.io hostname (`<slug>.<server-ip>.sslip.io`) resolved server-side; the
- * dialog offers a one-click button to drop it into the Domain field. */
+ * nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`) resolved
+ * server-side; the dialog offers a one-click button to drop it into the field. */
 export interface AddDomainProps {
   project: AddDomainProject;
   suggestedDomain?: string;
@@ -147,7 +147,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
                   onClick={() => setName(suggestedDomain)}
                 >
                   <Sparkles className="size-3.5" />
-                  Generate from sslip.io
+                  Generate from nip.io
                 </Button>
               ) : null}
             </div>

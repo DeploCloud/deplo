@@ -74,7 +74,7 @@ export interface WizardTemplate {
   expose: { service: string; port: number } | null;
   /** Every publicly-routed service (multi-domain templates expose 2+). */
   exposes: { service: string; port: number; host?: string }[];
-  /** Pre-generated sslip.io domain baked into the template's env. */
+  /** Pre-generated nip.io domain baked into the template's env. */
   autoDomain: string | null;
   /** Template config files to materialise at deploy time. */
   mounts: { filePath: string; content: string }[];
@@ -350,12 +350,19 @@ export function NewProjectWizard({
             },
             autoDeploy: usesGit ? autoDeploy : false,
             // Routing metadata is template-only; a hand-written compose stack lets
-            // the engine auto-detect which service to expose.
+            // the engine auto-detect which service to expose. The PRIMARY domain
+            // routes to the first declared service (composeService/composePort);
+            // every OTHER declared host becomes an extra Domain row at creation.
             composeService: templateCompose
               ? template!.expose?.service ?? null
               : null,
             composePort: templateCompose ? template!.expose?.port ?? null : null,
-            exposes: templateCompose ? template!.exposes : null,
+            extraDomains: templateCompose
+              ? template!.exposes
+                  .slice(1)
+                  .filter((e) => e.host)
+                  .map((e) => ({ service: e.service, port: e.port, host: e.host! }))
+              : null,
             autoDomain: templateCompose ? template!.autoDomain : null,
             mounts: templateCompose ? template!.mounts : null,
           },

@@ -100,8 +100,6 @@ export function BuildSettingsForm({
   dockerImage: initialDockerImage,
   upload: initialUpload,
   compose: initialCompose,
-  expose,
-  exposes,
   volumes: initialVolumes,
   serverId: initialServerId,
   servers,
@@ -119,8 +117,6 @@ export function BuildSettingsForm({
   dockerImage: string | null;
   upload: CurrentUpload | null;
   compose: string | null;
-  expose: { service: string; port: number } | null;
-  exposes: { service: string; port: number; host?: string }[] | null;
   volumes: VolumeMount[];
   serverId: string;
   servers: SettingsServer[];
@@ -331,10 +327,6 @@ export function BuildSettingsForm({
             dockerImage: image,
             repo,
             compose: source === "compose" ? compose : undefined,
-            expose: expose
-              ? { service: expose.service, port: expose.port }
-              : null,
-            exposes: exposes ?? null,
           },
         },
       );
