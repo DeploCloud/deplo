@@ -665,3 +665,81 @@ test("no routes ⇒ no router/rule labels even with dockerNetwork / alwaysServic
   assert.ok(!labels.some((l) => l.includes(".rule=")));
   assert.ok(!labels.includes("traefik.enable=true"));
 });
+
+// --- Project-wide Basic Auth: the generated middleware is DEFINED once and
+// PREPENDED to every router's chain; `$` in the htpasswd hash is doubled to `$$`
+// for the docker-compose label; absent basicAuth is byte-identical to before. ---
+
+test("basicAuth: defines the middleware and prepends it to a single router", () => {
+  const labels = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [{ name: "app.example.com", port: null }],
+    defaultPort: 3000,
+    certResolver: CR,
+    basicAuth: { name: "deplo-app-basicauth", users: "alice:$apr1$abc$def" },
+  });
+  // The middleware definition label, with the hash's `$` doubled to `$$`.
+  assert.ok(
+    labels.includes(
+      "traefik.http.middlewares.deplo-app-basicauth.basicauth.users=alice:$$apr1$$abc$$def",
+    ),
+  );
+  // The router carries the middleware in its chain.
+  assert.ok(
+    labels.includes(
+      "traefik.http.routers.deplo-app__3000-mw-deplo-app-basicauth.middlewares=deplo-app-basicauth",
+    ),
+  );
+});
+
+test("basicAuth: prepends ahead of an existing user middleware, order preserved", () => {
+  const labels = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [{ name: "app.example.com", port: null, middlewares: ["redirect-https"] }],
+    defaultPort: 3000,
+    certResolver: CR,
+    basicAuth: { name: "deplo-app-basicauth", users: "u:h" },
+  });
+  assert.ok(
+    labels.some((l) =>
+      l.endsWith(".middlewares=deplo-app-basicauth,redirect-https"),
+    ),
+  );
+});
+
+test("basicAuth: gates EVERY host across distinct routers (per-route mode)", () => {
+  const labels = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [
+      { name: "a.example.com", port: 80 },
+      { name: "b.example.com", port: 81 },
+    ],
+    defaultPort: 80,
+    certResolver: CR,
+    perRouteKey: (r) => `k-${r.name}`,
+    basicAuth: { name: "mw-auth", users: "u:h" },
+  });
+  // Both routers reference the auth middleware.
+  assert.ok(labels.includes("traefik.http.routers.k-a.example.com.middlewares=mw-auth"));
+  assert.ok(labels.includes("traefik.http.routers.k-b.example.com.middlewares=mw-auth"));
+  // The definition label is present (emitted once before the routers).
+  assert.ok(labels.some((l) => l.startsWith("traefik.http.middlewares.mw-auth.basicauth.users=")));
+});
+
+test("basicAuth: absent (and empty users) ⇒ byte-identical to no basic auth", () => {
+  const base = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [{ name: "app.example.com", port: null }],
+    defaultPort: 3000,
+    certResolver: CR,
+  });
+  const emptyUsers = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [{ name: "app.example.com", port: null }],
+    defaultPort: 3000,
+    certResolver: CR,
+    basicAuth: { name: "deplo-app-basicauth", users: "" },
+  });
+  assert.deepEqual(emptyUsers, base);
+  assert.ok(!base.some((l) => l.includes("basicauth")));
+});

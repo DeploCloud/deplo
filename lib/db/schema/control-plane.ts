@@ -713,6 +713,37 @@ export const domainMiddlewares = pgTable(
 );
 
 /**
+ * [BasicAuthUser](../../types.ts) — an HTTP Basic Auth credential that gates
+ * EVERY domain of a project. When a project has any of these, the renderers
+ * inject a generated Traefik `basicauth` middleware (built from these users) at
+ * the head of every router's middleware chain, so all the project's hostnames
+ * sit behind the login prompt. `password_enc` is a REVERSIBLE secret (AES-GCM,
+ * like `env_vars.value_enc` and `dev_ssh_users.password_enc`) so the htpasswd
+ * line can be re-derived on every stack render; it is write-only over the API
+ * (never returned). `UNIQUE(project_id, username)` — one credential per name.
+ */
+export const projectBasicAuthUsers = pgTable(
+  "project_basic_auth_users",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    username: text("username").notNull(),
+    passwordEnc: text("password_enc").notNull(),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("project_basic_auth_users_project_username_uq").on(
+      t.projectId,
+      t.username,
+    ),
+    index("project_basic_auth_users_project_idx").on(t.projectId),
+  ],
+);
+
+/**
  * [DevSshUser](../../types.ts). `password_enc` reversible secret (write-only,
  * masked as `hasPassword`). `UNIQUE(username)` globally. CHECK `public_key IS NOT
  * NULL OR password_enc IS NOT NULL` (at least one credential) (PLAN §2).

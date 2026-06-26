@@ -49,6 +49,7 @@ import {
   defaultRoute,
   type RoutableDomain,
 } from "../data/domains";
+import { basicAuthUsersValue } from "../data/basic-auth";
 import { installationCloneUrl } from "../github/app";
 import { publishProjectChanged } from "../graphql/pubsub";
 import {
@@ -183,6 +184,14 @@ export function renderCompose(opts: {
    * (`expose.port`/per-domain `route.port`), not from this env var.
    */
   injectPort?: boolean;
+  /**
+   * Project-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
+   * single-`$`). When non-empty, a generated `basicauth` middleware is defined
+   * and prepended to every router's chain so ALL hostnames are gated. Empty/
+   * absent ⇒ no middleware (byte-identical to a project without basic auth). The
+   * `$`→`$$` compose escaping happens inside the router grammar.
+   */
+  basicAuthUsers?: string;
 }): string {
   const { name, image, port, projectId, slug, routes } = opts;
   const injectPort = opts.injectPort ?? true;
@@ -213,6 +222,9 @@ export function renderCompose(opts: {
       routes,
       defaultPort: port,
       certResolver: certResolver(),
+      ...(opts.basicAuthUsers
+        ? { basicAuth: { name: `${name}-basicauth`, users: opts.basicAuthUsers } }
+        : {}),
     }),
     "deplo.managed=true",
     `deplo.project=${projectId}`,
@@ -633,6 +645,7 @@ async function runDeployment(depId: string): Promise<void> {
       image: string,
     ): Promise<{ composeYaml: string; env: Record<string, string> }> => {
       const env = await projectEnv(project.id);
+      const basicAuthUsers = await basicAuthUsersValue(project.id);
       const composeYaml = renderCompose({
         name,
         image,
@@ -641,6 +654,7 @@ async function runDeployment(depId: string): Promise<void> {
         slug,
         routes: routeDomains,
         env,
+        basicAuthUsers,
         // A prebuilt image is deployed as-is — never inject PORT and override the
         // listen address its author baked in. Built sources (git/upload/dockerfile/
         // dev-workspace) DO get PORT so 12-factor apps bind where Traefik forwards.
@@ -913,6 +927,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   // of any row this used to create.
 
   const filesDir = composeFilesDir(slug);
+  const basicAuthUsers = await basicAuthUsersValue(project.id);
   const stackYaml = buildComposeStack({
     compose: project.compose ?? "",
     name,
@@ -920,6 +935,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
     projectId: project.id,
     domainRoutes,
     filesDir,
+    basicAuthUsers,
   });
   return { stackYaml, filesDir };
 }
@@ -1190,7 +1206,14 @@ export async function rerouteProject(
   const serverId = await owningServerIdForSlug(slug);
   if (!serverId) return "deferred"; // no owning agent (server removed); nothing to do
 
-  const routes = await routableRoutes(projectId);
+  // Route exactly what a production DEPLOY would: every valid domain (primary
+  // first) PLUS the pending primary as a fallback. Using routableForDeploy (not
+  // bare routableRoutes) is what lets a freshly-ADDED primary domain take effect
+  // on a Reload without a full redeploy — its row may not be `valid` yet, but the
+  // deploy would still route it, so Reload must too. Empty ⇒ the project has no
+  // domain at all (never resurrected): nothing to write, leave it deferred.
+  const primary = await primaryDomainName(projectId);
+  const routes = await routableForDeploy(projectId, "production", primary);
   if (routes.length === 0) return "deferred"; // never write an empty Host() rule
 
   const hasCompose = Boolean(project.compose && project.compose.trim());
@@ -1218,6 +1241,7 @@ export async function rerouteProject(
         // domain → its named compose service.
         domainRoutes: routes,
         filesDir: composeFilesDir(slug),
+        basicAuthUsers: await basicAuthUsersValue(projectId),
       });
       mounts = (project.mounts ?? []).map((m) => ({
         path: m.filePath,
@@ -1234,6 +1258,7 @@ export async function rerouteProject(
       // project.volumes — so a domain-only reroute keeps the running mounts and
       // never silently applies a volume edit the user hasn't redeployed.
       const volumes = readStackVolumesFromYaml(current.yaml, name);
+      const basicAuthUsers = await basicAuthUsersValue(projectId);
       rendered = renderCompose({
         name,
         image,
@@ -1242,6 +1267,7 @@ export async function rerouteProject(
         slug,
         routes,
         env,
+        basicAuthUsers,
         // Mirror the deploy path: a prebuilt image never carries an injected PORT,
         // so a domain-only reroute must not add one (it would diverge from the
         // running stack and force a needless container restart).
@@ -1315,6 +1341,7 @@ export async function renderProjectStack(
       projectId,
       domainRoutes,
       filesDir: composeFilesDir(slug),
+      basicAuthUsers: await basicAuthUsersValue(projectId),
     });
   }
 

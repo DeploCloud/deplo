@@ -81,6 +81,17 @@ export interface RouterLabelOptions {
    * routes are grouped by effective port under `baseKey` (the single-image path).
    */
   perRouteKey?: (route: RouterRoute) => string;
+  /**
+   * Project-wide HTTP Basic Auth. When set, a generated Traefik `basicauth`
+   * middleware named `<name>` is DEFINED once (`traefik.http.middlewares.<name>.
+   * basicauth.users=<users>`) and PREPENDED to every route's middleware chain, so
+   * the credential gates ALL of the project's hostnames. `users` is the raw
+   * htpasswd list (`user:$apr1$…,user2:$apr1$…`) with single `$` — the caller is
+   * responsible for any docker-compose `$`→`$$` escaping of the EMITTED labels (a
+   * single-image stack embeds them in a YAML label; a compose stack does too).
+   * Absent ⇒ no middleware label and no chain change (byte-identical output).
+   */
+  basicAuth?: { name: string; users: string };
 }
 
 /**
@@ -122,8 +133,26 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
     labels.push(`traefik.docker.network=${opts.dockerNetwork}`);
   }
 
+  // Project-wide Basic Auth: DEFINE the generated middleware once, then prepend
+  // its name to every route's chain so it gates ALL hostnames. The `$` in the
+  // htpasswd hashes is doubled to `$$` — these labels are embedded in a
+  // docker-compose YAML, which treats a single `$` as variable interpolation and
+  // would corrupt the hash. Absent ⇒ this whole block is skipped, so a project
+  // with no basic-auth users renders byte-identically to before.
+  let routes = opts.routes;
+  if (opts.basicAuth && opts.basicAuth.users) {
+    const { name, users } = opts.basicAuth;
+    labels.push(
+      `traefik.http.middlewares.${name}.basicauth.users=${users.replace(/\$/g, "$$$$")}`,
+    );
+    routes = opts.routes.map((r) => ({
+      ...r,
+      middlewares: [name, ...(r.middlewares ?? [])],
+    }));
+  }
+
   if (opts.perRouteKey) {
-    for (const route of opts.routes) {
+    for (const route of routes) {
       const key = opts.perRouteKey(route);
       labels.push(...routerBlock(key, [route.name], resolveTls(route, opts), true));
     }
@@ -136,7 +165,7 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
   // own router — that's what lets one container serve some hosts over HTTPS and
   // others as plain HTTP, or via different ACME resolvers.
   const groups = new Map<string, { sig: RouterSig; hosts: string[] }>();
-  for (const r of opts.routes) {
+  for (const r of routes) {
     const sig = resolveTls(r, opts);
     const id = sigId(sig);
     const g = groups.get(id) ?? { sig, hosts: [] };

@@ -13,7 +13,7 @@ import {
   Activity,
   Play,
   Square,
-  Hammer,
+  RefreshCw,
   Loader2,
   FolderInput,
 } from "lucide-react";
@@ -141,8 +141,8 @@ export function ProjectCard({
     });
   }
 
-  // Lifecycle verbs (start/stop/rebuild) all take a single `id` argument and
-  // share the same optimistic-refresh shape.
+  // Lifecycle verbs (start/stop) all take a single `id` argument and share the
+  // same optimistic-refresh shape.
   function act(mutation: string, success: string) {
     startTransition(async () => {
       const res = await gqlAction(mutation, { id: project.id });
@@ -150,6 +150,30 @@ export function ProjectCard({
         toast.success(success);
         router.refresh();
       } else toast.error(res.error);
+    });
+  }
+
+  // Reload re-applies routing (domains + basic auth) to the running container
+  // with no rebuild; the mutation returns a status string we turn into a toast.
+  function reload() {
+    startTransition(async () => {
+      const res = await gqlAction<{ reloadProject: string | null }, string>(
+        `mutation($id: String!) { reloadProject(id: $id) }`,
+        { id: project.id },
+        (d) => d.reloadProject ?? "",
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(
+        res.data === "rerouted"
+          ? "Routing reloaded"
+          : res.data === "unchanged"
+            ? "Already up to date"
+            : "Saved — applies on the next deploy",
+      );
+      router.refresh();
     });
   }
 
@@ -209,17 +233,12 @@ export function ProjectCard({
         </K.Item>
       )}
       <K.Item
-        onSelect={() =>
-          act(
-            `mutation($id: String!) { rebuildProject(id: $id) { id } }`,
-            "Rebuild started",
-          )
-        }
+        onSelect={reload}
         disabled={pending}
-        title="Rebuild the image from the current source and redeploy"
+        title="Re-apply domains and basic auth to the running container — no rebuild"
       >
-        <Hammer className="size-4" />
-        Rebuild
+        <RefreshCw className="size-4" />
+        Reload
       </K.Item>
       <K.Item
         onSelect={redeploy}

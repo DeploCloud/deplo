@@ -32,6 +32,7 @@ import {
   getDeployment,
   getLogs,
   redeploy,
+  reloadProject as reapplyRouting,
   cancelDeployment,
   promoteToProduction,
 } from "@/lib/data/deployments";
@@ -493,6 +494,14 @@ builder.mutationFields((t) => ({
       await rebuildProject(id);
       return reloadProject(id);
     },
+  }),
+  reloadProject: t.field({
+    type: "String",
+    authScopes: { capability: "deploy" },
+    description:
+      "Re-apply the project's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => reapplyRouting(id),
   }),
   deleteProject: t.field({
     type: "Boolean",

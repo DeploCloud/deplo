@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getProjectBySlug } from "@/lib/data/projects";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
+import { listBasicAuthUsers } from "@/lib/data/basic-auth";
 import { BuildSettingsForm } from "@/components/projects/build-settings-form";
 
 export const metadata = { title: "Project Settings" };
@@ -19,6 +20,7 @@ export default async function ProjectSettingsPage(
     type: s.type,
   }));
   const installations = await listGithubInstallations();
+  const basicAuthUsers = await listBasicAuthUsers(project.id);
 
   return (
     <BuildSettingsForm
@@ -46,6 +48,7 @@ export default async function ProjectSettingsPage(
       volumes={project.volumes ?? []}
       serverId={project.serverId}
       servers={servers}
+      basicAuthUsers={basicAuthUsers}
     />
   );
 }

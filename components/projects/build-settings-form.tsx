@@ -56,6 +56,10 @@ import {
   applyFrameworkToBuild,
 } from "@/components/projects/build-config-fields";
 import { VolumeFields } from "@/components/projects/volume-fields";
+import {
+  BasicAuthManager,
+  type BasicAuthUserDTO,
+} from "@/components/projects/basic-auth-manager";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 import type {
   BuildConfig,
@@ -104,6 +108,7 @@ export function BuildSettingsForm({
   serverId: initialServerId,
   servers,
   installations,
+  basicAuthUsers,
 }: {
   projectId: string;
   slug: string;
@@ -121,6 +126,7 @@ export function BuildSettingsForm({
   serverId: string;
   servers: SettingsServer[];
   installations: GithubInstallationDTO[];
+  basicAuthUsers: BasicAuthUserDTO[];
 }) {
   const router = useRouter();
   const [name, setName] = React.useState(initialName);
@@ -784,6 +790,9 @@ export function BuildSettingsForm({
           </div>
         </CardContent>
       </Card>
+
+      {/* HTTP Basic Auth — gates every domain of the project */}
+      <BasicAuthManager projectId={projectId} users={basicAuthUsers} />
 
       {/* Danger zone */}
       <Card className="border-destructive/40">

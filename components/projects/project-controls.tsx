@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Play, Square, Hammer, Loader2 } from "lucide-react";
+import { Play, Square, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
 import { useLiveStatus } from "@/components/projects/project-live-status";
@@ -37,6 +37,32 @@ export function ProjectControls({
       } else {
         toast.error(res.error);
       }
+    });
+  }
+
+  // Reload re-applies the project's routing (domains + basic auth) to the running
+  // container WITHOUT a rebuild. The mutation returns a status string we turn
+  // into an honest toast — "deferred" means nothing was running to reroute.
+  function reload() {
+    startTransition(async () => {
+      const res = await gqlAction<{ reloadProject: string | null }, string>(
+        `mutation($id: String!) { reloadProject(id: $id) }`,
+        { id: projectId },
+        (d) => d.reloadProject ?? "",
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      const status = res.data;
+      toast.success(
+        status === "rerouted"
+          ? "Routing reloaded"
+          : status === "unchanged"
+            ? "Already up to date"
+            : "Saved — applies on the next deploy",
+      );
+      router.refresh();
     });
   }
 
@@ -83,16 +109,12 @@ export function ProjectControls({
       <Button
         variant="outline"
         size="sm"
-        onClick={() =>
-          act(
-            `mutation($id: String!) { rebuildProject(id: $id) { id } }`,
-            "Rebuild started",
-          )
-        }
+        onClick={reload}
         disabled={pending}
+        title="Re-apply domains and basic auth to the running container — no rebuild"
       >
-        <Hammer className="size-4" />
-        Rebuild
+        <RefreshCw className="size-4" />
+        Reload
       </Button>
     </>
   );

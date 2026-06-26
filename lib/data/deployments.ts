@@ -11,7 +11,7 @@ import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
-import { startDeployment, destroyStack } from "../deploy/build";
+import { startDeployment, destroyStack, rerouteProject } from "../deploy/build";
 import {
   loadDeployment,
   loadDeploymentsForProject,
@@ -75,6 +75,32 @@ export async function getLogs(deploymentId: string): Promise<LogLine[]> {
   if (!dep) return [];
   if (!(await projectInTeam(dep.projectId, teamId))) return [];
   return loadDeploymentLogs(deploymentId);
+}
+
+/**
+ * Re-apply a project's routing to its already-running stack — no rebuild, no
+ * redeploy. Re-renders the on-disk stack with the project's CURRENT domains
+ * (primary first) and basic-auth, then `docker compose up -d` recreates only the
+ * routed service in place so the new Traefik labels take effect in seconds. This
+ * is the "Reload" action that replaced "Rebuild" for routing-only changes
+ * (added/removed/primary-switched domains, basic-auth edits) — far cheaper than a
+ * full image rebuild. The outcome the caller surfaces:
+ *  - "rerouted"  — routing was re-applied to the running container
+ *  - "unchanged" — labels already matched; nothing to do
+ *  - "deferred"  — saved, but it applies on the next deploy/start (the project
+ *                  isn't active, was never deployed, or has no domain)
+ */
+export async function reloadProject(
+  projectId: string,
+): Promise<"rerouted" | "unchanged" | "deferred"> {
+  const { membership } = await requireCapability("deploy");
+  const user = (await getCurrentUser())!;
+  if (!(await projectInTeam(projectId, membership.teamId)))
+    throw new Error("Project not found");
+  const result = await rerouteProject(projectId);
+  if (result === "rerouted")
+    await recordActivity("project", `Reloaded routing`, user.name, projectId);
+  return result;
 }
 
 /** Trigger a fresh production build + deploy of the latest commit. */

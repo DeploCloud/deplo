@@ -73,6 +73,14 @@ export interface ComposeStackInput {
    * rewritten to `<filesDir>/<x>` so each project's config files stay isolated.
    */
   filesDir?: string;
+  /**
+   * Project-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
+   * single-`$`). When non-empty, a generated `basicauth` middleware is defined
+   * and prepended to EVERY router's chain so all of the stack's routed hostnames
+   * are gated. Empty/absent ⇒ no middleware (byte-identical to a stack without
+   * basic auth). The `$`→`$$` compose escaping happens inside the router grammar.
+   */
+  basicAuthUsers?: string;
 }
 
 type Service = Record<string, unknown>;
@@ -164,8 +172,11 @@ function traefikLabels(opts: {
   pathPrefix?: string;
   /** Strip the path prefix before forwarding (ignored without a path). */
   stripPrefix?: boolean;
+  /** Project-wide Basic Auth: a generated `basicauth` middleware (defined once
+   * and prepended to this router's chain). Absent ⇒ no auth. */
+  basicAuth?: { name: string; users: string };
 }): string[] {
-  const { router, domains, port, pathPrefix, stripPrefix } = opts;
+  const { router, domains, port, pathPrefix, stripPrefix, basicAuth } = opts;
   // One router named `router`, serving every host in `domains` on `port` (a
   // single OR-rule). Default grouping with all hosts at the default port folds
   // them into the one `baseKey` router — `alwaysService` forces the explicit
@@ -179,6 +190,7 @@ function traefikLabels(opts: {
     certResolver: certResolver(),
     dockerNetwork: NETWORK,
     alwaysService: true,
+    ...(basicAuth ? { basicAuth } : {}),
   });
 }
 
@@ -251,6 +263,12 @@ function serviceNetworks(svc: Service): string[] {
 
 export function buildComposeStack(input: ComposeStackInput): string {
   const { compose, name, slug, projectId, domainRoutes } = input;
+  // One generated basicauth middleware for the whole project, prepended to every
+  // router below so all routed hostnames are gated. Absent users ⇒ undefined, so
+  // the routers render byte-identically to a stack without basic auth.
+  const basicAuth = input.basicAuthUsers
+    ? { name: `${name}-basicauth`, users: input.basicAuthUsers }
+    : undefined;
 
   let doc: ComposeDoc;
   try {
@@ -332,6 +350,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
         port,
         pathPrefix: route.pathPrefix,
         stripPrefix: route.stripPrefix,
+        ...(basicAuth ? { basicAuth } : {}),
       }),
     );
   }

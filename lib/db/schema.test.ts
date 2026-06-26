@@ -83,6 +83,7 @@ const CONTROL_PLANE = [
   "instance_env_var_targets",
   "domains",
   "domain_middlewares",
+  "project_basic_auth_users",
   "dev_ssh_user",
   // data
   "databases",

@@ -90,6 +90,100 @@ export function agentCaSeed(): Buffer {
 }
 
 /* ------------------------------------------------------------------ */
+/* htpasswd (Apache MD5 / apr1) for Traefik basicauth                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Produce a `user:hash` htpasswd line for Traefik's `basicauth` middleware,
+ * using the Apache MD5 (`$apr1$`) scheme. Traefik accepts MD5/SHA1/bcrypt
+ * htpasswd hashes; `apr1` is chosen because it is self-contained in Node's
+ * `crypto` (no bcrypt dependency) and is the format `htpasswd` emits by default.
+ *
+ * The caller is responsible for any compose-level `$`→`$$` escaping — the hash
+ * contains literal `$` separators that docker-compose treats as variable
+ * interpolation, so a YAML-embedded label must double them. The returned string
+ * here is the RAW htpasswd line (single `$`), so it is correct for an env-file /
+ * dynamic-config consumer; the renderer escapes it for the label form.
+ */
+export function htpasswdLine(username: string, password: string): string {
+  return `${username}:${apr1(password, apr1Salt())}`;
+}
+
+/** A random 8-char salt from the apr1 alphabet (`./0-9A-Za-z`). */
+function apr1Salt(): string {
+  const alphabet =
+    "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  const raw = randomBytes(8);
+  let out = "";
+  for (let i = 0; i < 8; i++) out += alphabet[raw[i] % alphabet.length];
+  return out;
+}
+
+/**
+ * The Apache MD5 (`apr1`) password hash — a 1000-round MD5 construction. A faithful
+ * port of the canonical algorithm (apr_md5_encode / FreeBSD crypt-md5) so the
+ * output verifies against any standard htpasswd/Traefik basicauth consumer.
+ */
+function apr1(password: string, salt: string): string {
+  const magic = "$apr1$";
+  const pw = Buffer.from(password, "utf8");
+  const saltBuf = Buffer.from(salt, "utf8");
+
+  const md5 = (b: Buffer): Buffer => createHash("md5").update(b).digest();
+
+  // Initial digest: password + magic + salt + (digest of password+salt+password)
+  let ctx = Buffer.concat([pw, Buffer.from(magic), saltBuf]);
+  const inner = md5(Buffer.concat([pw, saltBuf, pw]));
+  for (let i = pw.length; i > 0; i -= 16) {
+    ctx = Buffer.concat([ctx, inner.subarray(0, Math.min(16, i))]);
+  }
+  // Bit-driven mixing of the password's first byte / a NUL.
+  for (let i = pw.length; i > 0; i >>= 1) {
+    ctx = Buffer.concat([
+      ctx,
+      (i & 1) === 1 ? Buffer.from([0]) : pw.subarray(0, 1),
+    ]);
+  }
+  let result = md5(ctx);
+
+  // 1000 strengthening rounds.
+  for (let i = 0; i < 1000; i++) {
+    let round = Buffer.alloc(0);
+    round = Buffer.concat([round, (i & 1) === 1 ? pw : result.subarray(0, 16)]);
+    if (i % 3 !== 0) round = Buffer.concat([round, saltBuf]);
+    if (i % 7 !== 0) round = Buffer.concat([round, pw]);
+    round = Buffer.concat([round, (i & 1) === 1 ? result.subarray(0, 16) : pw]);
+    result = md5(round);
+  }
+
+  return `${magic}${salt}$${apr1Encode(result)}`;
+}
+
+/** The custom base64 ("./0-9A-Za-z") interleaving apr1 uses for its 16-byte digest. */
+function apr1Encode(digest: Buffer): string {
+  const itoa64 =
+    "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  const to64 = (value: number, n: number): string => {
+    let v = value;
+    let s = "";
+    for (let i = 0; i < n; i++) {
+      s += itoa64[v & 0x3f];
+      v >>= 6;
+    }
+    return s;
+  };
+  // The fixed byte-triple ordering from the reference implementation.
+  let out = "";
+  out += to64((digest[0] << 16) | (digest[6] << 8) | digest[12], 4);
+  out += to64((digest[1] << 16) | (digest[7] << 8) | digest[13], 4);
+  out += to64((digest[2] << 16) | (digest[8] << 8) | digest[14], 4);
+  out += to64((digest[3] << 16) | (digest[9] << 8) | digest[15], 4);
+  out += to64((digest[4] << 16) | (digest[10] << 8) | digest[5], 4);
+  out += to64(digest[11], 2);
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
 /* Symmetric encryption for stored secrets (AES-256-GCM)              */
 /* ------------------------------------------------------------------ */
 

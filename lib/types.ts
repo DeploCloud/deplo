@@ -885,6 +885,26 @@ export interface Domain {
   createdAt: string;
 }
 
+/**
+ * An HTTP Basic Auth credential that protects EVERY domain of a project. When a
+ * project has one or more of these, the deploy/reroute renderers inject a
+ * generated Traefik `basicauth` middleware (built from all of them) at the head
+ * of every router's middleware chain, so all the project's hostnames sit behind
+ * the same browser login prompt. `passwordEnc` is the AES-GCM-encrypted password
+ * (reversible, like {@link EnvVar.valueEnc}) so the htpasswd line is re-derived
+ * on every render; it is write-only over the API and never returned to a client.
+ */
+export interface BasicAuthUser {
+  id: ID;
+  projectId: ID;
+  username: string;
+  /** AES-GCM-encrypted password. Reversible (re-hashed to htpasswd at render),
+   * write-only over the API. */
+  passwordEnc: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type DatabaseType =
   | "postgres"
   | "mysql"
