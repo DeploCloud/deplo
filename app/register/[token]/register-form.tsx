@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Rocket } from "lucide-react";
+import { Rocket, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -105,6 +105,20 @@ export function RegisterForm({
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
+          {/* Team already assigned (existing_teams link): show it as additional
+              info, not an input — the registrant can't change it. */}
+          {!ownTeam && teamNames.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+              <Users className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <p className="text-muted-foreground">
+                You&apos;ll be added to{" "}
+                <span className="font-medium text-foreground">
+                  {teamNames.join(", ")}
+                </span>{" "}
+                when you create your account.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="reg-username">Username</Label>
             <Input
@@ -120,7 +134,7 @@ export function RegisterForm({
               Your public handle. Lowercase letters, numbers, - and _.
             </p>
           </div>
-          {ownTeam ? (
+          {ownTeam && (
             <div className="space-y-2">
               <Label htmlFor="reg-team">Team name</Label>
               <Input
@@ -133,15 +147,6 @@ export function RegisterForm({
               <p className="text-xs text-muted-foreground">
                 Must be unique across the instance.
               </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label>Teams</Label>
-              <div className="rounded-lg border border-border p-3 text-sm">
-                You will join{" "}
-                <span className="font-medium">{teamNames.join(", ")}</span> when
-                you create your account.
-              </div>
             </div>
           )}
           <div className="space-y-2">

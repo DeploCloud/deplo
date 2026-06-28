@@ -744,6 +744,21 @@ export async function mintRegistrationLink(input: {
       if (a.role !== "member" && a.role !== "viewer")
         throw new Error("A new user can only join a team as a member or viewer");
     }
+    // The minting admin may only place a new user into teams THEY belong to — an
+    // instance admin is NOT implicitly a member of every team. The dialog only
+    // lists the viewer's teams, but the ids arrive from the client, so enforce
+    // it server-side (membership also implies the team still exists).
+    const me = await getCurrentUser();
+    if (!me) throw new Error("Not authenticated");
+    const myTeamRows = await getDb()
+      .select({ teamId: membershipsTable.teamId })
+      .from(membershipsTable)
+      .where(eq(membershipsTable.userId, me.id));
+    const myTeamIds = new Set(myTeamRows.map((r) => r.teamId));
+    for (const a of assignments) {
+      if (!myTeamIds.has(a.teamId))
+        throw new Error("You can only add new users to teams you belong to");
+    }
     const ids = assignments.map((a) => a.teamId);
     const found = await getDb()
       .select({ id: teamsTable.id })

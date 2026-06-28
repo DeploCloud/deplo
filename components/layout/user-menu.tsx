@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, Settings, User as UserIcon, LifeBuoy } from "lucide-react";
+import { LogOut, User as UserIcon, LifeBuoy } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,12 +58,6 @@ export function UserMenu({ user }: { user: PublicUser }) {
           <Link href="/settings/account" className="cursor-pointer">
             <UserIcon className="size-4" />
             Account
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/settings" className="cursor-pointer">
-            <Settings className="size-4" />
-            Team settings
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

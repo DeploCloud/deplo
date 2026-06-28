@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Copy, Users, UserCog } from "lucide-react";
+import { Copy } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -15,39 +15,45 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CapabilityPicker } from "@/components/settings/capability-picker";
 import { gqlAction } from "@/lib/graphql-client";
 import { capabilitiesForRole } from "@/lib/membership-shared";
 import type { Capability, Role } from "@/lib/types";
 
-type Mode = "own_team" | "existing_teams";
 type TeamOption = { id: string; name: string };
 type Assignment = { role: Role; capabilities: Capability[] };
 
 /**
  * Register a new instance user by minting a single-use registration link
- * (instance-admin only). The admin must first choose, up front, how the new
- * user's team is decided:
- *   • "Own team": the registrant names and owns a fresh team at registration
- *     (the first-run-style flow) — they ARE asked for a team name.
- *   • "Join existing teams": the admin assigns them to one or more existing
- *     teams now (role + capabilities each); the registrant is NOT asked for a
- *     team name, since the team(s) are already decided.
- * The choice is baked into the link and cannot be changed by the registrant.
+ * (instance-admin only). The admin optionally adds the new user to one or more
+ * of THEIR OWN teams (role + capabilities each); if none are selected the link
+ * is an "own team" link — the registrant names and owns a fresh team when they
+ * open it, like the first-run setup. There is no up-front mode choice anymore:
+ * the mode is derived from whether any team is selected.
+ *
+ * `pinActiveTeam` (default true) pre-selects the active team on open, so creating
+ * a user from a team's Members page defaults to adding them to that team without
+ * asking. The instance-wide Settings → Users panel opts out (no "current team"
+ * context there). Only the viewer's own teams are offered, and the server
+ * re-checks, so an admin can place a new user only into teams they belong to.
+ *
  * Controlled (no trigger of its own) so it can be opened from the Users settings
  * header, the overview "Add new" menu, or the Add-member modal.
  */
 export function RegisterUserDialog({
   open,
   onOpenChange,
+  pinActiveTeam = true,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  /** Pre-select the active team when the dialog opens (default true). */
+  pinActiveTeam?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [link, setLink] = React.useState<string | null>(null);
-  const [mode, setMode] = React.useState<Mode | null>(null);
   const [teams, setTeams] = React.useState<TeamOption[]>([]);
   const [teamsLoaded, setTeamsLoaded] = React.useState(false);
   const [loadingTeams, setLoadingTeams] = React.useState(false);
@@ -55,7 +61,6 @@ export function RegisterUserDialog({
 
   function reset() {
     setLink(null);
-    setMode(null);
     setAssign({});
     setTeams([]);
     setTeamsLoaded(false);
@@ -64,26 +69,43 @@ export function RegisterUserDialog({
   // Close from our own footer buttons. Flipping the controlled `open` prop does
   // NOT fire the Dialog's onOpenChange wrapper (Radix only fires it on internal
   // Esc/overlay/X), so we must reset here too — otherwise the next open reopens
-  // into the stale link/mode/teams instead of a fresh mandatory mode picker.
+  // into the stale link/teams instead of a fresh picker.
   function close() {
     onOpenChange(false);
     reset();
   }
 
-  // Lazily load the team roster the first time the admin picks existing_teams.
-  // All state writes happen inside the deferred timeout (never synchronously in
-  // the effect body) to avoid cascading renders.
+  // Load the admin's own teams the first time the dialog opens, and pre-select
+  // the active team unless the caller opted out. Only the viewer's teams are
+  // offered (the server re-checks membership on mint). All state writes are
+  // deferred to avoid cascading renders.
   React.useEffect(() => {
-    if (!open || mode !== "existing_teams" || teamsLoaded) return;
+    if (!open || teamsLoaded) return;
     let cancelled = false;
     const t = setTimeout(async () => {
       if (!cancelled) setLoadingTeams(true);
       const res = await gqlAction<
-        { allTeamsForAdmin: TeamOption[] },
-        TeamOption[]
-      >(`query { allTeamsForAdmin { id name } }`, {}, (d) => d.allTeamsForAdmin);
+        { myTeams: TeamOption[]; viewerTeam: { id: string } | null },
+        { myTeams: TeamOption[]; activeTeamId: string | null }
+      >(
+        `query { myTeams { id name } viewerTeam { id } }`,
+        {},
+        (d) => ({ myTeams: d.myTeams, activeTeamId: d.viewerTeam?.id ?? null }),
+      );
       if (cancelled) return;
-      setTeams(res.ok && res.data ? res.data : []);
+      const myTeams = res.ok && res.data ? res.data.myTeams : [];
+      const activeId = res.ok && res.data ? res.data.activeTeamId : null;
+      setTeams(myTeams);
+      // Default the selection to the active team (the one we're creating the
+      // user "inside"), when the viewer actually belongs to it.
+      if (pinActiveTeam && activeId && myTeams.some((tm) => tm.id === activeId)) {
+        setAssign({
+          [activeId]: {
+            role: "member",
+            capabilities: capabilitiesForRole("member"),
+          },
+        });
+      }
       setTeamsLoaded(true);
       setLoadingTeams(false);
       if (!res.ok) toast.error(res.error);
@@ -92,36 +114,38 @@ export function RegisterUserDialog({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [open, mode, teamsLoaded]);
+  }, [open, teamsLoaded, pinActiveTeam]);
 
   function toggleTeam(id: string, on: boolean) {
     setAssign((prev) => {
       const next = { ...prev };
       if (on)
-        next[id] = { role: "member", capabilities: capabilitiesForRole("member") };
+        next[id] = {
+          role: "member",
+          capabilities: capabilitiesForRole("member"),
+        };
       else delete next[id];
       return next;
     });
   }
 
   const selectedCount = Object.keys(assign).length;
-  const canGenerate =
-    mode === "own_team" || (mode === "existing_teams" && selectedCount > 0);
 
   function mint() {
-    if (!mode) return;
     startTransition(async () => {
+      // No team selected ⇒ an "own team" link (the registrant creates their own
+      // team). One or more ⇒ an "existing_teams" link pre-assigning them.
       const input =
-        mode === "existing_teams"
+        selectedCount > 0
           ? {
-              mode,
+              mode: "existing_teams" as const,
               teamAssignments: Object.entries(assign).map(([teamId, a]) => ({
                 teamId,
                 role: a.role,
                 capabilities: a.capabilities,
               })),
             }
-          : { mode };
+          : { mode: "own_team" as const };
       const res = await gqlAction<
         { mintRegistrationLink: string },
         { link: string }
@@ -160,8 +184,8 @@ export function RegisterUserDialog({
         <DialogHeader>
           <DialogTitle>Register a new user</DialogTitle>
           <DialogDescription>
-            Generate a single-use link. First choose whether the new user gets
-            their own team or joins existing ones.
+            Generate a single-use link. Optionally add them to one of your teams
+            — or leave none and they&apos;ll create their own.
           </DialogDescription>
         </DialogHeader>
 
@@ -183,85 +207,71 @@ export function RegisterUserDialog({
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <ModeCard
-                active={mode === "own_team"}
-                onClick={() => setMode("own_team")}
-                icon={<UserCog className="size-4" />}
-                title="Own team"
-                desc="They name and own a new team when they register."
-              />
-              <ModeCard
-                active={mode === "existing_teams"}
-                onClick={() => setMode("existing_teams")}
-                icon={<Users className="size-4" />}
-                title="Join existing teams"
-                desc="Assign them to one or more existing teams now."
-              />
-            </div>
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Add to your teams (optional)</p>
 
-            {mode === "own_team" && (
-              <p className="text-sm text-muted-foreground">
-                When they open the link they create their own team and become its
-                owner — like the first-run setup.
-              </p>
-            )}
+            {loadingTeams &&
+              [0, 1].map((i) => (
+                <div key={i} className="rounded-lg border border-border p-3">
+                  <div className="flex items-center gap-2">
+                    <Skeleton shimmer className="size-4 rounded" />
+                    <Skeleton shimmer className="h-4 w-32 rounded" />
+                  </div>
+                </div>
+              ))}
 
-            {mode === "existing_teams" && (
-              <div className="space-y-3">
-                {loadingTeams && (
-                  <p className="text-sm text-muted-foreground">Loading teams…</p>
-                )}
-                {!loadingTeams && teams.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    No teams exist yet.
-                  </p>
-                )}
-                {teams.map((tm) => {
-                  const a = assign[tm.id];
-                  return (
-                    <div
-                      key={tm.id}
-                      className="rounded-lg border border-border p-3"
+            {!loadingTeams &&
+              teams.map((tm) => {
+                const a = assign[tm.id];
+                return (
+                  <div
+                    key={tm.id}
+                    className="rounded-lg border border-border p-3"
+                  >
+                    <label
+                      htmlFor={`regteam-${tm.id}`}
+                      className="flex cursor-pointer items-center gap-2"
                     >
-                      <label
-                        htmlFor={`regteam-${tm.id}`}
-                        className="flex cursor-pointer items-center gap-2"
-                      >
-                        <Checkbox
-                          id={`regteam-${tm.id}`}
-                          checked={!!a}
-                          onCheckedChange={(v) => toggleTeam(tm.id, v === true)}
+                      <Checkbox
+                        id={`regteam-${tm.id}`}
+                        checked={!!a}
+                        onCheckedChange={(v) => toggleTeam(tm.id, v === true)}
+                      />
+                      <span className="text-sm font-medium">{tm.name}</span>
+                    </label>
+                    {a && (
+                      <div className="mt-3">
+                        <CapabilityPicker
+                          role={a.role}
+                          capabilities={a.capabilities}
+                          availableRoles={["member", "viewer"]}
+                          onRoleChange={(role) =>
+                            setAssign((p) => ({
+                              ...p,
+                              [tm.id]: { ...p[tm.id], role },
+                            }))
+                          }
+                          onCapabilitiesChange={(capabilities) =>
+                            setAssign((p) => ({
+                              ...p,
+                              [tm.id]: { ...p[tm.id], capabilities },
+                            }))
+                          }
+                          idPrefix={`regteam-${tm.id}`}
                         />
-                        <span className="text-sm font-medium">{tm.name}</span>
-                      </label>
-                      {a && (
-                        <div className="mt-3">
-                          <CapabilityPicker
-                            role={a.role}
-                            capabilities={a.capabilities}
-                            availableRoles={["member", "viewer"]}
-                            onRoleChange={(role) =>
-                              setAssign((p) => ({
-                                ...p,
-                                [tm.id]: { ...p[tm.id], role },
-                              }))
-                            }
-                            onCapabilitiesChange={(capabilities) =>
-                              setAssign((p) => ({
-                                ...p,
-                                [tm.id]: { ...p[tm.id], capabilities },
-                              }))
-                            }
-                            idPrefix={`regteam-${tm.id}`}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+            {/* "faglielo notare se non seleziona nulla" — make the own-team
+                outcome explicit whenever no team is selected. */}
+            {!loadingTeams && teamsLoaded && selectedCount === 0 && (
+              <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+                No team selected — the new user will create and own their own team
+                when they open the link.
+              </p>
             )}
           </div>
         )}
@@ -271,42 +281,12 @@ export function RegisterUserDialog({
             {link ? "Done" : "Cancel"}
           </Button>
           {!link && (
-            <Button onClick={mint} disabled={pending || !canGenerate}>
+            <Button onClick={mint} disabled={pending || loadingTeams}>
               {pending ? "Generating…" : "Generate link"}
             </Button>
           )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function ModeCard({
-  active,
-  onClick,
-  icon,
-  title,
-  desc,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors ${
-        active ? "border-primary bg-accent" : "border-border hover:bg-accent"
-      }`}
-    >
-      <span className="flex items-center gap-2 text-sm font-medium">
-        {icon}
-        {title}
-      </span>
-      <span className="text-xs text-muted-foreground">{desc}</span>
-    </button>
   );
 }

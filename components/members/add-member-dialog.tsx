@@ -15,6 +15,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CapabilityPicker } from "@/components/settings/capability-picker";
 import { gqlAction } from "@/lib/graphql-client";
 import { capabilitiesForRole } from "@/lib/membership-shared";
@@ -154,9 +155,20 @@ export function AddMemberDialog({
             {/* Shows ~3 rows (the most recent users) and scrolls for the rest. */}
             <div className="min-h-24 max-h-44 space-y-1 overflow-y-auto">
               {searching && (
-                <p className="px-1 py-2 text-sm text-muted-foreground">
-                  Searching…
-                </p>
+                <div className="space-y-1" aria-hidden>
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 px-2 py-2"
+                    >
+                      <Skeleton shimmer className="size-8 shrink-0 rounded-full" />
+                      <div className="flex flex-1 flex-col gap-1.5">
+                        <Skeleton shimmer className="h-3.5 w-28 rounded" />
+                        <Skeleton shimmer className="h-3 w-20 rounded" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
               {!searching && results.length === 0 && (
                 <p className="px-1 py-2 text-sm text-muted-foreground">
