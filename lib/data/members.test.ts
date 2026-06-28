@@ -21,6 +21,7 @@ import {
 import {
   addExistingMember,
   listMembers,
+  mintRegistrationLink,
   removeMember,
   updateMember,
   updateUserAdmin,
@@ -57,6 +58,23 @@ beforeEach(async () => {
 
 const asOwner = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+
+test("mintRegistrationLink refuses an owner role for an existing-teams assignment", async () => {
+  await seedIdentity(db); // USER_1 is an instance admin (owner of TEAM_A)
+  // The server must mirror the UI's member/viewer-only restriction even when the
+  // role arrives from a hand-crafted request — an injected owner would be
+  // immutable/unremovable. The guard throws before any DB write.
+  await assert.rejects(
+    () =>
+      asOwner(() =>
+        mintRegistrationLink({
+          mode: "existing_teams",
+          teamAssignments: [{ teamId: TEAM_A, role: "owner", capabilities: [] }],
+        }),
+      ),
+    /member or viewer/,
+  );
+});
 
 test("addExistingMember adds a user with caps; double-add is rejected", async () => {
   await seedIdentity(db, {

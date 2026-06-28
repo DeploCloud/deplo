@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Search, Check } from "lucide-react";
+import { Search, Check, UserPlus, ChevronRight } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -29,9 +29,15 @@ import type { UserSearchResult } from "@/lib/data/members";
 export function AddMemberDialog({
   open,
   onOpenChange,
+  canCreateUser = false,
+  onCreateUser,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  /** Show the "create a new user" shortcut (instance admins only). */
+  canCreateUser?: boolean;
+  /** Called after closing this dialog, to open the create-user dialog. */
+  onCreateUser?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -145,7 +151,8 @@ export function AddMemberDialog({
                 autoFocus
               />
             </div>
-            <div className="min-h-24 max-h-72 space-y-1 overflow-y-auto">
+            {/* Shows ~3 rows (the most recent users) and scrolls for the rest. */}
+            <div className="min-h-24 max-h-44 space-y-1 overflow-y-auto">
               {searching && (
                 <p className="px-1 py-2 text-sm text-muted-foreground">
                   Searching…
@@ -182,6 +189,37 @@ export function AddMemberDialog({
                 </button>
               ))}
             </div>
+            {canCreateUser && (
+              <div className="space-y-3 pt-1">
+                <div className="flex items-center gap-3">
+                  <span className="h-px flex-1 bg-border" />
+                  <span className="text-xs text-muted-foreground">
+                    not registered yet?
+                  </span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenChange(false);
+                    reset();
+                    onCreateUser?.();
+                  }}
+                  className="group flex w-full cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-accent"
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+                    <UserPlus className="size-4" />
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium">Create a new user</span>
+                    <span className="text-xs text-muted-foreground">
+                      Register someone who isn&apos;t on Deplo yet
+                    </span>
+                  </span>
+                  <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -223,7 +261,10 @@ export function AddMemberDialog({
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => {
+              onOpenChange(false);
+              reset();
+            }}
             disabled={pending}
           >
             Cancel

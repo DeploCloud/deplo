@@ -29,6 +29,12 @@ const RegistrationLinkStatusEnum = builder.enumType("RegistrationLinkStatus", {
   values: ["pending", "used", "revoked"] as const,
 });
 
+// How a registration link decides the registrant's team(s): own_team (name +
+// own a fresh team) or existing_teams (admin pre-assigned to existing teams).
+const RegistrationModeEnum = builder.enumType("RegistrationMode", {
+  values: ["own_team", "existing_teams"] as const,
+});
+
 /* ------------------------------------------------------------------ */
 /* Object types                                                        */
 /* ------------------------------------------------------------------ */
@@ -131,13 +137,16 @@ export const UserDetailRef = builder
 export const RegistrationLinkRef = builder
   .objectRef<RegistrationLinkDTO>("RegistrationLink")
   .implement({
-    description: "A single-use link to register a new account + owner team.",
+    description: "A single-use link to register a new account.",
     fields: (t) => ({
       id: t.exposeID("id"),
       status: t.field({
         type: RegistrationLinkStatusEnum,
         resolve: (l) => l.status,
       }),
+      mode: t.field({ type: RegistrationModeEnum, resolve: (l) => l.mode }),
+      // For existing_teams links: the names of the assigned teams (else empty).
+      teamNames: t.field({ type: ["String"], resolve: (l) => l.teamNames }),
       createdBy: t.exposeString("createdBy"),
       usedByUsername: t.exposeString("usedByUsername", { nullable: true }),
       expiresAt: t.exposeString("expiresAt"),
@@ -177,6 +186,33 @@ const UpdateUserAdminInputType = builder.inputType("UpdateUserAdminInput", {
     newPassword: t.string({ required: false }),
   }),
 });
+
+// One existing team a new user is pre-assigned to, with their role + (optional)
+// fine-tuned capabilities. Used only when minting an `existing_teams` link.
+const RegistrationTeamAssignmentInput = builder.inputType(
+  "RegistrationTeamAssignmentInput",
+  {
+    fields: (t) => ({
+      teamId: t.string({ required: true }),
+      role: t.field({ type: RoleEnum, required: true }),
+      capabilities: t.field({ type: [CapabilityEnum], required: false }),
+    }),
+  },
+);
+
+const MintRegistrationLinkInputType = builder.inputType(
+  "MintRegistrationLinkInput",
+  {
+    fields: (t) => ({
+      mode: t.field({ type: RegistrationModeEnum, required: true }),
+      // Required + non-empty iff mode is existing_teams; ignored for own_team.
+      teamAssignments: t.field({
+        type: [RegistrationTeamAssignmentInput],
+        required: false,
+      }),
+    }),
+  },
+);
 
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
@@ -264,8 +300,17 @@ builder.mutationFields((t) => ({
     authScopes: { instanceAdmin: true },
     description:
       "Mint a single-use registration link. Returns the absolute /register URL.",
-    resolve: async () => {
-      const { link } = await mintRegistrationLink();
+    args: { input: t.arg({ type: MintRegistrationLinkInputType, required: true }) },
+    resolve: async (_r, { input }) => {
+      const { link } = await mintRegistrationLink({
+        mode: input.mode,
+        teamAssignments:
+          input.teamAssignments?.map((a) => ({
+            teamId: a.teamId,
+            role: a.role,
+            capabilities: (a.capabilities ?? undefined) as never,
+          })) ?? undefined,
+      });
       return link;
     },
   }),

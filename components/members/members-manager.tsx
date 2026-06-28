@@ -38,6 +38,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CapabilityPicker } from "@/components/settings/capability-picker";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
+import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import type { Capability, Role } from "@/lib/types";
 import type { MemberDTO } from "@/lib/data/members";
@@ -66,12 +67,16 @@ export function MembersManager({
   members,
   currentUserId,
   canManage,
+  isAdmin = false,
 }: {
   members: MemberDTO[];
   currentUserId: string;
   canManage: boolean;
+  /** Instance admin: can create a brand-new user from the add-member modal. */
+  isAdmin?: boolean;
 }) {
   const [addOpen, setAddOpen] = React.useState(false);
+  const [userOpen, setUserOpen] = React.useState(false);
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
@@ -88,7 +93,15 @@ export function MembersManager({
               <UserPlus className="size-4" />
               Add member
             </Button>
-            <AddMemberDialog open={addOpen} onOpenChange={setAddOpen} />
+            <AddMemberDialog
+              open={addOpen}
+              onOpenChange={setAddOpen}
+              canCreateUser={isAdmin}
+              onCreateUser={() => setUserOpen(true)}
+            />
+            {isAdmin && (
+              <RegisterUserDialog open={userOpen} onOpenChange={setUserOpen} />
+            )}
           </>
         )}
       </CardHeader>

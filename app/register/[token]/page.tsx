@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { isRegistrationTokenValid } from "@/lib/data/members";
+import { getRegistrationLinkInfo } from "@/lib/data/members";
 import { DeploLogo } from "@/components/logo";
 import { RegisterForm } from "./register-form";
 
@@ -9,7 +9,7 @@ export default async function RegisterPage(props: {
   params: Promise<{ token: string }>;
 }) {
   const { token } = await props.params;
-  const valid = await isRegistrationTokenValid(token);
+  const info = await getRegistrationLinkInfo(token);
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center px-4">
@@ -21,8 +21,12 @@ export default async function RegisterPage(props: {
           </Link>
         </div>
 
-        {valid ? (
-          <RegisterForm token={token} />
+        {info.valid ? (
+          <RegisterForm
+            token={token}
+            mode={info.mode}
+            teamNames={info.teamNames}
+          />
         ) : (
           <div className="rounded-xl border border-border bg-card p-6 text-center">
             <h1 className="text-lg font-semibold">Link not valid</h1>

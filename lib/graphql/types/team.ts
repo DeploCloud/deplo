@@ -3,6 +3,7 @@ import {
   getTeam,
   listMyTeams,
   listAllTeams,
+  listAllTeamsForAdmin,
   updateTeam,
   createTeam,
   switchTeam,
@@ -87,6 +88,13 @@ builder.queryFields((t) => ({
     description:
       "Every team in the instance, for the server team-access picker. Requires manage_infra.",
     resolve: () => listAllTeams(),
+  }),
+  allTeamsForAdmin: t.field({
+    type: [TeamRef],
+    authScopes: { instanceAdmin: true },
+    description:
+      "Every team in the instance, for the instance-admin registration-link team picker.",
+    resolve: () => listAllTeamsForAdmin(),
   }),
 }));
 

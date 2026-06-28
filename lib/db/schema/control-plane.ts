@@ -240,6 +240,11 @@ export const registrationLinks = pgTable(
     id: text("id").primaryKey(),
     tokenHash: text("token_hash").notNull(),
     status: text("status").notNull(),
+    // How the registrant's team is decided: 'own_team' (they name + own a fresh
+    // team at registration, the historical behavior) or 'existing_teams' (an
+    // admin pre-assigned them to existing teams — see registration_link_teams).
+    // Defaults to 'own_team' so links minted before this column keep working.
+    mode: text("mode").notNull().default("own_team"),
     createdBy: text("created_by").notNull(),
     usedByUsername: text("used_by_username"),
     expiresAt: isoTimestamptz("expires_at").notNull(),
@@ -247,6 +252,43 @@ export const registrationLinks = pgTable(
     usedAt: isoTimestamptz("used_at"),
   },
   (t) => [uniqueIndex("registration_links_token_hash_uq").on(t.tokenHash)],
+);
+
+/**
+ * The teams an `existing_teams` registration link pre-assigns its registrant to,
+ * one row per team with the role they'll receive. `team_id` cascades on team
+ * delete, so a team removed before the link is used simply drops out of the
+ * assignment (the consume path treats "no teams left" as the link being spent).
+ * Mirrors the `invites` + `invite_capabilities` shape.
+ */
+export const registrationLinkTeams = pgTable(
+  "registration_link_teams",
+  {
+    id: text("id").primaryKey(),
+    linkId: text("link_id")
+      .notNull()
+      .references(() => registrationLinks.id, { onDelete: "cascade" }),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+  },
+  (t) => [
+    uniqueIndex("registration_link_teams_link_team_uq").on(t.linkId, t.teamId),
+    index("registration_link_teams_link_idx").on(t.linkId),
+  ],
+);
+
+/** [registrationLinkTeams.capabilities] → junction. Mirrors invite_capabilities. */
+export const registrationLinkTeamCapabilities = pgTable(
+  "registration_link_team_capabilities",
+  {
+    linkTeamId: text("link_team_id")
+      .notNull()
+      .references(() => registrationLinkTeams.id, { onDelete: "cascade" }),
+    capability: text("capability").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.linkTeamId, t.capability] })],
 );
 
 /* ================================================================== */

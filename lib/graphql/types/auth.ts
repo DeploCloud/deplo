@@ -7,10 +7,15 @@ import {
   logout,
   completeSetup,
   createAccountWithTeam,
+  createAccountWithTeams,
   startSessionFor,
 } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/auth";
-import { consumeRegistrationLink } from "@/lib/data/members";
+import {
+  consumeRegistrationLink,
+  getRegistrationLinkInfo,
+  getRegistrationLinkAssignments,
+} from "@/lib/data/members";
 import { normalizeUsername, validateUsername } from "@/lib/username";
 import { rateLimit } from "@/lib/security";
 
@@ -80,7 +85,10 @@ const registerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80),
   email: z.string().email(),
   password: z.string().min(8).max(200),
-  teamName: z.string().min(1).max(80),
+  // Optional: only own_team links collect a team name. existing_teams links
+  // pre-assign teams, so the registrant never names one (and any value is
+  // ignored — the team(s) come from the link, not the client).
+  teamName: z.string().min(1).max(80).optional(),
 });
 
 builder.mutationFields((t) => ({
@@ -140,7 +148,8 @@ builder.mutationFields((t) => ({
       name: t.arg.string({ required: true }),
       email: t.arg.string({ required: true }),
       password: t.arg.string({ required: true }),
-      teamName: t.arg.string({ required: true }),
+      // Optional: only collected/required for own_team links (see resolver).
+      teamName: t.arg.string({ required: false }),
     },
     resolve: async (_r, args) => {
       const parsed = registerSchema.safeParse(args);
@@ -163,23 +172,52 @@ builder.mutationFields((t) => ({
       const usernameError = validateUsername(username);
       if (usernameError) throw new Error(usernameError);
 
-      // The token is consumed INSIDE the same atomic db.transaction that creates
-      // the account+team (via the guard), closing the check-create-consume
+      // The team handling is dictated by the link's stored mode — NEVER the
+      // client. The token is consumed INSIDE the same atomic db.transaction that
+      // creates the account (via the guard), closing the check-create-consume
       // TOCTOU: the conditional UPDATE matches the pending link exactly once.
-      const { user, team } = await createAccountWithTeam(
-        {
-          username,
-          name: parsed.data.name,
-          email: parsed.data.email,
-          password: parsed.data.password,
-          teamName: parsed.data.teamName,
-        },
-        {
-          guard: (tx) =>
-            consumeRegistrationLink(tx, parsed.data.token, username),
-        },
-      );
-      await startSessionFor(user.id, team.id);
+      const info = await getRegistrationLinkInfo(parsed.data.token);
+      if (!info.valid)
+        throw new Error("This registration link is no longer valid");
+      const guard = (tx: Parameters<typeof consumeRegistrationLink>[0]) =>
+        consumeRegistrationLink(tx, parsed.data.token, username);
+
+      let userId: string;
+      let activeTeamId: string;
+      if (info.mode === "existing_teams") {
+        // Team(s) come from the link; any submitted teamName is ignored.
+        const assignments = await getRegistrationLinkAssignments(
+          parsed.data.token,
+        );
+        const res = await createAccountWithTeams(
+          {
+            username,
+            name: parsed.data.name,
+            email: parsed.data.email,
+            password: parsed.data.password,
+          },
+          assignments,
+          { guard },
+        );
+        userId = res.user.id;
+        activeTeamId = res.activeTeamId;
+      } else {
+        const teamName = parsed.data.teamName?.trim();
+        if (!teamName) throw new Error("A team name is required");
+        const res = await createAccountWithTeam(
+          {
+            username,
+            name: parsed.data.name,
+            email: parsed.data.email,
+            password: parsed.data.password,
+            teamName,
+          },
+          { guard },
+        );
+        userId = res.user.id;
+        activeTeamId = res.team.id;
+      }
+      await startSessionFor(userId, activeTeamId);
       return { viewer: await getCurrentUser() };
     },
   }),

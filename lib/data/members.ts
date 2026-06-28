@@ -1,12 +1,25 @@
 import "server-only";
 
 import { headers } from "next/headers";
-import { and, count, desc, eq, gte, inArray, notInArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import { getDb, type DbTx } from "../db/client";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
   registrationLinks as registrationLinksTable,
+  registrationLinkTeams as registrationLinkTeamsTable,
+  registrationLinkTeamCapabilities as registrationLinkTeamCapabilitiesTable,
   teams as teamsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
@@ -19,15 +32,14 @@ import {
   requireActiveTeamId,
   requireInstanceAdmin,
   membershipFor,
-  capabilitiesForRole,
 } from "../membership";
+import { cleanCapabilities } from "../membership-shared";
 import { resolvePublicBaseUrl } from "../public-url";
 import type {
   Capability,
   RegistrationLink,
   Role,
 } from "../types";
-import { ALL_CAPABILITIES } from "../types";
 
 const REGISTRATION_TTL_DAYS = 14;
 
@@ -84,21 +96,34 @@ export interface UserDetailDTO {
   recentActivity: { message: string; createdAt: string }[];
 }
 
+/** How a registration link decides the registrant's team(s). */
+export type RegistrationMode = "own_team" | "existing_teams";
+
+/** One pre-assigned team (+ role/capabilities) on an `existing_teams` link. */
+export interface RegistrationTeamAssignment {
+  teamId: string;
+  role: Role;
+  capabilities?: Capability[];
+}
+
 export interface RegistrationLinkDTO {
   id: string;
   status: RegistrationLink["status"];
+  mode: RegistrationMode;
+  /** For `existing_teams`: the names of the (still-existing) assigned teams. */
+  teamNames: string[];
   createdBy: string;
   usedByUsername: string | null;
   expiresAt: string;
   createdAt: string;
 }
 
-/** Sanitize an arbitrary capability list to known values, always implying view. */
-function cleanCapabilities(caps: Capability[] | undefined, role: Role): Capability[] {
-  const base = caps?.length ? caps : capabilitiesForRole(role);
-  const set = new Set(base.filter((c) => ALL_CAPABILITIES.includes(c)));
-  set.add("view");
-  return ALL_CAPABILITIES.filter((c) => set.has(c));
+/** Public, display-only view of a registration link for the /register page. */
+export interface RegistrationLinkInfo {
+  valid: boolean;
+  mode: RegistrationMode;
+  /** For `existing_teams`: the names of the teams the registrant will join. */
+  teamNames: string[];
 }
 
 /**
@@ -203,7 +228,9 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
     })
     .from(usersTable)
     .where(notInArray(usersTable.id, inTeam))
-    .orderBy(usersTable.username);
+    // Most recently created first, so the picker opens on the newest users
+    // (the add-member dialog shows ~3 and scrolls for the rest).
+    .orderBy(desc(usersTable.createdAt));
 
   const filtered = candidates.filter(
     (u) =>
@@ -663,24 +690,93 @@ export interface MintRegistrationResult {
   link: string;
 }
 
-/** Mint a single-use registration link. Instance-admin only. */
-export async function mintRegistrationLink(): Promise<MintRegistrationResult> {
+const MAX_REGISTRATION_TEAMS = 50;
+
+/**
+ * Mint a single-use registration link. Instance-admin only.
+ *
+ * `own_team` (default): the registrant names and owns a fresh team at
+ * registration — the historical behavior. `existing_teams`: the admin
+ * pre-assigns the registrant to one or more existing teams (with a role +
+ * capabilities each); the registrant is NOT asked for a team name and joins
+ * those teams as a member. The choice is baked into the link via its `mode` +
+ * `registration_link_teams` rows and cannot be changed by the registrant.
+ */
+export async function mintRegistrationLink(input: {
+  mode: RegistrationMode;
+  teamAssignments?: RegistrationTeamAssignment[];
+}): Promise<MintRegistrationResult> {
   await requireInstanceAdmin();
   const createdBy = await actorUsername();
   const rawToken = randomToken(24);
   const now = nowIso();
-  await getDb().insert(registrationLinksTable).values({
-    id: newId("reg"),
+  const linkId = newId("reg");
+  const expiresAt = new Date(
+    Date.now() + REGISTRATION_TTL_DAYS * 86400_000,
+  ).toISOString();
+  const baseRow = {
+    id: linkId,
     tokenHash: sha256Hex(rawToken),
     status: "pending",
     createdBy,
     usedByUsername: null,
-    expiresAt: new Date(
-      Date.now() + REGISTRATION_TTL_DAYS * 86400_000,
-    ).toISOString(),
+    expiresAt,
     createdAt: now,
     usedAt: null,
-  });
+  } as const;
+
+  if (input.mode === "existing_teams") {
+    // De-dupe by team (the unique index forbids two rows for one team on a link)
+    // and validate every team still exists before writing anything.
+    const byTeam = new Map<string, RegistrationTeamAssignment>();
+    for (const a of input.teamAssignments ?? []) byTeam.set(a.teamId, a);
+    const assignments = [...byTeam.values()];
+    if (assignments.length === 0)
+      throw new Error("Select at least one team for the new user");
+    if (assignments.length > MAX_REGISTRATION_TEAMS)
+      throw new Error("Too many teams selected");
+    // A new user joins existing teams as member/viewer ONLY — never as a second
+    // owner. The UI restricts this, but the role arrives from the client, so the
+    // server must enforce it too (an owner membership is immutable/unremovable
+    // via updateMember/removeMember, so an injected co-owner could never be
+    // demoted or removed).
+    for (const a of assignments) {
+      if (a.role !== "member" && a.role !== "viewer")
+        throw new Error("A new user can only join a team as a member or viewer");
+    }
+    const ids = assignments.map((a) => a.teamId);
+    const found = await getDb()
+      .select({ id: teamsTable.id })
+      .from(teamsTable)
+      .where(inArray(teamsTable.id, ids));
+    const foundSet = new Set(found.map((r) => r.id));
+    if (foundSet.size !== ids.length)
+      throw new Error("One or more selected teams no longer exist");
+
+    await getDb().transaction(async (tx) => {
+      await tx
+        .insert(registrationLinksTable)
+        .values({ ...baseRow, mode: "existing_teams" });
+      for (const a of assignments) {
+        const linkTeamId = newId("rlt");
+        await tx.insert(registrationLinkTeamsTable).values({
+          id: linkTeamId,
+          linkId,
+          teamId: a.teamId,
+          role: a.role,
+        });
+        const caps = cleanCapabilities(a.capabilities, a.role);
+        await tx
+          .insert(registrationLinkTeamCapabilitiesTable)
+          .values(caps.map((c) => ({ linkTeamId, capability: c })));
+      }
+    });
+  } else {
+    await getDb()
+      .insert(registrationLinksTable)
+      .values({ ...baseRow, mode: "own_team" });
+  }
+
   const base = resolvePublicBaseUrl(await headers());
   return { link: `${base}/register/${rawToken}` };
 }
@@ -692,6 +788,7 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
     .select({
       id: registrationLinksTable.id,
       status: registrationLinksTable.status,
+      mode: registrationLinksTable.mode,
       createdBy: registrationLinksTable.createdBy,
       usedByUsername: registrationLinksTable.usedByUsername,
       expiresAt: registrationLinksTable.expiresAt,
@@ -699,9 +796,32 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
     })
     .from(registrationLinksTable)
     .orderBy(desc(registrationLinksTable.createdAt));
+
+  // Batch-load assigned team names for the existing_teams links in one query.
+  const linkIds = rows.map((l) => l.id);
+  const namesByLink = new Map<string, string[]>();
+  if (linkIds.length > 0) {
+    const teamRows = await getDb()
+      .select({
+        linkId: registrationLinkTeamsTable.linkId,
+        name: teamsTable.name,
+      })
+      .from(registrationLinkTeamsTable)
+      .innerJoin(teamsTable, eq(teamsTable.id, registrationLinkTeamsTable.teamId))
+      .where(inArray(registrationLinkTeamsTable.linkId, linkIds))
+      .orderBy(asc(teamsTable.name));
+    for (const r of teamRows) {
+      const list = namesByLink.get(r.linkId) ?? [];
+      list.push(r.name);
+      namesByLink.set(r.linkId, list);
+    }
+  }
+
   return rows.map((l) => ({
     id: l.id,
     status: l.status as RegistrationLink["status"],
+    mode: l.mode as RegistrationMode,
+    teamNames: namesByLink.get(l.id) ?? [],
     createdBy: l.createdBy,
     usedByUsername: l.usedByUsername,
     expiresAt: l.expiresAt,
@@ -749,6 +869,110 @@ export async function isRegistrationTokenValid(rawToken: string): Promise<boolea
     )
     .limit(1);
   return rows.length > 0;
+}
+
+/**
+ * Public, display-only view of a registration link for the /register page: is it
+ * usable, which mode, and (for `existing_teams`) the names of the teams the
+ * registrant will join. No secrets. An `existing_teams` link whose teams were
+ * all deleted reports `valid: false` — there is nothing left to join.
+ */
+export async function getRegistrationLinkInfo(
+  rawToken: string,
+): Promise<RegistrationLinkInfo> {
+  const hash = sha256Hex(rawToken);
+  const rows = await getDb()
+    .select({
+      id: registrationLinksTable.id,
+      mode: registrationLinksTable.mode,
+    })
+    .from(registrationLinksTable)
+    .where(
+      and(
+        eq(registrationLinksTable.tokenHash, hash),
+        eq(registrationLinksTable.status, "pending"),
+        gte(registrationLinksTable.expiresAt, sql`now()`),
+      ),
+    )
+    .limit(1);
+  const link = rows[0];
+  if (!link) return { valid: false, mode: "own_team", teamNames: [] };
+  const mode = link.mode as RegistrationMode;
+  if (mode !== "existing_teams") return { valid: true, mode, teamNames: [] };
+
+  const teamRows = await getDb()
+    .select({ name: teamsTable.name })
+    .from(registrationLinkTeamsTable)
+    .innerJoin(teamsTable, eq(teamsTable.id, registrationLinkTeamsTable.teamId))
+    .where(eq(registrationLinkTeamsTable.linkId, link.id))
+    .orderBy(asc(teamsTable.name));
+  const teamNames = teamRows.map((r) => r.name);
+  // Every assigned team was deleted before use → nothing to join → unusable.
+  if (teamNames.length === 0)
+    return { valid: false, mode: "existing_teams", teamNames: [] };
+  return { valid: true, mode: "existing_teams", teamNames };
+}
+
+/**
+ * The per-team role + capability assignments baked into a pending
+ * `existing_teams` link, resolved against teams that still exist. Used by the
+ * register-through-link flow to seed the new account's memberships. Returns []
+ * if the token is not a pending link (or all its teams are gone).
+ */
+export async function getRegistrationLinkAssignments(
+  rawToken: string,
+): Promise<{ teamId: string; role: Role; capabilities: Capability[] }[]> {
+  const hash = sha256Hex(rawToken);
+  const linkRows = await getDb()
+    .select({ id: registrationLinksTable.id })
+    .from(registrationLinksTable)
+    .where(
+      and(
+        eq(registrationLinksTable.tokenHash, hash),
+        eq(registrationLinksTable.status, "pending"),
+        gte(registrationLinksTable.expiresAt, sql`now()`),
+      ),
+    )
+    .limit(1);
+  const link = linkRows[0];
+  if (!link) return [];
+
+  const teamRows = await getDb()
+    .select({
+      linkTeamId: registrationLinkTeamsTable.id,
+      teamId: registrationLinkTeamsTable.teamId,
+      role: registrationLinkTeamsTable.role,
+    })
+    .from(registrationLinkTeamsTable)
+    // INNER join drops assignments whose team was deleted after minting.
+    .innerJoin(teamsTable, eq(teamsTable.id, registrationLinkTeamsTable.teamId))
+    .where(eq(registrationLinkTeamsTable.linkId, link.id));
+  if (teamRows.length === 0) return [];
+
+  const capsByLinkTeam = new Map<string, Capability[]>();
+  const capRows = await getDb()
+    .select({
+      linkTeamId: registrationLinkTeamCapabilitiesTable.linkTeamId,
+      capability: registrationLinkTeamCapabilitiesTable.capability,
+    })
+    .from(registrationLinkTeamCapabilitiesTable)
+    .where(
+      inArray(
+        registrationLinkTeamCapabilitiesTable.linkTeamId,
+        teamRows.map((r) => r.linkTeamId),
+      ),
+    );
+  for (const r of capRows) {
+    const list = capsByLinkTeam.get(r.linkTeamId) ?? [];
+    list.push(r.capability as Capability);
+    capsByLinkTeam.set(r.linkTeamId, list);
+  }
+
+  return teamRows.map((r) => ({
+    teamId: r.teamId,
+    role: r.role as Role,
+    capabilities: capsByLinkTeam.get(r.linkTeamId) ?? [],
+  }));
 }
 
 /**

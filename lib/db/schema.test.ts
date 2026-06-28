@@ -61,6 +61,8 @@ const CONTROL_PLANE = [
   "invites",
   "invite_capabilities",
   "registration_links",
+  "registration_link_teams",
+  "registration_link_team_capabilities",
   "team_project_order",
   "team_folder_order",
   // infra

@@ -31,13 +31,19 @@ export function CapabilityPicker({
   onRoleChange,
   onCapabilitiesChange,
   idPrefix = "cap",
+  availableRoles,
 }: {
   role: Role;
   capabilities: Capability[];
   onRoleChange: (role: Role) => void;
   onCapabilitiesChange: (caps: Capability[]) => void;
   idPrefix?: string;
+  /** Restrict the selectable roles (e.g. omit "owner" when adding a member). */
+  availableRoles?: Role[];
 }) {
+  const roles = availableRoles
+    ? ROLES.filter((r) => availableRoles.includes(r.value))
+    : ROLES;
   function pickRole(next: Role) {
     onRoleChange(next);
     onCapabilitiesChange([...CAPABILITY_PRESETS[next]]);
@@ -61,7 +67,7 @@ export function CapabilityPicker({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ROLES.map((r) => (
+            {roles.map((r) => (
               <SelectItem key={r.value} value={r.value}>
                 {r.label}
               </SelectItem>

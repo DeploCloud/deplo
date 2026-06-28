@@ -157,7 +157,12 @@ export function AddNewMenu({
         <CreateFolderDialog open={folderOpen} onOpenChange={setFolderOpen} />
       )}
       {canManageMembers && (
-        <AddMemberDialog open={memberOpen} onOpenChange={setMemberOpen} />
+        <AddMemberDialog
+          open={memberOpen}
+          onOpenChange={setMemberOpen}
+          canCreateUser={isAdmin}
+          onCreateUser={() => setUserOpen(true)}
+        />
       )}
       {isAdmin && (
         <RegisterUserDialog open={userOpen} onOpenChange={setUserOpen} />

@@ -13,7 +13,7 @@ import {
 } from "./db/schema/control-plane";
 import { eq } from "drizzle-orm";
 import { runWithIdentity } from "./auth/request-context";
-import { createAccountWithTeam, login } from "./auth";
+import { createAccountWithTeam, createAccountWithTeams, login } from "./auth";
 import { consumeRegistrationLink } from "./data/members";
 import { changePassword } from "./data/account";
 import {
@@ -21,6 +21,7 @@ import {
   seedRegistrationLink,
   TRUNCATE_IDENTITY,
   TEAM_A,
+  TEAM_B,
   USER_1,
 } from "./data/identity-test-helpers";
 import { capabilitiesForRole } from "./membership-shared";
@@ -113,6 +114,90 @@ test("createAccountWithTeam rejects a duplicate username / email / team name", a
       }),
     /team name is taken/,
   );
+});
+
+test("createAccountWithTeams joins existing teams with per-team roles + caps, owning none", async () => {
+  await seedIdentity(db); // TEAM_A (alpha) + TEAM_B (beta) exist
+  const { user, activeTeamId } = await createAccountWithTeams(
+    { username: "joiner", name: "Joiner", email: "joiner@x.io", password: "password1" },
+    [
+      { teamId: TEAM_A, role: "member", capabilities: capabilitiesForRole("member") },
+      { teamId: TEAM_B, role: "viewer", capabilities: ["view"] },
+    ],
+  );
+  // Active team is the first assignment; the user owns no team (legacy role).
+  assert.equal(activeTeamId, TEAM_A);
+  const urow = (
+    await db.select().from(usersTable).where(eq(usersTable.id, user.id))
+  )[0]!;
+  assert.equal(urow.role, "member");
+
+  const mems = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.userId, user.id));
+  assert.equal(mems.length, 2);
+  const roleByTeam = Object.fromEntries(mems.map((m) => [m.teamId, m.role]));
+  assert.equal(roleByTeam[TEAM_A], "member");
+  assert.equal(roleByTeam[TEAM_B], "viewer");
+
+  // The viewer membership's caps are exactly what was passed (always incl. view).
+  const memB = mems.find((m) => m.teamId === TEAM_B)!;
+  const capsB = await db
+    .select({ c: membershipCapabilitiesTable.capability })
+    .from(membershipCapabilitiesTable)
+    .where(eq(membershipCapabilitiesTable.membershipId, memB.id));
+  assert.deepEqual(new Set(capsB.map((r) => r.c)), new Set(["view"]));
+});
+
+test("createAccountWithTeams skips teams deleted before use, and fails if none remain", async () => {
+  await seedIdentity(db);
+  // One real team + one already-gone team → user joins only the survivor.
+  const { user } = await createAccountWithTeams(
+    { username: "partial", name: "Partial", email: "p@x.io", password: "password1" },
+    [
+      { teamId: TEAM_A, role: "member", capabilities: capabilitiesForRole("member") },
+      { teamId: "team_gone", role: "member", capabilities: [] },
+    ],
+  );
+  const mems = await db
+    .select()
+    .from(membershipsTable)
+    .where(eq(membershipsTable.userId, user.id));
+  assert.equal(mems.length, 1);
+  assert.equal(mems[0]!.teamId, TEAM_A);
+
+  // All assigned teams gone → throws and creates NOTHING (tx rolls back).
+  await assert.rejects(
+    () =>
+      createAccountWithTeams(
+        { username: "ghost", name: "Ghost", email: "g@x.io", password: "password1" },
+        [{ teamId: "team_gone", role: "member", capabilities: [] }],
+      ),
+    /no longer exist/,
+  );
+  const ghost = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.username, "ghost"));
+  assert.equal(ghost.length, 0);
+});
+
+test("createAccountWithTeams consumes the registration link (single-use); a spent link rolls back", async () => {
+  await seedIdentity(db);
+  const rawToken = await seedRegistrationLink(db);
+  const join = (username: string) =>
+    createAccountWithTeams(
+      { username, name: username, email: `${username}@reg.io`, password: "password1" },
+      [{ teamId: TEAM_A, role: "member", capabilities: capabilitiesForRole("member") }],
+      { guard: (tx) => consumeRegistrationLink(tx, rawToken, username) },
+    );
+  await join("first"); // consumes the link
+  await assert.rejects(() => join("second"), /no longer valid/);
+  // Only the first account exists beyond the seeded owner (USER_1).
+  const names = (await db.select().from(usersTable)).map((u) => u.username);
+  assert.ok(names.includes("first"));
+  assert.ok(!names.includes("second"));
 });
 
 test("registration link is single-use: two concurrent registrations, exactly one wins", async () => {

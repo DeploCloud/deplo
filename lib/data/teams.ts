@@ -12,6 +12,7 @@ import { assertUser } from "../auth";
 import {
   requireActiveTeamId,
   requireCapability,
+  requireInstanceAdmin,
   setActiveTeam,
   teamsForUser,
   capabilitiesForRole,
@@ -93,6 +94,21 @@ export async function listMyTeams(): Promise<
  */
 export async function listAllTeams(): Promise<Team[]> {
   await requireCapability("manage_infra");
+  const rows = await getDb()
+    .select()
+    .from(teamsTable)
+    .orderBy(asc(teamsTable.name));
+  return rows.map(rowToTeam);
+}
+
+/**
+ * Every team in the instance for the instance-admin registration-link picker
+ * (assign a new user to existing teams). Gated by `requireInstanceAdmin` rather
+ * than `manage_infra` — registering users is an instance-admin power, not a
+ * per-team capability. Returns id/name/… only, no membership. Ordered by name.
+ */
+export async function listAllTeamsForAdmin(): Promise<Team[]> {
+  await requireInstanceAdmin();
   const rows = await getDb()
     .select()
     .from(teamsTable)

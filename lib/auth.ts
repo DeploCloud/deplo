@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { count, eq, or, sql } from "drizzle-orm";
+import { count, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb, type DbTx } from "./db/client";
 import {
   memberships as membershipsTable,
@@ -17,8 +17,8 @@ import {
   signSession,
   verifySession,
 } from "./crypto";
-import type { PublicUser, Team, User } from "./types";
-import { capabilitiesForRole } from "./membership-shared";
+import type { Capability, PublicUser, Role, Team, User } from "./types";
+import { capabilitiesForRole, cleanCapabilities } from "./membership-shared";
 import { normalizeUsername, validateUsername } from "./username";
 import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
@@ -88,6 +88,64 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
 }
 
 /**
+ * Validate-free user insert shared by {@link createAccountWithTeam} and
+ * {@link createAccountWithTeams}. Assumes the caller already normalized +
+ * validated username/name/email/password. Runs INSIDE the caller's transaction:
+ * re-checks username/email uniqueness against live rows (the unique indexes are
+ * the race backstop), assigns the deterministic avatar color from the in-tx user
+ * count, hashes the password and inserts the user row. Inserts NO team or
+ * membership — the caller wires those up.
+ */
+async function insertUserCore(
+  tx: DbTx,
+  input: { username: string; name: string; email: string; password: string },
+  opts: { isInstanceAdmin?: boolean; userRole?: string } = {},
+): Promise<User> {
+  const dup = await tx
+    .select({ username: usersTable.username, email: usersTable.email })
+    .from(usersTable)
+    .where(
+      or(
+        eq(usersTable.username, input.username),
+        eq(sql`lower(${usersTable.email})`, input.email),
+      ),
+    )
+    .limit(1);
+  if (dup[0]?.username === input.username)
+    throw new Error("That username is taken");
+  if (dup[0]) throw new Error("An account with this email already exists");
+
+  const n = (await tx.select({ n: count() }).from(usersTable))[0]!.n;
+  const avatarColor = AVATAR_COLORS[n % AVATAR_COLORS.length];
+
+  const user: User = {
+    id: `usr_${randomBytes(8).toString("hex")}`,
+    email: input.email,
+    username: input.username,
+    name: input.name,
+    passwordHash: hashPassword(input.password),
+    role: (opts.userRole ?? "member") as User["role"],
+    avatarColor,
+    createdAt: new Date().toISOString(),
+    isInstanceAdmin: opts.isInstanceAdmin ?? false,
+    suspended: false,
+  };
+  await tx.insert(usersTable).values({
+    id: user.id,
+    email: user.email,
+    username: user.username,
+    name: user.name,
+    passwordHash: user.passwordHash,
+    role: user.role,
+    isInstanceAdmin: user.isInstanceAdmin ?? false,
+    suspended: false,
+    avatarColor: user.avatarColor,
+    createdAt: user.createdAt,
+  });
+  return user;
+}
+
+/**
  * Create a brand-new account AND its own team in one transaction, returning the
  * new user + team. Shared by first-run setup and the register link (public
  * signup was removed — accounts after the first require an invite). The
@@ -139,7 +197,6 @@ export async function createAccountWithTeam(
     throw new Error("Choose a password of at least 8 characters");
 
   const now = new Date().toISOString();
-  const passwordHash = hashPassword(input.password);
 
   // The optional token consume + all uniqueness re-checks + the writes happen in
   // ONE db.transaction, so the whole critical section is atomic against
@@ -149,30 +206,19 @@ export async function createAccountWithTeam(
   const result = await getDb().transaction(async (tx) => {
     if (opts.guard) await opts.guard(tx); // e.g. consume the registration token
 
-    // Uniqueness re-checks inside the tx (friendly errors; the unique indexes
-    // are the race backstop).
-    const dup = await tx
-      .select({ username: usersTable.username, email: usersTable.email })
-      .from(usersTable)
-      .where(
-        or(
-          eq(usersTable.username, username),
-          eq(sql`lower(${usersTable.email})`, email),
-        ),
-      )
-      .limit(1);
-    if (dup[0]?.username === username)
-      throw new Error("That username is taken");
-    if (dup[0]) throw new Error("An account with this email already exists");
+    const user = await insertUserCore(
+      tx,
+      { username, name, email, password: input.password },
+      { isInstanceAdmin: opts.isInstanceAdmin, userRole: "owner" },
+    );
 
+    // Team name uniqueness + slug dedupe against live rows.
     const teamDup = await tx
       .select({ id: teamsTable.id })
       .from(teamsTable)
       .where(eq(sql`lower(${teamsTable.name})`, teamName.toLowerCase()))
       .limit(1);
     if (teamDup[0]) throw new Error("That team name is taken");
-
-    // Slug dedupe against live rows.
     const takenSlugs = new Set(
       (await tx.select({ slug: teamsTable.slug }).from(teamsTable)).map(
         (r) => r.slug,
@@ -181,10 +227,6 @@ export async function createAccountWithTeam(
     let finalSlug = slugBase;
     for (let i = 2; takenSlugs.has(finalSlug); i++) finalSlug = `${slugBase}-${i}`;
 
-    // Avatar color from the in-tx user count (deterministic, no cache read).
-    const n = (await tx.select({ n: count() }).from(usersTable))[0]!.n;
-    const avatarColor = AVATAR_COLORS[n % AVATAR_COLORS.length];
-
     const team: Team = {
       id: `team_${randomBytes(8).toString("hex")}`,
       name: teamName,
@@ -192,40 +234,17 @@ export async function createAccountWithTeam(
       plan: "pro",
       createdAt: now,
     };
-    const user: User = {
-      id: `usr_${randomBytes(8).toString("hex")}`,
-      email,
-      username,
-      name,
-      passwordHash,
-      role: "owner",
-      avatarColor,
-      createdAt: now,
-      isInstanceAdmin: opts.isInstanceAdmin ?? false,
-      suspended: false,
-    };
     const membershipId = `mbr_${randomBytes(8).toString("hex")}`;
     const ownerCaps = capabilitiesForRole("owner");
 
-    // FK-ordered inserts: team → user → membership → membership_capabilities.
+    // FK-safe inserts: team → membership → membership_capabilities (the user row
+    // was already inserted by insertUserCore above).
     await tx.insert(teamsTable).values({
       id: team.id,
       name: team.name,
       slug: team.slug,
       plan: team.plan,
       createdAt: team.createdAt,
-    });
-    await tx.insert(usersTable).values({
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      name: user.name,
-      passwordHash: user.passwordHash,
-      role: user.role,
-      isInstanceAdmin: user.isInstanceAdmin ?? false,
-      suspended: false,
-      avatarColor: user.avatarColor,
-      createdAt: user.createdAt,
     });
     await tx.insert(membershipsTable).values({
       id: membershipId,
@@ -245,6 +264,79 @@ export async function createAccountWithTeam(
   // order rows yet and `listProjects`/`listFolders` fall back to newest-first.
   // The old JSONB team-order stub bridge is retired.
   return result;
+}
+
+/**
+ * Create a brand-new account that JOINS one or more EXISTING teams as a member
+ * (it owns none). Powers the `existing_teams` registration mode. `assignments`
+ * is the validated per-team role + capabilities baked into the link. Like
+ * {@link createAccountWithTeam}, an optional `opts.guard` (token consume) runs
+ * INSIDE the same transaction, so check-create-consume stays one atomic critical
+ * section. Assignments are re-resolved against live teams inside the tx (a team
+ * may be deleted between minting and registration): missing teams are dropped,
+ * and it throws if none remain (the guard then rolls back, leaving the link
+ * unspent). Returns the user + the team to activate (the first surviving
+ * assignment). Does NOT set cookies — the caller signs the user in.
+ */
+export async function createAccountWithTeams(
+  input: { username: string; name: string; email: string; password: string },
+  assignments: { teamId: string; role: Role; capabilities: Capability[] }[],
+  opts: { guard?: (tx: DbTx) => Promise<void> } = {},
+): Promise<{ user: User; activeTeamId: string }> {
+  const username = normalizeUsername(input.username);
+  const usernameError = validateUsername(username);
+  if (usernameError) throw new Error(usernameError);
+  const name = input.name.trim();
+  if (!name) throw new Error("Name is required");
+  const email = input.email.toLowerCase().trim();
+  if (!email.includes("@")) throw new Error("Enter a valid email address");
+  if (input.password.length < 8)
+    throw new Error("Choose a password of at least 8 characters");
+  if (assignments.length === 0)
+    throw new Error("This registration link has no teams to join");
+
+  return getDb().transaction(async (tx) => {
+    if (opts.guard) await opts.guard(tx); // consume the registration token atomically
+
+    // Re-resolve assignments against teams that still exist (one may have been
+    // deleted since the link was minted). Drop the missing; fail if none remain.
+    const live = await tx
+      .select({ id: teamsTable.id })
+      .from(teamsTable)
+      .where(
+        inArray(
+          teamsTable.id,
+          assignments.map((a) => a.teamId),
+        ),
+      );
+    const liveIds = new Set(live.map((r) => r.id));
+    const resolved = assignments.filter((a) => liveIds.has(a.teamId));
+    if (resolved.length === 0)
+      throw new Error("The teams for this registration link no longer exist");
+
+    const user = await insertUserCore(
+      tx,
+      { username, name, email, password: input.password },
+      { isInstanceAdmin: false, userRole: "member" },
+    );
+
+    const now = new Date().toISOString();
+    for (const a of resolved) {
+      const membershipId = `mbr_${randomBytes(8).toString("hex")}`;
+      const caps = cleanCapabilities(a.capabilities, a.role);
+      await tx.insert(membershipsTable).values({
+        id: membershipId,
+        userId: user.id,
+        teamId: a.teamId,
+        role: a.role,
+        createdAt: now,
+      });
+      await tx
+        .insert(membershipCapabilitiesTable)
+        .values(caps.map((c) => ({ membershipId, capability: c })));
+    }
+    return { user, activeTeamId: resolved[0].teamId };
+  });
 }
 
 /**

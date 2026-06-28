@@ -59,6 +59,22 @@ export function capabilitiesForRole(role: Role): Capability[] {
   return [...CAPABILITY_PRESETS[role]];
 }
 
+/**
+ * Sanitize an arbitrary capability list to known values, always implying `view`.
+ * An empty/absent list falls back to the role's preset. Shared by the
+ * add-member, invite and registration-link flows so every membership is seeded
+ * with a coherent, validated capability set.
+ */
+export function cleanCapabilities(
+  caps: Capability[] | undefined,
+  role: Role,
+): Capability[] {
+  const base = caps?.length ? caps : capabilitiesForRole(role);
+  const set = new Set(base.filter((c) => ALL_CAPABILITIES.includes(c)));
+  set.add("view");
+  return ALL_CAPABILITIES.filter((c) => set.has(c));
+}
+
 /** The role whose preset exactly matches a capability set, else "custom". */
 export function roleLabelForCapabilities(caps: Capability[]): Role | "custom" {
   const set = new Set(caps);

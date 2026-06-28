@@ -75,7 +75,7 @@ test("a mutation the caller is allowed runs as a dry run, not for real", async (
 
 test("instance-admin-only mutations gate on the admin flag", async () => {
   const asOwner = await runPlayground(
-    "mutation { mintRegistrationLink }",
+    "mutation { mintRegistrationLink(input: { mode: own_team }) }",
     {},
     null,
     ctx({ capabilities: ["view", "manage_members"] }),
@@ -87,7 +87,7 @@ test("instance-admin-only mutations gate on the admin flag", async () => {
   }
 
   const asAdmin = await runPlayground(
-    "mutation { mintRegistrationLink }",
+    "mutation { mintRegistrationLink(input: { mode: own_team }) }",
     {},
     null,
     ctx({ viewer: { ...viewer, isInstanceAdmin: true } }),
@@ -182,7 +182,7 @@ test("a multi-field mutation reports each field independently", async () => {
   const res = await runPlayground(
     `mutation {
        createToken(name: "x") { raw }
-       mintRegistrationLink
+       mintRegistrationLink(input: { mode: own_team })
      }`,
     {},
     null,
