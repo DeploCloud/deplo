@@ -7,7 +7,7 @@
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
-!.yarn/releases
+!.yarn/releases 
 !.yarn/versions
 
 # testing
