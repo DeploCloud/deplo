@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { UserPlus, Trash2, MoreHorizontal, Pencil } from "lucide-react";
+import { UserPlus, Trash2, Pencil, ChevronRight } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -20,13 +20,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
@@ -40,28 +33,9 @@ import { CapabilityPicker } from "@/components/settings/capability-picker";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { gqlAction } from "@/lib/graphql-client";
+import { cn } from "@/lib/utils";
 import type { Capability, Role } from "@/lib/types";
 import type { MemberDTO } from "@/lib/data/members";
-
-/**
- * The menu-primitive set used to render a member row's actions once and reuse
- * them for BOTH the ⋯ dropdown (left-click) and the right-click context menu —
- * same items, same handlers, no duplication. Radix dropdown and context menus
- * share an isomorphic API, so the renderer just takes whichever set applies.
- */
-type MenuKit = {
-  Item: React.ElementType;
-  Separator: React.ElementType;
-};
-
-const DROPDOWN_KIT: MenuKit = {
-  Item: DropdownMenuItem,
-  Separator: DropdownMenuSeparator,
-};
-const CONTEXT_KIT: MenuKit = {
-  Item: ContextMenuItem,
-  Separator: ContextMenuSeparator,
-};
 
 export function MembersManager({
   members,
@@ -105,21 +79,23 @@ export function MembersManager({
           </>
         )}
       </CardHeader>
-      <CardContent className="space-y-3">
-        {members.map((m) => (
-          <MemberRow
-            key={m.userId}
-            member={m}
-            isSelf={m.userId === currentUserId}
-            canManage={canManage}
-          />
-        ))}
+      <CardContent>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {members.map((m) => (
+            <MemberCard
+              key={m.userId}
+              member={m}
+              isSelf={m.userId === currentUserId}
+              canManage={canManage}
+            />
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-function MemberRow({
+function MemberCard({
   member,
   isSelf,
   canManage,
@@ -134,6 +110,9 @@ function MemberRow({
   // The team owner is immutable — no edit/remove controls (the data layer
   // enforces this too). They keep their "Owner" role badge.
   const isOwner = member.role === "owner";
+  // A card is interactive only when the viewer can manage and the target is not
+  // the immutable owner: left-click opens the editor, right-click the menu.
+  const actionable = canManage && !isOwner;
 
   function remove() {
     startTransition(async () => {
@@ -150,44 +129,9 @@ function MemberRow({
     });
   }
 
-  // The row's actions, rendered once for whichever menu primitive is passed.
-  // Each item carries a native `title` so hovering it for ~a second explains
-  // what it does (reliable inside menus, unlike a nested styled tooltip).
-  const menu = (K: MenuKit) => (
+  const body = (
     <>
-      <K.Item
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setEditOpen(true);
-        }}
-        title="Adjust this member's role and capabilities"
-      >
-        <Pencil className="size-4" />
-        Edit permissions
-      </K.Item>
-      {!isSelf && (
-        <K.Item
-          variant="destructive"
-          disabled={pending}
-          onSelect={(e: Event) => {
-            e.preventDefault();
-            remove();
-          }}
-          title="Remove this member from the team"
-        >
-          <Trash2 className="size-4" />
-          Remove
-        </K.Item>
-      )}
-    </>
-  );
-
-  const row = (
-    <div
-      onContextMenu={(e) => e.stopPropagation()}
-      className="flex items-center justify-between rounded-lg border border-border p-3"
-    >
-      <div className="flex items-center gap-3">
+      <div className="flex w-full items-center gap-3">
         <Avatar>
           <AvatarFallback
             style={{ backgroundColor: member.avatarColor, color: "#000" }}
@@ -195,35 +139,92 @@ function MemberRow({
             {member.username.slice(0, 2).toUpperCase()}
           </AvatarFallback>
         </Avatar>
-        <div>
-          <p className="text-sm font-medium">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">
             @{member.username}
             {isSelf && (
-              <span className="ml-2 text-xs text-muted-foreground">(you)</span>
+              <span className="ml-1.5 text-xs text-muted-foreground">
+                (you)
+              </span>
             )}
           </p>
           {member.name && member.name !== member.username && (
-            <p className="text-xs text-muted-foreground">{member.name}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {member.name}
+            </p>
           )}
         </div>
+        {actionable && (
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+        )}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         <Badge variant="outline" className="capitalize">
           {member.role}
         </Badge>
-        {canManage && !isOwner && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="Member menu">
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              {menu(DROPDOWN_KIT)}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        <Badge variant="outline">
+          {member.capabilities.length} capabilit
+          {member.capabilities.length === 1 ? "y" : "ies"}
+        </Badge>
       </div>
+    </>
+  );
+
+  // Non-actionable cards (owner, or a viewer who can't manage) are inert — no
+  // hover affordance, no chevron, no menu — the global shell menu still opens.
+  if (!actionable) {
+    return (
+      <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4">
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Left-click opens the permissions editor; right-click the quick menu —
+          mirrors the settings Users cards and the project/server card menus. */}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <button
+            onClick={() => setEditOpen(true)}
+            className={cn(
+              "flex h-full flex-col gap-3 rounded-lg border border-border p-4 text-left transition-colors hover:border-foreground/20 hover:bg-accent",
+            )}
+          >
+            {body}
+          </button>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-44">
+          <ContextMenuItem
+            onSelect={(e: Event) => {
+              e.preventDefault();
+              setEditOpen(true);
+            }}
+            title="Adjust this member's role and capabilities"
+          >
+            <Pencil className="size-4" />
+            Edit permissions
+          </ContextMenuItem>
+          {!isSelf && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                variant="destructive"
+                disabled={pending}
+                onSelect={(e: Event) => {
+                  e.preventDefault();
+                  remove();
+                }}
+                title="Remove this member from the team"
+              >
+                <Trash2 className="size-4" />
+                Remove
+              </ContextMenuItem>
+            </>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
 
       {editOpen && (
         <EditMemberDialog
@@ -232,20 +233,7 @@ function MemberRow({
           onOpenChange={setEditOpen}
         />
       )}
-    </div>
-  );
-
-  // The owner row (and rows the viewer can't manage) has no actions, so it
-  // gets no right-click menu — the global shell menu still opens there.
-  if (!canManage || isOwner) return row;
-
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-      <ContextMenuContent className="w-44">
-        {menu(CONTEXT_KIT)}
-      </ContextMenuContent>
-    </ContextMenu>
+    </>
   );
 }
 

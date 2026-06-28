@@ -149,56 +149,57 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
     });
   }
 
+  // Compact, horizontal card — deliberately distinct from the team Members
+  // cards (which stack vertically with a badge row): here the avatar sits left,
+  // status badges sit inline with the handle, and a single meta line carries
+  // name · team count · join date.
+  const meta = [
+    user.name && user.name !== user.username ? user.name : null,
+    `${user.teamCount} team${user.teamCount === 1 ? "" : "s"}`,
+    `joined ${timeAgo(user.createdAt)}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   const card = (
     <button
       onClick={() => setOpen(true)}
       className={cn(
-        "flex h-full flex-col gap-3 rounded-lg border border-border p-4 text-left transition-colors hover:border-foreground/20 hover:bg-accent",
+        "flex w-full items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent",
         user.suspended && "opacity-60",
       )}
     >
-      <div className="flex w-full items-center gap-3">
-        <Avatar>
-          <AvatarFallback
-            style={{ backgroundColor: user.avatarColor, color: "#000" }}
-          >
-            {user.username.slice(0, 2).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
+      <Avatar>
+        <AvatarFallback
+          style={{ backgroundColor: user.avatarColor, color: "#000" }}
+        >
+          {user.username.slice(0, 2).toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
           <p className="truncate text-sm font-medium">
             @{user.username}
             {isSelf && (
-              <span className="ml-1.5 text-xs text-muted-foreground">
-                (you)
-              </span>
+              <span className="ml-1 text-xs text-muted-foreground">(you)</span>
             )}
           </p>
-          {user.name && user.name !== user.username && (
-            <p className="truncate text-xs text-muted-foreground">
-              {user.name}
-            </p>
+          {user.isInstanceAdmin && (
+            <Badge variant="secondary" className="gap-1 px-1.5 py-0">
+              <ShieldCheck className="size-3" />
+              Admin
+            </Badge>
+          )}
+          {user.suspended && (
+            <Badge variant="destructive" className="gap-1 px-1.5 py-0">
+              <Ban className="size-3" />
+              Suspended
+            </Badge>
           )}
         </div>
-        <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+        <p className="truncate text-xs text-muted-foreground">{meta}</p>
       </div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {user.isInstanceAdmin && (
-          <Badge variant="secondary" className="gap-1">
-            <ShieldCheck className="size-3" />
-            Admin
-          </Badge>
-        )}
-        {user.suspended && (
-          <Badge variant="destructive" className="gap-1">
-            <Ban className="size-3" />
-            Suspended
-          </Badge>
-        )}
-        <Badge variant="outline">
-          {user.teamCount} team{user.teamCount === 1 ? "" : "s"}
-        </Badge>
-      </div>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
     </button>
   );
 
