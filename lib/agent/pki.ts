@@ -301,7 +301,13 @@ export async function certFingerprint(certPem: string): Promise<string> {
   return Buffer.from(digest).toString("hex");
 }
 
-const IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+/**
+ * IPv4 literal matcher. Exported so the dial path (agent-client) classifies a
+ * host the SAME way SAN generation does here — an IP literal gets an `ip` SAN
+ * and, because TLS SNI forbids IP servernames, is verified via a DNS SAN at dial
+ * time. Keeping one regex keeps those two decisions in lockstep.
+ */
+export const IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 
 /** Map dial targets to SAN entries (IPv4 literals -> ip SANs, else dns). */
 function hostsToSans(hosts: string[]): SanEntry[] {

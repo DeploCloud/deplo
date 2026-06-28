@@ -374,15 +374,23 @@ async function resolveTarget(serverId: string): Promise<DialTarget> {
 
 /** Build a dial target for a provisioned agent (Part B). */
 async function remoteTarget(server: Server): Promise<DialTarget> {
-  const { issueControlPlaneClientCert, caCertPem } = await import("../agent/pki");
+  const { issueControlPlaneClientCert, caCertPem, IPV4_RE } = await import("../agent/pki");
   const client = await issueControlPlaneClientCert();
   const agent = server.agent!;
   const host = server.ip || server.host;
   return {
     address: `${host}:${agent.port}`,
-    // The agent cert's SANs cover the server's IP/host (signAgentCsr used them),
-    // so verify against the dial host.
-    serverName: host,
+    // TLS SNI / authority. The agent cert's SANs cover the server's IP/host
+    // (signAgentCsr used them), so hostname verification passes either way — but
+    // Node's TLS layer REFUSES to send an IP literal as the SNI servername (RFC
+    // 6066: SNI must be a hostname). Dialing an IP-addressed server with
+    // serverName=<ip> therefore throws ERR_INVALID_ARG_VALUE before the
+    // handshake, which surfaces as gRPC UNAVAILABLE and silently kills every
+    // metrics/hello poll (the server shows "online" from call-home but no stats).
+    // For an IP host, verify against `localhost` instead — signAgentCsr ALWAYS
+    // adds it as a DNS SAN, so verification still passes. The real trust anchor
+    // is the exact-fingerprint pin in checkServerIdentity below, not the name.
+    serverName: IPV4_RE.test(host) ? "localhost" : host,
     clientCreds: { certPem: client.certPem, keyPem: client.keyPem, caPem: await caCertPem() },
     pinnedFingerprint: agent.certFingerprint,
   };
