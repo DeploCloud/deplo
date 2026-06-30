@@ -51,6 +51,22 @@ export interface MemberDTO {
   name: string;
   role: Role;
   capabilities: Capability[];
+  /**
+   * True for the team's ABSOLUTE owner — the founder who created the team (the
+   * "crown" 👑). Derived from `teams.founder_user_id`, NOT from the role: a
+   * member can hold the `owner` role without being the founder (an "assigned
+   * owner"). The founder is immutable and unremovable; an assigned owner can be
+   * managed/removed by any owner. Exactly one member per team has this true
+   * (zero only on a legacy team whose founder account was deleted).
+   */
+  isPrimaryOwner: boolean;
+  /**
+   * True if this user is a global instance admin. Surfaced here purely so the
+   * member list can mark them with a badge (🛡️) — it grants NO extra authority
+   * inside the team (instance-admin power stays global and orthogonal to the
+   * team capability model).
+   */
+  isInstanceAdmin: boolean;
   avatarColor: string;
   createdAt: string;
 }
@@ -170,6 +186,7 @@ async function capabilitiesByMembership(
 export async function listMembers(): Promise<MemberDTO[]> {
   const teamId = await requireActiveTeamId();
   const db = getDb();
+  const founderId = await teamFounderUserId(db, teamId);
   const rows = await db
     .select({
       membershipId: membershipsTable.id,
@@ -179,6 +196,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
+      isInstanceAdmin: usersTable.isInstanceAdmin,
     })
     .from(membershipsTable)
     .innerJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
@@ -195,9 +213,30 @@ export async function listMembers(): Promise<MemberDTO[]> {
     name: r.name,
     role: r.role as Role,
     capabilities: caps.get(r.membershipId) ?? [],
+    isPrimaryOwner: r.userId === founderId,
+    isInstanceAdmin: r.isInstanceAdmin ?? false,
     avatarColor: r.avatarColor,
     createdAt: r.createdAt,
   }));
+}
+
+/**
+ * The user id of a team's founder (absolute owner / "crown"), or null if the
+ * team predates the column and was never backfilled, or its founder's account
+ * was deleted. Read straight from `teams.founder_user_id` — the single source of
+ * truth for the absolute-owner distinction. Accepts the live db or a tx so the
+ * mutation paths can read it under the same transaction as their guards.
+ */
+async function teamFounderUserId(
+  db: ReturnType<typeof getDb> | DbTx,
+  teamId: string,
+): Promise<string | null> {
+  const rows = await db
+    .select({ founderUserId: teamsTable.founderUserId })
+    .from(teamsTable)
+    .where(eq(teamsTable.id, teamId))
+    .limit(1);
+  return rows[0]?.founderUserId ?? null;
 }
 
 /**
@@ -280,6 +319,11 @@ export async function addExistingMember(input: {
 }): Promise<MemberDTO> {
   const { membership } = await requireCapability("manage_members");
   const teamId = membership.teamId;
+  // Granting the `owner` role is escalation — only an existing owner (the founder
+  // or an assigned owner) may add another owner. A plain `manage_members` holder
+  // can add members/viewers but cannot mint an owner above their own rank.
+  if (input.role === "owner" && membership.role !== "owner")
+    throw new Error("Only an owner can add another owner");
   const caps = cleanCapabilities(input.capabilities, input.role);
   const db = getDb();
   const targetRows = await db
@@ -288,6 +332,7 @@ export async function addExistingMember(input: {
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
+      isInstanceAdmin: usersTable.isInstanceAdmin,
     })
     .from(usersTable)
     .where(eq(usersTable.id, input.userId))
@@ -333,6 +378,9 @@ export async function addExistingMember(input: {
     name: target.name,
     role: input.role,
     capabilities: caps,
+    // A freshly added member is never the founder (the team already has one).
+    isPrimaryOwner: false,
+    isInstanceAdmin: target.isInstanceAdmin ?? false,
     avatarColor: target.avatarColor,
     createdAt: now,
   };
@@ -401,9 +449,11 @@ export async function updateMember(input: {
   role: Role;
   capabilities?: Capability[];
 }): Promise<void> {
-  const { teamId } = await requireCapability("manage_members");
+  const { teamId, membership } = await requireCapability("manage_members");
+  const actorIsOwner = membership.role === "owner";
   const caps = cleanCapabilities(input.capabilities, input.role);
   await getDb().transaction(async (tx) => {
+    const founderId = await teamFounderUserId(tx, teamId);
     const rows = await tx
       .select({ id: membershipsTable.id, role: membershipsTable.role })
       .from(membershipsTable)
@@ -416,11 +466,24 @@ export async function updateMember(input: {
       .limit(1);
     const m = rows[0];
     if (!m) throw new Error("Member not found");
-    // The team's owner is immutable: their role and permissions can't be
-    // changed by anyone (including themselves), so the founder can never be
-    // demoted or lock themselves out of their own team.
-    if (m.role === "owner") {
-      throw new Error("The team owner's role and permissions can't be changed.");
+    // The ABSOLUTE owner (founder / "crown") is immutable: their role and
+    // permissions can't be changed by anyone — including themselves and instance
+    // admins — so the creator can never be demoted or locked out of their team.
+    if (input.userId === founderId) {
+      throw new Error(
+        "The team's primary owner's role and permissions can't be changed.",
+      );
+    }
+    // An (assigned) owner outranks non-owners: only another owner may change an
+    // owner's permissions. A plain `manage_members` holder can manage non-owners
+    // but cannot touch any owner.
+    if (m.role === "owner" && !actorIsOwner) {
+      throw new Error("Only an owner can change another owner's permissions.");
+    }
+    // Promoting someone to the `owner` role is escalation — only an owner may do
+    // it (so a non-owner manager can't mint an owner above their own rank).
+    if (input.role === "owner" && !actorIsOwner) {
+      throw new Error("Only an owner can grant the owner role.");
     }
     await assertAdminCoverage(tx, teamId, input.userId, caps);
     await tx
@@ -438,13 +501,15 @@ export async function updateMember(input: {
 
 /** Remove a member from the active team (does not delete their account). */
 export async function removeMember(userId: string): Promise<void> {
-  const { teamId, userId: actingUserId } = await requireCapability(
+  const { teamId, userId: actingUserId, membership } = await requireCapability(
     "manage_members",
   );
+  const actorIsOwner = membership.role === "owner";
   if (userId === actingUserId)
     throw new Error("You can't remove yourself from the team");
   let username = "";
   await getDb().transaction(async (tx) => {
+    const founderId = await teamFounderUserId(tx, teamId);
     const rows = await tx
       .select({ id: membershipsTable.id, role: membershipsTable.role })
       .from(membershipsTable)
@@ -457,9 +522,16 @@ export async function removeMember(userId: string): Promise<void> {
       .limit(1);
     const m = rows[0];
     if (!m) throw new Error("Member not found");
-    // The team's owner can never be removed (the founder is permanent).
-    if (m.role === "owner") {
-      throw new Error("The team owner can't be removed.");
+    // The ABSOLUTE owner (founder / "crown") can never be removed by anyone —
+    // including instance admins — so the team always keeps its creator.
+    if (userId === founderId) {
+      throw new Error("The team's primary owner can't be removed.");
+    }
+    // An (assigned) owner outranks non-owners: only another owner may remove an
+    // owner. Assigned owners can remove each other; the founder stays protected
+    // by the guard above. A non-owner manager can remove only non-owners.
+    if (m.role === "owner" && !actorIsOwner) {
+      throw new Error("Only an owner can remove another owner.");
     }
     await assertAdminCoverage(tx, teamId, userId, null);
     const u = await tx
@@ -735,11 +807,11 @@ export async function mintRegistrationLink(input: {
       throw new Error("Select at least one team for the new user");
     if (assignments.length > MAX_REGISTRATION_TEAMS)
       throw new Error("Too many teams selected");
-    // A new user joins existing teams as member/viewer ONLY — never as a second
-    // owner. The UI restricts this, but the role arrives from the client, so the
-    // server must enforce it too (an owner membership is immutable/unremovable
-    // via updateMember/removeMember, so an injected co-owner could never be
-    // demoted or removed).
+    // A new user joins existing teams as member/viewer ONLY — never as an owner.
+    // The UI restricts this, but the role arrives from the client, so the server
+    // must enforce it too: granting the owner role is an escalation reserved for
+    // an existing owner of the team (see addExistingMember/updateMember), not
+    // something an admin pre-bakes into a self-service registration link.
     for (const a of assignments) {
       if (a.role !== "member" && a.role !== "viewer")
         throw new Error("A new user can only join a team as a member or viewer");

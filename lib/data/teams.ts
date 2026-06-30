@@ -33,6 +33,7 @@ function rowToTeam(t: {
   name: string;
   slug: string;
   plan: string;
+  founderUserId?: string | null;
   createdAt: string;
 }): Team {
   return {
@@ -40,6 +41,7 @@ function rowToTeam(t: {
     name: t.name,
     slug: t.slug,
     plan: t.plan as Team["plan"],
+    founderUserId: t.founderUserId ?? null,
     createdAt: t.createdAt,
   };
 }
@@ -171,6 +173,8 @@ export async function createTeam(input: { name: string }): Promise<Team> {
       name,
       slug,
       plan: "pro",
+      // The creator is the founder (absolute owner / "crown") of the new team.
+      founderUserId: user.id,
       createdAt: now,
     };
     const membershipId = newId("mbr");
@@ -179,6 +183,7 @@ export async function createTeam(input: { name: string }): Promise<Team> {
       name: t.name,
       slug: t.slug,
       plan: t.plan,
+      founderUserId: t.founderUserId,
       createdAt: t.createdAt,
     });
     await tx.insert(membershipsTable).values({

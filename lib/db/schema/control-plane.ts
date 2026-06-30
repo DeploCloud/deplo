@@ -126,6 +126,16 @@ export const teams = pgTable(
     name: text("name").notNull(),
     slug: text("slug").notNull(),
     plan: text("plan").notNull(),
+    // The team's ABSOLUTE owner — the user who originally created the team (the
+    // "crown"). Distinct from the `owner` *role*, which any number of members may
+    // hold (assigned owners). The founder is immutable and unremovable by anyone;
+    // an assigned owner can be managed/removed by any owner. NULLABLE: legacy
+    // teams are backfilled to their earliest owner membership, and `ON DELETE SET
+    // NULL` so deleting the founder's user account never dangles the FK (the team
+    // is then left with no protected founder). See [Team.founderUserId](../../types.ts).
+    founderUserId: text("founder_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("teams_slug_uq").on(t.slug)],

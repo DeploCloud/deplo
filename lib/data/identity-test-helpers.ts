@@ -32,6 +32,12 @@ const T0 = "2026-01-01T00:00:00.000Z";
 export interface SeedTeam {
   id: string;
   slug: string;
+  /**
+   * The team's founder (absolute owner / "crown"). Defaults to the first seeded
+   * `owner` user of the team — mirroring the backfill — so the existing
+   * "owner is immutable" tests keep seeing USER_1 as TEAM_A's protected founder.
+   */
+  founderUserId?: string | null;
 }
 export interface SeedUser {
   id: string;
@@ -69,15 +75,9 @@ export async function seedIdentity(
   const seedTeams = opts.teams ?? DEFAULT_TEAMS;
   const seedUsers = opts.users ?? DEFAULT_USERS;
 
-  await db.insert(teams).values(
-    seedTeams.map((t) => ({
-      id: t.id,
-      name: t.slug,
-      slug: t.slug,
-      plan: "pro" as const,
-      createdAt: T0,
-    })),
-  );
+  // Users BEFORE teams: `teams.founder_user_id` FKs `users.id`, so the founder
+  // must already exist when the team row is inserted (the production creators
+  // insert the user first for the same reason).
   await db.insert(users).values(
     seedUsers.map((u) => {
       const role = u.role ?? "owner";
@@ -94,6 +94,23 @@ export async function seedIdentity(
         createdAt: T0,
       };
     }),
+  );
+  await db.insert(teams).values(
+    seedTeams.map((t) => ({
+      id: t.id,
+      name: t.slug,
+      slug: t.slug,
+      plan: "pro" as const,
+      // Explicit override, else the first seeded owner of the team (the backfill
+      // rule); null when the team has no owner user seeded.
+      founderUserId:
+        t.founderUserId !== undefined
+          ? t.founderUserId
+          : seedUsers.find(
+              (u) => u.teamId === t.id && (u.role ?? "owner") === "owner",
+            )?.id ?? null,
+      createdAt: T0,
+    })),
   );
   await db.insert(memberships).values(
     seedUsers.map((u) => ({

@@ -74,6 +74,7 @@ export async function teamsForUser(userId: string): Promise<Team[]> {
       name: teamsTable.name,
       slug: teamsTable.slug,
       plan: teamsTable.plan,
+      founderUserId: teamsTable.founderUserId,
       createdAt: teamsTable.createdAt,
     })
     .from(teamsTable)
@@ -88,6 +89,7 @@ export async function teamsForUser(userId: string): Promise<Team[]> {
     name: t.name,
     slug: t.slug,
     plan: t.plan as Team["plan"],
+    founderUserId: t.founderUserId ?? null,
     createdAt: t.createdAt,
   }));
 }

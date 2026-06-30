@@ -31,12 +31,19 @@ export function AddMemberDialog({
   open,
   onOpenChange,
   canCreateUser = false,
+  canAssignOwner = false,
   onCreateUser,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   /** Show the "create a new user" shortcut (instance admins only). */
   canCreateUser?: boolean;
+  /**
+   * Offer "Owner" as a role. Only an existing owner (founder or assigned owner)
+   * may add another owner — a plain manager is capped at member/viewer. The data
+   * layer enforces this too; this just hides the option that would be rejected.
+   */
+  canAssignOwner?: boolean;
   /** Called after closing this dialog, to open the create-user dialog. */
   onCreateUser?: () => void;
 }) {
@@ -266,6 +273,7 @@ export function AddMemberDialog({
               onRoleChange={setRole}
               onCapabilitiesChange={setCaps}
               idPrefix="addmember"
+              availableRoles={canAssignOwner ? undefined : ["member", "viewer"]}
             />
           </div>
         )}

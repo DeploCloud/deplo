@@ -51,6 +51,11 @@ export const MemberRef = builder.objectRef<MemberDTO>("Member").implement({
       type: [CapabilityEnum],
       resolve: (m) => m.capabilities,
     }),
+    // The absolute-owner ("crown") + instance-admin distinctions: graphical
+    // badges in the member list, and (for the founder) the gating of which
+    // members the viewer may edit/remove. See MemberDTO in lib/data/members.ts.
+    isPrimaryOwner: t.exposeBoolean("isPrimaryOwner"),
+    isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
     avatarColor: t.exposeString("avatarColor"),
     createdAt: t.exposeString("createdAt"),
   }),

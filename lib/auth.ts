@@ -232,18 +232,21 @@ export async function createAccountWithTeam(
       name: teamName,
       slug: finalSlug,
       plan: "pro",
+      // The registrant is the founder (absolute owner / "crown") of their team.
+      founderUserId: user.id,
       createdAt: now,
     };
     const membershipId = `mbr_${randomBytes(8).toString("hex")}`;
     const ownerCaps = capabilitiesForRole("owner");
 
     // FK-safe inserts: team → membership → membership_capabilities (the user row
-    // was already inserted by insertUserCore above).
+    // was already inserted by insertUserCore above, so the founder FK resolves).
     await tx.insert(teamsTable).values({
       id: team.id,
       name: team.name,
       slug: team.slug,
       plan: team.plan,
+      founderUserId: team.founderUserId,
       createdAt: team.createdAt,
     });
     await tx.insert(membershipsTable).values({

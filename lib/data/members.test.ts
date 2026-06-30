@@ -59,6 +59,10 @@ beforeEach(async () => {
 const asOwner = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
+/** Act as an arbitrary user inside TEAM_A (founder, assigned owner, manager…). */
+const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity({ userId, teamId: TEAM_A }, fn);
+
 test("mintRegistrationLink refuses an owner role for an existing-teams assignment", async () => {
   await seedIdentity(db); // USER_1 is an instance admin (owner of TEAM_A)
   // The server must mirror the UI's member/viewer-only restriction even when the
@@ -170,6 +174,139 @@ test("removeMember keeps the team covered; removing the sole non-owner manager w
     await removeMember("m1");
     const members = await listMembers();
     assert.equal(members.length, 1, "only the owner remains");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Absolute owner ("crown") vs assigned owner                          */
+/* ------------------------------------------------------------------ */
+
+test("listMembers marks the founder as the primary owner; assigned owners are not", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder of TEAM_A
+      { id: "co", teamId: TEAM_A, role: "owner", isInstanceAdmin: false }, // assigned owner
+      { id: "m1", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
+    ],
+  });
+  await asOwner(async () => {
+    const members = await listMembers();
+    const byId = new Map(members.map((m) => [m.userId, m]));
+    assert.equal(byId.get(USER_1)!.isPrimaryOwner, true, "founder wears the crown");
+    assert.equal(byId.get("co")!.role, "owner");
+    assert.equal(byId.get("co")!.isPrimaryOwner, false, "assigned owner is not");
+    assert.equal(byId.get("m1")!.isPrimaryOwner, false);
+    // The founder is an instance admin by seed default; the others opted out.
+    assert.equal(byId.get(USER_1)!.isInstanceAdmin, true);
+    assert.equal(byId.get("co")!.isInstanceAdmin, false);
+  });
+});
+
+test("the founder (primary owner) can't be removed or demoted — even by another owner", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
+      { id: "co", teamId: TEAM_A, role: "owner" }, // assigned owner with manage_members
+    ],
+  });
+  // An assigned owner (full manage_members) still cannot touch the founder.
+  await asUser("co", async () => {
+    await assert.rejects(
+      () => removeMember(USER_1),
+      /primary owner can't be removed/,
+    );
+    await assert.rejects(
+      () => updateMember({ userId: USER_1, role: "member", capabilities: ["view"] }),
+      /primary owner's role and permissions can't be changed/,
+    );
+  });
+});
+
+test("the founder CAN remove an assigned owner (the reported gap)", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
+      { id: "co", teamId: TEAM_A, role: "owner" }, // assigned owner
+    ],
+  });
+  await asOwner(async () => {
+    await removeMember("co");
+    const members = await listMembers();
+    assert.equal(members.length, 1, "only the founder remains");
+    assert.equal(members[0].userId, USER_1);
+  });
+});
+
+test("assigned owners can remove each other; the founder stays protected", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
+      { id: "co1", teamId: TEAM_A, role: "owner" }, // assigned owner
+      { id: "co2", teamId: TEAM_A, role: "owner" }, // assigned owner
+    ],
+  });
+  await asUser("co1", async () => {
+    await removeMember("co2"); // one assigned owner removes another — allowed
+    const members = await listMembers();
+    assert.deepEqual(
+      members.map((m) => m.userId).sort(),
+      [USER_1, "co1"].sort(),
+    );
+  });
+});
+
+test("a non-owner manager cannot act on owners or grant the owner role", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
+      { id: "co", teamId: TEAM_A, role: "owner" }, // assigned owner
+      {
+        id: "mgr",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_members"],
+      },
+      { id: "m1", teamId: TEAM_A, role: "member" }, // a plain member to promote
+      { id: "cand", teamId: "team_b", role: "owner" }, // a user from another team
+    ],
+  });
+  await asUser("mgr", async () => {
+    // Can't remove or edit an (assigned) owner.
+    await assert.rejects(() => removeMember("co"), /Only an owner can remove another owner/);
+    await assert.rejects(
+      () => updateMember({ userId: "co", role: "member", capabilities: ["view"] }),
+      /Only an owner can change another owner/,
+    );
+    // Can't promote a member to owner.
+    await assert.rejects(
+      () => updateMember({ userId: "m1", role: "owner" }),
+      /Only an owner can grant the owner role/,
+    );
+    // Can't add a new owner.
+    await assert.rejects(
+      () => addExistingMember({ userId: "cand", role: "owner" }),
+      /Only an owner can add another owner/,
+    );
+    // But managing a plain member is fine.
+    await updateMember({ userId: "m1", role: "viewer", capabilities: ["view"] });
+  });
+});
+
+test("an owner can add another (assigned) owner; they are not the founder", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" }, // founder
+      { id: "cand", teamId: "team_b", role: "owner" },
+    ],
+  });
+  await asOwner(async () => {
+    const m = await addExistingMember({ userId: "cand", role: "owner" });
+    assert.equal(m.role, "owner");
+    assert.equal(m.isPrimaryOwner, false, "an added owner never inherits the crown");
+    const members = await listMembers();
+    const cand = members.find((x) => x.userId === "cand")!;
+    assert.equal(cand.role, "owner");
+    assert.equal(cand.isPrimaryOwner, false);
   });
 });
 

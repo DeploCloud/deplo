@@ -615,6 +615,8 @@ type Member {
   avatarColor: String
   capabilities: [Capability!]
   createdAt: String
+  isInstanceAdmin: Boolean
+  isPrimaryOwner: Boolean
   membershipId: ID
   name: String
   role: Role

@@ -166,6 +166,16 @@ export interface Team {
   slug: string;
   plan: "pro" | "enterprise";
   /**
+   * The team's ABSOLUTE owner — the user who originally created the team, the
+   * holder of the "crown" (👑). Distinct from the `owner` *role*: a team may have
+   * several owner memberships ("assigned owners"), but exactly one founder. The
+   * founder is immutable and unremovable by anyone (including instance admins);
+   * assigned owners can be managed/removed by any owner. Absent ⇒ a legacy team
+   * not yet backfilled, or one whose founder's account was deleted (`ON DELETE
+   * SET NULL`), leaving it with no protected founder. See `lib/data/members.ts`.
+   */
+  founderUserId?: ID | null;
+  /**
    * Team-wide display order of projects in the Overview grid (array of project
    * ids, first = top-left). A team-level setting, not a per-user preference, so
    * everyone sees the same arrangement; only an instance admin or a member with

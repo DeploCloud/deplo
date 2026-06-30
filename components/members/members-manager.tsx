@@ -3,7 +3,15 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { UserPlus, Trash2, Pencil, MoreHorizontal, UserCog } from "lucide-react";
+import {
+  UserPlus,
+  Trash2,
+  Pencil,
+  MoreHorizontal,
+  UserCog,
+  Crown,
+  ShieldCheck,
+} from "lucide-react";
 import {
   Card,
   CardContent,
@@ -78,6 +86,12 @@ export function MembersManager({
 }) {
   const [addOpen, setAddOpen] = React.useState(false);
   const [userOpen, setUserOpen] = React.useState(false);
+  // The viewer's own rank in this team. Owners (the founder OR an assigned
+  // owner) may grant the owner role and act on other owners; everyone else is
+  // capped at member/viewer. Derived from the member list — no extra query.
+  const viewerIsOwner = members.some(
+    (m) => m.userId === currentUserId && m.role === "owner",
+  );
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
@@ -98,6 +112,7 @@ export function MembersManager({
               open={addOpen}
               onOpenChange={setAddOpen}
               canCreateUser={isAdmin}
+              canAssignOwner={viewerIsOwner}
               onCreateUser={() => setUserOpen(true)}
             />
             {isAdmin && (
@@ -115,6 +130,7 @@ export function MembersManager({
               isSelf={m.userId === currentUserId}
               canManage={canManage}
               isAdmin={isAdmin}
+              viewerIsOwner={viewerIsOwner}
             />
           ))}
         </div>
@@ -128,27 +144,34 @@ function MemberCard({
   isSelf,
   canManage,
   isAdmin,
+  viewerIsOwner,
 }: {
   member: MemberDTO;
   isSelf: boolean;
   canManage: boolean;
   /** Viewer is an instance admin — may edit any user's global account. */
   isAdmin: boolean;
+  /** Viewer holds the owner role in this team (founder or assigned owner). */
+  viewerIsOwner: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [editOpen, setEditOpen] = React.useState(false);
   const [userEditOpen, setUserEditOpen] = React.useState(false);
-  // The team owner is immutable — no team-permission edit/remove (the data
-  // layer enforces this too). They keep their "Owner" role badge.
+  // The ABSOLUTE owner (founder / "crown") is immutable — never editable or
+  // removable by anyone (the data layer enforces this too). An *assigned* owner
+  // (owner role, but not the founder) can be edited/removed, but only BY another
+  // owner — a plain manager can't act on any owner.
+  const isFounder = member.isPrimaryOwner;
   const isOwner = member.role === "owner";
 
   // What this viewer may do to THIS member. Editing team permissions and
-  // removing need `manage_members` and a non-owner target; editing the global
-  // account is an instance-admin power, independent of team role.
-  const canEditPerms = canManage && !isOwner;
+  // removing need `manage_members`, a non-founder target, and — when the target
+  // is an (assigned) owner — that the viewer is themselves an owner. Editing the
+  // global account is an instance-admin power, independent of team role.
+  const canEditPerms = canManage && !isFounder && (!isOwner || viewerIsOwner);
   const canEditGlobal = isAdmin;
-  const canRemove = canManage && !isOwner;
+  const canRemove = canManage && !isFounder && (!isOwner || viewerIsOwner);
   // The ⋯ menu (and the right-click menu) only appear on OTHER members with at
   // least one available action — never on your own card.
   const actionable = !isSelf && (canEditPerms || canEditGlobal);
@@ -228,10 +251,28 @@ function MemberCard({
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">
-            @{member.username}
+          <p className="flex items-center gap-1 text-sm font-medium">
+            <span className="truncate">@{member.username}</span>
+            {/* Discord-style crown next to the nickname for the absolute owner,
+                and a shield for an instance admin — both can show at once. */}
+            {isFounder && (
+              <span
+                className="shrink-0 leading-none"
+                title="Primary owner — created this team; can't be removed or demoted"
+              >
+                <Crown className="size-3.5 text-amber-500" aria-label="Primary owner" />
+              </span>
+            )}
+            {member.isInstanceAdmin && (
+              <span
+                className="shrink-0 leading-none"
+                title="Instance admin — platform-wide administrator"
+              >
+                <ShieldCheck className="size-3.5 text-sky-500" aria-label="Instance admin" />
+              </span>
+            )}
             {isSelf && (
-              <span className="ml-1.5 text-xs text-muted-foreground">
+              <span className="ml-0.5 shrink-0 text-xs text-muted-foreground">
                 (you)
               </span>
             )}
@@ -261,9 +302,18 @@ function MemberCard({
         )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="outline" className="capitalize">
-          {member.role}
-        </Badge>
+        {/* The absolute owner reads as "Primary owner"; an assigned owner is a
+            plain "Owner". This is the functional rank, not just decoration. */}
+        {isFounder ? (
+          <Badge className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            <Crown className="size-3" />
+            Primary owner
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="capitalize">
+            {member.role}
+          </Badge>
+        )}
         <Badge variant="outline">
           {member.capabilities.length} capabilit
           {member.capabilities.length === 1 ? "y" : "ies"}
@@ -277,6 +327,7 @@ function MemberCard({
       {editOpen && (
         <EditMemberDialog
           member={member}
+          canAssignOwner={viewerIsOwner}
           open={editOpen}
           onOpenChange={setEditOpen}
         />
@@ -323,10 +374,13 @@ function MemberCard({
 
 function EditMemberDialog({
   member,
+  canAssignOwner,
   open,
   onOpenChange,
 }: {
   member: MemberDTO;
+  /** Viewer is an owner — only then may "Owner" be offered as a role. */
+  canAssignOwner: boolean;
   open: boolean;
   onOpenChange: (o: boolean) => void;
 }) {
@@ -368,6 +422,7 @@ function EditMemberDialog({
           onRoleChange={setRole}
           onCapabilitiesChange={setCaps}
           idPrefix={`edit-${member.userId}`}
+          availableRoles={canAssignOwner ? undefined : ["member", "viewer"]}
         />
         <DialogFooter>
           <Button
