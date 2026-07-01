@@ -5,8 +5,6 @@ services:
   homeserver:
     image: girlbossceo/conduwuit:latest
     restart: unless-stopped
-    ports:
-      - 8448:6167
     volumes:
       - db:/var/lib/conduwuit
       #- ./conduwuit.toml:/etc/conduwuit.toml

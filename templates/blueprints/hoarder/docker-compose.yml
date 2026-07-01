@@ -4,8 +4,6 @@ services:
     restart: unless-stopped
     volumes:
       - hoarder-data:/data
-    ports:
-      - 3000
     environment:
       - DISABLE_SIGNUPS
       - NEXTAUTH_URL

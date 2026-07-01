@@ -32,9 +32,6 @@ services:
   usesend-storage-prod:
     image: minio/minio:latest
 
-    ports:
-      - 9002
-      - 9001
     volumes:
       - storage:/data
     environment:
@@ -46,8 +43,6 @@ services:
   usesend:
     image: usesend/usesend:latest
     restart: always
-    ports:
-      - ${PORT:-3000}
     environment:
       - PORT=${PORT:-3000}
       - DATABASE_URL=${DATABASE_URL}

@@ -5,10 +5,6 @@ services:
     command: --config /etc/livekit.yaml
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml
-    ports:
-      - "${LIVEKIT_PORT}:${LIVEKIT_PORT}"
-      - "${TURN_UDP_PORT}:${TURN_UDP_PORT}/udp"
-      - "${LIVEKIT_UDP_PORT}:${LIVEKIT_UDP_PORT}/udp"
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- http://localhost:${LIVEKIT_PORT} || exit 1" ]
       interval: 10s
@@ -50,9 +46,6 @@ services:
       - INGRESS_CONFIG_FILE=/etc/ingress.yaml
     volumes:
       - ./ingress.yaml:/etc/ingress.yaml
-    ports:
-      - "${RTMP_PORT}:${RTMP_PORT}"
-      - "${INGRESS_UDP_PORT}:${INGRESS_UDP_PORT}/udp"
     depends_on:
       livekit:
         condition: service_healthy

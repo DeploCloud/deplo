@@ -9,9 +9,6 @@ services:
   any-sync-bundle:
     image: ghcr.io/grishy/any-sync-bundle:latest
     restart: unless-stopped
-    ports:
-      - "33010:33010"
-      - "33020:33020/udp"
     volumes:
       - ./data:/data
     environment:

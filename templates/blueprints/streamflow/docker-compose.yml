@@ -1,4 +1,3 @@
-version: "3.8"
 services:
   streamflow:
     build:
@@ -13,8 +12,6 @@ services:
       - streamflow-db:/app/db
       - streamflow-logs:/app/logs
       - streamflow-uploads:/app/public/uploads
-    ports:
-      - 7575
 
 volumes:
   streamflow-db: {}

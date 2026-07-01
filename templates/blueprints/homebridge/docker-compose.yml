@@ -2,8 +2,6 @@ services:
   homebridge:
     image: homebridge/homebridge:latest
     restart: always
-    ports:
-      - 8581
     volumes:
       - ./volumes/homebridge:/homebridge
     healthcheck:

@@ -5,9 +5,6 @@ services:
         condition: service_healthy
     image: ghcr.io/logto-io/logto:1.27.0
     entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
-    ports:
-      - 3001
-      - 3002
 
     environment:
       TRUST_PROXY_HEADER: 1

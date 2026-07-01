@@ -1,4 +1,3 @@
-version: "3.8"
 
 services:
   kener:
@@ -11,8 +10,6 @@ services:
       - ORIGIN=${ORIGIN}
       - RESEND_API_KEY=${RESEND_API_KEY} # 🔐 API key
       - RESEND_SENDER_EMAIL=${RESEND_SENDER_EMAIL}
-    ports:
-      - 3000
     volumes:
       - kener_db:/app/database
       - ./uploads:/app/uploads

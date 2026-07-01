@@ -1,4 +1,3 @@
-version: "3.8"
 
 services:
   memos:
@@ -9,7 +8,5 @@ services:
     environment:
       - MEMOS_MODE=${MEMOS_MODE}
       - MEMOS_PORT=${MEMOS_PORT}
-    ports:
-      - "5230"
 volumes:
   memos_data:

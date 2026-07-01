@@ -18,7 +18,12 @@ import {
  * service's published `ports:` (host publishing is orthogonal to routing) holds.
  */
 
-type Svc = { ports?: unknown[]; networks?: unknown; labels?: unknown };
+type Svc = {
+  ports?: unknown[];
+  networks?: unknown;
+  labels?: unknown;
+  environment?: unknown;
+};
 type Doc = { services: Record<string, Svc> };
 
 /** A whole-host route to `service` on `port` (no path). */
@@ -313,4 +318,160 @@ services:
   );
   const vols = volsOf(doc.services.web as Svc & { volumes?: unknown });
   assert.ok(vols.includes("/srv/host/data:/data"));
+});
+
+/* ------------------------------------------------------------------ */
+/* envKeys — settings env vars injected as bare `- KEY` pass-throughs  */
+/* (the env analogue of the auto domain labels; values ride env-file)  */
+/* ------------------------------------------------------------------ */
+
+/** A service's `environment:`, normalised to a list of strings (the build always
+ * emits list form when it injects, but a service it didn't touch may be a map). */
+function envOf(svc: Svc): string[] {
+  const e = svc.environment;
+  if (Array.isArray(e)) return e.map(String);
+  if (e && typeof e === "object") {
+    return Object.entries(e as Record<string, unknown>).map(([k, v]) =>
+      v === null || v === undefined ? k : `${k}=${String(v)}`,
+    );
+  }
+  return [];
+}
+
+test("envKeys inject bare `- KEY` pass-throughs into EVERY service", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+  db:
+    image: postgres
+`,
+    { envKeys: ["FOO", "BAR"], domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)] },
+  );
+  // The user picked "every service" — both the app and the sidecar get the keys,
+  // as bare names (no value), so each reads its value from the env-file.
+  assert.deepEqual(envOf(doc.services.web), ["FOO", "BAR"]);
+  assert.deepEqual(envOf(doc.services.db), ["FOO", "BAR"]);
+});
+
+test("a key the service already declares (map value) is NOT overridden", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    environment:
+      FOO: hardcoded
+`,
+    { envKeys: ["FOO", "BAR"] },
+  );
+  const env = envOf(doc.services.web);
+  // FOO keeps its compose-authored value; only the missing BAR is appended bare.
+  assert.ok(env.includes("FOO=hardcoded"));
+  assert.ok(env.includes("BAR"));
+  assert.ok(!env.includes("FOO"), "FOO must not be duplicated as a bare key");
+});
+
+test("a key the service already declares (list `KEY=value`) is NOT overridden", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    environment:
+      - FOO=hardcoded
+`,
+    { envKeys: ["FOO", "BAR"] },
+  );
+  const env = envOf(doc.services.web);
+  assert.deepEqual(env, ["FOO=hardcoded", "BAR"]);
+});
+
+test("a key the service already declares as a bare pass-through is kept once", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    environment:
+      - FOO
+`,
+    { envKeys: ["FOO", "BAR"] },
+  );
+  const env = envOf(doc.services.web);
+  // FOO is already a pass-through — keep it as-is, append only BAR (no dupes).
+  assert.deepEqual(env, ["FOO", "BAR"]);
+});
+
+test("a user `KEY=${VAR}` interpolation is preserved, not clobbered", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    environment:
+      - DATABASE_URL=postgres://app:\${DB_PASSWORD}@db:5432/app
+`,
+    { envKeys: ["DATABASE_URL", "DB_PASSWORD"] },
+  );
+  const env = envOf(doc.services.web);
+  // The hand-written interpolation wins; only the otherwise-missing DB_PASSWORD
+  // is injected as a bare pass-through.
+  assert.ok(env.includes("DATABASE_URL=postgres://app:${DB_PASSWORD}@db:5432/app"));
+  assert.ok(env.includes("DB_PASSWORD"));
+});
+
+test("empty envKeys ⇒ services with NO environment stay untouched", () => {
+  const doc = buildDoc(`
+services:
+  web:
+    image: nginx
+`);
+  // No env injected and none authored ⇒ no `environment:` key materialises.
+  assert.equal(doc.services.web.environment, undefined);
+});
+
+test("a map service whose keys are all already declared is left as a MAP (no churn)", () => {
+  // mergeEnvironment must NOT rewrite a map to a list when it adds nothing —
+  // that would change the YAML and force a needless reroute restart.
+  const out = buildComposeStack({
+    compose: `
+services:
+  web:
+    image: nginx
+    environment:
+      FOO: a
+      BAR: b
+`,
+    name: "deplo-demo",
+    slug: "demo",
+    projectId: "p1",
+    domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
+    envKeys: ["FOO", "BAR"],
+  });
+  const doc = yaml.load(out) as Doc;
+  // Still a map (object), not an array — nothing new was added.
+  assert.ok(
+    !Array.isArray(doc.services.web.environment) &&
+      typeof doc.services.web.environment === "object",
+  );
+});
+
+test("a `KEY:` map entry with a null value stays a bare pass-through when re-listed", () => {
+  // The template convention: `environment:` with a value-less map key. When a
+  // NEW key forces list-form, the existing null entry must emit as `KEY`, never
+  // `KEY=null` (which would set the literal string "null").
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    environment:
+      EXISTING:
+`,
+    { envKeys: ["NEWKEY"] },
+  );
+  const env = envOf(doc.services.web);
+  assert.deepEqual(env, ["EXISTING", "NEWKEY"]);
 });

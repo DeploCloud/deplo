@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   calibre:
@@ -9,8 +8,6 @@ services:
       - TZ=Etc/UTC
       - PUID=1000
       - PGID=1000
-    ports:
-      - 8080
     volumes:
       - books:/books
       - data:/config

@@ -7,8 +7,6 @@ services:
     restart: unless-stopped
 
     # The port is exposed without mapping. Deplo handles the routing via the domain.
-    ports:
-      - "3000"
 
     # Environment variables are sourced from the template.toml file.
     environment:

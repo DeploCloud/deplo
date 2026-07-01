@@ -2,9 +2,6 @@ services:
   mumble-server:
     image: mumblevoip/mumble-server:latest
     restart: unless-stopped
-    ports:
-      - 64738
-      - 64738/udp
     volumes:
       - mumble-data:/data
     environment:

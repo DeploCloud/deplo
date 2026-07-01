@@ -20,8 +20,6 @@ services:
   paymenter:
     image: ghcr.io/paymenter/paymenter:latest
     restart: unless-stopped
-    ports:
-      - 80
     depends_on:
       - database
       - cache

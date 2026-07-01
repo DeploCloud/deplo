@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   carbone:
@@ -7,8 +6,6 @@ services:
     environment:
       - CARBONE_EE_LICENSE=${CARBONE_KEY}
       - CARBONE_EE_STUDIO=true
-    ports:
-      - 4000
     volumes:
       - template:/app/template
 

@@ -5,10 +5,6 @@ services:
     restart: unless-stopped
     volumes:
       - rustdesk-data:/root
-    ports:
-      - "21115:21115"
-      - "21116:21116"
-      - "21116:21116/udp"
     depends_on:
       - hbbr
 
@@ -18,10 +14,6 @@ services:
     restart: unless-stopped
     volumes:
       - rustdesk-data:/root
-    ports:
-      - "21117:21117"
-      - "21118:21118"
-      - "21119:21119"
 
 volumes:
   rustdesk-data:

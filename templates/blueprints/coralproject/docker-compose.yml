@@ -1,10 +1,7 @@
-version: "3"
 
 services:
   coral:
     image: coralproject/talk:9.7.0
-    ports:
-      - "3000"
     environment:
       - MONGODB_URI=${MONGODB_URI}
       - REDIS_URI=${REDIS_URI}

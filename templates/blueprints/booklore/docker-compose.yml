@@ -8,8 +8,6 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-    ports:
-      - 6060
     volumes:
       - booklore-data:/app/data
       - booklore-books:/books

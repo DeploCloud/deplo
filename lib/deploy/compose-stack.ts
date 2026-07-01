@@ -25,9 +25,18 @@ import { traefikRouterLabels } from "./routing";
  *  4. Strip `container_name` everywhere  it is globally unique on the host and
  *     would collide between projects; Compose's project-prefixed names are safe
  *     and services still reach each other by service name on the shared network.
+ *  5. Inject the project's settings env vars into EVERY service's `environment:`
+ *     as bare `- KEY` pass-through entries (the value comes from the env-file),
+ *     so a var added in project settings reaches the containers without the user
+ *     also hand-writing it into the compose — the env-var analogue of the auto
+ *     domain labels in (2). A key the service already declares (in any form) is
+ *     never overridden.
  *
  * The env the compose interpolates (`${VAR}`) is supplied to `docker compose`
- * via an `--env-file`, not baked in here.
+ * via an `--env-file`, not baked in here. The injected pass-through keys read
+ * their VALUES from that same env-file at `compose up`, so no secret value ever
+ * lands in the rendered YAML, the "View full compose" preview, or the on-disk
+ * stack file — only the var NAMES appear.
  */
 
 const NETWORK = "deplo";
@@ -81,6 +90,17 @@ export interface ComposeStackInput {
    * basic auth). The `$`→`$$` compose escaping happens inside the router grammar.
    */
   basicAuthUsers?: string;
+  /**
+   * The NAMES of the project's settings env vars (production target), injected
+   * into every service's `environment:` as bare `- KEY` pass-through entries so
+   * they reach the containers without the user hand-writing them into the
+   * compose — the env-var analogue of the auto domain labels. Only keys are
+   * passed (never values): the value comes from the `--env-file` at `compose up`,
+   * so no secret lands in the rendered YAML / preview / on-disk stack. A key the
+   * service ALREADY declares (in any form) is left as-is. Empty/absent ⇒ no
+   * `environment:` change (byte-identical to a stack without injected env).
+   */
+  envKeys?: string[];
 }
 
 type Service = Record<string, unknown>;
@@ -217,6 +237,52 @@ function mergeLabels(svc: Service, add: string[]): void {
 }
 
 /**
+ * Inject the project's settings env-var KEYS into a service's `environment:` as
+ * bare `- KEY` pass-through entries (the value comes from the `--env-file` at
+ * `compose up`), so a var added in settings reaches the container without the
+ * user hand-writing it — the env analogue of `mergeLabels`. We NORMALISE to list
+ * form (compose accepts list OR map): an existing map is flattened to `KEY=value`
+ * / `KEY` strings, then the missing keys are appended as bare names.
+ *
+ * A key the service ALREADY declares wins and is never re-added — neither its
+ * value (`KEY=value`, `KEY: value`) nor a hand-written pass-through (`- KEY`) is
+ * touched, so the user's compose-authored env always overrides the injected one
+ * (the same "existing wins" precedence the settings→single-image path already
+ * has, where a project var can't clobber a value baked into the image's compose).
+ * Empty `keys` ⇒ the service is left exactly as-is (no `environment:` key is
+ * created on a service that had none), keeping the output byte-identical.
+ */
+function mergeEnvironment(svc: Service, keys: string[]): void {
+  if (keys.length === 0) return;
+  // The bare NAME a list entry (`KEY` or `KEY=value`) or a map key declares.
+  const nameOf = (entry: string): string => entry.split("=")[0].trim();
+  const existing: string[] = [];
+  const declared = new Set<string>();
+  const env = svc.environment;
+  if (Array.isArray(env)) {
+    for (const e of env) {
+      if (typeof e === "string") {
+        existing.push(e);
+        declared.add(nameOf(e));
+      }
+    }
+  } else if (env && typeof env === "object") {
+    for (const [k, v] of Object.entries(env as Record<string, unknown>)) {
+      // A null map value (`KEY:`) is compose's own pass-through form — emit the
+      // bare key, not `KEY=null`, so it keeps reading from the env-file.
+      existing.push(v === null || v === undefined ? k : `${k}=${String(v)}`);
+      declared.add(k);
+    }
+  }
+  const added = keys.filter((k) => !declared.has(k));
+  // Nothing new to inject ⇒ leave the service untouched (don't rewrite a map to
+  // a list, which would needlessly churn the YAML and restart the container on a
+  // reroute). Only when there's something to add do we normalise to list form.
+  if (added.length === 0) return;
+  svc.environment = [...existing, ...added];
+}
+
+/**
  * Rewrite a project-relative `./<x>` bind-mount source to the project's isolated
  * files dir. `./config.toml` → `<filesDir>/config.toml`, `./folder/x` →
  * `<filesDir>/folder/x`, bare `.`/`./` → `<filesDir>`. A `../` source escapes the
@@ -263,6 +329,10 @@ function serviceNetworks(svc: Service): string[] {
 
 export function buildComposeStack(input: ComposeStackInput): string {
   const { compose, name, slug, projectId, domainRoutes } = input;
+  // Project settings env-var NAMES injected into every service as bare `- KEY`
+  // pass-throughs below (values stay in the env-file). Empty/absent ⇒ no env
+  // change at all (byte-identical to a stack without injected env).
+  const envKeys = input.envKeys ?? [];
   // One generated basicauth middleware for the whole project, prepended to every
   // router below so all routed hostnames are gated. Absent users ⇒ undefined, so
   // the routers render byte-identically to a stack without basic auth.
@@ -298,6 +368,10 @@ export function buildComposeStack(input: ComposeStackInput): string {
       delete (svc as Service).container_name;
       if (input.filesDir) rewriteServiceVolumes(svc as Service, input.filesDir);
       mergeLabels(svc as Service, tracking);
+      // Inject the project's settings env vars as bare `- KEY` pass-throughs on
+      // EVERY service (the value rides the env-file) — the env analogue of the
+      // tracking/routing labels above. A key the service already declares wins.
+      mergeEnvironment(svc as Service, envKeys);
     }
   }
 

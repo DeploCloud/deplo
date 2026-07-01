@@ -1,10 +1,7 @@
-version: "3.8"
 services:
   authorizer:
     image: lakhansamani/authorizer:1.4.4
     restart: unless-stopped
-    ports:
-      - 8080
     environment:
       - DATABASE_TYPE=postgres
       - DATABASE_URL=postgres://postgres:${DB_PASSWORD}@authorizer-db:5432/authorizer?sslmode=disable

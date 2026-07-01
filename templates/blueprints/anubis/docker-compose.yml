@@ -1,10 +1,7 @@
-version: "3.8"
 services:
   anubis:
     image: ghcr.io/techarohq/anubis:latest
     restart: unless-stopped
-    ports:
-      - "8923" # Anubis default port
     environment:
       # Required: Point to your frontend service locally
       # Example: http://mydocker-wyeud:8080

@@ -46,7 +46,7 @@ import {
 /**
  * Per-server management actions, shown for EVERY server card (the host running
  * Deplo included — it is a bootstrapped agent like any other). All gated
- * server-side by `manage_infra`:
+ * server-side to instance admins:
  *   - Update agent — only when the server's agent is OUTDATED. Updates the agent
  *     binary in place to the latest release WITHOUT reissuing certificates: the
  *     agent self-updates over its existing pinned-mTLS channel and re-execs with

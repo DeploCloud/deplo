@@ -6,8 +6,6 @@ services:
       - postgres
       - redis
       - dex
-    ports:
-      - 3000
     environment:
       NODE_ENV: production
       URL: ${URL}
@@ -32,8 +30,6 @@ services:
       - dex
       - serve
       - /etc/dex/config.yaml
-    ports:
-      - 5556
 
   postgres:
     image: postgres:15

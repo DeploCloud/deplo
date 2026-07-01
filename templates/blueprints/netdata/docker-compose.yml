@@ -1,4 +1,3 @@
-version: "3.8"
 services:
   netdata:
     image: netdata/netdata:latest
@@ -22,8 +21,6 @@ services:
       - NETDATA_CLAIM_TOKEN=${NETDATA_CLAIM_TOKEN:-}
       - NETDATA_CLAIM_URL=${NETDATA_CLAIM_URL:-}
       - NETDATA_CLAIM_ROOMS=${NETDATA_CLAIM_ROOMS:-}
-    ports:
-      - "19999"
 
 volumes:
   netdata-config:

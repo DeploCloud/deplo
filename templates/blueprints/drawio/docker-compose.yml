@@ -1,16 +1,11 @@
-version: '3'
 services:
   plantuml-server:
     image: plantuml/plantuml-server
-    ports:
-      - "8080"
 
     volumes:
       - fonts_volume:/usr/share/fonts/drawio
   image-export:
     image: jgraph/export-server
-    ports:
-      - "8000"
 
     volumes:
       - fonts_volume:/usr/share/fonts/drawio
@@ -18,8 +13,6 @@ services:
       - DRAWIO_BASE_URL=${DRAWIO_BASE_URL}
   drawio:
     image: jgraph/drawio:24.7.17
-    ports:
-      - "8080"
     links:
       - plantuml-server:plantuml-server
       - image-export:image-export

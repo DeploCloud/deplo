@@ -233,7 +233,9 @@ export async function isInstanceAdmin(): Promise<boolean> {
 export async function requireInstanceAdmin(): Promise<{ userId: string }> {
   const user = await assertUser();
   if (!user.isInstanceAdmin)
-    throw new Error("Only an instance admin can manage users");
+    // Generic on purpose: this gates every instance-admin action (users, teams,
+    // global env, servers), not just user management.
+    throw new Error("Only an instance admin can do that");
   return { userId: user.id };
 }
 

@@ -22,8 +22,6 @@ services:
     volumes:
       - "./application.yml:/opt/Lavalink/application.yml:rw"
       - "./plugins/:/opt/Lavalink/plugins/:rw"
-    ports:
-      - ${SERVER_PORT}
 
     healthcheck:
       test: >

@@ -2,8 +2,6 @@ services:
   dumbdrop:
     image: dumbwareio/dumbdrop:latest
     restart: unless-stopped
-    ports:
-      - 3000
     volumes:
       - dumbdrop-uploads:/app/uploads
 volumes:

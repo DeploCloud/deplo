@@ -2,8 +2,6 @@ services:
   libredesk:
     image: libredesk/libredesk:latest
     restart: unless-stopped
-    ports:
-      - 9000
     environment:
       # If the password is set during first docker-compose up, the system user password will be set to this value.
       # You can always set system user password later by running `docker exec -it libredesk_app ./libredesk --set-system-user-password`.
@@ -20,9 +18,6 @@ services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
-    ports:
-      # Only bind on the local interface. To connect to Postgres externally, change this to 0.0.0.0
-      - 5432
     environment:
       # Set these environment variables to configure the database, defaults to libredesk.
       POSTGRES_USER: ${POSTGRES_USER}
@@ -40,9 +35,6 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      # Only bind on the local interface.
-      - 6379
     volumes:
       - redis-data:/data
 

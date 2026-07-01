@@ -2,8 +2,6 @@ services:
   movary:
     image: leepeuker/movary:${MOVARY_VERSION:-latest}
     restart: unless-stopped
-    ports:
-      - "8080"
     environment:
       # TMDB API configuration
       TMDB_API_KEY: ${TMDB_API_KEY}

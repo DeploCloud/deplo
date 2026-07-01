@@ -3,8 +3,6 @@ services:
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     restart: unless-stopped
-    ports:
-      - 8080
     environment:
       # This should point to your Ollama instance.
       # It defaults to the internal 'ollama' service if you uncomment it below.

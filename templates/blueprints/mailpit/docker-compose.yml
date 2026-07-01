@@ -2,8 +2,6 @@ services:
   mailpit:
     image: axllent/mailpit:v1.22.3
     restart: unless-stopped
-    ports:
-      - '1025:1025'
     volumes:
       - 'mailpit-data:/data'
     environment:

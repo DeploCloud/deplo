@@ -196,7 +196,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   addServer: t.field({
     type: AddServerPayloadRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { instanceAdmin: true },
     args: { input: t.arg({ type: AddServerInputType, required: true }) },
     resolve: (_r, { input }) =>
       addServer({
@@ -208,7 +208,7 @@ builder.mutationFields((t) => ({
   }),
   setServerTeams: t.field({
     type: ServerRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { instanceAdmin: true },
     description:
       "Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has projects or databases on the server would lose access.",
     args: { input: t.arg({ type: SetServerTeamsInputType, required: true }) },
@@ -220,7 +220,7 @@ builder.mutationFields((t) => ({
   }),
   reissueServerBootstrap: t.field({
     type: AddServerPayloadRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { instanceAdmin: true },
     description:
       "Mint a fresh install command for a server still provisioning (the original token expired or was lost).",
     args: { id: t.arg.string({ required: true }) },
@@ -229,7 +229,7 @@ builder.mutationFields((t) => ({
   removeServer: t.field({
     type: "String",
     nullable: true,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { instanceAdmin: true },
     description:
       "Disconnect and remove a remote server (revokes trust, best-effort teardown). Returns a warning string if the agent was unreachable, else null.",
     args: { id: t.arg.string({ required: true }) },
@@ -240,7 +240,7 @@ builder.mutationFields((t) => ({
   }),
   updateServerAgent: t.field({
     type: "String",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { instanceAdmin: true },
     description:
       "Update this server's agent binary in place to the latest released version WITHOUT reissuing its certificates — the agent self-updates over its existing pinned-mTLS channel and re-execs keeping the same on-disk trust materials, so the server stays online with the same identity. Returns the version the agent is now running. Errors clearly when the server is unreachable/unprovisioned, or — until the agent ships the self-update RPC — when its agent is too old to update itself remotely (re-run the installer to upgrade it for now).",
     args: { id: t.arg.string({ required: true }) },
@@ -251,7 +251,7 @@ builder.mutationFields((t) => ({
   }),
   checkAgentUpdates: t.field({
     type: "String",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { instanceAdmin: true },
     description:
       "Force an immediate re-resolution of the latest agent release from GitHub, bypassing the in-process cache. Returns the resolved expected agent version so the dashboard re-renders with fresh outdated badges. Use after publishing a new agent release rather than waiting out the cache TTL.",
     resolve: async () => {

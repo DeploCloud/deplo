@@ -1,10 +1,7 @@
-version: "3.8"
 
 services:
   langflow:
     image: langflowai/langflow:v1.1.1
-    ports:
-      - 7860
     depends_on:
       - postgres-langflow
     environment:
@@ -20,8 +17,6 @@ services:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: langflow
-    ports:
-      - 5432
     volumes:
       - langflow-postgres:/var/lib/postgresql/data
 

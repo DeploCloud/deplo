@@ -1,10 +1,7 @@
-version: "3.8"
 services:
   grist:
     image: gristlabs/grist:latest
     restart: unless-stopped
-    ports:
-      - 8484
     volumes:
       - grist_data:/persist
     environment:

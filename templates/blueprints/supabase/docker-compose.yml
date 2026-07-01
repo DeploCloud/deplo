@@ -484,9 +484,6 @@ services:
     container_name: ${CONTAINER_PREFIX}-pooler
     image: supabase/supavisor:2.5.1
     restart: unless-stopped
-    ports: # expose supavisor to the host to enable db pooler connection
-      - ${POSTGRES_PORT}:5432
-      - ${POOLER_PROXY_PORT_TRANSACTION}:6543
     volumes:
       - ./volumes/pooler/pooler.exs:/etc/pooler/pooler.exs:ro,z
     healthcheck:

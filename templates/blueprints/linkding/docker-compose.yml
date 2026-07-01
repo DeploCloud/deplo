@@ -1,9 +1,6 @@
-version: "3.8"
 services:
   linkding:
     image: sissbruecker/linkding:latest
     restart: unless-stopped
-    ports:
-      - 9090
     volumes:
       - ./linkding-data:/etc/linkding/data

@@ -1,11 +1,8 @@
-version: "3.8"
 
 services:
   mule:
     image: yogeshmulecraft/mulece-esb:latest
     restart: unless-stopped
-    ports:
-      - "8081"
     environment:
       - MULE_VERSION=${MULE_VERSION:-4.9.0}
       - HTTP_PORT=${HTTP_PORT:-8081}

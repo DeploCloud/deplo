@@ -1,8 +1,6 @@
 services:
   postgresus:
     image: rostislavdugin/postgresus:latest
-    ports:
-      - "4005"
     volumes:
       # Persistent data storage
       - postgresus-data:/postgresus-data

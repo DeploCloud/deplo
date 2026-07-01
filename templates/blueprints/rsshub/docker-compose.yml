@@ -5,8 +5,6 @@ services:
         # * (consumes more disk space and memory) leave everything unchanged
         image: diygod/rsshub
         restart: always
-        ports:
-            - 1200
         environment:
             NODE_ENV: production
             CACHE_TYPE: redis

@@ -1,10 +1,7 @@
-version: "3"
 
 services:
   cockpit:
     image: cockpithq/cockpit:core-2.11.0
-    ports:
-      - "80"
     environment:
       - COCKPIT_SESSION_NAME=cockpit
       - COCKPIT_SALT=${SALT}

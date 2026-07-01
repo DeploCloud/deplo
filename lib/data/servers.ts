@@ -12,7 +12,7 @@ import {
 } from "../db/schema/control-plane";
 import { assembleServer, serverToRow } from "./infra-rows";
 import { getCurrentUser } from "../auth";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import { newId, nowIso } from "../ids";
 import { resolvePublicBaseUrl } from "../public-url";
 import { recordActivity } from "./activity";
@@ -63,7 +63,7 @@ export async function getServerById(id: string): Promise<Server | null> {
  * The public, TEAM-SCOPED server read: a viewer sees only the servers their
  * active team may target (every `all_teams` server + the ones granted to it).
  * A server restricted to other teams must never leak through this read — the
- * unscoped list is {@link listAllServers} (internal) / the manage_infra-gated
+ * unscoped list is {@link listAllServers} (internal) / the instance-admin-gated
  * management page. (Previously this returned every server to any logged-in user,
  * which leaked a restricted server's metadata to excluded teams.)
  */
@@ -211,7 +211,8 @@ export interface AddServerResult {
  * never uses them (PLAN P1).
  */
 export async function addServer(input: AddServerInput): Promise<AddServerResult> {
-  const { membership } = await requireCapability("manage_infra");
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
   const host = input.host.trim();
 
@@ -253,7 +254,7 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
         .insert(serverTeamsTable)
         .values(teamIds.map((teamId) => ({ serverId: server.id, teamId })));
   });
-  await recordActivity("member", `Connected server ${server.name}`, user.name, null, membership.teamId);
+  await recordActivity("member", `Connected server ${server.name}`, user.name, null, teamId);
 
   return {
     server,
@@ -274,7 +275,8 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
  * first call-home is (re)marked `provisioning`.
  */
 export async function reissueBootstrap(id: string): Promise<AddServerResult> {
-  const { membership } = await requireCapability("manage_infra");
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
@@ -299,7 +301,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   // already-trusted server that window can silently replace its agent cert. Like
   // addServer/removeServer, leave an audit trail so a re-issue against a live box
   // is never invisible (the operator-gated act is logged, not hidden).
-  await recordActivity("member", `Reissued install command for server ${server.name}`, user.name, null, membership.teamId);
+  await recordActivity("member", `Reissued install command for server ${server.name}`, user.name, null, teamId);
   return { server: fresh, installCommand: installCommand({ baseUrl, rawToken, fingerprint }) };
 }
 
@@ -317,7 +319,8 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
  * unreachable), or null on a clean teardown.
  */
 export async function removeServer(id: string): Promise<{ warning: string | null }> {
-  const { membership } = await requireCapability("manage_infra");
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
@@ -364,7 +367,7 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   }
 
   await getDb().delete(serversTable).where(eq(serversTable.id, id));
-  await recordActivity("member", `Removed server ${server.name}`, user.name, null, membership.teamId);
+  await recordActivity("member", `Removed server ${server.name}`, user.name, null, teamId);
   return { warning };
 }
 
@@ -385,7 +388,8 @@ export async function removeServer(id: string): Promise<{ warning: string | null
  * telling the operator to re-run the installer for now).
  */
 export async function updateServerAgent(id: string): Promise<{ version: string }> {
-  const { membership } = await requireCapability("manage_infra");
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
@@ -411,7 +415,7 @@ export async function updateServerAgent(id: string): Promise<{ version: string }
     `Updated agent on ${server.name} to v${result.version}`,
     user.name,
     null,
-    membership.teamId,
+    teamId,
   );
   return result;
 }
@@ -499,13 +503,14 @@ export interface SetServerTeamsInput {
  * server would lose access — the operator moves/deletes those first, the same
  * conscious-teardown rule {@link removeServer} enforces (no silent orphaning of a
  * team's running workloads onto a server it can no longer target). Widening to
- * `all_teams` never blocks. Gated by `manage_infra`.
+ * `all_teams` never blocks. Instance-admin only.
  */
 export async function setServerTeams(
   id: string,
   input: SetServerTeamsInput,
 ): Promise<Server> {
-  const { membership } = await requireCapability("manage_infra");
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
@@ -564,7 +569,7 @@ export async function setServerTeams(
       : `Set server ${server.name} access to ${teamIds.length} team${teamIds.length === 1 ? "" : "s"}`,
     user.name,
     null,
-    membership.teamId,
+    teamId,
   );
   return (await getServerById(id))!;
 }

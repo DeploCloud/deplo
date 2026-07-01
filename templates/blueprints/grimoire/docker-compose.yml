@@ -4,7 +4,5 @@ services:
     restart: unless-stopped
     volumes:
       - grimoire_data:/app/data
-    ports:
-      - "5173"
 volumes:
   grimoire_data: {}

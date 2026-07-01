@@ -164,7 +164,11 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/servers",
         icon: Server,
         tooltip: "Connected servers & Docker hosts",
-        requires: "manage_infra",
+        // Server administration is an instance-wide concern (the management view
+        // lists EVERY server across teams), so it is gated to instance admins —
+        // not the per-team manage_infra capability. Members reach servers only
+        // through the team-scoped deploy pickers, never this page.
+        requiresAdmin: true,
       },
       {
         label: "Registries",

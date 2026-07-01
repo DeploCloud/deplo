@@ -1,4 +1,3 @@
-version: "3"
 
 services:
   migrations:
@@ -36,8 +35,6 @@ services:
     image: mediacms/mediacms:latest
     deploy:
       replicas: 1
-    ports:
-      - 80
     volumes:
       - mediacms_data:/home/mediacms.io/mediacms/media
       - mediacms_static:/home/mediacms.io/mediacms/staticfiles

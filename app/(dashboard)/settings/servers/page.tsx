@@ -23,8 +23,8 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { listAllServers, listAllServerTeamIds } from "@/lib/data/servers";
-import { listAllTeams } from "@/lib/data/teams";
-import { hasCapability } from "@/lib/membership";
+import { listAllTeamsForAdmin } from "@/lib/data/teams";
+import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
 import { serverLabel } from "@/lib/utils";
 import {
@@ -161,11 +161,11 @@ function ServerCard({
 export default async function ServersPage(
   props: PageProps<"/settings/servers">,
 ) {
-  // Server administration is an infra-operator concern, and the management view
+  // Server administration is an instance-wide concern, and the management view
   // lists EVERY server (including ones restricted to other teams) — so it is
-  // manage_infra-only. Members reach servers only through the team-scoped deploy
-  // pickers, never this page.
-  if (!(await hasCapability("manage_infra"))) notFound();
+  // instance-admin-only, not the per-team manage_infra capability. Members reach
+  // servers only through the team-scoped deploy pickers, never this page.
+  if (!(await isInstanceAdmin())) notFound();
 
   // The global "New ▸ Add server" action links here with ?new=1 to open the
   // register dialog straight away.
@@ -178,7 +178,11 @@ export default async function ServersPage(
       listAllServers(),
       resolveExpectedAgentVersion(),
       listAllServerTeamIds(),
-      listAllTeams(),
+      // The team list feeds the per-server "Team access" editor. Read it via the
+      // instance-admin variant so it matches this page's admin-only gate — the
+      // manage_infra-scoped listAllTeams would reject an admin who isn't a
+      // manage_infra member of their active team.
+      listAllTeamsForAdmin(),
     ]);
   // Fill in capacity specs for the static cards (measures an unmeasured server
   // once, then reuses the persisted values). No per-second polling anymore.

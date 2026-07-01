@@ -7,5 +7,3 @@ services:
       - ./appdata:/appdata
     environment:
       - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
-    ports:
-      - 7575

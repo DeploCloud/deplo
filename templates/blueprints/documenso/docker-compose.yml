@@ -1,4 +1,3 @@
-version: "3.8"
 services:
   postgres:
     image: postgres:16
@@ -43,8 +42,6 @@ services:
       - CERT_INFO_ORGANIZATIONAL_UNIT=${CERT_INFO_ORGANIZATIONAL_UNIT:-IT Department}
       - CERT_INFO_EMAIL=${CERT_INFO_EMAIL:-admin@example.com}
       - DOCUMENSO_HOST=${DOCUMENSO_HOST}
-    ports:
-      - ${DOCUMENSO_PORT}
     entrypoint:
       - /bin/sh
       - -c

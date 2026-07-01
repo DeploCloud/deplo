@@ -11,8 +11,6 @@ services:
       - STARTUP=${STARTUP_COMMAND}
       - SERVER_JARFILE=${SERVER_JARFILE}
       - JAVA_VERSION=${JAVA_VERSION}
-    ports:
-      - ${SERVER_PORT}
     user: container
 
 volumes:

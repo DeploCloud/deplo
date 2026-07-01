@@ -1,10 +1,7 @@
-version: "3.8"
 services:
   ampache:
     image: ampache/ampache:latest
     restart: unless-stopped
-    ports:
-      - 80
     volumes:
       - config:/var/www/config
       - log:/var/log/ampache

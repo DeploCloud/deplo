@@ -1,10 +1,7 @@
-version: "3.8"
 services:
   convertx:
     image: ghcr.io/c4illin/convertx
     restart: unless-stopped
-    ports:
-      - 3000
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - ACCOUNT_REGISTRATION=${ACCOUNT_REGISTRATION}

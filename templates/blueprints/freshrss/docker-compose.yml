@@ -7,8 +7,6 @@ services:
       - freshrss_data:/var/www/FreshRSS/data
       # Optional volume for storing third-party extensions
       - freshrss_extensions:/var/www/FreshRSS/extensions
-    ports:
-      - "80"
     environment:
       # Server timezone
       TZ: ${TZ:-UTC}

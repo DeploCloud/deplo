@@ -143,6 +143,38 @@ async function projectEnv(projectId: string): Promise<Record<string, string>> {
   return out;
 }
 
+/**
+ * The NAMES of the env vars a production deploy resolves for a project — exactly
+ * the keys `projectEnv` would carry (same selection seam), but WITHOUT decrypting
+ * any value. These are injected into a compose stack's `environment:` as bare
+ * `- KEY` pass-throughs (`buildComposeStack`'s `envKeys`): a settings var reaches
+ * the containers without the user hand-writing it, while the VALUE still rides
+ * the `--env-file`. Deriving the keys from the same resolver guarantees we only
+ * ever inject a key the env-file actually supplies (globals + shared groups
+ * included), so an injected pass-through can never reference an undefined var.
+ */
+async function projectEnvKeys(projectId: string): Promise<string[]> {
+  const [vars, groups, globals] = await Promise.all([
+    loadEnvVarsForProject(projectId),
+    loadSharedEnvGroupsForProject(projectId),
+    loadGlobalEnvForProject(projectId),
+  ]);
+  // De-dupe on key (the resolver emits lowest-precedence first; a later entry
+  // wins on value, but for NAMES we just need the distinct set).
+  const seen = new Set<string>();
+  for (const e of resolveEnvEntries(
+    "production",
+    projectId,
+    vars,
+    groups,
+    globals.teamGlobals,
+    globals.instanceGlobals,
+  )) {
+    seen.add(e.key);
+  }
+  return [...seen];
+}
+
 // Exported for unit tests (render byte-identical contract + the volume YAML
 // shape). Pure: no docker, store, or fs access.
 export function renderCompose(opts: {
@@ -928,6 +960,10 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
 
   const filesDir = composeFilesDir(slug);
   const basicAuthUsers = await basicAuthUsersValue(project.id);
+  // The settings env-var NAMES injected into every service as bare `- KEY`
+  // pass-throughs — the value itself rides the env-file the agent writes (see
+  // deployComposeStackViaAgent), so no secret lands in the rendered YAML.
+  const envKeys = await projectEnvKeys(project.id);
   const stackYaml = buildComposeStack({
     compose: project.compose ?? "",
     name,
@@ -936,6 +972,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
     domainRoutes,
     filesDir,
     basicAuthUsers,
+    envKeys,
   });
   return { stackYaml, filesDir };
 }
@@ -1242,6 +1279,11 @@ export async function rerouteProject(
         domainRoutes: routes,
         filesDir: composeFilesDir(slug),
         basicAuthUsers: await basicAuthUsersValue(projectId),
+        // Inject the current settings env-var names so a reroute keeps the same
+        // pass-throughs a deploy would render — the env-file (sent below) still
+        // carries the values. The no-op guard in mergeEnvironment means a reroute
+        // that adds no new key re-renders byte-identically (no needless restart).
+        envKeys: await projectEnvKeys(projectId),
       });
       mounts = (project.mounts ?? []).map((m) => ({
         path: m.filePath,
@@ -1342,6 +1384,10 @@ export async function renderProjectStack(
       domainRoutes,
       filesDir: composeFilesDir(slug),
       basicAuthUsers: await basicAuthUsersValue(projectId),
+      // Show the injected pass-throughs in the preview so "View full compose"
+      // matches what the next deploy/reroute writes. Only NAMES appear — the
+      // values never enter the rendered YAML (they ride the env-file).
+      envKeys: await projectEnvKeys(projectId),
     });
   }
 

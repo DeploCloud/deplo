@@ -5,9 +5,6 @@ services:
     hostname: enshrouded
     restart: unless-stopped
     stop_grace_period: 90s
-    ports:
-      - "15637:15637/udp"
-      - "27015:27015/udp"
     volumes:
       - enshrouded-persistent-data:/opt/enshrouded
     # only add ntsync device if your kernel supports it (6.14 or newer)

@@ -1,10 +1,7 @@
-version: "3.8"
 services:
   automatisch:
     image: dockeriddonuts/automatisch:2.0
     restart: unless-stopped
-    ports:
-      - 3000
     environment:
       - HOST=${DOMAIN}
       - PROTOCOL=http

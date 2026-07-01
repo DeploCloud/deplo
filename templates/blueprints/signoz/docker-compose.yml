@@ -100,8 +100,6 @@ services:
     image: signoz/signoz:v0.97.1
     command:
       - --config=/root/config/prometheus.yml
-    ports:
-      - "8080"
     volumes:
       - ./signoz/prometheus.yml:/root/config/prometheus.yml
       - sqlite:/var/lib/signoz/
@@ -131,9 +129,6 @@ services:
       - --config=/etc/otel-collector-config.yaml
     volumes:
       - ./collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
-    ports:
-      - "4317" # OTLP gRPC receiver
-      - "4318" # OTLP HTTP receiver
     depends_on:
       signoz:
         condition: service_healthy

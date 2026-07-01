@@ -1,4 +1,3 @@
-version: "3.8"
 
 services:
   db:
@@ -15,9 +14,6 @@ services:
   ojs:
     image: "pkpofficial/ojs:3_3_0-21"
     hostname: "${COMPOSE_PROJECT_NAME}"
-    ports:
-      - 80
-      - 443
     volumes:
       - /etc/localtime:/etc/localtime
       - ojs-private-files:/var/www/files

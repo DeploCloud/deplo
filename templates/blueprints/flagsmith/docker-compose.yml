@@ -54,8 +54,6 @@ services:
       # EMAIL_HOST_PASSWORD: smtp_account_password
       # EMAIL_PORT: 587 # optional
       # EMAIL_USE_TLS: 'true' # optional
-    ports:
-      - 8000
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,8 +67,6 @@ services:
       USE_POSTGRES_FOR_ANALYTICS: "true"
       DJANGO_ALLOWED_HOSTS: "*"
       PROMETHEUS_ENABLED: "true"
-    ports:
-      - 8000
     depends_on:
       - flagsmith
     command: run-task-processor

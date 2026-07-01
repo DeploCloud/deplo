@@ -136,11 +136,13 @@ test("restricting SUCCEEDS when the team with workloads stays included", async (
   );
 });
 
-test("setServerTeams requires manage_infra", async () => {
+test("setServerTeams requires instance admin", async () => {
+  // user_member is a plain team member (not an instance admin) — server
+  // administration is instance-admin-only, so the mutation must reject.
   await assert.rejects(
     runWithIdentity({ userId: "user_member", teamId: TEAM_A }, () =>
       setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
     ),
-    /permission/i,
+    /instance admin/i,
   );
 });

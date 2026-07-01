@@ -2,8 +2,6 @@ services:
   dashboard:
     image: fonoster/dashboard:0.15.15
     restart: unless-stopped
-    ports:
-      - 3030
     environment:
       - SERVER_DASHBOARD_SESSION_SECRET=${SERVER_DASHBOARD_SESSION_SECRET}
 
@@ -104,9 +102,6 @@ services:
     expose:
       - 51907
       - 51908
-    ports:
-      - 5060:5060/udp
-      - 5060-5063:5060-5063
     volumes:
       - ./config/keys/public.pem:/etc/routr/keys/public.pem
 
@@ -124,9 +119,6 @@ services:
     image: fonoster/rtpengine:0.3.17
     restart: unless-stopped
     platform: linux/x86_64
-    ports: 
-      - 10000-10100:10000-10100/udp
-      - 8080:8080
     environment:
       PORT_MAX: ${RTPENGINE_PORT_MAX}
       PORT_MIN: ${RTPENGINE_PORT_MIN}
@@ -197,8 +189,6 @@ services:
     command: ["/usr/local/bin/envoy", "-c", "/etc/envoy/envoy.yaml"]
     volumes:
       - ./config:/etc/envoy:ro
-    ports:
-      - 8449:8449
 
 volumes:
   db:

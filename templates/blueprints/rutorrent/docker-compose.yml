@@ -1,4 +1,3 @@
-version: "3.8"
 
 services:
   rutorrent:
@@ -18,9 +17,6 @@ services:
       - rutorrent-downloads:/downloads
       - rutorrent-passwd:/passwd
     # Expose only P2P-related ports; Deplo domain will handle the web UI.
-    ports:
-      - "${INCOMING_PORT:-50000}:50000/tcp"
-      - "${DHT_PORT:-6881}:6881/udp"
 
 volumes:
   rutorrent-data: {}

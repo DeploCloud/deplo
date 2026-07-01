@@ -30,9 +30,6 @@ services:
         nginx['listen_port'] = 80
         nginx['listen_https'] = false
         prometheus_monitoring['enable'] = false
-    ports:
-      - "80"
-      - "2224"
     volumes:
       - gitlab_config:/etc/gitlab
       - gitlab_logs:/var/log/gitlab

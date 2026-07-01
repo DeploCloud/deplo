@@ -19,8 +19,6 @@ services:
     restart: unless-stopped
     depends_on:
       - server
-    ports:
-      - "80"
 
   mongo:
     image: docker.io/mongo:latest

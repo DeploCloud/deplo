@@ -1,4 +1,3 @@
-version: "3.9"
 
 services:
   teable:
@@ -29,8 +28,6 @@ services:
   teable-db:
     image: postgres:15.4
     restart: always
-    ports:
-      - "${TEABLE_DB_PORT}:${POSTGRES_PORT}"
     volumes:
       - teable-db:/var/lib/postgresql/data
       # you may use a bind-mounted host directory instead,

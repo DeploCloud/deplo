@@ -1,10 +1,7 @@
-version: "3.8"
 services:
   affinepro:
     image: ghcr.io/toeverything/affine-graphql:stable-780dd83
     restart: unless-stopped
-    ports:
-      - 3010
     volumes:
       - affine-storage:/root/.affine/storage
       - affine-config:/root/.affine/config

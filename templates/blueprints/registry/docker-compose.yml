@@ -2,8 +2,6 @@ services:
   registry:
     restart: always
     image: registry:2
-    ports:
-      - 5000
     volumes:
       - ./auth/registry.password:/auth/registry.password
       - registry-data:/var/lib/registry

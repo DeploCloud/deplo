@@ -29,10 +29,6 @@ services:
     volumes:
       - fivem_config:/config
       - fivem_txdata:/txData
-    ports:
-      - 30120:30120
-      - 30120:30120/udp
-      - 40120
     labels:
       - "traefik.enable=true"
 

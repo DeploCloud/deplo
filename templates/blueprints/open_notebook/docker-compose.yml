@@ -1,9 +1,6 @@
-version: "3.8"
 services:
   surrealdb:
     image: surrealdb/surrealdb:v2
-    ports:
-      - 8000
     volumes:
       - ./surreal_data:/mydata
     command: start --user root --pass root rocksdb:/mydata/mydatabase.db
@@ -12,8 +9,6 @@ services:
 
   open_notebook:
     image: lfnovo/open_notebook:latest
-    ports:
-      - 8502
     environment:
       - SURREAL_URL=ws://surrealdb:8000/rpc
       - SURREAL_USER=root

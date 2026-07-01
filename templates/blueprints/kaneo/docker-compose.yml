@@ -14,8 +14,6 @@ services:
     environment:
       JWT_ACCESS: ${KANEO_JWT_ACCESS}
       DATABASE_URL: "postgresql://${KANEO_DB_USER}:${KANEO_DB_PASSWORD}@postgres:5432/${KANEO_DB}"
-    ports:
-      - 1337
     depends_on:
       postgres:
         condition: service_started
@@ -25,8 +23,6 @@ services:
     image: ghcr.io/usekaneo/web:latest
     environment:
       KANEO_API_URL: "http://${BACKEND_HOST}"
-    ports:
-      - 5173
     depends_on:
       backend:
         condition: service_started

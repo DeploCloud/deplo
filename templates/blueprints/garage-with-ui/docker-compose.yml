@@ -5,19 +5,12 @@ services:
       - ./garage.toml:/etc/garage.toml
       - garage-storage:/var/lib/garage
     restart: unless-stopped
-    ports:
-      - 3900
-      - 3901
-      - 3902
-      - 3903
 
   garage-webui:
     image: khairul169/garage-webui:1.1.0
     restart: unless-stopped
     volumes:
       - ./garage.toml:/etc/garage.toml:ro
-    ports:
-      - 3909
     environment:
       - AUTH_USER_PASS
       - API_BASE_URL

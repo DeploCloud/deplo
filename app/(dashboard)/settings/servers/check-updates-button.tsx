@@ -15,7 +15,7 @@ import { gqlAction } from "@/lib/graphql-client";
  *
  * Without this, a newly published agent release isn't reflected until the release
  * memo's TTL elapses (lib/agent/release.ts). The button is the operator's
- * immediate bust; gated server-side by `manage_infra`.
+ * immediate bust; gated server-side to instance admins.
  */
 export function CheckUpdatesButton() {
   const router = useRouter();

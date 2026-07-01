@@ -45,9 +45,6 @@ services:
       PYTHONUNBUFFERED: "1"
       NODE_ENV: "production"
     command: ["java", "-Djava.awt.headless=true", "-server", "-jar", "target/instant-standalone.jar"]
-    ports:
-      - "8888"
-      - "6005"
     logging:
       driver: "json-file"
       options:

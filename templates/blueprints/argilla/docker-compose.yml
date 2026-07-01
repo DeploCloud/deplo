@@ -1,10 +1,7 @@
-version: "3.8"
 services:
   argilla-web:
     image: argilla/argilla-server:latest
     restart: unless-stopped
-    ports:
-      - 6900
     environment:
       - ARGILLA_HOME_PATH=/var/lib/argilla
       - ARGILLA_ELASTICSEARCH=http://argilla-elasticsearch:9200

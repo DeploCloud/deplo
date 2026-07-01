@@ -9,8 +9,6 @@ services:
     volumes:
       - navidrome-data:/data
       - navidrome-music:/music:ro
-    ports:
-      - 4533
 
 volumes:
   navidrome-data: {}
