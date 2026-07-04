@@ -72,6 +72,7 @@ export async function seedDatabase(
       `postgres://app:pw@db-${name}:5432/db-${name}`,
     ),
     exposedPublicly: false,
+    exposedPort: null,
     sizeMb: 0,
     createdAt: T0,
   };

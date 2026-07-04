@@ -43,12 +43,13 @@ import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
  */
 export function AddNewMenu({
   canManageMembers,
-  canManageFolders,
+  canCreateFolder,
   isAdmin,
 }: {
   canManageMembers: boolean;
-  /** Whether the viewer may create folders (instance admin or manage_team). */
-  canManageFolders: boolean;
+  /** Whether the viewer may create folders (has the deploy capability, or is an
+   *  instance admin). */
+  canCreateFolder: boolean;
   isAdmin: boolean;
 }) {
   const [teamOpen, setTeamOpen] = React.useState(false);
@@ -95,7 +96,7 @@ export function AddNewMenu({
               New database
             </Link>
           </DropdownMenuItem>
-          {canManageFolders && (
+          {canCreateFolder && (
             <DropdownMenuItem
               className="cursor-pointer"
               onSelect={(e) => {
@@ -153,7 +154,7 @@ export function AddNewMenu({
       </DropdownMenu>
 
       <CreateTeamDialog open={teamOpen} onOpenChange={setTeamOpen} />
-      {canManageFolders && (
+      {canCreateFolder && (
         <CreateFolderDialog open={folderOpen} onOpenChange={setFolderOpen} />
       )}
       {canManageMembers && (

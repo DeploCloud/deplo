@@ -4,6 +4,7 @@ import { listS3 } from "@/lib/data/s3";
 import { listBackups } from "@/lib/data/backups";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listProjects } from "@/lib/data/projects";
+import { canExposePorts } from "@/lib/membership";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -41,13 +42,17 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   const initialTab =
     newKind === "s3" ? "s3" : newKind === "backup" ? "backups" : "databases";
 
-  const [databases, destinations, backups, servers, projects] =
+  const [databases, destinations, backups, servers, projects, mayExposePorts] =
     await Promise.all([
       listDatabases(),
       listS3(),
       listBackups(),
       listServersForCurrentTeam(),
       listProjects(),
+      // Gates the "Expose publicly" toggle: only a user with the publish-ports
+      // grant may open a database to the internet (same grant as a project's
+      // compose `ports:`). Server-enforced too — this only hides the affordance.
+      canExposePorts(),
     ]);
 
   // Only provisioned servers can host a database (provisioning routes through a
@@ -93,14 +98,23 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               PostgreSQL, MySQL, MongoDB, Redis and more provisioned on your
               servers.
             </p>
-            <CreateDatabase servers={dbServers} autoOpen={autoOpenDatabase} />
+            <CreateDatabase
+              servers={dbServers}
+              canExposePorts={mayExposePorts}
+              autoOpen={autoOpenDatabase}
+            />
           </div>
           {databases.length === 0 ? (
             <EmptyState
               icon={Database}
               title="No databases yet"
               description="Create a managed database to connect to your apps."
-              action={<CreateDatabase servers={dbServers} />}
+              action={
+                <CreateDatabase
+                  servers={dbServers}
+                  canExposePorts={mayExposePorts}
+                />
+              }
             />
           ) : (
             <div className="grid gap-4 md:grid-cols-2">

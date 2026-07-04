@@ -86,6 +86,7 @@ import {
   volumesToRows,
 } from "./project-graph-rows";
 import { detectDefaultService } from "../deploy/compose-stack";
+import { requireFolderCapabilityForProject } from "./folder-access";
 
 /** Heuristic: treat secret-looking keys as masked secrets. */
 function isSecretKey(key: string): boolean {
@@ -577,6 +578,7 @@ export async function updateProjectBuild(
     const existing = await loadProjectGraph(id, tx);
     if (!existing || existing.teamId !== membership.teamId)
       throw new Error("Project not found");
+    await requireFolderCapabilityForProject(id, "deploy");
     const merged: BuildConfig = {
       ...existing.build,
       ...build,
@@ -636,6 +638,7 @@ export async function updateProjectSource(
   await getDb().transaction(async (tx) => {
     const p = await loadProjectGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("Project not found");
+    await requireFolderCapabilityForProject(id, "deploy");
     // Capture the OLD server IP before serverId is reassigned, so a move can
     // re-host the project's auto nip.io domains onto the new server's IP below.
     const oldIp = resolveServerIp(serversById.get(p.serverId));
@@ -870,6 +873,7 @@ export async function setProjectVolumes(
   await getDb().transaction(async (tx) => {
     const p = await loadProjectGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("Project not found");
+    await requireFolderCapabilityForProject(id, "deploy");
     if (usesComposeStack(p)) {
       throw new Error(
         "Volumes are managed inside the compose file for this project.",
@@ -900,6 +904,7 @@ export async function setProjectUpload(
   upload: UploadArchive,
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
+  await requireFolderCapabilityForProject(id, "deploy");
   const user = (await getCurrentUser())!;
   await updateProjectOwned(id, membership.teamId, {
     source: "upload",
@@ -922,6 +927,7 @@ export async function setProjectUpload(
 
 export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
   const { membership } = await requireCapability("deploy");
+  await requireFolderCapabilityForProject(id, "deploy");
   await updateProjectOwned(id, membership.teamId, {
     autoDeploy: value,
     updatedAt: nowIso(),
@@ -930,6 +936,7 @@ export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
 
 export async function renameProject(id: string, name: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
+  await requireFolderCapabilityForProject(id, "deploy");
   const user = (await getCurrentUser())!;
   await updateProjectOwned(id, membership.teamId, {
     name: name.trim(),
@@ -954,6 +961,7 @@ export async function updateProjectLogo(
   logo: string | null,
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
+  await requireFolderCapabilityForProject(id, "deploy");
   const user = (await getCurrentUser())!;
   const next = logo?.trim() ? logo.trim() : null;
   if (next && !isValidLogoValue(next)) {
@@ -1000,6 +1008,7 @@ export async function stopProject(id: string): Promise<void> {
   const project = await loadProjectGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(id, "deploy");
   // Persist "stopping" BEFORE the (up to 60s) container stop so the transition
   // is visible to every client immediately and survives a reload — not just a
   // local label on the clicking user's button. We settle to "idle" once the
@@ -1028,6 +1037,7 @@ export async function startProject(id: string): Promise<void> {
   const project = await loadProjectGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(id, "deploy");
   try {
     await startContainer(project.slug);
   } catch (e) {
@@ -1047,6 +1057,7 @@ export async function rebuildProject(id: string): Promise<void> {
   const user = (await getCurrentUser())!;
   if (!(await projectInTeam(id, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(id, "deploy");
   await startDeployment(id, {
     environment: "production",
     creator: user.name,
@@ -1060,6 +1071,7 @@ export async function deleteProject(id: string): Promise<void> {
   const project = await loadProjectGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(id, "deploy");
   // Tear down the running container/stack before dropping the records. A REMOTE
   // whose agent is unreachable can't be torn down now — proceed with the delete
   // anyway (P6 spirit: never leave records pinned to a dead box) and warn so the
@@ -1127,6 +1139,12 @@ export async function deleteProjects(ids: string[]): Promise<number> {
     (p) => p.teamId === membership.teamId,
   );
   if (projects.length === 0) return 0;
+
+  // Folder-scope EACH project: a project inside a folder the caller can't access
+  // may not be bulk-deleted through this path either.
+  for (const p of projects) {
+    await requireFolderCapabilityForProject(p.id, "deploy");
+  }
 
   const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));
   // Tear down stacks ≤4 at a time (agent calls OUTSIDE any tx). A throw/

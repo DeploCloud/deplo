@@ -654,6 +654,7 @@ export function assembleFolder(row: FolderRow): Folder {
     name: row.name,
     parentId: row.parentId,
     color: row.color,
+    ownerUserId: row.ownerUserId ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -666,6 +667,7 @@ export function folderToRow(f: Folder): typeof folders.$inferInsert {
     name: f.name,
     parentId: f.parentId ?? null,
     color: f.color ?? null,
+    ownerUserId: f.ownerUserId ?? null,
     createdAt: f.createdAt,
     updatedAt: f.updatedAt,
   };

@@ -97,10 +97,10 @@ function allProjectsHref(view: "grid" | "list"): string {
 /** The "New ▸" submenu shared by both grids' empty-space context menu. Project
  *  and Database are links; Folder opens the create dialog via `onNewFolder`. */
 function NewMenuItems({
-  canManageFolders,
+  canCreateFolder,
   onNewFolder,
 }: {
-  canManageFolders: boolean;
+  canCreateFolder: boolean;
   onNewFolder: () => void;
 }) {
   return (
@@ -119,7 +119,7 @@ function NewMenuItems({
             Project
           </Link>
         </ContextMenuItem>
-        {canManageFolders && (
+        {canCreateFolder && (
           <ContextMenuItem
             onSelect={onNewFolder}
             title="Create an empty folder to group projects"
@@ -153,29 +153,34 @@ interface SelectionBulk {
 /**
  * The selection-aware BULK actions, rendered with the ContextMenu primitives so
  * they can appear BOTH on the empty-canvas menu AND — replacing a card's own
- * single-item menu — when right-clicking a selected card. The destructive /
- * folder actions are gated on `canManageFolders`; Select all + Clear are always
+ * single-item menu — when right-clicking a selected card. "New folder with
+ * selection" is a CREATE action (gated on `canCreateFolder`); the team-wide
+ * move/delete are gated on `canManageAllFolders`. Select all + Clear are always
  * shown. This is the one place the bulk actions are defined.
  */
 function BulkActionsMenuItems({
   selection,
-  canManageFolders,
+  canCreateFolder,
+  canManageAllFolders,
 }: {
   selection: SelectionBulk;
-  canManageFolders: boolean;
+  canCreateFolder: boolean;
+  canManageAllFolders: boolean;
 }) {
   return (
     <>
       <ContextMenuLabel>{selection.count} selected</ContextMenuLabel>
-      {canManageFolders && (
+      {canCreateFolder && (
+        <ContextMenuItem
+          onSelect={selection.onNewFolderWithSelection}
+          title="Create a folder and move the selected projects into it"
+        >
+          <FolderPlus className="size-4" />
+          New folder with selection
+        </ContextMenuItem>
+      )}
+      {canManageAllFolders && (
         <>
-          <ContextMenuItem
-            onSelect={selection.onNewFolderWithSelection}
-            title="Create a folder and move the selected projects into it"
-          >
-            <FolderPlus className="size-4" />
-            New folder with selection
-          </ContextMenuItem>
           <ContextMenuSub>
             <ContextMenuSubTrigger title="Move the selected projects into a folder">
               <FolderInput className="size-4" />
@@ -240,13 +245,15 @@ function BulkActionsMenuItems({
  * one menu ever opens.
  */
 function OverviewContextMenu({
-  canManageFolders,
+  canCreateFolder,
+  canManageAllFolders,
   onNewFolder,
   onRefresh,
   selection,
   children,
 }: {
-  canManageFolders: boolean;
+  canCreateFolder: boolean;
+  canManageAllFolders: boolean;
   onNewFolder: () => void;
   onRefresh: () => void;
   selection?: SelectionBulk;
@@ -258,7 +265,7 @@ function OverviewContextMenu({
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-60">
         <NewMenuItems
-          canManageFolders={canManageFolders}
+          canCreateFolder={canCreateFolder}
           onNewFolder={onNewFolder}
         />
         {selection && !hasSelection && (
@@ -276,7 +283,8 @@ function OverviewContextMenu({
             <ContextMenuSeparator />
             <BulkActionsMenuItems
               selection={selection}
-              canManageFolders={canManageFolders}
+              canCreateFolder={canCreateFolder}
+              canManageAllFolders={canManageAllFolders}
             />
           </>
         )}
@@ -314,8 +322,13 @@ export interface ProjectsGridProps {
   view: "grid" | "list";
   /** Drag-to-reorder + drag-into-folder are enabled (gated; off during search). */
   canReorder: boolean;
-  /** The "Move to folder" menu + folder management controls are available. */
-  canManageFolders: boolean;
+  /** The viewer may CREATE folders (has `deploy`, or is an instance admin) —
+   *  gates the "New ▸ Folder" and "New folder with selection" affordances. */
+  canCreateFolder: boolean;
+  /** The viewer is a super-user (manage_team / instance admin) — gates the
+   *  team-wide bulk move/delete, reorder, and the manage menu on folders they
+   *  don't own. Per-folder manage is derived from each folder's own capabilities. */
+  canManageAllFolders: boolean;
 }
 
 /**
@@ -347,14 +360,16 @@ function StaticGrid({
   openFolder,
   folderPath,
   view,
-  canManageFolders,
+  canCreateFolder,
+  canManageAllFolders,
 }: ProjectsGridProps) {
   const router = useRouter();
   const [createFolderOpen, setCreateFolderOpen] = React.useState(false);
   return (
     <>
       <OverviewContextMenu
-        canManageFolders={canManageFolders}
+        canCreateFolder={canCreateFolder}
+        canManageAllFolders={canManageAllFolders}
         onNewFolder={() => setCreateFolderOpen(true)}
         onRefresh={() => router.refresh()}
       >
@@ -368,7 +383,7 @@ function StaticGrid({
                     key={f.id}
                     folder={f}
                     view={view}
-                    canManage={canManageFolders}
+                    isAdminOverride={canManageAllFolders}
                     folders={allFolders}
                   />
                 ))}
@@ -384,7 +399,7 @@ function StaticGrid({
                     project={p}
                     view={view}
                     folders={allFolders}
-                    canManageFolders={canManageFolders}
+                    canManageFolders={canManageAllFolders}
                   />
                 ))}
               </div>
@@ -392,7 +407,7 @@ function StaticGrid({
           )}
         </div>
       </OverviewContextMenu>
-      {canManageFolders && (
+      {canCreateFolder && (
         <CreateFolderDialog
           open={createFolderOpen}
           onOpenChange={setCreateFolderOpen}
@@ -458,7 +473,8 @@ function SortableGrid({
   openFolder,
   folderPath,
   view,
-  canManageFolders,
+  canCreateFolder,
+  canManageAllFolders,
 }: ProjectsGridProps) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
@@ -647,7 +663,7 @@ function SortableGrid({
       } else if (
         (e.key === "Delete" || e.key === "Backspace") &&
         selectionCount > 0 &&
-        canManageFolders
+        canManageAllFolders
       ) {
         e.preventDefault();
         setBulkDeleteOpen(true);
@@ -655,7 +671,7 @@ function SortableGrid({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectionCount, selectAll, clearSelection, canManageFolders]);
+  }, [selectionCount, selectAll, clearSelection, canManageAllFolders]);
 
   const sensors = useSensors(
     // Mouse: a few px of travel before a drag begins, so a click still navigates
@@ -841,7 +857,8 @@ function SortableGrid({
   const bulkMenuNode = (
     <BulkActionsMenuItems
       selection={bulkSelection}
-      canManageFolders={canManageFolders}
+      canCreateFolder={canCreateFolder}
+      canManageAllFolders={canManageAllFolders}
     />
   );
   // The selected projects in the team-wide `order`, so a group drag keeps their
@@ -856,9 +873,10 @@ function SortableGrid({
     selected.has(activeId) &&
     selectedProjectOrder.length >= 2;
   // Whether right-clicking a given card should show the BULK menu instead of its
-  // own: only for a real multi-selection of which the card is a member.
+  // own: only for a real multi-selection of which the card is a member. Gated on
+  // the super-user flag since the bulk menu's headline actions are team-wide.
   const showBulkMenuFor = (id: string) =>
-    canManageFolders && selectionCount >= 2 && selected.has(id);
+    canManageAllFolders && selectionCount >= 2 && selected.has(id);
 
   return (
     <DndContext
@@ -873,7 +891,8 @@ function SortableGrid({
       }}
     >
       <OverviewContextMenu
-        canManageFolders={canManageFolders}
+        canCreateFolder={canCreateFolder}
+        canManageAllFolders={canManageAllFolders}
         onNewFolder={() => openNewFolder(false)}
         onRefresh={() => router.refresh()}
         selection={bulkSelection}
@@ -922,7 +941,7 @@ function SortableGrid({
                         <FolderCard
                           folder={f}
                           view={view}
-                          canManage={canManageFolders}
+                          isAdminOverride={canManageAllFolders}
                           folders={allFolders}
                           dragHandle={handle}
                           dragActive={dragActive}
@@ -964,7 +983,7 @@ function SortableGrid({
                         dragHandle={handle}
                         dragActive={dragActive}
                         folders={allFolders}
-                        canManageFolders={canManageFolders}
+                        canManageFolders={canManageAllFolders}
                         contextMenuOverride={
                           showBulkMenuFor(p.id) ? bulkMenuNode : undefined
                         }
@@ -987,7 +1006,7 @@ function SortableGrid({
             <FolderCard
               folder={activeFolder}
               view={view}
-              canManage={canManageFolders}
+              isAdminOverride={canManageAllFolders}
               folders={allFolders}
             />
           </div>
@@ -1004,7 +1023,7 @@ function SortableGrid({
               project={activeProject}
               view={view}
               folders={allFolders}
-              canManageFolders={canManageFolders}
+              canManageFolders={canManageAllFolders}
             />
             {/* Dragging a multi-selection → a badge with how many move together. */}
             {activeIsSelectedMulti && (

@@ -7,6 +7,7 @@ import {
   createDatabase,
   setDatabaseRunning,
   deleteDatabase,
+  generateAvailableDbPort,
   type DatabaseDTO,
 } from "@/lib/data/databases";
 
@@ -42,6 +43,8 @@ export const DatabaseRef = builder
       port: t.exposeInt("port"),
       connectionStringMasked: t.exposeString("connectionStringMasked"),
       exposedPublicly: t.exposeBoolean("exposedPublicly"),
+      // The published host port when exposedPublicly is true; null otherwise.
+      exposedPort: t.exposeInt("exposedPort", { nullable: true }),
       sizeMb: t.exposeInt("sizeMb"),
       createdAt: t.exposeString("createdAt"),
     }),
@@ -60,6 +63,9 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
     // sole server when there is exactly one (Step 0 — DB-on-agent).
     serverId: t.id({ required: false }),
     exposedPublicly: t.boolean({ required: false }),
+    // The host port to publish on when exposedPublicly is true. Required by the
+    // data layer in that case (validated + agent-checked for availability there).
+    exposedPort: t.int({ required: false }),
   }),
 });
 
@@ -99,7 +105,18 @@ builder.mutationFields((t) => ({
         version: input.version,
         serverId: input.serverId ?? undefined,
         exposedPublicly: input.exposedPublicly ?? undefined,
+        exposedPort: input.exposedPort ?? undefined,
       }),
+  }),
+  generateAvailableDbPort: t.field({
+    type: "Int",
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Suggest a host port that is currently free on the target server, for the " +
+      "database 'Expose publicly' flow. Requires the publish-ports grant.",
+    args: { serverId: t.arg.id({ required: false }) },
+    resolve: (_r, { serverId }) =>
+      generateAvailableDbPort({ serverId: serverId ?? undefined }),
   }),
   setDatabaseRunning: t.field({
     type: DatabaseRef,

@@ -12,6 +12,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
+import { requireFolderCapabilityForProject } from "./folder-access";
 import { encryptSecret, decryptSecret } from "../crypto";
 import {
   insertEnvVars,
@@ -49,6 +50,7 @@ export async function listEnv(projectId: string): Promise<EnvVarDTO[]> {
   const { teamId } = await requireCapability("manage_env");
   // Env vars are owned through their project; an out-of-team project yields none.
   if (!(await projectInTeam(projectId, teamId))) return [];
+  await requireFolderCapabilityForProject(projectId, "manage_env");
   return (await loadEnvVarsForProject(projectId))
     .sort((a, b) => a.key.localeCompare(b.key))
     .map(toDTO);
@@ -95,6 +97,7 @@ export async function revealEnv(id: string): Promise<string> {
   const e = await loadEnvVar(id);
   if (!e) throw new Error("Not found");
   if (!(await projectInTeam(e.projectId, teamId))) throw new Error("Not found");
+  await requireFolderCapabilityForProject(e.projectId, "manage_env");
   return decryptSecret(e.valueEnc);
 }
 
@@ -114,6 +117,7 @@ export async function upsertEnv(input: {
   if (input.targets.length === 0) throw new Error("Select at least one environment");
   if (!(await projectInTeam(input.projectId, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(input.projectId, "manage_env");
 
   await getDb().transaction(async (tx) => {
     const existing = await tx
@@ -168,6 +172,7 @@ export async function importEnv(
   const { membership } = await requireCapability("manage_env");
   if (!(await projectInTeam(projectId, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(projectId, "manage_env");
   let count = 0;
   const lines = blob.split("\n");
   for (const raw of lines) {
@@ -212,6 +217,7 @@ export async function setProjectEnv(
   const user = (await getCurrentUser())!;
   if (!(await projectInTeam(projectId, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(projectId, "manage_env");
   if (defaultTargets.length === 0) {
     throw new Error("Select at least one environment for new variables");
   }
@@ -274,6 +280,7 @@ export async function deleteEnv(id: string): Promise<void> {
   if (!e) throw new Error("Not found");
   if (!(await projectInTeam(e.projectId, membership.teamId)))
     throw new Error("Not found");
+  await requireFolderCapabilityForProject(e.projectId, "manage_env");
   // The env_var_targets child rows CASCADE on the delete.
   await getDb().delete(envVarsTable).where(eq(envVarsTable.id, id));
   await recordActivity("env", `Deleted env var ${e.key}`, user.name, e.projectId);

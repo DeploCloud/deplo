@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { devSshUser as devSshUserTable } from "../db/schema/control-plane";
 import { assembleDevSshUser, devSshUserToRow } from "./infra-rows";
+import { requireFolderCapabilityForProject } from "./folder-access";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
@@ -115,6 +116,7 @@ export async function createDevSshUser(input: {
   const user = (await getCurrentUser())!;
   const project = await loadTeamProject(input.projectId, membership.teamId);
   if (!project) throw new Error("Project not found");
+  await requireFolderCapabilityForProject(input.projectId, "deploy");
 
   const publicKey = input.publicKey?.trim() || null;
   const password = input.password?.trim() || null;
@@ -186,6 +188,7 @@ export async function removeDevSshUser(id: string): Promise<void> {
   if (!record) throw new Error("SSH user not found");
   const project = await loadTeamProject(record.projectId, membership.teamId);
   if (!project) throw new Error("SSH user not found");
+  await requireFolderCapabilityForProject(record.projectId, "deploy");
   // Resolve the owning server BEFORE the store mutation — deprovision routes to
   // that server's gateway agent.
   const serverId = project.serverId;

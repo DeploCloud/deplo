@@ -20,6 +20,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
+import { requireFolderCapabilityForProject } from "./folder-access";
 import { loadProjectGraph, loadTeamProject } from "./project-graph-load";
 import { decryptSecret } from "../crypto";
 import {
@@ -166,6 +167,9 @@ export async function createBackup(input: {
     if (!projectId) throw new Error("Select a project to back up");
     if (!(await loadTeamProject(projectId, teamId)))
       throw new Error("Project not found");
+    // Folder-scope: backing up a project inside a folder needs manage_infra on
+    // that folder too, not just at the team level.
+    await requireFolderCapabilityForProject(projectId, "manage_infra");
   }
 
   const b: Backup = {
@@ -608,6 +612,9 @@ export async function runBackup(id: string): Promise<void> {
   const user = (await getCurrentUser())!;
   const b = await loadBackup(id, teamId);
   if (!b) throw new Error("Not found");
+  // A project-target schedule additionally requires folder access to its project.
+  if (b.targetKind === "project" && b.projectId)
+    await requireFolderCapabilityForProject(b.projectId, "manage_infra");
   await executeBackup(teamId, user.name, {
     backupId: b.id,
     kind: b.targetKind,
@@ -671,6 +678,8 @@ export async function runProjectBackup(
   const user = (await getCurrentUser())!;
   if (!(await loadTeamProject(projectId, teamId)))
     throw new Error("Project not found");
+  // Folder-scope the ad-hoc project backup, matching the scheduled path.
+  await requireFolderCapabilityForProject(projectId, "manage_infra");
   if (!(await destinationExists(destinationId, teamId)))
     throw new Error("Select a destination");
   return executeBackup(teamId, user.name, {
@@ -704,6 +713,10 @@ export async function restoreBackup(runId: string): Promise<void> {
   const run = assembleBackupRun(runRows[0]);
   if (run.status !== "success")
     throw new Error("This backup did not complete successfully and cannot be restored");
+  // Restoring INTO a project inside a folder needs manage_infra on that folder —
+  // restore is destructive (stop → wipe → untar), so it's gated like the backup.
+  if (run.targetKind === "project" && run.projectId)
+    await requireFolderCapabilityForProject(run.projectId, "manage_infra");
 
   const creds = await getS3WithSecretsForTeam(teamId, run.destinationId);
   const target = await resolveTarget(
@@ -780,12 +793,15 @@ export async function toggleBackup(
   enabled: boolean,
 ): Promise<void> {
   const teamId = (await requireCapability("manage_infra")).teamId;
-  const updated = await getDb()
+  // Load first so a project-target schedule can be folder-scoped before the write.
+  const b = await loadBackup(id, teamId);
+  if (!b) throw new Error("Not found");
+  if (b.targetKind === "project" && b.projectId)
+    await requireFolderCapabilityForProject(b.projectId, "manage_infra");
+  await getDb()
     .update(backupsTable)
     .set({ enabled })
-    .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)))
-    .returning({ id: backupsTable.id });
-  if (updated.length === 0) throw new Error("Not found");
+    .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)));
 }
 
 /**
@@ -814,6 +830,12 @@ export async function updateBackup(
   if (!(await destinationExists(input.destinationId, teamId)))
     throw new Error("Select a destination");
 
+  // A project-target schedule may only be edited by someone with folder access.
+  const cur = await loadBackup(id, teamId);
+  if (!cur) throw new Error("Not found");
+  if (cur.targetKind === "project" && cur.projectId)
+    await requireFolderCapabilityForProject(cur.projectId, "manage_infra");
+
   const updated = await getDb()
     .update(backupsTable)
     .set({
@@ -838,6 +860,11 @@ export async function updateBackup(
 
 export async function deleteBackup(id: string): Promise<void> {
   const teamId = (await requireCapability("manage_infra")).teamId;
+  // Deleting a project-target schedule requires folder access to its project.
+  const b = await loadBackup(id, teamId);
+  if (!b) throw new Error("Not found");
+  if (b.targetKind === "project" && b.projectId)
+    await requireFolderCapabilityForProject(b.projectId, "manage_infra");
   await getDb()
     .delete(backupsTable)
     .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)));

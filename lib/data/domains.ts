@@ -35,6 +35,7 @@ import {
   projectInTeam,
 } from "./project-graph-load";
 import { domainToRow, domainMiddlewaresToRows } from "./project-graph-rows";
+import { requireFolderCapabilityForProject } from "./folder-access";
 import type { CertProvider, Domain, DomainEntrypoint } from "../types";
 
 const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
@@ -314,6 +315,7 @@ export async function addDomain(
   const project = await loadProjectGraph(projectId);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(projectId, "manage_domains");
   const isCompose = usesComposeStack(project);
 
   // A path lets several rows share one hostname (e.g. `app.com` for `/` and
@@ -502,6 +504,7 @@ export async function updateDomain(
   const project = await loadProjectGraph(current.projectId);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(current.projectId, "manage_domains");
 
   const isCompose = usesComposeStack(project);
 
@@ -610,6 +613,7 @@ export async function verifyDomain(id: string): Promise<Domain> {
   if (!dom) throw new Error("Not found");
   if (!(await projectInTeam(dom.projectId, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(dom.projectId, "manage_domains");
 
   const target = instanceHost();
   let ok = false;
@@ -739,6 +743,7 @@ export async function setPrimaryDomain(id: string): Promise<string> {
   if (!dom) throw new Error("Not found");
   if (!(await projectInTeam(dom.projectId, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(dom.projectId, "manage_domains");
   // The multi-row primary flip is CLEAR-then-SET in one transaction (PLAN §4).
   // A single `SET is_primary = (id = $target)` UPDATE is NOT safe: the
   // `(project_id) WHERE is_primary` index is a plain (non-deferrable) unique, and
@@ -795,6 +800,7 @@ export async function removeDomain(id: string): Promise<string> {
   if (!dom) throw new Error("Not found");
   if (!(await projectInTeam(dom.projectId, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(dom.projectId, "manage_domains");
   // The domain_middlewares child rows CASCADE on the domain delete.
   await getDb().delete(domainsTable).where(eq(domainsTable.id, id));
   await recordActivity(

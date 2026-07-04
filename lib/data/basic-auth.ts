@@ -12,6 +12,7 @@ import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
 import { projectInTeam } from "./project-graph-load";
+import { requireFolderCapabilityForProject } from "./folder-access";
 import type { BasicAuthUser } from "../types";
 
 /**
@@ -69,6 +70,7 @@ export async function listBasicAuthUsers(
 ): Promise<BasicAuthUserDTO[]> {
   const { teamId } = await requireCapability("manage_domains");
   if (!(await projectInTeam(projectId, teamId))) return [];
+  await requireFolderCapabilityForProject(projectId, "manage_domains");
   const rows = await getDb()
     .select()
     .from(basicAuthTable)
@@ -86,6 +88,7 @@ export async function addBasicAuthUser(
   const user = (await getCurrentUser())!;
   if (!(await projectInTeam(projectId, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(projectId, "manage_domains");
   const name = username.trim();
   if (!USERNAME_RE.test(name))
     throw new Error("Username can't contain spaces, ':' or ','");
@@ -141,6 +144,7 @@ export async function updateBasicAuthUserPassword(
   if (!existing) throw new Error("Not found");
   if (!(await projectInTeam(existing.projectId, membership.teamId)))
     throw new Error("Not found");
+  await requireFolderCapabilityForProject(existing.projectId, "manage_domains");
   const updated = { ...existing, passwordEnc: encryptSecret(password), updatedAt: nowIso() };
   await getDb()
     .update(basicAuthTable)
@@ -166,6 +170,7 @@ export async function removeBasicAuthUser(id: string): Promise<string> {
   if (!existing) throw new Error("Not found");
   if (!(await projectInTeam(existing.projectId, membership.teamId)))
     throw new Error("Not found");
+  await requireFolderCapabilityForProject(existing.projectId, "manage_domains");
   await getDb().delete(basicAuthTable).where(eq(basicAuthTable.id, id));
   await recordActivity(
     "domain",

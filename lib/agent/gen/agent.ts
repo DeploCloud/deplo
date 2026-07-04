@@ -770,6 +770,25 @@ export interface InspectResponse {
   state: string;
 }
 
+/** Ask whether a host TCP port can be published (see the CheckPort RPC comment). */
+export interface CheckPortRequest {
+  /**
+   * The host port to test (1-65535). Out-of-range => the agent reports it as not
+   * available with a reason, never a bind attempt.
+   */
+  port: number;
+}
+
+export interface CheckPortResponse {
+  /**
+   * True when the agent could bind (and immediately released) the port on the
+   * host — i.e. nothing else holds it right now.
+   */
+  available: boolean;
+  /** "" when available; otherwise a human-readable reason (in use / out of range). */
+  reason: string;
+}
+
 /**
  * In-place agent binary update (SelfUpdate). The control plane resolves the
  * latest release and sends EVERY published per-arch asset (its download URL + the
@@ -4170,6 +4189,140 @@ export const InspectResponse: MessageFns<InspectResponse> = {
     message.exists = object.exists ?? false;
     message.running = object.running ?? false;
     message.state = object.state ?? "";
+    return message;
+  },
+};
+
+function createBaseCheckPortRequest(): CheckPortRequest {
+  return { port: 0 };
+}
+
+export const CheckPortRequest: MessageFns<CheckPortRequest> = {
+  encode(message: CheckPortRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.port !== 0) {
+      writer.uint32(8).int32(message.port);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CheckPortRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCheckPortRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.port = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CheckPortRequest {
+    return { port: isSet(object.port) ? globalThis.Number(object.port) : 0 };
+  },
+
+  toJSON(message: CheckPortRequest): unknown {
+    const obj: any = {};
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CheckPortRequest>, I>>(base?: I): CheckPortRequest {
+    return CheckPortRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CheckPortRequest>, I>>(object: I): CheckPortRequest {
+    const message = createBaseCheckPortRequest();
+    message.port = object.port ?? 0;
+    return message;
+  },
+};
+
+function createBaseCheckPortResponse(): CheckPortResponse {
+  return { available: false, reason: "" };
+}
+
+export const CheckPortResponse: MessageFns<CheckPortResponse> = {
+  encode(message: CheckPortResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.available !== false) {
+      writer.uint32(8).bool(message.available);
+    }
+    if (message.reason !== "") {
+      writer.uint32(18).string(message.reason);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CheckPortResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCheckPortResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.available = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.reason = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CheckPortResponse {
+    return {
+      available: isSet(object.available) ? globalThis.Boolean(object.available) : false,
+      reason: isSet(object.reason) ? globalThis.String(object.reason) : "",
+    };
+  },
+
+  toJSON(message: CheckPortResponse): unknown {
+    const obj: any = {};
+    if (message.available !== false) {
+      obj.available = message.available;
+    }
+    if (message.reason !== "") {
+      obj.reason = message.reason;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CheckPortResponse>, I>>(base?: I): CheckPortResponse {
+    return CheckPortResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CheckPortResponse>, I>>(object: I): CheckPortResponse {
+    const message = createBaseCheckPortResponse();
+    message.available = object.available ?? false;
+    message.reason = object.reason ?? "";
     return message;
   },
 };
@@ -9493,6 +9646,28 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): InspectResponse => InspectResponse.decode(value),
   },
   /**
+   * Whether a HOST TCP port is free to publish. The control plane calls this
+   * BEFORE provisioning a database with "Expose publicly" (a published `ports:`
+   * mapping) so a port already taken — by another Deplo stack OR by any non-Deplo
+   * host process (a system Postgres on 5432, the control plane's own DB, …) —
+   * fails the creation up front with a clear message rather than leaving a
+   * half-provisioned container whose `compose up` lost the port bind. The agent
+   * answers by attempting to BIND the port on the host (0.0.0.0 + ::, then
+   * immediately closing): a bind is the only check that sees BOTH Docker-published
+   * ports and raw host listeners, with no output parsing. Gated behind the
+   * "checkport" Hello capability so an older agent surfaces "update the agent"
+   * rather than a fake "available".
+   */
+  checkPort: {
+    path: "/deplo.agent.v1.Agent/CheckPort" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: CheckPortRequest): Buffer => Buffer.from(CheckPortRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): CheckPortRequest => CheckPortRequest.decode(value),
+    responseSerialize: (value: CheckPortResponse): Buffer => Buffer.from(CheckPortResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): CheckPortResponse => CheckPortResponse.decode(value),
+  },
+  /**
    * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping
    * — the agent's mTLS materials (agent.crt/agent.key/ca.crt under --agent-dir)
    * are NEVER touched, so the server keeps its identity and pinned fingerprint
@@ -9936,6 +10111,20 @@ export interface AgentServer extends UntypedServiceImplementation {
   /** Container introspection (status/running) for the live-status subscriptions. */
   inspect: handleUnaryCall<InspectRequest, InspectResponse>;
   /**
+   * Whether a HOST TCP port is free to publish. The control plane calls this
+   * BEFORE provisioning a database with "Expose publicly" (a published `ports:`
+   * mapping) so a port already taken — by another Deplo stack OR by any non-Deplo
+   * host process (a system Postgres on 5432, the control plane's own DB, …) —
+   * fails the creation up front with a clear message rather than leaving a
+   * half-provisioned container whose `compose up` lost the port bind. The agent
+   * answers by attempting to BIND the port on the host (0.0.0.0 + ::, then
+   * immediately closing): a bind is the only check that sees BOTH Docker-published
+   * ports and raw host listeners, with no output parsing. Gated behind the
+   * "checkport" Hello capability so an older agent surfaces "update the agent"
+   * rather than a fake "available".
+   */
+  checkPort: handleUnaryCall<CheckPortRequest, CheckPortResponse>;
+  /**
    * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping
    * — the agent's mTLS materials (agent.crt/agent.key/ca.crt under --agent-dir)
    * are NEVER touched, so the server keeps its identity and pinned fingerprint
@@ -10266,6 +10455,34 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: InspectResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Whether a HOST TCP port is free to publish. The control plane calls this
+   * BEFORE provisioning a database with "Expose publicly" (a published `ports:`
+   * mapping) so a port already taken — by another Deplo stack OR by any non-Deplo
+   * host process (a system Postgres on 5432, the control plane's own DB, …) —
+   * fails the creation up front with a clear message rather than leaving a
+   * half-provisioned container whose `compose up` lost the port bind. The agent
+   * answers by attempting to BIND the port on the host (0.0.0.0 + ::, then
+   * immediately closing): a bind is the only check that sees BOTH Docker-published
+   * ports and raw host listeners, with no output parsing. Gated behind the
+   * "checkport" Hello capability so an older agent surfaces "update the agent"
+   * rather than a fake "available".
+   */
+  checkPort(
+    request: CheckPortRequest,
+    callback: (error: ServiceError | null, response: CheckPortResponse) => void,
+  ): ClientUnaryCall;
+  checkPort(
+    request: CheckPortRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: CheckPortResponse) => void,
+  ): ClientUnaryCall;
+  checkPort(
+    request: CheckPortRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: CheckPortResponse) => void,
   ): ClientUnaryCall;
   /**
    * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping

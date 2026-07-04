@@ -8,10 +8,14 @@ import { databases as databasesTable } from "../db/schema/control-plane";
 import { assembleDatabase, databaseToRow } from "./backup-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import {
+  requireActiveTeamId,
+  requireCapability,
+  canExposePorts,
+} from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
-import { connectAgent } from "../infra/agent-client";
+import { connectAgent, mapCheckPortUnsupported } from "../infra/agent-client";
 import { generateDatabaseCompose } from "../deploy/database-compose";
 import { withKeyedLock } from "./keyed-mutex";
 import type { Database, DatabaseType } from "../types";
@@ -28,6 +32,91 @@ const DEFAULT_PORTS: Record<DatabaseType, number> = {
   redis: 6379,
   clickhouse: 8123,
 };
+
+// The host-port range the "generate an available port" button draws from when a
+// database is exposed publicly. Deliberately HIGH and away from the well-known
+// engine ports (5432/3306/…) so a generated port never lands on a system service
+// or the control plane's own DB — the exact collision that made "expose publicly"
+// silently fail before. Any port in [1024, 65535] a user types is still allowed
+// (validated + agent-checked for availability); this range only bounds the
+// suggestion.
+const EXPOSE_PORT_MIN = 20000;
+const EXPOSE_PORT_MAX = 40000;
+// A user-supplied port must be a real, unprivileged TCP port. Privileged ports
+// (<1024) are rejected: the DB container runs unprivileged and binding them on
+// the host is both a footgun and a collision magnet.
+const MIN_USER_PORT = 1024;
+const MAX_PORT = 65535;
+
+/** Whether a host port is a valid, unprivileged TCP port a user may request. */
+function isValidExposePort(port: number): boolean {
+  return Number.isInteger(port) && port >= MIN_USER_PORT && port <= MAX_PORT;
+}
+
+/**
+ * Ask the owning server's agent whether a host TCP port is free to publish. The
+ * agent binds the port to answer, so this sees BOTH Docker-published ports and any
+ * non-Deplo host listener (a system Postgres on 5432, the control plane's own DB).
+ * Surfaces {@link import("../infra/agent-client").AgentCheckPortUnsupportedError}
+ * when the server's agent is too old to probe ports, so the UI can say "update the
+ * agent" rather than silently letting a collision through at provision time.
+ */
+async function isHostPortFree(serverId: string, port: number): Promise<boolean> {
+  const conn = await connectAgent(serverId);
+  try {
+    const res = await conn.checkPort(port);
+    return res.available;
+  } catch (e) {
+    throw mapCheckPortUnsupported(e);
+  } finally {
+    conn.close();
+  }
+}
+
+/**
+ * Pick a host port that is currently free on the given server, drawn from the high
+ * ephemeral range. Backs the "generate an available port" button. Probes the agent
+ * per candidate (a bind test) and returns the first free one; throws if it can't
+ * find one in a bounded number of tries (a saturated host — vanishingly unlikely
+ * across a 20k-wide range). The port is only a SUGGESTION — creation re-checks it,
+ * so a race between suggest and submit is caught there too.
+ */
+export async function generateAvailableDbPort(input: {
+  serverId?: string;
+}): Promise<number> {
+  const teamId = await requireActiveTeamId();
+  if (!(await canExposePorts()))
+    throw new Error("You don't have permission to publish ports");
+  const servers = await listServersForTeam(teamId);
+  if (servers.length === 0) throw new Error("No server available");
+  let server;
+  if (input.serverId) {
+    server = servers.find((s) => s.id === input.serverId);
+    if (!server) throw new Error("Selected server not found");
+  } else if (servers.length === 1) {
+    server = servers[0];
+  } else {
+    throw new Error("Select a server first");
+  }
+  if (!server.agent?.certFingerprint)
+    throw new Error(`Server ${server.name} is not provisioned yet`);
+
+  // Start at a random offset in the range so repeated clicks (and concurrent
+  // callers) don't all probe the same candidate first, then step by a fixed stride
+  // to spread the search across the range. A modest cap bounds the agent
+  // round-trips; the 20k-wide range dwarfs any realistic set of used host ports, so
+  // a free one is found in the first try or two in practice.
+  const span = EXPOSE_PORT_MAX - EXPOSE_PORT_MIN + 1;
+  const start = Math.floor(Math.random() * span);
+  const MAX_TRIES = 40;
+  for (let i = 0; i < MAX_TRIES; i++) {
+    const candidate = EXPOSE_PORT_MIN + ((start + i * 733) % span); // stride 733 → good spread across the range
+    if (await isHostPortFree(server.id, candidate)) return candidate;
+  }
+  throw new Error(
+    "Could not find a free port on this server automatically. Enter one manually.",
+  );
+}
 
 /**
  * Mask the password in a connection string. Fails CLOSED: any string we can't
@@ -96,12 +185,26 @@ export async function createDatabase(input: {
   version: string;
   serverId?: string;
   exposedPublicly?: boolean;
+  /**
+   * The host port to publish on when {@link exposedPublicly} is true. Required in
+   * that case (there is no implicit default — the engine's default port routinely
+   * collides on a shared host, which is what made the old "expose publicly"
+   * silently fail). Ignored when not exposing.
+   */
+  exposedPort?: number;
 }): Promise<DatabaseDTO> {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   const name = input.name.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
   if (!name) throw new Error("Name is required");
+
+  const exposed = input.exposedPublicly ?? false;
+  // Publishing a host port is a privileged action, separate from manage_infra:
+  // gate it on the same canExposePorts grant that gates a project's compose
+  // `ports:`. Fail BEFORE any work so an unpermitted caller can't create the DB.
+  if (exposed && !(await canExposePorts()))
+    throw new Error("You don't have permission to publish ports");
 
   // Server selection (Step 0): the caller picks the host; default to the sole
   // server when there is exactly one. The chosen server must exist, be visible
@@ -123,18 +226,45 @@ export async function createDatabase(input: {
       `Server ${server.name} is not provisioned yet — finish provisioning it before creating a database there`,
     );
 
+  // Validate + reserve the host port up front when exposing. A collision here is
+  // a hard STOP — no container is created — so the operator gets a clear error
+  // instead of a half-provisioned DB whose compose-up silently dropped the port
+  // bind (the original bug). The agent's bind-probe sees Docker-published ports
+  // AND raw host listeners, so this catches a system Postgres on 5432 too.
+  let exposedPort: number | null = null;
+  if (exposed) {
+    if (input.exposedPort == null)
+      throw new Error("A host port is required to expose the database publicly");
+    if (!isValidExposePort(input.exposedPort))
+      throw new Error(
+        `Port ${input.exposedPort} is invalid — choose an unprivileged port (${MIN_USER_PORT}-${MAX_PORT})`,
+      );
+    if (!(await isHostPortFree(server.id, input.exposedPort)))
+      throw new Error(
+        `Port ${input.exposedPort} is already in use on ${server.name}. Pick a different port.`,
+      );
+    exposedPort = input.exposedPort;
+  }
+
   const port = DEFAULT_PORTS[input.type];
   // Service name == container DNS name on the shared `deplo` network == the
   // agent stack slug. Connection strings reference it, so it must stay stable.
   const service = `db-${name}`;
   const password = randomToken(12);
   const user_ = input.type === "redis" ? "default" : "app";
+  // The connection host:port depends on reachability. Internal (default): the
+  // container's DNS name + engine port, usable only from the deplo network. When
+  // exposed publicly: the SERVER's reachable host + the published host port, so the
+  // string actually works from outside — the old code always emitted the internal
+  // form, so even a correctly-published DB handed out an unusable string.
+  const connHost = exposedPort != null ? server.host : service;
+  const connPort = exposedPort != null ? exposedPort : port;
   const conn =
     input.type === "redis"
-      ? `redis://${user_}:${password}@${service}:${port}`
+      ? `redis://${user_}:${password}@${connHost}:${connPort}`
       : input.type === "mongodb"
-      ? `mongodb://${user_}:${password}@${service}:${port}/${service}`
-      : `${input.type === "mariadb" ? "mysql" : input.type}://${user_}:${password}@${service}:${port}/${service}`;
+      ? `mongodb://${user_}:${password}@${connHost}:${connPort}/${service}`
+      : `${input.type === "mariadb" ? "mysql" : input.type}://${user_}:${password}@${connHost}:${connPort}/${service}`;
 
   const db: Database = {
     id: newId("db"),
@@ -147,7 +277,8 @@ export async function createDatabase(input: {
     host: service,
     port,
     connectionStringEnc: encryptSecret(conn),
-    exposedPublicly: input.exposedPublicly ?? false,
+    exposedPublicly: exposed,
+    exposedPort,
     sizeMb: 0,
     createdAt: nowIso(),
   };
@@ -167,7 +298,7 @@ export async function createDatabase(input: {
     type: input.type,
     version: input.version,
     password,
-    exposePort: input.exposedPublicly ?? false,
+    hostPort: exposedPort ?? undefined,
   }).catch(async () => {
     // Mark the row errored — but only if it still exists (a concurrent delete may
     // have raced the floated provision; an UPDATE matching no row is a safe no-op).
@@ -196,7 +327,8 @@ async function provisionDatabase(
     type: DatabaseType;
     version: string;
     password: string;
-    exposePort: boolean;
+    /** The validated host port to publish, or undefined for an unexposed DB. */
+    hostPort?: number;
   },
 ): Promise<void> {
   const yaml = generateDatabaseCompose({
@@ -204,7 +336,7 @@ async function provisionDatabase(
     type: opts.type,
     version: opts.version,
     password: opts.password,
-    exposePort: opts.exposePort,
+    hostPort: opts.hostPort,
   });
   // Run the provision under the DB's lifecycle lock so a concurrent delete can't
   // interleave: a delete issued during provisioning WAITS here, then tears down a

@@ -202,10 +202,12 @@ export interface TeamSummary extends Team {
 /**
  * A team-wide grouping of projects shown on the Overview. A project belongs to
  * at most one folder (via {@link Project.folderId}); folders themselves NEST via
- * {@link parentId}, forming a tree within the team. Managing folders —
- * create/rename/delete, moving a project or a folder in or out, reordering — is
- * gated like the team-wide project order: an instance admin or a member with
- * `manage_team`.
+ * {@link parentId}, forming a tree within the team. Each folder is OWNED by the
+ * user who created it (see {@link ownerUserId}) and has its own per-folder
+ * permission set; the owner grants other members access. A member with
+ * `manage_team` (or an instance admin) sees and manages every folder regardless
+ * of ownership. Creating a folder requires the `deploy` capability — the same
+ * gate as creating a project.
  */
 export interface Folder {
   id: ID;
@@ -227,6 +229,14 @@ export interface Folder {
    * colour and a custom HEX can't end up unreadable.
    */
   color?: string | null;
+  /**
+   * The folder's OWNER — the user who created it. Null/absent only for legacy
+   * folders whose owner could not be backfilled, or after the owner's account is
+   * deleted (the FK is `ON DELETE SET NULL`). The owner holds every capability on
+   * the folder that they hold at the team level, and is the only non-super-user
+   * who may share it. See {@link Folder} for the full ownership model.
+   */
+  ownerUserId?: ID | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -939,6 +949,13 @@ export interface Database {
   /** encrypted at rest */
   connectionStringEnc: string;
   exposedPublicly: boolean;
+  /**
+   * The host port the container publishes when {@link exposedPublicly} is true;
+   * null when not exposed. Distinct from {@link port} (the in-container engine
+   * port): the compose maps `exposedPort:port` so a user can publish on a free
+   * host port instead of colliding with the engine's default on that host.
+   */
+  exposedPort: number | null;
   sizeMb: number;
   createdAt: string;
 }

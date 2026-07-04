@@ -145,20 +145,65 @@ export const teams = pgTable(
  * [Folder](../../types.ts). Self-FK `parent_id` is a safety net only — the app's
  * re-parenting in `deleteFolder` is authoritative — so `ON DELETE SET NULL`
  * (never CASCADE, which would wrongly delete subtrees) (PLAN §2 `folders`).
+ *
+ * `owner_user_id` is the folder's OWNER — the user who created it. A folder is
+ * private to its owner by default; other users get access through `folder_grants`.
+ * NULLABLE with `ON DELETE SET NULL`: (a) legacy folders created before this
+ * column exist and are backfilled to the team founder, and (b) deleting the
+ * owner's account leaves an ownerless/team-managed folder rather than dangling
+ * the FK or cascading a folder delete. Ownership is NOT cleared when the owner
+ * merely leaves the team (the user row still exists); the DB only guarantees the
+ * FK never dangles. A member with `manage_team` (and instance admins) manage any
+ * folder regardless of ownership.
  */
-export const folders = pgTable("folders", {
-  id: text("id").primaryKey(),
-  teamId: text("team_id")
-    .notNull()
-    .references(() => teams.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  parentId: text("parent_id").references((): AnyPgColumn => folders.id, {
-    onDelete: "set null",
-  }),
-  color: text("color"),
-  createdAt: isoTimestamptz("created_at").notNull(),
-  updatedAt: isoTimestamptz("updated_at").notNull(),
-});
+export const folders = pgTable(
+  "folders",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    parentId: text("parent_id").references((): AnyPgColumn => folders.id, {
+      onDelete: "set null",
+    }),
+    color: text("color"),
+    ownerUserId: text("owner_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [index("folders_owner_idx").on(t.ownerUserId)],
+);
+
+/**
+ * Per-folder access grants — the capabilities the folder OWNER hands to OTHER
+ * users so they can see/use a folder that is otherwise private to the owner.
+ * Mirrors `membership_capabilities`: one row per (folder, user, capability),
+ * `.includes()`-checked in memory. The OWNER is NOT represented here — their
+ * effective caps are derived from `folders.owner_user_id` (bounded by their team
+ * caps), so this table holds grantees only. Both FKs CASCADE (drop the folder or
+ * the grantee's account ⇒ the grant vanishes). PK `(folder_id, user_id,
+ * capability)` closes the double-grant race and enables `ON CONFLICT DO NOTHING`;
+ * `folder_grants_user_idx` powers the "which folders can this user reach?" lookup.
+ */
+export const folderGrants = pgTable(
+  "folder_grants",
+  {
+    folderId: text("folder_id")
+      .notNull()
+      .references(() => folders.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    capability: text("capability").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.folderId, t.userId, t.capability] }),
+    index("folder_grants_user_idx").on(t.userId),
+  ],
+);
 
 /**
  * [Membership](../../types.ts). `UNIQUE(user_id, team_id)` closes the double-add
@@ -886,6 +931,13 @@ export const databases = pgTable(
     port: integer("port").notNull(),
     connectionStringEnc: text("connection_string_enc").notNull(),
     exposedPublicly: boolean("exposed_publicly").notNull(),
+    // The HOST port the container publishes when exposedPublicly is true (the
+    // compose `ports:` maps exposed_port:port). Null when not exposed. Distinct
+    // from `port` (the in-container engine port) so a user can publish on a free
+    // host port — e.g. 25432 on the host mapped to postgres' 5432 inside — instead
+    // of colliding with whatever already owns the engine's default port on that
+    // host (a system Postgres, the control plane's own DB, another DB stack).
+    exposedPort: integer("exposed_port"),
     sizeMb: bigint("size_mb", { mode: "number" }).notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
   },

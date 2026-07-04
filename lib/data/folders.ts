@@ -14,8 +14,14 @@ import {
   requireActiveTeamId,
   requireMembership,
   requireCapability,
+  hasCapability,
   isInstanceAdmin,
 } from "../membership";
+import {
+  requireFolderCapability,
+  canSeeFolder,
+  visibleFolderIds,
+} from "./folder-access";
 import { recordActivity } from "./activity";
 import { normalizeHexColor } from "../utils";
 import { assembleFolder, folderToRow } from "./project-graph-rows";
@@ -110,8 +116,27 @@ export async function listFolders(): Promise<FolderSummary[]> {
   const { folders, projectCounts, subfolderCounts } =
     await teamFoldersWithCounts(teamId);
   const rank = await folderOrderRank(teamId);
-  return folders
-    .map((f) => summarizeFolder(f, projectCounts, subfolderCounts))
+  // Only surface folders the caller may SEE: the ones they own or hold a grant
+  // on, or every folder when they're a super-user (admin / manage_team).
+  const visible = await visibleFolderIds(teamId);
+  const seen = visible === "all" ? folders : folders.filter((f) => visible.has(f.id));
+  // Recompute subfolderCount over the VISIBLE set so a folder doesn't disclose the
+  // existence of child folders the caller can't see (child folders carry their own
+  // independent ownership/grants). projectCount stays team-scoped — a folder's
+  // projects are part of what any folder-viewer works with. Super-users (visible
+  // === "all") keep the full team counts.
+  const shownSubfolderCounts =
+    visible === "all"
+      ? subfolderCounts
+      : (() => {
+          const m = new Map<string, number>();
+          for (const f of seen)
+            if (f.parentId && visible.has(f.parentId))
+              m.set(f.parentId, (m.get(f.parentId) ?? 0) + 1);
+          return m;
+        })();
+  return seen
+    .map((f) => summarizeFolder(f, projectCounts, shownSubfolderCounts))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
       const rb = rank.get(b.id) ?? Infinity;
@@ -127,24 +152,6 @@ async function folderOrderRank(teamId: string): Promise<Map<string, number>> {
     .from(teamFolderOrder)
     .where(eq(teamFolderOrder.teamId, teamId));
   return new Map(rows.map((r) => [r.folderId, r.position] as const));
-}
-
-/**
- * Gate every folder mutation exactly like the team-wide project order
- * (`reorderProjects`): an instance admin (who bypasses team capabilities) or a
- * member holding `manage_team`. Returns the acting user's display name + the
- * active team for the audit log.
- */
-async function requireFolderManage(): Promise<{
-  teamId: string;
-  userName: string;
-}> {
-  const { teamId } = await requireMembership();
-  if (!(await isInstanceAdmin())) {
-    await requireCapability("manage_team");
-  }
-  const userName = (await getCurrentUser())?.name ?? "Someone";
-  return { teamId, userName };
 }
 
 export function cleanName(name: string): string {
@@ -182,20 +189,20 @@ export async function createFolder(
   color?: string | null,
   parentId?: string | null,
 ): Promise<FolderSummary> {
-  const { teamId, userName } = await requireFolderManage();
+  // Creating a folder needs the SAME capability as creating a project: `deploy`.
+  // The creator becomes the folder's owner and its per-folder caps are derived
+  // live from their team caps (never stored) — see lib/data/folder-access.ts.
+  const { teamId, userId } = await requireCapability("deploy");
+  const userName = (await getCurrentUser())?.name ?? "Someone";
   const clean = cleanName(name);
   // Normalise at the trust boundary so every stored colour is a canonical
   // `#rrggbb`; an empty/absent choice keeps the default neutral tile.
   const cleanColor = color ? normalizeHexColor(color) : null;
-  // A nested folder must be created under a real folder of the same team; an
-  // unknown/foreign parent is rejected so a stale client can't strand a subtree.
+  // A nested folder must be created under a real folder of the same team that the
+  // creator can actually SEE — an unknown/foreign/invisible parent is rejected so
+  // a stale client can't strand a subtree or nest under someone else's folder.
   if (parentId) {
-    const parent = await getDb()
-      .select({ id: foldersTable.id })
-      .from(foldersTable)
-      .where(eq(foldersTable.id, parentId))
-      .limit(1);
-    if (parent.length === 0 || !(await folderInTeam(parentId, teamId)))
+    if (!(await folderInTeam(parentId, teamId)) || !(await canSeeFolder(parentId)))
       throw new Error("Parent folder not found");
   }
   const folder: Folder = {
@@ -204,6 +211,7 @@ export async function createFolder(
     name: clean,
     parentId: parentId ?? null,
     color: cleanColor,
+    ownerUserId: userId,
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
@@ -242,7 +250,7 @@ async function folderInTeam(folderId: string, teamId: string): Promise<boolean> 
 }
 
 export async function renameFolder(id: string, name: string): Promise<void> {
-  const { teamId, userName } = await requireFolderManage();
+  const { teamId, userName } = await requireFolderCapability(id, "deploy");
   const clean = cleanName(name);
   // No-op when unchanged (conditional UPDATE … RETURNING); verify existence only
   // when nothing changed so a rename-to-same-name doesn't error.
@@ -273,7 +281,7 @@ export async function setFolderColor(
   id: string,
   color: string | null,
 ): Promise<void> {
-  const { teamId, userName } = await requireFolderManage();
+  const { teamId, userName } = await requireFolderCapability(id, "deploy");
   const next = color ? normalizeHexColor(color) : null;
   const rows = await getDb()
     .select()
@@ -305,7 +313,11 @@ export async function moveFolder(
   id: string,
   parentId: string | null,
 ): Promise<void> {
-  const { teamId, userName } = await requireFolderManage();
+  // Manage the moved folder itself, AND (when nesting) be able to see the
+  // destination parent — so a user can't file a folder under one they can't use.
+  const { teamId, userName } = await requireFolderCapability(id, "deploy");
+  if (parentId && !(await canSeeFolder(parentId)))
+    throw new Error("Folder not found");
   const { folders } = await teamFoldersWithCounts(teamId);
   const f = folders.find((x) => x.id === id);
   if (!f) throw new Error("Folder not found");
@@ -335,7 +347,7 @@ export async function moveFolder(
  * intact one level up). The team_folder_order row CASCADEs on the delete.
  */
 export async function deleteFolder(id: string): Promise<void> {
-  const { teamId, userName } = await requireFolderManage();
+  const { teamId, userName } = await requireFolderCapability(id, "deploy");
   await getDb().transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -369,7 +381,8 @@ export async function moveProjectToFolder(
   projectId: string,
   folderId: string | null,
 ): Promise<void> {
-  const { teamId, userName } = await requireFolderManage();
+  const { teamId } = await requireCapability("deploy");
+  const userName = (await getCurrentUser())?.name ?? "Someone";
   const proj = await getDb()
     .select({ id: projectsTable.id, name: projectsTable.name, folderId: projectsTable.folderId })
     .from(projectsTable)
@@ -377,10 +390,18 @@ export async function moveProjectToFolder(
     .limit(1);
   const p = proj[0];
   if (!p) throw new Error("Project not found");
+  // Pulling a project OUT of its current folder needs `deploy` on that source
+  // folder (a no-op when the project is already at the top level). This blocks
+  // a member from evicting a project from a folder they don't control.
+  if (p.folderId && p.folderId !== folderId) {
+    await requireFolderCapability(p.folderId, "deploy");
+  }
   let msg = "";
   if (folderId) {
+    // Filing INTO a folder needs `deploy` on that destination folder.
     if (!(await folderInTeam(folderId, teamId))) throw new Error("Folder not found");
     if (p.folderId === folderId) return;
+    await requireFolderCapability(folderId, "deploy");
     const f = await getDb()
       .select({ name: foldersTable.name })
       .from(foldersTable)
@@ -407,7 +428,8 @@ export async function moveProjectsToFolder(
   projectIds: string[],
   folderId: string | null,
 ): Promise<number> {
-  const { teamId, userName } = await requireFolderManage();
+  const { teamId } = await requireCapability("deploy");
+  const userName = (await getCurrentUser())?.name ?? "Someone";
   let folderName = "";
   if (folderId) {
     const f = await getDb()
@@ -416,6 +438,8 @@ export async function moveProjectsToFolder(
       .where(eq(foldersTable.id, folderId))
       .limit(1);
     if (!f[0] || f[0].teamId !== teamId) throw new Error("Folder not found");
+    // Filing INTO a folder needs `deploy` on that destination folder.
+    await requireFolderCapability(folderId, "deploy");
     folderName = f[0].name;
   }
   // Only the caller's own team projects that actually change folder.
@@ -427,6 +451,17 @@ export async function moveProjectsToFolder(
     .filter((p) => (p.folderId ?? null) !== folderId)
     .map((p) => p.id);
   if (toMove.length === 0) return 0;
+  // Pulling projects OUT of their current folders needs `deploy` on each distinct
+  // source folder the selection touches — so a member can't evict projects from a
+  // folder they don't control via the bulk path.
+  const sourceFolders = new Set(
+    owned
+      .filter((p) => (p.folderId ?? null) !== folderId && p.folderId)
+      .map((p) => p.folderId as string),
+  );
+  for (const src of sourceFolders) {
+    await requireFolderCapability(src, "deploy");
+  }
   await getDb()
     .update(projectsTable)
     .set({ folderId, updatedAt: nowIso() })
@@ -449,7 +484,11 @@ export async function moveProjectsToFolder(
  * `team_folder_order` junction is rewritten over the survivors.
  */
 export async function reorderFolders(orderedIds: string[]): Promise<void> {
-  const { teamId } = await requireFolderManage();
+  // The Overview folder order is a single TEAM-WIDE setting (like reorderProjects),
+  // so a lone folder owner can't define it — gate on the super-user role.
+  const { teamId } = await requireMembership();
+  if (!(await isInstanceAdmin()) && !(await hasCapability("manage_team")))
+    throw new Error("You don't have permission to reorder folders");
   await getDb().transaction(async (tx) => {
     const teamFolderIds = (
       await tx

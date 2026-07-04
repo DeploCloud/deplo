@@ -15,6 +15,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
+import { requireFolderCapabilityForProject } from "./folder-access";
 import { encryptSecret, decryptSecret } from "../crypto";
 import { ALL_ENV_TARGETS } from "../types";
 import { groupTargets } from "../deploy/env-resolve";
@@ -237,6 +238,7 @@ export async function listSharedEnvGroupsForProject(
   projectId: string,
 ): Promise<ProjectSharedEnvGroupDTO[]> {
   const { teamId } = await requireCapability("manage_env");
+  await requireFolderCapabilityForProject(projectId, "manage_env");
   return (await loadSharedEnvGroupsForTeam(teamId))
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((g) => ({
@@ -259,6 +261,7 @@ export async function setSharedEnvGroupAttachment(
   const user = (await getCurrentUser())!;
   if (!(await projectInTeam(projectId, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(projectId, "manage_env");
   const g = await loadSharedEnvGroup(groupId);
   if (!g || g.teamId !== membership.teamId) throw new Error("Group not found");
   if (attached) {

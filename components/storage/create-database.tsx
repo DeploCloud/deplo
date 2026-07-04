@@ -55,9 +55,17 @@ const TYPES: {
 
 export function CreateDatabase({
   servers,
+  canExposePorts = false,
   autoOpen = false,
 }: {
   servers: { id: string; name: string }[];
+  /**
+   * Whether the current user holds the publish-ports grant. When false the
+   * "Expose publicly" control is shown DISABLED with an explanatory tooltip —
+   * the toggle can't be turned on, so no port field ever appears. The server
+   * re-checks this grant on create regardless (this only hides the affordance).
+   */
+  canExposePorts?: boolean;
   /**
    * Open the dialog on mount — used when arriving from the Overview "New
    * database" action (which links to /storage?new=database). Ignored when no
@@ -81,6 +89,11 @@ export function CreateDatabase({
   const [version, setVersion] = React.useState("16");
   const [serverId, setServerId] = React.useState<string>(servers[0]?.id ?? "");
   const [exposed, setExposed] = React.useState(false);
+  // The host port to publish when `exposed`. Kept as a string so the field can be
+  // cleared/typed freely; parsed on submit. Empty until the user types or clicks
+  // "Generate". A single generate can be in flight (`generatingPort`).
+  const [port, setPort] = React.useState("");
+  const [generatingPort, setGeneratingPort] = React.useState(false);
 
   const current = TYPES.find((t) => t.id === type)!;
   const noServers = servers.length === 0;
@@ -99,19 +112,60 @@ export function CreateDatabase({
     setVersion(TYPES.find((x) => x.id === t)!.versions[0]);
   }
 
+  // Ask the server for a host port that is currently free on the target server
+  // (it probes the owning agent), then drop it into the field. The value is only
+  // a suggestion — createDatabase re-checks it, so a race between this and submit
+  // is still caught server-side.
+  function generatePort() {
+    if (!effectiveServerId) return;
+    setGeneratingPort(true);
+    startTransition(async () => {
+      const res = await gqlAction<
+        { generateAvailableDbPort: number },
+        number
+      >(
+        `mutation($serverId: ID) { generateAvailableDbPort(serverId: $serverId) }`,
+        { serverId: effectiveServerId },
+        (d) => d.generateAvailableDbPort,
+      );
+      setGeneratingPort(false);
+      if (res.ok) setPort(String(res.data));
+      else toast.error(res.error);
+    });
+  }
+
+  // When exposing, the port must be a valid unprivileged port before we submit —
+  // the server rejects anything else, but catching it here gives instant feedback.
+  const parsedPort = Number.parseInt(port, 10);
+  const portValid =
+    Number.isInteger(parsedPort) && parsedPort >= 1024 && parsedPort <= 65535;
+  const exposeReady = !exposed || portValid;
+
   function submit() {
     startTransition(async () => {
       const res = await gqlAction<{ createDatabase: { id: string } }, { id: string }>(
         `mutation($input: CreateDatabaseInput!) {
           createDatabase(input: $input) { id }
         }`,
-        { input: { name, type, version, serverId: effectiveServerId || null, exposedPublicly: exposed } },
+        {
+          input: {
+            name,
+            type,
+            version,
+            serverId: effectiveServerId || null,
+            exposedPublicly: exposed,
+            // Only send a port when exposing; null keeps it internal-only.
+            exposedPort: exposed ? parsedPort : null,
+          },
+        },
         (d) => d.createDatabase,
       );
       if (res.ok) {
         toast.success(`Database ${name} is provisioning`);
         setOpen(false);
         setName("");
+        setExposed(false);
+        setPort("");
         router.refresh();
       } else {
         toast.error(res.error);
@@ -217,21 +271,70 @@ export function CreateDatabase({
               </Select>
             </div>
           )}
-          <div className="flex items-center justify-between rounded-lg border border-border p-3">
-            <div>
-              <p className="text-sm font-medium">Expose publicly</p>
-              <p className="text-xs text-muted-foreground">
-                Publish the port to the internet. Keep off unless required.
-              </p>
+          <div className="space-y-3 rounded-lg border border-border p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Expose publicly</p>
+                <p className="text-xs text-muted-foreground">
+                  Publish the port to the internet. Keep off unless required.
+                </p>
+              </div>
+              {canExposePorts ? (
+                <Switch checked={exposed} onCheckedChange={setExposed} />
+              ) : (
+                // No permission: the switch is disabled and can never be turned
+                // on, so the port field below never appears. A tooltip explains why.
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0}>
+                      <Switch checked={false} disabled />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    You don&apos;t have permission to publish ports
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
-            <Switch checked={exposed} onCheckedChange={setExposed} />
+            {exposed && (
+              <div className="space-y-1.5">
+                <Label htmlFor="db-port">Host port</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="db-port"
+                    inputMode="numeric"
+                    value={port}
+                    onChange={(e) =>
+                      setPort(e.target.value.replace(/[^0-9]/g, ""))
+                    }
+                    placeholder="e.g. 25432"
+                    aria-invalid={port !== "" && !portValid}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={generatePort}
+                    disabled={generatingPort || pending || !effectiveServerId}
+                  >
+                    {generatingPort ? "Finding…" : "Generate"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  The port on the server clients connect to. Use an unprivileged
+                  port (1024–65535) that is free on the host, or click Generate.
+                </p>
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending || !name.trim() || !effectiveServerId}>
+          <Button
+            onClick={submit}
+            disabled={pending || !name.trim() || !effectiveServerId || !exposeReady}
+          >
             {pending ? "Creating…" : "Create database"}
           </Button>
         </DialogFooter>

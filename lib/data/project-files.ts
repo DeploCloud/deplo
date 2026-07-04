@@ -6,6 +6,7 @@ import { requireCapability, hasCapability, getActiveTeamId } from "../membership
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
 import { loadTeamProject } from "./project-graph-load";
+import { requireFolderCapabilityForProject } from "./folder-access";
 import { connectAgent, type AgentConnection } from "../infra/agent-client";
 
 /**
@@ -106,6 +107,7 @@ async function requireProjectInTeam(
   if (!project) {
     throw new Error("Project not found");
   }
+  await requireFolderCapabilityForProject(projectId, "manage_files");
   return { slug: project.slug, teamId, serverId: project.serverId };
 }
 

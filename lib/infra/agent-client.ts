@@ -69,6 +69,10 @@ const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000; // agent downloads + verifies + swaps
 // is mandatory: these run under the per-DB lifecycle lock (lib/data/keyed-mutex),
 // so a hung RPC with no deadline would wedge every future op for that database.
 const STACK_DEADLINE_MS = 3 * 60_000;
+// A port-availability probe is a single bind()+close() on the host — near-instant.
+// Keep the deadline short so an unreachable agent fails fast (this gates an
+// interactive "generate available port" click + the pre-provision guard).
+const CHECK_PORT_DEADLINE_MS = 15_000;
 
 /** Plain structural shapes the agent returns — mapped 1:1 by the data layer. */
 export interface AgentConsoleInstance {
@@ -171,6 +175,14 @@ export interface AgentConnection {
   /** Read back the rendered stack YAML the agent has on disk, for the "View full
    *  compose" preview. `exists` is false (empty yaml) when never deployed. */
   readStack(slug: string): Promise<{ exists: boolean; yaml: string }>;
+  /** Whether a host TCP port is free to publish. The agent answers by attempting
+   *  to bind it (seeing both Docker-published ports and raw host listeners), so a
+   *  false here means the port is genuinely taken on that host right now. Gates
+   *  the database "Expose publicly" flow — the pre-provision collision guard and
+   *  the "generate an available port" button. An agent too old to implement it
+   *  rejects with UNIMPLEMENTED (mapped to AgentCheckPortUnsupportedError by the
+   *  caller). */
+  checkPort(port: number): Promise<{ available: boolean; reason: string }>;
   /** Update the agent BINARY in place to `version`, WITHOUT reissuing certs: the
    *  agent picks the asset for its own arch from `binaries`, verifies the sha256,
    *  swaps itself, and re-execs reusing the on-disk mTLS materials. Resolves once
@@ -318,6 +330,35 @@ export class AgentUpdateUnsupportedError extends Error {}
  * or emitting a confusing UNIMPLEMENTED. Mirrors {@link AgentUpdateUnsupportedError}.
  */
 export class AgentBackupUnsupportedError extends Error {}
+
+/**
+ * The reachable agent does not (yet) implement the {@link AgentConnection.checkPort}
+ * RPC — it doesn't advertise the `"checkport"` capability in Hello, or it answers
+ * with gRPC UNIMPLEMENTED. The database "Expose publicly" flow needs the agent to
+ * tell it whether a host port is free (both the pre-provision collision guard and
+ * the "generate an available port" button), so until a server runs an agent new
+ * enough to answer, the data layer surfaces THIS error — distinct from
+ * {@link AgentUnreachableError} (the agent IS up, it just can't probe ports yet) —
+ * and the UI says "update the agent on this server". Mirrors
+ * {@link AgentBackupUnsupportedError}.
+ */
+export class AgentCheckPortUnsupportedError extends Error {}
+
+/**
+ * Map a checkPort RPC error to {@link AgentCheckPortUnsupportedError} when it is a
+ * gRPC UNIMPLEMENTED (the agent predates the RPC); every other error passes
+ * through unchanged. Callers preflight the capability via Hello first, but an
+ * agent could advertise nothing yet still reject — this is the belt-and-braces.
+ */
+export function mapCheckPortUnsupported(e: unknown): Error {
+  if (e instanceof AgentCheckPortUnsupportedError) return e;
+  if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
+    return new AgentCheckPortUnsupportedError(
+      "This server's agent is too old to check port availability. Update the agent on this server, then try again.",
+    );
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
 
 /**
  * gRPC status codes that mean "the agent is down / not answering" rather than
@@ -737,6 +778,19 @@ function dial(target: DialTarget): AgentConnection {
           err
             ? reject(toAgentError(err))
             : resolve({ exists: resp.exists, yaml: resp.yaml }),
+        );
+      });
+    },
+    checkPort(port: number) {
+      return new Promise<{ available: boolean; reason: string }>((resolve, reject) => {
+        client.checkPort(
+          { port },
+          new Metadata(),
+          { deadline: new Date(Date.now() + CHECK_PORT_DEADLINE_MS) },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({ available: resp.available, reason: resp.reason }),
         );
       });
     },

@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   Palette,
   Pencil,
+  Share2,
   Trash2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -46,6 +47,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { FolderColorPicker } from "@/components/projects/folder-color-picker";
+import { ShareFolderDialog } from "@/components/projects/share-folder-dialog";
 import { cn, readableTextColor } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -57,6 +59,15 @@ export interface FolderCardData {
   subfolderCount?: number;
   /** Accent colour (`#rrggbb`), or null/undefined for the default tile. */
   color?: string | null;
+  /** The CURRENT caller's effective capabilities on this folder. Drives per-folder
+   *  action gating: rename/colour/move/delete show only when this includes
+   *  `deploy` (the owner always has it). Absent ⇒ treated as no caps. */
+  capabilities?: string[];
+  /** True when the caller owns this folder or is a folder super-user — the only
+   *  ones who may share it (open the Share dialog). */
+  isOwner?: boolean;
+  /** The folder's owner (creator), for reference; not needed for gating. */
+  ownerUserId?: string | null;
 }
 
 /** Build the Overview URL that opens a folder, preserving the list/grid view. */
@@ -95,14 +106,20 @@ const CONTEXT_KIT: MenuKit = {
 /**
  * A folder tile in the Overview grid. The whole card is a link that opens the
  * folder (a `?folder=<id>` view); the ⋯ menu and a right-click context menu
- * (open / rename / delete) sit above that link. Rename/delete only show for
- * users who may manage the team-wide arrangement. While a reorder drag is active
- * the link is made inert, and `dropActive` highlights the card as a drop target.
+ * (open / rename / colour / move / delete / share) sit above that link.
+ *
+ * Per-folder gating is SELF-DERIVED from the folder's own data, not passed in:
+ * rename/colour/move/delete show when the caller's effective folder caps include
+ * `deploy` (the owner always has it), and Share shows when the caller owns the
+ * folder or is a super-user. `isAdminOverride` short-circuits both so a
+ * super-user (manage_team / instance admin) manages every folder regardless of
+ * ownership. While a reorder drag is active the link is made inert, and
+ * `dropActive` highlights the card as a drop target.
  */
 export function FolderCard({
   folder,
   view = "grid",
-  canManage = false,
+  isAdminOverride = false,
   dragHandle,
   dragActive = false,
   dropActive = false,
@@ -111,7 +128,9 @@ export function FolderCard({
 }: {
   folder: FolderCardData;
   view?: "grid" | "list";
-  canManage?: boolean;
+  /** A super-user (manage_team / instance admin) may manage AND share every
+   *  folder, even ones they don't own — bypasses the per-folder cap checks. */
+  isAdminOverride?: boolean;
   dragHandle?: React.ReactNode;
   dragActive?: boolean;
   dropActive?: boolean;
@@ -127,7 +146,15 @@ export function FolderCard({
   const [renameOpen, setRenameOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [colorOpen, setColorOpen] = React.useState(false);
+  const [shareOpen, setShareOpen] = React.useState(false);
   const [name, setName] = React.useState(folder.name);
+
+  // Per-folder gating, derived from the folder's own data (see the doc comment).
+  // A super-user override wins outright; otherwise `deploy` gates the mutating
+  // actions and ownership gates sharing.
+  const caps = folder.capabilities ?? [];
+  const canManageThisFolder = isAdminOverride || caps.includes("deploy");
+  const canShare = isAdminOverride || (folder.isOwner ?? false);
   // Draft colour while the colour dialog is open; seeded from the folder and
   // reset on open so cancelling discards an unsaved choice.
   const [draftColor, setDraftColor] = React.useState<string | null>(
@@ -212,7 +239,8 @@ export function FolderCard({
 
   // Folder actions, rendered once for whichever menu primitive is passed. Each
   // item has a native `title` so hovering it explains what it does. Open is
-  // available to everyone; rename/delete only when the viewer may manage.
+  // available to everyone; rename/colour/move/delete only when the viewer may
+  // manage THIS folder; Share only when they may administer its access.
   const menu = (K: MenuKit) => (
     <>
       <K.Item asChild title="Open this folder">
@@ -221,7 +249,7 @@ export function FolderCard({
           Open
         </Link>
       </K.Item>
-      {canManage && (
+      {canManageThisFolder && (
         <>
           <K.Item
             onSelect={(e: Event) => {
@@ -289,11 +317,29 @@ export function FolderCard({
           </K.Item>
         </>
       )}
+      {/* Share is a separate grant from managing: an owner who has shared their
+          folder can hand out access even to actions they can't perform. */}
+      {canShare && (
+        <>
+          {canManageThisFolder && <K.Separator />}
+          <K.Item
+            onSelect={(e: Event) => {
+              e.preventDefault();
+              setShareOpen(true);
+            }}
+            title="Share this folder with other members"
+          >
+            <Share2 className="size-4" />
+            Share folder…
+          </K.Item>
+        </>
+      )}
     </>
   );
 
-  // ⋯ menu (only for managers; open/rename/delete).
-  const actions = canManage ? (
+  // ⋯ menu: shown when the viewer may manage OR share this folder (open is always
+  // available, but a bare card with no actions would be an empty menu).
+  const actions = canManageThisFolder || canShare ? (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
       {dragHandle}
       <div
@@ -329,8 +375,10 @@ export function FolderCard({
     />
   );
 
-  const dialogs = canManage ? (
+  const dialogs = canManageThisFolder || canShare ? (
     <>
+      {canManageThisFolder && (
+        <>
       <Dialog
         open={renameOpen}
         onOpenChange={(o) => {
@@ -414,6 +462,16 @@ export function FolderCard({
           return res;
         }}
       />
+        </>
+      )}
+      {canShare && (
+        <ShareFolderDialog
+          folderId={folder.id}
+          folderName={folder.name}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
     </>
   ) : null;
 

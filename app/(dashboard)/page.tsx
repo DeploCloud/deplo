@@ -4,6 +4,10 @@ import { listProjects } from "@/lib/data/projects";
 import { listFolders } from "@/lib/data/folders";
 import { listActivity } from "@/lib/data/activity";
 import { isInstanceAdmin, hasCapability } from "@/lib/membership";
+import {
+  folderCapabilities,
+  folderIsOwnerOrAdmin,
+} from "@/lib/data/folder-access";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -24,16 +28,30 @@ export default async function OverviewPage(props: PageProps<"/">) {
   const folderId =
     (Array.isArray(folderParam) ? folderParam[0] : folderParam) ?? "";
 
-  const [projects, folders, activity, isAdmin, canManageTeam, canManageMembers] =
-    await Promise.all([
-      listProjects(),
-      listFolders(),
-      listActivity(6),
-      isInstanceAdmin(),
-      hasCapability("manage_team"),
-      hasCapability("manage_members"),
-    ]);
+  const [
+    projects,
+    folders,
+    activity,
+    isAdmin,
+    canManageTeam,
+    canManageMembers,
+    canDeploy,
+  ] = await Promise.all([
+    listProjects(),
+    listFolders(),
+    listActivity(6),
+    isInstanceAdmin(),
+    hasCapability("manage_team"),
+    hasCapability("manage_members"),
+    hasCapability("deploy"),
+  ]);
   const canManageOrder = isAdmin || canManageTeam;
+  // Creating a folder is gated the same as creating a project: any `deploy`
+  // holder (or an instance admin) may do it — NOT the manage_team super-user gate.
+  const canCreateFolder = isAdmin || canDeploy;
+  // Team-wide bulk/reorder actions (and the manage menu on folders one doesn't
+  // own) stay on the super-user flag; aliased for clarity at the call sites.
+  const canManageAllFolders = canManageOrder;
 
   // What the grid shows:
   //  - searching: every matching project, flat, across all folders (folders
@@ -60,6 +78,19 @@ export default async function OverviewPage(props: PageProps<"/">) {
     : openFolder
       ? folders.filter((f) => (f.parentId ?? null) === openFolder.id)
       : folders.filter((f) => (f.parentId ?? null) === null);
+
+  // Enrich each visible folder with the CURRENT caller's effective per-folder
+  // caps and whether they may share it — the two fields the folder cards gate
+  // their own rename/colour/move/delete/share menu on. `listFolders` (the data
+  // read) doesn't carry these (they're per-caller, not stored), so we derive them
+  // here, only for the handful of folders actually rendered.
+  const enrichedFolders = await Promise.all(
+    visibleFolders.map(async (f) => ({
+      ...f,
+      capabilities: await folderCapabilities(f.id),
+      isOwner: await folderIsOwnerOrAdmin(f.id),
+    })),
+  );
 
   // Breadcrumb trail from the top level down to (and including) the open folder,
   // walking `parentId` up. Guarded against a stale cycle so it always terminates.
@@ -153,7 +184,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
           <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
           <AddNewMenu
             canManageMembers={canManageMembers}
-            canManageFolders={canManageOrder}
+            canCreateFolder={canCreateFolder}
             isAdmin={isAdmin}
           />
         </div>
@@ -212,7 +243,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
             key={gridKey}
             projects={visibleProjects}
             allProjectIds={allProjectIds}
-            folders={visibleFolders}
+            folders={enrichedFolders}
             allFolders={allFolders}
             openFolder={
               openFolder
@@ -226,7 +257,8 @@ export default async function OverviewPage(props: PageProps<"/">) {
             folderPath={folderPath}
             view={view}
             canReorder={canReorder}
-            canManageFolders={canManageOrder}
+            canCreateFolder={canCreateFolder}
+            canManageAllFolders={canManageAllFolders}
           />
         )}
       </div>

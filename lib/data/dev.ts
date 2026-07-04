@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { getServerById } from "./servers";
 import { projectHasDevSshUsers } from "./dev-ssh";
+import { requireFolderCapabilityForProject } from "./folder-access";
 import { getDb } from "../db/client";
 import { projectDev as projectDevTable } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
@@ -140,6 +141,7 @@ export async function enableDev(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
   const p = await requireTeamProject(projectId, membership.teamId);
+  await requireFolderCapabilityForProject(projectId, "deploy");
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
@@ -176,6 +178,7 @@ export async function updateDev(
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
   const proj = await requireTeamProject(projectId, membership.teamId);
+  await requireFolderCapabilityForProject(projectId, "deploy");
   // Enforce eligibility at the data layer, not just the UI — updateDevAction is
   // a directly-callable server action.
   if (!isDevEligible(proj.source)) {
@@ -195,6 +198,7 @@ export async function disableDev(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
   const p = await requireTeamProject(projectId, membership.teamId);
+  await requireFolderCapabilityForProject(projectId, "deploy");
   await agentStopDev(p).catch(() => {});
   // Only when a row exists (dev was enabled at some point) — keep the tri-state.
   if (p.dev) {
@@ -211,6 +215,7 @@ export async function startDevContainer(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
   const p = await requireTeamProject(projectId, membership.teamId);
+  await requireFolderCapabilityForProject(projectId, "deploy");
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
@@ -253,6 +258,7 @@ export async function stopDevContainer(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
   const p = await requireTeamProject(projectId, membership.teamId);
+  await requireFolderCapabilityForProject(projectId, "deploy");
   await agentStopDev(p);
   await setDevStatus(projectId, "stopped");
   await recordActivity("project", "Stopped dev container", user.name, projectId);
@@ -267,6 +273,7 @@ export async function resetDevWorkspace(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
   const p = await requireTeamProject(projectId, membership.teamId);
+  await requireFolderCapabilityForProject(projectId, "deploy");
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
@@ -306,6 +313,7 @@ export async function deployDevWorkspace(
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
   const p = await requireTeamProject(projectId, membership.teamId);
+  await requireFolderCapabilityForProject(projectId, "deploy");
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
@@ -362,6 +370,7 @@ export async function startTunnel(projectId: string): Promise<VscodeTunnelInfo> 
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
   const p = await requireTeamProject(projectId, membership.teamId);
+  await requireFolderCapabilityForProject(projectId, "deploy");
   if (!isDevEligible(p.source)) {
     throw new Error("Dev mode is only available for git or upload projects");
   }
@@ -385,6 +394,7 @@ export async function stopTunnel(projectId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
   const p = await requireTeamProject(projectId, membership.teamId);
+  await requireFolderCapabilityForProject(projectId, "deploy");
   await agentStopTunnel(p);
   await recordActivity("project", "Closed VS Code tunnel", user.name, projectId);
 }

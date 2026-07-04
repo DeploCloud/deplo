@@ -2,6 +2,7 @@ import "server-only";
 
 import { getServerById } from "./servers";
 import { requireActiveTeamId, requireCapability } from "../membership";
+import { requireFolderCapabilityForProject } from "./folder-access";
 import { loadTeamProject } from "./project-graph-load";
 import { primaryDomainService } from "./domains";
 import { isDockerLevelStderr } from "../infra/docker";
@@ -254,6 +255,7 @@ export async function resolveAttachTarget(
   const { teamId } = await requireCapability("deploy");
   const p = await loadTeamProject(projectId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
+  await requireFolderCapabilityForProject(projectId, "deploy");
 
   let instances: ConsoleInstance[];
   try {
@@ -315,6 +317,7 @@ export async function execInContainer(
   const { teamId } = await requireCapability("deploy");
   const p = await loadTeamProject(projectId, teamId);
   if (!p) return { output: "Error: project not found" };
+  await requireFolderCapabilityForProject(projectId, "deploy");
 
   const command = rawCommand.trim();
   if (!command) return { output: "" };

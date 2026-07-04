@@ -65,6 +65,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
     port: d.port,
     connectionStringEnc: d.connectionStringEnc,
     exposedPublicly: d.exposedPublicly,
+    exposedPort: d.exposedPort,
     sizeMb: d.sizeMb,
     createdAt: d.createdAt,
   } satisfies Record<keyof Database, unknown> as DatabaseInsert;
@@ -84,6 +85,7 @@ export function assembleDatabase(row: DatabaseRow): Database {
     port: row.port,
     connectionStringEnc: row.connectionStringEnc,
     exposedPublicly: row.exposedPublicly,
+    exposedPort: row.exposedPort,
     sizeMb: row.sizeMb,
     createdAt: row.createdAt,
   };

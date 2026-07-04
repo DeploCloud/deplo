@@ -56,6 +56,7 @@ const CONTROL_PLANE = [
   "users",
   "teams",
   "folders",
+  "folder_grants",
   "memberships",
   "membership_capabilities",
   "invites",

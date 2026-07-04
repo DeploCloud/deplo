@@ -19,6 +19,7 @@ import {
 } from "./project-graph-load";
 import { assembleDeployment } from "./project-graph-rows";
 import { loadDeploymentLogs } from "./deployment-logs";
+import { requireFolderCapabilityForProject } from "./folder-access";
 import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
 
 export async function listDeployments(filter?: {
@@ -97,6 +98,7 @@ export async function reloadProject(
   const user = (await getCurrentUser())!;
   if (!(await projectInTeam(projectId, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(projectId, "deploy");
   const result = await rerouteProject(projectId);
   if (result === "rerouted")
     await recordActivity("project", `Reloaded routing`, user.name, projectId);
@@ -109,6 +111,7 @@ export async function redeploy(projectId: string): Promise<Deployment> {
   const user = (await getCurrentUser())!;
   if (!(await projectInTeam(projectId, membership.teamId)))
     throw new Error("Project not found");
+  await requireFolderCapabilityForProject(projectId, "deploy");
   const depId = await startDeployment(projectId, {
     environment: "production",
     creator: user.name,
@@ -123,6 +126,7 @@ export async function cancelDeployment(id: string): Promise<void> {
   if (!dep) throw new Error("Deployment not found");
   if (!(await projectInTeam(dep.projectId, membership.teamId)))
     throw new Error("Deployment not found");
+  await requireFolderCapabilityForProject(dep.projectId, "deploy");
   // Only a queued/building deployment can be cancelled; a conditional UPDATE so
   // a terminal one is left as-is.
   if (dep.status === "building" || dep.status === "queued") {
@@ -140,6 +144,7 @@ export async function promoteToProduction(id: string): Promise<void> {
   if (!existing) throw new Error("Deployment not found");
   if (!(await projectInTeam(existing.projectId, membership.teamId)))
     throw new Error("Deployment not found");
+  await requireFolderCapabilityForProject(existing.projectId, "deploy");
   // One tx: flip the deployment to production AND point the project at it.
   await getDb().transaction(async (tx) => {
     const dep = await tx

@@ -91,3 +91,47 @@ for (const [type, envLine] of Object.entries(DB_CREATE_ENV) as [
     );
   });
 }
+
+// "Expose publicly": when a host port is given, the compose publishes it as
+// `0.0.0.0:<hostPort>:<enginePort>` (host:container) so external clients reach the
+// DB on the chosen host port — the whole point of the feature. When no host port
+// is given the DB has NO `ports:` block (internal deplo-network access only).
+test("generateDatabaseCompose: no ports block when hostPort omitted (internal only)", () => {
+  const yaml = generateDatabaseCompose({
+    name: "db-internal",
+    type: "postgres",
+    version: "16",
+    password: "pw",
+  });
+  assert.ok(!yaml.includes("ports:"), `an unexposed DB must not publish a port; got:\n${yaml}`);
+});
+
+test("generateDatabaseCompose: publishes hostPort:enginePort bound to 0.0.0.0 when exposed", () => {
+  // A postgres DB (engine port 5432) exposed on host port 25432.
+  const yaml = generateDatabaseCompose({
+    name: "db-public",
+    type: "postgres",
+    version: "16",
+    password: "pw",
+    hostPort: 25432,
+  });
+  assert.ok(yaml.includes("ports:"), `an exposed DB must publish a port; got:\n${yaml}`);
+  assert.ok(
+    yaml.includes(`- "0.0.0.0:25432:5432"`),
+    `expected host:container mapping 0.0.0.0:25432:5432, got:\n${yaml}`,
+  );
+});
+
+test("generateDatabaseCompose: hostPort maps to the engine's own port (redis 6379)", () => {
+  const yaml = generateDatabaseCompose({
+    name: "cache-public",
+    type: "redis",
+    version: "7",
+    password: "pw",
+    hostPort: 26379,
+  });
+  assert.ok(
+    yaml.includes(`- "0.0.0.0:26379:6379"`),
+    `redis engine port 6379 must be the container side; got:\n${yaml}`,
+  );
+});
