@@ -20,7 +20,7 @@ export default async function AuthLayout({
       <div className="relative z-10 w-full max-w-sm">
         <div className="mb-8 flex justify-center">
           <Link href="/" className="cursor-pointer">
-            <DeploLogo className="text-base" />
+            <DeploLogo className="text-3xl" />
           </Link>
         </div>
         {children}
