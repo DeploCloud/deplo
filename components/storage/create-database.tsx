@@ -2,14 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import {
-  Plus,
-  Database as DatabaseIcon,
-  Leaf,
-  MemoryStick,
-  BarChart3,
-  type LucideIcon,
-} from "lucide-react";
+import { Plus, Eye, EyeOff } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,21 +30,9 @@ import {
 } from "@/components/ui/tooltip";
 import { useRouter } from "next/navigation";
 import { gqlAction } from "@/lib/graphql-client";
+import { generatePassword } from "@/lib/utils";
+import { DB_TYPES as TYPES, ENGINE_CREDS } from "./db-engines";
 import type { DatabaseType } from "@/lib/types";
-
-const TYPES: {
-  id: DatabaseType;
-  name: string;
-  icon: LucideIcon;
-  versions: string[];
-}[] = [
-  { id: "postgres", name: "PostgreSQL", icon: DatabaseIcon, versions: ["16", "15", "14"] },
-  { id: "mysql", name: "MySQL", icon: DatabaseIcon, versions: ["8", "5.7"] },
-  { id: "mariadb", name: "MariaDB", icon: DatabaseIcon, versions: ["11", "10"] },
-  { id: "mongodb", name: "MongoDB", icon: Leaf, versions: ["7", "6"] },
-  { id: "redis", name: "Redis", icon: MemoryStick, versions: ["7", "6"] },
-  { id: "clickhouse", name: "ClickHouse", icon: BarChart3, versions: ["24", "23"] },
-];
 
 export function CreateDatabase({
   servers,
@@ -88,6 +69,11 @@ export function CreateDatabase({
   const [type, setType] = React.useState<DatabaseType>("postgres");
   const [version, setVersion] = React.useState("16");
   const [serverId, setServerId] = React.useState<string>(servers[0]?.id ?? "");
+  // Optional per-engine credentials. Blank => the server's generated defaults.
+  const [username, setUsername] = React.useState("");
+  const [dbName, setDbName] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
   const [exposed, setExposed] = React.useState(false);
   // The host port to publish when `exposed`. Kept as a string so the field can be
   // cleared/typed freely; parsed on submit. Empty until the user types or clicks
@@ -96,6 +82,7 @@ export function CreateDatabase({
   const [generatingPort, setGeneratingPort] = React.useState(false);
 
   const current = TYPES.find((t) => t.id === type)!;
+  const creds = ENGINE_CREDS[type];
   const noServers = servers.length === 0;
   // The useState initializer runs only on mount, but `servers` arrives via a
   // soft router.refresh() that reconciles this component in place (no remount) —
@@ -110,6 +97,13 @@ export function CreateDatabase({
     const t = v as DatabaseType;
     setType(t);
     setVersion(TYPES.find((x) => x.id === t)!.versions[0]);
+    // Reset the per-engine credential fields so a value typed for one engine
+    // (e.g. a username before switching to Redis, which has none) never rides
+    // along in the submit payload for an engine that doesn't support it.
+    setUsername("");
+    setDbName("");
+    setPassword("");
+    setShowPassword(false);
   }
 
   // Ask the server for a host port that is currently free on the target server
@@ -153,6 +147,11 @@ export function CreateDatabase({
             type,
             version,
             serverId: effectiveServerId || null,
+            // Send a credential only when the engine supports it AND the user
+            // filled it in; null keeps the server's generated default.
+            username: creds.username && username.trim() ? username.trim() : null,
+            dbName: creds.dbName && dbName.trim() ? dbName.trim() : null,
+            password: creds.password && password ? password : null,
             exposedPublicly: exposed,
             // Only send a port when exposing; null keeps it internal-only.
             exposedPort: exposed ? parsedPort : null,
@@ -164,6 +163,10 @@ export function CreateDatabase({
         toast.success(`Database ${name} is provisioning`);
         setOpen(false);
         setName("");
+        setUsername("");
+        setDbName("");
+        setPassword("");
+        setShowPassword(false);
         setExposed(false);
         setPort("");
         router.refresh();
@@ -253,6 +256,81 @@ export function CreateDatabase({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-3 rounded-lg border border-border p-3">
+            <div>
+              <p className="text-sm font-medium">Credentials</p>
+              <p className="text-xs text-muted-foreground">
+                Optional. Leave blank to use generated defaults. These are set
+                only when the database is first created and can&apos;t be changed
+                later.
+              </p>
+            </div>
+            {creds.username && (
+              <div className="space-y-1.5">
+                <Label htmlFor="db-user">Username</Label>
+                <Input
+                  id="db-user"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={creds.userDefault}
+                  autoComplete="off"
+                  className="font-mono"
+                />
+              </div>
+            )}
+            {creds.dbName && (
+              <div className="space-y-1.5">
+                <Label htmlFor="db-dbname">Database name</Label>
+                <Input
+                  id="db-dbname"
+                  value={dbName}
+                  onChange={(e) => setDbName(e.target.value)}
+                  placeholder={`db-${name || "my-database"}`}
+                  autoComplete="off"
+                  className="font-mono"
+                />
+              </div>
+            )}
+            {creds.password && (
+              <div className="space-y-1.5">
+                <Label htmlFor="db-pass">Password</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="db-pass"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="auto-generated"
+                    autoComplete="new-password"
+                    className="font-mono"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowPassword((s) => !s)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="size-4" />
+                    ) : (
+                      <Eye className="size-4" />
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setPassword(generatePassword());
+                      setShowPassword(true);
+                    }}
+                  >
+                    Generate
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
           {servers.length > 1 && (
             <div className="space-y-2">

@@ -16,7 +16,11 @@ import {
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
 import { connectAgent, mapCheckPortUnsupported } from "../infra/agent-client";
-import { generateDatabaseCompose } from "../deploy/database-compose";
+import {
+  generateDatabaseCompose,
+  buildConnectionString,
+  parseConnectionPassword,
+} from "../deploy/database-compose";
 import { withKeyedLock } from "./keyed-mutex";
 import type { Database, DatabaseType } from "../types";
 
@@ -53,6 +57,71 @@ function isValidExposePort(port: number): boolean {
   return Number.isInteger(port) && port >= MIN_USER_PORT && port <= MAX_PORT;
 }
 
+/** The engine login used when the caller doesn't supply a custom username —
+ *  matches the historical per-engine hardcode (redis 'default', else 'app'). */
+function defaultUserFor(type: DatabaseType): string {
+  return type === "redis" ? "default" : "app";
+}
+
+/**
+ * Sanitize a user-supplied engine identifier (DB user or DB name) to a portable,
+ * URL-safe SQL identifier: lowercased, `[a-z0-9_]`, starting with a letter or
+ * underscore. Returns null when the cleaned value is empty or leads with a digit
+ * so the caller can fall back to the engine default rather than emit a broken
+ * identifier. Deliberately NOT the same rule as the service `name` (which allows
+ * hyphens for DNS): a hyphen is not a legal unquoted SQL identifier character for
+ * a role/database in postgres/mysql, and the value rides raw inside a
+ * connection-string URL, so we keep it to `_`.
+ */
+function sanitizeDbIdentifier(raw: string): string | null {
+  const cleaned = raw.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
+  if (!cleaned || /^[0-9]/.test(cleaned)) return null;
+  return cleaned.slice(0, 63); // postgres identifier limit; also under mysql's 64
+}
+
+/**
+ * Reject a user-supplied password that can't ride raw inside the connection-string
+ * URL and the compose env-file. The password is stored ONLY inside the connection
+ * string (parsed back out by `parseConnectionPassword`, which `decodeURIComponent`s
+ * it) and is also emitted as a bare `- KEY=value` compose env line, so any of these
+ * would corrupt one or both: URL-authority delimiters (`@ / : ? #`), a lone `%`
+ * (breaks `decodeURIComponent` → an empty dump password → a silently failing
+ * backup), YAML/env-file hazards (`$` interpolation, backslash, backtick, brackets),
+ * and whitespace/control chars. `randomToken`'s output is URL-safe base64url, so the
+ * auto-generated default always passes.
+ */
+function assertPasswordSafe(password: string): void {
+  if (/[@/:?#%$\\`[\]\s]/.test(password))
+    throw new Error(
+      "Password may not contain @ / : ? # % $ \\ ` [ ] or whitespace",
+    );
+}
+
+/**
+ * Resolve the server a team may provision/reroute a database on: it must exist,
+ * be visible to the team (an `all_teams` server or one granted to it), and be
+ * provisioned (have a live agent). Defaults to the sole server when there is
+ * exactly one and none was named. Throws a caller-facing error otherwise. Shared
+ * by createDatabase, generateAvailableDbPort, and updateDatabase so the three
+ * paths can't drift on what "a usable server" means.
+ */
+async function resolveTeamServer(teamId: string, serverId?: string) {
+  const servers = await listServersForTeam(teamId);
+  if (servers.length === 0) throw new Error("No server available");
+  let server;
+  if (serverId) {
+    server = servers.find((s) => s.id === serverId);
+    if (!server) throw new Error("Selected server not found");
+  } else if (servers.length === 1) {
+    server = servers[0];
+  } else {
+    throw new Error("Select a server first");
+  }
+  if (!server.agent?.certFingerprint)
+    throw new Error(`Server ${server.name} is not provisioned yet`);
+  return server;
+}
+
 /**
  * Ask the owning server's agent whether a host TCP port is free to publish. The
  * agent binds the port to answer, so this sees BOTH Docker-published ports and any
@@ -87,19 +156,7 @@ export async function generateAvailableDbPort(input: {
   const teamId = await requireActiveTeamId();
   if (!(await canExposePorts()))
     throw new Error("You don't have permission to publish ports");
-  const servers = await listServersForTeam(teamId);
-  if (servers.length === 0) throw new Error("No server available");
-  let server;
-  if (input.serverId) {
-    server = servers.find((s) => s.id === input.serverId);
-    if (!server) throw new Error("Selected server not found");
-  } else if (servers.length === 1) {
-    server = servers[0];
-  } else {
-    throw new Error("Select a server first");
-  }
-  if (!server.agent?.certFingerprint)
-    throw new Error(`Server ${server.name} is not provisioned yet`);
+  const server = await resolveTeamServer(teamId, input.serverId);
 
   // Start at a random offset in the range so repeated clicks (and concurrent
   // callers) don't all probe the same candidate first, then step by a fixed stride
@@ -184,6 +241,26 @@ export async function createDatabase(input: {
   type: DatabaseType;
   version: string;
   serverId?: string;
+  /**
+   * The engine login to create. Optional — falls back to the engine default
+   * (`app`, or `default` for redis). Sanitized to a portable SQL identifier.
+   * Forced to `default` for redis (there is no mechanism to create a redis ACL
+   * user, so any override would emit an unusable connection string). Create-only:
+   * the images apply it only on first init against an empty volume.
+   */
+  username?: string;
+  /**
+   * The logical database to create. Optional — falls back to the service name
+   * (`db-<name>`), which is what databases created before this input always used,
+   * so backups keep dumping the identical database. Sanitized like {@link username}.
+   */
+  dbName?: string;
+  /**
+   * The engine password. Optional — falls back to an auto-generated URL-safe
+   * token. A supplied password is validated for URL/env-file safety. Stored only
+   * inside the encrypted connection string (never a column, never returned).
+   */
+  password?: string;
   exposedPublicly?: boolean;
   /**
    * The host port to publish on when {@link exposedPublicly} is true. Required in
@@ -198,6 +275,10 @@ export async function createDatabase(input: {
   const user = (await getCurrentUser())!;
   const name = input.name.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
   if (!name) throw new Error("Name is required");
+  // Validate a supplied password up front — it is cheap, local input validation,
+  // so fail fast (before any server lookup or agent probe) with a clear message
+  // rather than surfacing it only after slower checks.
+  if (input.password) assertPasswordSafe(input.password);
 
   const exposed = input.exposedPublicly ?? false;
   // Publishing a host port is a privileged action, separate from manage_infra:
@@ -210,21 +291,7 @@ export async function createDatabase(input: {
   // server when there is exactly one. The chosen server must exist, be visible
   // to this team (every `all_teams` server + its grants), and be provisioned
   // (have a live agent) — provisioning routes through that agent.
-  const servers = await listServersForTeam(teamId);
-  if (servers.length === 0) throw new Error("No server available");
-  let server;
-  if (input.serverId) {
-    server = servers.find((s) => s.id === input.serverId);
-    if (!server) throw new Error("Selected server not found");
-  } else if (servers.length === 1) {
-    server = servers[0];
-  } else {
-    throw new Error("Select a server to provision the database on");
-  }
-  if (!server.agent?.certFingerprint)
-    throw new Error(
-      `Server ${server.name} is not provisioned yet — finish provisioning it before creating a database there`,
-    );
+  const server = await resolveTeamServer(teamId, input.serverId);
 
   // Validate + reserve the host port up front when exposing. A collision here is
   // a hard STOP — no container is created — so the operator gets a clear error
@@ -250,21 +317,39 @@ export async function createDatabase(input: {
   // Service name == container DNS name on the shared `deplo` network == the
   // agent stack slug. Connection strings reference it, so it must stay stable.
   const service = `db-${name}`;
-  const password = randomToken(12);
-  const user_ = input.type === "redis" ? "default" : "app";
+
+  // Resolve the credentials. Redis has no user concept (auth is a single
+  // requirepass and the built-in ACL user is literally `default`), so its
+  // username is forced regardless of any override — a custom name would emit a
+  // connection string that authenticates as a redis ACL user that was never
+  // created. The logical DB defaults to the service name (today's behavior), so
+  // the compose `*_DB` env, the connection-string path, and the backup dump
+  // target all stay `db-<name>` for a default create.
+  const username =
+    input.type === "redis"
+      ? "default"
+      : (input.username ? sanitizeDbIdentifier(input.username) : null) ??
+        defaultUserFor(input.type);
+  const dbName =
+    (input.dbName ? sanitizeDbIdentifier(input.dbName) : null) ?? service;
+  const password =
+    input.password && input.password.length > 0
+      ? input.password
+      : randomToken(12);
+
   // The connection host:port depends on reachability. Internal (default): the
   // container's DNS name + engine port, usable only from the deplo network. When
   // exposed publicly: the SERVER's reachable host + the published host port, so the
   // string actually works from outside — the old code always emitted the internal
   // form, so even a correctly-published DB handed out an unusable string.
-  const connHost = exposedPort != null ? server.host : service;
-  const connPort = exposedPort != null ? exposedPort : port;
-  const conn =
-    input.type === "redis"
-      ? `redis://${user_}:${password}@${connHost}:${connPort}`
-      : input.type === "mongodb"
-      ? `mongodb://${user_}:${password}@${connHost}:${connPort}/${service}`
-      : `${input.type === "mariadb" ? "mysql" : input.type}://${user_}:${password}@${connHost}:${connPort}/${service}`;
+  const conn = buildConnectionString({
+    type: input.type,
+    username,
+    password,
+    host: exposedPort != null ? server.host : service,
+    port: exposedPort != null ? exposedPort : port,
+    dbName,
+  });
 
   const db: Database = {
     id: newId("db"),
@@ -272,6 +357,8 @@ export async function createDatabase(input: {
     name,
     type: input.type,
     version: input.version,
+    username,
+    dbName,
     status: "provisioning",
     serverId: server.id,
     host: service,
@@ -297,7 +384,9 @@ export async function createDatabase(input: {
     service,
     type: input.type,
     version: input.version,
+    username,
     password,
+    dbName,
     hostPort: exposedPort ?? undefined,
   }).catch(async () => {
     // Mark the row errored — but only if it still exists (a concurrent delete may
@@ -326,7 +415,9 @@ async function provisionDatabase(
     service: string;
     type: DatabaseType;
     version: string;
+    username: string;
     password: string;
+    dbName: string;
     /** The validated host port to publish, or undefined for an unexposed DB. */
     hostPort?: number;
   },
@@ -335,7 +426,9 @@ async function provisionDatabase(
     name: opts.service,
     type: opts.type,
     version: opts.version,
+    username: opts.username,
     password: opts.password,
+    dbName: opts.dbName,
     hostPort: opts.hostPort,
   });
   // Run the provision under the DB's lifecycle lock so a concurrent delete can't
@@ -420,6 +513,142 @@ export async function setDatabaseRunning(
       .set({ status: running ? "running" : "stopped" })
       .where(eq(databasesTable.id, id));
   });
+}
+
+/**
+ * Edit the only post-create-mutable settings of a database: its public exposure
+ * (publish/unpublish) and, when exposed, the host port. Everything else (engine,
+ * version, username, db name, password) is create-only — the official images
+ * apply those env vars only on first init against an empty volume, so changing
+ * them would be a silent no-op or data loss. This path re-renders the compose and
+ * reroutes the container IN PLACE (`up -d --remove-orphans`), which preserves the
+ * named data volume; the only material change to the rendered YAML is the `ports:`
+ * block.
+ *
+ * Because the connection string embeds a host:port that depends on reachability
+ * (the internal service name + engine port when unexposed, the server's host +
+ * published port when exposed), toggling exposure INVALIDATES the stored string —
+ * so it is re-derived and re-encrypted here, around the UNCHANGED create-only
+ * password recovered from the old string. The `host`/`port`/`username`/`dbName`
+ * columns are untouched (the container's DNS identity and credentials don't move).
+ */
+export async function updateDatabase(
+  id: string,
+  input: { exposedPublicly: boolean; exposedPort?: number },
+): Promise<void> {
+  const { membership } = await requireCapability("manage_infra");
+  const teamId = membership.teamId;
+  const user = (await getCurrentUser())!;
+  const db = await loadDatabase(id, teamId);
+  if (!db) throw new Error("Not found");
+
+  const exposed = input.exposedPublicly;
+  // Same privileged gate as create: publishing a port requires the canExposePorts
+  // grant, checked here (not as a GraphQL authScope) because it only applies when
+  // exposure is being turned ON. Fail BEFORE any agent work.
+  if (exposed && !(await canExposePorts()))
+    throw new Error("You don't have permission to publish ports");
+
+  // Re-resolve the owning server through the team's visible set so a team that
+  // LOST access to it can't reroute onto it, and to get server.host for the
+  // re-derived connection string when exposed.
+  const server = await resolveTeamServer(teamId, db.serverId);
+
+  // Validate the new exposed port, mirroring create. Skip the agent bind-probe
+  // when the DB is ALREADY exposed on this exact port — it is OUR own published
+  // port, so probing it would report a false self-collision.
+  let newExposedPort: number | null = null;
+  if (exposed) {
+    if (input.exposedPort == null)
+      throw new Error("A host port is required to expose the database publicly");
+    if (!isValidExposePort(input.exposedPort))
+      throw new Error(
+        `Port ${input.exposedPort} is invalid — choose an unprivileged port (${MIN_USER_PORT}-${MAX_PORT})`,
+      );
+    const reusingOwnPort =
+      db.exposedPublicly && db.exposedPort === input.exposedPort;
+    if (!reusingOwnPort && !(await isHostPortFree(server.id, input.exposedPort)))
+      throw new Error(
+        `Port ${input.exposedPort} is already in use on ${server.name}. Pick a different port.`,
+      );
+    newExposedPort = input.exposedPort;
+  }
+
+  // No-op short-circuit: nothing about the exposure changed, so skip a pointless
+  // reroute (a container recreate) and status churn. Makes the mutation idempotent.
+  if (db.exposedPublicly === exposed && db.exposedPort === newExposedPort) return;
+
+  // Re-derive the connection string around the UNCHANGED create-only password.
+  // The password is never regenerated on an edit — the running container's
+  // credentials are fixed at first init — so recover it from the old string.
+  const password = parseConnectionPassword(decryptSecret(db.connectionStringEnc));
+  const conn = buildConnectionString({
+    type: db.type,
+    username: db.username,
+    password,
+    host: newExposedPort != null ? server.host : db.host,
+    port: newExposedPort != null ? newExposedPort : db.port,
+    dbName: db.dbName,
+  });
+  const connEnc = encryptSecret(conn);
+  const yaml = generateDatabaseCompose({
+    name: db.host, // service slug, stable
+    type: db.type,
+    version: db.version,
+    username: db.username,
+    password,
+    dbName: db.dbName,
+    hostPort: newExposedPort ?? undefined,
+  });
+
+  // The reroute + row write happen under the DB's lifecycle lock, the SAME lock
+  // create/start-stop/delete use: an edit issued during provisioning WAITS, then
+  // reroutes a now-running DB; a delete issued during an edit WAITS for the
+  // reroute, then tears down the fully-rerouted stack (no orphan).
+  await withKeyedLock(id, async () => {
+    // Re-read under the lock — the DB may have been deleted, or just finished
+    // provisioning, while we waited our turn.
+    const cur = await loadDatabase(id, teamId);
+    if (!cur) throw new Error("Not found");
+    // The compose project doesn't exist until provisioning finishes, so a reroute
+    // against a still-provisioning DB would fail confusingly. Gate on the fresh
+    // status (same reasoning as setDatabaseRunning).
+    if (cur.status === "provisioning")
+      throw new Error(
+        "Database is still provisioning — wait for it to finish before editing it.",
+      );
+    const agent = await connectAgent(server.id);
+    try {
+      const res = await agent.reroute({
+        slug: cur.host,
+        composeYaml: yaml,
+        env: {},
+        mounts: [],
+      });
+      if (!res.ok)
+        throw new Error(res.error || "agent failed to update the database");
+    } finally {
+      agent.close();
+    }
+    // Only the exposure fields + the re-derived connection string change; the
+    // container's DNS identity (host/port) and its credentials are untouched.
+    await getDb()
+      .update(databasesTable)
+      .set({
+        exposedPublicly: exposed,
+        exposedPort: newExposedPort,
+        connectionStringEnc: connEnc,
+      })
+      .where(eq(databasesTable.id, id));
+  });
+  await recordActivity(
+    "database",
+    exposed
+      ? `Exposed database ${db.name} on port ${newExposedPort}`
+      : `Unexposed database ${db.name}`,
+    user.name,
+    null,
+  );
 }
 
 export async function deleteDatabase(id: string): Promise<void> {

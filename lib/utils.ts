@@ -154,3 +154,20 @@ export function shortId(length = 8): string {
   for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
   return out;
 }
+
+/**
+ * A client-side password suggestion for the "Generate" affordance on the create-
+ * database form. Drawn from an alphabet that is safe both inside a connection-
+ * string URL and a compose env-file (no `@ / : ? # % $ \ ` [ ] `, no whitespace),
+ * so it always passes the server's `assertPasswordSafe`. Not the server's
+ * `randomToken` (that is server-only) — this is only a suggestion the user can
+ * edit; the value is validated server-side on create regardless.
+ */
+export function generatePassword(length = 20): string {
+  const alphabet =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~";
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  let out = "";
+  for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
+}

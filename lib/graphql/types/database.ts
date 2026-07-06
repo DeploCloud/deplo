@@ -5,6 +5,7 @@ import {
   getDatabase,
   getConnectionString,
   createDatabase,
+  updateDatabase,
   setDatabaseRunning,
   deleteDatabase,
   generateAvailableDbPort,
@@ -37,6 +38,11 @@ export const DatabaseRef = builder
       name: t.exposeString("name"),
       type: t.field({ type: DatabaseTypeEnum, resolve: (d) => d.type }),
       version: t.exposeString("version"),
+      // The engine login + logical DB, shown read-only in the edit dialog (both
+      // are create-only). The password is NEVER a field — reveal it only via the
+      // revealConnection mutation.
+      username: t.exposeString("username"),
+      dbName: t.exposeString("dbName"),
       status: t.field({ type: DatabaseStatusEnum, resolve: (d) => d.status }),
       serverId: t.exposeID("serverId"),
       host: t.exposeString("host"),
@@ -62,9 +68,31 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
     // The server to provision the database on. Optional: omitted defaults to the
     // sole server when there is exactly one (Step 0 — DB-on-agent).
     serverId: t.id({ required: false }),
+    // Optional custom credentials, applied ONLY at first init against an empty
+    // volume (the images honor POSTGRES_USER/DB, MYSQL_DATABASE, etc. only on
+    // first boot), so they are create-only / display-only thereafter. Omitted =>
+    // the auto-generated defaults (user "app"/"default", db = service name,
+    // random password). `password` is INPUT-ONLY: it rides into the encrypted
+    // connection string and is never echoed on any field (reveal it via
+    // revealConnection).
+    username: t.string({ required: false }),
+    dbName: t.string({ required: false }),
+    password: t.string({ required: false }),
     exposedPublicly: t.boolean({ required: false }),
     // The host port to publish on when exposedPublicly is true. Required by the
     // data layer in that case (validated + agent-checked for availability there).
+    exposedPort: t.int({ required: false }),
+  }),
+});
+
+// Only exposure is editable post-create. engine/version/username/dbName/password
+// are create-only (the images apply those env vars only on first init against an
+// empty volume — changing them is a silent no-op or data loss), so they are NOT
+// in this input. Turning exposure ON requires exposedPort (the data layer
+// validates + agent-checks it, exactly like createDatabase).
+const UpdateDatabaseInputType = builder.inputType("UpdateDatabaseInput", {
+  fields: (t) => ({
+    exposedPublicly: t.boolean({ required: true }),
     exposedPort: t.int({ required: false }),
   }),
 });
@@ -104,9 +132,33 @@ builder.mutationFields((t) => ({
         type: input.type,
         version: input.version,
         serverId: input.serverId ?? undefined,
+        username: input.username ?? undefined,
+        dbName: input.dbName ?? undefined,
+        password: input.password ?? undefined,
         exposedPublicly: input.exposedPublicly ?? undefined,
         exposedPort: input.exposedPort ?? undefined,
       }),
+  }),
+  updateDatabase: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Edit a database's public exposure (publish/unpublish + host port). " +
+      "Re-renders the compose and reroutes the container in place; the data " +
+      "volume is preserved and the connection string is re-derived. Everything " +
+      "else is create-only. The publish-ports grant is enforced in the data " +
+      "layer when exposure is turned on.",
+    args: {
+      id: t.arg.string({ required: true }),
+      input: t.arg({ type: UpdateDatabaseInputType, required: true }),
+    },
+    resolve: async (_r, { id, input }) => {
+      await updateDatabase(id, {
+        exposedPublicly: input.exposedPublicly,
+        exposedPort: input.exposedPort ?? undefined,
+      });
+      return reloadDatabase(id);
+    },
   }),
   generateAvailableDbPort: t.field({
     type: "Int",

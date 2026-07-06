@@ -119,7 +119,11 @@ export default async function StoragePage(props: PageProps<"/storage">) {
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {databases.map((db) => (
-                <DatabaseCard key={db.id} db={db} />
+                <DatabaseCard
+                  key={db.id}
+                  db={db}
+                  canExposePorts={mayExposePorts}
+                />
               ))}
             </div>
           )}

@@ -942,6 +942,26 @@ export interface Database {
   name: string;
   type: DatabaseType;
   version: string;
+  /**
+   * The engine login the connection string authenticates as, and the user the
+   * backup dump execs as (except mysql/mariadb, which always dump as `root` —
+   * see {@link file://./data/backups.ts} `dumpUserFor`). Create-only: the
+   * official images apply the `*_USER` env var only on first init against an
+   * empty volume, so it is display-only on edit. Defaults per engine at creation
+   * (`app`, or `default` for redis); legacy rows are backfilled the same way.
+   */
+  username: string;
+  /**
+   * The logical database created on first init (`POSTGRES_DB` / `MYSQL_DATABASE`
+   * / `CLICKHOUSE_DB` / the mongo default DB). This is the single source of truth
+   * for the logical DB name: the compose `*_DB` env, the connection-string path
+   * segment, and the backup dump target all read it. Defaults to the service
+   * name (`db-<name>`) at creation and legacy rows are backfilled to {@link host}
+   * (which equals that service name), so existing databases dump the identical
+   * database. Redis has no logical DB, so its stored value is an inert
+   * placeholder. Create-only / display-only, like {@link username}.
+   */
+  dbName: string;
   status: DatabaseStatus;
   serverId: ID;
   host: string;

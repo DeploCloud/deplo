@@ -45,8 +45,10 @@ input AddRegistryInput {
 Register a remote server. Provisioned by a call-home bootstrap (no SSH-in): you run the returned install command on the box.
 """
 input AddServerInput {
+  allTeams: Boolean
   host: String!
   name: String!
+  teamIds: [String!]
 }
 
 """A newly registered server + its one-time agent install command."""
@@ -147,6 +149,16 @@ enum BackupTargetKind {
   project
 }
 
+"""
+An HTTP Basic Auth credential that gates every domain of a project. The password is write-only and never returned.
+"""
+type BasicAuthUser {
+  createdAt: String
+  id: ID
+  updatedAt: String
+  username: String
+}
+
 """Partial build configuration; only the provided fields are changed."""
 input BuildConfigInput {
   buildCommand: String
@@ -212,10 +224,14 @@ input CreateBackupInput {
 }
 
 input CreateDatabaseInput {
+  dbName: String
+  exposedPort: Int
   exposedPublicly: Boolean
   name: String!
+  password: String
   serverId: ID
   type: DatabaseType!
+  username: String
   version: String!
 }
 
@@ -228,7 +244,7 @@ input CreateProjectInput {
   composeService: String
   dockerImage: String
   env: [ProjectEnvInput!]
-  exposes: [ExposeInput!]
+  extraDomains: [ExtraDomainInput!]
   framework: String!
   logo: String
   mounts: [MountInput!]
@@ -263,6 +279,8 @@ A provisioned database container owned by a team. The connection string is maske
 type Database {
   connectionStringMasked: String
   createdAt: String
+  dbName: String
+  exposedPort: Int
   exposedPublicly: Boolean
   host: String
   id: ID
@@ -273,6 +291,7 @@ type Database {
   status: DatabaseStatus
   teamId: ID
   type: DatabaseType
+  username: String
   version: String
 }
 
@@ -477,9 +496,11 @@ type ExecResult {
   output: String
 }
 
-"""Which compose service + port Traefik exposes."""
-input ExposeInput {
-  host: String
+"""
+A multi-domain template's extra (non-primary) routed host: the compose service + port it targets and its hostname. Registered as an auto Domain row at creation; the `domains` table is the sole routing source after.
+"""
+input ExtraDomainInput {
+  host: String!
   port: Int!
   service: String!
 }
@@ -507,15 +528,48 @@ type FileEntry {
 A team-wide grouping of projects on the Overview. Projects reference their folder via `Project.folderId`; folders nest via `parentId` (a tree).
 """
 type Folder {
+  """
+  The current caller's effective capabilities on this folder (bounded by their team caps).
+  """
+  capabilities: [String!]
   color: String
   createdAt: String
   id: ID
+
+  """
+  Whether the caller owns this folder or is a folder super-user (manage_team / admin).
+  """
+  isOwner: Boolean
   name: String
+  ownerUserId: ID
   parentId: ID
   projectCount: Int
   subfolderCount: Int
   teamId: ID
   updatedAt: String
+}
+
+"""
+A user's access to a folder: the owner (isOwner=true, implicit) or a grantee the owner has shared it with, plus their effective capabilities.
+"""
+type FolderGrant {
+  avatarColor: String
+  capabilities: [String!]
+  folderId: ID
+  isOwner: Boolean
+  name: String
+  userId: ID
+  username: String
+}
+
+"""
+A team member who could be granted access to a folder (used to populate the Share dialog's picker).
+"""
+type FolderShareCandidate {
+  avatarColor: String
+  name: String
+  userId: ID
+  username: String
 }
 
 input GitRepoInput {
@@ -565,6 +619,19 @@ type GithubRepo {
   private: Boolean
   updatedAt: String
   url: String
+}
+
+"""
+A global environment variable (team-wide or instance-wide). Secret values are masked unless revealed.
+"""
+type GlobalEnvVar {
+  id: ID
+  isMasked: Boolean
+  key: String
+  targets: [EnvTarget!]
+  type: EnvVarType
+  updatedAt: String
+  value: String
 }
 
 """A registered user in the instance-wide Users list (no email exposed)."""
@@ -624,6 +691,11 @@ type Member {
   username: String
 }
 
+input MintRegistrationLinkInput {
+  mode: RegistrationMode!
+  teamAssignments: [RegistrationTeamAssignmentInput!]
+}
+
 """A config file a template materialises into its stack at deploy."""
 input MountInput {
   content: String!
@@ -631,6 +703,10 @@ input MountInput {
 }
 
 type Mutation {
+  """
+  Add a basic-auth user to a project. Applies to all its domains on the next deploy or Reload.
+  """
+  addBasicAuthUser(password: String!, projectId: String!, username: String!): BasicAuthUser
   addDevSshUser(input: AddDevSshUserInput!): DevSshUser
   addDomain(config: DomainConfigInput, name: String!, projectId: String!): Domain
 
@@ -663,7 +739,7 @@ type Mutation {
   createDatabase(input: CreateDatabaseInput!): Database
 
   """
-  Create a folder in the active team; nest it by passing a parent folder id.
+  Create a folder in the active team; nest it by passing a parent folder id. Requires the deploy capability; the creator becomes the folder's owner.
   """
   createFolder(color: String, name: String!, parentId: ID): Folder
   createProject(input: CreateProjectInput!): Project
@@ -697,6 +773,9 @@ type Mutation {
   """Delete a folder; its projects fall back to the top level."""
   deleteFolder(id: ID!): Boolean
 
+  """Delete an instance-wide variable. Returns true."""
+  deleteInstanceEnv(id: String!): Boolean
+
   """Delete the project and tear down its stack. Returns true."""
   deleteProject(id: String!): Boolean
 
@@ -717,6 +796,9 @@ type Mutation {
   """Delete a shared env group. Returns true."""
   deleteSharedEnvGroup(id: String!): Boolean
 
+  """Delete a team-global variable. Returns true."""
+  deleteTeamGlobalEnv(id: String!): Boolean
+
   """
   Deploy the current dev workspace files to production. Returns the deployment id.
   """
@@ -728,6 +810,11 @@ type Mutation {
   Run a command in the project's live container (docker exec). Gated on the deploy capability — this is arbitrary code execution.
   """
   execConsole(input: ExecConsoleInput!): ExecResult
+
+  """
+  Suggest a host port that is currently free on the target server, for the database 'Expose publicly' flow. Requires the publish-ports grant.
+  """
+  generateAvailableDbPort(serverId: ID): Int
 
   """Bulk-import a .env-style blob; returns the number of vars imported."""
   importEnv(blob: String!, projectId: String!, targets: [EnvTarget!]!): Int
@@ -746,7 +833,7 @@ type Mutation {
   """
   Mint a single-use registration link. Returns the absolute /register URL.
   """
-  mintRegistrationLink: String
+  mintRegistrationLink(input: MintRegistrationLinkInput!): String
 
   """
   Move a folder under a new parent folder, or to the top level when parentId is omitted/null. Rejects moving a folder into itself or a descendant.
@@ -771,18 +858,31 @@ type Mutation {
   """
   Create a new account + team via a single-use registration link. Signs in.
   """
-  registerThroughLink(email: String!, name: String!, password: String!, teamName: String!, token: String!, username: String!): AuthPayload
+  registerThroughLink(email: String!, name: String!, password: String!, teamName: String, token: String!, username: String!): AuthPayload
 
   """
   Mint a fresh install command for a server still provisioning (the original token expired or was lost).
   """
   reissueServerBootstrap(id: String!): AddServerPayload
 
+  """
+  Re-apply the project's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.
+  """
+  reloadProject(id: String!): String
+
+  """Remove a basic-auth user. Returns true."""
+  removeBasicAuthUser(id: String!): Boolean
+
   """Remove a dev SSH user. Returns true."""
   removeDevSshUser(id: String!): Boolean
 
   """Remove the domain so it stops routing. Returns true."""
   removeDomain(id: String!): Boolean
+
+  """
+  Revoke a user's access to a folder. Owner/admin only. Returns the fresh grant list.
+  """
+  removeFolderGrant(folderId: ID!, userId: ID!): [FolderGrant!]
 
   """Disconnect a GitHub App and its installations. Returns true."""
   removeGithubApp(id: String!): Boolean
@@ -825,10 +925,16 @@ type Mutation {
   """Reveal a single secret's plaintext value."""
   revealEnv(id: String!): String
 
+  """Reveal an instance-wide secret's plaintext value."""
+  revealInstanceEnv(id: String!): String
+
   """
   Reveal the decrypted `.env` text for one shared group (prefills edits).
   """
   revealSharedEnvBlob(id: String!): String
+
+  """Reveal a team-global secret's plaintext value."""
+  revealTeamGlobalEnv(id: String!): String
 
   """Revoke a pending registration link. Returns true."""
   revokeRegistrationLink(id: String!): Boolean
@@ -856,6 +962,11 @@ type Mutation {
   """
   setFolderColor(color: String, id: ID!): Boolean
 
+  """
+  Grant (or replace) a user's capabilities on a folder. Bounded by both the granter's and the grantee's caps; owner/admin only. Returns the fresh grant list.
+  """
+  setFolderGrant(capabilities: [String!]!, folderId: ID!, userId: ID!): [FolderGrant!]
+
   """Make this domain its project's primary (canonical) host. Returns true."""
   setPrimaryDomain(id: String!): Boolean
   setProjectAutoDeploy(id: String!, value: Boolean!): Project
@@ -869,6 +980,11 @@ type Mutation {
   Replace a single-container project's volumes (named, project-files, and host bind mounts).
   """
   setProjectVolumes(id: String!, volumes: [VolumeInput!]!): Project
+
+  """
+  Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has projects or databases on the server would lose access.
+  """
+  setServerTeams(input: SetServerTeamsInput!): Server
 
   """Attach or detach a shared group to one project. Returns true."""
   setSharedEnvGroupAttachment(attached: Boolean!, groupId: String!, projectId: String!): Boolean
@@ -915,6 +1031,14 @@ type Mutation {
   Edit a backup schedule's name, destination, cron and retention. The target it backs up is fixed at creation and cannot be changed. Returns true.
   """
   updateBackup(id: String!, input: UpdateBackupInput!): Boolean
+
+  """Change a basic-auth user's password."""
+  updateBasicAuthUserPassword(id: String!, password: String!): BasicAuthUser
+
+  """
+  Edit a database's public exposure (publish/unpublish + host port). Re-renders the compose and reroutes the container in place; the data volume is preserved and the connection string is re-derived. Everything else is create-only. The publish-ports grant is enforced in the data layer when exposure is turned on.
+  """
+  updateDatabase(id: String!, input: UpdateDatabaseInput!): Database
   updateDev(patch: UpdateDevInput!, projectId: String!): DevInfo
 
   """
@@ -950,6 +1074,14 @@ type Mutation {
 
   """Create or update an env var, then return the stored entity."""
   upsertEnv(input: UpsertEnvInput!): EnvVar
+
+  """
+  Create or update an instance-wide variable (every team). Instance admin only.
+  """
+  upsertInstanceEnv(input: UpsertGlobalEnvInput!): GlobalEnvVar
+
+  """Create or update a team-global variable; returns the entity."""
+  upsertTeamGlobalEnv(input: UpsertGlobalEnvInput!): GlobalEnvVar
 
   """Re-check the domain's DNS and (re)issue its certificate."""
   verifyDomain(id: String!): Domain
@@ -1046,6 +1178,11 @@ type Query {
   """Fresh live metrics snapshots for every server."""
   allServerMetrics: [ServerMetrics!]
 
+  """
+  Every team in the instance, for the instance-admin registration-link team picker.
+  """
+  allTeamsForAdmin: [Team!]
+
   """Every registered user on the instance (no email)."""
   allUsers: [GlobalUser!]
 
@@ -1061,12 +1198,22 @@ type Query {
   appCatalog: [AppListing!]
 
   """
+  Every team in the instance, for the server team-access picker. Requires manage_infra.
+  """
+  assignableTeams: [Team!]
+
+  """
   Recorded backup runs for one target (a project OR a database), newest first. Pass exactly one of projectId / databaseId.
   """
   backupRuns(databaseId: String, projectId: String): [BackupRun!]
 
   """All backup schedules in the active team, newest first."""
   backups: [Backup!]
+
+  """
+  Basic-auth users of a project, alphabetical by username (requires manage_domains).
+  """
+  basicAuthUsers(projectId: String!): [BasicAuthUser!]
 
   """Attachable instances + default target for a project's console."""
   consoleInfo(projectId: String!): ConsoleInfo
@@ -1094,6 +1241,16 @@ type Query {
   """Env vars of a single project (requires manage_env)."""
   env(projectId: String!): [EnvVar!]
 
+  """
+  Who can access a folder — its owner plus every user it's shared with. Owner/admin only.
+  """
+  folderGrants(folderId: ID!): [FolderGrant!]
+
+  """
+  Team members who could be granted access to a folder (not the owner, not already granted). Owner/admin only.
+  """
+  folderShareCandidates(folderId: ID!, query: String): [FolderShareCandidate!]
+
   """All folders in the active team, in display order."""
   folders: [Folder!]
 
@@ -1109,8 +1266,18 @@ type Query {
   """Repositories accessible to a GitHub App installation."""
   githubRepos(installationId: String!): [GithubRepo!]
 
+  """
+  The capabilities the caller may hand out on a folder (their own effective folder caps). Owner/admin only.
+  """
+  grantableFolderCapabilities(folderId: ID!): [String!]
+
   """Apps the active team has installed, newest first, with live status."""
   installedApps: [InstalledApp!]
+
+  """
+  Instance-wide env vars — injected into every project of every team. Instance admin only.
+  """
+  instanceEnv: [GlobalEnvVar!]
 
   """Lighter instance list for the logs viewer."""
   logsInfo(projectId: String!): LogsInfo
@@ -1181,6 +1348,9 @@ type Query {
   """
   shellLabel(input: ShellLabelInput!): String
 
+  """Team-global env vars — injected into every project in the active team."""
+  teamGlobalEnv: [GlobalEnvVar!]
+
   """Current VS Code tunnel status for a project."""
   tunnel(projectId: String!): VscodeTunnelInfo
 
@@ -1196,13 +1366,15 @@ type Query {
   viewerTeam: Team
 }
 
-"""A single-use link to register a new account + owner team."""
+"""A single-use link to register a new account."""
 type RegistrationLink {
   createdAt: String
   createdBy: String
   expiresAt: String
   id: ID
+  mode: RegistrationMode
   status: RegistrationLinkStatus
+  teamNames: [String!]
   usedByUsername: String
 }
 
@@ -1210,6 +1382,17 @@ enum RegistrationLinkStatus {
   pending
   revoked
   used
+}
+
+enum RegistrationMode {
+  existing_teams
+  own_team
+}
+
+input RegistrationTeamAssignmentInput {
+  capabilities: [Capability!]
+  role: Role!
+  teamId: String!
 }
 
 """
@@ -1291,6 +1474,11 @@ type Server {
   The agent binary version last reported by this server on its last Hello. Null until the server's agent has called home and been provisioned.
   """
   agentVersion: String
+
+  """
+  True (the default) when every team may target this server. False restricts it to `teams` (Settings → Servers → Team access).
+  """
+  allTeams: Boolean
   cpuCores: Int
   cpuUsage: Int
   createdAt: String
@@ -1315,6 +1503,11 @@ type Server {
   """True once the server's agent has called home and been trusted."""
   provisioned: Boolean
   status: ServerStatus
+
+  """
+  Teams explicitly granted access when `allTeams` is false (empty otherwise — every team has access). Requires manage_infra.
+  """
+  teams: [Team!]
   traefikEnabled: Boolean
   type: ServerType
 }
@@ -1356,6 +1549,15 @@ enum ServerStatus {
 
 enum ServerType {
   remote
+}
+
+"""
+Set which teams may target a server. allTeams: true opens it to every team (clearing specific grants); false restricts it to teamIds.
+"""
+input SetServerTeamsInput {
+  allTeams: Boolean!
+  serverId: String!
+  teamIds: [String!]
 }
 
 """A reusable group of environment variables shared across projects."""
@@ -1438,6 +1640,11 @@ input UpdateBackupInput {
   schedule: String!
 }
 
+input UpdateDatabaseInput {
+  exposedPort: Int
+  exposedPublicly: Boolean!
+}
+
 """Partial dev config patch; only the provided fields are changed."""
 input UpdateDevInput {
   devCommand: String
@@ -1470,8 +1677,6 @@ input UpdateMemberInput {
 input UpdateSourceInput {
   compose: String
   dockerImage: String
-  expose: ExposeInput
-  exposes: [ExposeInput!]
   repo: GitRepoInput
   serverId: String
   source: DeploySource!
@@ -1494,6 +1699,13 @@ input UpdateUserAdminInput {
 input UpsertEnvInput {
   key: String!
   projectId: String!
+  targets: [EnvTarget!]!
+  type: EnvVarType!
+  value: String!
+}
+
+input UpsertGlobalEnvInput {
+  key: String!
   targets: [EnvTarget!]!
   type: EnvVarType!
   value: String!

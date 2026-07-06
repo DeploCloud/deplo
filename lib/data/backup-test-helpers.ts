@@ -48,6 +48,8 @@ export interface SeedDatabaseOpts {
   serverId?: string;
   name?: string;
   type?: Database["type"];
+  username?: string;
+  dbName?: string;
   status?: Database["status"];
 }
 
@@ -64,6 +66,10 @@ export async function seedDatabase(
     name,
     type,
     version: "16",
+    // Defaults mirror what createDatabase / the 0014 backfill produce: the
+    // engine login `app` and the logical DB == the service name (`db-<name>`).
+    username: opts.username ?? (type === "redis" ? "default" : "app"),
+    dbName: opts.dbName ?? `db-${name}`,
     status: opts.status ?? "running",
     serverId: opts.serverId ?? SERVER_1,
     host: `db-${name}`,

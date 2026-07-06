@@ -23,6 +23,7 @@ import { recordActivity } from "./activity";
 import { requireFolderCapabilityForProject } from "./folder-access";
 import { loadProjectGraph, loadTeamProject } from "./project-graph-load";
 import { decryptSecret } from "../crypto";
+import { parseConnectionPassword } from "../deploy/database-compose";
 import {
   connectBackupAgent,
   mapBackupUnsupported,
@@ -203,49 +204,48 @@ export async function createBackup(input: {
 /* ------------------------------------------------------------------ */
 
 /**
- * The superuser each engine's compose actually creates (database-compose.ts) —
- * this, NOT the connection string's user, is what the dump tool authenticates
- * as. mysql/mariadb only get a ROOT password (MYSQL_ROOT_PASSWORD), so their
- * descriptor user is `root` even though the connection string reads `app`.
+ * The user the dump tool authenticates as — NOT always the connection string's
+ * display user. For every engine except mysql/mariadb this is the database's
+ * stored `username`: the account the image created on first init (POSTGRES_USER /
+ * MONGO_INITDB_ROOT_USERNAME / CLICKHOUSE_USER, and redis' built-in `default`),
+ * each of which the dump tool can authenticate as (pg_dump/mongodump/clickhouse
+ * as a superuser; redis-cli auths with just the password). mysql/mariadb are the
+ * exception: their compose only ever provisions `root` (MYSQL_ROOT_PASSWORD), and
+ * a scoped `MYSQL_USER` lacks the global grants `mysqldump --databases` needs, so
+ * they ALWAYS dump as `root`. Root's password IS the connection-string password
+ * (the compose sets both to the same secret — see mysqlEnv in database-compose.ts),
+ * so `parseConnectionPassword` still supplies it regardless of the string's user.
+ * A `switch` (not a map) so a 7th engine forces an explicit decision here.
  */
-const DB_DUMP_USER: Record<DatabaseType, string> = {
-  postgres: "app",
-  mysql: "root",
-  mariadb: "root",
-  mongodb: "app",
-  redis: "default",
-  clickhouse: "app",
-};
-
-/**
- * Pull the engine password out of a database's (decrypted) connection string.
- * Every form createDatabase emits carries it as the URL password
- * (`scheme://user:<pw>@host`), so a URL parse is the single source. Returns ""
- * when absent (an engine trusting local auth) rather than throwing.
- */
-function passwordFromConn(conn: string): string {
-  try {
-    return decodeURIComponent(new URL(conn).password);
-  } catch {
-    return "";
+function dumpUserFor(db: Database): string {
+  switch (db.type) {
+    case "mysql":
+    case "mariadb":
+      return "root";
+    case "postgres":
+    case "mongodb":
+    case "redis":
+    case "clickhouse":
+      return db.username;
   }
 }
 
 /**
  * Build the wire {@link DatabaseDescriptor} for a managed database. `container`
  * is the DB stack's deterministic container name (`container_name: db-<name>`
- * in the compose == `db.host`), so the agent execs into exactly it. The dump
- * user is engine-derived (see {@link DB_DUMP_USER}); the DB name is the logical
- * database the compose created (== `db.host`); the password rides decrypted over
- * mTLS.
+ * in the compose == `db.host`), so the agent execs into exactly it. The dump user
+ * is derived by {@link dumpUserFor}; `dbName` is the stored logical database
+ * (which the compose `*_DB` env created and the connection string references, so
+ * the dump can never target a database that doesn't exist); the password rides
+ * decrypted over mTLS.
  */
 function databaseDescriptor(db: Database): DatabaseDescriptor {
   return {
     container: db.host,
     dbType: db.type,
-    dbName: db.host,
-    user: DB_DUMP_USER[db.type],
-    password: passwordFromConn(decryptSecret(db.connectionStringEnc)),
+    dbName: db.dbName,
+    user: dumpUserFor(db),
+    password: parseConnectionPassword(decryptSecret(db.connectionStringEnc)),
   };
 }
 

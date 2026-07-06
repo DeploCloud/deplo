@@ -923,6 +923,22 @@ export const databases = pgTable(
     name: text("name").notNull(),
     type: text("type").notNull(),
     version: text("version").notNull(),
+    // The engine login the connection string authenticates as AND (except
+    // mysql/mariadb, which always dump as root) the backup dump user. Stored
+    // per-field; the password stays inside connection_string_enc. Honored by the
+    // official images ONLY on first init against an empty volume, so it is
+    // create-only / display-only on edit. Backfilled engine-aware:
+    // redis='default', everything else='app' (matching the historical
+    // connection-string identity in createDatabase).
+    username: text("username").notNull(),
+    // The logical database the engine creates on first init (POSTGRES_DB /
+    // MYSQL_DATABASE / CLICKHOUSE_DB / mongo default DB). Single source of truth
+    // for the logical DB name — the compose *_DB env, the connection-string path
+    // segment, and the backup dump target all read it. Backfilled to `host`
+    // (== the service name `db-<name>`, which is the logical DB existing rows
+    // actually created), so legacy backups dump the identical database. Redis has
+    // no logical DB, so its stored value is an inert placeholder.
+    dbName: text("db_name").notNull(),
     status: text("status").notNull(),
     serverId: text("server_id")
       .notNull()
