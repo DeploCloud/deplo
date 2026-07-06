@@ -26,6 +26,16 @@ export function titleCase(input: string): string {
   return input.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/**
+ * Truncate `str` to at most `max` characters, appending an ellipsis when cut.
+ * Used to cap the project-name portion of page titles so the trailing
+ * "– Section – Deplo" suffix stays visible instead of a long name crowding it out.
+ */
+export function truncate(str: string, max: number): string {
+  if (str.length <= max) return str;
+  return str.slice(0, max).trimEnd() + "…";
+}
+
 /** Display name for a server — the operator-chosen name. */
 export function serverLabel(server: { name: string }): string {
   return server.name;

@@ -1,11 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExternalLink, ArrowLeft } from "lucide-react";
 import { getProjectBySlug } from "@/lib/data/projects";
+import { truncate } from "@/lib/utils";
 import { isDevEligible } from "@/lib/data/dev";
 import { projectFilesExist } from "@/lib/data/project-files";
 import { hasCapability } from "@/lib/membership";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ProjectLogo } from "@/components/shared/project-logo";
 import { RedeployButton } from "@/components/projects/redeploy-button";
 import { ProjectControls } from "@/components/projects/project-controls";
@@ -15,6 +18,29 @@ import {
   ProjectLiveStatusProvider,
   type LiveProject,
 } from "@/components/projects/project-live-status";
+
+// Cap the project-name portion of the browser-tab title so the trailing
+// "– <Section> – Deplo" stays legible instead of a long name crowding it out.
+const PROJECT_TITLE_MAX = 24;
+
+// Titles nest as "<project> – <section> – Deplo". The section (%s) comes from
+// each child tab's own `title` (Deployments, Environment, Domains, …); the
+// Overview page sits in this same segment and has no title, so it inherits the
+// `default` below. `title.template` here overrides the root "%s – Deplo".
+export async function generateMetadata(
+  props: LayoutProps<"/projects/[slug]">,
+): Promise<Metadata> {
+  const { slug } = await props.params;
+  const project = await getProjectBySlug(slug);
+  if (!project) return { title: "Project" };
+  const name = truncate(project.name, PROJECT_TITLE_MAX);
+  return {
+    title: {
+      template: `${name} – %s – Deplo`,
+      default: `${name} – Overview – Deplo`,
+    },
+  };
+}
 
 export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]">) {
   const { slug } = await props.params;
@@ -80,19 +106,21 @@ export default async function ProjectLayout(props: LayoutProps<"/projects/[slug]
           </div>
           <div className="flex items-center gap-2">
             {project.productionUrl && (
-              <Button variant="outline" size="sm" asChild>
-                <a
-                  href={project.productionUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <ExternalLink className="size-4" />
-                  Visit
-                </a>
-              </Button>
+              <SimpleTooltip content="Open the live site in a new tab">
+                <Button variant="default" size="sm" asChild>
+                  <a
+                    href={project.productionUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink className="size-4" />
+                    Visit
+                  </a>
+                </Button>
+              </SimpleTooltip>
             )}
             <ProjectControls projectId={project.id} status={project.status} />
-            <RedeployButton projectId={project.id} />
+            <RedeployButton projectId={project.id} variant="default" />
           </div>
         </div>
       </div>

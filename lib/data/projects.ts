@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import {
@@ -272,13 +273,15 @@ async function summarizeOne(p: Project): Promise<ProjectSummary> {
   return summarize(p, pre);
 }
 
-export async function getProjectBySlug(
+// React-cached so a request that reads the same project twice — e.g. the project
+// layout's generateMetadata AND its render — only hits the DB once per request.
+export const getProjectBySlug = cache(async function getProjectBySlug(
   slug: string
 ): Promise<ProjectSummary | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadProjectGraphBySlug(slug);
   return p && p.teamId === teamId ? summarizeOne(p) : null;
-}
+});
 
 export async function getProjectById(id: string): Promise<Project | null> {
   const teamId = await requireActiveTeamId();
