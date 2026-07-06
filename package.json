@@ -95,6 +95,9 @@
     "unrs-resolver"
   ],
   "overrides": {
-    "graphql": "16.14.2"
+    "graphql": "16.14.2",
+    "@codemirror/state": "$@codemirror/state",
+    "@codemirror/view": "$@codemirror/view",
+    "@codemirror/language": "$@codemirror/language"
   }
 }
