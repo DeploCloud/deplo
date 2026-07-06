@@ -4,6 +4,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useNestedLayerDismissGuard } from "@/components/ui/use-nested-layer-dismiss-guard";
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -35,7 +36,9 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     hideClose?: boolean;
   }
->(({ className, children, hideClose, ...props }, ref) => (
+>(({ className, children, hideClose, onInteractOutside, ...props }, ref) => {
+  const nestedLayerWasOpenRef = useNestedLayerDismissGuard();
+  return (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -44,6 +47,15 @@ const DialogContent = React.forwardRef<
         "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-2xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 rounded-xl",
         className
       )}
+      onInteractOutside={(event) => {
+        // Swallow the outside-dismiss when this gesture just closed a nested
+        // popper (Select/menu/popover); otherwise defer to the caller.
+        if (nestedLayerWasOpenRef.current) {
+          event.preventDefault();
+          return;
+        }
+        onInteractOutside?.(event);
+      }}
       {...props}
     >
       {children}
@@ -55,7 +67,8 @@ const DialogContent = React.forwardRef<
       )}
     </DialogPrimitive.Content>
   </DialogPortal>
-));
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({

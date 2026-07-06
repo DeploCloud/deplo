@@ -5,6 +5,7 @@ import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useNestedLayerDismissGuard } from "@/components/ui/use-nested-layer-dismiss-guard";
 
 const Sheet = SheetPrimitive.Root;
 const SheetTrigger = SheetPrimitive.Trigger;
@@ -53,12 +54,23 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "left", className, children, ...props }, ref) => (
+>(({ side = "left", className, children, onInteractOutside, ...props }, ref) => {
+  const nestedLayerWasOpenRef = useNestedLayerDismissGuard();
+  return (
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
       className={cn(sheetVariants({ side }), className)}
+      onInteractOutside={(event) => {
+        // Don't let the gesture that closed a nested popper (Select/menu/
+        // popover) also close the Sheet. See use-nested-layer-dismiss-guard.
+        if (nestedLayerWasOpenRef.current) {
+          event.preventDefault();
+          return;
+        }
+        onInteractOutside?.(event);
+      }}
       {...props}
     >
       <SheetPrimitive.Close className="absolute right-4 top-4 cursor-pointer rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none">
@@ -68,7 +80,8 @@ const SheetContent = React.forwardRef<
       {children}
     </SheetPrimitive.Content>
   </SheetPortal>
-));
+  );
+});
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetTitle = React.forwardRef<
