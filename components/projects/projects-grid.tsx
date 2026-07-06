@@ -60,7 +60,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { ProjectSummary } from "@/lib/data/projects";
@@ -105,46 +105,49 @@ function NewMenuItems({
   onNewFolder: () => void;
 }) {
   return (
-    <ContextMenuSub>
-      <SimpleTooltip content="Create something new in this team" side="left">
-        <ContextMenuSubTrigger>
+    <MenuSubTooltip
+      Sub={ContextMenuSub}
+      SubTrigger={ContextMenuSubTrigger}
+      SubContent={ContextMenuSubContent}
+      content="Create something new in this team"
+      trigger={
+        <>
           <Plus className="size-4" />
           New
-        </ContextMenuSubTrigger>
+        </>
+      }
+    >
+      <SimpleTooltip
+        content="Import a Git repository or start from a template"
+        side="left"
+      >
+        <ContextMenuItem asChild>
+          <Link href="/new" className="cursor-pointer">
+            <Rocket className="size-4" />
+            Project
+          </Link>
+        </ContextMenuItem>
       </SimpleTooltip>
-      <ContextMenuSubContent>
+      {canCreateFolder && (
         <SimpleTooltip
-          content="Import a Git repository or start from a template"
+          content="Create an empty folder to group projects"
           side="left"
         >
-          <ContextMenuItem asChild>
-            <Link href="/new" className="cursor-pointer">
-              <Rocket className="size-4" />
-              Project
-            </Link>
+          <ContextMenuItem onSelect={onNewFolder}>
+            <FolderPlus className="size-4" />
+            Folder
           </ContextMenuItem>
         </SimpleTooltip>
-        {canCreateFolder && (
-          <SimpleTooltip
-            content="Create an empty folder to group projects"
-            side="left"
-          >
-            <ContextMenuItem onSelect={onNewFolder}>
-              <FolderPlus className="size-4" />
-              Folder
-            </ContextMenuItem>
-          </SimpleTooltip>
-        )}
-        <SimpleTooltip content="Provision a managed database" side="left">
-          <ContextMenuItem asChild>
-            <Link href="/storage?new=database" className="cursor-pointer">
-              <Database className="size-4" />
-              Database
-            </Link>
-          </ContextMenuItem>
-        </SimpleTooltip>
-      </ContextMenuSubContent>
-    </ContextMenuSub>
+      )}
+      <SimpleTooltip content="Provision a managed database" side="left">
+        <ContextMenuItem asChild>
+          <Link href="/storage?new=database" className="cursor-pointer">
+            <Database className="size-4" />
+            Database
+          </Link>
+        </ContextMenuItem>
+      </SimpleTooltip>
+    </MenuSubTooltip>
   );
 }
 
@@ -192,39 +195,40 @@ function BulkActionsMenuItems({
       )}
       {canManageAllFolders && (
         <>
-          <ContextMenuSub>
-            <SimpleTooltip
-              content="Move the selected projects into a folder"
-              side="left"
-            >
-              <ContextMenuSubTrigger>
+          <MenuSubTooltip
+            Sub={ContextMenuSub}
+            SubTrigger={ContextMenuSubTrigger}
+            SubContent={ContextMenuSubContent}
+            content="Move the selected projects into a folder"
+            subContentClassName="max-h-72 overflow-y-auto"
+            trigger={
+              <>
                 <FolderInput className="size-4" />
                 Move selection to
-              </ContextMenuSubTrigger>
+              </>
+            }
+          >
+            <SimpleTooltip
+              content="Move to the top level (ungrouped)"
+              side="left"
+            >
+              <ContextMenuItem onSelect={() => selection.onMoveTo(null)}>
+                Ungrouped
+              </ContextMenuItem>
             </SimpleTooltip>
-            <ContextMenuSubContent className="max-h-72 overflow-y-auto">
+            {selection.moveTargets.length > 0 && <ContextMenuSeparator />}
+            {selection.moveTargets.map((f) => (
               <SimpleTooltip
-                content="Move to the top level (ungrouped)"
+                key={f.id}
+                content={`Move into ${f.name}`}
                 side="left"
               >
-                <ContextMenuItem onSelect={() => selection.onMoveTo(null)}>
-                  Ungrouped
+                <ContextMenuItem onSelect={() => selection.onMoveTo(f.id)}>
+                  {f.name}
                 </ContextMenuItem>
               </SimpleTooltip>
-              {selection.moveTargets.length > 0 && <ContextMenuSeparator />}
-              {selection.moveTargets.map((f) => (
-                <SimpleTooltip
-                  key={f.id}
-                  content={`Move into ${f.name}`}
-                  side="left"
-                >
-                  <ContextMenuItem onSelect={() => selection.onMoveTo(f.id)}>
-                    {f.name}
-                  </ContextMenuItem>
-                </SimpleTooltip>
-              ))}
-            </ContextMenuSubContent>
-          </ContextMenuSub>
+            ))}
+          </MenuSubTooltip>
           <SimpleTooltip
             content="Delete the selected projects and folders"
             side="left"

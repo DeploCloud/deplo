@@ -41,7 +41,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { ProjectLogo } from "@/components/shared/project-logo";
 import { StatusDot } from "@/components/shared/status-badge";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
@@ -285,43 +285,47 @@ export function ProjectCard({
         </K.Item>
       </SimpleTooltip>
       {canManageFolders && folders && folders.length > 0 && (
-        <K.Sub>
-          <SimpleTooltip content="Move this project into a folder" side="left">
-            <K.SubTrigger>
+        <MenuSubTooltip
+          Sub={K.Sub}
+          SubTrigger={K.SubTrigger}
+          SubContent={K.SubContent}
+          content="Move this project into a folder"
+          subContentClassName="max-h-72 overflow-y-auto"
+          trigger={
+            <>
               <FolderInput className="size-4" />
               Move to folder
-            </K.SubTrigger>
-          </SimpleTooltip>
-          <K.SubContent className="max-h-72 overflow-y-auto">
-            {project.folderId && (
-              <>
-                <SimpleTooltip
-                  content="Move back to the top level (ungrouped)"
-                  side="left"
-                >
-                  <K.Item onSelect={() => moveTo(null)} disabled={pending}>
-                    Ungrouped
-                  </K.Item>
-                </SimpleTooltip>
-                <K.Separator />
-              </>
-            )}
-            {folders.map((f) => (
+            </>
+          }
+        >
+          {project.folderId && (
+            <>
               <SimpleTooltip
-                key={f.id}
-                content={`Move into ${f.name}`}
+                content="Move back to the top level (ungrouped)"
                 side="left"
               >
-                <K.Item
-                  onSelect={() => moveTo(f.id)}
-                  disabled={pending || f.id === project.folderId}
-                >
-                  {f.name}
+                <K.Item onSelect={() => moveTo(null)} disabled={pending}>
+                  Ungrouped
                 </K.Item>
               </SimpleTooltip>
-            ))}
-          </K.SubContent>
-        </K.Sub>
+              <K.Separator />
+            </>
+          )}
+          {folders.map((f) => (
+            <SimpleTooltip
+              key={f.id}
+              content={`Move into ${f.name}`}
+              side="left"
+            >
+              <K.Item
+                onSelect={() => moveTo(f.id)}
+                disabled={pending || f.id === project.folderId}
+              >
+                {f.name}
+              </K.Item>
+            </SimpleTooltip>
+          ))}
+        </MenuSubTooltip>
       )}
       <K.Separator />
       <SimpleTooltip

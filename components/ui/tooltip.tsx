@@ -44,10 +44,58 @@ function SimpleTooltip({
   );
 }
 
+/**
+ * A submenu trigger with a tooltip that steps aside for the submenu. A submenu
+ * opens on the same hover gesture that would show the trigger's tooltip, so the
+ * two would otherwise overlap. Here the tooltip is controlled and forced shut
+ * while the submenu is open (`subOpen`), then behaves normally again once it
+ * closes.
+ *
+ * The menu primitives are passed in (`Sub`/`SubTrigger`/`SubContent`) so the
+ * same component works for both context menus and dropdown menus. `trigger` is
+ * the SubTrigger's inner content; `children` are the submenu's items.
+ */
+function MenuSubTooltip({
+  Sub,
+  SubTrigger,
+  SubContent,
+  content,
+  trigger,
+  children,
+  side = "left",
+  subTriggerClassName,
+  subContentClassName,
+}: {
+  Sub: React.ElementType;
+  SubTrigger: React.ElementType;
+  SubContent: React.ElementType;
+  content: React.ReactNode;
+  trigger: React.ReactNode;
+  children: React.ReactNode;
+  side?: "top" | "right" | "bottom" | "left";
+  subTriggerClassName?: string;
+  subContentClassName?: string;
+}) {
+  const [subOpen, setSubOpen] = React.useState(false);
+  const [tipOpen, setTipOpen] = React.useState(false);
+  return (
+    <Sub onOpenChange={setSubOpen}>
+      <Tooltip open={tipOpen && !subOpen} onOpenChange={setTipOpen}>
+        <TooltipTrigger asChild>
+          <SubTrigger className={subTriggerClassName}>{trigger}</SubTrigger>
+        </TooltipTrigger>
+        <TooltipContent side={side}>{content}</TooltipContent>
+      </Tooltip>
+      <SubContent className={subContentClassName}>{children}</SubContent>
+    </Sub>
+  );
+}
+
 export {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
   SimpleTooltip,
+  MenuSubTooltip,
 };

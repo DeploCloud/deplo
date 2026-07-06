@@ -32,7 +32,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { useTheme } from "@/components/theme-provider";
 
 interface NewItem {
@@ -149,26 +149,30 @@ export function AppContextMenu({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
-        <ContextMenuSub>
-          <SimpleTooltip content="Create something new" side="left">
-            <ContextMenuSubTrigger>
+        <MenuSubTooltip
+          Sub={ContextMenuSub}
+          SubTrigger={ContextMenuSubTrigger}
+          SubContent={ContextMenuSubContent}
+          content="Create something new"
+          subContentClassName="w-52"
+          trigger={
+            <>
               <Plus className="size-4" />
               New
-            </ContextMenuSubTrigger>
-          </SimpleTooltip>
-          <ContextMenuSubContent className="w-52">
-            {newItems.map((item) => (
-              <SimpleTooltip key={item.href} content={item.label} side="left">
-                <ContextMenuItem asChild>
-                  <Link href={item.href} className="cursor-pointer">
-                    <item.icon className="size-4" />
-                    {item.label}
-                  </Link>
-                </ContextMenuItem>
-              </SimpleTooltip>
-            ))}
-          </ContextMenuSubContent>
-        </ContextMenuSub>
+            </>
+          }
+        >
+          {newItems.map((item) => (
+            <SimpleTooltip key={item.href} content={item.label} side="left">
+              <ContextMenuItem asChild>
+                <Link href={item.href} className="cursor-pointer">
+                  <item.icon className="size-4" />
+                  {item.label}
+                </Link>
+              </ContextMenuItem>
+            </SimpleTooltip>
+          ))}
+        </MenuSubTooltip>
 
         <ContextMenuSeparator />
 
