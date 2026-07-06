@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -12,6 +13,7 @@ import {
   Archive,
   Loader2,
   AlertTriangle,
+  ArrowUpRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,13 +96,6 @@ export function ProjectBackups({
             <ScheduleBackup projectId={projectId} destinations={destinations} />
           </div>
         </div>
-
-        {noDeps && (
-          <p className="text-xs text-muted-foreground">
-            Add an S3 destination under Storage → S3 Destinations to enable
-            backups.
-          </p>
-        )}
       </section>
 
       {/* Schedules */}
@@ -132,6 +127,28 @@ export function ProjectBackups({
             </Table>
           </div>
         </section>
+      )}
+
+      {/* No S3 destination yet — backups have nowhere to go without one. This
+          sits right above the artifacts so the empty state is explained, with a
+          link straight to Storage → S3 Destinations (dialog pre-opened). */}
+      {noDeps && (
+        <div className="flex flex-col gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-4 sm:flex-row sm:items-center">
+          <AlertTriangle className="size-5 shrink-0 text-[var(--warning)]" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium">No S3 destination configured</p>
+            <p className="text-sm text-muted-foreground">
+              Project backups are uploaded to an S3 bucket. Add a destination to
+              run or schedule backups — completed artifacts then appear here.
+            </p>
+          </div>
+          <Button asChild size="sm" className="shrink-0 sm:ml-auto">
+            <Link href="/storage?new=s3">
+              Add S3 destination
+              <ArrowUpRight className="size-4" />
+            </Link>
+          </Button>
+        </div>
       )}
 
       {/* Artifacts (runs) */}
