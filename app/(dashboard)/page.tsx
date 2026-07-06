@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ProjectsGrid } from "@/components/projects/projects-grid";
+import { ProjectsGrid, FolderTrail } from "@/components/projects/projects-grid";
 import { ProjectSearch } from "@/components/projects/project-search";
 import { AddNewMenu } from "@/components/shared/add-new-menu";
 import { timeAgo } from "@/lib/utils";
@@ -203,18 +203,28 @@ export default async function OverviewPage(props: PageProps<"/">) {
               description={`Nothing found for “${query}”.`}
             />
           ) : openFolder ? (
-            <EmptyState
-              icon={Folder}
-              title={`${openFolder.name} is empty`}
-              description="Drag projects onto this folder from All projects, or use a project’s “Move to folder” menu."
-              action={
-                <Button asChild variant="outline">
-                  <Link href={view === "list" ? "/?view=list" : "/"}>
-                    Back to all projects
-                  </Link>
-                </Button>
-              }
-            />
+            // An empty open folder renders no grid, but the breadcrumb is the
+            // only way back out — so keep the "All projects / …" trail above the
+            // empty state regardless. The px-1 py-1 must match the grid's
+            // DroppableBreadcrumb so the trail never shifts between the empty and
+            // populated views of the same folder.
+            <div className="space-y-6">
+              <div className="px-1 py-1">
+                <FolderTrail path={folderPath} view={view} />
+              </div>
+              <EmptyState
+                icon={Folder}
+                title={`${openFolder.name} is empty`}
+                description="Drag projects onto this folder from All projects, or use a project’s “Move to folder” menu."
+                action={
+                  <Button asChild variant="outline">
+                    <Link href={view === "list" ? "/?view=list" : "/"}>
+                      Back to all projects
+                    </Link>
+                  </Button>
+                }
+              />
+            </div>
           ) : (
             <EmptyState
               icon={Rocket}

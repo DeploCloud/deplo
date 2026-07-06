@@ -516,25 +516,49 @@ export async function setDatabaseRunning(
 }
 
 /**
- * Edit the only post-create-mutable settings of a database: its public exposure
- * (publish/unpublish) and, when exposed, the host port. Everything else (engine,
- * version, username, db name, password) is create-only — the official images
- * apply those env vars only on first init against an empty volume, so changing
- * them would be a silent no-op or data loss. This path re-renders the compose and
- * reroutes the container IN PLACE (`up -d --remove-orphans`), which preserves the
- * named data volume; the only material change to the rendered YAML is the `ports:`
- * block.
+ * Edit a database's post-create-mutable settings: its public exposure
+ * (publish/unpublish + host port) and, optionally, the SERVER it runs on.
+ * Everything else (engine, version, username, db name, password) is create-only —
+ * the official images apply those env vars only on first init against an empty
+ * volume, so changing them would be a silent no-op or data loss.
+ *
+ * Two shapes of edit, both routed through the same lock and status gates:
+ *
+ *  - In-place (server unchanged): re-render the compose and reroute the container
+ *    on its current host (`up -d --remove-orphans`), which PRESERVES the named data
+ *    volume; the only material change to the rendered YAML is the `ports:` block.
+ *
+ *  - Move to a different server: mirrors a project move — the container is
+ *    provisioned FRESH on the new host and the old host's stack is torn down. A
+ *    Docker named volume is host-local and there is no cross-host copy primitive,
+ *    so THE DATA DOES NOT FOLLOW: the DB comes up with an empty volume on the new
+ *    server (re-initialised from the create-only credentials). The provision on the
+ *    new host runs BEFORE the old host's teardown, so a failed reroute leaves the
+ *    original untouched. The old stack is destroyed best-effort (its volume too),
+ *    mirroring deleteDatabase; an unreachable/failed teardown is surfaced, not
+ *    fatal — the move already succeeded, the leftover just needs a manual sweep.
  *
  * Because the connection string embeds a host:port that depends on reachability
  * (the internal service name + engine port when unexposed, the server's host +
- * published port when exposed), toggling exposure INVALIDATES the stored string —
- * so it is re-derived and re-encrypted here, around the UNCHANGED create-only
- * password recovered from the old string. The `host`/`port`/`username`/`dbName`
- * columns are untouched (the container's DNS identity and credentials don't move).
+ * published port when exposed), toggling exposure OR moving servers INVALIDATES the
+ * stored string — so it is re-derived and re-encrypted here, around the UNCHANGED
+ * create-only password recovered from the old string. The `host`/`port`/`username`/
+ * `dbName` columns are untouched (the container's DNS identity and credentials are
+ * fixed at first init and don't move).
  */
 export async function updateDatabase(
   id: string,
-  input: { exposedPublicly: boolean; exposedPort?: number },
+  input: {
+    exposedPublicly: boolean;
+    exposedPort?: number;
+    /**
+     * Move the database to this server. Optional — omitted (or equal to the current
+     * server) keeps it in place. Must be a server visible to the team and
+     * provisioned (resolved via {@link resolveTeamServer}, same guard as create).
+     * A move recreates the container on the new host WITHOUT its data (see above).
+     */
+    serverId?: string;
+  },
 ): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
@@ -549,14 +573,23 @@ export async function updateDatabase(
   if (exposed && !(await canExposePorts()))
     throw new Error("You don't have permission to publish ports");
 
-  // Re-resolve the owning server through the team's visible set so a team that
-  // LOST access to it can't reroute onto it, and to get server.host for the
-  // re-derived connection string when exposed.
-  const server = await resolveTeamServer(teamId, db.serverId);
+  // Resolve the TARGET server through the team's visible set: a move can only land
+  // on a server this team may use, and an in-place edit re-resolves the current one
+  // so a team that LOST access to it can't reroute onto it. Also yields the host
+  // for the re-derived connection string when exposed. Default (no serverId) keeps
+  // the current server.
+  const targetServer = await resolveTeamServer(
+    teamId,
+    input.serverId ?? db.serverId,
+  );
+  // The old host we tear down after a successful move. Non-null only on a move.
+  const movingFrom = targetServer.id !== db.serverId ? db.serverId : null;
 
-  // Validate the new exposed port, mirroring create. Skip the agent bind-probe
-  // when the DB is ALREADY exposed on this exact port — it is OUR own published
-  // port, so probing it would report a false self-collision.
+  // Validate the new exposed port, mirroring create. The bind-probe runs against
+  // the TARGET server. Skip it only for a true self-collision — the DB is ALREADY
+  // exposed on this exact port on the SAME host we're staying on; on a MOVE the
+  // port must be re-probed on the new host (it may be taken there even if free
+  // here), so the self-reuse shortcut must not apply.
   let newExposedPort: number | null = null;
   if (exposed) {
     if (input.exposedPort == null)
@@ -566,27 +599,40 @@ export async function updateDatabase(
         `Port ${input.exposedPort} is invalid — choose an unprivileged port (${MIN_USER_PORT}-${MAX_PORT})`,
       );
     const reusingOwnPort =
-      db.exposedPublicly && db.exposedPort === input.exposedPort;
-    if (!reusingOwnPort && !(await isHostPortFree(server.id, input.exposedPort)))
+      !movingFrom &&
+      db.exposedPublicly &&
+      db.exposedPort === input.exposedPort;
+    if (
+      !reusingOwnPort &&
+      !(await isHostPortFree(targetServer.id, input.exposedPort))
+    )
       throw new Error(
-        `Port ${input.exposedPort} is already in use on ${server.name}. Pick a different port.`,
+        `Port ${input.exposedPort} is already in use on ${targetServer.name}. Pick a different port.`,
       );
     newExposedPort = input.exposedPort;
   }
 
-  // No-op short-circuit: nothing about the exposure changed, so skip a pointless
-  // reroute (a container recreate) and status churn. Makes the mutation idempotent.
-  if (db.exposedPublicly === exposed && db.exposedPort === newExposedPort) return;
+  // No-op short-circuit: nothing changed — same server, same exposure — so skip a
+  // pointless reroute (a container recreate) and status churn. A MOVE is never a
+  // no-op (the container physically relocates), so it always falls through.
+  if (
+    !movingFrom &&
+    db.exposedPublicly === exposed &&
+    db.exposedPort === newExposedPort
+  )
+    return;
 
   // Re-derive the connection string around the UNCHANGED create-only password.
   // The password is never regenerated on an edit — the running container's
-  // credentials are fixed at first init — so recover it from the old string.
+  // credentials are fixed at first init — so recover it from the old string. When
+  // exposed the host is the TARGET server's (a move changes it); when internal it
+  // is the stable service DNS name, unaffected by a move (same `deplo` network).
   const password = parseConnectionPassword(decryptSecret(db.connectionStringEnc));
   const conn = buildConnectionString({
     type: db.type,
     username: db.username,
     password,
-    host: newExposedPort != null ? server.host : db.host,
+    host: newExposedPort != null ? targetServer.host : db.host,
     port: newExposedPort != null ? newExposedPort : db.port,
     dbName: db.dbName,
   });
@@ -601,10 +647,11 @@ export async function updateDatabase(
     hostPort: newExposedPort ?? undefined,
   });
 
-  // The reroute + row write happen under the DB's lifecycle lock, the SAME lock
-  // create/start-stop/delete use: an edit issued during provisioning WAITS, then
-  // reroutes a now-running DB; a delete issued during an edit WAITS for the
-  // reroute, then tears down the fully-rerouted stack (no orphan).
+  // The reroute + teardown + row write happen under the DB's lifecycle lock, the
+  // SAME lock create/start-stop/delete use: an edit issued during provisioning
+  // WAITS, then reroutes a now-running DB; a delete issued during an edit WAITS for
+  // the reroute/teardown, then tears down the fully-rerouted stack (no orphan).
+  let moveWarning: string | null = null;
   await withKeyedLock(id, async () => {
     // Re-read under the lock — the DB may have been deleted, or just finished
     // provisioning, while we waited our turn.
@@ -617,7 +664,11 @@ export async function updateDatabase(
       throw new Error(
         "Database is still provisioning — wait for it to finish before editing it.",
       );
-    const agent = await connectAgent(server.id);
+    // Provision on the TARGET server first. On a move this creates the stack fresh
+    // on the new host (empty volume); in place it reroutes the existing container.
+    // Doing this BEFORE any old-host teardown means a failed reroute leaves the
+    // original stack untouched — the move is atomic from the operator's view.
+    const agent = await connectAgent(targetServer.id);
     try {
       const res = await agent.reroute({
         slug: cur.host,
@@ -630,22 +681,59 @@ export async function updateDatabase(
     } finally {
       agent.close();
     }
-    // Only the exposure fields + the re-derived connection string change; the
-    // container's DNS identity (host/port) and its credentials are untouched.
+
+    // A move succeeded on the new host — now tear down the OLD host's stack + its
+    // (now-stale) data volume so it isn't left running and orphaned. Best-effort,
+    // exactly like deleteDatabase: the move is already done, so a failed/unreachable
+    // teardown is surfaced (and logged) rather than rolled back. `removeVolumes`
+    // reclaims the old volume; a too-old agent that ignores it leaves the volume to
+    // sweep by hand.
+    if (movingFrom) {
+      try {
+        const old = await connectAgent(movingFrom);
+        try {
+          const r = await old.destroyStack(cur.host, true);
+          if (!r.ok)
+            moveWarning =
+              `Moved ${cur.name}, but the old server did not cleanly tear down ` +
+              `${cur.host} (${r.error || "unknown error"}). Its old container/` +
+              `volume may need a manual sweep on that host.`;
+        } finally {
+          old.close();
+        }
+      } catch (e) {
+        moveWarning =
+          `Moved ${cur.name}, but the old server was unreachable to tear down ` +
+          `${cur.host} (${e instanceof Error ? e.message : String(e)}). Its old ` +
+          `container/volume may need a manual sweep on that host.`;
+      }
+    }
+
+    // Persist the new location + exposure + re-derived connection string. On a move
+    // the container comes up fresh, so reset the tracked size to 0 (the old volume's
+    // bytes didn't follow). `host`/`port`/`username`/`dbName` are untouched (the
+    // container's DNS identity and credentials are fixed at first init).
     await getDb()
       .update(databasesTable)
       .set({
+        serverId: targetServer.id,
         exposedPublicly: exposed,
         exposedPort: newExposedPort,
         connectionStringEnc: connEnc,
+        ...(movingFrom ? { sizeMb: 0 } : {}),
       })
       .where(eq(databasesTable.id, id));
   });
+  if (moveWarning) console.warn(`[databases] ${moveWarning}`);
   await recordActivity(
     "database",
-    exposed
-      ? `Exposed database ${db.name} on port ${newExposedPort}`
-      : `Unexposed database ${db.name}`,
+    movingFrom
+      ? moveWarning
+        ? `Moved database ${db.name} to ${targetServer.name} (warning: ${moveWarning})`
+        : `Moved database ${db.name} to ${targetServer.name}`
+      : exposed
+        ? `Exposed database ${db.name} on port ${newExposedPort}`
+        : `Unexposed database ${db.name}`,
     user.name,
     null,
   );

@@ -11,6 +11,7 @@ import {
   Square,
   Pencil,
   Trash2,
+  AlertTriangle,
   Server as ServerIcon,
   Database as DatabaseIcon,
 } from "lucide-react";
@@ -19,6 +20,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -72,9 +80,17 @@ const CONTEXT_KIT: MenuKit = {
 
 export function DatabaseCard({
   db,
+  servers = [],
   canExposePorts = false,
 }: {
   db: DatabaseDTO;
+  /**
+   * The provisioned servers this team may host a database on. Powers the "Server"
+   * selector in the edit dialog (moving the DB to another host). When there is 0–1
+   * server the selector is hidden — there's nowhere to move it. The server
+   * re-resolves the target through the team's visible set on update regardless.
+   */
+  servers?: { id: string; name: string }[];
   /**
    * Whether the current user holds the publish-ports grant. Gates the "Expose
    * publicly" control in the edit dialog (the server re-checks it on update too).
@@ -233,6 +249,7 @@ export function DatabaseCard({
       <EditDatabaseDialog
         key={editOpen ? "edit-open" : "edit-closed"}
         db={db}
+        servers={servers}
         canExposePorts={canExposePorts}
         open={editOpen}
         onOpenChange={setEditOpen}
@@ -255,18 +272,23 @@ export function DatabaseCard({
 /**
  * Edit an existing database. Engine, version, username and database name are
  * fixed at creation (the official images apply those env vars only on first init
- * against an empty volume), so they are shown READ-ONLY. The only editable
- * setting is public exposure + the host port — the server re-renders the compose
- * and reroutes the container in place (the data volume is preserved). Mirrors
- * EditBackupDialog: seeded from `db` on mount, remounted via `key` on each open.
+ * against an empty volume), so they are shown READ-ONLY. Two things are editable:
+ * public exposure + the host port (rerouted in place, data volume preserved), and
+ * the SERVER it runs on. Moving to another server works like a project move — the
+ * container is recreated fresh on the new host and its DATA DOES NOT FOLLOW (a
+ * Docker volume is host-local), so that path shows a loud warning before it can be
+ * saved. Mirrors EditBackupDialog: seeded from `db` on mount, remounted via `key`
+ * on each open.
  */
 function EditDatabaseDialog({
   db,
+  servers,
   canExposePorts,
   open,
   onOpenChange,
 }: {
   db: DatabaseDTO;
+  servers: { id: string; name: string }[];
   canExposePorts: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -277,6 +299,7 @@ function EditDatabaseDialog({
   const [port, setPort] = React.useState(
     db.exposedPort ? String(db.exposedPort) : "",
   );
+  const [serverId, setServerId] = React.useState(db.serverId);
   const [generatingPort, setGeneratingPort] = React.useState(false);
   const creds = ENGINE_CREDS[db.type];
 
@@ -284,20 +307,37 @@ function EditDatabaseDialog({
   const portValid =
     Number.isInteger(parsedPort) && parsedPort >= 1024 && parsedPort <= 65535;
   const exposeReady = !exposed || portValid;
-  // Only submit when the exposure config actually changed — avoids a pointless
-  // reroute (a container recreate) when nothing was touched.
+  // Whether the DB is being moved to a different host. Its data does NOT follow, so
+  // the move is guarded by an explicit acknowledgement checkbox below.
+  const movingServer = serverId !== db.serverId;
+  const [ackMove, setAckMove] = React.useState(false);
+  // Only offer the Server selector when there's somewhere else to move to. The
+  // current server is always present in `servers` (it's a provisioned host); with
+  // 0–1 total there's no alternative, so the selector stays hidden.
+  const canPickServer = servers.length > 1;
+  const currentServerName =
+    servers.find((s) => s.id === db.serverId)?.name ?? "its server";
+  const targetServerName =
+    servers.find((s) => s.id === serverId)?.name ?? "the selected server";
+
+  // Only submit when something actually changed — avoids a pointless reroute (a
+  // container recreate) when nothing was touched. A server move always counts.
   const dirty =
+    movingServer ||
     exposed !== db.exposedPublicly ||
     (exposed && parsedPort !== db.exposedPort);
+  // Block save on an un-acknowledged move (data loss) or an invalid port.
+  const saveReady = exposeReady && dirty && (!movingServer || ackMove);
 
-  // Ask the server for a free host port on THIS database's server (the generate
-  // RPC only needs the server id, which the card already has).
+  // Ask the server for a free host port on the CURRENTLY SELECTED target server —
+  // on a move that's the NEW host, where the port actually has to be free. The
+  // generate RPC only needs the server id.
   function generatePort() {
     setGeneratingPort(true);
     startTransition(async () => {
       const res = await gqlAction<{ generateAvailableDbPort: number }, number>(
         `mutation($serverId: ID) { generateAvailableDbPort(serverId: $serverId) }`,
-        { serverId: db.serverId },
+        { serverId },
         (d) => d.generateAvailableDbPort,
       );
       setGeneratingPort(false);
@@ -317,11 +357,13 @@ function EditDatabaseDialog({
           input: {
             exposedPublicly: exposed,
             exposedPort: exposed ? parsedPort : null,
+            // Only send serverId on an actual move — omitted keeps it in place.
+            serverId: movingServer ? serverId : null,
           },
         },
       );
       if (res.ok) {
-        toast.success("Database updated");
+        toast.success(movingServer ? "Database moved" : "Database updated");
         onOpenChange(false);
         router.refresh();
       } else {
@@ -336,8 +378,8 @@ function EditDatabaseDialog({
         <DialogHeader>
           <DialogTitle>Edit {db.name}</DialogTitle>
           <DialogDescription>
-            Only public exposure can be changed. Engine, version, and credentials
-            are fixed at creation.
+            Public exposure and the server can be changed. Engine, version, and
+            credentials are fixed at creation.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -368,7 +410,63 @@ function EditDatabaseDialog({
             </p>
           </div>
 
-          {/* The only editable setting. */}
+          {/* Server location. Only rendered when there's an alternative host to
+              move to. A move recreates the container on the new server WITHOUT its
+              data (a Docker volume is host-local) — so it's gated by an explicit
+              acknowledgement below, mirroring how a project move relocates. */}
+          {canPickServer && (
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="space-y-2">
+                <Label>Server</Label>
+                <Select value={serverId} onValueChange={setServerId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {servers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  The host this database runs on.
+                </p>
+              </div>
+              {movingServer && (
+                <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                    <div className="space-y-1 text-xs">
+                      <p className="font-medium text-destructive">
+                        Moving to {targetServerName} recreates the database empty
+                      </p>
+                      <p className="text-muted-foreground">
+                        Like moving a project, the container is recreated fresh on
+                        the new server and its data does <strong>not</strong>{" "}
+                        follow — a database volume can&apos;t be copied between
+                        hosts. The old container and its data on{" "}
+                        {currentServerName} are torn down. To keep the data, back it
+                        up first and restore it after the move.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      className="size-3.5 accent-destructive"
+                      checked={ackMove}
+                      onChange={(e) => setAckMove(e.target.checked)}
+                    />
+                    I understand the data on {currentServerName} will be lost
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* The other editable setting. */}
           <div className="space-y-3 rounded-lg border border-border p-3">
             <div className="flex items-center justify-between">
               <div>
@@ -419,6 +517,8 @@ function EditDatabaseDialog({
                 <p className="text-xs text-muted-foreground">
                   The port on the server clients connect to. Use an unprivileged
                   port (1024–65535) that is free on the host, or click Generate.
+                  {movingServer &&
+                    " On a move it must be free on the new server — regenerate it if unsure."}
                 </p>
               </div>
             )}
@@ -432,8 +532,14 @@ function EditDatabaseDialog({
           >
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending || !exposeReady || !dirty}>
-            {pending ? "Saving…" : "Save changes"}
+          <Button onClick={submit} disabled={pending || !saveReady}>
+            {pending
+              ? movingServer
+                ? "Moving…"
+                : "Saving…"
+              : movingServer
+                ? "Move & save"
+                : "Save changes"}
           </Button>
         </DialogFooter>
       </DialogContent>

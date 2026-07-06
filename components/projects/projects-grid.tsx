@@ -407,7 +407,13 @@ function StaticGrid({
         onRefresh={() => router.refresh()}
       >
         <div className="relative min-h-[40vh] space-y-6">
-          {openFolder && <FolderTrail path={folderPath} view={view} />}
+          {/* px-1 py-1 mirrors the DroppableBreadcrumb padding so the trail sits
+              in the same spot whether or not the grid is drag-reorderable. */}
+          {openFolder && (
+            <div className="px-1 py-1">
+              <FolderTrail path={folderPath} view={view} />
+            </div>
+          )}
           {folders.length > 0 && (
             <section className="space-y-3">
               <div className={gridClass(view)}>
@@ -455,8 +461,12 @@ function StaticGrid({
  * The nested-folder breadcrumb: "All projects / A / B / Current". Every ancestor
  * segment links to that level; the last (current) folder is plain text. Folders
  * nest, so the trail can be several levels deep.
+ *
+ * Exported so an EMPTY open folder (which renders a full-page empty state instead
+ * of this grid) can still show the same trail above it — the breadcrumb is the
+ * only way back out, so it must survive the folder having no contents.
  */
-function FolderTrail({
+export function FolderTrail({
   path,
   view,
 }: {

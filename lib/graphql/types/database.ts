@@ -85,15 +85,19 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
   }),
 });
 
-// Only exposure is editable post-create. engine/version/username/dbName/password
-// are create-only (the images apply those env vars only on first init against an
-// empty volume — changing them is a silent no-op or data loss), so they are NOT
-// in this input. Turning exposure ON requires exposedPort (the data layer
-// validates + agent-checks it, exactly like createDatabase).
+// Exposure + server location are editable post-create. engine/version/username/
+// dbName/password are create-only (the images apply those env vars only on first
+// init against an empty volume — changing them is a silent no-op or data loss), so
+// they are NOT in this input. Turning exposure ON requires exposedPort (the data
+// layer validates + agent-checks it, exactly like createDatabase). serverId moves
+// the database to another server — like a project move, the container is recreated
+// fresh on the new host and its data does NOT follow (a Docker volume is
+// host-local); omitted keeps it in place.
 const UpdateDatabaseInputType = builder.inputType("UpdateDatabaseInput", {
   fields: (t) => ({
     exposedPublicly: t.boolean({ required: true }),
     exposedPort: t.int({ required: false }),
+    serverId: t.id({ required: false }),
   }),
 });
 
@@ -143,11 +147,14 @@ builder.mutationFields((t) => ({
     type: DatabaseRef,
     authScopes: { capability: "manage_infra" },
     description:
-      "Edit a database's public exposure (publish/unpublish + host port). " +
-      "Re-renders the compose and reroutes the container in place; the data " +
-      "volume is preserved and the connection string is re-derived. Everything " +
-      "else is create-only. The publish-ports grant is enforced in the data " +
-      "layer when exposure is turned on.",
+      "Edit a database's public exposure (publish/unpublish + host port) and, " +
+      "optionally, the server it runs on. An in-place edit re-renders the compose " +
+      "and reroutes the container on its current host (data volume preserved). A " +
+      "server change recreates the container fresh on the new host — like a " +
+      "project move, its data does NOT follow (a Docker volume is host-local) — " +
+      "and tears down the old host's stack. The connection string is re-derived. " +
+      "Everything else is create-only. The publish-ports grant is enforced in the " +
+      "data layer when exposure is turned on.",
     args: {
       id: t.arg.string({ required: true }),
       input: t.arg({ type: UpdateDatabaseInputType, required: true }),
@@ -156,6 +163,7 @@ builder.mutationFields((t) => ({
       await updateDatabase(id, {
         exposedPublicly: input.exposedPublicly,
         exposedPort: input.exposedPort ?? undefined,
+        serverId: input.serverId ?? undefined,
       });
       return reloadDatabase(id);
     },

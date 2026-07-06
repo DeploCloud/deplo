@@ -122,6 +122,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 <DatabaseCard
                   key={db.id}
                   db={db}
+                  servers={dbServers}
                   canExposePorts={mayExposePorts}
                 />
               ))}
