@@ -45,7 +45,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import { SimpleTooltip, MenuSubTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { FolderColorPicker } from "@/components/projects/folder-color-picker";
 import { ShareFolderDialog } from "@/components/projects/share-folder-dialog";
@@ -69,6 +69,9 @@ export interface FolderCardData {
   isOwner?: boolean;
   /** The folder's owner (creator), for reference; not needed for gating. */
   ownerUserId?: string | null;
+  /** Parent folder id when nested, or null/absent at the top level. Gates the
+   *  "Top level" move option (only offered when the folder is actually nested). */
+  parentId?: string | null;
 }
 
 /** Build the Overview URL that opens a folder, preserving the list/grid view. */
@@ -278,24 +281,35 @@ export function FolderCard({
               Change colour
             </K.Item>
           </SimpleTooltip>
-          {folders && folders.length > 0 && (
-            <K.Sub>
-              <SimpleTooltip
-                content="Nest this folder inside another, or move it to the top level"
-                side="left"
+          {/* "Move to folder" only makes sense when there's somewhere to go:
+              a parent to climb out of, or another folder to nest into. */}
+          {folders &&
+            (folder.parentId != null ||
+              folders.some((f) => f.id !== folder.id)) && (
+              <MenuSubTooltip
+                Sub={K.Sub}
+                SubTrigger={K.SubTrigger}
+                SubContent={K.SubContent}
+                content="Nest this folder inside another folder, or move it back to the top level"
+                subContentClassName="max-h-72 overflow-y-auto"
+                trigger={
+                  <>
+                    <FolderInput className="size-4" />
+                    Move to folder
+                  </>
+                }
               >
-                <K.SubTrigger>
-                  <FolderInput className="size-4" />
-                  Move to folder
-                </K.SubTrigger>
-              </SimpleTooltip>
-              <K.SubContent className="max-h-72 overflow-y-auto">
-                <SimpleTooltip content="Move to the top level" side="left">
-                  <K.Item onSelect={() => moveTo(null)} disabled={pending}>
-                    Top level
-                  </K.Item>
-                </SimpleTooltip>
-                <K.Separator />
+                {/* Only offer "Top level" when the folder is actually nested. */}
+                {folder.parentId != null && (
+                  <>
+                    <SimpleTooltip content="Move to the top level" side="left">
+                      <K.Item onSelect={() => moveTo(null)} disabled={pending}>
+                        Top level
+                      </K.Item>
+                    </SimpleTooltip>
+                    {folders.some((f) => f.id !== folder.id) && <K.Separator />}
+                  </>
+                )}
                 {folders
                   .filter((f) => f.id !== folder.id)
                   .map((f) => (
@@ -304,14 +318,16 @@ export function FolderCard({
                       content={`Move into ${f.name}`}
                       side="left"
                     >
-                      <K.Item onSelect={() => moveTo(f.id)} disabled={pending}>
+                      <K.Item
+                        onSelect={() => moveTo(f.id)}
+                        disabled={pending || f.id === folder.parentId}
+                      >
                         {f.name}
                       </K.Item>
                     </SimpleTooltip>
                   ))}
-              </K.SubContent>
-            </K.Sub>
-          )}
+              </MenuSubTooltip>
+            )}
           <K.Separator />
           <SimpleTooltip
             content="Delete the folder — its projects move back to the top level"
