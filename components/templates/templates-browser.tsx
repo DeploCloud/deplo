@@ -52,7 +52,12 @@ export function TemplatesBrowser({
             className="h-10 w-44 shrink-0"
             aria-label="Filter templates"
           >
-            <span className="flex items-center gap-2">
+            {/* `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1`
+                to its direct-child spans, whose `display:-webkit-box` outranks a
+                plain `flex` class (the `>span` selector is more specific) and
+                would stack the icon above the value. The important modifier wins
+                it back so the icon and label sit on one row. */}
+            <span className="flex! items-center gap-2">
               <ListFilter className="size-4 shrink-0 text-muted-foreground" />
               <SelectValue />
             </span>
