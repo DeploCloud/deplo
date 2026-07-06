@@ -18,7 +18,6 @@ import {
   GitBranch,
   Bell,
   KeyRound,
-  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -124,7 +123,7 @@ export const NAV: NavSection[] = [
         label: "Settings",
         href: "/settings",
         icon: Settings,
-        tooltip: "Account, servers, tokens & security",
+        tooltip: "Account, servers, registries & tokens",
       },
     ],
   },
@@ -158,17 +157,6 @@ export const SETTINGS_NAV: NavSection[] = [
         icon: Building2,
         tooltip: "Team details & appearance",
         exact: true,
-      },
-      {
-        label: "Servers",
-        href: "/settings/servers",
-        icon: Server,
-        tooltip: "Connected servers & Docker hosts",
-        // Server administration is an instance-wide concern (the management view
-        // lists EVERY server across teams), so it is gated to instance admins —
-        // not the per-team manage_infra capability. Members reach servers only
-        // through the team-scoped deploy pickers, never this page.
-        requiresAdmin: true,
       },
       {
         label: "Registries",
@@ -214,17 +202,22 @@ export const SETTINGS_NAV: NavSection[] = [
     title: "System",
     items: [
       {
+        label: "Servers",
+        href: "/settings/servers",
+        icon: Server,
+        tooltip: "Connected servers & Docker hosts",
+        // Server administration is an instance-wide concern (the management view
+        // lists EVERY server across teams), so it is gated to instance admins —
+        // not the per-team manage_infra capability. Members reach servers only
+        // through the team-scoped deploy pickers, never this page.
+        requiresAdmin: true,
+      },
+      {
         label: "Users",
         href: "/settings/users",
         icon: Users,
         tooltip: "Instance-wide user administration",
         requiresAdmin: true,
-      },
-      {
-        label: "Security",
-        href: "/settings/security",
-        icon: ShieldCheck,
-        tooltip: "Security posture",
       },
     ],
   },
@@ -240,7 +233,7 @@ export const NON_TEAM_SETTINGS_PREFIXES = [
   "/settings/notifications",
   "/settings/tokens",
   "/settings/users",
-  "/settings/security",
+  "/settings/servers",
 ];
 
 /** True when the path is a personal/system settings route (team header hidden). */
