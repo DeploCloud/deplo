@@ -1,30 +1,43 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EnvTableSkeleton } from "@/components/env/env-skeleton";
 
 export default function Loading() {
   return (
     <div className="space-y-6" role="status" aria-label="Loading variables" aria-busy>
-      <div className="space-y-1">
-        <Skeleton shimmer className="h-7 w-56" />
-        <Skeleton shimmer className="h-4 w-96" />
+      {/* PageHeader: "Environment Variables" + long description */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <Skeleton className="h-8 w-56" />
+          <Skeleton className="h-4 w-[30rem]" />
+        </div>
       </div>
 
-      <div className="flex items-center gap-6 border-b border-border">
-        <Skeleton shimmer className="h-8 w-20" />
-        <Skeleton shimmer className="h-8 w-20" />
+      {/* UnderlineTabsList: Project / Shared / Team globals (admin-only tab omitted) */}
+      <div className="flex h-12 items-center gap-1 border-b border-border">
+        <div className="px-3">
+          <Skeleton className="h-4 w-14" />
+        </div>
+        <div className="px-3">
+          <Skeleton className="h-4 w-14" />
+        </div>
+        <div className="px-3">
+          <Skeleton className="h-4 w-24" />
+        </div>
       </div>
 
+      {/* Project tab body: per-project cards, each with a read-only env table */}
       <div className="space-y-4">
         {Array.from({ length: 2 }).map((_, card) => (
-          <div key={card} className="rounded-xl border border-border">
-            <div className="flex items-center justify-between p-6">
-              <Skeleton shimmer className="h-5 w-40" />
-              <Skeleton shimmer className="h-8 w-24 rounded-md" />
-            </div>
-            <div className="p-6 pt-0">
+          <Card key={card}>
+            <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-8 w-24 rounded-md" />
+            </CardHeader>
+            <CardContent>
               <EnvTableSkeleton rows={3} actions={false} className="rounded-lg" />
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>

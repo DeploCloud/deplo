@@ -1,34 +1,43 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export default function Loading() {
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6"
+      role="status"
+      aria-busy
+      aria-label="Loading project overview"
+    >
       {/* Production hero */}
-      <div className="rounded-xl border border-border">
-        <div className="flex items-center justify-between p-6">
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
           <Skeleton className="h-5 w-44" />
           <Skeleton className="h-5 w-20 rounded-md" />
-        </div>
-        <div className="p-6 pt-0">
+        </CardHeader>
+        <CardContent>
           <div className="grid gap-6 md:grid-cols-2">
+            {/* Left column: domain, status, created */}
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-3 w-14" />
                 <Skeleton className="h-4 w-40" />
               </div>
               <div className="space-y-1.5">
                 <Skeleton className="h-3 w-12" />
-                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-5 w-24 rounded-md" />
               </div>
               <div className="space-y-1.5">
                 <Skeleton className="h-3 w-14" />
                 <Skeleton className="h-4 w-48" />
               </div>
             </div>
+            {/* Right column: source (branch + commit message), build time, actions */}
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <Skeleton className="h-3 w-14" />
                 <Skeleton className="h-4 w-44" />
+                <Skeleton className="h-4 w-56" />
               </div>
               <div className="space-y-1.5">
                 <Skeleton className="h-3 w-20" />
@@ -40,8 +49,8 @@ export default function Loading() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Deployments */}
       <div className="space-y-3">
