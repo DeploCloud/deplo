@@ -235,7 +235,7 @@ export function ServerActions({
         <>
           <SimpleTooltip
             content="Update the agent binary in place to the latest release"
-            side="right"
+            side="left"
           >
             <K.Item
               onSelect={(e: Event) => {
@@ -253,7 +253,7 @@ export function ServerActions({
       ) : null}
       <SimpleTooltip
         content="Mint a fresh one-time bootstrap/install command for this server"
-        side="right"
+        side="left"
       >
         <K.Item onSelect={() => reissue()} disabled={pending}>
           <KeyRound className="size-4" />
@@ -263,7 +263,7 @@ export function ServerActions({
       {canManageInfra ? (
         <SimpleTooltip
           content="Choose which teams can deploy to this server"
-          side="right"
+          side="left"
         >
           <K.Item
             onSelect={(e: Event) => {
@@ -280,7 +280,7 @@ export function ServerActions({
       <K.Separator />
       <SimpleTooltip
         content="Revoke the agent's trust and tear down its containers"
-        side="right"
+        side="left"
       >
         <K.Item
           variant="destructive"

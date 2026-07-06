@@ -199,7 +199,7 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
         <ContextMenuContent className="w-52">
           <SimpleTooltip
             content="View details and edit this user's global permissions"
-            side="right"
+            side="left"
           >
             <ContextMenuItem
               onSelect={(e: Event) => {
@@ -212,7 +212,7 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
             </ContextMenuItem>
           </SimpleTooltip>
           <ContextMenuSeparator />
-          <SimpleTooltip content="Grant or revoke instance-admin" side="right">
+          <SimpleTooltip content="Grant or revoke instance-admin" side="left">
             <ContextMenuItem
               disabled={isSelf || pending}
               onSelect={() => flip({ isInstanceAdmin: !user.isInstanceAdmin })}
@@ -227,7 +227,7 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
                 : "Make instance admin"}
             </ContextMenuItem>
           </SimpleTooltip>
-          <SimpleTooltip content="Suspend or reactivate this account" side="right">
+          <SimpleTooltip content="Suspend or reactivate this account" side="left">
             <ContextMenuItem
               variant={user.suspended ? undefined : "destructive"}
               disabled={isSelf || pending}

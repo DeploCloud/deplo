@@ -122,7 +122,7 @@ export function CatalogAppCard({
           ? "Reinstall this app's container"
           : "Install this app into the team"
       }
-      side="right"
+      side="left"
     >
       <K.Item onSelect={install} disabled={pending}>
         <Download className="size-4" />
@@ -206,14 +206,14 @@ export function InstalledAppCard({
   const menu = (K: MenuKit) => (
     <>
       {running ? (
-        <SimpleTooltip content="Stop this app's container" side="right">
+        <SimpleTooltip content="Stop this app's container" side="left">
           <K.Item onSelect={() => stop.run({ id: app.id })} disabled={busy}>
             <Square className="size-4" />
             Stop
           </K.Item>
         </SimpleTooltip>
       ) : (
-        <SimpleTooltip content="Start this app's container" side="right">
+        <SimpleTooltip content="Start this app's container" side="left">
           <K.Item onSelect={() => start.run({ id: app.id })} disabled={busy}>
             <Play className="size-4" />
             Start
@@ -221,7 +221,7 @@ export function InstalledAppCard({
         </SimpleTooltip>
       )}
       {isMcp && (
-        <SimpleTooltip content="Show connection details for this MCP app" side="right">
+        <SimpleTooltip content="Show connection details for this MCP app" side="left">
           <K.Item onSelect={() => setConnectOpen(true)}>
             <Plug className="size-4" />
             Connect
@@ -229,7 +229,7 @@ export function InstalledAppCard({
         </SimpleTooltip>
       )}
       <K.Separator />
-      <SimpleTooltip content="Stop and remove this app's container and route" side="right">
+      <SimpleTooltip content="Stop and remove this app's container and route" side="left">
         <K.Item
           variant="destructive"
           onSelect={(e: Event) => {

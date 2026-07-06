@@ -244,7 +244,7 @@ export function FolderCard({
   // manage THIS folder; Share only when they may administer its access.
   const menu = (K: MenuKit) => (
     <>
-      <SimpleTooltip content="Open this folder" side="right">
+      <SimpleTooltip content="Open this folder" side="left">
         <K.Item asChild>
           <Link href={href} className="cursor-pointer">
             <FolderOpen className="size-4" />
@@ -254,7 +254,7 @@ export function FolderCard({
       </SimpleTooltip>
       {canManageThisFolder && (
         <>
-          <SimpleTooltip content="Rename this folder" side="right">
+          <SimpleTooltip content="Rename this folder" side="left">
             <K.Item
               onSelect={(e: Event) => {
                 e.preventDefault();
@@ -266,7 +266,7 @@ export function FolderCard({
               Rename
             </K.Item>
           </SimpleTooltip>
-          <SimpleTooltip content="Change this folder's colour" side="right">
+          <SimpleTooltip content="Change this folder's colour" side="left">
             <K.Item
               onSelect={(e: Event) => {
                 e.preventDefault();
@@ -282,7 +282,7 @@ export function FolderCard({
             <K.Sub>
               <SimpleTooltip
                 content="Nest this folder inside another, or move it to the top level"
-                side="right"
+                side="left"
               >
                 <K.SubTrigger>
                   <FolderInput className="size-4" />
@@ -290,7 +290,7 @@ export function FolderCard({
                 </K.SubTrigger>
               </SimpleTooltip>
               <K.SubContent className="max-h-72 overflow-y-auto">
-                <SimpleTooltip content="Move to the top level" side="right">
+                <SimpleTooltip content="Move to the top level" side="left">
                   <K.Item onSelect={() => moveTo(null)} disabled={pending}>
                     Top level
                   </K.Item>
@@ -302,7 +302,7 @@ export function FolderCard({
                     <SimpleTooltip
                       key={f.id}
                       content={`Move into ${f.name}`}
-                      side="right"
+                      side="left"
                     >
                       <K.Item onSelect={() => moveTo(f.id)} disabled={pending}>
                         {f.name}
@@ -315,7 +315,7 @@ export function FolderCard({
           <K.Separator />
           <SimpleTooltip
             content="Delete the folder — its projects move back to the top level"
-            side="right"
+            side="left"
           >
             <K.Item
               variant="destructive"
@@ -335,7 +335,7 @@ export function FolderCard({
       {canShare && (
         <>
           {canManageThisFolder && <K.Separator />}
-          <SimpleTooltip content="Share this folder with other members" side="right">
+          <SimpleTooltip content="Share this folder with other members" side="left">
             <K.Item
               onSelect={(e: Event) => {
                 e.preventDefault();

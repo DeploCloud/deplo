@@ -78,7 +78,7 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
     <>
       <SimpleTooltip
         content="Verify this destination's credentials and reachability"
-        side="right"
+        side="left"
       >
         <K.Item onClick={test} disabled={pending}>
           <PlugZap className="size-4" />
@@ -88,7 +88,7 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
       <K.Separator />
       <SimpleTooltip
         content="Remove this destination — bucket contents are not affected"
-        side="right"
+        side="left"
       >
         <K.Item
           variant="destructive"

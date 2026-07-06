@@ -119,13 +119,13 @@ export function BackupRow({
   // is disabled while a mutation is in flight; delete confirms before removing.
   const menu = (K: MenuKit) => (
     <>
-      <SimpleTooltip content="Run this backup now" side="right">
+      <SimpleTooltip content="Run this backup now" side="left">
         <K.Item onSelect={run} disabled={pending}>
           <Play className="size-4" />
           Run now
         </K.Item>
       </SimpleTooltip>
-      <SimpleTooltip content="Edit this backup schedule" side="right">
+      <SimpleTooltip content="Edit this backup schedule" side="left">
         <K.Item
           onSelect={(e: Event) => {
             e.preventDefault();
@@ -136,7 +136,7 @@ export function BackupRow({
           Edit…
         </K.Item>
       </SimpleTooltip>
-      <SimpleTooltip content="Restore from a recent backup" side="right">
+      <SimpleTooltip content="Restore from a recent backup" side="left">
         <K.Item
           onSelect={(e: Event) => {
             e.preventDefault();
@@ -148,7 +148,7 @@ export function BackupRow({
         </K.Item>
       </SimpleTooltip>
       <K.Separator />
-      <SimpleTooltip content="Delete this backup schedule" side="right">
+      <SimpleTooltip content="Delete this backup schedule" side="left">
         <K.Item
           variant="destructive"
           onSelect={(e: Event) => {

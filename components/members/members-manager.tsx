@@ -200,7 +200,7 @@ function MemberCard({
       {canEditPerms && (
         <SimpleTooltip
           content="Adjust this member's role and capabilities in the team"
-          side="right"
+          side="left"
         >
           <K.Item
             onSelect={(e: Event) => {
@@ -216,7 +216,7 @@ function MemberCard({
       {canEditGlobal && (
         <SimpleTooltip
           content="View and edit this user's instance-wide account and permissions"
-          side="right"
+          side="left"
         >
           <K.Item
             onSelect={(e: Event) => {
@@ -232,7 +232,7 @@ function MemberCard({
       {canRemove && (
         <>
           <K.Separator />
-          <SimpleTooltip content="Remove this member from the team" side="right">
+          <SimpleTooltip content="Remove this member from the team" side="left">
             <K.Item
               variant="destructive"
               disabled={pending}

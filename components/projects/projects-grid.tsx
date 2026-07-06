@@ -106,7 +106,7 @@ function NewMenuItems({
 }) {
   return (
     <ContextMenuSub>
-      <SimpleTooltip content="Create something new in this team" side="right">
+      <SimpleTooltip content="Create something new in this team" side="left">
         <ContextMenuSubTrigger>
           <Plus className="size-4" />
           New
@@ -115,7 +115,7 @@ function NewMenuItems({
       <ContextMenuSubContent>
         <SimpleTooltip
           content="Import a Git repository or start from a template"
-          side="right"
+          side="left"
         >
           <ContextMenuItem asChild>
             <Link href="/new" className="cursor-pointer">
@@ -127,7 +127,7 @@ function NewMenuItems({
         {canCreateFolder && (
           <SimpleTooltip
             content="Create an empty folder to group projects"
-            side="right"
+            side="left"
           >
             <ContextMenuItem onSelect={onNewFolder}>
               <FolderPlus className="size-4" />
@@ -135,7 +135,7 @@ function NewMenuItems({
             </ContextMenuItem>
           </SimpleTooltip>
         )}
-        <SimpleTooltip content="Provision a managed database" side="right">
+        <SimpleTooltip content="Provision a managed database" side="left">
           <ContextMenuItem asChild>
             <Link href="/storage?new=database" className="cursor-pointer">
               <Database className="size-4" />
@@ -182,7 +182,7 @@ function BulkActionsMenuItems({
       {canCreateFolder && (
         <SimpleTooltip
           content="Create a folder and move the selected projects into it"
-          side="right"
+          side="left"
         >
           <ContextMenuItem onSelect={selection.onNewFolderWithSelection}>
             <FolderPlus className="size-4" />
@@ -195,7 +195,7 @@ function BulkActionsMenuItems({
           <ContextMenuSub>
             <SimpleTooltip
               content="Move the selected projects into a folder"
-              side="right"
+              side="left"
             >
               <ContextMenuSubTrigger>
                 <FolderInput className="size-4" />
@@ -205,7 +205,7 @@ function BulkActionsMenuItems({
             <ContextMenuSubContent className="max-h-72 overflow-y-auto">
               <SimpleTooltip
                 content="Move to the top level (ungrouped)"
-                side="right"
+                side="left"
               >
                 <ContextMenuItem onSelect={() => selection.onMoveTo(null)}>
                   Ungrouped
@@ -216,7 +216,7 @@ function BulkActionsMenuItems({
                 <SimpleTooltip
                   key={f.id}
                   content={`Move into ${f.name}`}
-                  side="right"
+                  side="left"
                 >
                   <ContextMenuItem onSelect={() => selection.onMoveTo(f.id)}>
                     {f.name}
@@ -227,7 +227,7 @@ function BulkActionsMenuItems({
           </ContextMenuSub>
           <SimpleTooltip
             content="Delete the selected projects and folders"
-            side="right"
+            side="left"
           >
             <ContextMenuItem
               variant="destructive"
@@ -243,7 +243,7 @@ function BulkActionsMenuItems({
       <ContextMenuSeparator />
       <SimpleTooltip
         content="Select every project and folder on this page"
-        side="right"
+        side="left"
       >
         <ContextMenuItem onSelect={selection.onSelectAll}>
           <MousePointerSquareDashed className="size-4" />
@@ -251,7 +251,7 @@ function BulkActionsMenuItems({
           <ContextMenuShortcut>⌘A</ContextMenuShortcut>
         </ContextMenuItem>
       </SimpleTooltip>
-      <SimpleTooltip content="Clear the current selection" side="right">
+      <SimpleTooltip content="Clear the current selection" side="left">
         <ContextMenuItem onSelect={selection.onClear}>
           <X className="size-4" />
           Clear selection
@@ -296,7 +296,7 @@ function OverviewContextMenu({
         {selection && !hasSelection && (
           <SimpleTooltip
             content="Select every project and folder on this page"
-            side="right"
+            side="left"
           >
             <ContextMenuItem onSelect={selection.onSelectAll}>
               <MousePointerSquareDashed className="size-4" />
@@ -316,7 +316,7 @@ function OverviewContextMenu({
           </>
         )}
         <ContextMenuSeparator />
-        <SimpleTooltip content="Reload the latest data" side="right">
+        <SimpleTooltip content="Reload the latest data" side="left">
           <ContextMenuItem onSelect={onRefresh}>
             <RotateCw className="size-4" />
             Refresh

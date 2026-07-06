@@ -202,7 +202,7 @@ export function ProjectCard({
       {stopping ? (
         <SimpleTooltip
           content="The container is currently stopping"
-          side="right"
+          side="left"
         >
           <K.Item disabled>
             <Loader2 className="size-4 animate-spin" />
@@ -212,7 +212,7 @@ export function ProjectCard({
       ) : stopped ? (
         <SimpleTooltip
           content="Start this project's stopped container"
-          side="right"
+          side="left"
         >
           <K.Item
             onSelect={() =>
@@ -230,7 +230,7 @@ export function ProjectCard({
       ) : (
         <SimpleTooltip
           content="Stop this project's running container"
-          side="right"
+          side="left"
         >
           <K.Item
             onSelect={() =>
@@ -248,7 +248,7 @@ export function ProjectCard({
       )}
       <SimpleTooltip
         content="Re-apply domains and basic auth to the running container — no rebuild"
-        side="right"
+        side="left"
       >
         <K.Item onSelect={reload} disabled={pending}>
           <RefreshCw className="size-4" />
@@ -257,7 +257,7 @@ export function ProjectCard({
       </SimpleTooltip>
       <SimpleTooltip
         content="Redeploy the latest successful build"
-        side="right"
+        side="left"
       >
         <K.Item onSelect={redeploy} disabled={pending}>
           <RotateCw className="size-4" />
@@ -267,7 +267,7 @@ export function ProjectCard({
       <K.Separator />
       <SimpleTooltip
         content="Open this project's overview and deployments"
-        side="right"
+        side="left"
       >
         <K.Item asChild>
           <Link href={href} className="cursor-pointer">
@@ -276,7 +276,7 @@ export function ProjectCard({
           </Link>
         </K.Item>
       </SimpleTooltip>
-      <SimpleTooltip content="Open this project's settings" side="right">
+      <SimpleTooltip content="Open this project's settings" side="left">
         <K.Item asChild>
           <Link href={`${href}/settings`} className="cursor-pointer">
             <Settings className="size-4" />
@@ -286,7 +286,7 @@ export function ProjectCard({
       </SimpleTooltip>
       {canManageFolders && folders && folders.length > 0 && (
         <K.Sub>
-          <SimpleTooltip content="Move this project into a folder" side="right">
+          <SimpleTooltip content="Move this project into a folder" side="left">
             <K.SubTrigger>
               <FolderInput className="size-4" />
               Move to folder
@@ -297,7 +297,7 @@ export function ProjectCard({
               <>
                 <SimpleTooltip
                   content="Move back to the top level (ungrouped)"
-                  side="right"
+                  side="left"
                 >
                   <K.Item onSelect={() => moveTo(null)} disabled={pending}>
                     Ungrouped
@@ -310,7 +310,7 @@ export function ProjectCard({
               <SimpleTooltip
                 key={f.id}
                 content={`Move into ${f.name}`}
-                side="right"
+                side="left"
               >
                 <K.Item
                   onSelect={() => moveTo(f.id)}
@@ -326,7 +326,7 @@ export function ProjectCard({
       <K.Separator />
       <SimpleTooltip
         content="Permanently delete this project and its deployments"
-        side="right"
+        side="left"
       >
         <K.Item
           variant="destructive"

@@ -150,7 +150,7 @@ export function AppContextMenu({
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
         <ContextMenuSub>
-          <SimpleTooltip content="Create something new" side="right">
+          <SimpleTooltip content="Create something new" side="left">
             <ContextMenuSubTrigger>
               <Plus className="size-4" />
               New
@@ -158,7 +158,7 @@ export function AppContextMenu({
           </SimpleTooltip>
           <ContextMenuSubContent className="w-52">
             {newItems.map((item) => (
-              <SimpleTooltip key={item.href} content={item.label} side="right">
+              <SimpleTooltip key={item.href} content={item.label} side="left">
                 <ContextMenuItem asChild>
                   <Link href={item.href} className="cursor-pointer">
                     <item.icon className="size-4" />
@@ -172,25 +172,25 @@ export function AppContextMenu({
 
         <ContextMenuSeparator />
 
-        <SimpleTooltip content="Go back to the previous page" side="right">
+        <SimpleTooltip content="Go back to the previous page" side="left">
           <ContextMenuItem onSelect={() => router.back()}>
             <ArrowLeft className="size-4" />
             Back
           </ContextMenuItem>
         </SimpleTooltip>
-        <SimpleTooltip content="Go forward" side="right">
+        <SimpleTooltip content="Go forward" side="left">
           <ContextMenuItem onSelect={() => router.forward()}>
             <ArrowRight className="size-4" />
             Forward
           </ContextMenuItem>
         </SimpleTooltip>
-        <SimpleTooltip content="Reload the latest data for this page" side="right">
+        <SimpleTooltip content="Reload the latest data for this page" side="left">
           <ContextMenuItem onSelect={() => router.refresh()}>
             <RotateCw className="size-4" />
             Reload
           </ContextMenuItem>
         </SimpleTooltip>
-        <SimpleTooltip content="Go to the projects Overview" side="right">
+        <SimpleTooltip content="Go to the projects Overview" side="left">
           <ContextMenuItem asChild>
             <Link href="/" className="cursor-pointer">
               <House className="size-4" />
@@ -201,7 +201,7 @@ export function AppContextMenu({
 
         <ContextMenuSeparator />
 
-        <SimpleTooltip content="Toggle light / dark appearance" side="right">
+        <SimpleTooltip content="Toggle light / dark appearance" side="left">
           <ContextMenuItem onSelect={() => setTheme(isDark ? "light" : "dark")}>
             {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
             {isDark ? "Light mode" : "Dark mode"}

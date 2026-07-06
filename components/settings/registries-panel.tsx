@@ -126,7 +126,7 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
                 <ContextMenuContent className="w-44">
                   <SimpleTooltip
                     content="Remove this registry connection"
-                    side="right"
+                    side="left"
                   >
                     <ContextMenuItem
                       variant="destructive"
