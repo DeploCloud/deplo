@@ -60,6 +60,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { ProjectSummary } from "@/lib/data/projects";
@@ -105,35 +106,43 @@ function NewMenuItems({
 }) {
   return (
     <ContextMenuSub>
-      <ContextMenuSubTrigger title="Create something new in this team">
-        <Plus className="size-4" />
-        New
-      </ContextMenuSubTrigger>
+      <SimpleTooltip content="Create something new in this team" side="right">
+        <ContextMenuSubTrigger>
+          <Plus className="size-4" />
+          New
+        </ContextMenuSubTrigger>
+      </SimpleTooltip>
       <ContextMenuSubContent>
-        <ContextMenuItem
-          asChild
-          title="Import a Git repository or start from a template"
+        <SimpleTooltip
+          content="Import a Git repository or start from a template"
+          side="right"
         >
-          <Link href="/new" className="cursor-pointer">
-            <Rocket className="size-4" />
-            Project
-          </Link>
-        </ContextMenuItem>
-        {canCreateFolder && (
-          <ContextMenuItem
-            onSelect={onNewFolder}
-            title="Create an empty folder to group projects"
-          >
-            <FolderPlus className="size-4" />
-            Folder
+          <ContextMenuItem asChild>
+            <Link href="/new" className="cursor-pointer">
+              <Rocket className="size-4" />
+              Project
+            </Link>
           </ContextMenuItem>
+        </SimpleTooltip>
+        {canCreateFolder && (
+          <SimpleTooltip
+            content="Create an empty folder to group projects"
+            side="right"
+          >
+            <ContextMenuItem onSelect={onNewFolder}>
+              <FolderPlus className="size-4" />
+              Folder
+            </ContextMenuItem>
+          </SimpleTooltip>
         )}
-        <ContextMenuItem asChild title="Provision a managed database">
-          <Link href="/storage?new=database" className="cursor-pointer">
-            <Database className="size-4" />
-            Database
-          </Link>
-        </ContextMenuItem>
+        <SimpleTooltip content="Provision a managed database" side="right">
+          <ContextMenuItem asChild>
+            <Link href="/storage?new=database" className="cursor-pointer">
+              <Database className="size-4" />
+              Database
+            </Link>
+          </ContextMenuItem>
+        </SimpleTooltip>
       </ContextMenuSubContent>
     </ContextMenuSub>
   );
@@ -171,68 +180,84 @@ function BulkActionsMenuItems({
     <>
       <ContextMenuLabel>{selection.count} selected</ContextMenuLabel>
       {canCreateFolder && (
-        <ContextMenuItem
-          onSelect={selection.onNewFolderWithSelection}
-          title="Create a folder and move the selected projects into it"
+        <SimpleTooltip
+          content="Create a folder and move the selected projects into it"
+          side="right"
         >
-          <FolderPlus className="size-4" />
-          New folder with selection
-        </ContextMenuItem>
+          <ContextMenuItem onSelect={selection.onNewFolderWithSelection}>
+            <FolderPlus className="size-4" />
+            New folder with selection
+          </ContextMenuItem>
+        </SimpleTooltip>
       )}
       {canManageAllFolders && (
         <>
           <ContextMenuSub>
-            <ContextMenuSubTrigger title="Move the selected projects into a folder">
-              <FolderInput className="size-4" />
-              Move selection to
-            </ContextMenuSubTrigger>
+            <SimpleTooltip
+              content="Move the selected projects into a folder"
+              side="right"
+            >
+              <ContextMenuSubTrigger>
+                <FolderInput className="size-4" />
+                Move selection to
+              </ContextMenuSubTrigger>
+            </SimpleTooltip>
             <ContextMenuSubContent className="max-h-72 overflow-y-auto">
-              <ContextMenuItem
-                onSelect={() => selection.onMoveTo(null)}
-                title="Move to the top level (ungrouped)"
+              <SimpleTooltip
+                content="Move to the top level (ungrouped)"
+                side="right"
               >
-                Ungrouped
-              </ContextMenuItem>
+                <ContextMenuItem onSelect={() => selection.onMoveTo(null)}>
+                  Ungrouped
+                </ContextMenuItem>
+              </SimpleTooltip>
               {selection.moveTargets.length > 0 && <ContextMenuSeparator />}
               {selection.moveTargets.map((f) => (
-                <ContextMenuItem
+                <SimpleTooltip
                   key={f.id}
-                  onSelect={() => selection.onMoveTo(f.id)}
-                  title={`Move into ${f.name}`}
+                  content={`Move into ${f.name}`}
+                  side="right"
                 >
-                  {f.name}
-                </ContextMenuItem>
+                  <ContextMenuItem onSelect={() => selection.onMoveTo(f.id)}>
+                    {f.name}
+                  </ContextMenuItem>
+                </SimpleTooltip>
               ))}
             </ContextMenuSubContent>
           </ContextMenuSub>
-          <ContextMenuItem
-            variant="destructive"
-            onSelect={selection.onDelete}
-            title="Delete the selected projects and folders"
+          <SimpleTooltip
+            content="Delete the selected projects and folders"
+            side="right"
           >
-            <Trash2 className="size-4" />
-            Delete selection
-            <ContextMenuShortcut>⌫</ContextMenuShortcut>
-          </ContextMenuItem>
+            <ContextMenuItem
+              variant="destructive"
+              onSelect={selection.onDelete}
+            >
+              <Trash2 className="size-4" />
+              Delete selection
+              <ContextMenuShortcut>⌫</ContextMenuShortcut>
+            </ContextMenuItem>
+          </SimpleTooltip>
         </>
       )}
       <ContextMenuSeparator />
-      <ContextMenuItem
-        onSelect={selection.onSelectAll}
-        title="Select every project and folder on this page"
+      <SimpleTooltip
+        content="Select every project and folder on this page"
+        side="right"
       >
-        <MousePointerSquareDashed className="size-4" />
-        Select all
-        <ContextMenuShortcut>⌘A</ContextMenuShortcut>
-      </ContextMenuItem>
-      <ContextMenuItem
-        onSelect={selection.onClear}
-        title="Clear the current selection"
-      >
-        <X className="size-4" />
-        Clear selection
-        <ContextMenuShortcut>Esc</ContextMenuShortcut>
-      </ContextMenuItem>
+        <ContextMenuItem onSelect={selection.onSelectAll}>
+          <MousePointerSquareDashed className="size-4" />
+          Select all
+          <ContextMenuShortcut>⌘A</ContextMenuShortcut>
+        </ContextMenuItem>
+      </SimpleTooltip>
+      <SimpleTooltip content="Clear the current selection" side="right">
+        <ContextMenuItem onSelect={selection.onClear}>
+          <X className="size-4" />
+          Clear selection
+          <ContextMenuShortcut>Esc</ContextMenuShortcut>
+        </ContextMenuItem>
+      </SimpleTooltip>
     </>
   );
 }
@@ -269,14 +294,16 @@ function OverviewContextMenu({
           onNewFolder={onNewFolder}
         />
         {selection && !hasSelection && (
-          <ContextMenuItem
-            onSelect={selection.onSelectAll}
-            title="Select every project and folder on this page"
+          <SimpleTooltip
+            content="Select every project and folder on this page"
+            side="right"
           >
-            <MousePointerSquareDashed className="size-4" />
-            Select all
-            <ContextMenuShortcut>⌘A</ContextMenuShortcut>
-          </ContextMenuItem>
+            <ContextMenuItem onSelect={selection.onSelectAll}>
+              <MousePointerSquareDashed className="size-4" />
+              Select all
+              <ContextMenuShortcut>⌘A</ContextMenuShortcut>
+            </ContextMenuItem>
+          </SimpleTooltip>
         )}
         {selection && hasSelection && (
           <>
@@ -289,10 +316,12 @@ function OverviewContextMenu({
           </>
         )}
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={onRefresh} title="Reload the latest data">
-          <RotateCw className="size-4" />
-          Refresh
-        </ContextMenuItem>
+        <SimpleTooltip content="Reload the latest data" side="right">
+          <ContextMenuItem onSelect={onRefresh}>
+            <RotateCw className="size-4" />
+            Refresh
+          </ContextMenuItem>
+        </SimpleTooltip>
       </ContextMenuContent>
     </ContextMenu>
   );

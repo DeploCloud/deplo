@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
 import {
@@ -232,54 +233,67 @@ export function ServerActions({
     <>
       {outdated ? (
         <>
-          <K.Item
-            onSelect={(e: Event) => {
-              e.preventDefault();
-              setConfirmUpdate(true);
-            }}
-            disabled={pending}
-            title="Update the agent binary in place to the latest release"
+          <SimpleTooltip
+            content="Update the agent binary in place to the latest release"
+            side="right"
           >
-            <CircleFadingArrowUp className="size-4" />
-            Update agent to v{expectedVersion}
-          </K.Item>
+            <K.Item
+              onSelect={(e: Event) => {
+                e.preventDefault();
+                setConfirmUpdate(true);
+              }}
+              disabled={pending}
+            >
+              <CircleFadingArrowUp className="size-4" />
+              Update agent to v{expectedVersion}
+            </K.Item>
+          </SimpleTooltip>
           <K.Separator />
         </>
       ) : null}
-      <K.Item
-        onSelect={() => reissue()}
-        disabled={pending}
-        title="Mint a fresh one-time bootstrap/install command for this server"
+      <SimpleTooltip
+        content="Mint a fresh one-time bootstrap/install command for this server"
+        side="right"
       >
-        <KeyRound className="size-4" />
-        {provisioning ? "Show install command" : "Reissue install command"}
-      </K.Item>
-      {canManageInfra ? (
-        <K.Item
-          onSelect={(e: Event) => {
-            e.preventDefault();
-            openAccess();
-          }}
-          disabled={pending}
-          title="Choose which teams can deploy to this server"
-        >
-          <Users className="size-4" />
-          Team access
+        <K.Item onSelect={() => reissue()} disabled={pending}>
+          <KeyRound className="size-4" />
+          {provisioning ? "Show install command" : "Reissue install command"}
         </K.Item>
+      </SimpleTooltip>
+      {canManageInfra ? (
+        <SimpleTooltip
+          content="Choose which teams can deploy to this server"
+          side="right"
+        >
+          <K.Item
+            onSelect={(e: Event) => {
+              e.preventDefault();
+              openAccess();
+            }}
+            disabled={pending}
+          >
+            <Users className="size-4" />
+            Team access
+          </K.Item>
+        </SimpleTooltip>
       ) : null}
       <K.Separator />
-      <K.Item
-        variant="destructive"
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setConfirmRemove(true);
-        }}
-        disabled={pending}
-        title="Revoke the agent's trust and tear down its containers"
+      <SimpleTooltip
+        content="Revoke the agent's trust and tear down its containers"
+        side="right"
       >
-        <Trash2 className="size-4" />
-        Remove server
-      </K.Item>
+        <K.Item
+          variant="destructive"
+          onSelect={(e: Event) => {
+            e.preventDefault();
+            setConfirmRemove(true);
+          }}
+          disabled={pending}
+        >
+          <Trash2 className="size-4" />
+          Remove server
+        </K.Item>
+      </SimpleTooltip>
     </>
   );
 

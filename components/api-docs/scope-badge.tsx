@@ -2,6 +2,7 @@
 
 import { ShieldCheck, Lock, Globe, KeyRound } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CAPABILITY_META } from "@/lib/membership-shared";
 import { cn } from "@/lib/utils";
 import type { FieldScope } from "./types";
@@ -43,7 +44,12 @@ export function ScopeBadge({
           ? KeyRound
           : Lock;
 
-  return (
+  const tip =
+    scope.kind === "capability"
+      ? CAPABILITY_META[scope.capability]?.description
+      : undefined;
+
+  const badge = (
     <Badge
       variant="outline"
       className={cn(
@@ -52,14 +58,11 @@ export function ScopeBadge({
         held === false && "text-muted-foreground",
         className,
       )}
-      title={
-        scope.kind === "capability"
-          ? CAPABILITY_META[scope.capability]?.description
-          : undefined
-      }
     >
       <Icon className="size-3" />
       {scopeLabel(scope)}
     </Badge>
   );
+
+  return tip ? <SimpleTooltip content={tip}>{badge}</SimpleTooltip> : badge;
 }

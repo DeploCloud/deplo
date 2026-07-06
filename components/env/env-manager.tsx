@@ -38,6 +38,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
@@ -622,21 +623,22 @@ function ViewToggle({
   onChange: (m: "table" | "editor") => void;
 }) {
   const opt = (m: "table" | "editor", Icon: typeof Rows3, label: string) => (
-    <button
-      type="button"
-      onClick={() => onChange(m)}
-      aria-pressed={mode === m}
-      title={`${label} view`}
-      className={cn(
-        "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
-        mode === m
-          ? "bg-background font-medium text-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      <Icon className="size-3.5" />
-      {label}
-    </button>
+    <SimpleTooltip content={`${label} view`}>
+      <button
+        type="button"
+        onClick={() => onChange(m)}
+        aria-pressed={mode === m}
+        className={cn(
+          "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
+          mode === m
+            ? "bg-background font-medium text-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <Icon className="size-3.5" />
+        {label}
+      </button>
+    </SimpleTooltip>
   );
   return (
     <div className="inline-flex items-center rounded-lg border border-border bg-secondary/40 p-0.5">

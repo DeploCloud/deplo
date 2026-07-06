@@ -19,6 +19,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { FRAMEWORKS } from "@/lib/frameworks";
 import type { FrameworkId } from "@/lib/types";
 
@@ -73,15 +74,16 @@ export function FrameworkIcon({
   const f = FRAMEWORKS[framework] ?? FRAMEWORKS.other;
   const Icon = FRAMEWORK_ICONS[framework] ?? Box;
   return (
-    <span
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-foreground",
-        className,
-      )}
-      style={{ width: size, height: size }}
-      title={f.name}
-    >
-      <Icon style={{ width: size * 0.5, height: size * 0.5 }} />
-    </span>
+    <SimpleTooltip content={f.name}>
+      <span
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-foreground",
+          className,
+        )}
+        style={{ width: size, height: size }}
+      >
+        <Icon style={{ width: size * 0.5, height: size * 0.5 }} />
+      </span>
+    </SimpleTooltip>
   );
 }

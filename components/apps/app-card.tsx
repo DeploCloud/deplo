@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { useGraphqlMutation } from "@/lib/use-graphql";
 import { gqlAction } from "@/lib/graphql-client";
 import { McpConnectDialog } from "./mcp-connect-dialog";
@@ -115,18 +116,19 @@ export function CatalogAppCard({
   // menu via the same handler as the inline button. A native `title` explains
   // the option on hover, like the project/folder cards.
   const menu = (K: MenuKit) => (
-    <K.Item
-      onSelect={install}
-      disabled={pending}
-      title={
+    <SimpleTooltip
+      content={
         installed
           ? "Reinstall this app's container"
           : "Install this app into the team"
       }
+      side="right"
     >
-      <Download className="size-4" />
-      {installed ? "Reinstall" : "Install"}
-    </K.Item>
+      <K.Item onSelect={install} disabled={pending}>
+        <Download className="size-4" />
+        {installed ? "Reinstall" : "Install"}
+      </K.Item>
+    </SimpleTooltip>
   );
 
   return (
@@ -204,45 +206,41 @@ export function InstalledAppCard({
   const menu = (K: MenuKit) => (
     <>
       {running ? (
-        <K.Item
-          onSelect={() => stop.run({ id: app.id })}
-          disabled={busy}
-          title="Stop this app's container"
-        >
-          <Square className="size-4" />
-          Stop
-        </K.Item>
+        <SimpleTooltip content="Stop this app's container" side="right">
+          <K.Item onSelect={() => stop.run({ id: app.id })} disabled={busy}>
+            <Square className="size-4" />
+            Stop
+          </K.Item>
+        </SimpleTooltip>
       ) : (
-        <K.Item
-          onSelect={() => start.run({ id: app.id })}
-          disabled={busy}
-          title="Start this app's container"
-        >
-          <Play className="size-4" />
-          Start
-        </K.Item>
+        <SimpleTooltip content="Start this app's container" side="right">
+          <K.Item onSelect={() => start.run({ id: app.id })} disabled={busy}>
+            <Play className="size-4" />
+            Start
+          </K.Item>
+        </SimpleTooltip>
       )}
       {isMcp && (
-        <K.Item
-          onSelect={() => setConnectOpen(true)}
-          title="Show connection details for this MCP app"
-        >
-          <Plug className="size-4" />
-          Connect
-        </K.Item>
+        <SimpleTooltip content="Show connection details for this MCP app" side="right">
+          <K.Item onSelect={() => setConnectOpen(true)}>
+            <Plug className="size-4" />
+            Connect
+          </K.Item>
+        </SimpleTooltip>
       )}
       <K.Separator />
-      <K.Item
-        variant="destructive"
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setUninstallOpen(true);
-        }}
-        title="Stop and remove this app's container and route"
-      >
-        <Trash2 className="size-4" />
-        Uninstall
-      </K.Item>
+      <SimpleTooltip content="Stop and remove this app's container and route" side="right">
+        <K.Item
+          variant="destructive"
+          onSelect={(e: Event) => {
+            e.preventDefault();
+            setUninstallOpen(true);
+          }}
+        >
+          <Trash2 className="size-4" />
+          Uninstall
+        </K.Item>
+      </SimpleTooltip>
     </>
   );
 

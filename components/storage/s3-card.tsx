@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/context-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { S3DestinationDTO } from "@/lib/data/s3";
@@ -75,26 +76,31 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
   // and handlers. Each item carries a native `title` like the project card.
   const menu = (K: MenuKit) => (
     <>
-      <K.Item
-        onClick={test}
-        disabled={pending}
-        title="Verify this destination's credentials and reachability"
+      <SimpleTooltip
+        content="Verify this destination's credentials and reachability"
+        side="right"
       >
-        <PlugZap className="size-4" />
-        Test connection
-      </K.Item>
+        <K.Item onClick={test} disabled={pending}>
+          <PlugZap className="size-4" />
+          Test connection
+        </K.Item>
+      </SimpleTooltip>
       <K.Separator />
-      <K.Item
-        variant="destructive"
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setConfirmOpen(true);
-        }}
-        title="Remove this destination — bucket contents are not affected"
+      <SimpleTooltip
+        content="Remove this destination — bucket contents are not affected"
+        side="right"
       >
-        <Trash2 className="size-4" />
-        Remove
-      </K.Item>
+        <K.Item
+          variant="destructive"
+          onSelect={(e: Event) => {
+            e.preventDefault();
+            setConfirmOpen(true);
+          }}
+        >
+          <Trash2 className="size-4" />
+          Remove
+        </K.Item>
+      </SimpleTooltip>
     </>
   );
 

@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ALL_CAPABILITIES, type Capability, type Role } from "@/lib/types";
 import { CAPABILITY_META, CAPABILITY_PRESETS } from "@/lib/membership-shared";
 
@@ -86,26 +87,26 @@ export function CapabilityPicker({
             const checked = capabilities.includes(cap);
             const meta = CAPABILITY_META[cap];
             return (
-              <label
-                key={cap}
-                htmlFor={`${idPrefix}-${cap}`}
-                className="flex cursor-pointer items-start gap-2"
-                title={meta.description}
-              >
-                <Checkbox
-                  id={`${idPrefix}-${cap}`}
-                  checked={checked}
-                  disabled={cap === "view"}
-                  onCheckedChange={(v) => toggle(cap, v === true)}
-                  className="mt-0.5"
-                />
-                <span className="text-sm leading-tight">
-                  {meta.label}
-                  <span className="block text-xs text-muted-foreground">
-                    {meta.description}
+              <SimpleTooltip key={cap} content={meta.description}>
+                <label
+                  htmlFor={`${idPrefix}-${cap}`}
+                  className="flex cursor-pointer items-start gap-2"
+                >
+                  <Checkbox
+                    id={`${idPrefix}-${cap}`}
+                    checked={checked}
+                    disabled={cap === "view"}
+                    onCheckedChange={(v) => toggle(cap, v === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-sm leading-tight">
+                    {meta.label}
+                    <span className="block text-xs text-muted-foreground">
+                      {meta.description}
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+              </SimpleTooltip>
             );
           })}
         </div>

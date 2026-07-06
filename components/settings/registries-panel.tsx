@@ -37,6 +37,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
@@ -123,14 +124,18 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
                   </div>
                 </ContextMenuTrigger>
                 <ContextMenuContent className="w-44">
-                  <ContextMenuItem
-                    variant="destructive"
-                    onSelect={() => setDeleteId(r.id)}
-                    title="Remove this registry connection"
+                  <SimpleTooltip
+                    content="Remove this registry connection"
+                    side="right"
                   >
-                    <Trash2 className="size-4" />
-                    Remove
-                  </ContextMenuItem>
+                    <ContextMenuItem
+                      variant="destructive"
+                      onSelect={() => setDeleteId(r.id)}
+                    >
+                      <Trash2 className="size-4" />
+                      Remove
+                    </ContextMenuItem>
+                  </SimpleTooltip>
                 </ContextMenuContent>
               </ContextMenu>
             ))}

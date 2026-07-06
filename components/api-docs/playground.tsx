@@ -11,6 +11,7 @@ import {
   FlaskConical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { GraphqlEditor } from "./graphql-editor";
 import { CURATED_EXAMPLES } from "./examples";
@@ -126,29 +127,29 @@ export function Playground({
           Examples:
         </span>
         {CURATED_EXAMPLES.map((ex) => (
-          <button
-            key={ex.label}
-            type="button"
-            onClick={() => {
-              setSource(ex.operation);
-              setResult(null);
-            }}
-            title={ex.description}
-            aria-label={`Load example: ${ex.label}. ${ex.description}`}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs transition-colors hover:bg-secondary",
-              ex.kind === "mutation"
-                ? "text-[var(--warning)]"
-                : "text-foreground",
-            )}
-          >
-            {ex.kind === "mutation" ? (
-              <FlaskConical className="size-3" />
-            ) : (
-              <Database className="size-3" />
-            )}
-            {ex.label}
-          </button>
+          <SimpleTooltip key={ex.label} content={ex.description}>
+            <button
+              type="button"
+              onClick={() => {
+                setSource(ex.operation);
+                setResult(null);
+              }}
+              aria-label={`Load example: ${ex.label}. ${ex.description}`}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs transition-colors hover:bg-secondary",
+                ex.kind === "mutation"
+                  ? "text-[var(--warning)]"
+                  : "text-foreground",
+              )}
+            >
+              {ex.kind === "mutation" ? (
+                <FlaskConical className="size-3" />
+              ) : (
+                <Database className="size-3" />
+              )}
+              {ex.label}
+            </button>
+          </SimpleTooltip>
         ))}
       </div>
 

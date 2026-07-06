@@ -48,6 +48,7 @@ import { CapabilityPicker } from "@/components/settings/capability-picker";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { EditUserDialog } from "@/components/settings/edit-user-dialog";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { Capability, Role } from "@/lib/types";
 import type { MemberDTO } from "@/lib/data/members";
@@ -197,44 +198,53 @@ function MemberCard({
   const menu = (K: MenuKit) => (
     <>
       {canEditPerms && (
-        <K.Item
-          onSelect={(e: Event) => {
-            e.preventDefault();
-            setEditOpen(true);
-          }}
-          title="Adjust this member's role and capabilities in the team"
+        <SimpleTooltip
+          content="Adjust this member's role and capabilities in the team"
+          side="right"
         >
-          <Pencil className="size-4" />
-          Edit permissions
-        </K.Item>
+          <K.Item
+            onSelect={(e: Event) => {
+              e.preventDefault();
+              setEditOpen(true);
+            }}
+          >
+            <Pencil className="size-4" />
+            Edit permissions
+          </K.Item>
+        </SimpleTooltip>
       )}
       {canEditGlobal && (
-        <K.Item
-          onSelect={(e: Event) => {
-            e.preventDefault();
-            setUserEditOpen(true);
-          }}
-          title="View and edit this user's instance-wide account and permissions"
+        <SimpleTooltip
+          content="View and edit this user's instance-wide account and permissions"
+          side="right"
         >
-          <UserCog className="size-4" />
-          Manage user account
-        </K.Item>
+          <K.Item
+            onSelect={(e: Event) => {
+              e.preventDefault();
+              setUserEditOpen(true);
+            }}
+          >
+            <UserCog className="size-4" />
+            Manage user account
+          </K.Item>
+        </SimpleTooltip>
       )}
       {canRemove && (
         <>
           <K.Separator />
-          <K.Item
-            variant="destructive"
-            disabled={pending}
-            onSelect={(e: Event) => {
-              e.preventDefault();
-              remove();
-            }}
-            title="Remove this member from the team"
-          >
-            <Trash2 className="size-4" />
-            Remove from team
-          </K.Item>
+          <SimpleTooltip content="Remove this member from the team" side="right">
+            <K.Item
+              variant="destructive"
+              disabled={pending}
+              onSelect={(e: Event) => {
+                e.preventDefault();
+                remove();
+              }}
+            >
+              <Trash2 className="size-4" />
+              Remove from team
+            </K.Item>
+          </SimpleTooltip>
         </>
       )}
     </>
@@ -256,20 +266,18 @@ function MemberCard({
             {/* Discord-style crown next to the nickname for the absolute owner,
                 and a shield for an instance admin — both can show at once. */}
             {isFounder && (
-              <span
-                className="shrink-0 leading-none"
-                title="Primary owner — created this team; can't be removed or demoted"
-              >
-                <Crown className="size-3.5 text-amber-500" aria-label="Primary owner" />
-              </span>
+              <SimpleTooltip content="Primary owner — created this team; can't be removed or demoted">
+                <span className="shrink-0 leading-none">
+                  <Crown className="size-3.5 text-amber-500" aria-label="Primary owner" />
+                </span>
+              </SimpleTooltip>
             )}
             {member.isInstanceAdmin && (
-              <span
-                className="shrink-0 leading-none"
-                title="Instance admin — platform-wide administrator"
-              >
-                <ShieldCheck className="size-3.5 text-sky-500" aria-label="Instance admin" />
-              </span>
+              <SimpleTooltip content="Instance admin — platform-wide administrator">
+                <span className="shrink-0 leading-none">
+                  <ShieldCheck className="size-3.5 text-sky-500" aria-label="Instance admin" />
+                </span>
+              </SimpleTooltip>
             )}
             {isSelf && (
               <span className="ml-0.5 shrink-0 text-xs text-muted-foreground">

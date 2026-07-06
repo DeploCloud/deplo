@@ -119,42 +119,47 @@ export function BackupRow({
   // is disabled while a mutation is in flight; delete confirms before removing.
   const menu = (K: MenuKit) => (
     <>
-      <K.Item onSelect={run} disabled={pending} title="Run this backup now">
-        <Play className="size-4" />
-        Run now
-      </K.Item>
-      <K.Item
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setEditOpen(true);
-        }}
-        title="Edit this backup schedule"
-      >
-        <Pencil className="size-4" />
-        Edit…
-      </K.Item>
-      <K.Item
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setRestoreOpen(true);
-        }}
-        title="Restore from a recent backup"
-      >
-        <RotateCcw className="size-4" />
-        Restore…
-      </K.Item>
+      <SimpleTooltip content="Run this backup now" side="right">
+        <K.Item onSelect={run} disabled={pending}>
+          <Play className="size-4" />
+          Run now
+        </K.Item>
+      </SimpleTooltip>
+      <SimpleTooltip content="Edit this backup schedule" side="right">
+        <K.Item
+          onSelect={(e: Event) => {
+            e.preventDefault();
+            setEditOpen(true);
+          }}
+        >
+          <Pencil className="size-4" />
+          Edit…
+        </K.Item>
+      </SimpleTooltip>
+      <SimpleTooltip content="Restore from a recent backup" side="right">
+        <K.Item
+          onSelect={(e: Event) => {
+            e.preventDefault();
+            setRestoreOpen(true);
+          }}
+        >
+          <RotateCcw className="size-4" />
+          Restore…
+        </K.Item>
+      </SimpleTooltip>
       <K.Separator />
-      <K.Item
-        variant="destructive"
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setConfirmOpen(true);
-        }}
-        title="Delete this backup schedule"
-      >
-        <Trash2 className="size-4" />
-        Delete
-      </K.Item>
+      <SimpleTooltip content="Delete this backup schedule" side="right">
+        <K.Item
+          variant="destructive"
+          onSelect={(e: Event) => {
+            e.preventDefault();
+            setConfirmOpen(true);
+          }}
+        >
+          <Trash2 className="size-4" />
+          Delete
+        </K.Item>
+      </SimpleTooltip>
     </>
   );
 

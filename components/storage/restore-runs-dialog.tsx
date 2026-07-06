@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { formatBytes, timeAgo } from "@/lib/utils";
@@ -175,15 +176,16 @@ function RestoreRunRow({
         </span>
       </TableCell>
       <TableCell className="text-right">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setConfirmOpen(true)}
-          title="Restore this backup in place"
-        >
-          <RotateCcw className="size-4" />
-          Restore
-        </Button>
+        <SimpleTooltip content="Restore this backup in place">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConfirmOpen(true)}
+          >
+            <RotateCcw className="size-4" />
+            Restore
+          </Button>
+        </SimpleTooltip>
         <ConfirmAction
           open={confirmOpen}
           onOpenChange={setConfirmOpen}

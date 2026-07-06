@@ -32,6 +32,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { useTheme } from "@/components/theme-provider";
 
 interface NewItem {
@@ -149,61 +150,63 @@ export function AppContextMenu({
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
         <ContextMenuSub>
-          <ContextMenuSubTrigger title="Create something new">
-            <Plus className="size-4" />
-            New
-          </ContextMenuSubTrigger>
+          <SimpleTooltip content="Create something new" side="right">
+            <ContextMenuSubTrigger>
+              <Plus className="size-4" />
+              New
+            </ContextMenuSubTrigger>
+          </SimpleTooltip>
           <ContextMenuSubContent className="w-52">
             {newItems.map((item) => (
-              <ContextMenuItem key={item.href} asChild title={item.label}>
-                <Link href={item.href} className="cursor-pointer">
-                  <item.icon className="size-4" />
-                  {item.label}
-                </Link>
-              </ContextMenuItem>
+              <SimpleTooltip key={item.href} content={item.label} side="right">
+                <ContextMenuItem asChild>
+                  <Link href={item.href} className="cursor-pointer">
+                    <item.icon className="size-4" />
+                    {item.label}
+                  </Link>
+                </ContextMenuItem>
+              </SimpleTooltip>
             ))}
           </ContextMenuSubContent>
         </ContextMenuSub>
 
         <ContextMenuSeparator />
 
-        <ContextMenuItem
-          onSelect={() => router.back()}
-          title="Go back to the previous page"
-        >
-          <ArrowLeft className="size-4" />
-          Back
-        </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() => router.forward()}
-          title="Go forward"
-        >
-          <ArrowRight className="size-4" />
-          Forward
-        </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() => router.refresh()}
-          title="Reload the latest data for this page"
-        >
-          <RotateCw className="size-4" />
-          Reload
-        </ContextMenuItem>
-        <ContextMenuItem asChild title="Go to the projects Overview">
-          <Link href="/" className="cursor-pointer">
-            <House className="size-4" />
-            Overview
-          </Link>
-        </ContextMenuItem>
+        <SimpleTooltip content="Go back to the previous page" side="right">
+          <ContextMenuItem onSelect={() => router.back()}>
+            <ArrowLeft className="size-4" />
+            Back
+          </ContextMenuItem>
+        </SimpleTooltip>
+        <SimpleTooltip content="Go forward" side="right">
+          <ContextMenuItem onSelect={() => router.forward()}>
+            <ArrowRight className="size-4" />
+            Forward
+          </ContextMenuItem>
+        </SimpleTooltip>
+        <SimpleTooltip content="Reload the latest data for this page" side="right">
+          <ContextMenuItem onSelect={() => router.refresh()}>
+            <RotateCw className="size-4" />
+            Reload
+          </ContextMenuItem>
+        </SimpleTooltip>
+        <SimpleTooltip content="Go to the projects Overview" side="right">
+          <ContextMenuItem asChild>
+            <Link href="/" className="cursor-pointer">
+              <House className="size-4" />
+              Overview
+            </Link>
+          </ContextMenuItem>
+        </SimpleTooltip>
 
         <ContextMenuSeparator />
 
-        <ContextMenuItem
-          onSelect={() => setTheme(isDark ? "light" : "dark")}
-          title="Toggle light / dark appearance"
-        >
-          {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-          {isDark ? "Light mode" : "Dark mode"}
-        </ContextMenuItem>
+        <SimpleTooltip content="Toggle light / dark appearance" side="right">
+          <ContextMenuItem onSelect={() => setTheme(isDark ? "light" : "dark")}>
+            {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            {isDark ? "Light mode" : "Dark mode"}
+          </ContextMenuItem>
+        </SimpleTooltip>
       </ContextMenuContent>
     </ContextMenu>
   );

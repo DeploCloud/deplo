@@ -601,34 +601,37 @@ function ScheduleRow({
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={run}
-            disabled={pending}
-            title="Run this backup now"
-            aria-label="Run backup now"
-          >
-            <Play className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setEditOpen(true)}
-            title="Edit this schedule"
-            aria-label="Edit schedule"
-          >
-            <Pencil className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setConfirmOpen(true)}
-            title="Delete this schedule"
-            aria-label="Delete schedule"
-          >
-            <Trash2 className="size-4 text-destructive" />
-          </Button>
+          <SimpleTooltip content="Run this backup now">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={run}
+              disabled={pending}
+              aria-label="Run backup now"
+            >
+              <Play className="size-4" />
+            </Button>
+          </SimpleTooltip>
+          <SimpleTooltip content="Edit this schedule">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setEditOpen(true)}
+              aria-label="Edit schedule"
+            >
+              <Pencil className="size-4" />
+            </Button>
+          </SimpleTooltip>
+          <SimpleTooltip content="Delete this schedule">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setConfirmOpen(true)}
+              aria-label="Delete schedule"
+            >
+              <Trash2 className="size-4 text-destructive" />
+            </Button>
+          </SimpleTooltip>
         </div>
         {/* key on `editOpen` so each open remounts the dialog with fresh state
             seeded from the current schedule — no reset effect needed. */}
@@ -681,9 +684,11 @@ function RunRow({
       <TableCell className="text-sm">
         {timeAgo(run.startedAt)}
         {run.error && (
-          <span className="block max-w-xs truncate text-xs text-destructive" title={run.error}>
-            {run.error}
-          </span>
+          <SimpleTooltip content={run.error}>
+            <span className="block max-w-xs truncate text-xs text-destructive">
+              {run.error}
+            </span>
+          </SimpleTooltip>
         )}
       </TableCell>
       <TableCell className="text-muted-foreground">{destinationName}</TableCell>
@@ -705,20 +710,23 @@ function RunRow({
       </TableCell>
       <TableCell className="text-right">
         {/* Restore is only meaningful for a completed artifact. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={run.status !== "success"}
-          onClick={() => setRestoreOpen(true)}
-          title={
+        <SimpleTooltip
+          content={
             run.status === "success"
               ? "Restore this backup in place"
               : "Only a successful backup can be restored"
           }
         >
-          <RotateCcw className="size-4" />
-          Restore
-        </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={run.status !== "success"}
+            onClick={() => setRestoreOpen(true)}
+          >
+            <RotateCcw className="size-4" />
+            Restore
+          </Button>
+        </SimpleTooltip>
         <ConfirmAction
           open={restoreOpen}
           onOpenChange={setRestoreOpen}

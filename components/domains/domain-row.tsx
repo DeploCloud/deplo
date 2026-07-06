@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -304,30 +305,28 @@ export function DomainRow({
                 </Badge>
               )}
               {middlewares.length > 0 && (
-                <Badge
-                  variant="outline"
-                  className="gap-1"
-                  title={middlewares.join(", ")}
-                >
-                  <Layers className="size-3" />
-                  {middlewares.length === 1
-                    ? middlewares[0]
-                    : `${middlewares.length} middlewares`}
-                </Badge>
+                <SimpleTooltip content={middlewares.join(", ")}>
+                  <Badge variant="outline" className="gap-1">
+                    <Layers className="size-3" />
+                    {middlewares.length === 1
+                      ? middlewares[0]
+                      : `${middlewares.length} middlewares`}
+                  </Badge>
+                </SimpleTooltip>
               )}
               {domain.pathPrefix && (
-                <Badge
-                  variant="outline"
-                  className="gap-1 font-mono"
-                  title={
+                <SimpleTooltip
+                  content={
                     domain.stripPrefix
                       ? `path ${domain.pathPrefix} (stripped)`
                       : `path ${domain.pathPrefix}`
                   }
                 >
-                  <Route className="size-3" />
-                  {domain.pathPrefix}
-                </Badge>
+                  <Badge variant="outline" className="gap-1 font-mono">
+                    <Route className="size-3" />
+                    {domain.pathPrefix}
+                  </Badge>
+                </SimpleTooltip>
               )}
             </div>
             {domain.redirectTo && (

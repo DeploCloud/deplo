@@ -30,6 +30,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { EditUserDialog } from "@/components/settings/edit-user-dialog";
 import { gqlAction } from "@/lib/graphql-client";
@@ -196,44 +197,50 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
       <ContextMenu>
         <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
         <ContextMenuContent className="w-52">
-          <ContextMenuItem
-            onSelect={(e: Event) => {
-              e.preventDefault();
-              setOpen(true);
-            }}
-            title="View details and edit this user's global permissions"
+          <SimpleTooltip
+            content="View details and edit this user's global permissions"
+            side="right"
           >
-            <UserCog className="size-4" />
-            Manage user
-          </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={(e: Event) => {
+                e.preventDefault();
+                setOpen(true);
+              }}
+            >
+              <UserCog className="size-4" />
+              Manage user
+            </ContextMenuItem>
+          </SimpleTooltip>
           <ContextMenuSeparator />
-          <ContextMenuItem
-            disabled={isSelf || pending}
-            onSelect={() => flip({ isInstanceAdmin: !user.isInstanceAdmin })}
-            title="Grant or revoke instance-admin"
-          >
-            {user.isInstanceAdmin ? (
-              <ShieldOff className="size-4" />
-            ) : (
-              <ShieldCheck className="size-4" />
-            )}
-            {user.isInstanceAdmin
-              ? "Remove instance admin"
-              : "Make instance admin"}
-          </ContextMenuItem>
-          <ContextMenuItem
-            variant={user.suspended ? undefined : "destructive"}
-            disabled={isSelf || pending}
-            onSelect={() => flip({ suspended: !user.suspended })}
-            title="Suspend or reactivate this account"
-          >
-            {user.suspended ? (
-              <UserCheck className="size-4" />
-            ) : (
-              <Ban className="size-4" />
-            )}
-            {user.suspended ? "Reactivate account" : "Suspend account"}
-          </ContextMenuItem>
+          <SimpleTooltip content="Grant or revoke instance-admin" side="right">
+            <ContextMenuItem
+              disabled={isSelf || pending}
+              onSelect={() => flip({ isInstanceAdmin: !user.isInstanceAdmin })}
+            >
+              {user.isInstanceAdmin ? (
+                <ShieldOff className="size-4" />
+              ) : (
+                <ShieldCheck className="size-4" />
+              )}
+              {user.isInstanceAdmin
+                ? "Remove instance admin"
+                : "Make instance admin"}
+            </ContextMenuItem>
+          </SimpleTooltip>
+          <SimpleTooltip content="Suspend or reactivate this account" side="right">
+            <ContextMenuItem
+              variant={user.suspended ? undefined : "destructive"}
+              disabled={isSelf || pending}
+              onSelect={() => flip({ suspended: !user.suspended })}
+            >
+              {user.suspended ? (
+                <UserCheck className="size-4" />
+              ) : (
+                <Ban className="size-4" />
+              )}
+              {user.suspended ? "Reactivate account" : "Suspend account"}
+            </ContextMenuItem>
+          </SimpleTooltip>
         </ContextMenuContent>
       </ContextMenu>
       {open && (

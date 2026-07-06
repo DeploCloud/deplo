@@ -18,6 +18,7 @@ import {
 import { gql } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TextEditor } from "@/components/projects/text-editor";
 import {
@@ -261,9 +262,9 @@ export function FileExplorer({ projectId }: { projectId: string }) {
               <ArrowLeft className="size-4" />
               Back
             </Button>
-            <span className="truncate font-mono text-sm" title={open.path}>
-              {open.path}
-            </span>
+            <SimpleTooltip content={open.path}>
+              <span className="truncate font-mono text-sm">{open.path}</span>
+            </SimpleTooltip>
           </div>
           {open.text !== null && (
             <Button size="sm" onClick={save} disabled={!dirty || saving}>
@@ -328,17 +329,18 @@ export function FileExplorer({ projectId }: { projectId: string }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setLoading(true);
-              loadDir(dir);
-            }}
-            title="Refresh"
-          >
-            <RotateCw className="size-4" />
-          </Button>
+          <SimpleTooltip content="Refresh">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setLoading(true);
+                loadDir(dir);
+              }}
+            >
+              <RotateCw className="size-4" />
+            </Button>
+          </SimpleTooltip>
           <Button
             variant="outline"
             size="sm"
@@ -413,15 +415,16 @@ export function FileExplorer({ projectId }: { projectId: string }) {
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                 {entry.kind === "file" ? formatSize(entry.size) : "—"}
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                onClick={() => remove(entry)}
-                title="Delete"
-              >
-                <Trash2 className="size-4" />
-              </Button>
+              <SimpleTooltip content="Delete">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                  onClick={() => remove(entry)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </SimpleTooltip>
             </div>
           ))}
         </div>

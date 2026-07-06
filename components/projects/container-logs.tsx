@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import type { ConsoleInstance } from "@/lib/data/console";
@@ -245,28 +246,32 @@ export function ContainerLogs({
           <Badge variant="muted" className="font-mono text-[10px]">
             {follow ? "following" : "paused"}
           </Badge>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => (follow ? setFollow(false) : resumeFollow())}
-            className="h-7 gap-1.5 px-2 text-xs"
-            title={follow ? "Pause auto-scroll" : "Resume auto-scroll"}
+          <SimpleTooltip
+            content={follow ? "Pause auto-scroll" : "Resume auto-scroll"}
           >
-            {follow ? (
-              <Pause className="size-3.5" />
-            ) : (
-              <Play className="size-3.5" />
-            )}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setOutput("")}
-            className="h-7 gap-1.5 px-2 text-xs"
-            title="Clear"
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => (follow ? setFollow(false) : resumeFollow())}
+              className="h-7 gap-1.5 px-2 text-xs"
+            >
+              {follow ? (
+                <Pause className="size-3.5" />
+              ) : (
+                <Play className="size-3.5" />
+              )}
+            </Button>
+          </SimpleTooltip>
+          <SimpleTooltip content="Clear">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setOutput("")}
+              className="h-7 gap-1.5 px-2 text-xs"
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </SimpleTooltip>
           <CopyButton value={output} className="size-7" />
           <DownloadButton
             value={output}

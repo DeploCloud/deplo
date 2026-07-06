@@ -41,6 +41,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ProjectLogo } from "@/components/shared/project-logo";
 import { StatusDot } from "@/components/shared/status-badge";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
@@ -199,112 +200,145 @@ export function ProjectCard({
   const menu = (K: MenuKit) => (
     <>
       {stopping ? (
-        <K.Item disabled title="The container is currently stopping">
-          <Loader2 className="size-4 animate-spin" />
-          Stopping…
-        </K.Item>
+        <SimpleTooltip
+          content="The container is currently stopping"
+          side="right"
+        >
+          <K.Item disabled>
+            <Loader2 className="size-4 animate-spin" />
+            Stopping…
+          </K.Item>
+        </SimpleTooltip>
       ) : stopped ? (
-        <K.Item
-          onSelect={() =>
-            act(
-              `mutation($id: String!) { startProject(id: $id) { id } }`,
-              "Container started",
-            )
-          }
-          disabled={pending}
-          title="Start this project's stopped container"
+        <SimpleTooltip
+          content="Start this project's stopped container"
+          side="right"
         >
-          <Play className="size-4" />
-          Start
-        </K.Item>
+          <K.Item
+            onSelect={() =>
+              act(
+                `mutation($id: String!) { startProject(id: $id) { id } }`,
+                "Container started",
+              )
+            }
+            disabled={pending}
+          >
+            <Play className="size-4" />
+            Start
+          </K.Item>
+        </SimpleTooltip>
       ) : (
-        <K.Item
-          onSelect={() =>
-            act(
-              `mutation($id: String!) { stopProject(id: $id) { id } }`,
-              "Container stopped",
-            )
-          }
-          disabled={pending}
-          title="Stop this project's running container"
+        <SimpleTooltip
+          content="Stop this project's running container"
+          side="right"
         >
-          <Square className="size-4" />
-          Stop
-        </K.Item>
+          <K.Item
+            onSelect={() =>
+              act(
+                `mutation($id: String!) { stopProject(id: $id) { id } }`,
+                "Container stopped",
+              )
+            }
+            disabled={pending}
+          >
+            <Square className="size-4" />
+            Stop
+          </K.Item>
+        </SimpleTooltip>
       )}
-      <K.Item
-        onSelect={reload}
-        disabled={pending}
-        title="Re-apply domains and basic auth to the running container — no rebuild"
+      <SimpleTooltip
+        content="Re-apply domains and basic auth to the running container — no rebuild"
+        side="right"
       >
-        <RefreshCw className="size-4" />
-        Reload
-      </K.Item>
-      <K.Item
-        onSelect={redeploy}
-        disabled={pending}
-        title="Redeploy the latest successful build"
+        <K.Item onSelect={reload} disabled={pending}>
+          <RefreshCw className="size-4" />
+          Reload
+        </K.Item>
+      </SimpleTooltip>
+      <SimpleTooltip
+        content="Redeploy the latest successful build"
+        side="right"
       >
-        <RotateCw className="size-4" />
-        Redeploy
-      </K.Item>
+        <K.Item onSelect={redeploy} disabled={pending}>
+          <RotateCw className="size-4" />
+          Redeploy
+        </K.Item>
+      </SimpleTooltip>
       <K.Separator />
-      <K.Item asChild title="Open this project's overview and deployments">
-        <Link href={href} className="cursor-pointer">
-          <Activity className="size-4" />
-          View deployments
-        </Link>
-      </K.Item>
-      <K.Item asChild title="Open this project's settings">
-        <Link href={`${href}/settings`} className="cursor-pointer">
-          <Settings className="size-4" />
-          Settings
-        </Link>
-      </K.Item>
+      <SimpleTooltip
+        content="Open this project's overview and deployments"
+        side="right"
+      >
+        <K.Item asChild>
+          <Link href={href} className="cursor-pointer">
+            <Activity className="size-4" />
+            View deployments
+          </Link>
+        </K.Item>
+      </SimpleTooltip>
+      <SimpleTooltip content="Open this project's settings" side="right">
+        <K.Item asChild>
+          <Link href={`${href}/settings`} className="cursor-pointer">
+            <Settings className="size-4" />
+            Settings
+          </Link>
+        </K.Item>
+      </SimpleTooltip>
       {canManageFolders && folders && folders.length > 0 && (
         <K.Sub>
-          <K.SubTrigger title="Move this project into a folder">
-            <FolderInput className="size-4" />
-            Move to folder
-          </K.SubTrigger>
+          <SimpleTooltip content="Move this project into a folder" side="right">
+            <K.SubTrigger>
+              <FolderInput className="size-4" />
+              Move to folder
+            </K.SubTrigger>
+          </SimpleTooltip>
           <K.SubContent className="max-h-72 overflow-y-auto">
             {project.folderId && (
               <>
-                <K.Item
-                  onSelect={() => moveTo(null)}
-                  disabled={pending}
-                  title="Move back to the top level (ungrouped)"
+                <SimpleTooltip
+                  content="Move back to the top level (ungrouped)"
+                  side="right"
                 >
-                  Ungrouped
-                </K.Item>
+                  <K.Item onSelect={() => moveTo(null)} disabled={pending}>
+                    Ungrouped
+                  </K.Item>
+                </SimpleTooltip>
                 <K.Separator />
               </>
             )}
             {folders.map((f) => (
-              <K.Item
+              <SimpleTooltip
                 key={f.id}
-                onSelect={() => moveTo(f.id)}
-                disabled={pending || f.id === project.folderId}
-                title={`Move into ${f.name}`}
+                content={`Move into ${f.name}`}
+                side="right"
               >
-                {f.name}
-              </K.Item>
+                <K.Item
+                  onSelect={() => moveTo(f.id)}
+                  disabled={pending || f.id === project.folderId}
+                >
+                  {f.name}
+                </K.Item>
+              </SimpleTooltip>
             ))}
           </K.SubContent>
         </K.Sub>
       )}
       <K.Separator />
-      <K.Item
-        variant="destructive"
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setConfirmOpen(true);
-        }}
-        title="Permanently delete this project and its deployments"
+      <SimpleTooltip
+        content="Permanently delete this project and its deployments"
+        side="right"
       >
-        <Trash2 className="size-4" />
-        Delete
-      </K.Item>
+        <K.Item
+          variant="destructive"
+          onSelect={(e: Event) => {
+            e.preventDefault();
+            setConfirmOpen(true);
+          }}
+        >
+          <Trash2 className="size-4" />
+          Delete
+        </K.Item>
+      </SimpleTooltip>
     </>
   );
 

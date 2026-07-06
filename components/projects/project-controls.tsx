@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Play, Square, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { useLiveStatus } from "@/components/projects/project-live-status";
 import type { ProjectStatus } from "@/lib/types";
@@ -69,20 +70,22 @@ export function ProjectControls({
   return (
     <>
       {stopped ? (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            act(
-              `mutation($id: String!) { startProject(id: $id) { id } }`,
-              "Container started",
-            )
-          }
-          disabled={pending}
-        >
-          <Play className="size-4" />
-          Start
-        </Button>
+        <SimpleTooltip content="Start this project's stopped container">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              act(
+                `mutation($id: String!) { startProject(id: $id) { id } }`,
+                "Container started",
+              )
+            }
+            disabled={pending}
+          >
+            <Play className="size-4" />
+            Start
+          </Button>
+        </SimpleTooltip>
       ) : stopping ? (
         // Persisted transient state: the container is being brought down. The
         // button is disabled and self-clears when the status settles to "idle".
@@ -91,31 +94,34 @@ export function ProjectControls({
           Stopping
         </Button>
       ) : (
+        <SimpleTooltip content="Stop this project's running container">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              act(
+                `mutation($id: String!) { stopProject(id: $id) { id } }`,
+                "Container stopped",
+              )
+            }
+            disabled={pending}
+          >
+            <Square className="size-4" />
+            Stop
+          </Button>
+        </SimpleTooltip>
+      )}
+      <SimpleTooltip content="Re-apply domains and basic auth to the running container — no rebuild">
         <Button
           variant="outline"
           size="sm"
-          onClick={() =>
-            act(
-              `mutation($id: String!) { stopProject(id: $id) { id } }`,
-              "Container stopped",
-            )
-          }
+          onClick={reload}
           disabled={pending}
         >
-          <Square className="size-4" />
-          Stop
+          <RefreshCw className="size-4" />
+          Reload
         </Button>
-      )}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={reload}
-        disabled={pending}
-        title="Re-apply domains and basic auth to the running container — no rebuild"
-      >
-        <RefreshCw className="size-4" />
-        Reload
-      </Button>
+      </SimpleTooltip>
     </>
   );
 }

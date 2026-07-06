@@ -45,6 +45,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { FolderColorPicker } from "@/components/projects/folder-color-picker";
 import { ShareFolderDialog } from "@/components/projects/share-folder-dialog";
@@ -243,78 +244,90 @@ export function FolderCard({
   // manage THIS folder; Share only when they may administer its access.
   const menu = (K: MenuKit) => (
     <>
-      <K.Item asChild title="Open this folder">
-        <Link href={href} className="cursor-pointer">
-          <FolderOpen className="size-4" />
-          Open
-        </Link>
-      </K.Item>
+      <SimpleTooltip content="Open this folder" side="right">
+        <K.Item asChild>
+          <Link href={href} className="cursor-pointer">
+            <FolderOpen className="size-4" />
+            Open
+          </Link>
+        </K.Item>
+      </SimpleTooltip>
       {canManageThisFolder && (
         <>
-          <K.Item
-            onSelect={(e: Event) => {
-              e.preventDefault();
-              setName(folder.name);
-              setRenameOpen(true);
-            }}
-            title="Rename this folder"
-          >
-            <Pencil className="size-4" />
-            Rename
-          </K.Item>
-          <K.Item
-            onSelect={(e: Event) => {
-              e.preventDefault();
-              setDraftColor(folder.color ?? null);
-              setColorOpen(true);
-            }}
-            title="Change this folder's colour"
-          >
-            <Palette className="size-4" />
-            Change colour
-          </K.Item>
+          <SimpleTooltip content="Rename this folder" side="right">
+            <K.Item
+              onSelect={(e: Event) => {
+                e.preventDefault();
+                setName(folder.name);
+                setRenameOpen(true);
+              }}
+            >
+              <Pencil className="size-4" />
+              Rename
+            </K.Item>
+          </SimpleTooltip>
+          <SimpleTooltip content="Change this folder's colour" side="right">
+            <K.Item
+              onSelect={(e: Event) => {
+                e.preventDefault();
+                setDraftColor(folder.color ?? null);
+                setColorOpen(true);
+              }}
+            >
+              <Palette className="size-4" />
+              Change colour
+            </K.Item>
+          </SimpleTooltip>
           {folders && folders.length > 0 && (
             <K.Sub>
-              <K.SubTrigger title="Nest this folder inside another, or move it to the top level">
-                <FolderInput className="size-4" />
-                Move to folder
-              </K.SubTrigger>
+              <SimpleTooltip
+                content="Nest this folder inside another, or move it to the top level"
+                side="right"
+              >
+                <K.SubTrigger>
+                  <FolderInput className="size-4" />
+                  Move to folder
+                </K.SubTrigger>
+              </SimpleTooltip>
               <K.SubContent className="max-h-72 overflow-y-auto">
-                <K.Item
-                  onSelect={() => moveTo(null)}
-                  disabled={pending}
-                  title="Move to the top level"
-                >
-                  Top level
-                </K.Item>
+                <SimpleTooltip content="Move to the top level" side="right">
+                  <K.Item onSelect={() => moveTo(null)} disabled={pending}>
+                    Top level
+                  </K.Item>
+                </SimpleTooltip>
                 <K.Separator />
                 {folders
                   .filter((f) => f.id !== folder.id)
                   .map((f) => (
-                    <K.Item
+                    <SimpleTooltip
                       key={f.id}
-                      onSelect={() => moveTo(f.id)}
-                      disabled={pending}
-                      title={`Move into ${f.name}`}
+                      content={`Move into ${f.name}`}
+                      side="right"
                     >
-                      {f.name}
-                    </K.Item>
+                      <K.Item onSelect={() => moveTo(f.id)} disabled={pending}>
+                        {f.name}
+                      </K.Item>
+                    </SimpleTooltip>
                   ))}
               </K.SubContent>
             </K.Sub>
           )}
           <K.Separator />
-          <K.Item
-            variant="destructive"
-            onSelect={(e: Event) => {
-              e.preventDefault();
-              setDeleteOpen(true);
-            }}
-            title="Delete the folder — its projects move back to the top level"
+          <SimpleTooltip
+            content="Delete the folder — its projects move back to the top level"
+            side="right"
           >
-            <Trash2 className="size-4" />
-            Delete
-          </K.Item>
+            <K.Item
+              variant="destructive"
+              onSelect={(e: Event) => {
+                e.preventDefault();
+                setDeleteOpen(true);
+              }}
+            >
+              <Trash2 className="size-4" />
+              Delete
+            </K.Item>
+          </SimpleTooltip>
         </>
       )}
       {/* Share is a separate grant from managing: an owner who has shared their
@@ -322,16 +335,17 @@ export function FolderCard({
       {canShare && (
         <>
           {canManageThisFolder && <K.Separator />}
-          <K.Item
-            onSelect={(e: Event) => {
-              e.preventDefault();
-              setShareOpen(true);
-            }}
-            title="Share this folder with other members"
-          >
-            <Share2 className="size-4" />
-            Share folder…
-          </K.Item>
+          <SimpleTooltip content="Share this folder with other members" side="right">
+            <K.Item
+              onSelect={(e: Event) => {
+                e.preventDefault();
+                setShareOpen(true);
+              }}
+            >
+              <Share2 className="size-4" />
+              Share folder…
+            </K.Item>
+          </SimpleTooltip>
         </>
       )}
     </>

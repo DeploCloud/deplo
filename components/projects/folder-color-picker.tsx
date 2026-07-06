@@ -11,6 +11,7 @@ import {
   readableTextColor,
 } from "@/lib/utils";
 import { FOLDER_COLORS } from "@/lib/folder-colors";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 
 /**
  * Controlled colour picker for a folder: a row of curated swatches (plus a
@@ -63,44 +64,45 @@ export function FolderColorPicker({
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
         {/* Default: clears the colour back to the neutral tile. */}
-        <button
-          type="button"
-          onClick={() => pick(null)}
-          title="Default (no colour)"
-          aria-label="Default (no colour)"
-          aria-pressed={value == null}
-          className={cn(
-            "flex size-8 cursor-pointer items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground transition",
-            value == null
-              ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
-              : "hover:opacity-80",
-          )}
-        >
-          <X className="size-4" />
-        </button>
+        <SimpleTooltip content="Default (no colour)">
+          <button
+            type="button"
+            onClick={() => pick(null)}
+            aria-label="Default (no colour)"
+            aria-pressed={value == null}
+            className={cn(
+              "flex size-8 cursor-pointer items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground transition",
+              value == null
+                ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
+                : "hover:opacity-80",
+            )}
+          >
+            <X className="size-4" />
+          </button>
+        </SimpleTooltip>
         {FOLDER_COLORS.map((c) => {
           const active = current === c.value;
           return (
-            <button
-              key={c.value}
-              type="button"
-              onClick={() => pick(c.value)}
-              title={c.name}
-              aria-label={c.name}
-              aria-pressed={active}
-              style={{
-                backgroundColor: c.value,
-                color: readableTextColor(c.value),
-              }}
-              className={cn(
-                "flex size-8 cursor-pointer items-center justify-center rounded-md border border-black/10 transition",
-                active
-                  ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
-                  : "hover:opacity-80",
-              )}
-            >
-              {active && <Check className="size-4" />}
-            </button>
+            <SimpleTooltip key={c.value} content={c.name}>
+              <button
+                type="button"
+                onClick={() => pick(c.value)}
+                aria-label={c.name}
+                aria-pressed={active}
+                style={{
+                  backgroundColor: c.value,
+                  color: readableTextColor(c.value),
+                }}
+                className={cn(
+                  "flex size-8 cursor-pointer items-center justify-center rounded-md border border-black/10 transition",
+                  active
+                    ? "ring-2 ring-ring ring-offset-2 ring-offset-background"
+                    : "hover:opacity-80",
+                )}
+              >
+                {active && <Check className="size-4" />}
+              </button>
+            </SimpleTooltip>
           );
         })}
       </div>

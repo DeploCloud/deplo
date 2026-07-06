@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
 export function RedeployButton({
@@ -37,9 +38,11 @@ export function RedeployButton({
   }
 
   return (
-    <Button variant={variant} size={size} onClick={redeploy} disabled={pending}>
-      <RotateCw className={pending ? "size-4 animate-spin" : "size-4"} />
-      {pending ? "Redeploying…" : "Redeploy"}
-    </Button>
+    <SimpleTooltip content="Redeploy the latest successful build">
+      <Button variant={variant} size={size} onClick={redeploy} disabled={pending}>
+        <RotateCw className={pending ? "size-4 animate-spin" : "size-4"} />
+        {pending ? "Redeploying…" : "Redeploy"}
+      </Button>
+    </SimpleTooltip>
   );
 }
