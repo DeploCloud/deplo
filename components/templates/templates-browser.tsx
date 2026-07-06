@@ -2,12 +2,19 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Search, ArrowUpRight, Star, ExternalLink } from "lucide-react";
+import { Search, ArrowUpRight, Star, ExternalLink, ListFilter } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { cn, titleCase } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { titleCase } from "@/lib/utils";
 import type { CatalogTemplate } from "@/lib/templates";
 
 export function TemplatesBrowser({
@@ -37,34 +44,44 @@ export function TemplatesBrowser({
 
   return (
     <div className="space-y-5">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={`Search ${templates.length} one-click templates…`}
-          className="h-10 pl-9"
-        />
-      </div>
+      <div className="flex items-center gap-2">
+        {/* Filter dropdown — the same options the chips used to offer, now a
+            single clickable control that sits before the search bar. */}
+        <Select value={filter} onValueChange={setFilter}>
+          <SelectTrigger
+            className="h-10 w-44 shrink-0"
+            aria-label="Filter templates"
+          >
+            <span className="flex items-center gap-2">
+              <ListFilter className="size-4 shrink-0 text-muted-foreground" />
+              <SelectValue />
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="popular">Popular</SelectItem>
+            {tags.map((tag) => (
+              <SelectItem key={tag} value={tag}>
+                {titleCase(tag)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-      <div className="flex flex-wrap gap-1.5">
-        <Chip active={filter === "all"} onClick={() => setFilter("all")}>
-          All
-        </Chip>
-        <Chip active={filter === "popular"} onClick={() => setFilter("popular")}>
-          <Star className="size-3" />
-          Popular
-        </Chip>
-        {tags.map((tag) => (
-          <Chip key={tag} active={filter === tag} onClick={() => setFilter(tag)}>
-            {titleCase(tag)}
-          </Chip>
-        ))}
+        {/* Search bar with the live template count pinned to its trailing edge. */}
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={`Search ${templates.length} one-click templates…`}
+            className="h-10 pl-9 pr-24"
+          />
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+            {filtered.length} {filtered.length === 1 ? "template" : "templates"}
+          </span>
+        </div>
       </div>
-
-      <p className="text-xs text-muted-foreground">
-        {filtered.length} {filtered.length === 1 ? "template" : "templates"}
-      </p>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((t) => (
@@ -149,29 +166,5 @@ export function TemplatesBrowser({
         </p>
       )}
     </div>
-  );
-}
-
-function Chip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "inline-flex cursor-pointer items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-        active
-          ? "border-foreground bg-foreground text-background"
-          : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground"
-      )}
-    >
-      {children}
-    </button>
   );
 }

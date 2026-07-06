@@ -18,23 +18,11 @@ export default function Loading() {
 
       {/* TemplatesBrowser */}
       <div className="space-y-5">
-        {/* Search input */}
-        <Skeleton className="h-10 w-full rounded-md" />
-
-        {/* Filter chips */}
-        <div className="flex flex-wrap gap-1.5">
-          <Skeleton className="h-7 w-12 rounded-full" />
-          <Skeleton className="h-7 w-20 rounded-full" />
-          <Skeleton className="h-7 w-16 rounded-full" />
-          <Skeleton className="h-7 w-20 rounded-full" />
-          <Skeleton className="h-7 w-16 rounded-full" />
-          <Skeleton className="h-7 w-16 rounded-full" />
-          <Skeleton className="h-7 w-20 rounded-full" />
-          <Skeleton className="h-7 w-16 rounded-full" />
+        {/* Filter dropdown + search bar row (count rides inside the search bar) */}
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-10 w-44 shrink-0 rounded-md" />
+          <Skeleton className="h-10 flex-1 rounded-md" />
         </div>
-
-        {/* Count line */}
-        <Skeleton className="h-3 w-24" />
 
         {/* Card grid — 3×4 (12 cards) so the loading state fills the viewport
             like the real, populated template grid instead of a sparse 2 rows. */}
