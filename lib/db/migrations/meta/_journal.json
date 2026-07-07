@@ -127,6 +127,13 @@
       "when": 1783600200000,
       "tag": "0017_add_environments",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783600300000,
+      "tag": "0018_add_service_environments",
+      "breakpoints": true
     }
   ]
 }

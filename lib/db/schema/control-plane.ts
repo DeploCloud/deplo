@@ -277,6 +277,40 @@ export const environments = pgTable(
 );
 
 /**
+ * Per-(Service, Environment) RUNTIME state (ADR-0008 Phase 3b) — the join that
+ * lets a service's status / URL / latest deployment fan out along the environment
+ * axis without duplicating the whole Service row. A row exists once a service is
+ * deployed to an environment (the deploy pipeline, wired in a later step, writes
+ * it). The stack's deploy KEY is DERIVED, not stored (see
+ * [env-deploy-key.ts](../../deploy/env-deploy-key.ts) — the default environment
+ * keeps the bare `<slug>`, others get `<slug>__<envSlug>`). Both FKs CASCADE;
+ * `latest_deployment_id` `SET NULL`. PK `(service_id, environment_id)`.
+ */
+export const serviceEnvironments = pgTable(
+  "service_environments",
+  {
+    serviceId: text("service_id")
+      .notNull()
+      .references(() => services.id, { onDelete: "cascade" }),
+    environmentId: text("environment_id")
+      .notNull()
+      .references(() => environments.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("idle"),
+    url: text("url"),
+    latestDeploymentId: text("latest_deployment_id").references(
+      (): AnyPgColumn => deployments.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.serviceId, t.environmentId] }),
+    index("service_environments_environment_idx").on(t.environmentId),
+  ],
+);
+
+/**
  * Per-folder access grants — the capabilities the folder OWNER hands to OTHER
  * users so they can see/use a folder that is otherwise private to the owner.
  * Mirrors `membership_capabilities`: one row per (folder, user, capability),
