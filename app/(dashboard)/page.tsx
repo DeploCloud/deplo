@@ -326,7 +326,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
                     ? `No services in ${selectedEnv.name}`
                     : `${openProject.name} is empty`
                 }
-                description="Drag services onto this project's card from the Overview (they land in the default environment), or use a service's “Move to environment” menu."
+                description="Drag services onto this project from the Overview, or use a service’s “Move to folder” menu."
                 action={
                   <Button asChild variant="outline">
                     <Link href={view === "list" ? "/?view=list" : "/"}>
