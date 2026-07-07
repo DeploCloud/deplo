@@ -7,8 +7,10 @@ import {
   projects as projectsTable,
   folders as foldersTable,
   services as servicesTable,
+  environments as environmentsTable,
   teamProjectOrder,
 } from "../db/schema/control-plane";
+import { defaultEnvironmentRows } from "./environments";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
@@ -245,6 +247,11 @@ export async function createProject(
     await tx
       .insert(teamProjectOrder)
       .values({ teamId, projectId: project.id, position: next });
+    // Seed the three default environments (Development/Preview/Production) so a
+    // new container is immediately usable (ADR-0008 Phase 3).
+    await tx
+      .insert(environmentsTable)
+      .values(defaultEnvironmentRows(project.id, project.createdAt));
   });
   await recordActivity("project", `Created project ${project.name}`, userName, null, teamId);
   const { folders, services } = await counts(teamId);

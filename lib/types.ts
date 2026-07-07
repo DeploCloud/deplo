@@ -269,6 +269,43 @@ export interface Project {
   updatedAt: string;
 }
 
+/**
+ * The well-known ROLE of an {@link Environment} — the discriminant that keeps
+ * legacy `EnvTarget` resolution and team/instance/shared-env targeting working
+ * once environments become customizable. The three seeded defaults map onto the
+ * first three; user-created environments are `custom`.
+ */
+export type EnvironmentKind =
+  | "development"
+  | "preview"
+  | "production"
+  | "custom";
+
+/**
+ * An **Environment** (ADR-0008 Phase 3) — a per-{@link Project}, first-class
+ * ISOLATED deploy target. Seeded Development/Preview/Production on Project create;
+ * renamable and extensible. Each will (pipeline phase) own its containers, URL(s),
+ * git branch, and env vars. NOT the legacy `EnvTarget` enum — that survives only
+ * as {@link kind}.
+ */
+export interface Environment {
+  id: ID;
+  /** The owning {@link Project} container. */
+  projectId: ID;
+  name: string;
+  /** Stable per-project key (drives the pipeline deploy-key + `?env=` routing). */
+  slug: string;
+  /** Well-known role; the migration/compat bridge for global-env targeting. */
+  kind: EnvironmentKind;
+  /** This environment's own git branch (empty ⇒ the service's default branch). */
+  gitBranch: string;
+  /** Exactly one environment per project is the default (seeded: Production). */
+  isDefault: boolean;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ServerStatus = "online" | "offline" | "provisioning" | "error";
 
 /**

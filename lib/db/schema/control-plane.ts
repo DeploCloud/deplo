@@ -243,6 +243,40 @@ export const projectGrants = pgTable(
 );
 
 /**
+ * [Environment](../../types.ts) — a per-Project, first-class ISOLATED deploy
+ * target (ADR-0008 Phase 3). Seeded Development/Preview/Production on Project
+ * create; renamable and extensible. `kind` is the well-known-role discriminant
+ * (`development|preview|production|custom`) that keeps legacy `EnvTarget`
+ * resolution and global-env targeting working; `slug` is the host-identity
+ * component (a non-Production env's stack becomes `deplo-<serviceSlug>__<envSlug>`
+ * in the pipeline phase — Production keeps the bare slug for zero churn).
+ * `git_branch` is this environment's own branch. Plain-text `kind` (no CHECK) per
+ * the schema's un-validated-value convention. UNIQUE per project on name and slug.
+ */
+export const environments = pgTable(
+  "environments",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    kind: text("kind").notNull(),
+    gitBranch: text("git_branch").notNull().default(""),
+    isDefault: boolean("is_default").notNull().default(false),
+    position: integer("position").notNull(),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("environments_project_name_uq").on(t.projectId, t.name),
+    uniqueIndex("environments_project_slug_uq").on(t.projectId, t.slug),
+    index("environments_project_idx").on(t.projectId),
+  ],
+);
+
+/**
  * Per-folder access grants — the capabilities the folder OWNER hands to OTHER
  * users so they can see/use a folder that is otherwise private to the owner.
  * Mirrors `membership_capabilities`: one row per (folder, user, capability),

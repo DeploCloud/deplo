@@ -24,6 +24,12 @@ import {
   moveServiceToProject,
 } from "./projects";
 import { createFolder } from "./folders";
+import {
+  listEnvironmentsForProject,
+  createEnvironment,
+  setDefaultEnvironment,
+  deleteEnvironment,
+} from "./environments";
 
 /**
  * Integration tests for the Project CONTAINER data layer (ADR-0008 Phase 2)
@@ -50,7 +56,7 @@ const asOwner = <T>(fn: () => Promise<T>): Promise<T> =>
 
 beforeEach(async () => {
   await pg.query(`truncate table
-    team_project_order, project_grants, projects,
+    environments, team_project_order, project_grants, projects,
     folders, services, servers,
     membership_capabilities, memberships, users, teams
     restart identity cascade;`);
@@ -137,6 +143,48 @@ test("deleteProject re-parents its folders and services to the top level (no cas
     assert.equal(folderRow[0].projectId, null);
     assert.equal(svcRow.length, 1);
     assert.equal(svcRow[0].projectId, null);
+  });
+});
+
+test("createProject seeds Development / Preview / Production (Production is default)", async () => {
+  await asOwner(async () => {
+    const p = await createProject("Seeded");
+    const envs = await listEnvironmentsForProject(p.id);
+    assert.deepEqual(
+      envs.map((e) => e.name),
+      ["Development", "Preview", "Production"],
+      "three defaults, in order",
+    );
+    assert.deepEqual(
+      envs.map((e) => e.kind),
+      ["development", "preview", "production"],
+    );
+    const def = envs.filter((e) => e.isDefault);
+    assert.equal(def.length, 1);
+    assert.equal(def[0].name, "Production");
+    assert.match(envs[0].id, /^environ_/);
+  });
+});
+
+test("environment CRUD: add custom, switch default, delete guards", async () => {
+  await asOwner(async () => {
+    const p = await createProject("Envs");
+    const custom = await createEnvironment(p.id, "Staging");
+    assert.equal(custom.kind, "custom");
+    assert.equal(custom.slug, "staging");
+    assert.equal((await listEnvironmentsForProject(p.id)).length, 4);
+
+    // Can't delete the default (Production) until another is made default.
+    const prod = (await listEnvironmentsForProject(p.id)).find((e) => e.isDefault)!;
+    await assert.rejects(() => deleteEnvironment(prod.id), /default environment/);
+
+    // Switch default to the custom one, then Production is deletable.
+    await setDefaultEnvironment(custom.id);
+    const after = await listEnvironmentsForProject(p.id);
+    assert.equal(after.filter((e) => e.isDefault).length, 1);
+    assert.equal(after.find((e) => e.isDefault)!.id, custom.id);
+    await deleteEnvironment(prod.id);
+    assert.equal((await listEnvironmentsForProject(p.id)).length, 3);
   });
 });
 

@@ -11,6 +11,8 @@ import {
   moveServiceToProject,
   type ProjectSummary,
 } from "@/lib/data/projects";
+import { listEnvironmentsForProject } from "@/lib/data/environments";
+import { EnvironmentRef } from "./environment";
 import type { Project } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -39,6 +41,11 @@ export const ProjectRef = builder
       }),
       serviceCount: t.int({
         resolve: (p) => ("serviceCount" in p ? p.serviceCount : 0),
+      }),
+      // The container's environments (seeded Development/Preview/Production).
+      environments: t.field({
+        type: [EnvironmentRef],
+        resolve: (p) => listEnvironmentsForProject(p.id),
       }),
     }),
   });

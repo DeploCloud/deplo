@@ -60,6 +60,7 @@ const CONTROL_PLANE = [
   "projects",
   "project_grants",
   "team_project_order",
+  "environments",
   "memberships",
   "membership_capabilities",
   "invites",
