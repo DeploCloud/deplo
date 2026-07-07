@@ -29,6 +29,10 @@ export class GraphQLRequestError extends Error {
 }
 
 import type { ActionResult } from "./result";
+import {
+  getServerConnectionSnapshot,
+  reportServerUnreachable,
+} from "./server-connection";
 
 /**
  * Run a GraphQL operation and box the outcome as an `ActionResult` — the shape
@@ -61,13 +65,21 @@ export async function gql<TData = unknown>(
   variables?: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<TData> {
-  const res = await fetch("/api/graphql", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-    credentials: "same-origin",
-    signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch("/api/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query, variables }),
+      credentials: "same-origin",
+      signal,
+    });
+  } catch (e) {
+    // A network-level failure (TypeError, not an abort) means the panel's web
+    // server may be gone — let the connection guard verify and lock the UI.
+    if (e instanceof TypeError) reportServerUnreachable();
+    throw e;
+  }
 
   const json = (await res.json()) as {
     data?: TData;
@@ -164,6 +176,11 @@ export function gqlSubscribe<TData = unknown>(
   (async () => {
     let backoff = 1000;
     while (!closed) {
+      // Once the connection guard has latched the UI behind its blocking
+      // overlay, stop self-healing: retrying would keep hammering a dead
+      // server (and spawning error toasts) behind a screen that promises
+      // nothing reconnects until the user reloads.
+      if (getServerConnectionSnapshot() === "disconnected") return;
       try {
         await connect();
         // Clean `complete` or EOF — for a status stream that should not happen
@@ -171,6 +188,9 @@ export function gqlSubscribe<TData = unknown>(
         if (!closed) return;
       } catch (e) {
         if (closed || controller.signal.aborted) return;
+        // Same signal as gql(): the SSE fetch dying at the network level hints
+        // the web server itself is unreachable.
+        if (e instanceof TypeError) reportServerUnreachable();
         onError?.(e instanceof Error ? e : new Error(String(e)));
         await new Promise((r) => setTimeout(r, backoff));
         backoff = Math.min(backoff * 2, 10_000);

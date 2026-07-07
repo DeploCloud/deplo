@@ -5,6 +5,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { ServerConnectionGuard } from "@/components/layout/server-connection-guard";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,6 +49,7 @@ export default async function RootLayout({
           <TooltipProvider delayDuration={200}>
             {children}
             <Toaster position="bottom-right" />
+            <ServerConnectionGuard />
           </TooltipProvider>
         </ThemeProvider>
       </body>
