@@ -61,7 +61,7 @@ const ServiceEnvGroupServiceRef = builder
 const ServiceEnvGroupRef = builder
   .objectRef<ServiceEnvGroup>("ServiceEnvGroup")
   .implement({
-    description: "One project together with all of its env vars.",
+    description: "One service together with all of its env vars.",
     fields: (t) => ({
       service: t.field({
         type: ServiceEnvGroupServiceRef,
@@ -112,7 +112,7 @@ builder.queryFields((t) => ({
   allServiceEnv: t.field({
     type: [ServiceEnvGroupRef],
     authScopes: { loggedIn: true },
-    description: "Every project's env vars in the active team, grouped by project.",
+    description: "Every service's env vars in the active team, grouped by project.",
     resolve: () => listAllServiceEnv(),
   }),
 }));
@@ -165,7 +165,7 @@ builder.mutationFields((t) => ({
     type: "Int",
     authScopes: { capability: "manage_env" },
     description:
-      "Replace a project's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.",
+      "Replace a service's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.",
     args: {
       serviceId: t.arg.string({ required: true }),
       entries: t.arg({ type: [EnvEntryInputType], required: true }),

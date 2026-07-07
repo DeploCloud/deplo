@@ -80,7 +80,7 @@ export function FullComposeDialog({ serviceId }: { serviceId: string }) {
           </div>
         ) : (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Nothing to show yet — deploy this project once to generate its stack.
+            Nothing to show yet — deploy this service once to generate its stack.
           </p>
         )}
       </DialogContent>

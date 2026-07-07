@@ -41,7 +41,7 @@ const COLORS: Record<string, string> = {
   pending: "bg-[var(--warning)]",
   unverified: "bg-[var(--warning)]",
   never: "bg-muted-foreground",
-  // red — stopped or failed. "idle" means the user stopped the project; it now
+  // red — stopped or failed. "idle" means the user stopped the service; it now
   // reads as a hard "off" state rather than amber.
   idle: "bg-destructive",
   error: "bg-destructive",

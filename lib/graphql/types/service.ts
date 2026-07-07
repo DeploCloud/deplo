@@ -55,7 +55,7 @@ const LogLineRef = builder.objectRef<LogLine>("LogLine").implement({
 export const DeploymentRef = builder
   .objectRef<Deployment>("Deployment")
   .implement({
-    description: "A single build + release of a project.",
+    description: "A single build + release of a service.",
     fields: (t) => ({
       id: t.exposeID("id"),
       serviceId: t.exposeID("serviceId"),
@@ -133,7 +133,7 @@ export const ServiceRef = builder
       }),
       deployments: t.field({
         type: [DeploymentRef],
-        description: "All deployments of this project, newest first.",
+        description: "All deployments of this service, newest first.",
         resolve: (p) => listDeployments({ serviceId: p.id }),
       }),
     }),
@@ -183,7 +183,7 @@ const ExtraDomainInput = builder.inputType("ExtraDomainInput", {
 });
 
 const ServiceEnvInput = builder.inputType("ServiceEnvInput", {
-  description: "An initial environment variable for a new project.",
+  description: "An initial environment variable for a new service.",
   fields: (t) => ({
     key: t.string({ required: true }),
     value: t.string({ required: true }),
@@ -202,11 +202,11 @@ const VolumeInput = builder.inputType("VolumeInput", {
   description: "A persistent volume for a single-container project.",
   fields: (t) => ({
     id: t.string({ required: false }),
-    /** "named" (docker-managed, default), "service" (bind inside the project's
+    /** "named" (docker-managed, default), "service" (bind inside the service's
      * files dir), or "host" (bind an absolute host path). */
     type: t.string({ required: false }),
     name: t.string({ required: false }),
-    /** Path relative to the project's files dir (project mounts only). */
+    /** Path relative to the service's files dir (project mounts only). */
     projectPath: t.string({ required: false }),
     /** Absolute host path to bind-mount (host mounts only). */
     hostPath: t.string({ required: false }),
@@ -294,7 +294,7 @@ builder.queryFields((t) => ({
 }));
 
 /* ------------------------------------------------------------------ */
-/* Mutations (every project/deployment server action)                  */
+/* Mutations (every service/deployment server action)                  */
 /* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
@@ -407,7 +407,7 @@ builder.mutationFields((t) => ({
     type: ServiceRef,
     authScopes: { capability: "deploy" },
     description:
-      "Replace a single-container project's volumes (named, service-files, and host bind mounts).",
+      "Replace a single-container service's volumes (named, service-files, and host bind mounts).",
     args: {
       id: t.arg.string({ required: true }),
       volumes: t.arg({ type: [VolumeInput], required: true }),
@@ -488,14 +488,14 @@ builder.mutationFields((t) => ({
     type: "String",
     authScopes: { capability: "deploy" },
     description:
-      "Re-apply the project's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.",
+      "Re-apply the service's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => reapplyRouting(id),
   }),
   deleteService: t.field({
     type: "Boolean",
     authScopes: { capability: "deploy" },
-    description: "Delete the project and tear down its stack. Returns true.",
+    description: "Delete the service and tear down its stack. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await deleteService(id);
@@ -514,7 +514,7 @@ builder.mutationFields((t) => ({
     type: "String",
     nullable: true,
     authScopes: { loggedIn: true },
-    description: "Render the docker-compose stack a project would deploy.",
+    description: "Render the docker-compose stack a service would deploy.",
     args: { serviceId: t.arg.string({ required: true }) },
     resolve: async (_r, { serviceId }) => {
       // Team-scope the request before rendering (the render fn is unscoped).
@@ -550,7 +550,7 @@ builder.mutationFields((t) => ({
   }),
 }));
 
-/** Reload a project by id after a void mutation so we can return the entity. */
+/** Reload a service by id after a void mutation so we can return the entity. */
 async function reloadService(id: string): Promise<ServiceSummary> {
   const all = await listServices();
   const found = all.find((p) => p.id === id);
@@ -565,7 +565,7 @@ async function reloadService(id: string): Promise<ServiceSummary> {
 /**
  * Live project status, served over SSE on the same `/api/graphql` endpoint
  * (Yoga negotiates `text/event-stream` for subscriptions — no separate
- * WebSocket server). Pushes a fresh project snapshot whenever the project's
+ * WebSocket server). Pushes a fresh project snapshot whenever the service's
  * power/deploy state changes, so the dashboard reflects start/stop/deploy
  * without a reload and stays in sync across every connected client.
  *
@@ -586,10 +586,10 @@ builder.subscriptionFields((t) => ({
   serviceStatus: t.field({
     type: ServiceRef,
     description:
-      "Emits the project whenever its status (power / deployment) changes. " +
+      "Emits the service whenever its status (power / deployment) changes. " +
       "Fires once immediately with the current snapshot, then on every change.",
     // `loggedIn` (synchronous `!!ctx.viewer` — no cookie call) gates opening the
-    // stream; the generator enforces team ownership of the project below.
+    // stream; the generator enforces team ownership of the service below.
     authScopes: { loggedIn: true },
     args: { slug: t.arg.string({ required: true }) },
     subscribe: (_root, { slug }, ctx) => serviceStatusStream(slug, ctx.teamId),
@@ -616,8 +616,8 @@ export async function* serviceStatusStream(
   yield project;
 
   // Forward each change ping as a freshly-reloaded snapshot. The payload is the
-  // changed project's id (always this project's, given the keyed channel). If
-  // the project was deleted mid-stream, summarizeForTeam returns null → end.
+  // changed service's id (always this service's, given the keyed channel). If
+  // the service was deleted mid-stream, summarizeForTeam returns null → end.
   for await (const changedId of pubSub.subscribe("serviceChanged", serviceId)) {
     const next = await summarizeForTeam(changedId, teamId);
     if (!next) return;

@@ -107,25 +107,25 @@ export function ServiceCard({
   dragActive?: boolean;
   /** Team folders, for the "Move to folder" menu (omitted ⇒ no folders). */
   folders?: { id: string; name: string }[];
-  /** Whether the viewer may move this project between folders. */
+  /** Whether the viewer may move this service between folders. */
   canManageFolders?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const dep = project.latestDeployment;
-  // A repo ⇒ a git deploy (real branch + repo). Otherwise the project has no
+  // A repo ⇒ a git deploy (real branch + repo). Otherwise the service has no
   // git, so we describe its source instead of inventing a branch. Shared with
-  // the project overview page so the two never disagree (see service-source.tsx).
+  // the service overview page so the two never disagree (see service-source.tsx).
   const nonGit = project.repo ? null : describeServiceSource(project);
 
-  // The card mirrors the project header's lifecycle controls in a minimized
+  // The card mirrors the service header's lifecycle controls in a minimized
   // form: Start/Stop track the persisted status (no live subscription on the
   // overview, so a refresh after each action keeps the menu in sync).
   const stopped = project.status === "idle";
   const stopping = project.status === "stopping";
 
-  // Clicking anywhere on the card opens the project overview. The latest commit
+  // Clicking anywhere on the card opens the service overview. The latest commit
   // is shown on the card itself (compact) rather than deep-linking to it.
   const href = `/services/${project.slug}`;
 
@@ -178,7 +178,7 @@ export function ServiceCard({
     });
   }
 
-  // Move this project into a folder, or back to the top level (folderId null).
+  // Move this service into a folder, or back to the top level (folderId null).
   // The grid also supports dragging a card onto a folder; this menu is the
   // keyboard-friendly, always-available counterpart.
   function moveTo(folderId: string | null) {
@@ -211,7 +211,7 @@ export function ServiceCard({
         </SimpleTooltip>
       ) : stopped ? (
         <SimpleTooltip
-          content="Start this project's stopped container"
+          content="Start this service's stopped container"
           side="left"
         >
           <K.Item
@@ -229,7 +229,7 @@ export function ServiceCard({
         </SimpleTooltip>
       ) : (
         <SimpleTooltip
-          content="Stop this project's running container"
+          content="Stop this service's running container"
           side="left"
         >
           <K.Item
@@ -266,7 +266,7 @@ export function ServiceCard({
       </SimpleTooltip>
       <K.Separator />
       <SimpleTooltip
-        content="Open this project's overview and deployments"
+        content="Open this service's overview and deployments"
         side="left"
       >
         <K.Item asChild>
@@ -276,7 +276,7 @@ export function ServiceCard({
           </Link>
         </K.Item>
       </SimpleTooltip>
-      <SimpleTooltip content="Open this project's settings" side="left">
+      <SimpleTooltip content="Open this service's settings" side="left">
         <K.Item asChild>
           <Link href={`${href}/settings`} className="cursor-pointer">
             <Settings className="size-4" />
@@ -289,7 +289,7 @@ export function ServiceCard({
           Sub={K.Sub}
           SubTrigger={K.SubTrigger}
           SubContent={K.SubContent}
-          content="Move this project into a folder"
+          content="Move this service into a folder"
           subContentClassName="max-h-72 overflow-y-auto"
           trigger={
             <>
@@ -329,7 +329,7 @@ export function ServiceCard({
       )}
       <K.Separator />
       <SimpleTooltip
-        content="Permanently delete this project and its deployments"
+        content="Permanently delete this service and its deployments"
         side="left"
       >
         <K.Item
@@ -378,8 +378,8 @@ export function ServiceCard({
       targetId={project.id}
       targetName={project.name}
       title={`Delete ${project.name}?`}
-      description="This permanently removes the project, its deployments, domains and environment variables. This action cannot be undone."
-      confirmLabel="Delete project"
+      description="This permanently removes the service, its deployments, domains and environment variables. This action cannot be undone."
+      confirmLabel="Delete service"
       successMessage="Service deleted"
       deleteMutation={() =>
         gqlAction(`mutation($id: String!) { deleteService(id: $id) }`, {
@@ -406,7 +406,7 @@ export function ServiceCard({
     />
   );
 
-  // The project's source identity (repo or "Compose"/image/upload), shown in the
+  // The service's source identity (repo or "Compose"/image/upload), shown in the
   // deployment box when there's no deployment yet. Mirrors the list view so a
   // freshly imported git project still shows its repo before its first deploy.
   const identity = project.repo ? (

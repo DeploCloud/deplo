@@ -13,7 +13,7 @@ export default async function ServiceFilesPage(
   const project = await getServiceBySlug(slug);
   if (!project) notFound();
   // Re-gate on the page itself (not just the tab): the route must 404 for a
-  // caller without manage_files or a project with no files dir, even on a direct
+  // caller without manage_files or a service with no files dir, even on a direct
   // URL hit. serviceFilesExist returns false for both cases.
   if (!(await serviceFilesExist(project.id))) notFound();
 
@@ -21,7 +21,7 @@ export default async function ServiceFilesPage(
     <div className="space-y-5">
       <PageHeader
         title="Files"
-        description="Browse and edit this project's files directory."
+        description="Browse and edit this service's files directory."
       />
       <FileExplorer serviceId={project.id} />
     </div>

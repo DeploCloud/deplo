@@ -33,7 +33,7 @@ export interface AddDomainService {
   id: string;
   name: string;
   compose?: string | null;
-  /** The project's default container port (build.port) — seeds the port field. */
+  /** The service's default container port (build.port) — seeds the port field. */
   defaultPort?: number;
 }
 
@@ -68,7 +68,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
     initialDomainConfig(undefined, project.defaultPort),
   );
 
-  // The project's compose services (empty ⇒ single-image). A compose stack
+  // The service's compose services (empty ⇒ single-image). A compose stack
   // offers a service selector; the per-domain port is always available.
   const services = React.useMemo(
     () => composeServices(project.compose),

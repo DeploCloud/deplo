@@ -56,8 +56,8 @@ const MUTATIONS: Record<
 
 /**
  * Manage one scope of GLOBAL variables (team-wide or instance-wide). A flat
- * key/value/targets table with add/edit/delete — no per-project attachment,
- * because a global applies to every project automatically. The scope only
+ * key/value/targets table with add/edit/delete — no per-service attachment,
+ * because a global applies to every service automatically. The scope only
  * selects which mutations run; the shape is identical.
  */
 export function GlobalEnvManager({
@@ -82,8 +82,8 @@ export function GlobalEnvManager({
           </h3>
           <p className="text-sm text-muted-foreground">
             {scope === "team"
-              ? "Injected into every project in this team. A project's own variable overrides one with the same key."
-              : "Injected into every project of every team. Any team or project variable with the same key overrides it."}
+              ? "Injected into every service in this team. A service's own variable overrides one with the same key."
+              : "Injected into every service of every team. Any team or project variable with the same key overrides it."}
           </p>
         </div>
         <Button
@@ -104,8 +104,8 @@ export function GlobalEnvManager({
           title="No variables yet"
           description={
             scope === "team"
-              ? "Add a variable to share it across every project in this team."
-              : "Add a variable to inject it into every project of every team."
+              ? "Add a variable to share it across every service in this team."
+              : "Add a variable to inject it into every service of every team."
           }
         />
       ) : (

@@ -11,7 +11,7 @@ import {
 
 /**
  * GraphQL surface for the real container console: read the attachable instances
- * for a project, probe the default container's shell label, and exec a command
+ * for a service, probe the default container's shell label, and exec a command
  * inside the live container. All resolvers are thin wrappers over the data layer,
  * which enforces team-scoping (reads) and the `deploy` capability (exec).
  */
@@ -23,7 +23,7 @@ import {
 const ConsoleInstanceRef = builder
   .objectRef<ConsoleInstance>("ConsoleInstance")
   .implement({
-    description: "A single attachable container in a project's stack.",
+    description: "A single attachable container in a service's stack.",
     fields: (t) => ({
       name: t.exposeString("name"),
       service: t.exposeString("service"),
@@ -39,7 +39,7 @@ const ConsoleInstanceRef = builder
 
 const ConsoleInfoRef = builder.objectRef<ConsoleInfo>("ConsoleInfo").implement({
   description:
-    "Console attach info for a project (no shell probe — fetch the shell " +
+    "Console attach info for a service (no shell probe — fetch the shell " +
     "label separately via shellLabel).",
   fields: (t) => ({
     containerName: t.exposeString("containerName"),
@@ -107,7 +107,7 @@ builder.queryFields((t) => ({
     type: ConsoleInfoRef,
     nullable: true,
     authScopes: { loggedIn: true },
-    description: "Attachable instances + default target for a project's console.",
+    description: "Attachable instances + default target for a service's console.",
     args: { serviceId: t.arg.string({ required: true }) },
     resolve: (_r, { serviceId }) => getConsoleInfo(serviceId),
   }),
@@ -140,7 +140,7 @@ builder.mutationFields((t) => ({
     type: ExecResultRef,
     authScopes: { capability: "deploy" },
     description:
-      "Run a command in the project's live container (docker exec). Gated on " +
+      "Run a command in the service's live container (docker exec). Gated on " +
       "the deploy capability — this is arbitrary code execution.",
     args: { input: t.arg({ type: ExecConsoleInputType, required: true }) },
     resolve: (_r, { input }) =>

@@ -372,7 +372,7 @@ function EnvDialog({
           <DialogDescription>
             {editing
               ? "Update the value or environments for this variable."
-              : "Add a new environment variable to this project."}
+              : "Add a new environment variable to this service."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -709,7 +709,7 @@ function parseEnv(text: string): { key: string; value: string }[] {
 }
 
 /**
- * The ".env editor": one textarea over ALL of a project's variables. Plain
+ * The ".env editor": one textarea over ALL of a service's variables. Plain
  * values are editable in place; secret values show as a mask and are preserved
  * unless changed (you can't read a secret you didn't set). Saving upserts every
  * line and deletes the ones removed — new vars are PLAIN and land in the chosen

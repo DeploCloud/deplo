@@ -30,7 +30,7 @@ export default async function ServiceDomainsPage(
   // A zero-config nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`)
   // the user can drop into the Domain field with one click — resolved here so the
   // server-only IP detection never reaches the client bundle. This is a fresh
-  // suggestion for ADDING a domain (the project's own auto domain already exists),
+  // suggestion for ADDING a domain (the service's own auto domain already exists),
   // so freshly-generated words are fine.
   const server = servers.find((s) => s.id === project.serverId);
   // The public IPv4 a custom domain's A record must point at — the IP of the
@@ -47,7 +47,7 @@ export default async function ServiceDomainsPage(
         <div>
           <h3 className="text-sm font-medium">Domains</h3>
           <p className="text-sm text-muted-foreground">
-            Custom domains routed to this project with automatic TLS.
+            Custom domains routed to this service with automatic TLS.
           </p>
         </div>
         <AddDomain
@@ -65,7 +65,7 @@ export default async function ServiceDomainsPage(
         <EmptyState
           icon={Globe}
           title="No domains"
-          description="Add a custom domain to this project."
+          description="Add a custom domain to this service."
         />
       ) : (
         <div className="rounded-xl border border-border">

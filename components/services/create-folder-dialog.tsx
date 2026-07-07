@@ -86,7 +86,7 @@ export function CreateFolderDialog({
           <DialogTitle>Create a folder</DialogTitle>
           <DialogDescription>
             {description ??
-              "Folders group services on the Overview. Drag a project onto a folder — or use a card's menu — to move it in."}
+              "Folders group services on the Overview. Drag a service onto a folder — or use a card's menu — to move it in."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

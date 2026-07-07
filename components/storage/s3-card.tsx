@@ -73,7 +73,7 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
 
   // The destination's actions, rendered once for whichever menu primitive is
   // passed — the ⋯ dropdown and the right-click context menu share these items
-  // and handlers. Each item carries a native `title` like the project card.
+  // and handlers. Each item carries a native `title` like the service card.
   const menu = (K: MenuKit) => (
     <>
       <SimpleTooltip

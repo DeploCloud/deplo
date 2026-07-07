@@ -48,7 +48,7 @@ export function GithubRepoPicker({
 }: {
   installations: GithubInstallationDTO[];
   /**
-   * Pre-select a repo/branch already attached to the project (settings flow).
+   * Pre-select a repo/branch already attached to the service (settings flow).
    * The installation is matched by id; when it isn't among the connected
    * installations (e.g. the App was reinstalled) the first one is used.
    */

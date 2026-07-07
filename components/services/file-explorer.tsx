@@ -33,7 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 /**
- * Browse and edit a project's on-disk files directory
+ * Browse and edit a service's on-disk files directory
  * (`/data/stacks/files/<slug>`). Everything routes through the GraphQL
  * `serviceFile*` operations — all of them sandboxed and `manage_files`-gated on
  * the server — so the client never holds a host path, only a relative one.

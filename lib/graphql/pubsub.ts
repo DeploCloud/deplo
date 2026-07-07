@@ -6,15 +6,15 @@ import { createPubSub } from "@graphql-yoga/subscription";
  * In-process publish/subscribe used to push live updates to GraphQL
  * subscribers over SSE. One logical channel per project, keyed by project id:
  *
- *   pubSub.publish("serviceChanged", serviceId, serviceId)  // a project changed
+ *   pubSub.publish("serviceChanged", serviceId, serviceId)  // a service changed
  *   pubSub.subscribe("serviceChanged", serviceId)           // pings for that id
  *
- * The payload is just the project id — a publish means "this project changed,
- * re-read it". The subscription resolver reloads the project from the store and
+ * The payload is just the service id — a publish means "this service changed,
+ * re-read it". The subscription resolver reloads the service from the store and
  * emits the fresh snapshot, so subscribers never receive (and we never have to
  * serialize) a partial diff. The keyed form `[id, payload]` is what lets
  * `subscribe(topic, id)` filter to a single project; a payload-only channel
- * would fan every project's changes out to every subscriber.
+ * would fan every service's changes out to every subscriber.
  *
  * Why `globalThis`, same as the Drizzle client (see `lib/db/client.ts`): in `next dev` the
  * RSC layer and the route-handler layer are compiled into separate module
@@ -33,7 +33,7 @@ const g = globalThis as unknown as { [PUBSUB_KEY]?: ServicePubSub };
 export const pubSub: ServicePubSub = (g[PUBSUB_KEY] ??=
   createPubSub<Channels>());
 
-/** Notify every subscriber that this project's state changed. */
+/** Notify every subscriber that this service's state changed. */
 export function publishServiceChanged(serviceId: string): void {
   pubSub.publish("serviceChanged", serviceId, serviceId);
 }

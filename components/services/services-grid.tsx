@@ -246,7 +246,7 @@ function BulkActionsMenuItems({
       )}
       <ContextMenuSeparator />
       <SimpleTooltip
-        content="Select every project and folder on this page"
+        content="Select every service and folder on this page"
         side="left"
       >
         <ContextMenuItem onSelect={selection.onSelectAll}>
@@ -299,7 +299,7 @@ function OverviewContextMenu({
         />
         {selection && !hasSelection && (
           <SimpleTooltip
-            content="Select every project and folder on this page"
+            content="Select every service and folder on this page"
             side="left"
           >
             <ContextMenuItem onSelect={selection.onSelectAll}>
@@ -597,7 +597,7 @@ function SortableGrid({
 
   const activeIsService = activeId !== null && !folderIdSet.has(activeId);
   // The actual card behind the floating drag clone (the lifted card that tracks
-  // the cursor). A folder never absorbs into another, so only a project clone
+  // the cursor). A folder never absorbs into another, so only a service clone
   // shrinks when hovering a folder.
   const activeFolder = activeId ? folderById.get(activeId) ?? null : null;
   const activeService =
@@ -879,7 +879,7 @@ function SortableGrid({
       if (groupDrag) reorderServiceGroup(a, o, selServices);
       else reorderServiceList(a, o);
     }
-    // (folder dropped onto a project: ignored — folders can't nest in services)
+    // (folder dropped onto a service: ignored — folders can't nest in services)
   }
 
   const serviceStrategy =
@@ -1155,7 +1155,7 @@ function SortableItem({
   id: string;
   dragging: boolean;
   /** When this item is the one being dragged, shrink it to nothing (smoothly) —
-   *  used to preview a project being absorbed into the folder it hovers. */
+   *  used to preview a service being absorbed into the folder it hovers. */
   scaleOut?: boolean;
   /** Whether this card is part of the current multi-selection (shows a ring). */
   selected?: boolean;

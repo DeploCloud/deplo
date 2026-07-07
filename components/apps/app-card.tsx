@@ -114,7 +114,7 @@ export function CatalogAppCard({
 
   // The card's sole action (Install/Reinstall), rendered for the right-click
   // menu via the same handler as the inline button. A native `title` explains
-  // the option on hover, like the project/folder cards.
+  // the option on hover, like the service/folder cards.
   const menu = (K: MenuKit) => (
     <SimpleTooltip
       content={
@@ -202,7 +202,7 @@ export function InstalledAppCard({
   // The card's lifecycle actions, rendered for the right-click menu from the
   // same handlers as the inline buttons. Start/Stop mirror the live status,
   // Connect is MCP-only, and Uninstall (destructive) opens the confirm dialog.
-  // Each item carries a native `title`, like the project/folder cards.
+  // Each item carries a native `title`, like the service/folder cards.
   const menu = (K: MenuKit) => (
     <>
       {running ? (

@@ -6,7 +6,7 @@ import { FrameworkIcon } from "@/components/shared/framework-icon";
 import type { FrameworkId } from "@/lib/types";
 
 /**
- * A project's display avatar: its custom logo when one is set (defaulted from a
+ * A service's display avatar: its custom logo when one is set (defaulted from a
  * template on deploy, editable in settings), otherwise the framework icon. The
  * logo container mirrors FrameworkIcon's box so the two are interchangeable in
  * lists. A logo that fails to load falls back to the framework icon at runtime

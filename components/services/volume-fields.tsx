@@ -19,7 +19,7 @@ import type { VolumeMount } from "@/lib/types";
 type VolumeType = NonNullable<VolumeMount["type"]>;
 
 /**
- * Presentational editor for a single-container project's persistent volumes (the
+ * Presentational editor for a single-container service's persistent volumes (the
  * renderCompose path). Fetch-free — the parent form owns the save.
  *
  * Three kinds per row, picked from the "Type" selector:
@@ -27,7 +27,7 @@ type VolumeType = NonNullable<VolumeMount["type"]>;
  *    host-side volume name is namespaced per project (deplo-<slug>-<name>); we
  *    preview it here, but the server is the only thing that derives/trusts it. A
  *    blank name is fine in a draft row — the server derives one on save.
- *  - PROJECT FILE: a path RELATIVE to the project's isolated files dir
+ *  - PROJECT FILE: a path RELATIVE to the service's isolated files dir
  *    (e.g. "config.toml" or "uploads"). Stays inside the sandbox — no grant
  *    needed. The same place the `./<x>` compose convention targets.
  *  - HOST: an absolute HOST path bound into the container. Only privileged users
@@ -149,7 +149,7 @@ export function VolumeFields({
                     {isHost ? (
                       "Binds a path on the deploy host — needs the host-volume permission."
                     ) : isService ? (
-                      "Binds a path inside this project's isolated files directory."
+                      "Binds a path inside this service's isolated files directory."
                     ) : previewName ? (
                       <>
                         Host volume:{" "}

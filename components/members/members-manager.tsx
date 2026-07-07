@@ -364,7 +364,7 @@ function MemberCard({
   return (
     <>
       {/* Left-click the ⋯ for the action menu; right-click anywhere on the card
-          opens the same items — mirrors the project/server card menus. */}
+          opens the same items — mirrors the service/server card menus. */}
       <ContextMenu>
         <ContextMenuTrigger asChild>{inner}</ContextMenuTrigger>
         <ContextMenuContent className="w-52">

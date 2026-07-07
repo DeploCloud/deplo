@@ -23,7 +23,7 @@ export default async function NewServicePage(props: PageProps<"/new">) {
     .replace(/^-+|-+$/g, "");
   // Generate the template's public hostname (with its random words baked in) up
   // front and thread it into the blueprint env. createService passes this same
-  // string through as the project's `preferred` auto domain, so the value the
+  // string through as the service's `preferred` auto domain, so the value the
   // app sees matches the domain Traefik routes and the one shown in the Domains
   // section — the words generated here are the words that get persisted.
   const autoDomain = template

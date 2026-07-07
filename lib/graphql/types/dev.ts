@@ -43,7 +43,7 @@ const DevImageKindEnum = builder.enumType("DevImageKind", {
 /* ------------------------------------------------------------------ */
 
 const DevInfoRef = builder.objectRef<DevInfo>("DevInfo").implement({
-  description: "A client-safe view of a project's dev config + preview URL.",
+  description: "A client-safe view of a service's dev config + preview URL.",
   fields: (t) => ({
     enabled: t.exposeBoolean("enabled"),
     status: t.field({ type: DevStatusEnum, resolve: (d) => d.status }),
@@ -62,7 +62,7 @@ const DevInfoRef = builder.objectRef<DevInfo>("DevInfo").implement({
 const DevSshUserRef = builder
   .objectRef<DevSshUserDTO>("DevSshUser")
   .implement({
-    description: "An SSH credential for a project's dev container.",
+    description: "An SSH credential for a service's dev container.",
     fields: (t) => ({
       id: t.exposeID("id"),
       username: t.exposeString("username"),
@@ -77,7 +77,7 @@ const DevSshUserRef = builder
 const VscodeTunnelInfoRef = builder
   .objectRef<VscodeTunnelInfo>("VscodeTunnelInfo")
   .implement({
-    description: "VS Code Remote Tunnel status for a project's dev container.",
+    description: "VS Code Remote Tunnel status for a service's dev container.",
     fields: (t) => ({
       running: t.exposeBoolean("running"),
       connected: t.exposeBoolean("connected"),
@@ -122,14 +122,14 @@ builder.queryFields((t) => ({
     type: DevInfoRef,
     nullable: true,
     authScopes: { loggedIn: true },
-    description: "Dev config + computed preview URL for a project.",
+    description: "Dev config + computed preview URL for a service.",
     args: { serviceId: t.arg.string({ required: true }) },
     resolve: (_r, { serviceId }) => getDevInfo(serviceId),
   }),
   devSshUsers: t.field({
     type: [DevSshUserRef],
     authScopes: { loggedIn: true },
-    description: "SSH credentials for a project's dev container.",
+    description: "SSH credentials for a service's dev container.",
     args: { serviceId: t.arg.string({ required: true }) },
     resolve: (_r, { serviceId }) => listDevSshUsers(serviceId),
   }),
@@ -143,7 +143,7 @@ builder.queryFields((t) => ({
   tunnel: t.field({
     type: VscodeTunnelInfoRef,
     authScopes: { loggedIn: true },
-    description: "Current VS Code tunnel status for a project.",
+    description: "Current VS Code tunnel status for a service.",
     args: { serviceId: t.arg.string({ required: true }) },
     resolve: (_r, { serviceId }) => getTunnel(serviceId),
   }),

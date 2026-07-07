@@ -50,7 +50,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
       listServersForCurrentTeam(),
       listServices(),
       // Gates the "Expose publicly" toggle: only a user with the publish-ports
-      // grant may open a database to the internet (same grant as a project's
+      // grant may open a database to the internet (same grant as a service's
       // compose `ports:`). Server-enforced too — this only hides the affordance.
       canExposePorts(),
     ]);

@@ -34,7 +34,7 @@ export default async function DeploymentsPage() {
         <EmptyState
           icon={Rocket}
           title="No deployments yet"
-          description="Once you deploy a project, every build will show up here."
+          description="Once you deploy a service, every build will show up here."
         />
       ) : (
         <Card className="overflow-hidden p-0">

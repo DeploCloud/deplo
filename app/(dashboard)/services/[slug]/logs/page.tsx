@@ -26,7 +26,7 @@ export default async function ServiceLogsPage(
         description="Live runtime output from the running container (docker logs -f)."
       />
 
-      {/* Follows the project's live running state: the log stream appears/
+      {/* Follows the service's live running state: the log stream appears/
           disappears as the container starts/stops, no reload. */}
       <LiveLogs
         serviceId={project.id}

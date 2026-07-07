@@ -51,14 +51,14 @@ builder.queryFields((t) => ({
     type: [GlobalEnvVarRef],
     authScopes: { capability: "manage_env" },
     description:
-      "Team-global env vars — injected into every project in the active team.",
+      "Team-global env vars — injected into every service in the active team.",
     resolve: () => listTeamGlobalEnv(),
   }),
   instanceEnv: t.field({
     type: [GlobalEnvVarRef],
     authScopes: { instanceAdmin: true },
     description:
-      "Instance-wide env vars — injected into every project of every team. Instance admin only.",
+      "Instance-wide env vars — injected into every service of every team. Instance admin only.",
     resolve: () => listInstanceEnv(),
   }),
 }));

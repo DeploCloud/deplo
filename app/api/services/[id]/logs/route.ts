@@ -6,7 +6,7 @@ import * as logs from "@/lib/logs/session";
 import { connectAgent } from "@/lib/infra/agent-client";
 
 /**
- * Live runtime logs (`docker logs -f`) for a project's container, over plain HTTP.
+ * Live runtime logs (`docker logs -f`) for a service's container, over plain HTTP.
  *
  *   GET    ?container=<name>&tail=<n> → SSE stream of the container's live output.
  *                                       The first event is `session` with the id.
@@ -51,7 +51,7 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
-  // Build the backing handle against the project's OWNING server's agent: it
+  // Build the backing handle against the service's OWNING server's agent: it
   // streams the agent's FollowLogs (cleanup closes the gRPC client when the
   // session exits). On a dial failure, fail clearly with 503.
   let session;

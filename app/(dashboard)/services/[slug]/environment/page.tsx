@@ -23,7 +23,7 @@ export default async function ServiceEnvPage(
       <EmptyState
         icon={Lock}
         title="No access to environment variables"
-        description="You don't have permission to view this project's environment variables. Ask a team admin for the “Manage env vars” permission."
+        description="You don't have permission to view this service's environment variables. Ask a team admin for the “Manage env vars” permission."
       />
     );
   }

@@ -6,7 +6,7 @@ import * as attach from "@/lib/attach/session";
 import { connectAgent } from "@/lib/infra/agent-client";
 
 /**
- * Interactive `docker attach` to a project's running container, over plain HTTP.
+ * Interactive `docker attach` to a service's running container, over plain HTTP.
  *
  *   GET    ?container=<name>   → SSE stream of the container's live PID 1 output.
  *                                The first event is `session` with the session id.

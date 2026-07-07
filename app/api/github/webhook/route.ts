@@ -100,7 +100,7 @@ export async function POST(request: Request) {
   if (targets.length === 0) {
     // The silent-failure heart of this endpoint: a delivered, verified push
     // that matches no project returns 200 with no deploy. Dump every github
-    // project's match-relevant fields so the exact mismatched clause (source /
+    // service's match-relevant fields so the exact mismatched clause (source /
     // autoDeploy / repo / installationId / branch) is obvious from one log line.
     console.warn(
       `[github-webhook] no auto-deploy target: repo=${fullName} branch=${branch} ` +

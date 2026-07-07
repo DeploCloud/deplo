@@ -25,7 +25,7 @@ export default async function ServiceConsolePage(
         description="Run commands in the running container (docker exec)."
       />
 
-      {/* Follows the project's live running state: the terminal appears/
+      {/* Follows the service's live running state: the terminal appears/
           disappears as the container starts/stops, no reload. */}
       <LiveConsole
         serviceId={project.id}

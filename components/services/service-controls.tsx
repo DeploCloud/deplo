@@ -41,7 +41,7 @@ export function ServiceControls({
     });
   }
 
-  // Reload re-applies the project's routing (domains + basic auth) to the running
+  // Reload re-applies the service's routing (domains + basic auth) to the running
   // container WITHOUT a rebuild. The mutation returns a status string we turn
   // into an honest toast — "deferred" means nothing was running to reroute.
   function reload() {
@@ -70,7 +70,7 @@ export function ServiceControls({
   return (
     <>
       {stopped ? (
-        <SimpleTooltip content="Start this project's stopped container">
+        <SimpleTooltip content="Start this service's stopped container">
           <Button
             variant="outline"
             size="sm"
@@ -94,7 +94,7 @@ export function ServiceControls({
           Stopping
         </Button>
       ) : (
-        <SimpleTooltip content="Stop this project's running container">
+        <SimpleTooltip content="Stop this service's running container">
           <Button
             variant="outline"
             size="sm"

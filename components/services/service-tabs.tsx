@@ -24,7 +24,7 @@ export function ServiceTabs({
   devEligible?: boolean;
   /** The Environment tab is only shown to members with the manage_env capability. */
   canManageEnv?: boolean;
-  /** The Files tab is shown only when the project has an on-disk files dir and
+  /** The Files tab is shown only when the service has an on-disk files dir and
    *  the viewer holds the manage_files capability (resolved server-side). */
   showFiles?: boolean;
   /** The Backups tab is shown only to members with the manage_infra capability
@@ -69,7 +69,7 @@ export function ServiceTabs({
       active: matchSub("/domains"),
     },
     // Console (docker exec/attach) and Logs (docker logs -f) both stream from a
-    // live container, so they only appear while the project is running.
+    // live container, so they only appear while the service is running.
     ...(running
       ? [
           {
@@ -94,7 +94,7 @@ export function ServiceTabs({
           },
         ]
       : []),
-    // Files (browse/edit the project's /data/stacks/files/<slug> tree) — only
+    // Files (browse/edit the service's /data/stacks/files/<slug> tree) — only
     // when that dir exists and the viewer holds the manage_files capability.
     ...(showFiles
       ? [
@@ -105,7 +105,7 @@ export function ServiceTabs({
           },
         ]
       : []),
-    // Backups (schedule + run + restore the project's volumes/files) — only for
+    // Backups (schedule + run + restore the service's volumes/files) — only for
     // members holding manage_infra. The page guards server-side too.
     ...(canBackup
       ? [

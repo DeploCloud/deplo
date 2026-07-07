@@ -5,8 +5,8 @@ import { gqlSubscribe } from "@/lib/graphql-client";
 import type { ServiceStatus, DeploymentStatus } from "@/lib/types";
 
 /**
- * The live, client-tracked slice of a project's state. Seeded from the server
- * render and then kept current by a GraphQL subscription so the project header,
+ * The live, client-tracked slice of a service's state. Seeded from the server
+ * render and then kept current by a GraphQL subscription so the service header,
  * controls, tabs and gated pages (Console/Logs) react to start/stop/deploy
  * across every connected client without a reload.
  */
@@ -45,7 +45,7 @@ type SubResult = {
 const LiveServiceContext = React.createContext<LiveService | null>(null);
 
 /**
- * Provides the live project state to the project layout subtree. `initial` is
+ * Provides the live project state to the service layout subtree. `initial` is
  * the server-rendered snapshot (so the first paint is correct and SSR-stable);
  * the subscription then pushes every change.
  */
@@ -96,14 +96,14 @@ export function useLiveService(): LiveService | null {
 }
 
 /**
- * The project's live status, falling back to a server-rendered value when no
+ * The service's live status, falling back to a server-rendered value when no
  * provider is mounted above the caller.
  */
 export function useLiveStatus(fallback: ServiceStatus): ServiceStatus {
   return useLiveService()?.status ?? fallback;
 }
 
-/** True when the project's container is running (status === "active"). */
+/** True when the service's container is running (status === "active"). */
 export function useLiveRunning(fallback: boolean): boolean {
   const live = useLiveService();
   return live ? live.status === "active" : fallback;

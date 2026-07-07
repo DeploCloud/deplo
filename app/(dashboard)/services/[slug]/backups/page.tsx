@@ -23,7 +23,7 @@ export default async function ServiceBackupsPage(
       <EmptyState
         icon={Lock}
         title="No access to backups"
-        description="You don't have permission to manage this project's backups. Ask a team admin for the “Manage infrastructure” permission."
+        description="You don't have permission to manage this service's backups. Ask a team admin for the “Manage infrastructure” permission."
       />
     );
   }
@@ -34,7 +34,7 @@ export default async function ServiceBackupsPage(
     listS3(),
   ]);
 
-  // Only this project's schedules — listBackups returns the whole team's.
+  // Only this service's schedules — listBackups returns the whole team's.
   const schedules = allBackups.filter(
     (b) => b.targetKind === "service" && b.serviceId === project.id,
   );

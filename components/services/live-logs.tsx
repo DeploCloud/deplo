@@ -32,7 +32,7 @@ type LogsInfoResponse = {
 };
 
 /**
- * Logs page body that follows the project's live running state: the runtime
+ * Logs page body that follows the service's live running state: the runtime
  * log stream appears/disappears as the container starts/stops, no reload. On a
  * live start it fetches the instance list (a stopped project has none
  * server-rendered) so the log viewer can attach.
@@ -77,7 +77,7 @@ export function LiveLogs({
     <EmptyState
       icon={ScrollText}
       title="Container is not running"
-      description="Runtime logs stream from a running container. Deploy or redeploy this project to start streaming its output."
+      description="Runtime logs stream from a running container. Deploy or redeploy this service to start streaming its output."
     />
   );
 }

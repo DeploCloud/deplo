@@ -17,7 +17,7 @@ import {
  * Upload a code archive for an "upload"-source project, then deploy it.
  *
  *   POST  body = raw archive bytes, `X-Upload-Filename: <name>` header
- *         → streams the archive to disk, points the project at it, and kicks
+ *         → streams the archive to disk, points the service at it, and kicks
  *           off a production deploy (extract → build method → run).
  *
  * A Route Handler rather than a Server Action because archives blow past the
@@ -32,7 +32,7 @@ export const dynamic = "force-dynamic";
  * Service ids with an upload streaming right now. The deployment-based 409
  * guard below can't catch a *concurrent upload* — the deployment isn't created
  * until after the (potentially minute-long) stream finishes, so two uploads
- * would both pass it and then race pruneUploads, leaving the project pointing
+ * would both pass it and then race pruneUploads, leaving the service pointing
  * at a deleted archive. This sentinel serialises uploads per project. Sufficient
  * because the app runs as a single Node process (see next.config standalone);
  * a multi-process deploy would need to move this into the store.
@@ -113,7 +113,7 @@ export async function POST(
       return Response.json({ error: "Empty archive" }, { status: 400 });
     }
 
-    // Commit the new pointer FIRST, then prune older upload dirs — the project
+    // Commit the new pointer FIRST, then prune older upload dirs — the service
     // never points at a deleted archive, and a rejected upload above leaves the
     // previous one intact (its subdir was pruned only on success here).
     await setServiceUpload(serviceId, upload);

@@ -101,7 +101,7 @@ export function Topbar({
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="cursor-pointer">
                 <Rocket className="size-4" />
-                New project
+                New service
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 <DropdownMenuItem asChild>

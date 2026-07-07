@@ -924,7 +924,7 @@ export function DevModeFields({
                 <Terminal className="size-4 text-muted-foreground" /> SSH Access
               </CardTitle>
               <CardDescription>
-                Each user reaches only this project&apos;s dev container,
+                Each user reaches only this service&apos;s dev container,
                 landing as <code className="font-mono">devuser</code> in{" "}
                 <code className="font-mono">/workspace</code>. A key is the
                 default; a password is an opt-in.

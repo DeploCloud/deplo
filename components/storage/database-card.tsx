@@ -274,7 +274,7 @@ export function DatabaseCard({
  * fixed at creation (the official images apply those env vars only on first init
  * against an empty volume), so they are shown READ-ONLY. Two things are editable:
  * public exposure + the host port (rerouted in place, data volume preserved), and
- * the SERVER it runs on. Moving to another server works like a project move — the
+ * the SERVER it runs on. Moving to another server works like a service move — the
  * container is recreated fresh on the new host and its DATA DOES NOT FOLLOW (a
  * Docker volume is host-local), so that path shows a loud warning before it can be
  * saved. Mirrors EditBackupDialog: seeded from `db` on mount, remounted via `key`
@@ -413,7 +413,7 @@ function EditDatabaseDialog({
           {/* Server location. Only rendered when there's an alternative host to
               move to. A move recreates the container on the new server WITHOUT its
               data (a Docker volume is host-local) — so it's gated by an explicit
-              acknowledgement below, mirroring how a project move relocates. */}
+              acknowledgement below, mirroring how a service move relocates. */}
           {canPickServer && (
             <div className="space-y-3 rounded-lg border border-border p-3">
               <div className="space-y-2">
@@ -443,7 +443,7 @@ function EditDatabaseDialog({
                         Moving to {targetServerName} recreates the database empty
                       </p>
                       <p className="text-muted-foreground">
-                        Like moving a project, the container is recreated fresh on
+                        Like moving a service, the container is recreated fresh on
                         the new server and its data does <strong>not</strong>{" "}
                         follow — a database volume can&apos;t be copied between
                         hosts. The old container and its data on{" "}

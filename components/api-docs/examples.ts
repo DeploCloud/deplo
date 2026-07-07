@@ -128,7 +128,7 @@ export const CURATED_EXAMPLES: CuratedExample[] = [
 }`,
   },
   {
-    label: "Rebuild a project (dry run)",
+    label: "Rebuild a service (dry run)",
     description:
       "A destructive mutation, simulated. Requires the “deploy” capability — try it whether or not you hold it.",
     kind: "mutation",

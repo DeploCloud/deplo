@@ -38,7 +38,7 @@ export default async function LogsPage() {
         <EmptyState
           icon={ScrollText}
           title="No logs yet"
-          description="Deploy a project to start streaming build and runtime logs here."
+          description="Deploy a service to start streaming build and runtime logs here."
         />
       ) : (
         <LogViewer deployments={summaries} logsById={logsById} />

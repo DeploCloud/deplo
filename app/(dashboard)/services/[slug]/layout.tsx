@@ -19,7 +19,7 @@ import {
   type LiveService,
 } from "@/components/services/service-live-status";
 
-// Cap the project-name portion of the browser-tab title so the trailing
+// Cap the service-name portion of the browser-tab title so the trailing
 // "– <Section> – Deplo" stays legible instead of a long name crowding it out.
 const PROJECT_TITLE_MAX = 24;
 
@@ -50,7 +50,7 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
   // Backups are infra ops (provision a dump, overwrite-restore in place), gated
   // on manage_infra — same capability the GraphQL mutations enforce.
   const canBackup = await hasCapability("manage_infra");
-  // The Files tab only appears when the caller can manage files AND the project
+  // The Files tab only appears when the caller can manage files AND the service
   // actually has an on-disk files dir (serviceFilesExist returns false for both
   // a missing capability and a missing directory, so this one call covers both).
   const showFiles = await serviceFilesExist(project.id);

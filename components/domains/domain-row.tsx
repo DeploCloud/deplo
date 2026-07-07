@@ -104,7 +104,7 @@ export function DomainRow({
   serverIp,
 }: {
   domain: Row;
-  /** The project's compose YAML (compose stacks only) so the Edit dialog can
+  /** The service's compose YAML (compose stacks only) so the Edit dialog can
    * offer the service selector. Absent/null ⇒ a single-image project. */
   compose?: string | null;
   /** The public IPv4 of the server THIS project is deployed on — the address a
@@ -347,9 +347,9 @@ export function DomainRow({
             )}
             {domain.status === "misconfigured" && (
               // A misconfigured domain resolves somewhere other than this
-              // project's server. Tell the user exactly where to point DNS: the
-              // A record must resolve to THIS project's server IP, which is
-              // server-specific (a project on another server needs a different
+              // service's server. Tell the user exactly where to point DNS: the
+              // A record must resolve to THIS service's server IP, which is
+              // server-specific (a service on another server needs a different
               // address) — so the concrete IP is shown, never a generic one.
               <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
                 <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
@@ -371,7 +371,7 @@ export function DomainRow({
                     </code>
                     <CopyButton value={serverIp} className="size-6" />
                     <span>
-                      — the IP of the server this project runs on (unique to this
+                      — the IP of the server this service runs on (unique to this
                       server), then Verify.
                     </span>
                   </>
@@ -379,7 +379,7 @@ export function DomainRow({
                   <span>
                     This domain’s DNS doesn’t point here. Point its{" "}
                     <span className="font-medium text-foreground">A record</span>{" "}
-                    at the IP of the server this project is deployed on (unique to
+                    at the IP of the server this service is deployed on (unique to
                     that server), then Verify.
                   </span>
                 )}
@@ -412,7 +412,7 @@ export function DomainRow({
               open={confirmOpen}
               onOpenChange={setConfirmOpen}
               title={`Remove ${domain.name}?`}
-              description="The domain will stop routing to this project. You can re-add it later."
+              description="The domain will stop routing to this service. You can re-add it later."
               confirmLabel="Remove domain"
               successMessage="Domain removed"
               onConfirm={async () => {
@@ -433,7 +433,7 @@ export function DomainRow({
                   <DialogDescription>
                     Routing for{" "}
                     <span className="font-medium">{domain.serviceName}</span>.
-                    Changes apply instantly when the project is running,
+                    Changes apply instantly when the service is running,
                     otherwise on the next deploy.
                   </DialogDescription>
                 </DialogHeader>

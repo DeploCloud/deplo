@@ -84,9 +84,9 @@ export function ServiceBackups({
       <section className="space-y-4">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-sm font-medium">Back up this project</h2>
+            <h2 className="text-sm font-medium">Back up this service</h2>
             <p className="text-xs text-muted-foreground">
-              Captures the project&apos;s persistent volumes, files and its
+              Captures the service&apos;s persistent volumes, files and its
               compose/env snapshot to an S3 destination. Linked databases are
               backed up separately, as databases.
             </p>
@@ -257,7 +257,7 @@ function BackUpNow({
         <DialogHeader>
           <DialogTitle>Back up now</DialogTitle>
           <DialogDescription>
-            Dump this project&apos;s volumes, files and compose/env snapshot to S3
+            Dump this service&apos;s volumes, files and compose/env snapshot to S3
             immediately — no schedule needed.
           </DialogDescription>
         </DialogHeader>
@@ -290,7 +290,7 @@ function BackUpNow({
 }
 
 /* ------------------------------------------------------------------ */
-/* Schedule a project backup                                           */
+/* Schedule a service backup                                           */
 /* ------------------------------------------------------------------ */
 
 function ScheduleBackup({
@@ -365,7 +365,7 @@ function ScheduleBackup({
         <DialogHeader>
           <DialogTitle>Schedule a backup</DialogTitle>
           <DialogDescription>
-            Periodically back up this project to an S3 destination.
+            Periodically back up this service to an S3 destination.
           </DialogDescription>
         </DialogHeader>
         <ScheduleFormFields
@@ -390,7 +390,7 @@ function ScheduleBackup({
 }
 
 /* ------------------------------------------------------------------ */
-/* Edit a project backup schedule                                      */
+/* Edit a service backup schedule                                      */
 /* ------------------------------------------------------------------ */
 
 /** The editable settings of a schedule, shared by the create and edit forms. */

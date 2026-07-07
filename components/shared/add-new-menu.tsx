@@ -32,13 +32,13 @@ import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 
 /**
- * Overview "Add new" menu: a single entry point to create a project, a team, a
+ * Overview "Add new" menu: a single entry point to create a service, a team, a
  * team member, or (for instance admins) a global user. Each creation flow reuses
  * the same dialog component as its dedicated page, so behaviour stays in sync.
  *
  * Items are gated to match the dedicated pages: adding a member needs the
  * `manage_members` capability, and registering a user is instance-admin only.
- * Creating a project or a team is available to everyone (a new team makes the
+ * Creating a service or a team is available to everyone (a new team makes the
  * viewer its owner).
  */
 export function AddNewMenu({
@@ -71,7 +71,7 @@ export function AddNewMenu({
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="cursor-pointer">
               <Rocket className="size-4" />
-              New project
+              New service
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuItem asChild>

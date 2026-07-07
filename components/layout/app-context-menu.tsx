@@ -45,13 +45,13 @@ interface NewItem {
  * The page-contextual "New ▸" entries for the current route. Each links to the
  * destination page with the same `?new=…` open-param convention `AddNewMenu`
  * already uses (`/storage?new=database`), so the target page auto-opens its
- * create dialog. "New project" is the universal baseline shown everywhere.
+ * create dialog. "New service" is the universal baseline shown everywhere.
  */
 function newItemsFor(
   pathname: string,
   caps: { canManageMembers: boolean; isAdmin: boolean },
 ): NewItem[] {
-  const project: NewItem = { label: "New project", href: "/new", icon: Rocket };
+  const project: NewItem = { label: "New service", href: "/new", icon: Rocket };
   const database: NewItem = {
     label: "New database",
     href: "/storage?new=database",

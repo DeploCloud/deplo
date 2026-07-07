@@ -238,7 +238,7 @@ export function BuildSettingsForm({
 
   // Read a picked image into a base64 data-URI and persist it as the logo. The
   // image is validated (type + size) before reading so we never inline an
-  // oversized blob into the project document.
+  // oversized blob into the service document.
   function pickLogo(file: File) {
     if (!LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])) {
       toast.error("Unsupported image — use PNG, JPEG, WebP, GIF or SVG");
@@ -288,7 +288,7 @@ export function BuildSettingsForm({
   function saveSource() {
     // The Upload source is committed by the upload control (its own route),
     // not by this form — and saving source=upload with no archive would break
-    // the next deploy. Block it here so the button can't strand the project.
+    // the next deploy. Block it here so the button can't strand the service.
     if (source === "upload") {
       if (!initialUpload) {
         toast.error("Upload an archive above before saving");
@@ -497,7 +497,7 @@ export function BuildSettingsForm({
   return (
     <div className="space-y-6">
       <SettingsLabel>General</SettingsLabel>
-      {/* General — a project's name and logo are its identity, so they live in
+      {/* General — a service's name and logo are its identity, so they live in
           the same card rather than two separate ones. */}
       <Card>
         <CardContent className="space-y-6 pt-6">
@@ -506,7 +506,7 @@ export function BuildSettingsForm({
             <div className="space-y-1">
               <Label>Logo</Label>
               <p className="text-xs text-muted-foreground">
-                Shown for this project on the dashboard. Deployed from a
+                Shown for this service on the dashboard. Deployed from a
                 template? It defaults to the template&apos;s logo. Remove it to
                 fall back to the framework icon.
               </p>
@@ -573,7 +573,7 @@ export function BuildSettingsForm({
         <CardHeader>
           <CardTitle className="text-base">Deploy Source</CardTitle>
           <CardDescription>
-            Change how this project is deployed and which server runs it.
+            Change how this service is deployed and which server runs it.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -822,7 +822,7 @@ export function BuildSettingsForm({
       </Card>
 
       <SettingsLabel className="pt-2">Access</SettingsLabel>
-      {/* HTTP Basic Auth — gates every domain of the project */}
+      {/* HTTP Basic Auth — gates every domain of the service */}
       <BasicAuthManager serviceId={serviceId} users={basicAuthUsers} />
 
       {/* Danger zone */}
@@ -830,7 +830,7 @@ export function BuildSettingsForm({
         <CardHeader>
           <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
           <CardDescription>
-            Permanently delete this project and all of its data.
+            Permanently delete this service and all of its data.
           </CardDescription>
         </CardHeader>
         <CardFooter className="justify-end">
@@ -845,8 +845,8 @@ export function BuildSettingsForm({
             targetId={serviceId}
             targetName={initialName}
             title={`Delete ${initialName}?`}
-            description="This permanently removes the project, deployments, domains and environment variables. This cannot be undone."
-            confirmLabel="Delete project"
+            description="This permanently removes the service, deployments, domains and environment variables. This cannot be undone."
+            confirmLabel="Delete service"
             successMessage="Service deleted"
             deleteMutation={() =>
               gqlAction(`mutation($id: String!) { deleteService(id: $id) }`, {

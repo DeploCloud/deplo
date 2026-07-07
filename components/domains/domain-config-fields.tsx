@@ -105,7 +105,7 @@ export function parseMiddlewares(text: string): string[] {
  * error string. On a compose stack (`isCompose`) the service and the service
  * port are BOTH required — a domain must name the compose service it routes to
  * and that service's container port. On a single-image project the port stays
- * optional (blank ⇒ the project's default port).
+ * optional (blank ⇒ the service's default port).
  *
  * `entrypoint` resolves to a tri-state the action layer understands:
  *   - a concrete value → manual mode
@@ -168,7 +168,7 @@ export function resolveDomainConfig(
  * collapsible: the certificate provider, entrypoint (with a manual-override
  * checkbox), the internal path + strip-path option, and the middleware chain.
  * `idPrefix` namespaces the input ids (multiple instances can coexist on a page).
- * `services` lists a compose project's service names — when non-empty the service
+ * `services` lists a compose service's service names — when non-empty the service
  * selector is shown (empty ⇒ a single-image project, no service concept).
  */
 export function DomainConfigFields({
@@ -233,7 +233,7 @@ export function DomainConfigFields({
         <p className="text-xs text-muted-foreground">
           {isCompose
             ? "The container port of the selected service to route to."
-            : "The container port this domain routes to. Defaults to the project's port."}
+            : "The container port this domain routes to. Defaults to the service's port."}
         </p>
       </div>
 

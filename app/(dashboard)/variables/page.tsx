@@ -69,7 +69,7 @@ export default async function VariablesPage(
     ]);
   const services = allServiceGroups.map((g) => g.service);
 
-  // Only surface a project here if it has variables to show: its own vars, or
+  // Only surface a service here if it has variables to show: its own vars, or
   // at least one attached shared group. Empty services add noise, not signal.
   const projectsWithSharedGroup = new Set(
     sharedGroups.flatMap((g) => g.serviceIds),
@@ -90,7 +90,7 @@ export default async function VariablesPage(
     <div className="space-y-6">
       <PageHeader
         title="Environment Variables"
-        description="Per-project, team-global and reusable shared variables across your workspace."
+        description="Per-service, team-global and reusable shared variables across your workspace."
       />
 
       <Tabs defaultValue={defaultTab}>
@@ -105,7 +105,7 @@ export default async function VariablesPage(
           )}
         </UnderlineTabsList>
 
-        {/* Service: every project's variables, grouped by project */}
+        {/* Service: every service's variables, grouped by project */}
         <TabsContent value="service" className="space-y-4">
           {serviceGroups.length === 0 ? (
             <EmptyState
@@ -128,7 +128,7 @@ export default async function VariablesPage(
                 <CardContent>
                   {g.vars.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No variables for this project.
+                      No variables for this service.
                     </p>
                   ) : (
                     <div className="overflow-hidden rounded-lg border border-border">
@@ -182,7 +182,7 @@ export default async function VariablesPage(
           <SharedEnvManager groups={sharedGroups} services={services} />
         </TabsContent>
 
-        {/* Team globals: injected into every project in this team */}
+        {/* Team globals: injected into every service in this team */}
         <TabsContent value="team">
           <GlobalEnvManager scope="team" vars={teamGlobals} />
         </TabsContent>

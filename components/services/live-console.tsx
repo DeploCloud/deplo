@@ -40,7 +40,7 @@ type ConsoleInfoResponse = {
 };
 
 /**
- * Console page body that follows the project's live running state. When the
+ * Console page body that follows the service's live running state. When the
  * container is running it shows the terminal; when it stops (live, no reload)
  * it swaps to the "not running" empty state, and back again when it restarts —
  * fetching fresh console info on the transition since a stopped project has
@@ -57,7 +57,7 @@ export function LiveConsole({
 }) {
   const running = useLiveRunning(initialRunning);
   // Console info for the *current* running session. Seeded from SSR; re-fetched
-  // whenever the project transitions into the running state (a stopped project
+  // whenever the service transitions into the running state (a stopped project
   // has no info, and a restart may target a fresh container). Display is gated
   // on `running`, so we never null this on stop — it's simply ignored, which
   // keeps all state writes inside async callbacks (no synchronous effect churn).
@@ -110,7 +110,7 @@ export function LiveConsole({
       description={
         loading
           ? "The project just started — attaching to the console."
-          : "The console is available once the project has a running deployment. Deploy or redeploy this project, then attach."
+          : "The console is available once the service has a running deployment. Deploy or redeploy this service, then attach."
       }
     />
   );

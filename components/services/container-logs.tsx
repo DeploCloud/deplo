@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 type Status = "connecting" | "live" | "ended" | "error";
 
 /**
- * Live runtime logs (`docker logs -f`) for a project's container.
+ * Live runtime logs (`docker logs -f`) for a service's container.
  *
  * Output streams over an EventSource (SSE) from GET /api/services/:id/logs; the
  * first `session` event carries the server-side session id, used on unload to

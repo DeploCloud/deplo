@@ -43,12 +43,12 @@ export interface BasicAuthUserDTO {
 
 /**
  * Service Settings → HTTP Basic Auth. Create username/password credentials that
- * gate EVERY domain of the project: when one or more exist, the deploy/reroute
+ * gate EVERY domain of the service: when one or more exist, the deploy/reroute
  * pipeline puts a generated Traefik `basicauth` middleware in front of all the
- * project's hostnames. Passwords are write-only (never shown after saving).
+ * service's hostnames. Passwords are write-only (never shown after saving).
  *
  * Like every other domain change in Deplo, edits apply on the NEXT deploy — or
- * instantly via the project's "Reload" action (which re-renders the routing
+ * instantly via the service's "Reload" action (which re-renders the routing
  * labels without a rebuild).
  */
 export function BasicAuthManager({
@@ -70,7 +70,7 @@ export function BasicAuthManager({
           <div>
             <CardTitle className="text-base">HTTP Basic Auth</CardTitle>
             <CardDescription>
-              Protect every domain of this project behind a username and
+              Protect every domain of this service behind a username and
               password. Changes apply on the next deploy, or instantly via
               Reload.
             </CardDescription>
@@ -92,7 +92,7 @@ export function BasicAuthManager({
           <EmptyState
             icon={Lock}
             title="No basic-auth users"
-            description="Add a user to require a login on all of this project's domains."
+            description="Add a user to require a login on all of this service's domains."
           />
         ) : (
           <div className="rounded-xl border border-border">
@@ -225,7 +225,7 @@ function BasicAuthDialog({
           <DialogDescription>
             {editing
               ? "Set a new password for this user. The username can't be changed."
-              : "This credential will be required on every domain of the project."}
+              : "This credential will be required on every domain of the service."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

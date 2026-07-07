@@ -16,20 +16,20 @@ export type ServiceSourceLike = {
 export interface ServiceSourceDescriptor {
   /** Icon component (lucide or a brand glyph) — render as `<Icon className=… />`. */
   Icon: React.ComponentType<{ className?: string }>;
-  /** Short human label for what backs the project (repo, "Compose", image, …). */
+  /** Short human label for what backs the service (repo, "Compose", image, …). */
   label: string;
   /**
    * True ONLY for a git-backed source (github / plain git), where a branch and
    * commit are meaningful. A compose stack, a docker image or an uploaded
    * archive has no git — so the UI must not invent a branch for it. This is the
-   * single source of truth the project card AND the project overview share, so
-   * they can never disagree about what a project's source is.
+   * single source of truth the service card AND the service overview share, so
+   * they can never disagree about what a service's source is.
    */
   isGit: boolean;
 }
 
 /**
- * Describe where a project's code/image comes from, for display. `compose` is
+ * Describe where a service's code/image comes from, for display. `compose` is
  * authoritative first (via {@link usesComposeStack}, which also catches legacy
  * template services), then a real git repo, then docker-image / upload, then a
  * generic container fallback.

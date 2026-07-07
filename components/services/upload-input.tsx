@@ -19,7 +19,7 @@ export interface CurrentUpload {
 
 /**
  * Drag-and-drop / file-picker upload of a code archive for an "upload"-source
- * project. Streams the file to the project's upload route (raw body, filename
+ * project. Streams the file to the service's upload route (raw body, filename
  * in a header) with a live progress bar via XHR — `fetch` can't report upload
  * progress. On success the server has already kicked off a deploy; we refresh
  * so the new archive + deployment surface immediately.

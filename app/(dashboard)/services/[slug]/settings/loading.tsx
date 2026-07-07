@@ -24,7 +24,7 @@ export default function Loading() {
       className="space-y-6"
       role="status"
       aria-busy
-      aria-label="Loading project settings"
+      aria-label="Loading service settings"
     >
       {/* General */}
       <Card>

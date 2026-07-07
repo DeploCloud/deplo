@@ -151,7 +151,7 @@ builder.queryFields((t) => ({
     type: [BackupRunRef],
     authScopes: { loggedIn: true },
     description:
-      "Recorded backup runs for one target (a project OR a database), " +
+      "Recorded backup runs for one target (a service OR a database), " +
       "newest first. Pass exactly one of serviceId / databaseId.",
     args: {
       serviceId: t.arg.string({ required: false }),
@@ -202,7 +202,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "manage_infra" },
     description:
-      "Run an ad-hoc backup of a project now (no owning schedule). Returns " +
+      "Run an ad-hoc backup of a service now (no owning schedule). Returns " +
       "true.",
     args: {
       serviceId: t.arg.string({ required: true }),
@@ -277,7 +277,7 @@ builder.mutationFields((t) => ({
     // `deleteAllBackupArtifacts` enforces the exact per-kind capability in the
     // data layer (the builder's documented defense-in-depth model). This avoids
     // the mismatch where a static manage_infra scope would hard-block a
-    // deploy-only member from deleting a project they're otherwise allowed to.
+    // deploy-only member from deleting a service they're otherwise allowed to.
     authScopes: { loggedIn: true },
     description:
       "Delete ALL of a target's S3 backup artifacts (across every destination " +

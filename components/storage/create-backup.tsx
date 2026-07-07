@@ -136,7 +136,7 @@ export function CreateBackup({
         <DialogHeader>
           <DialogTitle>Schedule a backup</DialogTitle>
           <DialogDescription>
-            Periodically back up a database or a project to an S3 destination.
+            Periodically back up a database or a service to an S3 destination.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

@@ -146,7 +146,7 @@ export function EnvTableSkeleton({
 }
 
 /**
- * Full loading state for a project's Environment Variables tab: the header +
+ * Full loading state for a service's Environment Variables tab: the header +
  * toolbar (view toggle, Shared groups, Import, Add) above the table.
  */
 export function EnvManagerSkeleton({ rows = 5 }: { rows?: number }) {

@@ -30,7 +30,7 @@ const AppListingRef = builder.objectRef<AppListing>("AppListing").implement({
 });
 
 /**
- * An app a team installed (ADR-0005: a host-managed container, never a project).
+ * An app a team installed (ADR-0005: a host-managed container, never a service).
  * `status` is a resolver — read LIVE from the container at query time, never
  * stored — and `url` is computed from the slug (the app path under Deplo's own
  * host). The DTO already carries both, resolved in the data layer.
@@ -40,7 +40,7 @@ const InstalledAppRef = builder
   .implement({
     description:
       "An app a team installed from the app repository — a host-managed " +
-      "container, not a project. Status is read live from the container; the " +
+      "container, not a service. Status is read live from the container; the " +
       "URL is the app path under Deplo's own host.",
     fields: (t) => ({
       id: t.exposeID("id"),

@@ -241,7 +241,7 @@ export function NewServiceWizard({
 
   function deploy() {
     if (!name.trim()) {
-      toast.error("Enter a project name");
+      toast.error("Enter a service name");
       return;
     }
     if (!serverId) {
@@ -311,7 +311,7 @@ export function NewServiceWizard({
     // The build config only matters when Deplo builds an image. For a prebuilt
     // image or a compose stack the build section is hidden, so persisting the
     // editor's seed (e.g. nixpacks/bun) would land a misleading build method on
-    // the project; send docker defaults instead so settings reflects reality.
+    // the service; send docker defaults instead so settings reflects reality.
     const payloadBuild = buildsImage ? build : buildConfigFor("docker");
 
     startTransition(async () => {
@@ -329,8 +329,8 @@ export function NewServiceWizard({
             source: deploySourceEnumName(useCompose ? "compose" : source),
             serverId,
             dockerImage: image,
-            // Seed the project's display logo from the template so a deployed
-            // template carries its icon; editable later from project settings.
+            // Seed the service's display logo from the template so a deployed
+            // template carries its icon; editable later from service settings.
             logo: isTemplate ? template!.logo : null,
             compose: useCompose ? compose : null,
             env: isTemplate
@@ -384,7 +384,7 @@ export function NewServiceWizard({
     });
   }
 
-  // Card order: configure the project first, then pick the source, then choose
+  // Card order: configure the service first, then pick the source, then choose
   // which server runs it (3rd). Template-only compose/env follow afterwards.
   return (
     <div className="space-y-6">
@@ -424,7 +424,7 @@ export function NewServiceWizard({
           </div>
 
           {/* Build & output settings — the same method-aware controls the
-              project settings page shows, kept inside a collapse so creation
+              service settings page shows, kept inside a collapse so creation
               stays lean. Only relevant when Deplo builds an image (not for a
               prebuilt docker image or a compose stack). */}
           {!locked && buildsImage && (
@@ -636,7 +636,7 @@ export function NewServiceWizard({
               <div className="rounded-lg border border-dashed border-border p-6 text-center">
                 <Upload className="mx-auto mb-2 size-6 text-muted-foreground" />
                 <p className="text-sm">
-                  Create the project, then upload a code archive from its
+                  Create the service, then upload a code archive from its
                   Settings page to trigger the first build.
                 </p>
               </div>

@@ -157,13 +157,13 @@ const folderScopes = {
 // user) that can't be expressed as a static team scope, so the GraphQL layer only
 // requires a logged-in caller and the data layer performs the authoritative
 // per-folder check (requireFolderCapability / requireFolderOwnerOrAdmin) — the
-// same defense-in-depth pattern the project mutations use.
+// same defense-in-depth pattern the service mutations use.
 const perFolder = { loggedIn: true } as const;
 
 builder.mutationFields((t) => ({
   createFolder: t.field({
     type: FolderRef,
-    // Creating a folder requires `deploy` — the same gate as creating a project.
+    // Creating a folder requires `deploy` — the same gate as creating a service.
     authScopes: { capability: "deploy" },
     description:
       "Create a folder in the active team; nest it by passing a parent folder id. Requires the deploy capability; the creator becomes the folder's owner.",
@@ -216,7 +216,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: perFolder,
     description:
-      "Move a project into a folder, or back to the top level when folderId is omitted/null.",
+      "Move a service into a folder, or back to the top level when folderId is omitted/null.",
     args: {
       serviceId: t.arg.id({ required: true }),
       folderId: t.arg.id({ required: false }),

@@ -26,7 +26,7 @@ export default function Loading() {
         </div>
       </div>
 
-      {/* Service tab body: per-project cards, each with a read-only env table */}
+      {/* Service tab body: per-service cards, each with a read-only env table */}
       <div className="space-y-4">
         {Array.from({ length: 2 }).map((_, card) => (
           <Card key={card}>

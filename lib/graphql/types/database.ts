@@ -90,7 +90,7 @@ const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
 // init against an empty volume — changing them is a silent no-op or data loss), so
 // they are NOT in this input. Turning exposure ON requires exposedPort (the data
 // layer validates + agent-checks it, exactly like createDatabase). serverId moves
-// the database to another server — like a project move, the container is recreated
+// the database to another server — like a service move, the container is recreated
 // fresh on the new host and its data does NOT follow (a Docker volume is
 // host-local); omitted keeps it in place.
 const UpdateDatabaseInputType = builder.inputType("UpdateDatabaseInput", {

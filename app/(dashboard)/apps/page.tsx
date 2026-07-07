@@ -23,7 +23,7 @@ export default async function AppsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Apps"
-        description="Install apps from the app repository to extend Deplo. An app runs as a host-managed container, not a project."
+        description="Install apps from the app repository to extend Deplo. An app runs as a host-managed container, not a service."
       />
       <AppsBrowser
         catalog={catalog}

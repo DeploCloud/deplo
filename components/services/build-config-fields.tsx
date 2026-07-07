@@ -22,7 +22,7 @@ import type {
 
 /**
  * The build-method-aware "Build & Output" section shared by the new-project
- * wizard and the project settings form, so the two stay byte-for-byte in sync.
+ * wizard and the service settings form, so the two stay byte-for-byte in sync.
  *
  * Owns no persistence: the parent holds the BuildConfig and decides how/when to
  * save it. This component only renders the method picker + the command/runtime/

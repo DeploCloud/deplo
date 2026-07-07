@@ -46,7 +46,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     hasCapability("deploy"),
   ]);
   const canManageOrder = isAdmin || canManageTeam;
-  // Creating a folder is gated the same as creating a project: any `deploy`
+  // Creating a folder is gated the same as creating a service: any `deploy`
   // holder (or an instance admin) may do it — NOT the manage_team super-user gate.
   const canCreateFolder = isAdmin || canDeploy;
   // Team-wide bulk/reorder actions (and the manage menu on folders one doesn't
@@ -55,7 +55,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
 
   // What the grid shows:
   //  - searching: every matching project, flat, across all folders (folders
-  //    hidden) so a project inside a folder is still findable;
+  //    hidden) so a service inside a folder is still findable;
   //  - a folder open: that folder's direct services + its child folders;
   //  - otherwise (top level): ungrouped services + the top-level folders.
   const openFolder =
@@ -117,7 +117,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
   const nothingToShow =
     visibleServices.length === 0 && visibleFolders.length === 0;
   // Re-seed the grid's optimistic state only on a structural change (navigation,
-  // search, add/remove of a project or folder) — never on a pure reorder/move,
+  // search, add/remove of a service or folder) — never on a pure reorder/move,
   // so a drag survives its own drop. See ServicesGrid.
   const gridKey = [
     view,
@@ -215,7 +215,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
               <EmptyState
                 icon={Folder}
                 title={`${openFolder.name} is empty`}
-                description="Drag services onto this folder from All services, or use a project’s “Move to folder” menu."
+                description="Drag services onto this folder from All services, or use a service’s “Move to folder” menu."
                 action={
                   <Button asChild variant="outline">
                     <Link href={view === "list" ? "/?view=list" : "/"}>

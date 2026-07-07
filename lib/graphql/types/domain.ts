@@ -32,13 +32,13 @@ const DomainEntrypointEnum = builder.enumType("DomainEntrypoint", {
 /* Object types                                                        */
 /* ------------------------------------------------------------------ */
 
-// listDomains() decorates each row with its owning project's name/slug; addDomain
+// listDomains() decorates each row with its owning service's name/slug; addDomain
 // and verifyDomain return a bare Domain. The ref is typed on the bare Domain and
 // the decoration fields are nullable so both shapes satisfy it.
 type DomainRow = Domain & { serviceName?: string; serviceSlug?: string };
 
 export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
-  description: "A routable hostname attached to a project (Traefik router).",
+  description: "A routable hostname attached to a service (Traefik router).",
   fields: (t) => ({
     id: t.exposeID("id"),
     serviceId: t.exposeID("serviceId"),
@@ -187,7 +187,7 @@ builder.mutationFields((t) => ({
   setPrimaryDomain: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_domains" },
-    description: "Make this domain its project's primary (canonical) host. Returns true.",
+    description: "Make this domain its service's primary (canonical) host. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await setPrimaryDomain(id);

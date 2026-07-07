@@ -27,7 +27,7 @@ export default async function ServiceOverview(
 
   const deployments = await listDeployments({ serviceId: project.id });
   const prod = project.latestDeployment;
-  // What backs this project — a git repo (real branch/commit) or a compose
+  // What backs this service — a git repo (real branch/commit) or a compose
   // stack / docker image / upload (no git, so no branch). Same source of truth
   // as the Overview card, so the page never invents a "main" branch for a
   // compose project. See components/services/service-source.tsx.
@@ -91,7 +91,7 @@ export default async function ServiceOverview(
                       </p>
                     </>
                   ) : (
-                    // No git (compose / image / upload): show what the project
+                    // No git (compose / image / upload): show what the service
                     // actually IS instead of a fabricated branch.
                     <p className="flex items-center gap-1.5 text-sm">
                       <src.Icon className="size-3.5 shrink-0" />
@@ -133,7 +133,7 @@ export default async function ServiceOverview(
               <p className="text-sm text-muted-foreground">
                 No production deployment yet.
               </p>
-              {/* Even before the first deploy, show where this project comes
+              {/* Even before the first deploy, show where this service comes
                   from (its git repo, a compose stack, an image or an upload). */}
               <div>
                 <p className="text-xs text-muted-foreground">Source</p>

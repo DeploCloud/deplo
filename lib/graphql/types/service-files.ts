@@ -18,9 +18,9 @@ import {
 
 const FileEntryRef = builder.objectRef<FileEntry>("FileEntry").implement({
   description:
-    "One entry in a project's files directory (the on-disk /data/stacks/files/<slug> tree).",
+    "One entry in a service's files directory (the on-disk /data/stacks/files/<slug> tree).",
   fields: (t) => ({
-    // Path relative to the project files root (POSIX, no leading slash). It is
+    // Path relative to the service files root (POSIX, no leading slash). It is
     // the stable handle every other op takes, so expose it as the id too.
     path: t.exposeString("path"),
     name: t.exposeString("name"),
@@ -50,7 +50,7 @@ builder.queryFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "manage_files" },
     description:
-      "Whether the project has an on-disk files directory (drives the Files tab).",
+      "Whether the service has an on-disk files directory (drives the Files tab).",
     args: { serviceId: t.arg.string({ required: true }) },
     resolve: (_r, { serviceId }) => serviceFilesExist(serviceId),
   }),
@@ -58,7 +58,7 @@ builder.queryFields((t) => ({
     type: [FileEntryRef],
     authScopes: { capability: "manage_files" },
     description:
-      "List the immediate children of a directory in the project files tree " +
+      "List the immediate children of a directory in the service files tree " +
       "(the root when path is omitted), directories first.",
     args: {
       serviceId: t.arg.string({ required: true }),
@@ -87,7 +87,7 @@ builder.mutationFields((t) => ({
   writeServiceFile: t.field({
     type: FileEntryRef,
     authScopes: { capability: "manage_files" },
-    description: "Create or overwrite a text file in the project files tree.",
+    description: "Create or overwrite a text file in the service files tree.",
     args: {
       serviceId: t.arg.string({ required: true }),
       path: t.arg.string({ required: true }),
@@ -111,7 +111,7 @@ builder.mutationFields((t) => ({
   createServiceDir: t.field({
     type: FileEntryRef,
     authScopes: { capability: "manage_files" },
-    description: "Create a new (empty) folder in the project files tree.",
+    description: "Create a new (empty) folder in the service files tree.",
     args: {
       serviceId: t.arg.string({ required: true }),
       path: t.arg.string({ required: true }),
@@ -121,7 +121,7 @@ builder.mutationFields((t) => ({
   renameServiceFile: t.field({
     type: FileEntryRef,
     authScopes: { capability: "manage_files" },
-    description: "Rename or move a file/folder within the project files tree.",
+    description: "Rename or move a file/folder within the service files tree.",
     args: {
       serviceId: t.arg.string({ required: true }),
       path: t.arg.string({ required: true }),
