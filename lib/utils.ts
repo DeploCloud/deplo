@@ -195,6 +195,23 @@ export function readableTextColor(hex: string): "#000000" | "#ffffff" {
   return lum > 0.179 ? "#000000" : "#ffffff";
 }
 
+/** Run `fn` over `items` with at most `limit` in flight at once. */
+export async function mapLimit<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      await fn(items[next++]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+}
+
 /** Deterministic short id for client-only keys (not for security). */
 export function shortId(length = 8): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";

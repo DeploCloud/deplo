@@ -1,5 +1,6 @@
 import { hasCapability } from "@/lib/membership";
 import { getTeam } from "@/lib/data/teams";
+import { canDeleteTeam } from "@/lib/data/team-delete";
 import { DEPLO_VERSION } from "@/lib/version";
 import { PageHeader } from "@/components/shared/page-header";
 import {
@@ -12,13 +13,15 @@ import {
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { TeamForm } from "@/components/settings/team-form";
 import { UpdateCard } from "@/components/settings/update-card";
+import { DeleteTeamCard } from "@/components/settings/delete-team-card";
 
 export const metadata = { title: "Settings · General" };
 
 export default async function SettingsGeneralPage() {
-  const [team, canManageTeam] = await Promise.all([
+  const [team, canManageTeam, deletion] = await Promise.all([
     getTeam(),
     hasCapability("manage_team"),
+    canDeleteTeam(),
   ]);
 
   return (
@@ -62,6 +65,14 @@ export default async function SettingsGeneralPage() {
         </Card>
 
         <UpdateCard current={DEPLO_VERSION} />
+
+        {deletion.allowed && (
+          <DeleteTeamCard
+            teamId={team.id}
+            teamName={team.name}
+            onlyTeam={deletion.onlyTeam}
+          />
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import {
   createTeam,
   switchTeam,
 } from "@/lib/data/teams";
+import { deleteTeam } from "@/lib/data/team-delete";
 import type { Team, TeamSummary } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -124,6 +125,23 @@ builder.mutationFields((t) => ({
     args: { teamId: t.arg.string({ required: true }) },
     resolve: async (_r, { teamId }) => {
       await switchTeam(teamId);
+      return true;
+    },
+  }),
+  deleteTeam: t.field({
+    type: "Boolean",
+    // loggedIn only: the founder/instance-admin gate (tighter than any
+    // capability — see lib/data/team-delete.ts) is enforced in the data layer.
+    authScopes: { loggedIn: true },
+    description:
+      "Permanently delete a team. teamId must be the ACTIVE team (the delete " +
+      "fails closed if the active team changed since the page was loaded). " +
+      "Removes every team-scoped record; the service/database stack teardown " +
+      "continues in the background. Founder or instance admin only; the " +
+      "caller's last team can't be deleted. Returns true.",
+    args: { teamId: t.arg.string({ required: true }) },
+    resolve: async (_r, { teamId }) => {
+      await deleteTeam(teamId);
       return true;
     },
   }),

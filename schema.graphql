@@ -847,6 +847,11 @@ type Mutation {
   """Delete a shared env group. Returns true."""
   deleteSharedEnvGroup(id: String!): Boolean
 
+  """
+  Permanently delete a team. teamId must be the ACTIVE team (the delete fails closed if the active team changed since the page was loaded). Removes every team-scoped record; the service/database stack teardown continues in the background. Founder or instance admin only; the caller's last team can't be deleted. Returns true.
+  """
+  deleteTeam(teamId: String!): Boolean
+
   """Delete a team-global variable. Returns true."""
   deleteTeamGlobalEnv(id: String!): Boolean
 

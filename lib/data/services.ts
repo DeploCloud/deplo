@@ -48,7 +48,7 @@ import type {
   UploadArchive,
   VolumeMount,
 } from "../types";
-import { usesComposeStack } from "../utils";
+import { mapLimit, usesComposeStack } from "../utils";
 import {
   startDeployment,
   stopContainer,
@@ -1106,23 +1106,6 @@ export async function deleteService(id: string): Promise<void> {
   // project), so no project-target backup is orphaned either.
   await getDb().delete(servicesTable).where(eq(servicesTable.id, id));
   await recordActivity("service", `Deleted project ${project.name}`, user.name, null);
-}
-
-/** Run `fn` over `items` with at most `limit` in flight at once. */
-async function mapLimit<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      await fn(items[next++]);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
 }
 
 /**
