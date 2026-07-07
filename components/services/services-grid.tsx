@@ -100,7 +100,11 @@ type ProjectRef = { id: string; name: string };
 export type TrailSeg = { id: string; name: string; href?: string };
 
 function gridClass(view: "grid" | "list"): string {
-  return view === "list" ? "flex flex-col gap-3" : "grid gap-4 sm:grid-cols-2";
+  // Grid view: 1 col on mobile, 2 on small/medium, 3 from lg up — applied to
+  // every grouped surface (Overview, folder contents, sub-folders, projects).
+  return view === "list"
+    ? "flex flex-col gap-3"
+    : "grid gap-4 sm:grid-cols-2 lg:grid-cols-3";
 }
 
 function allServicesHref(view: "grid" | "list"): string {
@@ -462,51 +466,37 @@ function StaticGrid({
               <FolderTrail path={folderPath} view={view} />
             </div>
           )}
-          {projects.length > 0 && (
-            <section className="space-y-3">
-              <div className={gridClass(view)}>
-                {projects.map((p) => (
-                  <ProjectContainerCard
-                    key={p.id}
-                    project={p}
-                    view={view}
-                    canManage={canManageProjects}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-          {folders.length > 0 && (
-            <section className="space-y-3">
-              <div className={gridClass(view)}>
-                {folders.map((f) => (
-                  <FolderCard
-                    key={f.id}
-                    folder={f}
-                    view={view}
-                    isAdminOverride={canManageAllFolders}
-                    folders={allFolders}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-          {services.length > 0 && (
-            <section className="space-y-3">
-              <div className={gridClass(view)}>
-                {services.map((p) => (
-                  <ServiceCard
-                    key={p.id}
-                    project={p}
-                    view={view}
-                    folders={allFolders}
-                    canManageFolders={canManageAllFolders}
-                    environments={canManageProjects ? environments : undefined}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
+          {/* One continuous grid: projects first, then folders, then ungrouped
+              services — all three kinds share the same rows (ADR-0009). */}
+          <div className={gridClass(view)}>
+            {projects.map((p) => (
+              <ProjectContainerCard
+                key={p.id}
+                project={p}
+                view={view}
+                canManage={canManageProjects}
+              />
+            ))}
+            {folders.map((f) => (
+              <FolderCard
+                key={f.id}
+                folder={f}
+                view={view}
+                isAdminOverride={canManageAllFolders}
+                folders={allFolders}
+              />
+            ))}
+            {services.map((p) => (
+              <ServiceCard
+                key={p.id}
+                project={p}
+                view={view}
+                folders={allFolders}
+                canManageFolders={canManageAllFolders}
+                environments={canManageProjects ? environments : undefined}
+              />
+            ))}
+          </div>
         </div>
       </OverviewContextMenu>
       {canCreateFolder && (
@@ -1175,116 +1165,106 @@ function SortableGrid({
               dragging={dragging && activeIsService}
             />
           )}
-          {/* Project containers get the topmost section: they are the coarsest
-              grouping, so they sit above folders and ungrouped services. */}
-          {projectItems.length > 0 && (
-            <section className="space-y-3">
+          {/* One continuous grid: projects first, then folders, then ungrouped
+              services, all sharing the same rows (ADR-0009). Each kind keeps its
+              own SortableContext — which renders no DOM — so drag-reorder stays
+              scoped to its kind while the cards flow together visually. */}
+          <div className={gridClass(view)}>
+            {projectItems.length > 0 && (
               <SortableContext
                 items={projectItems.map((p) => p.id)}
                 strategy={rectSortingStrategy}
               >
-                <div className={gridClass(view)}>
-                  {projectItems.map((p) => (
-                    <SortableItem
-                      key={p.id}
-                      id={p.id}
-                      dragging={dragging}
-                      dataKind="project"
-                    >
-                      {({ handle, dragActive, isOver }) => (
-                        <ProjectContainerCard
-                          project={p}
-                          view={view}
-                          canManage={canManageProjects}
-                          dragHandle={handle}
-                          dragActive={dragActive}
-                          dropActive={isOver && activeIsService}
-                        />
-                      )}
-                    </SortableItem>
-                  ))}
-                </div>
-              </SortableContext>
-            </section>
-          )}
-          {/* Folders get their own section, above and separate from the
-              folder-less services — never interleaved at the same level. */}
-          {folderItems.length > 0 && (
-            <section className="space-y-3">
-              <SortableContext
-                items={folderItems.map((f) => f.id)}
-                strategy={rectSortingStrategy}
-              >
-                <div className={gridClass(view)}>
-                  {folderItems.map((f) => (
-                    <SortableItem
-                      key={f.id}
-                      id={f.id}
-                      dragging={dragging}
-                      selected={selected.has(f.id)}
-                      dataKind="folder"
-                      onSelect={(e) => onItemClick(f.id, e)}
-                    >
-                      {({ handle, dragActive, isOver }) => (
-                        <FolderCard
-                          folder={f}
-                          view={view}
-                          isAdminOverride={canManageAllFolders}
-                          folders={allFolders}
-                          dragHandle={handle}
-                          dragActive={dragActive}
-                          dropActive={isOver && activeIsService}
-                          contextMenuOverride={
-                            showBulkMenuFor(f.id) ? bulkMenuNode : undefined
-                          }
-                        />
-                      )}
-                    </SortableItem>
-                  ))}
-                </div>
-              </SortableContext>
-            </section>
-          )}
-          <section className="space-y-3">
-            <SortableContext
-              items={items.map((p) => p.id)}
-              strategy={serviceStrategy}
-            >
-              <div className={gridClass(view)}>
-                {items.map((p) => (
+                {projectItems.map((p) => (
                   <SortableItem
                     key={p.id}
                     id={p.id}
                     dragging={dragging}
-                    scaleOut={draggedOverFolder}
-                    selected={selected.has(p.id)}
-                    // During a group drag, dim every selected project (not just
-                    // the lifted one) so the whole moving group reads as picked up.
-                    groupDragging={activeIsSelectedMulti}
-                    dataKind="service"
-                    onSelect={(e) => onItemClick(p.id, e)}
+                    dataKind="project"
                   >
-                    {({ handle, dragActive }) => (
-                      <ServiceCard
+                    {({ handle, dragActive, isOver }) => (
+                      <ProjectContainerCard
                         project={p}
                         view={view}
+                        canManage={canManageProjects}
                         dragHandle={handle}
                         dragActive={dragActive}
+                        dropActive={isOver && activeIsService}
+                      />
+                    )}
+                  </SortableItem>
+                ))}
+              </SortableContext>
+            )}
+            {folderItems.length > 0 && (
+              <SortableContext
+                items={folderItems.map((f) => f.id)}
+                strategy={rectSortingStrategy}
+              >
+                {folderItems.map((f) => (
+                  <SortableItem
+                    key={f.id}
+                    id={f.id}
+                    dragging={dragging}
+                    selected={selected.has(f.id)}
+                    dataKind="folder"
+                    onSelect={(e) => onItemClick(f.id, e)}
+                  >
+                    {({ handle, dragActive, isOver }) => (
+                      <FolderCard
+                        folder={f}
+                        view={view}
+                        isAdminOverride={canManageAllFolders}
                         folders={allFolders}
-                        canManageFolders={canManageAllFolders}
-                        environments={
-                          canManageProjects ? environments : undefined
-                        }
+                        dragHandle={handle}
+                        dragActive={dragActive}
+                        dropActive={isOver && activeIsService}
                         contextMenuOverride={
-                          showBulkMenuFor(p.id) ? bulkMenuNode : undefined
+                          showBulkMenuFor(f.id) ? bulkMenuNode : undefined
                         }
                       />
                     )}
                   </SortableItem>
                 ))}
-              </div>
+              </SortableContext>
+            )}
+            <SortableContext
+              items={items.map((p) => p.id)}
+              strategy={serviceStrategy}
+            >
+              {items.map((p) => (
+                <SortableItem
+                  key={p.id}
+                  id={p.id}
+                  dragging={dragging}
+                  scaleOut={draggedOverFolder}
+                  selected={selected.has(p.id)}
+                  // During a group drag, dim every selected project (not just the
+                  // lifted one) so the whole moving group reads as picked up.
+                  groupDragging={activeIsSelectedMulti}
+                  dataKind="service"
+                  onSelect={(e) => onItemClick(p.id, e)}
+                >
+                  {({ handle, dragActive }) => (
+                    <ServiceCard
+                      project={p}
+                      view={view}
+                      dragHandle={handle}
+                      dragActive={dragActive}
+                      folders={allFolders}
+                      canManageFolders={canManageAllFolders}
+                      environments={
+                        canManageProjects ? environments : undefined
+                      }
+                      contextMenuOverride={
+                        showBulkMenuFor(p.id) ? bulkMenuNode : undefined
+                      }
+                    />
+                  )}
+                </SortableItem>
+              ))}
             </SortableContext>
-          </section>
+          </div>
         </div>
       </OverviewContextMenu>
 

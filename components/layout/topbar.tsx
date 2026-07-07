@@ -1,27 +1,9 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  ChevronDown,
-  Menu,
-  Rocket,
-  Sparkles,
-  Database,
-  LayoutTemplate,
-  Settings,
-} from "lucide-react";
+import { Menu, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { DeploLogo } from "@/components/logo";
 import { SidebarNav } from "./sidebar-nav";
@@ -89,44 +71,8 @@ export function Topbar({
       </span>
 
       <div className="flex flex-1 items-center justify-end gap-2">
-        {/* Add New */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="sm" className="cursor-pointer">
-              Add New
-              <ChevronDown className="size-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="cursor-pointer">
-                <Rocket className="size-4" />
-                New service
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem asChild>
-                  <Link href="/new" className="cursor-pointer">
-                    <Sparkles className="size-4" />
-                    From Scratch
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/templates" className="cursor-pointer">
-                    <LayoutTemplate className="size-4" />
-                    From Template
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-            <DropdownMenuItem asChild>
-              <Link href="/storage" className="cursor-pointer">
-                <Database className="size-4" />
-                Database
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
+        {/* Creation lives on the Overview's "Add New" menu only — the header
+            stays lean (theme + account). */}
         <ThemeToggle />
         <UserMenu user={user} />
       </div>
