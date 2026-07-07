@@ -262,7 +262,7 @@ builder.queryFields((t) => ({
     description: "All services in the active team, newest first.",
     resolve: () => listServices(),
   }),
-  project: t.field({
+  service: t.field({
     type: ServiceRef,
     nullable: true,
     authScopes: { loggedIn: true },

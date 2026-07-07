@@ -237,6 +237,34 @@ export interface Folder {
    * who may share it. See {@link Folder} for the full ownership model.
    */
   ownerUserId?: ID | null;
+  /**
+   * The {@link Project} CONTAINER this folder lives in, or null/absent when it
+   * sits at the team top level (ADR-0008, additive). A `projectId` with no
+   * matching project is tolerated and treated as top-level.
+   */
+  projectId?: ID | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A **Project** — the top-level, team-scoped CONTAINER introduced in ADR-0008.
+ * Folder-like (owner + per-container grants + colour + team ordering) but it also
+ * owns a set of {@link Environment}s (added in a later phase). Folders and
+ * Services live INSIDE a Project via their `projectId`; a Project never nests in
+ * another Project (no `parentId`). Its `slug` is unique within the team and drives
+ * the `/projects/<slug>` route. NOT the deployable app — that is a {@link Service}.
+ */
+export interface Project {
+  id: ID;
+  teamId: ID;
+  name: string;
+  /** Team-unique, URL-safe key driving `/projects/<slug>`. */
+  slug: string;
+  /** Optional accent colour (`#rrggbb`), same semantics as {@link Folder.color}. */
+  color?: string | null;
+  /** The owner (creator); same ownership model as {@link Folder.ownerUserId}. */
+  ownerUserId?: ID | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -648,6 +676,12 @@ export interface Service {
    * with no matching folder is tolerated and treated as ungrouped.
    */
   folderId?: ID | null;
+  /**
+   * The {@link Project} CONTAINER this service belongs to, or null/absent when it
+   * sits at the team top level (ADR-0008, additive). Independent of `folderId` —
+   * a service may be filed in a folder and/or attached to a container.
+   */
+  projectId?: ID | null;
   serverId: ID;
   framework: FrameworkId;
   /**
@@ -1080,6 +1114,7 @@ export interface ApiToken {
 export type ActivityType =
   | "deployment"
   | "service"
+  | "project"
   | "database"
   | "domain"
   | "env"

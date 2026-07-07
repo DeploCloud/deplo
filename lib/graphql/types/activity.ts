@@ -12,6 +12,7 @@ const ActivityTypeEnum = builder.enumType("ActivityType", {
   values: [
     "deployment",
     "service",
+    "project",
     "database",
     "domain",
     "env",

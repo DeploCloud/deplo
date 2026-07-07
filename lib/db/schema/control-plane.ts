@@ -171,10 +171,75 @@ export const folders = pgTable(
     ownerUserId: text("owner_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // The Project CONTAINER this folder lives in, or NULL when the folder sits at
+    // the team top level (additive adoption — ADR-0008). `ON DELETE SET NULL`:
+    // deleting a container orphans its folders back to the top level rather than
+    // cascading a delete. Forward-ref thunk because `projects` (the container) is
+    // declared just below.
+    projectId: text("project_id").references((): AnyPgColumn => projects.id, {
+      onDelete: "set null",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
-  (t) => [index("folders_owner_idx").on(t.ownerUserId)],
+  (t) => [
+    index("folders_owner_idx").on(t.ownerUserId),
+    index("folders_project_idx").on(t.projectId),
+  ],
+);
+
+/**
+ * [Project](../../types.ts) — the top-level, team-scoped CONTAINER introduced in
+ * ADR-0008 (folder-like, but it owns Environments). Modeled on `folders`: an
+ * owner + per-container `project_grants` + `color` + team-wide ordering
+ * (`team_project_order`). It has NO `parent_id` — a Project never nests in a
+ * Project. Folders and Services point INTO it via their nullable `project_id`.
+ * `slug` is UNIQUE PER TEAM (drives `/projects/<slug>`). id prefix `prc_`.
+ * The table name `projects` is reclaimed after the 0015 rename freed it (the old
+ * deployable-app `projects` is now `services`).
+ */
+export const projects = pgTable(
+  "projects",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    color: text("color"),
+    ownerUserId: text("owner_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("projects_team_slug_uq").on(t.teamId, t.slug),
+    index("projects_owner_idx").on(t.ownerUserId),
+  ],
+);
+
+/**
+ * Per-Project-container access grants — the direct clone of `folder_grants` for
+ * the new Project container. One row per (project, user, capability); the OWNER
+ * is derived from `projects.owner_user_id`, not stored here. Both FKs CASCADE.
+ */
+export const projectGrants = pgTable(
+  "project_grants",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    capability: text("capability").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.projectId, t.userId, t.capability] }),
+    index("project_grants_user_idx").on(t.userId),
+  ],
 );
 
 /**
@@ -447,6 +512,14 @@ export const services = pgTable(
     folderId: text("folder_id").references(() => folders.id, {
       onDelete: "set null",
     }),
+    // The Project CONTAINER this service belongs to (directly, or transitively via
+    // its folder), or NULL when the service sits at the team top level (additive —
+    // ADR-0008). `ON DELETE SET NULL`: deleting a container orphans its services
+    // to the top level. Distinct from `folder_id` (a service may be filed in a
+    // folder AND/OR attached to a container).
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
     serverId: text("server_id")
       .notNull()
       .references(() => servers.id, { onDelete: "restrict" }),
@@ -487,6 +560,7 @@ export const services = pgTable(
     uniqueIndex("services_slug_uq").on(t.slug),
     index("services_team_idx").on(t.teamId),
     index("services_folder_idx").on(t.folderId),
+    index("services_project_idx").on(t.projectId),
   ],
 );
 
@@ -903,6 +977,27 @@ export const teamFolderOrder = pgTable(
     position: integer("position").notNull(),
   },
   (t) => [primaryKey({ columns: [t.teamId, t.folderId] })],
+);
+
+/**
+ * Team-wide Project-CONTAINER display order (ADR-0008) — the direct analogue of
+ * `team_folder_order`/`team_service_order` for the new top-level container. PK
+ * `(team_id, project_id)`, both FKs CASCADE so a dead id can't sit in the order.
+ * The name `team_project_order` is reclaimed after 0015 renamed the old
+ * service-order junction to `team_service_order`.
+ */
+export const teamProjectOrder = pgTable(
+  "team_project_order",
+  {
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.teamId, t.projectId] })],
 );
 
 /* ================================================================== */

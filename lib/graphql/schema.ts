@@ -23,6 +23,7 @@ import "./types/github";
 import "./types/member";
 import "./types/monitoring";
 import "./types/notifications";
+import "./types/project";
 import "./types/service";
 import "./types/service-files";
 import "./types/registry";

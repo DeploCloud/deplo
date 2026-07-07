@@ -1,6 +1,7 @@
 import {
   Rocket,
   Box,
+  Boxes,
   Database,
   Globe,
   KeyRound,
@@ -22,6 +23,7 @@ export const metadata = { title: "Activity" };
 const ICON_BY_TYPE: Record<ActivityType, LucideIcon> = {
   deployment: Rocket,
   service: Box,
+  project: Boxes,
   database: Database,
   domain: Globe,
   env: KeyRound,
