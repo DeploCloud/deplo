@@ -143,10 +143,6 @@ export function FolderColorPicker({
           <p className="text-xs text-destructive">
             Enter a valid hex colour, e.g. #3b82f6.
           </p>
-        ) : isCustom ? (
-          <p className="text-xs text-muted-foreground">
-            Text and icon contrast is chosen automatically for readability.
-          </p>
         ) : null}
       </div>
     </div>
