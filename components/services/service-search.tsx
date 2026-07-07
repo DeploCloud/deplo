@@ -15,6 +15,7 @@ export function ServiceSearch({
   initialFolder = "",
   initialProject = "",
   initialEnv = "",
+  environmentSwitcher,
 }: {
   initialQuery: string;
   initialView: ServiceView;
@@ -24,6 +25,12 @@ export function ServiceSearch({
   initialProject?: string;
   /** The selected environment inside the open project, preserved with it. */
   initialEnv?: string;
+  /**
+   * The project drill-in's environment dropdown (ADR-0009), rendered inline in
+   * this toolbar — at the end, just before the grid/list toggle. Omitted for the
+   * top-level and folder views, which have no environment to pick.
+   */
+  environmentSwitcher?: React.ReactNode;
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState(initialQuery);
@@ -79,6 +86,7 @@ export function ServiceSearch({
           className="h-9 pl-9"
         />
       </div>
+      {environmentSwitcher}
       <Button
         variant={view === "grid" ? "outline" : "ghost"}
         size="icon"

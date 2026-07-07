@@ -12,7 +12,6 @@ import { listServices } from "@/lib/data/services";
 import { listFolders } from "@/lib/data/folders";
 import { listProjects } from "@/lib/data/projects";
 import { listEnvironmentsForProject } from "@/lib/data/environments";
-import { listProjectEnvironmentEnv } from "@/lib/data/environment-env";
 import { listActivity } from "@/lib/data/activity";
 import { isInstanceAdmin, hasCapability } from "@/lib/membership";
 import {
@@ -26,8 +25,6 @@ import { ServicesGrid, FolderTrail } from "@/components/services/services-grid";
 import { ServiceSearch } from "@/components/services/service-search";
 import { EnvironmentSwitcher } from "@/components/services/environment-switcher";
 import { projectHref } from "@/lib/overview-links";
-import { EnvironmentManager } from "@/components/services/environment-manager";
-import { EnvironmentEnvManager } from "@/components/env/environment-env-manager";
 import { AddNewMenu } from "@/components/shared/add-new-menu";
 import { timeAgo } from "@/lib/utils";
 
@@ -57,7 +54,6 @@ export default async function OverviewPage(props: PageProps<"/">) {
     canManageTeam,
     canManageMembers,
     canDeploy,
-    canManageEnv,
   ] = await Promise.all([
     listServices(),
     listFolders(),
@@ -67,7 +63,6 @@ export default async function OverviewPage(props: PageProps<"/">) {
     hasCapability("manage_team"),
     hasCapability("manage_members"),
     hasCapability("deploy"),
-    hasCapability("manage_env"),
   ]);
   const canManageOrder = isAdmin || canManageTeam;
   // Creating a folder or a project container is gated the same as creating a
@@ -83,8 +78,8 @@ export default async function OverviewPage(props: PageProps<"/">) {
   //    (folders/projects hidden) so anything nested is still findable;
   //  - a folder open: that folder's direct services + its child folders;
   //  - a project open: the services of the SELECTED ENVIRONMENT (ADR-0009 —
-  //    each environment is a sub-folder of services, picked via the dropdown),
-  //    plus that environment's shared variables below the grid;
+  //    each environment is a sub-folder of services, picked via the dropdown in
+  //    the toolbar). The view mirrors a folder view — just its services;
   //  - otherwise (top level): projects, top-level folders, ungrouped services.
   const openFolder =
     !query && folderId ? folders.find((f) => f.id === folderId) ?? null : null;
@@ -146,16 +141,6 @@ export default async function OverviewPage(props: PageProps<"/">) {
       isOwner: await folderIsOwnerOrAdmin(f.id),
     })),
   );
-
-  // The SELECTED environment's shared variables render below the grid (ADR-0009:
-  // scoped to that environment only). Values are gated by manage_env, so skip
-  // the (throwing) read without it.
-  const envVarGroups =
-    openProject && canManageEnv
-      ? (await listProjectEnvironmentEnv(openProject.id)).filter(
-          (g) => g.environmentId === selectedEnv?.id,
-        )
-      : [];
 
   // Breadcrumb trail from the top level down to (and including) the open folder,
   // walking `parentId` up. Guarded against a stale cycle so it always terminates.
@@ -272,31 +257,32 @@ export default async function OverviewPage(props: PageProps<"/">) {
           />
         </div>
 
+        {/* The project drill-in's environment dropdown (ADR-0009) sits inline in
+            the toolbar, at the end just before the grid/list toggle. It is also
+            the whole environment-management surface (rename / default / delete /
+            create), so no separate panel is needed below the grid. */}
         <ServiceSearch
           initialQuery={query}
           initialView={view}
           initialFolder={openFolder?.id ?? ""}
           initialProject={openProject?.id ?? ""}
           initialEnv={openProject && selectedEnv ? selectedEnv.id : ""}
+          environmentSwitcher={
+            openProject && selectedEnv ? (
+              <EnvironmentSwitcher
+                projectId={openProject.id}
+                view={view}
+                environments={environments.map((e) => ({
+                  id: e.id,
+                  name: e.name,
+                  isDefault: e.isDefault,
+                }))}
+                selectedId={selectedEnv.id}
+                canManage={canDeploy || isAdmin}
+              />
+            ) : undefined
+          }
         />
-
-        {/* The project drill-in's environment dropdown (ADR-0009): each
-            environment holds its own services, like a sub-folder. */}
-        {openProject && selectedEnv && (
-          <div className="flex items-center justify-end gap-2 px-1">
-            <span className="text-sm text-muted-foreground">Environment</span>
-            <EnvironmentSwitcher
-              projectId={openProject.id}
-              view={view}
-              environments={environments.map((e) => ({
-                id: e.id,
-                name: e.name,
-                isDefault: e.isDefault,
-              }))}
-              selectedId={selectedEnv.id}
-            />
-          </div>
-        )}
 
         {nothingToShow ? (
           query ? (
@@ -407,41 +393,6 @@ export default async function OverviewPage(props: PageProps<"/">) {
                 : undefined
             }
           />
-        )}
-
-        {/* The selected environment's shared variables + the project's
-            environment management — the former /projects/<slug> detail page,
-            folded into the Overview so projects never need a page of their own. */}
-        {openProject && (
-          <div className="space-y-6 pt-2">
-            {canManageEnv && selectedEnv && (
-              <section className="space-y-3">
-                <div>
-                  <h2 className="text-sm font-medium text-muted-foreground">
-                    Shared variables — {selectedEnv.name}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Injected into every service of the {selectedEnv.name}{" "}
-                    environment, and ONLY there. A service&apos;s own variable
-                    with the same key overrides them.
-                  </p>
-                </div>
-                <EnvironmentEnvManager groups={envVarGroups} canManage />
-              </section>
-            )}
-            <EnvironmentManager
-              projectId={openProject.id}
-              canManage={canDeploy || isAdmin}
-              environments={environments.map((e) => ({
-                id: e.id,
-                name: e.name,
-                slug: e.slug,
-                kind: e.kind,
-                gitBranch: e.gitBranch,
-                isDefault: e.isDefault,
-              }))}
-            />
-          </div>
         )}
       </div>
     </div>
