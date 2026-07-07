@@ -643,10 +643,15 @@ export function NewServiceWizard({
             )}
 
             {source === "compose" && (
-              <p className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
-                Write your docker-compose stack in the Docker Compose editor
-                below. Deplo deploys it as-is and routes it through Traefik.
-              </p>
+              <div className="space-y-2">
+                <ComposeEditor
+                  value={compose}
+                  onChange={setCompose}
+                  onDiagnostics={setComposeDiags}
+                  minHeight={300}
+                />
+                <ComposeLintSummary diagnostics={composeDiags} />
+              </div>
             )}
           </CardContent>
         </Card>
@@ -684,7 +689,11 @@ export function NewServiceWizard({
         </CardContent>
       </Card>
 
-      {useCompose && (
+      {/* Templates carry their compose stack (source is docker-image, mapped to
+          templateCompose), so their editor lives in its own card here. The
+          from-scratch "compose" source renders the editor inline in the source
+          card above instead. */}
+      {templateCompose && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -692,9 +701,8 @@ export function NewServiceWizard({
               Docker Compose
             </CardTitle>
             <CardDescription>
-              {isTemplate
-                ? "The stack Deplo will deploy. Edit it directly to customise images, ports, volumes or services before deploying."
-                : "The stack Deplo will deploy. Deplo routes the first service that publishes a port through Traefik with automatic HTTPS."}
+              The stack Deplo will deploy. Edit it directly to customise images,
+              ports, volumes or services before deploying.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
