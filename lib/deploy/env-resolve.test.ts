@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { groupTargets, resolveEnvEntries } from "./env-resolve";
 import type {
+  EnvironmentEnvEntryLike,
   GlobalEnvEntryLike,
   SharedEnvGroupLike,
   TargetedEnvEntry,
@@ -210,4 +211,98 @@ test("a project var overrides a team-global of the same key", () => {
 test("omitting the global args preserves the old project+shared behaviour", () => {
   const vars = [envVar("X", ["production"])];
   assert.deepEqual(keys(resolveEnvEntries("production", PID, vars, [])), ["X"]);
+});
+
+// --- environment-scoped entries (ADR-0008: kind bridges to the target) ---
+
+function environEntry(
+  key: string,
+  kind: EnvironmentEnvEntryLike["kind"],
+  tag = key,
+): EnvironmentEnvEntryLike {
+  return { key, valueEnc: `enc(${tag})`, kind };
+}
+
+test("an environment var reaches only the runtime its kind maps to", () => {
+  const envs = [
+    environEntry("PROD_VAR", "production"),
+    environEntry("DEV_VAR", "development"),
+    environEntry("PREVIEW_VAR", "preview"),
+  ];
+  assert.deepEqual(
+    keys(resolveEnvEntries("production", PID, [], [], [], [], envs)),
+    ["PROD_VAR"],
+  );
+  assert.deepEqual(
+    keys(resolveEnvEntries("development", PID, [], [], [], [], envs)),
+    ["DEV_VAR"],
+  );
+  assert.deepEqual(
+    keys(resolveEnvEntries("preview", PID, [], [], [], [], envs)),
+    ["PREVIEW_VAR"],
+  );
+});
+
+test("a custom environment's vars stay inert (no legacy target matches)", () => {
+  const envs = [environEntry("CUSTOM_VAR", "custom")];
+  for (const target of ALL) {
+    assert.deepEqual(resolveEnvEntries(target, PID, [], [], [], [], envs), []);
+  }
+});
+
+test("an environment var overrides a team-global of the same key", () => {
+  const key = "API_URL";
+  const out = resolveEnvEntries(
+    "production",
+    PID,
+    [],
+    [],
+    [globalEntry(key, ["production"], "team")],
+    [],
+    [environEntry(key, "production", "environ")],
+  );
+  assert.deepEqual(
+    out.map((e) => e.valueEnc),
+    ["enc(team)", "enc(environ)"],
+  );
+  const folded: Record<string, string> = {};
+  for (const e of out) folded[e.key] = e.valueEnc;
+  assert.equal(folded[key], "enc(environ)"); // environment wins over team-global
+});
+
+test("a service's own var overrides its environment's var of the same key", () => {
+  const key = "API_URL";
+  const out = resolveEnvEntries(
+    "production",
+    PID,
+    [envVar(key, ["production"])],
+    [],
+    [],
+    [],
+    [environEntry(key, "production", "environ")],
+  );
+  assert.deepEqual(
+    out.map((e) => e.valueEnc),
+    ["enc(environ)", `enc(${key})`],
+  );
+  const folded: Record<string, string> = {};
+  for (const e of out) folded[e.key] = e.valueEnc;
+  assert.equal(folded[key], `enc(${key})`); // the service's own var wins
+});
+
+test("full precedence: instance < team < environment < service < shared", () => {
+  const key = "DATABASE_URL";
+  const out = resolveEnvEntries(
+    "production",
+    PID,
+    [envVar(key, [...ALL])],
+    [group({ variables: [key], targets: [...ALL] })],
+    [globalEntry(key, [...ALL], "team")],
+    [globalEntry(key, [...ALL], "instance")],
+    [environEntry(key, "production", "environ")],
+  );
+  assert.deepEqual(
+    out.map((e) => e.valueEnc),
+    ["enc(instance)", "enc(team)", "enc(environ)", `enc(${key})`, `enc(${key})`],
+  );
 });

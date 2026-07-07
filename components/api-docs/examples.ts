@@ -117,6 +117,27 @@ export const CURATED_EXAMPLES: CuratedExample[] = [
 }`,
   },
   {
+    label: "Project environments & shared vars",
+    description:
+      "A Project container's environments, plus one environment's shared variables (requires “manage env vars”).",
+    kind: "query",
+    operation: `query ProjectEnvironments {
+  environments(projectId: "prc_example") {
+    id
+    name
+    slug
+    kind
+    isDefault
+  }
+  environmentEnv(environmentId: "environ_example") {
+    key
+    value
+    isMasked
+    type
+  }
+}`,
+  },
+  {
     label: "Create a token (dry run)",
     description:
       "A mutation — it will NOT run. You'll see whether you're allowed to.",

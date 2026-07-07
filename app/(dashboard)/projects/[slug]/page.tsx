@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Boxes, Folder } from "lucide-react";
 import { getProjectBySlug, projectContents } from "@/lib/data/projects";
 import { listEnvironmentsForProject } from "@/lib/data/environments";
+import { listProjectEnvironmentEnv } from "@/lib/data/environment-env";
 import { hasCapability } from "@/lib/membership";
 import { Card } from "@/components/ui/card";
 import { StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { EnvironmentManager } from "@/components/services/environment-manager";
+import { EnvironmentEnvManager } from "@/components/env/environment-env-manager";
 import { readableTextColor } from "@/lib/utils";
 
 export async function generateMetadata(props: PageProps<"/projects/[slug]">) {
@@ -17,8 +19,9 @@ export async function generateMetadata(props: PageProps<"/projects/[slug]">) {
 }
 
 /**
- * A Project CONTAINER detail page: its folders and services. Environments (the
- * per-project isolated deploy targets) land here in a later phase.
+ * A Project CONTAINER detail page: its Environments (with their shared
+ * variables) and its folders and services. The isolated per-environment deploy
+ * pipeline (URLs / branches / containers) is wired in a later phase.
  */
 export default async function ProjectDetail(
   props: PageProps<"/projects/[slug]">,
@@ -27,11 +30,17 @@ export default async function ProjectDetail(
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
 
-  const [{ folders, services }, environments, canManage] = await Promise.all([
-    projectContents(project.id),
-    listEnvironmentsForProject(project.id),
-    hasCapability("deploy"),
-  ]);
+  const [{ folders, services }, environments, canManage, canManageEnv] =
+    await Promise.all([
+      projectContents(project.id),
+      listEnvironmentsForProject(project.id),
+      hasCapability("deploy"),
+      hasCapability("manage_env"),
+    ]);
+  // Env values are gated by manage_env — skip the (throwing) read without it.
+  const envVarGroups = canManageEnv
+    ? await listProjectEnvironmentEnv(project.id)
+    : [];
   const empty = folders.length === 0 && services.length === 0;
   const tileStyle = project.color
     ? { backgroundColor: project.color, color: readableTextColor(project.color) }
@@ -78,6 +87,21 @@ export default async function ProjectDetail(
           isDefault: e.isDefault,
         }))}
       />
+
+      {canManageEnv && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Environment variables
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Shared by every service in this project, per environment. A
+              service&apos;s own variable with the same key overrides them.
+            </p>
+          </div>
+          <EnvironmentEnvManager groups={envVarGroups} canManage />
+        </section>
+      )}
 
       {empty ? (
         <EmptyState

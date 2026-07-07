@@ -108,6 +108,12 @@ export const ServiceRef = builder
       slug: t.exposeString("slug"),
       teamId: t.exposeID("teamId"),
       folderId: t.exposeID("folderId", { nullable: true }),
+      projectId: t.field({
+        type: "ID",
+        nullable: true,
+        description: "The Project container this service belongs to, if any.",
+        resolve: (p) => p.projectId ?? null,
+      }),
       serverId: t.exposeID("serverId"),
       framework: t.exposeString("framework"),
       logo: t.exposeString("logo", { nullable: true }),

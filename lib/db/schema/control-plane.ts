@@ -899,6 +899,39 @@ export const instanceEnvVarTargets = pgTable(
 );
 
 /**
+ * [EnvironmentEnvVar](../../types.ts) — a variable SHARED by every service of an
+ * [Environment](#environments)'s Project, in that environment's context
+ * (ADR-0008 Phase 3). Same shape as `env_vars` but keyed on the environment and
+ * with NO targets junction: the environment IS the scope — its `kind` bridges to
+ * the runtime (`production` kind → production deploys, `development` → the dev
+ * container, …) until the pipeline is fully environment-parameterized. Deploy
+ * precedence sits between team-globals and a service's own vars — see
+ * lib/deploy/env-resolve.ts. `UNIQUE(environment_id, key)`; FK CASCADE (deleting
+ * an environment takes its variables with it).
+ */
+export const environmentEnvVars = pgTable(
+  "environment_env_vars",
+  {
+    id: text("id").primaryKey(),
+    environmentId: text("environment_id")
+      .notNull()
+      .references(() => environments.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    valueEnc: text("value_enc").notNull(),
+    type: text("type").notNull(),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("environment_env_vars_environment_key_uq").on(
+      t.environmentId,
+      t.key,
+    ),
+    index("environment_env_vars_environment_idx").on(t.environmentId),
+  ],
+);
+
+/**
  * [Domain](../../types.ts). `primary` is a SQL reserved word → mapped to
  * `is_primary`. Partial `UNIQUE (project_id) WHERE is_primary`. `UNIQUE (name,
  * COALESCE(path_prefix,''))`. `entrypoint`/`cert_provider`/`source` NULLABLE with

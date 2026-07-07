@@ -32,7 +32,7 @@ securely. Send it as a bearer token:
 curl https://your-host/api/graphql \
   -H "Authorization: Bearer deplo_xxxxxxxxxxxxxxxxxxxxxxxx" \
   -H "Content-Type: application/json" \
-  -d '{"query":"{ me { username } projects { name status } }"}'
+  -d '{"query":"{ me { username } services { name status } }"}'
 ```
 
 A token is scoped to the team it was created in and acts with its creator's
@@ -48,9 +48,9 @@ Fields are gated by the same capability model as the dashboard:
 
 | Capability        | Covers                                                       |
 | ----------------- | ----------------------------------------------------------- |
-| `deploy`          | create/redeploy/stop/start/delete projects, dev, deployments |
+| `deploy`          | create/redeploy/stop/start/delete services, dev, deployments, projects & environments |
 | `manage_domains`  | add/verify/route/remove custom domains                      |
-| `manage_env`      | project & shared environment variables                      |
+| `manage_env`      | service, environment-scoped, team & shared variables        |
 | `manage_infra`    | servers, databases, S3, registries, backups, GitHub, tokens |
 | `manage_members`  | add/remove members, change roles                            |
 | `manage_team`     | rename/edit/delete the team                                 |
@@ -60,13 +60,15 @@ minting registration links, the per-user admin editor.
 
 ## Shape of the API
 
-- **Queries** mirror the read layer: `projects`, `project(slug)`, `deployments`,
-  `databases`, `domains`, `servers`, `serverMetrics`, `members`, `apiTokens`,
-  `activity`, `me`, `viewerTeam`, … (43 in total). Object types are navigable —
-  e.g. `Project.deployments`, `Project.latestDeployment`.
-- **Mutations** mirror every former server action: `createProject`, `redeploy`,
-  `stopProject`, `addDomain`, `createDatabase`, `createToken`, `updateTeam`,
-  `login`, `logout`, … (77 in total).
+- **Queries** mirror the read layer: `services`, `service(slug)`, `projects`
+  (the containers), `environments(projectId)`, `environmentEnv(environmentId)`,
+  `deployments`, `databases`, `domains`, `servers`, `serverMetrics`, `members`,
+  `apiTokens`, `activity`, `me`, `viewerTeam`, … (79 in total). Object types are
+  navigable — e.g. `Service.deployments`, `Service.latestDeployment`.
+- **Mutations** mirror every former server action: `createService`, `redeploy`,
+  `stopService`, `createProject`, `createEnvironment`, `upsertEnvironmentEnv`,
+  `addDomain`, `createDatabase`, `createToken`, `updateTeam`, `login`,
+  `logout`, … (179 in total).
 
 Mutations return the affected entity where natural (so a client needs no second
 fetch), or `Boolean` for deletes/toggles, or a `String` for reveal-secret
@@ -80,20 +82,20 @@ stack traces are never leaked.
 
 ## Examples
 
-Redeploy a project:
+Redeploy a service:
 
 ```graphql
 mutation {
-  redeploy(projectId: "prj_123") { id status }
+  redeploy(serviceId: "prj_123") { id status }
 }
 ```
 
-Create an environment variable:
+Create a service environment variable:
 
 ```graphql
 mutation {
   upsertEnv(input: {
-    projectId: "prj_123"
+    serviceId: "prj_123"
     key: "DATABASE_URL"
     value: "postgres://…"
     targets: [production, preview]
@@ -102,11 +104,25 @@ mutation {
 }
 ```
 
-List projects with their latest deployment:
+Share a variable with every service of a Project, in one environment's context
+(no `targets` — the environment IS the scope):
+
+```graphql
+mutation {
+  upsertEnvironmentEnv(input: {
+    environmentId: "environ_123"
+    key: "API_BASE_URL"
+    value: "https://api.example.com"
+    type: plain
+  }) { id key value }
+}
+```
+
+List services with their latest deployment:
 
 ```graphql
 query {
-  projects {
+  services {
     name
     status
     latestDeployment { status createdAt commitMessage }
@@ -121,8 +137,8 @@ A few endpoints stay REST because GraphQL is the wrong transport for them
 
 | Endpoint                          | Why                              |
 | --------------------------------- | -------------------------------- |
-| `POST /api/projects/[id]/upload`  | multipart archive upload         |
-| `GET /api/projects/[id]/logs`     | Server-Sent-Events log stream    |
-| `GET /api/projects/[id]/attach`   | interactive console session      |
+| `POST /api/services/[id]/upload`  | multipart archive upload         |
+| `GET /api/services/[id]/logs`     | Server-Sent-Events log stream    |
+| `GET /api/services/[id]/attach`   | interactive console session      |
 | `GET /api/github/callback`        | GitHub App OAuth callback        |
 | `POST /api/github/webhook`        | GitHub webhook receiver          |

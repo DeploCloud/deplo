@@ -880,6 +880,36 @@ export interface GlobalEnvVarDTO {
   updatedAt: string;
 }
 
+/**
+ * An ENVIRONMENT-scoped shared variable (ADR-0008 Phase 3) — stored on one
+ * {@link Environment} and injected into EVERY service of that environment's
+ * Project, in that environment's context. Unlike the other env-var shapes it
+ * carries NO `targets`: the environment IS the scope, and its `kind` bridges to
+ * the runtime target until the pipeline is fully environment-parameterized.
+ * Deploy precedence sits between team-globals and a service's own vars.
+ */
+export interface EnvironmentEnvVar {
+  id: ID;
+  environmentId: ID;
+  key: string;
+  /** encrypted at rest */
+  valueEnc: string;
+  type: "plain" | "secret";
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** DTO sent to the client: secret values are masked. */
+export interface EnvironmentEnvVarDTO {
+  id: ID;
+  environmentId: ID;
+  key: string;
+  value: string; // masked for secrets
+  masked: boolean;
+  type: "plain" | "secret";
+  updatedAt: string;
+}
+
 export type DomainStatus = "valid" | "pending" | "misconfigured" | "error";
 
 /**

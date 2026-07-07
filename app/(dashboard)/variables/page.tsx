@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { Braces, ArrowUpRight, Lock } from "lucide-react";
+import { Braces, Boxes, ArrowUpRight, Lock } from "lucide-react";
 import { listAllServiceEnv } from "@/lib/data/env";
 import { listSharedEnvGroups } from "@/lib/data/shared-env";
 import { listTeamGlobalEnv, listInstanceEnv } from "@/lib/data/global-env";
+import { listProjectEnvironmentEnv } from "@/lib/data/environment-env";
+import { listProjects } from "@/lib/data/projects";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -30,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SharedEnvManager } from "@/components/env/shared-env-manager";
 import { GlobalEnvManager } from "@/components/env/global-env-manager";
+import { EnvironmentEnvManager } from "@/components/env/environment-env-manager";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 
 export const metadata = { title: "Environment Variables" };
@@ -59,15 +62,23 @@ export default async function VariablesPage(
   }
 
   const admin = await isInstanceAdmin();
-  const [allServiceGroups, sharedGroups, teamGlobals, instanceGlobals] =
+  const [allServiceGroups, sharedGroups, teamGlobals, instanceGlobals, projects] =
     await Promise.all([
       listAllServiceEnv(),
       listSharedEnvGroups(),
       listTeamGlobalEnv(),
       // Instance-wide vars are admin-only; skip the (throwing) read otherwise.
       admin ? listInstanceEnv() : Promise.resolve([]),
+      listProjects(),
     ]);
   const services = allServiceGroups.map((g) => g.service);
+  // Environment-scoped shared vars, grouped per Project container → environment.
+  const projectEnvGroups = await Promise.all(
+    projects.map(async (p) => ({
+      project: p,
+      groups: await listProjectEnvironmentEnv(p.id),
+    })),
+  );
 
   // Only surface a service here if it has variables to show: its own vars, or
   // at least one attached shared group. Empty services add noise, not signal.
@@ -80,6 +91,7 @@ export default async function VariablesPage(
 
   const allowedTabs = new Set([
     "service",
+    "environments",
     "shared",
     "team",
     ...(admin ? ["instance"] : []),
@@ -90,12 +102,15 @@ export default async function VariablesPage(
     <div className="space-y-6">
       <PageHeader
         title="Environment Variables"
-        description="Per-service, team-global and reusable shared variables across your workspace."
+        description="Per-service, per-environment, team-global and reusable shared variables across your workspace."
       />
 
       <Tabs defaultValue={defaultTab}>
         <UnderlineTabsList>
           <UnderlineTabsTrigger value="service">Service</UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="environments">
+            Environments
+          </UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="team">Team globals</UnderlineTabsTrigger>
           {admin && (
@@ -171,6 +186,34 @@ export default async function VariablesPage(
                       </Table>
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+
+        {/* Environments: per-project, per-environment shared variables */}
+        <TabsContent value="environments" className="space-y-4">
+          {projectEnvGroups.length === 0 ? (
+            <EmptyState
+              icon={Boxes}
+              title="No projects yet"
+              description="Create a project to group services and share variables per environment (Production, Preview, …)."
+            />
+          ) : (
+            projectEnvGroups.map(({ project, groups }) => (
+              <Card key={project.id}>
+                <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+                  <CardTitle className="text-base">{project.name}</CardTitle>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/projects/${project.slug}`}>
+                      Open project
+                      <ArrowUpRight className="size-4" />
+                    </Link>
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <EnvironmentEnvManager groups={groups} canManage />
                 </CardContent>
               </Card>
             ))

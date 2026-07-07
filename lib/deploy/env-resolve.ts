@@ -41,6 +41,21 @@ export interface GlobalEnvEntryLike {
 }
 
 /**
+ * An ENVIRONMENT-scoped entry (ADR-0008) — a variable shared by every service
+ * of the owning Project, in one Environment's context. It carries no `targets`:
+ * the environment IS the scope, and its `kind` bridges to the legacy target
+ * axis (`production` kind → production deploys, `development` → the dev
+ * container, …). A `custom` kind matches no legacy target, so a custom
+ * environment's vars stay inert until the per-environment pipeline lands.
+ */
+export interface EnvironmentEnvEntryLike {
+  key: string;
+  valueEnc: string;
+  /** The owning environment's `kind` (an `EnvironmentKind`). */
+  kind: string;
+}
+
+/**
  * A group's targets, defaulting legacy records (no `targets` field) to all
  * three. Older groups reached only production; treating them as all-targets
  * preserves that production injection while letting the user opt them out by
@@ -56,12 +71,15 @@ export function groupTargets(g: SharedEnvGroupLike): EnvTarget[] {
  * object so a later entry wins on a key collision. The order — broadest default
  * to most specific — is:
  *
- *   instance-global  →  team-global  →  project's own  →  attached shared group
+ *   instance-global  →  team-global  →  environment  →  project's own  →
+ *   attached shared group
  *
- * So an all-teams default is overridable by a team default, which a project can
- * override, and a shared group still overrides everything (its prior behaviour).
- * The two global layers carry no serviceId (they apply to every project); only
- * their `targets` gate the runtime. Both default to empty so existing callers
+ * So an all-teams default is overridable by a team default, which the project
+ * container's environment can override, which a service's own var can override,
+ * and a shared group still overrides everything (its prior behaviour). The two
+ * global layers carry no serviceId (they apply to every project); only their
+ * `targets` gate the runtime. The environment layer (ADR-0008) is gated by its
+ * `kind` matching the target. All three default to empty so existing callers
  * that pass only project + shared keep the old two-layer behaviour.
  */
 export function resolveEnvEntries(
@@ -71,6 +89,7 @@ export function resolveEnvEntries(
   sharedGroups: SharedEnvGroupLike[],
   teamGlobals: GlobalEnvEntryLike[] = [],
   instanceGlobals: GlobalEnvEntryLike[] = [],
+  environmentEnvs: EnvironmentEnvEntryLike[] = [],
 ): { key: string; valueEnc: string }[] {
   const out: { key: string; valueEnc: string }[] = [];
   for (const e of instanceGlobals) {
@@ -78,6 +97,9 @@ export function resolveEnvEntries(
   }
   for (const e of teamGlobals) {
     if (e.targets.includes(target)) out.push({ key: e.key, valueEnc: e.valueEnc });
+  }
+  for (const e of environmentEnvs) {
+    if (e.kind === target) out.push({ key: e.key, valueEnc: e.valueEnc });
   }
   for (const e of envVars) {
     if (e.serviceId === serviceId && e.targets.includes(target)) {

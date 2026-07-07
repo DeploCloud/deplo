@@ -10,6 +10,7 @@ import {
   loadSharedEnvGroupsForService,
 } from "./service-graph-load";
 import { loadGlobalEnvForService } from "./global-env";
+import { loadEnvironmentEnvForService } from "./environment-env";
 import { connectAgent } from "../infra/agent-client";
 import type { Service, VolumeMount } from "../types";
 
@@ -56,10 +57,11 @@ export async function serviceEnvSnapshot(
 ): Promise<Record<string, string>> {
   // env vars + attached shared groups + global scopes are relational; load the
   // bounded set and decrypt at this edge (mirrors build.ts's `serviceEnv`).
-  const [vars, groups, globals] = await Promise.all([
+  const [vars, groups, globals, environmentEnvs] = await Promise.all([
     loadEnvVarsForService(serviceId),
     loadSharedEnvGroupsForService(serviceId),
     loadGlobalEnvForService(serviceId),
+    loadEnvironmentEnvForService(serviceId),
   ]);
   const out: Record<string, string> = {};
   for (const e of resolveEnvEntries(
@@ -69,6 +71,7 @@ export async function serviceEnvSnapshot(
     groups,
     globals.teamGlobals,
     globals.instanceGlobals,
+    environmentEnvs,
   )) {
     out[e.key] = decryptSecret(e.valueEnc);
   }

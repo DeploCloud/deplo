@@ -1,6 +1,11 @@
 # ADR-0008: Projects own Environments; the deployable unit is a Service
 
-- **Status**: Proposed — 2026-07-07
+- **Status**: Accepted — 2026-07-07. Phases 1, 2, 2b and 3a are live; of Phase 3,
+  the `service_environments` join + deploy-key primitive (3b foundation) and the
+  **environment env-var scoping** (`environment_env_vars` + the environment layer in
+  `resolveEnvEntries`, migration 0019) have landed. The per-environment deploy
+  pipeline (deploy-key consumption, `deployments.environment_id`, `?env=` switcher,
+  per-env domains/branches) remains.
 - **Amends**: [ADR-0001](0001-ports-are-per-target-not-a-single-scalar.md) (the two-scalar
   `build.port`/`dev.port` model narrows to a per-environment port)
 - **Touches**: the glossary ([CONTEXT.md](../../CONTEXT.md)), the whole control-plane, and the

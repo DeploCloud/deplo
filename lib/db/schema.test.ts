@@ -89,6 +89,7 @@ const CONTROL_PLANE = [
   "team_global_env_var_targets",
   "instance_env_vars",
   "instance_env_var_targets",
+  "environment_env_vars",
   "domains",
   "domain_middlewares",
   "service_basic_auth_users",

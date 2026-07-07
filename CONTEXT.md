@@ -139,7 +139,13 @@ create; renamable and extensible. Carries a well-known `kind`
 (`development|preview|production|custom`) — the bridge that keeps legacy **env target**
 resolution and global-env targeting working. The default environment (seeded: Production)
 keeps the bare `deplo-<slug>` deploy key so live stacks are untouched; others get
-`deplo-<slug>__<envSlug>`. id prefix `environ_`.
+`deplo-<slug>__<envSlug>`. id prefix `environ_`. An Environment **owns shared env vars**
+(`environment_env_vars`): a variable stored on it reaches EVERY service of the Project in
+that environment's context, with **no target axis** — the environment IS the scope, its
+`kind` bridging to the runtime until the pipeline is environment-parameterized (a `custom`
+kind's vars are inert until then). Deploy precedence: above team/instance globals, below a
+service's own vars. Managed from the Project detail page and the Variables page's
+**Environments** tab; gated `manage_env` like every other var surface.
 _Avoid_: env target (the legacy fixed enum, now `Environment.kind`), stage, deployment
 environment (the two-valued build axis).
 
@@ -346,12 +352,14 @@ _Avoid_: target user (removed), non-root user (be specific: it is `devuser`/UID 
 
 **Env target**:
 The axis (`production` | `preview` | `development`) that decides which runtime an env
-var reaches. It applies to both per-service vars and shared env groups. A dev container
+var reaches. It applies to per-service vars, global vars, and shared env groups — but
+**not** to an Environment's own shared vars, which carry no target (the Environment IS
+the scope; its `kind` plays this axis's role). A dev container
 inherits **only** entries that target `development` — its own `development`-tagged vars
 plus any attached shared group that targets `development` — never production/preview-only
 entries. Nothing is inherited implicitly: a fresh service's dev container is empty until
 a `development` var or group is added.
-_Avoid_: environment (overloaded with "dev environment"); scope.
+_Avoid_: environment (that is the per-Project entity); scope.
 
 **Shared env group**:
 A reusable set of env vars attached to many services, injected into each attached
@@ -359,7 +367,9 @@ service's stack for the runtimes the group **targets** (same `production`/`previ
 `development` axis as a per-service var). A group reaches a service's dev container only
 when it targets `development`. Legacy groups stored before the target axis default to all
 three targets. Attachment is editable from both the global Variables page and a service's
-Environment tab.
+Environment tab. Distinct from an **Environment**'s shared vars: a group is attached
+service-by-service across the team; an Environment's vars reach every service of one
+Project automatically, in that environment's context only.
 _Avoid_: shared variables (Coolify's term), env group.
 
 **Port target**:

@@ -15,6 +15,7 @@ import { newId, nowIso } from "../ids";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
 import { loadGlobalEnvForService } from "../data/global-env";
+import { loadEnvironmentEnvForService } from "../data/environment-env";
 import { recordActivity } from "../data/activity";
 import {
   loadDeployment,
@@ -127,10 +128,11 @@ async function serviceEnv(
   serviceId: string,
   target: EnvTarget = "production",
 ): Promise<Record<string, string>> {
-  const [vars, groups, globals] = await Promise.all([
+  const [vars, groups, globals, environmentEnvs] = await Promise.all([
     loadEnvVarsForService(serviceId),
     loadSharedEnvGroupsForService(serviceId),
     loadGlobalEnvForService(serviceId),
+    loadEnvironmentEnvForService(serviceId),
   ]);
   const out: Record<string, string> = {};
   for (const e of resolveEnvEntries(
@@ -140,6 +142,7 @@ async function serviceEnv(
     groups,
     globals.teamGlobals,
     globals.instanceGlobals,
+    environmentEnvs,
   )) {
     out[e.key] = decryptSecret(e.valueEnc);
   }
@@ -160,10 +163,11 @@ async function serviceEnvKeys(
   serviceId: string,
   target: EnvTarget = "production",
 ): Promise<string[]> {
-  const [vars, groups, globals] = await Promise.all([
+  const [vars, groups, globals, environmentEnvs] = await Promise.all([
     loadEnvVarsForService(serviceId),
     loadSharedEnvGroupsForService(serviceId),
     loadGlobalEnvForService(serviceId),
+    loadEnvironmentEnvForService(serviceId),
   ]);
   // De-dupe on key (the resolver emits lowest-precedence first; a later entry
   // wins on value, but for NAMES we just need the distinct set).
@@ -175,6 +179,7 @@ async function serviceEnvKeys(
     groups,
     globals.teamGlobals,
     globals.instanceGlobals,
+    environmentEnvs,
   )) {
     seen.add(e.key);
   }

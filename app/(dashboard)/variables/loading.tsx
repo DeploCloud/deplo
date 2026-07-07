@@ -13,10 +13,13 @@ export default function Loading() {
         </div>
       </div>
 
-      {/* UnderlineTabsList: Service / Shared / Team globals (admin-only tab omitted) */}
+      {/* UnderlineTabsList: Service / Environments / Shared / Team globals (admin-only tab omitted) */}
       <div className="flex h-12 items-center gap-1 border-b border-border">
         <div className="px-3">
           <Skeleton className="h-4 w-14" />
+        </div>
+        <div className="px-3">
+          <Skeleton className="h-4 w-24" />
         </div>
         <div className="px-3">
           <Skeleton className="h-4 w-14" />
