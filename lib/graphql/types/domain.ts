@@ -35,13 +35,13 @@ const DomainEntrypointEnum = builder.enumType("DomainEntrypoint", {
 // listDomains() decorates each row with its owning project's name/slug; addDomain
 // and verifyDomain return a bare Domain. The ref is typed on the bare Domain and
 // the decoration fields are nullable so both shapes satisfy it.
-type DomainRow = Domain & { projectName?: string; projectSlug?: string };
+type DomainRow = Domain & { serviceName?: string; serviceSlug?: string };
 
 export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
   description: "A routable hostname attached to a project (Traefik router).",
   fields: (t) => ({
     id: t.exposeID("id"),
-    projectId: t.exposeID("projectId"),
+    serviceId: t.exposeID("serviceId"),
     name: t.exposeString("name"),
     status: t.field({ type: DomainStatusEnum, resolve: (d) => d.status }),
     primary: t.exposeBoolean("primary"),
@@ -66,8 +66,8 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
     createdAt: t.exposeString("createdAt"),
     // Present only on rows from listDomains (decorated with the owning project);
     // null on a freshly-added/verified domain returned bare by the data layer.
-    projectName: t.exposeString("projectName", { nullable: true }),
-    projectSlug: t.exposeString("projectSlug", { nullable: true }),
+    serviceName: t.exposeString("serviceName", { nullable: true }),
+    serviceSlug: t.exposeString("serviceSlug", { nullable: true }),
   }),
 });
 
@@ -119,8 +119,8 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     description:
       "Domains in the active team, primary first. Optionally filtered to one project.",
-    args: { projectId: t.arg.string({ required: false }) },
-    resolve: (_r, { projectId }) => listDomains(projectId ?? undefined),
+    args: { serviceId: t.arg.string({ required: false }) },
+    resolve: (_r, { serviceId }) => listDomains(serviceId ?? undefined),
   }),
 }));
 
@@ -133,11 +133,11 @@ builder.mutationFields((t) => ({
     type: DomainRef,
     authScopes: { capability: "manage_domains" },
     args: {
-      projectId: t.arg.string({ required: true }),
+      serviceId: t.arg.string({ required: true }),
       name: t.arg.string({ required: true }),
       config: t.arg({ type: DomainConfigInput, required: false }),
     },
-    resolve: (_r, { projectId, name, config }) => {
+    resolve: (_r, { serviceId, name, config }) => {
       const cfg: DomainConfig = {
         port: config?.port ?? null,
         // Enum args arrive as the runtime string union; pass through as-is.
@@ -148,7 +148,7 @@ builder.mutationFields((t) => ({
         stripPrefix: config?.stripPrefix ?? undefined,
         service: config?.service ?? undefined,
       };
-      return addDomain(projectId, name, cfg);
+      return addDomain(serviceId, name, cfg);
     },
   }),
   updateDomain: t.field({
@@ -173,8 +173,8 @@ builder.mutationFields((t) => ({
         stripPrefix: patch.stripPrefix ?? undefined,
         service: patch.service ?? undefined,
       };
-      const projectId = await updateDomain(id, next);
-      return reloadDomain(id, projectId);
+      const serviceId = await updateDomain(id, next);
+      return reloadDomain(id, serviceId);
     },
   }),
   verifyDomain: t.field({
@@ -206,11 +206,11 @@ builder.mutationFields((t) => ({
   }),
 }));
 
-/** Reload a domain by id after updateDomain (which returns only the projectId)
+/** Reload a domain by id after updateDomain (which returns only the serviceId)
  * so the mutation can return the updated entity. Scopes the lookup to the
- * affected project, matching project.ts's reloadProject helper. */
-async function reloadDomain(id: string, projectId: string): Promise<DomainRow> {
-  const all = await listDomains(projectId);
+ * affected project, matching project.ts's reloadService helper. */
+async function reloadDomain(id: string, serviceId: string): Promise<DomainRow> {
+  const all = await listDomains(serviceId);
   const found = all.find((d) => d.id === id);
   if (!found) throw new Error("Domain not found");
   return found;

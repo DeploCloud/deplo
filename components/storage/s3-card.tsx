@@ -38,7 +38,7 @@ const PROVIDER_LABEL: Record<string, string> = {
 };
 
 /** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
- *  right-click context menu (see the note in project-card.tsx). */
+ *  right-click context menu (see the note in service-card.tsx). */
 type MenuKit = {
   Item: React.ElementType;
   Separator: React.ElementType;

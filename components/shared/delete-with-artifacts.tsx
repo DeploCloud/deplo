@@ -38,7 +38,7 @@ export function DeleteWithArtifacts({
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (v: boolean) => void;
-  targetKind: "database" | "project";
+  targetKind: "database" | "service";
   targetId: string;
   targetName: string;
   title: string;

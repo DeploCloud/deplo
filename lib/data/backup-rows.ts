@@ -25,7 +25,7 @@ import type {
  * `s3_destination`, `backups`, `backup_runs`. Every reader and writer in the data
  * layer (`lib/data/{databases,s3,backups}.ts`) goes through here, so reads and
  * writes can't drift on how a row folds into a domain object — the same anti-drift
- * seam `project-graph-rows.ts` is for the project graph and `notification-row.ts`
+ * seam `service-graph-rows.ts` is for the project graph and `notification-row.ts`
  * is for `notification_settings`.
  *
  * Pure — no `server-only`, no store, no db handle — so a `server-only` module can
@@ -145,7 +145,7 @@ export function backupToRow(b: Backup): BackupInsert {
     name: b.name,
     targetKind: b.targetKind,
     databaseId: b.databaseId,
-    projectId: b.projectId,
+    serviceId: b.serviceId,
     destinationId: b.destinationId,
     schedule: b.schedule,
     retentionDays: b.retentionDays,
@@ -164,7 +164,7 @@ export function assembleBackup(row: BackupRow): Backup {
     name: row.name,
     targetKind: row.targetKind as BackupTargetKind,
     databaseId: row.databaseId,
-    projectId: row.projectId,
+    serviceId: row.serviceId,
     destinationId: row.destinationId,
     schedule: row.schedule,
     retentionDays: row.retentionDays,
@@ -192,7 +192,7 @@ export function backupRunToRow(r: BackupRun): BackupRunInsert {
     backupId: r.backupId,
     targetKind: r.targetKind,
     databaseId: r.databaseId,
-    projectId: r.projectId,
+    serviceId: r.serviceId,
     destinationId: r.destinationId,
     objectKey: r.objectKey,
     sizeBytes: r.sizeBytes,
@@ -215,7 +215,7 @@ export function assembleBackupRun(row: BackupRunRow): BackupRun {
     backupId: row.backupId,
     targetKind: row.targetKind as BackupTargetKind,
     databaseId: row.databaseId,
-    projectId: row.projectId,
+    serviceId: row.serviceId,
     destinationId: row.destinationId,
     objectKey: row.objectKey,
     sizeBytes: row.sizeBytes,

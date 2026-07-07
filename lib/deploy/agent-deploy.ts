@@ -221,7 +221,7 @@ export async function runAgentDeploy(opts: {
   serverId: string;
   deployId: string;
   slug: string;
-  projectId: string;
+  serviceId: string;
   imageRef: string;
   composeYaml: string;
   env: Record<string, string>;
@@ -399,7 +399,7 @@ function coerceLevel(s: string): LogLevel {
 export async function buildDeployRequest(opts: {
   deployId: string;
   slug: string;
-  projectId: string;
+  serviceId: string;
   imageRef: string;
   composeYaml: string;
   env: Record<string, string>;
@@ -409,7 +409,7 @@ export async function buildDeployRequest(opts: {
   const base: DeployRequest = {
     deployId: opts.deployId,
     slug: opts.slug,
-    projectId: opts.projectId,
+    projectId: opts.serviceId,
     imageRef: opts.imageRef,
     sourceKind: SourceKind.SOURCE_KIND_UNSPECIFIED,
     buildKind: BuildKind.BUILD_KIND_UNSPECIFIED,

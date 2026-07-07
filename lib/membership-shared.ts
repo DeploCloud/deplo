@@ -22,11 +22,11 @@ export const CAPABILITY_META: Record<
 > = {
   view: {
     label: "View",
-    description: "Read-only access to projects, deployments and settings.",
+    description: "Read-only access to services, deployments and settings.",
   },
   deploy: {
     label: "Deploy",
-    description: "Create, redeploy, stop/start projects and dev environments.",
+    description: "Create, redeploy, stop/start services and dev environments.",
   },
   manage_domains: {
     label: "Manage domains",

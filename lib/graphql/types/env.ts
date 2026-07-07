@@ -2,13 +2,13 @@ import { builder } from "../builder";
 import { EnvTargetEnum } from "./enums";
 import {
   listEnv,
-  listAllProjectEnv,
+  listAllServiceEnv,
   revealEnv,
   upsertEnv,
   importEnv,
-  setProjectEnv,
+  setServiceEnv,
   deleteEnv,
-  type ProjectEnvGroup,
+  type ServiceEnvGroup,
 } from "@/lib/data/env";
 import type { EnvVarDTO } from "@/lib/types";
 
@@ -46,10 +46,10 @@ const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
 });
 
 // The lightweight project descriptor each group carries (id/name/slug only).
-type ProjectEnvGroupProject = ProjectEnvGroup["project"];
+type ServiceEnvGroupService = ServiceEnvGroup["service"];
 
-const ProjectEnvGroupProjectRef = builder
-  .objectRef<ProjectEnvGroupProject>("ProjectEnvGroupProject")
+const ServiceEnvGroupServiceRef = builder
+  .objectRef<ServiceEnvGroupService>("ServiceEnvGroupService")
   .implement({
     fields: (t) => ({
       id: t.exposeID("id"),
@@ -58,14 +58,14 @@ const ProjectEnvGroupProjectRef = builder
     }),
   });
 
-const ProjectEnvGroupRef = builder
-  .objectRef<ProjectEnvGroup>("ProjectEnvGroup")
+const ServiceEnvGroupRef = builder
+  .objectRef<ServiceEnvGroup>("ServiceEnvGroup")
   .implement({
     description: "One project together with all of its env vars.",
     fields: (t) => ({
-      project: t.field({
-        type: ProjectEnvGroupProjectRef,
-        resolve: (g) => g.project,
+      service: t.field({
+        type: ServiceEnvGroupServiceRef,
+        resolve: (g) => g.service,
       }),
       vars: t.field({
         type: [EnvVarRef],
@@ -80,7 +80,7 @@ const ProjectEnvGroupRef = builder
 
 const UpsertEnvInputType = builder.inputType("UpsertEnvInput", {
   fields: (t) => ({
-    projectId: t.string({ required: true }),
+    serviceId: t.string({ required: true }),
     key: t.string({ required: true }),
     value: t.string({ required: true }),
     targets: t.field({ type: [EnvTargetEnum], required: true }),
@@ -88,7 +88,7 @@ const UpsertEnvInputType = builder.inputType("UpsertEnvInput", {
   }),
 });
 
-// One KEY=VALUE pair for the ".env editor" (setProjectEnv). `type`/`targets` are
+// One KEY=VALUE pair for the ".env editor" (setServiceEnv). `type`/`targets` are
 // not expressed here: existing vars keep theirs, new ones default to plain.
 const EnvEntryInputType = builder.inputType("EnvEntryInput", {
   fields: (t) => ({
@@ -106,14 +106,14 @@ builder.queryFields((t) => ({
     type: [EnvVarRef],
     authScopes: { loggedIn: true },
     description: "Env vars of a single project (requires manage_env).",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: (_r, { projectId }) => listEnv(projectId),
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: (_r, { serviceId }) => listEnv(serviceId),
   }),
-  allProjectEnv: t.field({
-    type: [ProjectEnvGroupRef],
+  allServiceEnv: t.field({
+    type: [ServiceEnvGroupRef],
     authScopes: { loggedIn: true },
     description: "Every project's env vars in the active team, grouped by project.",
-    resolve: () => listAllProjectEnv(),
+    resolve: () => listAllServiceEnv(),
   }),
 }));
 
@@ -129,13 +129,13 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: UpsertEnvInputType, required: true }) },
     resolve: async (_r, { input }) => {
       await upsertEnv({
-        projectId: input.projectId,
+        serviceId: input.serviceId,
         key: input.key,
         value: input.value,
         targets: input.targets,
         type: input.type,
       });
-      return reloadEnv(input.projectId, input.key);
+      return reloadEnv(input.serviceId, input.key);
     },
   }),
   deleteEnv: t.field({
@@ -154,26 +154,26 @@ builder.mutationFields((t) => ({
     description:
       "Bulk-import a .env-style blob; returns the number of vars imported.",
     args: {
-      projectId: t.arg.string({ required: true }),
+      serviceId: t.arg.string({ required: true }),
       blob: t.arg.string({ required: true }),
       targets: t.arg({ type: [EnvTargetEnum], required: true }),
     },
-    resolve: (_r, { projectId, blob, targets }) =>
-      importEnv(projectId, blob, targets),
+    resolve: (_r, { serviceId, blob, targets }) =>
+      importEnv(serviceId, blob, targets),
   }),
-  setProjectEnv: t.field({
+  setServiceEnv: t.field({
     type: "Int",
     authScopes: { capability: "manage_env" },
     description:
       "Replace a project's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.",
     args: {
-      projectId: t.arg.string({ required: true }),
+      serviceId: t.arg.string({ required: true }),
       entries: t.arg({ type: [EnvEntryInputType], required: true }),
       defaultTargets: t.arg({ type: [EnvTargetEnum], required: true }),
     },
-    resolve: (_r, { projectId, entries, defaultTargets }) =>
-      setProjectEnv(
-        projectId,
+    resolve: (_r, { serviceId, entries, defaultTargets }) =>
+      setServiceEnv(
+        serviceId,
         entries.map((e) => ({ key: e.key, value: e.value })),
         defaultTargets,
       ),
@@ -188,8 +188,8 @@ builder.mutationFields((t) => ({
 }));
 
 /** Reload a single env var after the void upsert so we can return the entity. */
-async function reloadEnv(projectId: string, key: string): Promise<EnvVarDTO> {
-  const all = await listEnv(projectId);
+async function reloadEnv(serviceId: string, key: string): Promise<EnvVarDTO> {
+  const all = await listEnv(serviceId);
   const found = all.find((e) => e.key === key.trim());
   if (!found) throw new Error("Env var not found");
   return found;

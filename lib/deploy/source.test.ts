@@ -70,7 +70,7 @@ test("nothing deployable → none", () => {
 
 // ---- devWorkspaceDeployAllowed: the guard ----
 
-test("dev-workspace deploy is allowed only for built (git/upload) projects", () => {
+test("dev-workspace deploy is allowed only for built (git/upload) services", () => {
   assert.equal(devWorkspaceDeployAllowed({ usesComposeStack: false, source: "github" }), true);
   assert.equal(devWorkspaceDeployAllowed({ usesComposeStack: false, source: "upload" }), true);
   assert.equal(devWorkspaceDeployAllowed({ usesComposeStack: true, source: "compose" }), false);

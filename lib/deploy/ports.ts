@@ -16,9 +16,9 @@
 import type { PortTarget } from "../types";
 
 /** Just the fields this module reads from a project — so callers in the data
- * layer can resolve a port without dragging in the full `Project` (and the
- * `server-only` graph behind it). A `Project` satisfies this structurally. */
-export interface PortBearingProject {
+ * layer can resolve a port without dragging in the full `Service` (and the
+ * `server-only` graph behind it). A `Service` satisfies this structurally. */
+export interface PortBearingService {
   build: { port: number };
   dev?: { port: number } | null;
 }
@@ -28,7 +28,7 @@ export interface PortBearingProject {
  * and `preview` read the image-baked `build.port`; `development` reads
  * `dev.port`, falling back to `build.port` when dev mode never set one.
  */
-export function portFor(project: PortBearingProject, target: PortTarget): number {
+export function portFor(project: PortBearingService, target: PortTarget): number {
   if (target === "development") {
     return project.dev?.port || project.build.port;
   }
@@ -40,13 +40,13 @@ export function portFor(project: PortBearingProject, target: PortTarget): number
  * when set, else the project's port for `target`. A `null`/`undefined` override
  * means "use the target default" — the long-standing behaviour where every
  * domain hits the same service. Per-domain overrides apply to single-image /
- * built projects only; the deploy engine never passes one for a compose stack.
+ * built services only; the deploy engine never passes one for a compose stack.
  *
  * This is the one definition of "effective port", reachable from both the deploy
  * engine (Traefik routers) and the data layer (validation / display).
  */
 export function effectivePortFor(
-  project: PortBearingProject,
+  project: PortBearingService,
   target: PortTarget,
   override: number | null | undefined,
 ): number {

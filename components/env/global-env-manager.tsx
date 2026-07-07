@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Eye, Trash2, Pencil } from "lucide-react";
+import { Plus, Trash2, Pencil } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +27,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { EnvValueCell } from "@/components/env/env-value-cell";
 import { gqlAction } from "@/lib/graphql-client";
 import { ALL_ENV_TARGETS } from "@/lib/types";
 import type { EnvTarget, GlobalEnvScope, GlobalEnvVarDTO } from "@/lib/types";
@@ -125,17 +126,7 @@ export function GlobalEnvManager({
                     {v.key}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <code className="max-w-[220px] truncate font-mono text-xs text-muted-foreground">
-                        {v.value}
-                      </code>
-                      {v.masked && (
-                        <Eye
-                          className="size-3.5 shrink-0 cursor-not-allowed text-muted-foreground opacity-50"
-                          aria-label="Secret value (hidden)"
-                        />
-                      )}
-                    </div>
+                    <EnvValueCell value={v.value} masked={v.masked} />
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
@@ -268,7 +259,7 @@ function GlobalEnvDialog({
         <DialogHeader>
           <DialogTitle>{editing ? "Edit variable" : "Add variable"}</DialogTitle>
           <DialogDescription>
-            Applies to every targeted environment of the projects in this scope.
+            Applies to every targeted environment of the services in this scope.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

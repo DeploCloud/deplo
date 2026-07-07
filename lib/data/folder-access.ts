@@ -7,7 +7,7 @@ import {
   folders as foldersTable,
   folderGrants as folderGrantsTable,
   memberships as membershipsTable,
-  projects as projectsTable,
+  services as servicesTable,
   users as usersTable,
 } from "../db/schema/control-plane";
 import { assertUser, getCurrentUser } from "../auth";
@@ -211,7 +211,7 @@ export async function canSeeFolder(folderId: string): Promise<boolean> {
  *
  * So a member with team `manage_domains` but no access to the folder a project
  * sits in can no longer manage that project's domains: folder access scopes what
- * you can do to the projects inside it, not just the folder itself.
+ * you can do to the services inside it, not just the folder itself.
  *
  * Call this AFTER the team-level `requireCapability(cap)` (it does not re-check
  * team membership). Throws the same user-facing errors as `requireFolderCapability`
@@ -219,16 +219,16 @@ export async function canSeeFolder(folderId: string): Promise<boolean> {
  * A no-op for a missing/foreign project id (the surrounding team-scope check is
  * the authority on existence); pass a project you've already team-scoped.
  */
-export async function requireFolderCapabilityForProject(
-  projectId: string,
+export async function requireFolderCapabilityForService(
+  serviceId: string,
   cap: Capability,
 ): Promise<void> {
-  const folderId = await projectFolderId(projectId);
+  const folderId = await serviceFolderId(serviceId);
   if (!folderId) return; // top-level project → team caps already suffice
   const caps = await folderCapabilities(folderId);
   // Invisible folder ⇒ the project inside it is off-limits; don't leak that the
   // project exists via a capability-specific message.
-  if (caps.length === 0) throw new Error("Project not found");
+  if (caps.length === 0) throw new Error("Service not found");
   if (!caps.includes(cap)) {
     throw new Error(
       `You don't have permission to ${CAPABILITY_META[cap].label.toLowerCase()} in this folder`,
@@ -237,11 +237,11 @@ export async function requireFolderCapabilityForProject(
 }
 
 /** A project's containing folder id, or null when it's at the top level / absent. */
-async function projectFolderId(projectId: string): Promise<string | null> {
+async function serviceFolderId(serviceId: string): Promise<string | null> {
   const rows = await getDb()
-    .select({ folderId: projectsTable.folderId })
-    .from(projectsTable)
-    .where(eq(projectsTable.id, projectId))
+    .select({ folderId: servicesTable.folderId })
+    .from(servicesTable)
+    .where(eq(servicesTable.id, serviceId))
     .limit(1);
   return rows[0]?.folderId ?? null;
 }

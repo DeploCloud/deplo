@@ -26,7 +26,7 @@ import type { SharedEnvGroupDTO } from "@/lib/data/shared-env";
 import { ALL_ENV_TARGETS } from "@/lib/types";
 import type { EnvTarget } from "@/lib/types";
 
-interface ProjectLite {
+interface ServiceLite {
   id: string;
   name: string;
   slug: string;
@@ -34,10 +34,10 @@ interface ProjectLite {
 
 export function SharedEnvManager({
   groups,
-  projects,
+  services,
 }: {
   groups: SharedEnvGroupDTO[];
-  projects: ProjectLite[];
+  services: ServiceLite[];
 }) {
   const router = useRouter();
   const [editing, setEditing] = React.useState<SharedEnvGroupDTO | null>(null);
@@ -57,7 +57,7 @@ export function SharedEnvManager({
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Define a set of variables once and attach it to many projects. Every
+          Define a set of variables once and attach it to many services. Every
           attached project references the same value — edit it here to update
           them all.
         </p>
@@ -71,7 +71,7 @@ export function SharedEnvManager({
         <EmptyState
           icon={Share2}
           title="No shared variables yet"
-          description="Create a shared group to reuse the same secrets across projects."
+          description="Create a shared group to reuse the same secrets across services."
         />
       ) : (
         <div className="grid gap-3">
@@ -137,11 +137,11 @@ export function SharedEnvManager({
 
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span>Attached to:</span>
-                  {g.projects.length === 0 ? (
-                    <span>no projects</span>
+                  {g.services.length === 0 ? (
+                    <span>no services</span>
                   ) : (
                     <div className="flex flex-wrap gap-1">
-                      {g.projects.map((p) => (
+                      {g.services.map((p) => (
                         <Badge key={p.id} variant="secondary" className="text-[10px]">
                           {p.name}
                         </Badge>
@@ -160,13 +160,13 @@ export function SharedEnvManager({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         editing={editing}
-        projects={projects}
+        services={services}
       />
       <ConfirmAction
         open={deleteId !== null}
         onOpenChange={(v) => !v && setDeleteId(null)}
         title="Delete shared group?"
-        description="Projects attached to this group lose these variables on their next deploy."
+        description="Services attached to this group lose these variables on their next deploy."
         confirmLabel="Delete"
         successMessage="Shared group deleted"
         onConfirm={async () => {
@@ -186,19 +186,19 @@ function SharedEnvDialog({
   open,
   onOpenChange,
   editing,
-  projects,
+  services,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   editing: SharedEnvGroupDTO | null;
-  projects: ProjectLite[];
+  services: ServiceLite[];
 }) {
   const router = useRouter();
   const [name, setName] = React.useState(editing?.name ?? "");
   const [description, setDescription] = React.useState(editing?.description ?? "");
   const [blob, setBlob] = React.useState("");
-  const [projectIds, setProjectIds] = React.useState<string[]>(
-    editing?.projectIds ?? [],
+  const [serviceIds, setServiceIds] = React.useState<string[]>(
+    editing?.serviceIds ?? [],
   );
   const [targets, setTargets] = React.useState<EnvTarget[]>(
     editing?.targets ?? ALL_ENV_TARGETS,
@@ -224,8 +224,8 @@ function SharedEnvDialog({
     };
   }, [open, editing]);
 
-  function toggleProject(id: string) {
-    setProjectIds((cur) =>
+  function toggleService(id: string) {
+    setServiceIds((cur) =>
       cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id],
     );
   }
@@ -246,7 +246,7 @@ function SharedEnvDialog({
             name,
             description,
             blob,
-            projectIds,
+            serviceIds,
             targets,
           },
         },
@@ -270,7 +270,7 @@ function SharedEnvDialog({
           </DialogTitle>
           <DialogDescription>
             Variables are written as a .env block and shared across the selected
-            projects.
+            services.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -324,23 +324,23 @@ function SharedEnvDialog({
             <p className="text-xs text-muted-foreground">
               The runtimes these variables reach. Include{" "}
               <code className="font-mono">development</code> to inject them into
-              attached projects&apos; dev containers.
+              attached services&apos; dev containers.
             </p>
           </div>
           <div className="space-y-2">
-            <Label>Attach to projects</Label>
-            {projects.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No projects yet.</p>
+            <Label>Attach to services</Label>
+            {services.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No services yet.</p>
             ) : (
               <div className="grid max-h-40 grid-cols-1 gap-1 overflow-y-auto rounded-lg border border-border p-2 sm:grid-cols-2">
-                {projects.map((p) => (
+                {services.map((p) => (
                   <label
                     key={p.id}
                     className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent/40"
                   >
                     <Checkbox
-                      checked={projectIds.includes(p.id)}
-                      onCheckedChange={() => toggleProject(p.id)}
+                      checked={serviceIds.includes(p.id)}
+                      onCheckedChange={() => toggleService(p.id)}
                     />
                     <span className="truncate">{p.name}</span>
                   </label>

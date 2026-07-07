@@ -65,7 +65,7 @@ export function appContainerName(slug: string): string {
 }
 
 /** The compose project name (mirrors `deplo-<slug>` for project stacks). */
-function appProject(slug: string): string {
+function appService(slug: string): string {
   return `deplo-app-${slug}`;
 }
 
@@ -109,7 +109,7 @@ export function renderAppCompose(args: {
 }): string {
   const { slug, image, port, deploHost, resolvedEnv } = args;
   const labels = traefikRouterLabels({
-    baseKey: appProject(slug),
+    baseKey: appService(slug),
     routes: [
       { name: deploHost, port, pathPrefix: appPathPrefix(slug), stripPrefix: true },
     ],
@@ -193,14 +193,14 @@ export async function startAppStack(args: {
   );
   try {
     await docker(
-      ["compose", "-p", appProject(slug), "-f", stackFile, "up", "-d", "--remove-orphans"],
+      ["compose", "-p", appService(slug), "-f", stackFile, "up", "-d", "--remove-orphans"],
       { timeout: 180_000 },
     );
   } catch (err) {
     if (!isReinstall) {
       // Roll back a fresh install so a failed pull/up leaves nothing behind.
       await docker(
-        ["compose", "-p", appProject(slug), "-f", stackFile, "down", "--remove-orphans"],
+        ["compose", "-p", appService(slug), "-f", stackFile, "down", "--remove-orphans"],
         { timeout: 60_000, noThrow: true },
       ).catch(() => {});
       await rm(stackFile, { force: true }).catch(() => {});
@@ -213,7 +213,7 @@ export async function startAppStack(args: {
 export async function startAppContainer(slug: string): Promise<void> {
   const stackFile = appStackFile(slug);
   if (await fileExists(stackFile)) {
-    await docker(["compose", "-p", appProject(slug), "-f", stackFile, "start"], {
+    await docker(["compose", "-p", appService(slug), "-f", stackFile, "start"], {
       timeout: 60_000,
     });
   } else {
@@ -225,7 +225,7 @@ export async function startAppContainer(slug: string): Promise<void> {
 export async function stopAppContainer(slug: string): Promise<void> {
   const stackFile = appStackFile(slug);
   if (await fileExists(stackFile)) {
-    await docker(["compose", "-p", appProject(slug), "-f", stackFile, "stop"], {
+    await docker(["compose", "-p", appService(slug), "-f", stackFile, "stop"], {
       timeout: 60_000,
     });
   } else {
@@ -266,7 +266,7 @@ export async function destroyAppContainer(slug: string): Promise<void> {
   const stackFile = appStackFile(slug);
   if (await fileExists(stackFile)) {
     await docker(
-      ["compose", "-p", appProject(slug), "-f", stackFile, "down", "--remove-orphans"],
+      ["compose", "-p", appService(slug), "-f", stackFile, "down", "--remove-orphans"],
       { timeout: 120_000, noThrow: true },
     ).catch(() => {});
   } else {

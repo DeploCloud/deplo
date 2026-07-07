@@ -13,18 +13,18 @@ const PID = "proj-1";
 function envVar(
   key: string,
   targets: TargetedEnvEntry["targets"],
-  projectId = PID,
+  serviceId = PID,
 ): TargetedEnvEntry {
-  return { projectId, key, valueEnc: `enc(${key})`, targets };
+  return { serviceId, key, valueEnc: `enc(${key})`, targets };
 }
 
 function group(opts: {
   variables: string[];
   targets?: SharedEnvGroupLike["targets"];
-  projectIds?: string[];
+  serviceIds?: string[];
 }): SharedEnvGroupLike {
   return {
-    projectIds: opts.projectIds ?? [PID],
+    serviceIds: opts.serviceIds ?? [PID],
     targets: opts.targets,
     variables: opts.variables.map((k) => ({ key: k, valueEnc: `enc(${k})` })),
   };
@@ -35,7 +35,7 @@ const keys = (es: { key: string }[]) => es.map((e) => e.key);
 // --- groupTargets: legacy default ---
 
 test("groupTargets: missing targets defaults to all three", () => {
-  assert.deepEqual(groupTargets({ projectIds: [], variables: [] }), [
+  assert.deepEqual(groupTargets({ serviceIds: [], variables: [] }), [
     "production",
     "preview",
     "development",
@@ -43,7 +43,7 @@ test("groupTargets: missing targets defaults to all three", () => {
 });
 
 test("groupTargets: empty targets array also defaults to all three", () => {
-  assert.deepEqual(groupTargets({ projectIds: [], variables: [], targets: [] }), [
+  assert.deepEqual(groupTargets({ serviceIds: [], variables: [], targets: [] }), [
     "production",
     "preview",
     "development",
@@ -52,12 +52,12 @@ test("groupTargets: empty targets array also defaults to all three", () => {
 
 test("groupTargets: explicit targets are honoured", () => {
   assert.deepEqual(
-    groupTargets({ projectIds: [], variables: [], targets: ["development"] }),
+    groupTargets({ serviceIds: [], variables: [], targets: ["development"] }),
     ["development"],
   );
 });
 
-// --- per-project var selection by target + projectId ---
+// --- per-project var selection by target + serviceId ---
 
 test("production picks only production-tagged project vars", () => {
   const vars = [
@@ -110,7 +110,7 @@ test("production-only group never reaches a dev container", () => {
 
 test("group attached to another project does not leak in", () => {
   const groups = [
-    group({ variables: ["NOPE"], targets: ["production"], projectIds: ["proj-2"] }),
+    group({ variables: ["NOPE"], targets: ["production"], serviceIds: ["proj-2"] }),
   ];
   assert.deepEqual(resolveEnvEntries("production", PID, [], groups), []);
 });
@@ -154,7 +154,7 @@ function globalEntry(
 
 const ALL = ["production", "preview", "development"] as const;
 
-test("globals apply to every project (no projectId filter) for their targets", () => {
+test("globals apply to every project (no serviceId filter) for their targets", () => {
   const team = [globalEntry("TEAM_VAR", ["production"])];
   const instance = [globalEntry("INST_VAR", ["production"])];
   assert.deepEqual(

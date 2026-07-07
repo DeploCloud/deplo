@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Plus, Rocket, Folder, Bell, Eye, ArrowUpRight } from "lucide-react";
-import { listProjects } from "@/lib/data/projects";
+import { listServices } from "@/lib/data/services";
 import { listFolders } from "@/lib/data/folders";
 import { listActivity } from "@/lib/data/activity";
 import { isInstanceAdmin, hasCapability } from "@/lib/membership";
@@ -11,8 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ProjectsGrid, FolderTrail } from "@/components/projects/projects-grid";
-import { ProjectSearch } from "@/components/projects/project-search";
+import { ServicesGrid, FolderTrail } from "@/components/services/services-grid";
+import { ServiceSearch } from "@/components/services/service-search";
 import { AddNewMenu } from "@/components/shared/add-new-menu";
 import { timeAgo } from "@/lib/utils";
 
@@ -29,7 +29,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     (Array.isArray(folderParam) ? folderParam[0] : folderParam) ?? "";
 
   const [
-    projects,
+    services,
     folders,
     activity,
     isAdmin,
@@ -37,7 +37,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     canManageMembers,
     canDeploy,
   ] = await Promise.all([
-    listProjects(),
+    listServices(),
     listFolders(),
     listActivity(6),
     isInstanceAdmin(),
@@ -56,21 +56,21 @@ export default async function OverviewPage(props: PageProps<"/">) {
   // What the grid shows:
   //  - searching: every matching project, flat, across all folders (folders
   //    hidden) so a project inside a folder is still findable;
-  //  - a folder open: that folder's direct projects + its child folders;
-  //  - otherwise (top level): ungrouped projects + the top-level folders.
+  //  - a folder open: that folder's direct services + its child folders;
+  //  - otherwise (top level): ungrouped services + the top-level folders.
   const openFolder =
     !query && folderId ? folders.find((f) => f.id === folderId) ?? null : null;
 
-  const matches = (p: (typeof projects)[number]) =>
+  const matches = (p: (typeof services)[number]) =>
     p.name.toLowerCase().includes(query) ||
     Boolean(p.repo?.repo.toLowerCase().includes(query)) ||
     Boolean(p.productionUrl?.toLowerCase().includes(query));
 
-  const visibleProjects = query
-    ? projects.filter(matches)
+  const visibleServices = query
+    ? services.filter(matches)
     : openFolder
-      ? projects.filter((p) => p.folderId === openFolder.id)
-      : projects.filter((p) => !p.folderId);
+      ? services.filter((p) => p.folderId === openFolder.id)
+      : services.filter((p) => !p.folderId);
   // Folders nest: show the children of the open folder, or the top-level folders
   // (no parent) at the root. Hidden entirely during a search.
   const visibleFolders = query
@@ -107,7 +107,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
   }
 
   const allFolders = folders.map((f) => ({ id: f.id, name: f.name }));
-  const allProjectIds = projects.map((p) => p.id);
+  const allServiceIds = services.map((p) => p.id);
 
   // Drag-to-reorder writes a team-wide order, so it is gated on permission; it is
   // also disabled mid-search (reordering a filtered list would persist a partial
@@ -115,15 +115,15 @@ export default async function OverviewPage(props: PageProps<"/">) {
   const canReorder = canManageOrder && !query;
 
   const nothingToShow =
-    visibleProjects.length === 0 && visibleFolders.length === 0;
+    visibleServices.length === 0 && visibleFolders.length === 0;
   // Re-seed the grid's optimistic state only on a structural change (navigation,
   // search, add/remove of a project or folder) — never on a pure reorder/move,
-  // so a drag survives its own drop. See ProjectsGrid.
+  // so a drag survives its own drop. See ServicesGrid.
   const gridKey = [
     view,
     query,
     openFolder?.id ?? "",
-    [...allProjectIds].sort().join(","),
+    [...allServiceIds].sort().join(","),
     folders
       .map((f) => f.id)
       .sort()
@@ -178,10 +178,10 @@ export default async function OverviewPage(props: PageProps<"/">) {
         </Card>
       </div>
 
-      {/* Projects */}
+      {/* Services */}
       <div className="order-1 space-y-5 lg:order-1">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Services</h1>
           <AddNewMenu
             canManageMembers={canManageMembers}
             canCreateFolder={canCreateFolder}
@@ -189,7 +189,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
           />
         </div>
 
-        <ProjectSearch
+        <ServiceSearch
           initialQuery={query}
           initialView={view}
           initialFolder={openFolder?.id ?? ""}
@@ -199,12 +199,12 @@ export default async function OverviewPage(props: PageProps<"/">) {
           query ? (
             <EmptyState
               icon={Rocket}
-              title="No projects match your search"
+              title="No services match your search"
               description={`Nothing found for “${query}”.`}
             />
           ) : openFolder ? (
             // An empty open folder renders no grid, but the breadcrumb is the
-            // only way back out — so keep the "All projects / …" trail above the
+            // only way back out — so keep the "All services / …" trail above the
             // empty state regardless. The px-1 py-1 must match the grid's
             // DroppableBreadcrumb so the trail never shifts between the empty and
             // populated views of the same folder.
@@ -215,11 +215,11 @@ export default async function OverviewPage(props: PageProps<"/">) {
               <EmptyState
                 icon={Folder}
                 title={`${openFolder.name} is empty`}
-                description="Drag projects onto this folder from All projects, or use a project’s “Move to folder” menu."
+                description="Drag services onto this folder from All services, or use a project’s “Move to folder” menu."
                 action={
                   <Button asChild variant="outline">
                     <Link href={view === "list" ? "/?view=list" : "/"}>
-                      Back to all projects
+                      Back to all services
                     </Link>
                   </Button>
                 }
@@ -228,14 +228,14 @@ export default async function OverviewPage(props: PageProps<"/">) {
           ) : (
             <EmptyState
               icon={Rocket}
-              title="No projects yet"
+              title="No services yet"
               description="Import a Git repository or start from a template to deploy your first app."
               action={
                 <div className="flex gap-2">
                   <Button asChild>
                     <Link href="/new">
                       <Plus className="size-4" />
-                      Import Project
+                      Import Service
                     </Link>
                   </Button>
                   <Button asChild variant="outline">
@@ -249,10 +249,10 @@ export default async function OverviewPage(props: PageProps<"/">) {
             />
           )
         ) : (
-          <ProjectsGrid
+          <ServicesGrid
             key={gridKey}
-            projects={visibleProjects}
-            allProjectIds={allProjectIds}
+            services={visibleServices}
+            allServiceIds={allServiceIds}
             folders={enrichedFolders}
             allFolders={allFolders}
             openFolder={

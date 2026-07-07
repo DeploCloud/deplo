@@ -262,9 +262,9 @@ export async function createAccountWithTeam(
 
     return { user, team };
   });
-  // Team ordering (project/folder) is now the `team_project_order` /
+  // Team ordering (project/folder) is now the `team_service_order` /
   // `team_folder_order` junctions (cut-set c) — a brand-new team simply has no
-  // order rows yet and `listProjects`/`listFolders` fall back to newest-first.
+  // order rows yet and `listServices`/`listFolders` fall back to newest-first.
   // The old JSONB team-order stub bridge is retired.
   return result;
 }

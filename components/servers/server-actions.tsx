@@ -187,7 +187,7 @@ export function ServerActions({
         },
       );
       if (!res.ok) {
-        // Surfaces the "these teams still have projects/databases…" block message.
+        // Surfaces the "these teams still have services/databases…" block message.
         toast.error(res.error);
         return;
       }
@@ -381,7 +381,7 @@ export function ServerActions({
               Team access for {serverName}
             </DialogTitle>
             <DialogDescription>
-              Choose which teams can deploy projects and databases to this server.
+              Choose which teams can deploy services and databases to this server.
               You can&rsquo;t remove a team that still has workloads here — move or
               delete those first.
             </DialogDescription>
@@ -446,7 +446,7 @@ export function ServerActions({
             <DialogTitle>Remove {serverName}?</DialogTitle>
             <DialogDescription>
               This revokes the agent&rsquo;s trust and tells it to tear down its
-              containers. You can&rsquo;t remove a server while projects are still
+              containers. You can&rsquo;t remove a server while services are still
               assigned to it — reassign or delete them first. If the agent is
               unreachable, removal proceeds anyway and you&rsquo;ll need to clean
               up leftover containers on the host by hand.

@@ -7,7 +7,7 @@ import { CURATED_EXAMPLES } from "@/components/api-docs/examples";
 /**
  * The playground's curated examples are hand-written, so one can drift out of
  * sync with the schema (e.g. a field that returns an object but is written
- * without a sub-selection — the "rebuildProject must have a selection of
+ * without a sub-selection — the "rebuildService must have a selection of
  * subfields" bug). This validates every curated operation against the live
  * schema so a broken example fails here, not in the user's editor.
  *

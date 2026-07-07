@@ -13,7 +13,7 @@ export default function Loading() {
         </div>
       </div>
 
-      {/* UnderlineTabsList: Project / Shared / Team globals (admin-only tab omitted) */}
+      {/* UnderlineTabsList: Service / Shared / Team globals (admin-only tab omitted) */}
       <div className="flex h-12 items-center gap-1 border-b border-border">
         <div className="px-3">
           <Skeleton className="h-4 w-14" />
@@ -26,7 +26,7 @@ export default function Loading() {
         </div>
       </div>
 
-      {/* Project tab body: per-project cards, each with a read-only env table */}
+      {/* Service tab body: per-project cards, each with a read-only env table */}
       <div className="space-y-4">
         {Array.from({ length: 2 }).map((_, card) => (
           <Card key={card}>

@@ -108,7 +108,7 @@ async function main() {
       let ready = false;
       for await (const ev of conn.startDev({
         slug: SLUG,
-        projectId: PROJECT_ID,
+        serviceId: PROJECT_ID,
         composeYaml: devCompose(),
         entryScript: ENTRY,
         cloneSecretUrl: "",

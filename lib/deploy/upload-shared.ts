@@ -1,6 +1,6 @@
 /**
  * Upload constants shared between the server (lib/deploy/upload.ts, the route
- * handler) and the client (components/projects/upload-input.tsx). Kept free of
+ * handler) and the client (components/services/upload-input.tsx). Kept free of
  * any Node-only / "server-only" imports so the browser bundle can use it,
  * which is the whole point: one source of truth for the size cap and the
  * accepted archive extensions instead of values drifting across the boundary.

@@ -9,9 +9,9 @@ import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
-  seedProject,
+  seedService,
   TRUNCATE_PROJECT_GRAPH,
-} from "./project-graph-test-helpers";
+} from "./service-graph-test-helpers";
 import {
   listTeamGlobalEnv,
   upsertTeamGlobalEnv,
@@ -19,10 +19,10 @@ import {
   revealTeamGlobalEnv,
   listInstanceEnv,
   upsertInstanceEnv,
-  loadGlobalEnvForProject,
+  loadGlobalEnvForService,
 } from "./global-env";
 import { upsertEnv } from "./env";
-import { projectEnvSnapshot } from "./project-backup-descriptor";
+import { serviceEnvSnapshot } from "./project-backup-descriptor";
 
 /**
  * Data-layer tests for GLOBAL env scopes (team-wide + instance-wide). Covers
@@ -138,8 +138,8 @@ test("instance env requires an instance admin", async () => {
   assert.deepEqual(list.map((v) => v.key), ["X"]);
 });
 
-test("loadGlobalEnvForProject returns the project team's globals + instance globals", async () => {
-  await seedProject(db, { id: "prj1", teamId: TEAM_A, serverId: "srv_1" });
+test("loadGlobalEnvForService returns the project team's globals + instance globals", async () => {
+  await seedService(db, { id: "prj1", teamId: TEAM_A, serverId: "srv_1" });
   await asUser1(() =>
     upsertTeamGlobalEnv({ key: "TEAM", value: "t", targets: ["production"], type: "plain" }),
   );
@@ -147,7 +147,7 @@ test("loadGlobalEnvForProject returns the project team's globals + instance glob
     upsertInstanceEnv({ key: "INST", value: "i", targets: ["production"], type: "plain" }),
   );
 
-  const { teamGlobals, instanceGlobals } = await loadGlobalEnvForProject("prj1");
+  const { teamGlobals, instanceGlobals } = await loadGlobalEnvForService("prj1");
   assert.deepEqual(teamGlobals.map((e) => e.key), ["TEAM"]);
   assert.deepEqual(instanceGlobals.map((e) => e.key), ["INST"]);
   // The loader returns encrypted entries (decrypt happens at the deploy edge).
@@ -179,26 +179,26 @@ test("editing a secret with the MASK keeps the stored value (targets-only edit)"
   assert.equal(v2!.targets.length, 3);
 });
 
-test("projectEnvSnapshot (backup) includes team + instance globals, project wins", async () => {
-  await seedProject(db, { id: "prjX", teamId: TEAM_A, serverId: "srv_1" });
+test("serviceEnvSnapshot (backup) includes team + instance globals, project wins", async () => {
+  await seedService(db, { id: "prjX", teamId: TEAM_A, serverId: "srv_1" });
   await asUser1(async () => {
     await upsertInstanceEnv({ key: "IG", value: "ival", targets: ["production"], type: "plain" });
     await upsertTeamGlobalEnv({ key: "TG", value: "tval", targets: ["production"], type: "plain" });
     await upsertTeamGlobalEnv({ key: "DUP", value: "team", targets: ["production"], type: "plain" });
-    await upsertEnv({ projectId: "prjX", key: "DUP", value: "project", targets: ["production"], type: "plain" });
+    await upsertEnv({ serviceId: "prjX", key: "DUP", value: "service", targets: ["production"], type: "plain" });
   });
-  const snap = await projectEnvSnapshot("prjX");
+  const snap = await serviceEnvSnapshot("prjX");
   assert.equal(snap.IG, "ival", "instance global captured");
   assert.equal(snap.TG, "tval", "team global captured");
-  assert.equal(snap.DUP, "project", "project var overrides team global");
+  assert.equal(snap.DUP, "service", "project var overrides team global");
 });
 
-test("loadGlobalEnvForProject for a project in a team WITHOUT team globals still gets instance globals", async () => {
-  await seedProject(db, { id: "prj2", teamId: TEAM_B, serverId: "srv_1" });
+test("loadGlobalEnvForService for a project in a team WITHOUT team globals still gets instance globals", async () => {
+  await seedService(db, { id: "prj2", teamId: TEAM_B, serverId: "srv_1" });
   await asUser1(() =>
     upsertInstanceEnv({ key: "INST", value: "i", targets: [...ALL], type: "plain" }),
   );
-  const { teamGlobals, instanceGlobals } = await loadGlobalEnvForProject("prj2");
+  const { teamGlobals, instanceGlobals } = await loadGlobalEnvForService("prj2");
   assert.deepEqual(teamGlobals, []);
   assert.deepEqual(instanceGlobals.map((e) => e.key), ["INST"]);
 });

@@ -42,7 +42,7 @@ function buildDoc(compose: string, extra: Partial<ComposeStackInput> = {}): Doc 
     compose,
     name: "deplo-demo",
     slug: "demo",
-    projectId: "p1",
+    serviceId: "p1",
     domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
     ...extra,
   });
@@ -260,7 +260,7 @@ test("detectDefaultService is null for empty / unparseable compose", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Project-files `./<x>` bind-mount rewrite                            */
+/* Service-files `./<x>` bind-mount rewrite                            */
 /* ------------------------------------------------------------------ */
 
 /** The volume sources of a service, post-build. */
@@ -446,7 +446,7 @@ services:
 `,
     name: "deplo-demo",
     slug: "demo",
-    projectId: "p1",
+    serviceId: "p1",
     domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
     envKeys: ["FOO", "BAR"],
   });

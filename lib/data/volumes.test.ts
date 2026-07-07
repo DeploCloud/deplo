@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { validateVolumes, deriveVolumeName } from "./projects";
+import { validateVolumes, deriveVolumeName } from "./services";
 import type { VolumeMount } from "../types";
 
 /** A volume row with sensible defaults; override per case. */
@@ -172,18 +172,18 @@ test("host mount: does not enforce docker-name rules and ignores name dupes", ()
 });
 
 /* ------------------------------------------------------------------ */
-/* Project-files binds (type: "project")                               */
+/* Service-files binds (type: "service")                               */
 /* ------------------------------------------------------------------ */
 
 test("accepts a project bind and keeps type + projectPath", () => {
   const out = validateVolumes(
-    [vol({ id: "vol_p", type: "project", projectPath: "config.toml", mountPath: "/app/config.toml" })],
+    [vol({ id: "vol_p", type: "service", projectPath: "config.toml", mountPath: "/app/config.toml" })],
     null,
   );
   assert.deepEqual(out, [
     {
       id: "vol_p",
-      type: "project",
+      type: "service",
       // Name is derived from the mount path with non-alnum runs collapsed to "-".
       name: "app-config-toml",
       projectPath: "config.toml",
@@ -195,7 +195,7 @@ test("accepts a project bind and keeps type + projectPath", () => {
 
 test("project bind: strips a leading './' from the projectPath", () => {
   const out = validateVolumes(
-    [vol({ type: "project", projectPath: "./uploads", mountPath: "/uploads" })],
+    [vol({ type: "service", projectPath: "./uploads", mountPath: "/uploads" })],
     null,
   );
   assert.equal(out?.[0].projectPath, "uploads");
@@ -203,7 +203,7 @@ test("project bind: strips a leading './' from the projectPath", () => {
 
 test("project bind: accepts a nested relative path", () => {
   const out = validateVolumes(
-    [vol({ type: "project", projectPath: "volumes/db/init.sql", mountPath: "/init.sql" })],
+    [vol({ type: "service", projectPath: "volumes/db/init.sql", mountPath: "/init.sql" })],
     null,
   );
   assert.equal(out?.[0].projectPath, "volumes/db/init.sql");
@@ -211,34 +211,34 @@ test("project bind: accepts a nested relative path", () => {
 
 test("project bind: rejects a '..' escape (the rename-vuln guard)", () => {
   assert.throws(
-    () => validateVolumes([vol({ type: "project", projectPath: "../other/data", mountPath: "/data" })], null),
+    () => validateVolumes([vol({ type: "service", projectPath: "../other/data", mountPath: "/data" })], null),
     /must not contain "\.\."/,
   );
   // …including a climb dressed up as same-project self-reference.
   assert.throws(
-    () => validateVolumes([vol({ type: "project", projectPath: "../demo/appdata", mountPath: "/appdata" })], null),
+    () => validateVolumes([vol({ type: "service", projectPath: "../demo/appdata", mountPath: "/appdata" })], null),
     /must not contain "\.\."/,
   );
 });
 
 test("project bind: rejects an absolute or empty projectPath", () => {
   assert.throws(
-    () => validateVolumes([vol({ type: "project", projectPath: "/abs", mountPath: "/data" })], null),
+    () => validateVolumes([vol({ type: "service", projectPath: "/abs", mountPath: "/data" })], null),
     /relative to the project/,
   );
   assert.throws(
-    () => validateVolumes([vol({ type: "project", projectPath: "", mountPath: "/data" })], null),
+    () => validateVolumes([vol({ type: "service", projectPath: "", mountPath: "/data" })], null),
     /relative to the project/,
   );
 });
 
 test("project bind: rejects spaces or a colon in the projectPath", () => {
   assert.throws(
-    () => validateVolumes([vol({ type: "project", projectPath: "my file", mountPath: "/data" })], null),
+    () => validateVolumes([vol({ type: "service", projectPath: "my file", mountPath: "/data" })], null),
     /spaces or ":"/,
   );
   assert.throws(
-    () => validateVolumes([vol({ type: "project", projectPath: "a:b", mountPath: "/data" })], null),
+    () => validateVolumes([vol({ type: "service", projectPath: "a:b", mountPath: "/data" })], null),
     /spaces or ":"/,
   );
 });

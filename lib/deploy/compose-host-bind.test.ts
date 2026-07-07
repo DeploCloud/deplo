@@ -15,7 +15,7 @@ import {
  * (both use volumeSource + isHostBindSource), so it's tested directly here.
  *
  * A host bind is a source that escapes the project sandbox — an ABSOLUTE path,
- * OR a `..`-climbing path — and is NOT the project-files `./<x>` convention
+ * OR a `..`-climbing path — and is NOT the service-files `./<x>` convention
  * (rewritten to the project-isolated dir at deploy time). Named/anonymous
  * volumes and `./`-relative mounts are not host binds.
  */
@@ -30,7 +30,7 @@ test("volumeSource extracts the source of each volume entry form", () => {
 test("isHostBindSource: absolute and escaping sources are host binds", () => {
   assert.equal(isHostBindSource("/data"), true);
   assert.equal(isHostBindSource("/etc/passwd"), true);
-  // The ./ project-files convention is project-isolated, not a host bind.
+  // The ./ service-files convention is project-isolated, not a host bind.
   assert.equal(isHostBindSource("./config"), false);
   assert.equal(isHostBindSource("./folder/x"), false);
   assert.equal(isHostBindSource("."), false);
@@ -95,7 +95,7 @@ volumes:
   assert.equal(composeHasHostBindMount(yaml), false);
 });
 
-test("composeHasHostBindMount: false for the ./ project-files convention", () => {
+test("composeHasHostBindMount: false for the ./ service-files convention", () => {
   const yaml = `services:
   app:
     image: nginx

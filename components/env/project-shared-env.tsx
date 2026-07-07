@@ -11,14 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { gqlAction } from "@/lib/graphql-client";
-import type { ProjectSharedEnvGroupDTO } from "@/lib/data/shared-env";
+import type { ServiceSharedEnvGroupDTO } from "@/lib/data/shared-env";
 
-export function ProjectSharedEnv({
-  projectId,
+export function ServiceSharedEnv({
+  serviceId,
   groups,
 }: {
-  projectId: string;
-  groups: ProjectSharedEnvGroupDTO[];
+  serviceId: string;
+  groups: ServiceSharedEnvGroupDTO[];
 }) {
   return (
     <div className="space-y-4">
@@ -42,12 +42,12 @@ export function ProjectSharedEnv({
         <EmptyState
           icon={Share2}
           title="No shared groups yet"
-          description="Create a shared group from the Variables page to reuse the same variables across projects."
+          description="Create a shared group from the Variables page to reuse the same variables across services."
         />
       ) : (
         <div className="grid gap-3">
           {groups.map((g) => (
-            <SharedGroupRow key={g.id} projectId={projectId} group={g} />
+            <SharedGroupRow key={g.id} serviceId={serviceId} group={g} />
           ))}
         </div>
       )}
@@ -56,11 +56,11 @@ export function ProjectSharedEnv({
 }
 
 function SharedGroupRow({
-  projectId,
+  serviceId,
   group,
 }: {
-  projectId: string;
-  group: ProjectSharedEnvGroupDTO;
+  serviceId: string;
+  group: ServiceSharedEnvGroupDTO;
 }) {
   // Optimistic so the switch tracks instantly; refreshing the route
   // reconciles this to the durable value on the next render.
@@ -72,10 +72,10 @@ function SharedGroupRow({
     setAttached(next);
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($groupId: String!, $projectId: String!, $attached: Boolean!) {
-          setSharedEnvGroupAttachment(groupId: $groupId, projectId: $projectId, attached: $attached)
+        `mutation($groupId: String!, $serviceId: String!, $attached: Boolean!) {
+          setSharedEnvGroupAttachment(groupId: $groupId, serviceId: $serviceId, attached: $attached)
         }`,
-        { groupId: group.id, projectId, attached: next },
+        { groupId: group.id, serviceId, attached: next },
       );
       if (res.ok) {
         toast.success(next ? "Group attached" : "Group detached");

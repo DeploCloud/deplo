@@ -36,8 +36,8 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     description:
       "Basic-auth users of a project, alphabetical by username (requires manage_domains).",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: (_r, { projectId }) => listBasicAuthUsers(projectId),
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: (_r, { serviceId }) => listBasicAuthUsers(serviceId),
   }),
 }));
 
@@ -52,12 +52,12 @@ builder.mutationFields((t) => ({
     description:
       "Add a basic-auth user to a project. Applies to all its domains on the next deploy or Reload.",
     args: {
-      projectId: t.arg.string({ required: true }),
+      serviceId: t.arg.string({ required: true }),
       username: t.arg.string({ required: true }),
       password: t.arg.string({ required: true }),
     },
-    resolve: (_r, { projectId, username, password }) =>
-      addBasicAuthUser(projectId, username, password),
+    resolve: (_r, { serviceId, username, password }) =>
+      addBasicAuthUser(serviceId, username, password),
   }),
   updateBasicAuthUserPassword: t.field({
     type: BasicAuthUserRef,

@@ -33,7 +33,7 @@ import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
  * for BOTH the ⋯ dropdown (left-click) and the right-click context menu — same
  * items, same handlers, no duplication. Radix dropdown and context menus share
  * an isomorphic API, so the renderer just takes whichever component set applies
- * (see the note in project-card.tsx).
+ * (see the note in service-card.tsx).
  */
 type MenuKit = {
   Item: React.ElementType;
@@ -51,13 +51,13 @@ const CONTEXT_KIT: MenuKit = {
 
 export function DeploymentActions({
   id,
-  projectId,
+  serviceId,
   url,
   status,
   environment,
 }: {
   id: string;
-  projectId: string;
+  serviceId: string;
   url: string;
   status: DeploymentStatus;
   environment: DeploymentEnvironment;
@@ -71,8 +71,8 @@ export function DeploymentActions({
   function redeploy() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation ($projectId: String!) { redeploy(projectId: $projectId) { id } }`,
-        { projectId },
+        `mutation ($serviceId: String!) { redeploy(serviceId: $serviceId) { id } }`,
+        { serviceId },
       );
       if (res.ok) {
         toast.success("Redeploy started");

@@ -13,7 +13,7 @@ import { gql, GraphQLRequestError } from "./graphql-client";
  * caller can branch without a try/catch.
  *
  *   const { run, pending, error } = useGraphqlMutation<{ redeploy: { id: string } }>(REDEPLOY);
- *   await run({ projectId });   // refreshes the page tree on success
+ *   await run({ serviceId });   // refreshes the page tree on success
  */
 export function useGraphqlMutation<TData = unknown>(
   query: string,

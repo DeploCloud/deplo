@@ -33,7 +33,7 @@ function devBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
 const base = {
   deployId: "dep_1",
   slug: "myapp",
-  projectId: "proj_1",
+  serviceId: "proj_1",
   imageRef: "",
   composeYaml: "services:\n  web:\n    image: nginx\n",
   env: { API_KEY: "secret", PORT: "8080" },

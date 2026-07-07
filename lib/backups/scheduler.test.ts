@@ -8,7 +8,7 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { backupRuns as backupRunsTable } from "../db/schema/control-plane";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
-import { seedServer } from "../data/project-graph-test-helpers";
+import { seedServer } from "../data/service-graph-test-helpers";
 import {
   seedBackup,
   seedDatabase,
@@ -54,7 +54,7 @@ beforeEach(async () => {
   // + held lease) so a previous case's fired schedule can't bleed across tests.
   await scheduler.__stopBackupScheduler();
   await pg.exec(`${TRUNCATE_BACKUPS}
-    truncate table project_build_method_settings, project_build, projects, servers,
+    truncate table service_build_method_settings, service_build, services, servers,
       users, teams restart identity cascade;`);
   await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
   await seedServer(db);

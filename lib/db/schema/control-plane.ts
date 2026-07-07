@@ -115,7 +115,7 @@ export const users = pgTable(
 
 /**
  * [Team](../../types.ts). `UNIQUE(slug)`. `project_order`/`folder_order` are NO
- * LONGER columns — they moved to the `team_project_order`/`team_folder_order`
+ * LONGER columns — they moved to the `team_service_order`/`team_folder_order`
  * ordering junctions so the stale-id self-healing becomes a DB invariant (PLAN
  * §1 "Ordering junctions").
  */
@@ -406,7 +406,7 @@ export const servers = pgTable(
 /**
  * Server → team access junction. Rows here matter ONLY when the server's
  * `all_teams` is `false`: each row grants ONE team the right to target the
- * server for its projects/databases. `all_teams = true` ignores this table
+ * server for its services/databases. `all_teams = true` ignores this table
  * entirely (every team has access). Both FKs cascade — dropping a server or a
  * team prunes its grants. PK on both columns closes the double-grant race.
  */
@@ -428,15 +428,15 @@ export const serverTeams = pgTable(
 /* ================================================================== */
 
 /**
- * [Project](../../types.ts) — flat scalar columns only. `slug` UNIQUE *globally*.
+ * [Service](../../types.ts) — flat scalar columns only. `slug` UNIQUE *globally*.
  * `folder_id` `ON DELETE SET NULL` (orphan tolerated). `server_id` `RESTRICT`.
  * `latest_deployment_id` `SET NULL`. `repo`/`upload` flattened to columns (small
  * fixed shapes). `expose` is **NOT stored** — derived as `exposes[0]` in the
- * row-assembler (PLAN §2 `projects`, Decision 14). Legacy `source="dockerfile"`
+ * row-assembler (PLAN §2 `services`, Decision 14). Legacy `source="dockerfile"`
  * is rewritten on backfill by the shared normalizer.
  */
-export const projects = pgTable(
-  "projects",
+export const services = pgTable(
+  "services",
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
@@ -470,7 +470,7 @@ export const projects = pgTable(
     productionUrl: text("production_url"),
     status: text("status").notNull(),
     autoDeploy: boolean("auto_deploy").notNull(),
-    // Pointer to the project's latest Deployment. `SET NULL` so deleting a
+    // Pointer to the service's latest Deployment. `SET NULL` so deleting a
     // deployment can't leave a dangling pointer (the orphan-prevention-as-DB-
     // invariant goal). The value is set in a second backfill pass after
     // deployments exist; the FK uses the forward-reference thunk because
@@ -484,23 +484,23 @@ export const projects = pgTable(
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
   (t) => [
-    uniqueIndex("projects_slug_uq").on(t.slug),
-    index("projects_team_idx").on(t.teamId),
-    index("projects_folder_idx").on(t.folderId),
+    uniqueIndex("services_slug_uq").on(t.slug),
+    index("services_team_idx").on(t.teamId),
+    index("services_folder_idx").on(t.folderId),
   ],
 );
 
 /**
- * [BuildConfig](../../types.ts) → 1-to-1 child (was `projects.build`).
+ * [BuildConfig](../../types.ts) → 1-to-1 child (was `services.build`).
  * `project_id` PK + FK CASCADE. `framework`/`build_method` plain text, NO CHECK
  * (legacy values are coerced, never rejected). `runtime_version` (legacy
  * `nodeVersion` remapped by `normalizeBuildConfig` at backfill). The backfill
  * MUST run the read-time normalizer first so the NOT NULL columns hold (PLAN §2).
  */
-export const projectBuild = pgTable("project_build", {
-  projectId: text("project_id")
+export const serviceBuild = pgTable("service_build", {
+  serviceId: text("service_id")
     .primaryKey()
-    .references(() => projects.id, { onDelete: "cascade" }),
+    .references(() => services.id, { onDelete: "cascade" }),
   framework: text("framework").notNull(),
   buildMethod: text("build_method").notNull(),
   rootDirectory: text("root_directory").notNull(),
@@ -516,15 +516,15 @@ export const projectBuild = pgTable("project_build", {
  * [BuildMethodSettings](../../types.ts) → 1-to-1 child (was nested
  * `methodSettings`). `project_id` PK + FK. Every field is a column; an
  * `updateProjectBuild` with a provided `methodSettings` object FULLY REPLACES
- * this row while the parent `project_build` columns merge field-by-field (PLAN §2
+ * this row while the parent `service_build` columns merge field-by-field (PLAN §2
  * Decision 15). All columns nullable — every settings field is optional.
  */
-export const projectBuildMethodSettings = pgTable(
-  "project_build_method_settings",
+export const serviceBuildMethodSettings = pgTable(
+  "service_build_method_settings",
   {
-    projectId: text("project_id")
+    serviceId: text("service_id")
       .primaryKey()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => services.id, { onDelete: "cascade" }),
     dockerfilePath: text("dockerfile_path"),
     dockerContextPath: text("docker_context_path"),
     dockerBuildStage: text("docker_build_stage"),
@@ -536,15 +536,15 @@ export const projectBuildMethodSettings = pgTable(
 );
 
 /**
- * [DevConfig](../../types.ts) → 1-to-1 child (was `projects.dev`). `project_id`
+ * [DevConfig](../../types.ts) → 1-to-1 child (was `services.dev`). `project_id`
  * PK + FK. **Row ABSENT = dev never enabled** — do NOT seed a default row (the
  * tri-state sentinel, PLAN §1 "Tri-states"). `dev_status` pgEnum, legacy unknown
  * → 'off'. `image_kind` is closed ('preset'|'custom') but coerced at backfill.
  */
-export const projectDev = pgTable("project_dev", {
-  projectId: text("project_id")
+export const serviceDev = pgTable("service_dev", {
+  serviceId: text("service_id")
     .primaryKey()
-    .references(() => projects.id, { onDelete: "cascade" }),
+    .references(() => services.id, { onDelete: "cascade" }),
   enabled: boolean("enabled").notNull(),
   status: devStatus("status").notNull(),
   imageKind: text("image_kind").notNull(),
@@ -560,16 +560,16 @@ export const projectDev = pgTable("project_dev", {
 
 /**
  * [VolumeMount](../../types.ts) → ordered child. `type` NULLABLE (the
- * named/`host`/`project` discriminant; absent ⇒ "named"). Backfill runs
+ * named/`host`/`service` discriminant; absent ⇒ "named"). Backfill runs
  * `normalizeVolumes` first (drops mountless entries) so the NOT NULL child
- * columns hold (PLAN §2 `project_volumes`).
+ * columns hold (PLAN §2 `service_volumes`).
  */
-export const projectVolumes = pgTable(
-  "project_volumes",
+export const serviceVolumes = pgTable(
+  "service_volumes",
   {
-    projectId: text("project_id")
+    serviceId: text("service_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => services.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
     volumeId: text("volume_id").notNull(),
     type: text("type"),
@@ -579,41 +579,41 @@ export const projectVolumes = pgTable(
     mountPath: text("mount_path").notNull(),
     readOnly: boolean("read_only").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.projectId, t.position] })],
+  (t) => [primaryKey({ columns: [t.serviceId, t.position] })],
 );
 
 /**
- * [Project.mounts](../../types.ts) → ordered child of `{filePath, content}`
+ * [Service.mounts](../../types.ts) → ordered child of `{filePath, content}`
  * template config files. `content` is byte-preserved (reconciliation asserts
- * byte-equality, PLAN §2 `project_mounts` / Decision 14).
+ * byte-equality, PLAN §2 `service_mounts` / Decision 14).
  */
-export const projectMounts = pgTable(
-  "project_mounts",
+export const serviceMounts = pgTable(
+  "service_mounts",
   {
-    projectId: text("project_id")
+    serviceId: text("service_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => services.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
     filePath: text("file_path").notNull(),
     content: text("content").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.projectId, t.position] })],
+  (t) => [primaryKey({ columns: [t.serviceId, t.position] })],
 );
 
 /**
  * [Deployment](../../types.ts) — fully flat. `seq bigint identity` (PLAN §5) so
  * sorts are `ORDER BY created_at DESC, seq DESC`. `(project_id, created_at DESC,
- * seq DESC)` index. No `team_id` (joined via project). `build_source` is the
- * optional "dev-workspace" intent (absent ⇒ the project's own source).
+ * seq DESC)` index. No `team_id` (joined via service). `build_source` is the
+ * optional "dev-workspace" intent (absent ⇒ the service's own source).
  */
 export const deployments = pgTable(
   "deployments",
   {
     id: text("id").primaryKey(),
     seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
-    projectId: text("project_id")
+    serviceId: text("service_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => services.id, { onDelete: "cascade" }),
     status: text("status").notNull(),
     environment: text("environment").notNull(),
     commitSha: text("commit_sha").notNull(),
@@ -628,8 +628,8 @@ export const deployments = pgTable(
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
-    index("deployments_project_created_idx").on(
-      t.projectId,
+    index("deployments_service_created_idx").on(
+      t.serviceId,
       t.createdAt.desc(),
       t.seq.desc(),
     ),
@@ -641,7 +641,7 @@ export const deployments = pgTable(
  * `deployment_logs`). Map key → `deployment_id` FK; each `LogLine` → one row.
  * `id bigint identity` PK reproduces `Array.push` order; `(deployment_id, id)`
  * index. `level` is the `deployment_log_level` pgEnum. Written via a batched
- * buffer at the project-graph cut-set, NOT per-line (PLAN §6 Decision 18).
+ * buffer at the service-graph cut-set, NOT per-line (PLAN §6 Decision 18).
  */
 export const deploymentLogs = pgTable(
   "deployment_logs",
@@ -667,16 +667,16 @@ export const envVars = pgTable(
   "env_vars",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id")
+    serviceId: text("service_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => services.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     valueEnc: text("value_enc").notNull(),
     type: text("type").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
-  (t) => [uniqueIndex("env_vars_project_key_uq").on(t.projectId, t.key)],
+  (t) => [uniqueIndex("env_vars_service_key_uq").on(t.serviceId, t.key)],
 );
 
 /** [EnvVar.targets](../../types.ts) → junction. `target` ∈ production/preview/development. */
@@ -693,9 +693,9 @@ export const envVarTargets = pgTable(
 
 /**
  * [GlobalEnvVar](../../types.ts) (team scope) — a variable injected into EVERY
- * project of a team (a team-wide default). Same shape as `env_vars` but keyed on
- * the team instead of a single project. `UNIQUE(team_id, key)`; `targets` →
- * junction. Lower deploy precedence than a project's own var (a project can
+ * service of a team (a team-wide default). Same shape as `env_vars` but keyed on
+ * the team instead of a single service. `UNIQUE(team_id, key)`; `targets` →
+ * junction. Lower deploy precedence than a service's own var (a service can
  * override it) — see lib/deploy/env-resolve.ts.
  */
 export const teamGlobalEnvVars = pgTable(
@@ -727,9 +727,9 @@ export const teamGlobalEnvVarTargets = pgTable(
 
 /**
  * [GlobalEnvVar](../../types.ts) (instance scope) — a variable injected into
- * EVERY project of EVERY team (an instance-wide default), managed by an instance
+ * EVERY service of EVERY team (an instance-wide default), managed by an instance
  * admin. No team scope. `UNIQUE(key)`; `targets` → junction. The LOWEST deploy
- * precedence — any more-specific scope (team-global, project, shared) overrides
+ * precedence — any more-specific scope (team-global, service, shared) overrides
  * it. See lib/deploy/env-resolve.ts.
  */
 export const instanceEnvVars = pgTable(
@@ -767,9 +767,9 @@ export const domains = pgTable(
   "domains",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id")
+    serviceId: text("service_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => services.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     status: text("status").notNull(),
     isPrimary: boolean("is_primary").notNull(),
@@ -786,13 +786,13 @@ export const domains = pgTable(
   },
   (t) => [
     uniqueIndex("domains_one_primary_uq")
-      .on(t.projectId)
+      .on(t.serviceId)
       .where(sql`${t.isPrimary}`),
     uniqueIndex("domains_name_pathprefix_uq").on(
       t.name,
       sql`coalesce(${t.pathPrefix}, '')`,
     ),
-    index("domains_project_idx").on(t.projectId),
+    index("domains_service_idx").on(t.serviceId),
   ],
 );
 
@@ -811,32 +811,32 @@ export const domainMiddlewares = pgTable(
 
 /**
  * [BasicAuthUser](../../types.ts) — an HTTP Basic Auth credential that gates
- * EVERY domain of a project. When a project has any of these, the renderers
+ * EVERY domain of a service. When a service has any of these, the renderers
  * inject a generated Traefik `basicauth` middleware (built from these users) at
- * the head of every router's middleware chain, so all the project's hostnames
+ * the head of every router's middleware chain, so all the service's hostnames
  * sit behind the login prompt. `password_enc` is a REVERSIBLE secret (AES-GCM,
  * like `env_vars.value_enc` and `dev_ssh_users.password_enc`) so the htpasswd
  * line can be re-derived on every stack render; it is write-only over the API
  * (never returned). `UNIQUE(project_id, username)` — one credential per name.
  */
-export const projectBasicAuthUsers = pgTable(
-  "project_basic_auth_users",
+export const serviceBasicAuthUsers = pgTable(
+  "service_basic_auth_users",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id")
+    serviceId: text("service_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => services.id, { onDelete: "cascade" }),
     username: text("username").notNull(),
     passwordEnc: text("password_enc").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
   (t) => [
-    uniqueIndex("project_basic_auth_users_project_username_uq").on(
-      t.projectId,
+    uniqueIndex("service_basic_auth_users_service_username_uq").on(
+      t.serviceId,
       t.username,
     ),
-    index("project_basic_auth_users_project_idx").on(t.projectId),
+    index("service_basic_auth_users_service_idx").on(t.serviceId),
   ],
 );
 
@@ -849,9 +849,9 @@ export const devSshUser = pgTable(
   "dev_ssh_user",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id")
+    serviceId: text("service_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => services.id, { onDelete: "cascade" }),
     username: text("username").notNull(),
     publicKey: text("public_key"),
     passwordEnc: text("password_enc"),
@@ -867,27 +867,27 @@ export const devSshUser = pgTable(
 );
 
 /* ================================================================== */
-/* Ordering junctions (after projects/folders exist)                  */
+/* Ordering junctions (after services/folders exist)                  */
 /* ================================================================== */
 
 /**
- * Team-wide project display order (was `teams.project_order` jsonb ID[]). PK
+ * Team-wide service display order (was `teams.project_order` jsonb ID[]). PK
  * `(team_id, project_id)`; `ON DELETE CASCADE` on both FKs makes the stale-id
  * self-healing a DB invariant — a dead id can no longer sit in the order (PLAN §1
- * "Ordering junctions", §2 `team_project_order`).
+ * "Ordering junctions", §2 `team_service_order`).
  */
-export const teamProjectOrder = pgTable(
-  "team_project_order",
+export const teamServiceOrder = pgTable(
+  "team_service_order",
   {
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
-    projectId: text("project_id")
+    serviceId: text("service_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => services.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.projectId] })],
+  (t) => [primaryKey({ columns: [t.teamId, t.serviceId] })],
 );
 
 /** Team-wide folder display order (was `teams.folder_order` jsonb ID[]). */
@@ -987,7 +987,7 @@ export const s3Destination = pgTable(
 /**
  * [Backup](../../types.ts) — schedule table (not run history). `target_kind` XOR
  * CHECK on `database_id`/`project_id`. `destination_id` `RESTRICT`;
- * database/project/team `CASCADE`. `last_status` includes 'never' (wider than run
+ * database/service/team `CASCADE`. `last_status` includes 'never' (wider than run
  * status) (PLAN §2 `backups`).
  */
 export const backups = pgTable(
@@ -1002,7 +1002,7 @@ export const backups = pgTable(
     databaseId: text("database_id").references(() => databases.id, {
       onDelete: "cascade",
     }),
-    projectId: text("project_id").references(() => projects.id, {
+    serviceId: text("service_id").references(() => services.id, {
       onDelete: "cascade",
     }),
     destinationId: text("destination_id")
@@ -1018,8 +1018,8 @@ export const backups = pgTable(
   (t) => [
     check(
       "backups_target_kind_xor",
-      sql`(${t.targetKind} = 'database' and ${t.databaseId} is not null and ${t.projectId} is null)
-          or (${t.targetKind} = 'project' and ${t.projectId} is not null and ${t.databaseId} is null)`,
+      sql`(${t.targetKind} = 'database' and ${t.databaseId} is not null and ${t.serviceId} is null)
+          or (${t.targetKind} = 'service' and ${t.serviceId} is not null and ${t.databaseId} is null)`,
     ),
   ],
 );
@@ -1049,7 +1049,7 @@ export const backupRuns = pgTable(
     databaseId: text("database_id").references(() => databases.id, {
       onDelete: "set null",
     }),
-    projectId: text("project_id").references(() => projects.id, {
+    serviceId: text("service_id").references(() => services.id, {
       onDelete: "set null",
     }),
     destinationId: text("destination_id")
@@ -1119,7 +1119,7 @@ export const activities = pgTable(
     type: text("type").notNull(),
     message: text("message").notNull(),
     actor: text("actor").notNull(),
-    projectId: text("project_id").references(() => projects.id, {
+    serviceId: text("service_id").references(() => services.id, {
       onDelete: "set null",
     }),
     createdAt: isoTimestamptz("created_at").notNull(),
@@ -1212,7 +1212,7 @@ export const installedApps = pgTable(
 
 /**
  * [SharedEnvGroup](../../types.ts) (+3 children). The parent holds scalars;
- * `variables` → `shared_env_group_vars`, `projectIds` → `shared_env_group_projects`
+ * `variables` → `shared_env_group_vars`, `projectIds` → `shared_env_group_services`
  * (true junction), `targets` → `shared_env_group_targets` (was `targets` jsonb on
  * the parent) (PLAN §2 `shared_env_groups`).
  */
@@ -1243,23 +1243,23 @@ export const sharedEnvGroupVars = pgTable(
 
 /**
  * [SharedEnvGroup.projectIds](../../types.ts) → true junction. PK `(group_id,
- * project_id)`, index `project_id`. `project_id` CASCADE so a deleted project's
+ * project_id)`, index `project_id`. `project_id` CASCADE so a deleted service's
  * attachment rows vanish (this is the orphan the live `deleteProject` bug leaks —
  * a DB invariant now, PLAN §7).
  */
-export const sharedEnvGroupProjects = pgTable(
-  "shared_env_group_projects",
+export const sharedEnvGroupServices = pgTable(
+  "shared_env_group_services",
   {
     groupId: text("group_id")
       .notNull()
       .references(() => sharedEnvGroups.id, { onDelete: "cascade" }),
-    projectId: text("project_id")
+    serviceId: text("service_id")
       .notNull()
-      .references(() => projects.id, { onDelete: "cascade" }),
+      .references(() => services.id, { onDelete: "cascade" }),
   },
   (t) => [
-    primaryKey({ columns: [t.groupId, t.projectId] }),
-    index("shared_env_group_projects_project_idx").on(t.projectId),
+    primaryKey({ columns: [t.groupId, t.serviceId] }),
+    index("shared_env_group_services_service_idx").on(t.serviceId),
   ],
 );
 

@@ -354,7 +354,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
       diags.push({
         severity: "info",
         rule: "container-name-stripped",
-        message: `Deplo strips \`container_name\` (it would collide between projects); \`${name}\` will use Compose's generated name.`,
+        message: `Deplo strips \`container_name\` (it would collide between services); \`${name}\` will use Compose's generated name.`,
         line: lineOfServiceField(lines, svcLine, "container_name"),
       });
     }
@@ -455,7 +455,7 @@ export function volumeSource(v: unknown): string | null {
   return null;
 }
 
-/** The project-files `./<x>` convention is rewritten to the project's isolated
+/** The service-files `./<x>` convention is rewritten to the project's isolated
  * files directory at deploy time — NOT a host bind mount the user picked a path
  * for. Matches `./x`, `./folder/`, bare `.`/`./`; explicitly NOT `../` (escape). */
 export function isFilesConventionSource(src: string): boolean {
@@ -464,7 +464,7 @@ export function isFilesConventionSource(src: string): boolean {
 
 /**
  * True if a source climbs out of the project sandbox via a `..` path segment.
- * Such a source is never the project-files convention; it is treated as a host
+ * Such a source is never the service-files convention; it is treated as a host
  * bind (gated behind `canMountHostVolumes`) so a rename can't repoint it at
  * another project's data.
  */

@@ -6,12 +6,12 @@ import { decryptSecret } from "../crypto";
 import { hostVolumeName, usesComposeStack } from "../utils";
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import {
-  loadEnvVarsForProject,
-  loadSharedEnvGroupsForProject,
-} from "./project-graph-load";
-import { loadGlobalEnvForProject } from "./global-env";
+  loadEnvVarsForService,
+  loadSharedEnvGroupsForService,
+} from "./service-graph-load";
+import { loadGlobalEnvForService } from "./global-env";
 import { connectAgent } from "../infra/agent-client";
-import type { Project, VolumeMount } from "../types";
+import type { Service, VolumeMount } from "../types";
 
 /**
  * Build the {@link ProjectDescriptor} the agent's Backup/Restore RPC needs from a
@@ -42,7 +42,7 @@ export interface ProjectBackupDescriptor {
 
 /**
  * The exact decrypted env a project runs with in production — the snapshot the
- * restore re-Reroutes. MUST mirror build.ts's private `projectEnv` (production
+ * restore re-Reroutes. MUST mirror build.ts's private `serviceEnv` (production
  * target) so a backup captures EXACTLY what a production deploy would inject:
  * instance + team globals, per-project vars, and attached shared groups — merged
  * through the SAME `resolveEnvEntries` seam with the SAME precedence, decrypted at
@@ -51,20 +51,20 @@ export interface ProjectBackupDescriptor {
  * Secrets are decrypted here because the agent must write the real `.env` on
  * restore; they ride the same mTLS channel as the S3 creds and the DB password.
  */
-export async function projectEnvSnapshot(
-  projectId: string,
+export async function serviceEnvSnapshot(
+  serviceId: string,
 ): Promise<Record<string, string>> {
   // env vars + attached shared groups + global scopes are relational; load the
-  // bounded set and decrypt at this edge (mirrors build.ts's `projectEnv`).
+  // bounded set and decrypt at this edge (mirrors build.ts's `serviceEnv`).
   const [vars, groups, globals] = await Promise.all([
-    loadEnvVarsForProject(projectId),
-    loadSharedEnvGroupsForProject(projectId),
-    loadGlobalEnvForProject(projectId),
+    loadEnvVarsForService(serviceId),
+    loadSharedEnvGroupsForService(serviceId),
+    loadGlobalEnvForService(serviceId),
   ]);
   const out: Record<string, string> = {};
   for (const e of resolveEnvEntries(
     "production",
-    projectId,
+    serviceId,
     vars,
     groups,
     globals.teamGlobals,
@@ -81,7 +81,7 @@ export async function projectEnvSnapshot(
  * `hostVolumeName(slug, name)` = `deplo-<slug>-<name>` (pinned via `name:` in the
  * top-level volumes block), so we compute that directly from the stored mounts —
  * no YAML round-trip needed. `type === "host"` mounts are EXCLUDED (shared
- * cross-tenant host paths, outside Deplo); `type === "project"` mounts live under
+ * cross-tenant host paths, outside Deplo); `type === "service"` mounts live under
  * the files dir and are captured by `includeFiles`, not as volumes.
  */
 export function namedVolumeHostNames(
@@ -181,7 +181,7 @@ export function assertSafeVolumeNames(slug: string, names: string[]): void {
     if (!AGENT_VOLUME_NAME.test(name) || name.includes("..")) {
       const interpolated = name.includes("${");
       throw new Error(
-        `Project "${slug}" declares a volume whose host name "${name}" ` +
+        `Service "${slug}" declares a volume whose host name "${name}" ` +
           (interpolated
             ? `uses a compose variable (\${...}) that Deplo can't resolve for a backup. ` +
               `Give that volume a literal name: in the compose, or remove the explicit name so Deplo derives it.`
@@ -204,7 +204,7 @@ export function assertSafeVolumeNames(slug: string, names: string[]): void {
  * volume name is not agent-safe (e.g. an interpolated compose volume name).
  */
 export async function buildProjectDescriptor(
-  project: Project,
+  project: Service,
 ): Promise<ProjectBackupDescriptor> {
   const slug = project.slug;
   const composeStack = usesComposeStack(project);
@@ -230,13 +230,13 @@ export async function buildProjectDescriptor(
   return {
     slug,
     volumeNames,
-    // Single-container projects keep their config files under the files dir only
+    // Single-container services keep their config files under the files dir only
     // when they have project-path mounts or `mounts`; a compose-stack project's
     // `./` bind mounts also land there. Including the dir is cheap and the agent
     // no-ops when it's absent, so include it whenever the project could have one.
-    includeFiles: projectHasFilesDir(project),
+    includeFiles: serviceHasFilesDir(project),
     composeYaml,
-    envSnapshot: await projectEnvSnapshot(project.id),
+    envSnapshot: await serviceEnvSnapshot(project.id),
     mounts: (project.mounts ?? []).map((m) => ({
       path: m.filePath,
       content: m.content,
@@ -252,8 +252,8 @@ export async function buildProjectDescriptor(
  * positive only costs an empty stat — but skipping a real files dir would lose
  * config, so we err toward including it.
  */
-function projectHasFilesDir(project: Project): boolean {
+function serviceHasFilesDir(project: Service): boolean {
   if (usesComposeStack(project)) return true;
   if ((project.mounts ?? []).length > 0) return true;
-  return (project.volumes ?? []).some((v) => v.type === "project");
+  return (project.volumes ?? []).some((v) => v.type === "service");
 }

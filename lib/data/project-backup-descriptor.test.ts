@@ -35,7 +35,7 @@ test("named volumes → deplo-<slug>-<name>, host + project mounts excluded", ()
     vol({ name: "pgdata", type: "named" }),
     vol({ name: "cache" }), // type absent ⇒ named (back-compat)
     vol({ type: "host", name: "ignored", hostPath: "/srv/shared" }),
-    vol({ type: "project", name: "cfg", projectPath: "config" }),
+    vol({ type: "service", name: "cfg", projectPath: "config" }),
   ];
   assert.deepEqual(namedVolumeHostNames("my-app", volumes), [
     "deplo-my-app-pgdata",

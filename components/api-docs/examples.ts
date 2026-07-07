@@ -88,11 +88,11 @@ export const CURATED_EXAMPLES: CuratedExample[] = [
 }`,
   },
   {
-    label: "List my projects",
+    label: "List my services",
     description: "Every project in the active team (read-only).",
     kind: "query",
-    operation: `query Projects {
-  projects {
+    operation: `query Services {
+  services {
     id
     name
     slug
@@ -132,8 +132,8 @@ export const CURATED_EXAMPLES: CuratedExample[] = [
     description:
       "A destructive mutation, simulated. Requires the “deploy” capability — try it whether or not you hold it.",
     kind: "mutation",
-    operation: `mutation RebuildProject {
-  rebuildProject(id: "prj_example") {
+    operation: `mutation RebuildService {
+  rebuildService(id: "prj_example") {
     id
     name
     status

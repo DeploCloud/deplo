@@ -63,7 +63,7 @@ export function CreateTeamDialog({
         <DialogHeader>
           <DialogTitle>Create a new team</DialogTitle>
           <DialogDescription>
-            A team is an isolated workspace for projects, domains, databases and
+            A team is an isolated workspace for services, domains, databases and
             members. You&apos;ll be its owner and it becomes your active team.
           </DialogDescription>
         </DialogHeader>

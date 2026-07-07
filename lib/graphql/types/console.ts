@@ -83,7 +83,7 @@ const ExecResultRef = builder.objectRef<ExecResult>("ExecResult").implement({
 
 const ShellLabelInputType = builder.inputType("ShellLabelInput", {
   fields: (t) => ({
-    projectId: t.string({ required: true }),
+    serviceId: t.string({ required: true }),
     // Optional explicit instance to probe; default = the running/default target.
     containerName: t.string({ required: false }),
   }),
@@ -91,7 +91,7 @@ const ShellLabelInputType = builder.inputType("ShellLabelInput", {
 
 const ExecConsoleInputType = builder.inputType("ExecConsoleInput", {
   fields: (t) => ({
-    projectId: t.string({ required: true }),
+    serviceId: t.string({ required: true }),
     command: t.string({ required: true }),
     // Optional explicit instance to exec into; default = the default target.
     containerName: t.string({ required: false }),
@@ -108,16 +108,16 @@ builder.queryFields((t) => ({
     nullable: true,
     authScopes: { loggedIn: true },
     description: "Attachable instances + default target for a project's console.",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: (_r, { projectId }) => getConsoleInfo(projectId),
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: (_r, { serviceId }) => getConsoleInfo(serviceId),
   }),
   logsInfo: t.field({
     type: LogsInfoRef,
     nullable: true,
     authScopes: { loggedIn: true },
     description: "Lighter instance list for the logs viewer.",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: (_r, { projectId }) => getLogsInfo(projectId),
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: (_r, { serviceId }) => getLogsInfo(serviceId),
   }),
   shellLabel: t.field({
     type: "String",
@@ -127,7 +127,7 @@ builder.queryFields((t) => ({
       '"raw exec (no shell)".',
     args: { input: t.arg({ type: ShellLabelInputType, required: true }) },
     resolve: (_r, { input }) =>
-      getShellLabel(input.projectId, input.containerName ?? undefined),
+      getShellLabel(input.serviceId, input.containerName ?? undefined),
   }),
 }));
 
@@ -145,7 +145,7 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: ExecConsoleInputType, required: true }) },
     resolve: (_r, { input }) =>
       execInContainer(
-        input.projectId,
+        input.serviceId,
         input.command,
         input.containerName ?? undefined,
       ),

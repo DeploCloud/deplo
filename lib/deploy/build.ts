@@ -9,27 +9,27 @@ import { getServerById } from "../data/servers";
 import { getDb } from "../db/client";
 import {
   deployments as deploymentsTable,
-  projects as projectsTable,
+  services as servicesTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
-import { loadGlobalEnvForProject } from "../data/global-env";
+import { loadGlobalEnvForService } from "../data/global-env";
 import { recordActivity } from "../data/activity";
 import {
   loadDeployment,
-  loadDomainsForProject,
-  loadProjectGraph,
-  loadProjectGraphBySlug,
-  loadEnvVarsForProject,
-  loadSharedEnvGroupsForProject,
-} from "../data/project-graph-load";
+  loadDomainsForService,
+  loadServiceGraph,
+  loadServiceGraphBySlug,
+  loadEnvVarsForService,
+  loadSharedEnvGroupsForService,
+} from "../data/service-graph-load";
 import {
   appendLog,
   clearDeploymentLogs,
   finalizeDeploymentLogs,
 } from "../data/deployment-logs";
-import { deploymentToRow } from "../data/project-graph-rows";
+import { deploymentToRow } from "../data/service-graph-rows";
 import { ensureNetwork } from "../infra/docker";
 import { buildImage } from "./builders";
 import { extractArchive } from "./upload";
@@ -51,7 +51,7 @@ import {
 } from "../data/domains";
 import { basicAuthUsersValue } from "../data/basic-auth";
 import { installationCloneUrl } from "../github/app";
-import { publishProjectChanged } from "../graphql/pubsub";
+import { publishServiceChanged } from "../graphql/pubsub";
 import {
   agentCapabilityForMethod,
   runAgentDeploy,
@@ -67,7 +67,7 @@ import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
  * included). Null for an unknown slug / a project whose server row is missing.
  */
 async function owningServerIdForSlug(slug: string): Promise<string | null> {
-  const p = await loadProjectGraphBySlug(slug);
+  const p = await loadServiceGraphBySlug(slug);
   if (!p) return null;
   // Servers stay JSONB-authoritative; confirm the owning server still exists.
   const server = await getServerById(p.serverId);
@@ -100,22 +100,22 @@ async function setDep(depId: string, patch: Partial<Deployment>): Promise<void> 
     .update(deploymentsTable)
     .set(set)
     .where(eq(deploymentsTable.id, depId))
-    .returning({ projectId: deploymentsTable.projectId });
+    .returning({ serviceId: deploymentsTable.serviceId });
   // A deployment's status feeds the project's `latestDeployment` view, so push
   // the owning project to live subscribers when it changes.
-  const projectId = rows[0]?.projectId;
-  if (projectId && "status" in patch) publishProjectChanged(projectId);
+  const serviceId = rows[0]?.serviceId;
+  if (serviceId && "status" in patch) publishServiceChanged(serviceId);
 }
 
-async function setProject(
-  projectId: string,
-  patch: Partial<typeof projectsTable.$inferInsert>,
+async function setService(
+  serviceId: string,
+  patch: Partial<typeof servicesTable.$inferInsert>,
 ): Promise<void> {
   await getDb()
-    .update(projectsTable)
+    .update(servicesTable)
     .set({ ...patch, updatedAt: nowIso() })
-    .where(eq(projectsTable.id, projectId));
-  publishProjectChanged(projectId);
+    .where(eq(servicesTable.id, serviceId));
+  publishServiceChanged(serviceId);
 }
 
 /**
@@ -123,16 +123,16 @@ async function setProject(
  * `production`, plus attached shared groups that also target `production`.
  * Selection lives in the shared `resolveEnvEntries` seam; we only decrypt here.
  */
-async function projectEnv(projectId: string): Promise<Record<string, string>> {
+async function serviceEnv(serviceId: string): Promise<Record<string, string>> {
   const [vars, groups, globals] = await Promise.all([
-    loadEnvVarsForProject(projectId),
-    loadSharedEnvGroupsForProject(projectId),
-    loadGlobalEnvForProject(projectId),
+    loadEnvVarsForService(serviceId),
+    loadSharedEnvGroupsForService(serviceId),
+    loadGlobalEnvForService(serviceId),
   ]);
   const out: Record<string, string> = {};
   for (const e of resolveEnvEntries(
     "production",
-    projectId,
+    serviceId,
     vars,
     groups,
     globals.teamGlobals,
@@ -145,7 +145,7 @@ async function projectEnv(projectId: string): Promise<Record<string, string>> {
 
 /**
  * The NAMES of the env vars a production deploy resolves for a project — exactly
- * the keys `projectEnv` would carry (same selection seam), but WITHOUT decrypting
+ * the keys `serviceEnv` would carry (same selection seam), but WITHOUT decrypting
  * any value. These are injected into a compose stack's `environment:` as bare
  * `- KEY` pass-throughs (`buildComposeStack`'s `envKeys`): a settings var reaches
  * the containers without the user hand-writing it, while the VALUE still rides
@@ -153,18 +153,18 @@ async function projectEnv(projectId: string): Promise<Record<string, string>> {
  * ever inject a key the env-file actually supplies (globals + shared groups
  * included), so an injected pass-through can never reference an undefined var.
  */
-async function projectEnvKeys(projectId: string): Promise<string[]> {
+async function serviceEnvKeys(serviceId: string): Promise<string[]> {
   const [vars, groups, globals] = await Promise.all([
-    loadEnvVarsForProject(projectId),
-    loadSharedEnvGroupsForProject(projectId),
-    loadGlobalEnvForProject(projectId),
+    loadEnvVarsForService(serviceId),
+    loadSharedEnvGroupsForService(serviceId),
+    loadGlobalEnvForService(serviceId),
   ]);
   // De-dupe on key (the resolver emits lowest-precedence first; a later entry
   // wins on value, but for NAMES we just need the distinct set).
   const seen = new Set<string>();
   for (const e of resolveEnvEntries(
     "production",
-    projectId,
+    serviceId,
     vars,
     groups,
     globals.teamGlobals,
@@ -181,7 +181,7 @@ export function renderCompose(opts: {
   name: string;
   image: string;
   port: number;
-  projectId: string;
+  serviceId: string;
   slug: string;
   /** Public hostnames + per-domain port overrides, primary first. */
   routes: RoutableDomain[];
@@ -189,16 +189,16 @@ export function renderCompose(opts: {
   /**
    * User-managed volumes. A "named" volume (default) gets a top-level `volumes:`
    * entry whose host name is namespaced per-project via `hostVolumeName`; a
-   * "project" bind renders its `projectPath` resolved against the project's
+   * "service" bind renders its `projectPath` resolved against the project's
    * isolated files dir; a "host" bind mount renders its `hostPath` directly as
-   * the source. Only NAMED volumes get a top-level entry — "project" and "host"
+   * the source. Only NAMED volumes get a top-level entry — "service" and "host"
    * are bind mounts (absolute source) and get none. Empty/absent (and no NAMED
    * volumes) ⇒ NO `volumes:` keys are emitted, keeping the output byte-identical
    * to the long-standing stack so a reroute of an unchanged routing set never
    * restarts the container.
    */
   volumes?: {
-    type?: "named" | "project" | "host";
+    type?: "named" | "service" | "host";
     name: string;
     projectPath?: string;
     hostPath?: string;
@@ -217,7 +217,7 @@ export function renderCompose(opts: {
    */
   injectPort?: boolean;
   /**
-   * Project-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
+   * Service-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
    * single-`$`). When non-empty, a generated `basicauth` middleware is defined
    * and prepended to every router's chain so ALL hostnames are gated. Empty/
    * absent ⇒ no middleware (byte-identical to a project without basic auth). The
@@ -225,12 +225,12 @@ export function renderCompose(opts: {
    */
   basicAuthUsers?: string;
 }): string {
-  const { name, image, port, projectId, slug, routes } = opts;
+  const { name, image, port, serviceId, slug, routes } = opts;
   const injectPort = opts.injectPort ?? true;
   const vols = opts.volumes ?? [];
-  const namedVols = vols.filter((v) => v.type !== "host" && v.type !== "project");
+  const namedVols = vols.filter((v) => v.type !== "host" && v.type !== "service");
   // Absolute, per-project files dir — the same sandbox the `./<x>` compose
-  // convention resolves to. A "project" mount's source is rendered here so it
+  // convention resolves to. A "service" mount's source is rendered here so it
   // stays isolated (never resolved against the stack dir by docker).
   const filesDir = join(STACK_DIR, "files", slug);
   // Default PORT to the project's default container port so 12-factor apps
@@ -259,7 +259,7 @@ export function renderCompose(opts: {
         : {}),
     }),
     "deplo.managed=true",
-    `deplo.project=${projectId}`,
+    `deplo.project=${serviceId}`,
     `deplo.slug=${slug}`,
   ];
   const labelsYaml = labels.map((l) => `      - "${l}"`).join("\n");
@@ -285,7 +285,7 @@ export function renderCompose(opts: {
           const source =
             v.type === "host"
               ? v.hostPath
-              : v.type === "project"
+              : v.type === "service"
                 ? `${filesDir}/${v.projectPath}`
                 : v.name;
           return `      - ${source}:${v.mountPath}${v.readOnly ? ":ro" : ""}`;
@@ -341,11 +341,11 @@ export async function reconcileInFlightDeployments(): Promise<number> {
   // Find the orphaned in-flight deployments, mark them error, and append one
   // interrupted-log line each (through the buffered writer, finalized below).
   const inFlight = await db
-    .select({ id: deploymentsTable.id, projectId: deploymentsTable.projectId })
+    .select({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId })
     .from(deploymentsTable)
     .where(inArray(deploymentsTable.status, ["queued", "building"]));
   if (inFlight.length === 0) return 0;
-  const affectedProjects = new Set(inFlight.map((d) => d.projectId));
+  const affectedServices = new Set(inFlight.map((d) => d.serviceId));
   await db
     .update(deploymentsTable)
     .set({ status: "error" })
@@ -356,15 +356,15 @@ export async function reconcileInFlightDeployments(): Promise<number> {
   await Promise.all(inFlight.map((d) => finalizeDeploymentLogs(d.id)));
   // A project left mid-deploy settles off the transient build state.
   await db
-    .update(projectsTable)
+    .update(servicesTable)
     .set({ status: "error", updatedAt: nowIso() })
     .where(
       and(
-        inArray(projectsTable.id, [...affectedProjects]),
-        inArray(projectsTable.status, ["building", "queued"]),
+        inArray(servicesTable.id, [...affectedServices]),
+        inArray(servicesTable.status, ["building", "queued"]),
       ),
     );
-  for (const projectId of affectedProjects) publishProjectChanged(projectId);
+  for (const serviceId of affectedServices) publishServiceChanged(serviceId);
   console.warn(
     `[deplo] reconciled ${inFlight.length} interrupted deployment(s) to error on startup`,
   );
@@ -377,7 +377,7 @@ export async function reconcileInFlightDeployments(): Promise<number> {
  * logs as it progresses.
  */
 export async function startDeployment(
-  projectId: string,
+  serviceId: string,
   opts: {
     environment?: DeploymentEnvironment;
     creator: string;
@@ -387,8 +387,8 @@ export async function startDeployment(
     buildSource?: "dev-workspace";
   },
 ): Promise<string> {
-  const project = await loadProjectGraph(projectId);
-  if (!project) throw new Error("Project not found");
+  const project = await loadServiceGraph(serviceId);
+  if (!project) throw new Error("Service not found");
   const server = (await getServerById(project.serverId)) ?? undefined;
   const ip = resolveServerIp(server);
   const environment = opts.environment ?? "production";
@@ -400,7 +400,7 @@ export async function startDeployment(
   // are ephemeral and always get their own host.
   const domain =
     environment === "production"
-      ? await primaryDomainName(projectId)
+      ? await primaryDomainName(serviceId)
       : previewDomain(project.slug, newId("").slice(1, 7), ip);
   // No production domain ⇒ no canonical URL. The deployment record's `url` is a
   // plain string (informational), so it carries "" when unrouted; the project's
@@ -410,7 +410,7 @@ export async function startDeployment(
 
   const dep: Deployment = {
     id: depId,
-    projectId,
+    serviceId,
     status: "queued",
     environment,
     commitSha: "",
@@ -430,18 +430,18 @@ export async function startDeployment(
   await getDb().insert(deploymentsTable).values(deploymentToRow(dep));
   await clearDeploymentLogs(depId);
   await getDb()
-    .update(projectsTable)
+    .update(servicesTable)
     .set({
       latestDeploymentId: depId,
       status: "queued",
       updatedAt: nowIso(),
       ...(environment === "production" ? { productionUrl: domain ? url : null } : {}),
     })
-    .where(eq(projectsTable.id, projectId));
-  await recordActivity("deployment", `Deploying ${project.name}`, opts.creator, projectId);
+    .where(eq(servicesTable.id, serviceId));
+  await recordActivity("deployment", `Deploying ${project.name}`, opts.creator, serviceId);
   // A new deployment flips the project to "queued" and sets latestDeployment —
   // push it to live subscribers so the header/tabs update without a reload.
-  publishProjectChanged(projectId);
+  publishServiceChanged(serviceId);
 
   // Fire-and-forget: the standalone Node server keeps the event loop alive.
   // runDeployment finalizes its own logs in a finally; this guards a throw from
@@ -493,7 +493,7 @@ async function buildImageFromTree(opts: {
     workDir,
     buildDir,
     slug,
-    projectId: project.id,
+    serviceId: project.id,
     imageRef,
     log: (level, text) => log(depId, level, text),
   });
@@ -532,7 +532,7 @@ async function tryAgent(opts: {
       serverId: opts.serverId,
       deployId: opts.depId,
       slug: opts.project.slug,
-      projectId: opts.project.id,
+      serviceId: opts.project.id,
       imageRef: opts.imageRef,
       composeYaml: opts.composeYaml,
       env: opts.env,
@@ -556,7 +556,7 @@ async function runDeployment(depId: string): Promise<void> {
   const started = Date.now();
   const dep = await loadDeployment(depId);
   if (!dep) return;
-  const project = await loadProjectGraph(dep.projectId);
+  const project = await loadServiceGraph(dep.serviceId);
   if (!project) {
     await setDep(depId, { status: "error" });
     return;
@@ -578,7 +578,7 @@ async function runDeployment(depId: string): Promise<void> {
   const routeDomains = await routableForDeploy(project.id, dep.environment, domain);
 
   await setDep(depId, { status: "building" });
-  await setProject(project.id, { status: "building" });
+  await setService(project.id, { status: "building" });
 
   try {
     await mkdir(STACK_DIR, { recursive: true });
@@ -597,7 +597,7 @@ async function runDeployment(depId: string): Promise<void> {
     // interpolates its ${VARS} from an env-file we write alongside it. Selecting
     // any other source (git, docker-image, …) switches away from the stack even
     // though the compose is kept for switching back; `source` is authoritative.
-    // Legacy template projects predate the `compose` source, so fall back to the
+    // Legacy template services predate the `compose` source, so fall back to the
     // old heuristic for them (compose present, no repo/image). An "upload" source
     // is explicit and must build the archive, so the heuristic never claims it —
     // even if a stale compose lingers from a previous source. See usesComposeStack.
@@ -655,7 +655,7 @@ async function runDeployment(depId: string): Promise<void> {
               `server's actions menu).`,
           );
           await setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-          await setProject(project.id, { status: "error" });
+          await setService(project.id, { status: "error" });
           return;
         }
       } catch (e) {
@@ -665,7 +665,7 @@ async function runDeployment(depId: string): Promise<void> {
           `Agent unavailable: ${e instanceof Error ? e.message : String(e)}`,
         );
         await setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-        await setProject(project.id, { status: "error" });
+        await setService(project.id, { status: "error" });
         return;
       }
     }
@@ -676,13 +676,13 @@ async function runDeployment(depId: string): Promise<void> {
     const renderStack = async (
       image: string,
     ): Promise<{ composeYaml: string; env: Record<string, string> }> => {
-      const env = await projectEnv(project.id);
+      const env = await serviceEnv(project.id);
       const basicAuthUsers = await basicAuthUsersValue(project.id);
       const composeYaml = renderCompose({
         name,
         image,
         port: project.build.port,
-        projectId: project.id,
+        serviceId: project.id,
         slug,
         routes: routeDomains,
         env,
@@ -749,7 +749,7 @@ async function runDeployment(depId: string): Promise<void> {
           })
         ) {
           throw new Error(
-            "Deploy from dev workspace is only available for built (git/upload) projects",
+            "Deploy from dev workspace is only available for built (git/upload) services",
           );
         }
         imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
@@ -869,7 +869,7 @@ async function runDeployment(depId: string): Promise<void> {
         buildDurationMs,
         commitSha: commitSha || dep.commitSha,
       });
-      await setProject(project.id, {
+      await setService(project.id, {
         status: "active",
         // No domain ⇒ dep.url is "" ⇒ null productionUrl (the container ran but
         // is unrouted until a domain is added back).
@@ -884,12 +884,12 @@ async function runDeployment(depId: string): Promise<void> {
       );
     } else {
       await setDep(depId, { status: "error", buildDurationMs });
-      await setProject(project.id, { status: "error" });
+      await setService(project.id, { status: "error" });
     }
   } catch (e) {
     log(depId, "error", e instanceof Error ? e.message : String(e));
     await setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-    await setProject(project.id, { status: "error" });
+    await setService(project.id, { status: "error" });
   } finally {
     // GUARANTEED final flush (PLAN §6 Decision 18): every deploy end/error path —
     // success, build failure, agent-unavailable, a thrown error, or an early
@@ -904,7 +904,7 @@ async function runDeployment(depId: string): Promise<void> {
  * Writes the stack and an env-file next to it, brings it up wired to Traefik on
  * the generated domain, and waits for the exposed service to come up.
  */
-interface ComposeStackProject {
+interface ComposeStackService {
   id: string;
   compose: string | null;
   mounts?: { filePath: string; content: string }[] | null;
@@ -912,7 +912,7 @@ interface ComposeStackProject {
 
 interface ComposeStackOpts {
   depId: string;
-  project: ComposeStackProject;
+  project: ComposeStackService;
   name: string;
   slug: string;
   domain: string;
@@ -953,7 +953,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   const { project, name, slug, domainRoutes } = opts;
 
   // A multi-domain template's extra hostnames are registered ONCE at project
-  // creation (createProject), NOT here — a deploy never creates domain rows, so
+  // creation (createService), NOT here — a deploy never creates domain rows, so
   // an extra domain the user deletes is never resurrected on the next deploy.
   // Routing reads the stored, valid domain set (routableForDeploy), independent
   // of any row this used to create.
@@ -963,12 +963,12 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   // The settings env-var NAMES injected into every service as bare `- KEY`
   // pass-throughs — the value itself rides the env-file the agent writes (see
   // deployComposeStackViaAgent), so no secret lands in the rendered YAML.
-  const envKeys = await projectEnvKeys(project.id);
+  const envKeys = await serviceEnvKeys(project.id);
   const stackYaml = buildComposeStack({
     compose: project.compose ?? "",
     name,
     slug,
-    projectId: project.id,
+    serviceId: project.id,
     domainRoutes,
     filesDir,
     basicAuthUsers,
@@ -988,7 +988,7 @@ async function finishComposeStack(
   const url = domain ? `https://${domain}` : "";
   if (running) {
     await setDep(depId, { status: "ready", readyAt: nowIso(), buildDurationMs });
-    await setProject(project.id, {
+    await setService(project.id, {
       status: "active",
       ...(environment === "production" ? { productionUrl: url || null } : {}),
     });
@@ -1001,7 +1001,7 @@ async function finishComposeStack(
     );
   } else {
     await setDep(depId, { status: "error", buildDurationMs });
-    await setProject(project.id, { status: "error" });
+    await setService(project.id, { status: "error" });
     log(depId, "error", "Stack did not reach a running state");
   }
 }
@@ -1050,7 +1050,7 @@ async function deployComposeStackViaAgent(
   }
 
   const { stackYaml } = await prepareComposeStack(opts);
-  const env = await projectEnv(project.id);
+  const env = await serviceEnv(project.id);
 
   const { outcome } = await tryAgent({
     depId,
@@ -1082,13 +1082,13 @@ async function deployComposeStackViaAgent(
  * proceeds unrouted (`traefik.enable=false`) instead of baking an empty rule.
  */
 async function routableForDeploy(
-  projectId: string,
+  serviceId: string,
   environment: DeploymentEnvironment,
   primary: string,
 ): Promise<RoutableDomain[]> {
   // A preview routes only to its ephemeral host, on the project default port.
   if (environment !== "production") return [defaultRoute(primary)];
-  const valid = await routableRoutes(projectId);
+  const valid = await routableRoutes(serviceId);
   // No valid domain: route to the pending primary if there is one, else nothing.
   if (valid.length === 0) return primary ? [defaultRoute(primary)] : [];
   // Keep the canonical primary first even if it isn't flagged `valid` yet (it
@@ -1152,7 +1152,7 @@ function readStackEnvFromYaml(
  */
 /** The shape `renderCompose` accepts and `parseStackVolumes` reconstructs. */
 type StackVolume = {
-  type?: "named" | "project" | "host";
+  type?: "named" | "service" | "host";
   name: string;
   projectPath?: string;
   hostPath?: string;
@@ -1176,7 +1176,7 @@ function readStackVolumesFromYaml(
  * the service `volumes:` lines back into the same shape `renderCompose` emitted,
  * so a reroute re-renders byte-identically. An absolute source under the
  * project's files dir (`<STACK_DIR>/files/<slug>/<rel>`) round-trips as a
- * "project" mount; any other absolute source is a HOST bind mount (`type:
+ * "service" mount; any other absolute source is a HOST bind mount (`type:
  * "host"` with its `hostPath`); anything else is a docker-named volume alias.
  */
 export function parseStackVolumes(
@@ -1196,12 +1196,12 @@ export function parseStackVolumes(
     const readOnly = flag === "ro";
     if (source.startsWith(filesRoot)) {
       // `<filesRoot><slug>/<rel>` — drop the slug segment, the rest is the
-      // project-relative path the "project" mount was authored with.
+      // project-relative path the "service" mount was authored with.
       const afterRoot = source.slice(filesRoot.length);
       const slash = afterRoot.indexOf("/");
       const projectPath = slash >= 0 ? afterRoot.slice(slash + 1) : "";
       if (projectPath) {
-        return [{ type: "project" as const, name: "", projectPath, mountPath, readOnly }];
+        return [{ type: "service" as const, name: "", projectPath, mountPath, readOnly }];
       }
     }
     if (source.startsWith("/")) {
@@ -1233,10 +1233,10 @@ export function parseStackVolumes(
  * toast reflects success/failure. Never starts a stopped (idle) project and
  * never races a deploy in progress (it re-renders the file but skips docker).
  */
-export async function rerouteProject(
-  projectId: string,
+export async function rerouteService(
+  serviceId: string,
 ): Promise<"rerouted" | "unchanged" | "deferred"> {
-  const project = await loadProjectGraph(projectId);
+  const project = await loadServiceGraph(serviceId);
   if (!project) return "deferred";
   const slug = project.slug;
   const name = `deplo-${slug}`;
@@ -1249,8 +1249,8 @@ export async function rerouteProject(
   // on a Reload without a full redeploy — its row may not be `valid` yet, but the
   // deploy would still route it, so Reload must too. Empty ⇒ the project has no
   // domain at all (never resurrected): nothing to write, leave it deferred.
-  const primary = await primaryDomainName(projectId);
-  const routes = await routableForDeploy(projectId, "production", primary);
+  const primary = await primaryDomainName(serviceId);
+  const routes = await routableForDeploy(serviceId, "production", primary);
   if (routes.length === 0) return "deferred"; // never write an empty Host() rule
 
   const hasCompose = Boolean(project.compose && project.compose.trim());
@@ -1273,17 +1273,17 @@ export async function rerouteProject(
         compose: project.compose ?? "",
         name,
         slug,
-        projectId,
+        serviceId,
         // The `domains` table is the sole routing source: one router per routable
         // domain → its named compose service.
         domainRoutes: routes,
         filesDir: composeFilesDir(slug),
-        basicAuthUsers: await basicAuthUsersValue(projectId),
+        basicAuthUsers: await basicAuthUsersValue(serviceId),
         // Inject the current settings env-var names so a reroute keeps the same
         // pass-throughs a deploy would render — the env-file (sent below) still
         // carries the values. The no-op guard in mergeEnvironment means a reroute
         // that adds no new key re-renders byte-identically (no needless restart).
-        envKeys: await projectEnvKeys(projectId),
+        envKeys: await serviceEnvKeys(serviceId),
       });
       mounts = (project.mounts ?? []).map((m) => ({
         path: m.filePath,
@@ -1295,17 +1295,17 @@ export async function rerouteProject(
       // this a pure routing change — never a rebuild or a silent env/image change.
       const image = readStackImageFromYaml(current.yaml, name);
       if (!image) return "deferred"; // can't safely reroute without the running image
-      const env = readStackEnvFromYaml(current.yaml, name) ?? await projectEnv(projectId);
+      const env = readStackEnvFromYaml(current.yaml, name) ?? await serviceEnv(serviceId);
       // Volumes are read back from the stack (like image/env), NOT from
       // project.volumes — so a domain-only reroute keeps the running mounts and
       // never silently applies a volume edit the user hasn't redeployed.
       const volumes = readStackVolumesFromYaml(current.yaml, name);
-      const basicAuthUsers = await basicAuthUsersValue(projectId);
+      const basicAuthUsers = await basicAuthUsersValue(serviceId);
       rendered = renderCompose({
         name,
         image,
         port: project.build.port,
-        projectId,
+        serviceId,
         slug,
         routes,
         env,
@@ -1332,7 +1332,7 @@ export async function rerouteProject(
 
     // For a single-image stack the env is baked into the YAML, so send no env-file
     // (mirrors the deploy path); compose stacks interpolate ${VAR} from the env.
-    const env = useCompose && hasCompose ? await projectEnv(projectId) : {};
+    const env = useCompose && hasCompose ? await serviceEnv(serviceId) : {};
     const r = await conn.reroute({ slug, composeYaml: rendered, env, mounts });
     if (!r.ok) throw new Error(r.error || "agent failed to reroute the stack");
     return "rerouted";
@@ -1350,15 +1350,15 @@ export async function rerouteProject(
  *
  * Compose stacks are rendered live from the saved compose + current routable
  * domains, so the preview matches the NEXT deploy/reroute even before the
- * project is deployed. Single-image / built projects keep their image ref and
+ * project is deployed. Single-image / built services keep their image ref and
  * env only in the on-disk stack file (not on the project), so those are read
  * back from `/data/stacks/<slug>.yml`; that file exists only after a first
  * deploy. Returns `null` when there's nothing to show yet.
  */
-export async function renderProjectStack(
-  projectId: string,
+export async function renderServiceStack(
+  serviceId: string,
 ): Promise<string | null> {
-  const project = await loadProjectGraph(projectId);
+  const project = await loadServiceGraph(serviceId);
   if (!project) return null;
   const slug = project.slug;
   const name = `deplo-${slug}`;
@@ -1370,24 +1370,24 @@ export async function renderProjectStack(
     // never-deployed compose project still previews: fall back to ALL of the
     // project's domains (not just `valid` ones) so the preview isn't empty before
     // any domain is verified.
-    const routes = await routableRoutes(projectId);
+    const routes = await routableRoutes(serviceId);
     const domainRoutes: RoutableDomain[] = routes.length
       ? routes
-      : (await loadDomainsForProject(projectId))
+      : (await loadDomainsForService(serviceId))
           .sort((a, b) => Number(b.primary) - Number(a.primary))
           .map((d) => defaultRoute(d.name, d.service ?? null, d.port ?? null));
     return buildComposeStack({
       compose: project.compose ?? "",
       name,
       slug,
-      projectId,
+      serviceId,
       domainRoutes,
       filesDir: composeFilesDir(slug),
-      basicAuthUsers: await basicAuthUsersValue(projectId),
+      basicAuthUsers: await basicAuthUsersValue(serviceId),
       // Show the injected pass-throughs in the preview so "View full compose"
       // matches what the next deploy/reroute writes. Only NAMES appear — the
       // values never enter the rendered YAML (they ride the env-file).
-      envKeys: await projectEnvKeys(projectId),
+      envKeys: await serviceEnvKeys(serviceId),
     });
   }
 

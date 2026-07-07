@@ -8,7 +8,7 @@ import {
   teamGlobalEnvVarTargets as tgTargets,
   instanceEnvVars as instVars,
   instanceEnvVarTargets as instTargets,
-  projects as projectsTable,
+  services as servicesTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
@@ -22,7 +22,7 @@ import type {
 } from "../types";
 
 /**
- * GLOBAL environment variables — variables injected into projects without a
+ * GLOBAL environment variables — variables injected into services without a
  * per-project attachment. Two scopes:
  *   - team:     every project in one team           (gated `manage_env`)
  *   - instance: every project of every team         (gated instance admin)
@@ -108,7 +108,7 @@ async function loadInstanceVars(): Promise<GlobalEnvVar[]> {
   return assemble(vars, targets);
 }
 
-/** Still-encrypted entry the deploy merge consumes (no projectId — applies to all). */
+/** Still-encrypted entry the deploy merge consumes (no serviceId — applies to all). */
 export interface GlobalEnvEntry {
   key: string;
   valueEnc: string;
@@ -121,13 +121,13 @@ export interface GlobalEnvEntry {
  * gate — it runs inside the deploy engine, which has already authorized the
  * deploy. Returns encrypted entries; the caller decrypts at the edge.
  */
-export async function loadGlobalEnvForProject(
-  projectId: string,
+export async function loadGlobalEnvForService(
+  serviceId: string,
 ): Promise<{ teamGlobals: GlobalEnvEntry[]; instanceGlobals: GlobalEnvEntry[] }> {
   const prow = await getDb()
-    .select({ teamId: projectsTable.teamId })
-    .from(projectsTable)
-    .where(eq(projectsTable.id, projectId))
+    .select({ teamId: servicesTable.teamId })
+    .from(servicesTable)
+    .where(eq(servicesTable.id, serviceId))
     .limit(1);
   const teamId = prow[0]?.teamId;
   const [team, instance] = await Promise.all([

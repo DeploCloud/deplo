@@ -9,10 +9,10 @@ import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
-  seedProject,
+  seedService,
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
-} from "./project-graph-test-helpers";
+} from "./service-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
 import {
   listServersForTeam,
@@ -25,7 +25,7 @@ import {
  * Data-layer tests for server → team access (the "all teams / specific teams"
  * feature). Covers the consumption filter (`listServersForTeam`), the
  * `setServerTeams` widen/restrict transitions, and the block that refuses to
- * revoke a team's access while it still has workloads (projects or databases) on
+ * revoke a team's access while it still has workloads (services or databases) on
  * the server — the conscious-teardown rule mirrored from `removeServer`.
  */
 
@@ -101,13 +101,13 @@ test("setServerTeams dedupes team ids", async () => {
 });
 
 test("restricting is BLOCKED when an excluded team has a PROJECT on the server", async () => {
-  await seedProject(db, { id: "prj_b", teamId: TEAM_B, serverId: SERVER_1 });
+  await seedService(db, { id: "prj_b", teamId: TEAM_B, serverId: SERVER_1 });
 
   await assert.rejects(
     asUser1(() =>
       setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
     ),
-    /projects or databases/,
+    /services or databases/,
   );
   // The block left the access untouched (still all teams).
   assert.equal((await getServerById(SERVER_1))!.allTeams, true);
@@ -120,12 +120,12 @@ test("restricting is BLOCKED when an excluded team has a DATABASE on the server"
     asUser1(() =>
       setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
     ),
-    /projects or databases/,
+    /services or databases/,
   );
 });
 
 test("restricting SUCCEEDS when the team with workloads stays included", async () => {
-  await seedProject(db, { id: "prj_b", teamId: TEAM_B, serverId: SERVER_1 });
+  await seedService(db, { id: "prj_b", teamId: TEAM_B, serverId: SERVER_1 });
 
   await asUser1(() =>
     setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A, TEAM_B] }),

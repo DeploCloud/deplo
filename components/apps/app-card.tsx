@@ -30,7 +30,7 @@ const STOP = `mutation($id: String!) { stopApp(id: $id) }`;
 
 /**
  * The menu-primitive set used to render a card's action list once and reuse it
- * for the right-click context menu (see the note in project-card.tsx). These
+ * for the right-click context menu (see the note in service-card.tsx). These
  * cards expose their actions as inline buttons rather than a ⋯ dropdown, so the
  * right-click menu rebuilds the same actions from the same handlers. Only the
  * Item/Separator primitives are needed — neither card has submenus.

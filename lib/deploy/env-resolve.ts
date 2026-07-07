@@ -2,7 +2,7 @@
  * The env-gathering rule: which variables reach a project's runtime, and in
  * what order. One target axis (`production | preview | development`) governs
  * both per-project vars AND shared groups — a shared group is just project vars
- * that several projects share, so it obeys the same target rule.
+ * that several services share, so it obeys the same target rule.
  *
  * Pure on purpose: no store, no docker, no `decryptSecret`, no `server-only`.
  * It selects and orders the *encrypted* entries; the deploy/dev callers decrypt
@@ -16,7 +16,7 @@ import type { EnvTarget } from "../types";
 
 /** The fields this module reads from a per-project var (an `EnvVar` satisfies it). */
 export interface TargetedEnvEntry {
-  projectId: string;
+  serviceId: string;
   key: string;
   valueEnc: string;
   targets: EnvTarget[];
@@ -24,14 +24,14 @@ export interface TargetedEnvEntry {
 
 /** The fields this module reads from a shared group (a `SharedEnvGroup` satisfies it). */
 export interface SharedEnvGroupLike {
-  projectIds: string[];
+  serviceIds: string[];
   /** Legacy groups persisted before the target axis have this undefined. */
   targets?: EnvTarget[];
   variables: { key: string; valueEnc: string }[];
 }
 
 /**
- * A GLOBAL entry (team-wide or instance-wide). It carries no `projectId` because
+ * A GLOBAL entry (team-wide or instance-wide). It carries no `serviceId` because
  * it applies to every project — only its `targets` gate which runtime sees it.
  */
 export interface GlobalEnvEntryLike {
@@ -60,13 +60,13 @@ export function groupTargets(g: SharedEnvGroupLike): EnvTarget[] {
  *
  * So an all-teams default is overridable by a team default, which a project can
  * override, and a shared group still overrides everything (its prior behaviour).
- * The two global layers carry no projectId (they apply to every project); only
+ * The two global layers carry no serviceId (they apply to every project); only
  * their `targets` gate the runtime. Both default to empty so existing callers
  * that pass only project + shared keep the old two-layer behaviour.
  */
 export function resolveEnvEntries(
   target: EnvTarget,
-  projectId: string,
+  serviceId: string,
   envVars: TargetedEnvEntry[],
   sharedGroups: SharedEnvGroupLike[],
   teamGlobals: GlobalEnvEntryLike[] = [],
@@ -80,12 +80,12 @@ export function resolveEnvEntries(
     if (e.targets.includes(target)) out.push({ key: e.key, valueEnc: e.valueEnc });
   }
   for (const e of envVars) {
-    if (e.projectId === projectId && e.targets.includes(target)) {
+    if (e.serviceId === serviceId && e.targets.includes(target)) {
       out.push({ key: e.key, valueEnc: e.valueEnc });
     }
   }
   for (const g of sharedGroups) {
-    if (g.projectIds.includes(projectId) && groupTargets(g).includes(target)) {
+    if (g.serviceIds.includes(serviceId) && groupTargets(g).includes(target)) {
       for (const v of g.variables) out.push({ key: v.key, valueEnc: v.valueEnc });
     }
   }

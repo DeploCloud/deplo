@@ -194,7 +194,7 @@ export function AppContextMenu({
             Reload
           </ContextMenuItem>
         </SimpleTooltip>
-        <SimpleTooltip content="Go to the projects Overview" side="left">
+        <SimpleTooltip content="Go to the services Overview" side="left">
           <ContextMenuItem asChild>
             <Link href="/" className="cursor-pointer">
               <House className="size-4" />

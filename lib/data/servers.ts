@@ -5,7 +5,7 @@ import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb, type DrizzleClient, type DbTx } from "../db/client";
 import {
   databases as databasesTable,
-  projects as projectsTable,
+  services as servicesTable,
   serverTeams as serverTeamsTable,
   servers as serversTable,
   teams as teamsTable,
@@ -31,7 +31,7 @@ import type { Server, Team } from "../types";
  * instance-wide infra (no `team_id`), read/written directly through the `servers`
  * table here. The old JSONB `read().servers`/`mutate()` paths and the
  * `server-row.ts` mirror bridge (which kept the relational row in sync while
- * `servers` was JSONB-authoritative for cut-set (c)'s `projects.server_id` FK) are
+ * `servers` was JSONB-authoritative for cut-set (c)'s `services.server_id` FK) are
  * gone — this module now owns the table outright.
  */
 
@@ -102,7 +102,7 @@ export async function getPrimaryServer(): Promise<Server | null> {
 }
 
 /**
- * Servers a given team may target for its projects/databases: every `all_teams`
+ * Servers a given team may target for its services/databases: every `all_teams`
  * server PLUS the ones explicitly granted to this team via `server_teams`. This
  * is the CONSUMPTION view (the deploy-target picklist), as opposed to the
  * management view ({@link listServers}, which is unfiltered so an infra operator
@@ -309,7 +309,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
  * Remove a remote server with the ordered three-move teardown (PLAN P6):
  *   (a) ALWAYS revoke trust first — drop the pinned cert — even if the box is
  *       dead, so a removed server never keeps a valid badge;
- *   (b) BLOCK removal while projects are still assigned — the operator
+ *   (b) BLOCK removal while services are still assigned — the operator
  *       reassigns or deletes them first, consciously (no silent re-home);
  *   (c) BEST-EFFORT remote teardown — pre-flight Hello, and if the agent
  *       answers, tell it to tear down its stacks; if unreachable, proceed with
@@ -325,17 +325,17 @@ export async function removeServer(id: string): Promise<{ warning: string | null
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
 
-  // (b) Block while projects are assigned — a conscious decision by the operator.
-  // Projects are relational; count this server's projects directly (also: the
-  // `projects.server_id` FK is RESTRICT, so the DELETE below would fail anyway —
+  // (b) Block while services are assigned — a conscious decision by the operator.
+  // Services are relational; count this server's services directly (also: the
+  // `services.server_id` FK is RESTRICT, so the DELETE below would fail anyway —
   // this gives a clear message before the teardown work).
   const assigned = await getDb()
-    .select({ id: projectsTable.id })
-    .from(projectsTable)
-    .where(eq(projectsTable.serverId, id))
+    .select({ id: servicesTable.id })
+    .from(servicesTable)
+    .where(eq(servicesTable.serverId, id))
     .limit(1);
   if (assigned.length > 0)
-    throw new Error("Move or delete projects on this server first");
+    throw new Error("Move or delete services on this server first");
 
   // The teardown dials the agent with its CURRENT (pre-revoke) trust material, so
   // capture it before the revoke below clears the pinned cert.
@@ -427,9 +427,9 @@ async function teamsWithWorkloadsOnServer(
 ): Promise<string[]> {
   const [projTeams, dbTeams] = await Promise.all([
     db
-      .selectDistinct({ teamId: projectsTable.teamId })
-      .from(projectsTable)
-      .where(eq(projectsTable.serverId, serverId)),
+      .selectDistinct({ teamId: servicesTable.teamId })
+      .from(servicesTable)
+      .where(eq(servicesTable.serverId, serverId)),
     db
       .selectDistinct({ teamId: databasesTable.teamId })
       .from(databasesTable)
@@ -460,7 +460,7 @@ async function teamNames(
  * Re-assert, INSIDE a write transaction, that a server is still targetable by a
  * team — taking a SHARE lock on the server row so the check serializes against a
  * concurrent {@link setServerTeams} restrict (which takes the row's UPDATE lock).
- * Callers that place a workload (createProject/createDatabase) use this to close
+ * Callers that place a workload (createService/createDatabase) use this to close
  * the TOCTOU window between picking a team-visible server and committing the row.
  */
 export async function assertServerAccessibleTx(
@@ -499,7 +499,7 @@ export interface SetServerTeamsInput {
  * dialog's initial choice). `allTeams: true` opens it to every team and clears
  * any specific grants. `allTeams: false` restricts it to `teamIds`.
  *
- * RESTRICTING is BLOCKED when a team that still has projects or databases on this
+ * RESTRICTING is BLOCKED when a team that still has services or databases on this
  * server would lose access — the operator moves/deletes those first, the same
  * conscious-teardown rule {@link removeServer} enforces (no silent orphaning of a
  * team's running workloads onto a server it can no longer target). Widening to
@@ -547,7 +547,7 @@ export async function setServerTeams(
       if (losing.length > 0) {
         const names = await teamNames(losing, tx);
         throw new Error(
-          `These teams still have projects or databases on this server: ${names.join(
+          `These teams still have services or databases on this server: ${names.join(
             ", ",
           )}. Move or delete them before revoking the team's access.`,
         );

@@ -6,7 +6,7 @@ export type Role = "owner" | "member" | "viewer";
  * A single thing a member is allowed to do within a team. Roles
  * (owner/member/viewer) are presets over this set; an admin can additionally
  * grant/revoke individual capabilities per member (see {@link Membership}).
- *  - deploy          create/redeploy/stop/start projects & dev environments
+ *  - deploy          create/redeploy/stop/start services & dev environments
  *  - manage_domains  add/verify/route/remove custom domains
  *  - manage_env      edit project & shared environment variables
  *  - manage_files    browse/edit/upload/delete a project's files dir
@@ -176,18 +176,18 @@ export interface Team {
    */
   founderUserId?: ID | null;
   /**
-   * Team-wide display order of projects in the Overview grid (array of project
+   * Team-wide display order of services in the Overview grid (array of project
    * ids, first = top-left). A team-level setting, not a per-user preference, so
    * everyone sees the same arrangement; only an instance admin or a member with
-   * `manage_team` may change it (see `reorderProjects`). Absent ⇒ no manual order
+   * `manage_team` may change it (see `reorderServices`). Absent ⇒ no manual order
    * yet, fall back to newest-updated-first. Stale/missing ids are tolerated:
-   * `listProjects` filters to live projects and appends any not listed here.
+   * `listServices` filters to live services and appends any not listed here.
    */
-  projectOrder?: ID[];
+  serviceOrder?: ID[];
   /**
    * Team-wide display order of FOLDERS in the Overview grid (folder ids, first =
-   * leftmost). Folders render before ungrouped projects. Absent ⇒ fall back to
-   * newest-first. Stale/missing ids are tolerated exactly like {@link projectOrder}.
+   * leftmost). Folders render before ungrouped services. Absent ⇒ fall back to
+   * newest-first. Stale/missing ids are tolerated exactly like {@link serviceOrder}.
    */
   folderOrder?: ID[];
   createdAt: string;
@@ -200,8 +200,8 @@ export interface TeamSummary extends Team {
 }
 
 /**
- * A team-wide grouping of projects shown on the Overview. A project belongs to
- * at most one folder (via {@link Project.folderId}); folders themselves NEST via
+ * A team-wide grouping of services shown on the Overview. A project belongs to
+ * at most one folder (via {@link Service.folderId}); folders themselves NEST via
  * {@link parentId}, forming a tree within the team. Each folder is OWNED by the
  * user who created it (see {@link ownerUserId}) and has its own per-folder
  * permission set; the owner grants other members access. A member with
@@ -308,7 +308,7 @@ export interface Server {
   diskUsage: number;
   /**
    * Team access scope. `true` (the default a server is born with) means EVERY
-   * team can target this server for its projects/databases — the historical
+   * team can target this server for its services/databases — the historical
    * instance-wide behaviour. `false` restricts it to the teams listed in the
    * `server_teams` junction (resolved separately; not carried on this object).
    * Editable post-install from Settings → Servers; gated by `manage_infra`.
@@ -354,7 +354,7 @@ export type FrameworkId =
   | "docker"
   | "other";
 
-export type ProjectStatus =
+export type ServiceStatus =
   | "active"
   | "building"
   | "error"
@@ -395,7 +395,7 @@ export function deploySourceEnumName(source: DeploySource): string {
 
 /**
  * A code archive uploaded from the dashboard, backing an "upload" source. The
- * tarball/zip is written to DATA_DIR/uploads/<projectId>/<id><ext> and built
+ * tarball/zip is written to DATA_DIR/uploads/<serviceId>/<id><ext> and built
  * exactly like a git clone (extract → resolve rootDirectory → build method).
  */
 export interface UploadArchive {
@@ -487,7 +487,7 @@ export interface BuildConfig {
 /**
  * Push-only lifecycle state of a project's dev container. Never reconciled
  * against live docker (there is no monitor loop) — exactly like
- * `ProjectStatus`, with the same known consequence that a manually-stopped
+ * `ServiceStatus`, with the same known consequence that a manually-stopped
  * container can show a stale status.
  */
 export type DevStatus = "off" | "starting" | "running" | "stopped" | "error";
@@ -510,7 +510,7 @@ export type PortTarget = "production" | "development";
 
 /**
  * A project's dev-mode configuration. Absent (`null`/`undefined`) ⇒ dev mode
- * was never enabled (back-compat). Offered only for source-bearing projects
+ * was never enabled (back-compat). Offered only for source-bearing services
  * (`github`/`git`/`upload`). State lives here, never in a `Deployment` row.
  */
 export interface DevConfig {
@@ -553,7 +553,7 @@ export interface DevConfig {
 export interface DevSshUser {
   id: ID; // newId("ssh")
   /** The ONE project this user may reach. */
-  projectId: ID;
+  serviceId: ID;
   /** Gateway-global login, namespaced `<slug>-<name>` to keep it unique. */
   username: string;
   /** authorized_keys line(s); plaintext (public). Null when password-only. */
@@ -582,8 +582,8 @@ export interface DevSshUserDTO {
 /**
  * A persistent volume mounted into a SINGLE-CONTAINER project's one service (the
  * renderCompose path — github/git/docker-image/upload, never compose-stack
- * projects, which declare volumes in their own YAML). Gated in the UI by
- * !usesComposeStack(project). Distinct from `Project.mounts`, which writes
+ * services, which declare volumes in their own YAML). Gated in the UI by
+ * !usesComposeStack(project). Distinct from `Service.mounts`, which writes
  * template CONFIG FILES to disk and bind-mounts them (content-bearing); a
  * VolumeMount carries no content — it is data that survives redeploys.
  *
@@ -594,14 +594,14 @@ export interface DevSshUserDTO {
  *    project on the shared host (the same isolation reason compose strips
  *    container_name). Deriving from the slug at render time (never storing the
  *    host name) means a rename can't orphan data and `name` stays a label.
- *  - "project": a bind mount of a path INSIDE the project's isolated files dir
+ *  - "service": a bind mount of a path INSIDE the project's isolated files dir
  *    (`projectPath`, relative, e.g. "config.toml" or "uploads"). The same
  *    sandbox the `./<x>` compose convention targets; rendered to the absolute
  *    files dir at deploy time. No grant needed — it can't escape the project.
  *  - "host": a bind mount of a real HOST filesystem path (`hostPath`). The host
  *    is docker-only and shared across teams, so a user-typed host path is a
  *    cross-tenant footgun — only users with the `canMountHostVolumes` grant (or
- *    instance admins) may add one. Enforced server-side in setProjectVolumes.
+ *    instance admins) may add one. Enforced server-side in setServiceVolumes.
  */
 export interface VolumeMount {
   /**
@@ -613,15 +613,15 @@ export interface VolumeMount {
    * Kind of mount. Absent ⇒ "named" (docker-managed) so documents written before
    * host bind mounts existed keep rendering identically.
    */
-  type?: "named" | "project" | "host";
+  type?: "named" | "service" | "host";
   /**
    * Human label, lowercase-kebab, UNIQUE PER PROJECT. Namespaced on the host.
-   * Named volumes only (ignored for "project"/"host" mounts).
+   * Named volumes only (ignored for "service"/"host" mounts).
    */
   name: string;
   /**
    * Path RELATIVE to the project's isolated files dir, e.g. "config.toml" or
-   * "uploads". Project mounts only (type === "project"); never contains "..".
+   * "uploads". Service mounts only (type === "service"); never contains "..".
    * Absent/ignored for named and host mounts.
    */
   projectPath?: string;
@@ -636,7 +636,7 @@ export interface VolumeMount {
   readOnly: boolean;
 }
 
-export interface Project {
+export interface Service {
   id: ID;
   name: string;
   slug: string;
@@ -663,7 +663,7 @@ export interface Project {
   dockerImage: string | null;
   /**
    * The code archive currently backing an "upload" source (else null). The file
-   * lives on disk under DATA_DIR/uploads/<projectId>/; this is the pointer the
+   * lives on disk under DATA_DIR/uploads/<serviceId>/; this is the pointer the
    * deploy pipeline extracts and builds. Re-uploading replaces it.
    */
   upload: UploadArchive | null;
@@ -672,13 +672,13 @@ export interface Project {
   /**
    * Config files a template bind-mounts into its stack (e.g. an app's
    * configuration.yml). Written next to the stack at deploy time with the same
-   * generated secrets the env uses. Null/empty for most projects.
+   * generated secrets the env uses. Null/empty for most services.
    */
   mounts?: { filePath: string; content: string }[] | null;
   /**
    * User-managed persistent volumes for the SINGLE-CONTAINER deploy path
    * (renderCompose) — docker-managed named volumes and (for privileged users)
-   * host bind mounts. null/absent for compose-stack projects and projects that
+   * host bind mounts. null/absent for compose-stack services and services that
    * never added one — so renderCompose emits no `volumes:` keys and the stack
    * stays byte-identical (no reroute churn). See {@link VolumeMount}.
    */
@@ -691,7 +691,7 @@ export interface Project {
    */
   dev?: DevConfig | null;
   productionUrl: string | null;
-  status: ProjectStatus;
+  status: ServiceStatus;
   autoDeploy: boolean;
   latestDeploymentId: ID | null;
   createdAt: string;
@@ -709,7 +709,7 @@ export type DeploymentEnvironment = "production" | "preview";
 
 export interface Deployment {
   id: ID;
-  projectId: ID;
+  serviceId: ID;
   status: DeploymentStatus;
   environment: DeploymentEnvironment;
   commitSha: string;
@@ -758,7 +758,7 @@ export const ALL_ENV_TARGETS: EnvTarget[] = [
 
 export interface EnvVar {
   id: ID;
-  projectId: ID;
+  serviceId: ID;
   key: string;
   /** encrypted at rest */
   valueEnc: string;
@@ -780,7 +780,7 @@ export interface EnvVarDTO {
 }
 
 /**
- * A GLOBAL environment variable — injected into projects without being attached
+ * A GLOBAL environment variable — injected into services without being attached
  * per-project. Two scopes: `team` (every project in one team) and `instance`
  * (every project of every team, instance-admin managed). Both share this shape;
  * the scope determines storage table, gating, and deploy precedence (instance is
@@ -834,7 +834,7 @@ export type CertProvider = "letsencrypt" | "cloudflare" | "none";
 
 export interface Domain {
   id: ID;
-  projectId: ID;
+  serviceId: ID;
   name: string;
   status: DomainStatus;
   primary: boolean;
@@ -899,7 +899,7 @@ export interface Domain {
    * (the compose file owns the port — there is no per-domain `port` override on
    * a stack), so `service` is the compose analogue of `port`. Absent ⇒ the
    * stack's default exposed service (`expose`/`exposes`), the long-standing
-   * behaviour. Ignored for single-image projects (which use `port`).
+   * behaviour. Ignored for single-image services (which use `port`).
    */
   service?: string;
   createdAt: string;
@@ -916,7 +916,7 @@ export interface Domain {
  */
 export interface BasicAuthUser {
   id: ID;
-  projectId: ID;
+  serviceId: ID;
   username: string;
   /** AES-GCM-encrypted password. Reversible (re-hashed to htpasswd at render),
    * write-only over the API. */
@@ -1008,7 +1008,7 @@ export interface S3Destination {
 }
 
 /** What a backup schedule / run targets. */
-export type BackupTargetKind = "database" | "project";
+export type BackupTargetKind = "database" | "service";
 
 export type BackupRunStatus = "running" | "success" | "failed";
 
@@ -1023,8 +1023,8 @@ export interface Backup {
    */
   targetKind: BackupTargetKind;
   databaseId: ID | null;
-  /** Set when `targetKind === "project"`; otherwise null. */
-  projectId: ID | null;
+  /** Set when `targetKind === "service"`; otherwise null. */
+  serviceId: ID | null;
   destinationId: ID;
   schedule: string; // cron
   retentionDays: number;
@@ -1048,7 +1048,7 @@ export interface BackupRun {
   backupId: ID | null;
   targetKind: BackupTargetKind;
   databaseId: ID | null;
-  projectId: ID | null;
+  serviceId: ID | null;
   destinationId: ID;
   /** S3 object key: `deplo/<teamId>/<kind>/<targetId>/<ISO-timestamp>.<ext>`. */
   objectKey: string;
@@ -1079,7 +1079,7 @@ export interface ApiToken {
 
 export type ActivityType =
   | "deployment"
-  | "project"
+  | "service"
   | "database"
   | "domain"
   | "env"
@@ -1094,7 +1094,7 @@ export interface Activity {
   type: ActivityType;
   message: string;
   actor: string;
-  projectId: ID | null;
+  serviceId: ID | null;
   createdAt: string;
 }
 
@@ -1107,7 +1107,7 @@ export interface SharedEnvVar {
 
 /**
  * A reusable set of environment variables defined once and attached to many
- * projects (Coolify-style "shared variables"). Attached projects reference the
+ * services (Coolify-style "shared variables"). Attached services reference the
  * single global value, so editing it here updates every attached project.
  */
 export interface SharedEnvGroup {
@@ -1117,8 +1117,8 @@ export interface SharedEnvGroup {
   name: string;
   description: string;
   variables: SharedEnvVar[];
-  /** ids of the projects this group is attached to */
-  projectIds: ID[];
+  /** ids of the services this group is attached to */
+  serviceIds: ID[];
   /**
    * The runtimes this group reaches, same axis as a per-project var. A group
    * flows into a project's dev container only if it includes `development`.
@@ -1149,7 +1149,7 @@ export interface Registry {
 /**
  * An app a team installed from the app repository (ADR-0005). An installed app
  * is a host-managed container — NOT a project — so this row is deliberately
- * minimal: no `status`, `url`, `projectId`, or token reference. Status is read
+ * minimal: no `status`, `url`, `serviceId`, or token reference. Status is read
  * live from the container at query time; the URL is computed from the stored
  * `slug`; the (MCP) app holds no credential of its own — it relays the caller's
  * `deplo_` token.
@@ -1158,7 +1158,7 @@ export interface Registry {
  * compose project, stack file, and Traefik path router all key off it. It is
  * computed once at install (`appSlug(catalogId, teamSlug)`) and persisted, so a
  * later team rename never orphans the running container/router — exactly as a
- * project's slug is frozen and `renameProject` never touches it.
+ * project's slug is frozen and `renameService` never touches it.
  */
 export interface InstalledApp {
   id: ID;

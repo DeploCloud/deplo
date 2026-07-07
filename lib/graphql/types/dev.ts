@@ -106,7 +106,7 @@ const UpdateDevInputType = builder.inputType("UpdateDevInput", {
 
 const AddDevSshUserInputType = builder.inputType("AddDevSshUserInput", {
   fields: (t) => ({
-    projectId: t.string({ required: true }),
+    serviceId: t.string({ required: true }),
     name: t.string({ required: true }),
     publicKey: t.string({ required: false }),
     password: t.string({ required: false }),
@@ -123,15 +123,15 @@ builder.queryFields((t) => ({
     nullable: true,
     authScopes: { loggedIn: true },
     description: "Dev config + computed preview URL for a project.",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: (_r, { projectId }) => getDevInfo(projectId),
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: (_r, { serviceId }) => getDevInfo(serviceId),
   }),
   devSshUsers: t.field({
     type: [DevSshUserRef],
     authScopes: { loggedIn: true },
     description: "SSH credentials for a project's dev container.",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: (_r, { projectId }) => listDevSshUsers(projectId),
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: (_r, { serviceId }) => listDevSshUsers(serviceId),
   }),
   devEligible: t.field({
     type: "Boolean",
@@ -144,8 +144,8 @@ builder.queryFields((t) => ({
     type: VscodeTunnelInfoRef,
     authScopes: { loggedIn: true },
     description: "Current VS Code tunnel status for a project.",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: (_r, { projectId }) => getTunnel(projectId),
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: (_r, { serviceId }) => getTunnel(serviceId),
   }),
 }));
 
@@ -157,55 +157,55 @@ builder.mutationFields((t) => ({
   enableDev: t.field({
     type: DevInfoRef,
     authScopes: { capability: "deploy" },
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: async (_r, { projectId }) => {
-      await enableDev(projectId);
-      return reloadDevInfo(projectId);
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: async (_r, { serviceId }) => {
+      await enableDev(serviceId);
+      return reloadDevInfo(serviceId);
     },
   }),
   disableDev: t.field({
     type: DevInfoRef,
     authScopes: { capability: "deploy" },
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: async (_r, { projectId }) => {
-      await disableDev(projectId);
-      return reloadDevInfo(projectId);
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: async (_r, { serviceId }) => {
+      await disableDev(serviceId);
+      return reloadDevInfo(serviceId);
     },
   }),
   updateDev: t.field({
     type: DevInfoRef,
     authScopes: { capability: "deploy" },
     args: {
-      projectId: t.arg.string({ required: true }),
+      serviceId: t.arg.string({ required: true }),
       patch: t.arg({ type: UpdateDevInputType, required: true }),
     },
-    resolve: async (_r, { projectId, patch }) => {
-      await updateDev(projectId, {
+    resolve: async (_r, { serviceId, patch }) => {
+      await updateDev(serviceId, {
         imageKind: patch.imageKind ?? undefined,
         image: patch.image ?? undefined,
         devCommand: patch.devCommand ?? undefined,
         port: patch.port ?? undefined,
         previewEnabled: patch.previewEnabled ?? undefined,
       });
-      return reloadDevInfo(projectId);
+      return reloadDevInfo(serviceId);
     },
   }),
   startDev: t.field({
     type: DevInfoRef,
     authScopes: { capability: "deploy" },
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: async (_r, { projectId }) => {
-      await startDevContainer(projectId);
-      return reloadDevInfo(projectId);
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: async (_r, { serviceId }) => {
+      await startDevContainer(serviceId);
+      return reloadDevInfo(serviceId);
     },
   }),
   stopDev: t.field({
     type: DevInfoRef,
     authScopes: { capability: "deploy" },
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: async (_r, { projectId }) => {
-      await stopDevContainer(projectId);
-      return reloadDevInfo(projectId);
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: async (_r, { serviceId }) => {
+      await stopDevContainer(serviceId);
+      return reloadDevInfo(serviceId);
     },
   }),
   resetDevWorkspace: t.field({
@@ -213,10 +213,10 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "deploy" },
     description:
       "DESTRUCTIVE: replace the workspace with a fresh copy of the source.",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: async (_r, { projectId }) => {
-      await resetDevWorkspace(projectId);
-      return reloadDevInfo(projectId);
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: async (_r, { serviceId }) => {
+      await resetDevWorkspace(serviceId);
+      return reloadDevInfo(serviceId);
     },
   }),
   deployDevWorkspace: t.field({
@@ -224,9 +224,9 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "deploy" },
     description:
       "Deploy the current dev workspace files to production. Returns the deployment id.",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: async (_r, { projectId }) => {
-      const dep = await deployDevWorkspace(projectId);
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: async (_r, { serviceId }) => {
+      const dep = await deployDevWorkspace(serviceId);
       return dep.id;
     },
   }),
@@ -236,7 +236,7 @@ builder.mutationFields((t) => ({
     args: { input: t.arg({ type: AddDevSshUserInputType, required: true }) },
     resolve: (_r, { input }) =>
       createDevSshUser({
-        projectId: input.projectId,
+        serviceId: input.serviceId,
         name: input.name,
         publicKey: input.publicKey ?? null,
         password: input.password ?? null,
@@ -256,24 +256,24 @@ builder.mutationFields((t) => ({
     type: VscodeTunnelInfoRef,
     authScopes: { capability: "deploy" },
     description: "Start the VS Code tunnel and return the device-login link.",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: (_r, { projectId }) => startTunnel(projectId),
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: (_r, { serviceId }) => startTunnel(serviceId),
   }),
   stopTunnel: t.field({
     type: "Boolean",
     authScopes: { capability: "deploy" },
     description: "Stop the VS Code tunnel (dev container keeps running). Returns true.",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: async (_r, { projectId }) => {
-      await stopTunnel(projectId);
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: async (_r, { serviceId }) => {
+      await stopTunnel(serviceId);
       return true;
     },
   }),
 }));
 
 /** Reload dev info by project id after a void mutation so we can return it. */
-async function reloadDevInfo(projectId: string): Promise<DevInfo> {
-  const info = await getDevInfo(projectId);
-  if (!info) throw new Error("Project not found");
+async function reloadDevInfo(serviceId: string): Promise<DevInfo> {
+  const info = await getDevInfo(serviceId);
+  if (!info) throw new Error("Service not found");
   return info;
 }

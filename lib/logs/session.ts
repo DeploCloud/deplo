@@ -26,8 +26,8 @@ import { type AttachHandle } from "../infra/docker";
 
 export interface LogsSession {
   id: string;
-  /** Project that authorised this session — the GET must match it. */
-  projectId: string;
+  /** Service that authorised this session — the GET must match it. */
+  serviceId: string;
   /** Real container name being streamed. */
   containerName: string;
   handle: AttachHandle;
@@ -63,7 +63,7 @@ function armIdleReaper(s: LogsSession) {
 
 /**
  * Open a new logs session over a pre-built backing handle. The caller MUST have
- * already verified the container belongs to `projectId` AND built the handle
+ * already verified the container belongs to `serviceId` AND built the handle
  * against the project's OWNING server (local docker for localhost, the agent's
  * FollowLogs for remote). `cleanup` runs once when the backing exits/closes (e.g.
  * `conn.close()` for a remote gRPC client) — bound here so it can never leak if
@@ -71,7 +71,7 @@ function armIdleReaper(s: LogsSession) {
  * id; the browser passes it back on the DELETE to detach.
  */
 export function open(
-  projectId: string,
+  serviceId: string,
   containerName: string,
   handle: AttachHandle,
   cleanup?: () => void,
@@ -79,7 +79,7 @@ export function open(
   const id = `log_${randomBytes(12).toString("hex")}`;
   const session: LogsSession = {
     id,
-    projectId,
+    serviceId,
     containerName,
     handle,
     subscribers: new Set(),
@@ -113,9 +113,9 @@ export function open(
 }
 
 /** Look up a session, scoped to its project so ids can't be used cross-project. */
-export function get(id: string, projectId: string): LogsSession | undefined {
+export function get(id: string, serviceId: string): LogsSession | undefined {
   const s = sessions.get(id);
-  return s && s.projectId === projectId ? s : undefined;
+  return s && s.serviceId === serviceId ? s : undefined;
 }
 
 /** Subscribe to a session's output; returns an unsubscribe fn. */

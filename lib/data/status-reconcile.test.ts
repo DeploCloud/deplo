@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { reconcileStatus } from "./projects";
+import { reconcileStatus } from "./services";
 
 const NOW = Date.UTC(2026, 0, 1, 12, 0, 0); // fixed clock for deterministic age
 const at = (msAgo: number) => new Date(NOW - msAgo).toISOString();

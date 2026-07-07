@@ -5,52 +5,65 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   deployments as deploymentsTable,
-  projects as projectsTable,
+  services as servicesTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
+import { githubCommitUrl } from "../utils";
 import { recordActivity } from "./activity";
-import { startDeployment, destroyStack, rerouteProject } from "../deploy/build";
+import { startDeployment, destroyStack, rerouteService } from "../deploy/build";
 import {
   loadDeployment,
-  loadDeploymentsForProject,
-  projectInTeam,
-} from "./project-graph-load";
-import { assembleDeployment } from "./project-graph-rows";
+  loadDeploymentsForService,
+  serviceInTeam,
+} from "./service-graph-load";
+import { assembleDeployment } from "./service-graph-rows";
 import { loadDeploymentLogs } from "./deployment-logs";
-import { requireFolderCapabilityForProject } from "./folder-access";
+import { requireFolderCapabilityForService } from "./folder-access";
 import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
 
 export async function listDeployments(filter?: {
-  projectId?: string;
+  serviceId?: string;
   environment?: DeploymentEnvironment;
   status?: Deployment["status"];
-}): Promise<(Deployment & { projectName: string; projectSlug: string })[]> {
+}): Promise<
+  (Deployment & {
+    serviceName: string;
+    serviceSlug: string;
+    /** GitHub commit URL for this deployment's SHA, or null for a non-GitHub
+     * source — lets a list decorate the SHA with a link without loading the
+     * project graph. */
+    commitUrl: string | null;
+  })[]
+> {
   const teamId = await requireActiveTeamId();
-  // The caller's team projects, by id (the deployment join target + the name/slug
-  // decoration). One query; deployments are scoped to these.
-  const teamProjects = await getDb()
+  // The caller's team services, by id (the deployment join target + the name/slug
+  // decoration, plus the repo columns needed to build the commit link).
+  const teamServices = await getDb()
     .select({
-      id: projectsTable.id,
-      name: projectsTable.name,
-      slug: projectsTable.slug,
+      id: servicesTable.id,
+      name: servicesTable.name,
+      slug: servicesTable.slug,
+      repoProvider: servicesTable.repoProvider,
+      repoRepo: servicesTable.repoRepo,
+      repoUrl: servicesTable.repoUrl,
     })
-    .from(projectsTable)
-    .where(eq(projectsTable.teamId, teamId));
-  const byId = new Map(teamProjects.map((p) => [p.id, p] as const));
-  const projectIds = filter?.projectId
-    ? byId.has(filter.projectId)
-      ? [filter.projectId]
+    .from(servicesTable)
+    .where(eq(servicesTable.teamId, teamId));
+  const byId = new Map(teamServices.map((p) => [p.id, p] as const));
+  const serviceIds = filter?.serviceId
+    ? byId.has(filter.serviceId)
+      ? [filter.serviceId]
       : []
-    : teamProjects.map((p) => p.id);
-  if (projectIds.length === 0) return [];
+    : teamServices.map((p) => p.id);
+  if (serviceIds.length === 0) return [];
 
   // Newest-first with the deterministic seq tie-break, push-down into SQL.
   const rows = await getDb()
     .select()
     .from(deploymentsTable)
-    .where(inArray(deploymentsTable.projectId, projectIds))
+    .where(inArray(deploymentsTable.serviceId, serviceIds))
     .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq));
 
   return rows
@@ -58,8 +71,16 @@ export async function listDeployments(filter?: {
     .filter((x) => !filter?.environment || x.environment === filter.environment)
     .filter((x) => !filter?.status || x.status === filter.status)
     .map((x) => {
-      const p = byId.get(x.projectId);
-      return { ...x, projectName: p?.name ?? "", projectSlug: p?.slug ?? "" };
+      const p = byId.get(x.serviceId);
+      return {
+        ...x,
+        serviceName: p?.name ?? "",
+        serviceSlug: p?.slug ?? "",
+        commitUrl: githubCommitUrl(
+          { provider: p?.repoProvider, repo: p?.repoRepo, url: p?.repoUrl },
+          x.commitSha,
+        ),
+      };
     });
 }
 
@@ -67,14 +88,14 @@ export async function getDeployment(id: string): Promise<Deployment | null> {
   const teamId = await requireActiveTeamId();
   const dep = await loadDeployment(id);
   if (!dep) return null;
-  return (await projectInTeam(dep.projectId, teamId)) ? dep : null;
+  return (await serviceInTeam(dep.serviceId, teamId)) ? dep : null;
 }
 
 export async function getLogs(deploymentId: string): Promise<LogLine[]> {
   const teamId = await requireActiveTeamId();
   const dep = await loadDeployment(deploymentId);
   if (!dep) return [];
-  if (!(await projectInTeam(dep.projectId, teamId))) return [];
+  if (!(await serviceInTeam(dep.serviceId, teamId))) return [];
   return loadDeploymentLogs(deploymentId);
 }
 
@@ -91,28 +112,28 @@ export async function getLogs(deploymentId: string): Promise<LogLine[]> {
  *  - "deferred"  — saved, but it applies on the next deploy/start (the project
  *                  isn't active, was never deployed, or has no domain)
  */
-export async function reloadProject(
-  projectId: string,
+export async function reloadService(
+  serviceId: string,
 ): Promise<"rerouted" | "unchanged" | "deferred"> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  if (!(await projectInTeam(projectId, membership.teamId)))
-    throw new Error("Project not found");
-  await requireFolderCapabilityForProject(projectId, "deploy");
-  const result = await rerouteProject(projectId);
+  if (!(await serviceInTeam(serviceId, membership.teamId)))
+    throw new Error("Service not found");
+  await requireFolderCapabilityForService(serviceId, "deploy");
+  const result = await rerouteService(serviceId);
   if (result === "rerouted")
-    await recordActivity("project", `Reloaded routing`, user.name, projectId);
+    await recordActivity("service", `Reloaded routing`, user.name, serviceId);
   return result;
 }
 
 /** Trigger a fresh production build + deploy of the latest commit. */
-export async function redeploy(projectId: string): Promise<Deployment> {
+export async function redeploy(serviceId: string): Promise<Deployment> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  if (!(await projectInTeam(projectId, membership.teamId)))
-    throw new Error("Project not found");
-  await requireFolderCapabilityForProject(projectId, "deploy");
-  const depId = await startDeployment(projectId, {
+  if (!(await serviceInTeam(serviceId, membership.teamId)))
+    throw new Error("Service not found");
+  await requireFolderCapabilityForService(serviceId, "deploy");
+  const depId = await startDeployment(serviceId, {
     environment: "production",
     creator: user.name,
     commitMessage: "Redeploy of latest commit",
@@ -124,9 +145,9 @@ export async function cancelDeployment(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const dep = await loadDeployment(id);
   if (!dep) throw new Error("Deployment not found");
-  if (!(await projectInTeam(dep.projectId, membership.teamId)))
+  if (!(await serviceInTeam(dep.serviceId, membership.teamId)))
     throw new Error("Deployment not found");
-  await requireFolderCapabilityForProject(dep.projectId, "deploy");
+  await requireFolderCapabilityForService(dep.serviceId, "deploy");
   // Only a queued/building deployment can be cancelled; a conditional UPDATE so
   // a terminal one is left as-is.
   if (dep.status === "building" || dep.status === "queued") {
@@ -142,9 +163,9 @@ export async function promoteToProduction(id: string): Promise<void> {
   const user = (await getCurrentUser())!;
   const existing = await loadDeployment(id);
   if (!existing) throw new Error("Deployment not found");
-  if (!(await projectInTeam(existing.projectId, membership.teamId)))
+  if (!(await serviceInTeam(existing.serviceId, membership.teamId)))
     throw new Error("Deployment not found");
-  await requireFolderCapabilityForProject(existing.projectId, "deploy");
+  await requireFolderCapabilityForService(existing.serviceId, "deploy");
   // One tx: flip the deployment to production AND point the project at it.
   await getDb().transaction(async (tx) => {
     const dep = await tx
@@ -158,13 +179,13 @@ export async function promoteToProduction(id: string): Promise<void> {
       .set({ environment: "production" })
       .where(eq(deploymentsTable.id, id));
     await tx
-      .update(projectsTable)
+      .update(servicesTable)
       .set({
         latestDeploymentId: id,
         productionUrl: dep[0]!.url,
         updatedAt: nowIso(),
       })
-      .where(eq(projectsTable.id, dep[0]!.projectId));
+      .where(eq(servicesTable.id, dep[0]!.serviceId));
   });
   await recordActivity(
     "deployment",
@@ -177,14 +198,14 @@ export async function promoteToProduction(id: string): Promise<void> {
 
 /**
  * A project's deployments, newest-first. Thin wrapper over the loader's SQL
- * push-down so the GraphQL `Project.deployments` resolver doesn't load the whole
+ * push-down so the GraphQL `Service.deployments` resolver doesn't load the whole
  * history into memory.
  */
-export async function listProjectDeployments(
-  projectId: string,
+export async function listServiceDeployments(
+  serviceId: string,
   opts: { limit?: number } = {},
 ): Promise<Deployment[]> {
-  return loadDeploymentsForProject(projectId, opts);
+  return loadDeploymentsForService(serviceId, opts);
 }
 
 /**
@@ -194,7 +215,7 @@ export async function listProjectDeployments(
  * anyway (P6 spirit) and the caller warns that leftover containers on the remote
  * must be cleaned by hand. Never throws, so a dead remote never blocks a delete.
  */
-export async function teardownProject(slug: string): Promise<boolean> {
+export async function teardownService(slug: string): Promise<boolean> {
   try {
     await destroyStack(slug);
     return true;

@@ -18,8 +18,8 @@ import type { DeploymentStatus, LogLevel, LogLine } from "@/lib/types";
 
 export type DeploymentSummary = {
   id: string;
-  projectName: string;
-  projectSlug: string;
+  serviceName: string;
+  serviceSlug: string;
   commitMessage: string;
   status: DeploymentStatus;
   createdAt: string;
@@ -83,7 +83,7 @@ export function LogViewer({
   );
 
   const downloadName = selected
-    ? `${selected.projectSlug}-${selected.id}.log`
+    ? `${selected.serviceSlug}-${selected.id}.log`
     : "deployment.log";
 
   function toggleLevel(level: LogLevel) {
@@ -121,7 +121,7 @@ export function LogViewer({
                   <div className="flex items-center gap-2">
                     <StatusDot status={d.status} />
                     <span className="truncate text-sm font-medium text-foreground">
-                      {d.projectName}
+                      {d.serviceName}
                     </span>
                   </div>
                   <p className="line-clamp-1 text-xs text-muted-foreground">

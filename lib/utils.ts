@@ -60,14 +60,53 @@ export function deploySourceLabel(source: string): string {
 }
 
 /**
+ * The GitHub URL for a specific commit of a project's source, or `null` when the
+ * project is NOT deployed from a GitHub repo (only GitHub is linkable here —
+ * GitLab/Bitbucket use different commit paths). `repo.repo` is the `owner/name`
+ * slug, so the result is `https://github.com/owner/name/commit/<sha>`. Structural
+ * param so both `GitRepo` and a `{provider, repo}` projection satisfy it.
+ */
+export function githubCommitUrl(
+  repo:
+    | { provider?: string | null; repo?: string | null; url?: string | null }
+    | null
+    | undefined,
+  sha: string | null | undefined,
+): string | null {
+  const commit = sha?.trim();
+  if (!repo || !commit) return null;
+  const slug = githubRepoSlug(repo);
+  return slug ? `https://github.com/${slug}/commit/${commit}` : null;
+}
+
+/**
+ * The `owner/name` slug of a project's GitHub repo, or null when it isn't on
+ * GitHub. Handles the GitHub-App source (provider "github", `repo` already the
+ * slug) AND a plain-git source whose URL happens to be on github.com (https or
+ * `git@` SSH form). Strips a trailing `.git`/slash so the commit URL never
+ * doubles up (`owner/name.git` / `owner/name/` → `owner/name`).
+ */
+function githubRepoSlug(repo: {
+  provider?: string | null;
+  repo?: string | null;
+  url?: string | null;
+}): string | null {
+  const clean = (s: string) =>
+    s.trim().replace(/\.git$/i, "").replace(/^\/+|\/+$/g, "");
+  if (repo.provider === "github" && repo.repo?.trim()) return clean(repo.repo);
+  const m = repo.url?.trim().match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
+  return m ? clean(m[1]) : null;
+}
+
+/**
  * Whether a project deploys its own docker-compose stack rather than a single
  * built/pulled image. `compose` is authoritative; the legacy heuristic (a
- * stored compose with no repo/image) catches template projects created before
+ * stored compose with no repo/image) catches template services created before
  * the `compose` source existed. An "upload" source is always a single-image
  * build, so it is excluded even if a stale compose lingers from a former source
- * (setProjectUpload nulls repo/image but keeps compose for switching back).
+ * (setServiceUpload nulls repo/image but keeps compose for switching back).
  *
- * One source of truth so the deploy pipeline (runDeployment, rerouteProject)
+ * One source of truth so the deploy pipeline (runDeployment, rerouteService)
  * and the settings UI can never disagree about whether a project is a stack.
  */
 export function usesComposeStack(project: {

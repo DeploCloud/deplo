@@ -30,7 +30,7 @@ const base = {
   name: "deplo-demo",
   image: "deplo/demo:abc123",
   port: 3000,
-  projectId: "p1",
+  serviceId: "p1",
   slug: "demo",
   routes: [route],
   env: { FOO: "bar" },
@@ -160,7 +160,7 @@ test("project file mount: source resolves to the project's files dir, NO top-lev
   const yaml = renderCompose({
     ...base,
     volumes: [
-      { type: "project", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+      { type: "service", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
     ],
   });
   // The source is the absolute per-project files dir (…/files/<slug>/<rel>),
@@ -174,7 +174,7 @@ test("project file mount: nested path and :ro flag render correctly", () => {
   const yaml = renderCompose({
     ...base,
     volumes: [
-      { type: "project", name: "", projectPath: "volumes/db/init.sql", mountPath: "/init.sql", readOnly: true },
+      { type: "service", name: "", projectPath: "volumes/db/init.sql", mountPath: "/init.sql", readOnly: true },
     ],
   });
   assert.match(yaml, /\n {6}- \/.*\/files\/demo\/volumes\/db\/init\.sql:\/init\.sql:ro\n/);
@@ -183,12 +183,12 @@ test("project file mount: nested path and :ro flag render correctly", () => {
 test("project file mount round-trips through parseStackVolumes as type: project", () => {
   const volumes = [
     { name: "data", mountPath: "/data", readOnly: false },
-    { type: "project" as const, name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+    { type: "service" as const, name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
   ];
   const yaml = renderCompose({ ...base, volumes });
   const parsed = parseStackVolumes(yaml, base.name);
   assert.deepEqual(parsed, [
     { name: "data", mountPath: "/data", readOnly: false },
-    { type: "project", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+    { type: "service", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
   ]);
 });

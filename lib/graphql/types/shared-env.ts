@@ -2,14 +2,14 @@ import { builder } from "../builder";
 import { EnvTargetEnum } from "./enums";
 import {
   listSharedEnvGroups,
-  listSharedEnvGroupsForProject,
+  listSharedEnvGroupsForService,
   getSharedEnvBlob,
   saveSharedEnvGroup,
   setSharedEnvGroupAttachment,
   deleteSharedEnvGroup,
   type SharedEnvGroupDTO,
   type SharedEnvVarDTO,
-  type ProjectSharedEnvGroupDTO,
+  type ServiceSharedEnvGroupDTO,
 } from "@/lib/data/shared-env";
 
 /* ------------------------------------------------------------------ */
@@ -30,12 +30,12 @@ const SharedEnvVarRef = builder
     }),
   });
 
-/** A reusable bundle of env vars that can be attached to many projects. */
+/** A reusable bundle of env vars that can be attached to many services. */
 const SharedEnvGroupRef = builder
   .objectRef<SharedEnvGroupDTO>("SharedEnvGroup")
   .implement({
     description:
-      "A reusable group of environment variables shared across projects.",
+      "A reusable group of environment variables shared across services.",
     fields: (t) => ({
       id: t.exposeID("id"),
       name: t.exposeString("name"),
@@ -49,19 +49,19 @@ const SharedEnvGroupRef = builder
         description: "Deploy environments this group applies to.",
         resolve: (g) => g.targets,
       }),
-      projectIds: t.exposeIDList("projectIds"),
-      projects: t.field({
-        type: [SharedEnvGroupProjectRef],
-        description: "Projects this group is attached to.",
-        resolve: (g) => g.projects,
+      serviceIds: t.exposeIDList("serviceIds"),
+      services: t.field({
+        type: [SharedEnvGroupServiceRef],
+        description: "Services this group is attached to.",
+        resolve: (g) => g.services,
       }),
       updatedAt: t.exposeString("updatedAt"),
     }),
   });
 
 /** Lightweight project reference embedded in a shared group. */
-const SharedEnvGroupProjectRef = builder
-  .objectRef<SharedEnvGroupDTO["projects"][number]>("SharedEnvGroupProject")
+const SharedEnvGroupServiceRef = builder
+  .objectRef<SharedEnvGroupDTO["services"][number]>("SharedEnvGroupService")
   .implement({
     fields: (t) => ({
       id: t.exposeID("id"),
@@ -71,8 +71,8 @@ const SharedEnvGroupProjectRef = builder
   });
 
 /** A shared group annotated with whether it is attached to one project. */
-const ProjectSharedEnvGroupRef = builder
-  .objectRef<ProjectSharedEnvGroupDTO>("ProjectSharedEnvGroup")
+const ServiceSharedEnvGroupRef = builder
+  .objectRef<ServiceSharedEnvGroupDTO>("ServiceSharedEnvGroup")
   .implement({
     description:
       "A shared env group as seen from one project, with attachment state.",
@@ -104,7 +104,7 @@ const SaveSharedEnvGroupInputType = builder.inputType(
       name: t.string({ required: true }),
       description: t.string({ required: true }),
       blob: t.string({ required: true }),
-      projectIds: t.idList({ required: true }),
+      serviceIds: t.idList({ required: true }),
       targets: t.field({ type: [EnvTargetEnum], required: true }),
     }),
   },
@@ -121,13 +121,13 @@ builder.queryFields((t) => ({
     description: "All shared env groups in the active team, A→Z.",
     resolve: () => listSharedEnvGroups(),
   }),
-  sharedEnvGroupsForProject: t.field({
-    type: [ProjectSharedEnvGroupRef],
+  sharedEnvGroupsForService: t.field({
+    type: [ServiceSharedEnvGroupRef],
     authScopes: { capability: "manage_env" },
     description:
       "Shared env groups annotated with whether they attach to one project.",
-    args: { projectId: t.arg.string({ required: true }) },
-    resolve: (_r, { projectId }) => listSharedEnvGroupsForProject(projectId),
+    args: { serviceId: t.arg.string({ required: true }) },
+    resolve: (_r, { serviceId }) => listSharedEnvGroupsForService(serviceId),
   }),
 }));
 
@@ -147,7 +147,7 @@ builder.mutationFields((t) => ({
         name: input.name,
         description: input.description,
         blob: input.blob,
-        projectIds: input.projectIds,
+        serviceIds: input.serviceIds,
         targets: input.targets,
       });
       // The data fn returns void; reload the group by name (ids are server-side
@@ -161,11 +161,11 @@ builder.mutationFields((t) => ({
     description: "Attach or detach a shared group to one project. Returns true.",
     args: {
       groupId: t.arg.string({ required: true }),
-      projectId: t.arg.string({ required: true }),
+      serviceId: t.arg.string({ required: true }),
       attached: t.arg.boolean({ required: true }),
     },
-    resolve: async (_r, { groupId, projectId, attached }) => {
-      await setSharedEnvGroupAttachment(groupId, projectId, attached);
+    resolve: async (_r, { groupId, serviceId, attached }) => {
+      await setSharedEnvGroupAttachment(groupId, serviceId, attached);
       return true;
     },
   }),

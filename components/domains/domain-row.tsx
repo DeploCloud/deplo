@@ -17,6 +17,7 @@ import {
   Pencil,
   Layers,
   Route,
+  TriangleAlert,
 } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { CopyButton } from "@/components/shared/copy-button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import {
   DomainConfigFields,
@@ -57,7 +59,7 @@ import {
 import { gqlAction } from "@/lib/graphql-client";
 import type { Domain } from "@/lib/types";
 
-type Row = Domain & { projectName: string; projectSlug: string };
+type Row = Domain & { serviceName: string; serviceSlug: string };
 
 /**
  * The menu-primitive set used to render the row's action list once and reuse it
@@ -99,11 +101,18 @@ function composeServices(compose?: string | null): string[] {
 export function DomainRow({
   domain,
   compose,
+  serverIp,
 }: {
   domain: Row;
   /** The project's compose YAML (compose stacks only) so the Edit dialog can
    * offer the service selector. Absent/null ⇒ a single-image project. */
   compose?: string | null;
+  /** The public IPv4 of the server THIS project is deployed on — the address a
+   * custom domain's A record must resolve to. Surfaced in the misconfigured hint
+   * so the user knows exactly where to point DNS. It is server-specific (a
+   * project on another server needs a different IP), so it is resolved per
+   * project and passed in, never a shared constant. */
+  serverIp?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -246,7 +255,9 @@ export function DomainRow({
               "Set as primary",
             )
           }
-          disabled={pending}
+          // A misconfigured domain has no working DNS to this server, so it can't
+          // be the canonical host — disabled here, and the server rejects it too.
+          disabled={pending || domain.status === "misconfigured"}
         >
           <Star className="size-4" />
           Set as primary
@@ -334,13 +345,53 @@ export function DomainRow({
                 → {domain.redirectTo}
               </p>
             )}
+            {domain.status === "misconfigured" && (
+              // A misconfigured domain resolves somewhere other than this
+              // project's server. Tell the user exactly where to point DNS: the
+              // A record must resolve to THIS project's server IP, which is
+              // server-specific (a project on another server needs a different
+              // address) — so the concrete IP is shown, never a generic one.
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+                <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+                {serverIp ? (
+                  <>
+                    <span>
+                      This domain’s DNS doesn’t point here. Add an{" "}
+                      <span className="font-medium text-foreground">
+                        A record
+                      </span>{" "}
+                      for{" "}
+                      <span className="font-mono text-foreground">
+                        {domain.name}
+                      </span>{" "}
+                      →
+                    </span>
+                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
+                      {serverIp}
+                    </code>
+                    <CopyButton value={serverIp} className="size-6" />
+                    <span>
+                      — the IP of the server this project runs on (unique to this
+                      server), then Verify.
+                    </span>
+                  </>
+                ) : (
+                  <span>
+                    This domain’s DNS doesn’t point here. Point its{" "}
+                    <span className="font-medium text-foreground">A record</span>{" "}
+                    at the IP of the server this project is deployed on (unique to
+                    that server), then Verify.
+                  </span>
+                )}
+              </div>
+            )}
           </TableCell>
           <TableCell>
             <Link
-              href={`/projects/${domain.projectSlug}`}
+              href={`/services/${domain.serviceSlug}`}
               className="cursor-pointer text-sm text-muted-foreground hover:text-foreground"
             >
-              {domain.projectName}
+              {domain.serviceName}
             </Link>
           </TableCell>
           <TableCell>
@@ -381,7 +432,7 @@ export function DomainRow({
                   <DialogTitle>Edit domain</DialogTitle>
                   <DialogDescription>
                     Routing for{" "}
-                    <span className="font-medium">{domain.projectName}</span>.
+                    <span className="font-medium">{domain.serviceName}</span>.
                     Changes apply instantly when the project is running,
                     otherwise on the next deploy.
                   </DialogDescription>

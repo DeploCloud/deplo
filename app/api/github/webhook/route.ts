@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import {
   githubInstallation as githubInstallationTable,
-  projects as projectsTable,
+  services as servicesTable,
 } from "@/lib/db/schema/control-plane";
 import { decryptSecret } from "@/lib/crypto";
 import { findAppByAppId } from "@/lib/github/app";
@@ -79,18 +79,18 @@ export async function POST(request: Request) {
     return new Response("ok", { status: 200 });
   }
 
-  // Projects are relational (cut-set c): the github-source candidates for this
+  // Services are relational (cut-set c): the github-source candidates for this
   // installation, filtered in SQL on the flattened repo_* columns.
-  const githubProjects = await getDb()
+  const githubServices = await getDb()
     .select()
-    .from(projectsTable)
+    .from(servicesTable)
     .where(
       and(
-        eq(projectsTable.source, "github"),
-        eq(projectsTable.repoInstallationId, install.id),
+        eq(servicesTable.source, "github"),
+        eq(servicesTable.repoInstallationId, install.id),
       ),
     );
-  const targets = githubProjects.filter(
+  const targets = githubServices.filter(
     (p) =>
       p.autoDeploy &&
       p.repoRepo === fullName &&
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       `[github-webhook] no auto-deploy target: repo=${fullName} branch=${branch} ` +
         `install=${install.id}; candidates=` +
         JSON.stringify(
-          githubProjects.map((p) => ({
+          githubServices.map((p) => ({
             id: p.id,
             autoDeploy: p.autoDeploy,
             repo: p.repoRepo,

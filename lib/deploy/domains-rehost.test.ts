@@ -12,8 +12,8 @@ import {
 
 /**
  * A template's generated nip.io hosts are baked against the MASTER's IP in the
- * /new page (the target server isn't known until submit). createProject /
- * updateProjectSource re-host them onto the target server's IP using these
+ * /new page (the target server isn't known until submit). createService /
+ * updateServiceSource re-host them onto the target server's IP using these
  * helpers — swapping only the trailing hex-IP label, preserving the random
  * words. The garage-with-ui case is the regression that motivated this: its
  * primary host + a `web-ui.` subdomain + (potentially) an env value all carry the

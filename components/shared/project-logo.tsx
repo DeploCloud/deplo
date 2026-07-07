@@ -12,7 +12,7 @@ import type { FrameworkId } from "@/lib/types";
  * lists. A logo that fails to load falls back to the framework icon at runtime
  * rather than showing a broken image.
  */
-export function ProjectLogo({
+export function ServiceLogo({
   logo,
   framework,
   size = 36,

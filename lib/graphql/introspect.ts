@@ -94,7 +94,7 @@ function scopeOf(field: GraphQLField<unknown, unknown>): FieldScope {
 
 /**
  * Bucket a field under a coarse domain for grouped rendering. We match the
- * field name against the known domain nouns (longest first so `createProject`
+ * field name against the known domain nouns (longest first so `createService`
  * lands in `project`, not a shorter accidental match). Falls back to `general`.
  */
 const GROUPS = [
@@ -111,7 +111,7 @@ const GROUPS = [
   "domain",
   "server",
   "github",
-  "project",
+  "service",
   "shared",
   "update",
   "token",

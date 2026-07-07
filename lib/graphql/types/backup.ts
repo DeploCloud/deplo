@@ -3,7 +3,7 @@ import {
   listBackups,
   createBackup,
   runBackup,
-  runProjectBackup,
+  runServiceBackup,
   restoreBackup,
   listBackupRuns,
   toggleBackup,
@@ -28,7 +28,7 @@ const BackupStatusEnum = builder.enumType("BackupStatus", {
 // What a schedule / run targets. Local to this domain (mirrors how
 // DatabaseStatus lives in database.ts) rather than the shared enums file.
 const BackupTargetKindEnum = builder.enumType("BackupTargetKind", {
-  values: ["database", "project"] as const,
+  values: ["database", "service"] as const,
 });
 
 // A single run's terminal/in-flight state — distinct from `BackupStatus`
@@ -54,8 +54,8 @@ export const BackupRef = builder.objectRef<BackupDTO>("Backup").implement({
     }),
     databaseId: t.exposeID("databaseId", { nullable: true }),
     databaseName: t.exposeString("databaseName", { nullable: true }),
-    projectId: t.exposeID("projectId", { nullable: true }),
-    projectName: t.exposeString("projectName", { nullable: true }),
+    serviceId: t.exposeID("serviceId", { nullable: true }),
+    serviceName: t.exposeString("serviceName", { nullable: true }),
     destinationId: t.exposeID("destinationId"),
     destinationName: t.exposeString("destinationName"),
     schedule: t.exposeString("schedule", { description: "Cron expression." }),
@@ -88,7 +88,7 @@ export const BackupRunRef = builder
         resolve: (r) => r.targetKind,
       }),
       databaseId: t.exposeID("databaseId", { nullable: true }),
-      projectId: t.exposeID("projectId", { nullable: true }),
+      serviceId: t.exposeID("serviceId", { nullable: true }),
       destinationId: t.exposeID("destinationId"),
       objectKey: t.exposeString("objectKey", {
         description: "S3 object key of the uploaded artifact.",
@@ -116,8 +116,8 @@ const CreateBackupInputType = builder.inputType("CreateBackupInput", {
     // "database" (legacy schedules could only target a database).
     targetKind: t.field({ type: BackupTargetKindEnum, required: false }),
     databaseId: t.string({ required: false }),
-    // Set when targetKind is "project"; otherwise leave null.
-    projectId: t.string({ required: false }),
+    // Set when targetKind is "service"; otherwise leave null.
+    serviceId: t.string({ required: false }),
     destinationId: t.string({ required: true }),
     schedule: t.string({ required: true }),
     retentionDays: t.int({ required: true }),
@@ -152,14 +152,14 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     description:
       "Recorded backup runs for one target (a project OR a database), " +
-      "newest first. Pass exactly one of projectId / databaseId.",
+      "newest first. Pass exactly one of serviceId / databaseId.",
     args: {
-      projectId: t.arg.string({ required: false }),
+      serviceId: t.arg.string({ required: false }),
       databaseId: t.arg.string({ required: false }),
     },
-    resolve: (_r, { projectId, databaseId }) =>
+    resolve: (_r, { serviceId, databaseId }) =>
       listBackupRuns({
-        projectId: projectId ?? undefined,
+        serviceId: serviceId ?? undefined,
         databaseId: databaseId ?? undefined,
       }),
   }),
@@ -180,7 +180,7 @@ builder.mutationFields((t) => ({
         name: input.name,
         targetKind: input.targetKind ?? undefined,
         databaseId: input.databaseId ?? null,
-        projectId: input.projectId ?? null,
+        serviceId: input.serviceId ?? null,
         destinationId: input.destinationId,
         schedule: input.schedule,
         retentionDays: input.retentionDays,
@@ -198,18 +198,18 @@ builder.mutationFields((t) => ({
       return true;
     },
   }),
-  runProjectBackup: t.field({
+  runServiceBackup: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_infra" },
     description:
       "Run an ad-hoc backup of a project now (no owning schedule). Returns " +
       "true.",
     args: {
-      projectId: t.arg.string({ required: true }),
+      serviceId: t.arg.string({ required: true }),
       destinationId: t.arg.string({ required: true }),
     },
-    resolve: async (_r, { projectId, destinationId }) => {
-      await runProjectBackup(projectId, destinationId);
+    resolve: async (_r, { serviceId, destinationId }) => {
+      await runServiceBackup(serviceId, destinationId);
       return true;
     },
   }),

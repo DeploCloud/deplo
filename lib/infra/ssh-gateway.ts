@@ -2,10 +2,10 @@ import "server-only";
 
 import { eq } from "drizzle-orm";
 
-import { listDevSshUsersForProjects } from "../data/dev-ssh";
+import { listDevSshUsersForServices } from "../data/dev-ssh";
 import { getDb } from "../db/client";
-import { projects as projectsTable } from "../db/schema/control-plane";
-import { loadProjectGraph } from "../data/project-graph-load";
+import { services as servicesTable } from "../db/schema/control-plane";
+import { loadServiceGraph } from "../data/service-graph-load";
 import { decryptSecret } from "../crypto";
 import { connectAgent } from "./agent-client";
 import type { AgentGatewayConfig, AgentGatewayStep } from "./agent-client";
@@ -62,20 +62,20 @@ function gatewayConfig(): AgentGatewayConfig {
 
 /** The owning server id of a dev SSH user (via its project, relational). */
 async function serverIdForUser(user: DevSshUser): Promise<string | null> {
-  const p = await loadProjectGraph(user.projectId);
+  const p = await loadServiceGraph(user.serviceId);
   return p?.serverId ?? null;
 }
 
 /** Render one user's provision step-list (the pure projection). The password is
  *  decrypted just-in-time and baked into the right step's stdin; the cleartext
  *  never leaves this call frame as ciphertext. Returns [] if the user's project
- *  (and thus its dev container target) is gone. `slugByProject` is the resolved
+ *  (and thus its dev container target) is gone. `slugByService` is the resolved
  *  project→slug map (relational) so this stays a pure projection. */
 function userProvisionSteps(
   user: DevSshUser,
-  slugByProject: Map<string, string>,
+  slugByService: Map<string, string>,
 ): AgentGatewayStep[] {
-  const slug = slugByProject.get(user.projectId);
+  const slug = slugByService.get(user.serviceId);
   if (!slug) return [];
   const target: GatewayTarget = { slug, container: `deplo-dev-${slug}` };
   return provisionSteps(
@@ -89,19 +89,19 @@ function userProvisionSteps(
 }
 
 /** The full reconcile set for a server: every stored DevSshUser whose project
- *  lives on that server (devSshUsers JSONB; projects relational — ADR-0002), each
+ *  lives on that server (devSshUsers JSONB; services relational — ADR-0002), each
  *  as its step-list. Sending the WHOLE set lets a freshly-created gateway rebuild
  *  its projection. */
 async function serverUserSteps(serverId: string): Promise<AgentGatewayStep[][]> {
-  // The server's projects (relational), as a projectId → slug map.
-  const projectRows = await getDb()
-    .select({ id: projectsTable.id, slug: projectsTable.slug })
-    .from(projectsTable)
-    .where(eq(projectsTable.serverId, serverId));
-  const slugByProject = new Map(projectRows.map((p) => [p.id, p.slug] as const));
-  const users = await listDevSshUsersForProjects([...slugByProject.keys()]);
+  // The server's services (relational), as a serviceId → slug map.
+  const serviceRows = await getDb()
+    .select({ id: servicesTable.id, slug: servicesTable.slug })
+    .from(servicesTable)
+    .where(eq(servicesTable.serverId, serverId));
+  const slugByService = new Map(serviceRows.map((p) => [p.id, p.slug] as const));
+  const users = await listDevSshUsersForServices([...slugByService.keys()]);
   return users
-    .map((u) => userProvisionSteps(u, slugByProject))
+    .map((u) => userProvisionSteps(u, slugByService))
     .filter((steps) => steps.length > 0);
 }
 

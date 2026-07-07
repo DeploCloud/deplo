@@ -13,7 +13,7 @@ import {
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
-import { seedServer } from "./project-graph-test-helpers";
+import { seedServer } from "./service-graph-test-helpers";
 import { seedBackup, seedDatabase, seedRun, seedS3, TRUNCATE_BACKUPS } from "./backup-test-helpers";
 import {
   getConnectionString,

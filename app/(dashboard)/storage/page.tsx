@@ -3,7 +3,7 @@ import { listDatabases } from "@/lib/data/databases";
 import { listS3 } from "@/lib/data/s3";
 import { listBackups } from "@/lib/data/backups";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
-import { listProjects } from "@/lib/data/projects";
+import { listServices } from "@/lib/data/services";
 import { canExposePorts } from "@/lib/membership";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -42,13 +42,13 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   const initialTab =
     newKind === "s3" ? "s3" : newKind === "backup" ? "backups" : "databases";
 
-  const [databases, destinations, backups, servers, projects, mayExposePorts] =
+  const [databases, destinations, backups, servers, services, mayExposePorts] =
     await Promise.all([
       listDatabases(),
       listS3(),
       listBackups(),
       listServersForCurrentTeam(),
-      listProjects(),
+      listServices(),
       // Gates the "Expose publicly" toggle: only a user with the publish-ports
       // grant may open a database to the internet (same grant as a project's
       // compose `ports:`). Server-enforced too — this only hides the affordance.
@@ -162,7 +162,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
             </p>
             <CreateBackup
               databases={databases.map((d) => ({ id: d.id, name: d.name }))}
-              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              services={services.map((p) => ({ id: p.id, name: p.name }))}
               destinations={destinations.map((d) => ({
                 id: d.id,
                 name: d.name,

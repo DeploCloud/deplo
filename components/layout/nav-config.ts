@@ -50,14 +50,14 @@ export const NAV: NavSection[] = [
         label: "Overview",
         href: "/",
         icon: LayoutGrid,
-        tooltip: "Projects & usage overview",
+        tooltip: "Services & usage overview",
         exact: true,
       },
       {
         label: "Deployments",
         href: "/deployments",
         icon: Rocket,
-        tooltip: "All deployments across projects",
+        tooltip: "All deployments across services",
       },
       {
         label: "Logs",
@@ -80,7 +80,7 @@ export const NAV: NavSection[] = [
         label: "Variables",
         href: "/variables",
         icon: Braces,
-        tooltip: "Project, shared & global environment variables",
+        tooltip: "Service, shared & global environment variables",
         requires: "manage_env",
       },
       {

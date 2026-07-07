@@ -7,13 +7,14 @@ import { toast } from "sonner";
 import {
   Plus,
   Upload,
-  Eye,
   Trash2,
   Pencil,
   Rows3,
   FileText,
   Share2,
   ArrowUpRight,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   Dialog,
@@ -41,21 +42,22 @@ import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { EnvValueCell } from "@/components/env/env-value-cell";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { EnvTarget, EnvVarDTO } from "@/lib/types";
-import type { ProjectSharedEnvGroupDTO } from "@/lib/data/shared-env";
+import type { ServiceSharedEnvGroupDTO } from "@/lib/data/shared-env";
 
 const ALL_TARGETS: EnvTarget[] = ["production", "preview", "development"];
 
 export function EnvManager({
-  projectId,
+  serviceId,
   vars,
   sharedGroups,
 }: {
-  projectId: string;
+  serviceId: string;
   vars: EnvVarDTO[];
-  sharedGroups: ProjectSharedEnvGroupDTO[];
+  sharedGroups: ServiceSharedEnvGroupDTO[];
 }) {
   const [editing, setEditing] = React.useState<EnvVarDTO | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
@@ -72,58 +74,95 @@ export function EnvManager({
     g.keys.map((key) => ({ group: g, key })),
   );
 
+  // Which plain rows are currently revealed. Secrets are never in this set —
+  // they have no reveal path. "Reveal all" fills/clears it in one shot.
+  const [revealedIds, setRevealedIds] = React.useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const revealableIds = vars.filter((v) => !v.masked).map((v) => v.id);
+  const allRevealed =
+    revealableIds.length > 0 && revealableIds.every((id) => revealedIds.has(id));
+
+  function toggleReveal(id: string, next: boolean) {
+    setRevealedIds((prev) => {
+      const set = new Set(prev);
+      if (next) set.add(id);
+      else set.delete(id);
+      return set;
+    });
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">Environment Variables</h3>
           <p className="text-sm text-muted-foreground">
             Secret values are encrypted at rest and never shown again.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <ViewToggle mode={mode} onChange={setMode} />
-          {mode === "table" && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSharedOpen(true)}
-              >
-                <Share2 className="size-4" />
-                Shared groups
-                {attachedGroups.length > 0 && (
-                  <Badge variant="secondary" className="ml-1 text-[10px]">
-                    {attachedGroups.length}
-                  </Badge>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setImportOpen(true)}
-              >
-                <Upload className="size-4" />
-                Import .env
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setEditing(null);
-                  setAddOpen(true);
-                }}
-              >
-                <Plus className="size-4" />
-                Add
-              </Button>
-            </>
-          )}
-        </div>
+        {/* The Table / Editor switch stands alone in the top-right so it keeps
+            its position when the table-mode actions below appear or vanish. */}
+        <ViewToggle mode={mode} onChange={setMode} />
       </div>
+
+      {mode === "table" && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {revealableIds.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setRevealedIds(
+                  allRevealed ? new Set() : new Set(revealableIds),
+                )
+              }
+            >
+              {allRevealed ? (
+                <EyeOff className="size-4" />
+              ) : (
+                <Eye className="size-4" />
+              )}
+              {allRevealed ? "Hide all" : "Reveal all"}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSharedOpen(true)}
+          >
+            <Share2 className="size-4" />
+            Shared groups
+            {attachedGroups.length > 0 && (
+              <Badge variant="secondary" className="ml-1 text-[10px]">
+                {attachedGroups.length}
+              </Badge>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setImportOpen(true)}
+          >
+            <Upload className="size-4" />
+            Import .env
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              setEditing(null);
+              setAddOpen(true);
+            }}
+          >
+            <Plus className="size-4" />
+            Add
+          </Button>
+        </div>
+      )}
 
       {mode === "editor" ? (
         <EnvEditor
-          projectId={projectId}
+          serviceId={serviceId}
           vars={vars}
           onDone={() => setMode("table")}
         />
@@ -151,19 +190,12 @@ export function EnvManager({
                     {v.key}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <code className="max-w-[220px] truncate font-mono text-xs text-muted-foreground">
-                        {v.value}
-                      </code>
-                      {v.masked && (
-                        // Secret values are write-only: a disabled eye at 50%
-                        // opacity that can't be clicked — there is no reveal path.
-                        <Eye
-                          className="size-3.5 shrink-0 cursor-not-allowed text-muted-foreground opacity-50"
-                          aria-label="Secret value (hidden)"
-                        />
-                      )}
-                    </div>
+                    <EnvValueCell
+                      value={v.value}
+                      masked={v.masked}
+                      revealed={revealedIds.has(v.id)}
+                      onRevealedChange={(next) => toggleReveal(v.id, next)}
+                    />
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
@@ -247,18 +279,18 @@ export function EnvManager({
         key={editing?.id ?? "new"}
         open={addOpen}
         onOpenChange={setAddOpen}
-        projectId={projectId}
+        serviceId={serviceId}
         editing={editing}
       />
       <ImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
-        projectId={projectId}
+        serviceId={serviceId}
       />
       <SharedGroupsDialog
         open={sharedOpen}
         onOpenChange={setSharedOpen}
-        projectId={projectId}
+        serviceId={serviceId}
         groups={sharedGroups}
       />
       <ConfirmAction
@@ -284,12 +316,12 @@ export function EnvManager({
 function EnvDialog({
   open,
   onOpenChange,
-  projectId,
+  serviceId,
   editing,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  projectId: string;
+  serviceId: string;
   editing: EnvVarDTO | null;
 }) {
   const [key, setKey] = React.useState(editing?.key ?? "");
@@ -314,7 +346,7 @@ function EnvDialog({
         `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
         {
           input: {
-            projectId,
+            serviceId,
             key,
             value,
             targets,
@@ -403,11 +435,11 @@ function EnvDialog({
 function ImportDialog({
   open,
   onOpenChange,
-  projectId,
+  serviceId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  projectId: string;
+  serviceId: string;
 }) {
   const [blob, setBlob] = React.useState("");
   const [targets, setTargets] = React.useState<EnvTarget[]>([
@@ -427,10 +459,10 @@ function ImportDialog({
   function submit() {
     startTransition(async () => {
       const res = await gqlAction<{ importEnv: number }, number>(
-        `mutation($projectId: String!, $blob: String!, $targets: [EnvTarget!]!) {
-          importEnv(projectId: $projectId, blob: $blob, targets: $targets)
+        `mutation($serviceId: String!, $blob: String!, $targets: [EnvTarget!]!) {
+          importEnv(serviceId: $serviceId, blob: $blob, targets: $targets)
         }`,
-        { projectId, blob, targets },
+        { serviceId, blob, targets },
         (d) => d.importEnv,
       );
       if (res.ok && res.data != null) {
@@ -497,13 +529,13 @@ function ImportDialog({
 function SharedGroupsDialog({
   open,
   onOpenChange,
-  projectId,
+  serviceId,
   groups,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  projectId: string;
-  groups: ProjectSharedEnvGroupDTO[];
+  serviceId: string;
+  groups: ServiceSharedEnvGroupDTO[];
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -519,12 +551,12 @@ function SharedGroupsDialog({
           <EmptyState
             icon={Share2}
             title="No shared groups yet"
-            description="Create a shared group from the Variables page to reuse the same variables across projects."
+            description="Create a shared group from the Variables page to reuse the same variables across services."
           />
         ) : (
           <div className="space-y-2">
             {groups.map((g) => (
-              <SharedGroupToggle key={g.id} projectId={projectId} group={g} />
+              <SharedGroupToggle key={g.id} serviceId={serviceId} group={g} />
             ))}
           </div>
         )}
@@ -542,11 +574,11 @@ function SharedGroupsDialog({
 }
 
 function SharedGroupToggle({
-  projectId,
+  serviceId,
   group,
 }: {
-  projectId: string;
-  group: ProjectSharedEnvGroupDTO;
+  serviceId: string;
+  group: ServiceSharedEnvGroupDTO;
 }) {
   // Optimistic so the switch tracks instantly; refreshing the route
   // reconciles this to the durable value on the next render.
@@ -558,10 +590,10 @@ function SharedGroupToggle({
     setAttached(next);
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($groupId: String!, $projectId: String!, $attached: Boolean!) {
-          setSharedEnvGroupAttachment(groupId: $groupId, projectId: $projectId, attached: $attached)
+        `mutation($groupId: String!, $serviceId: String!, $attached: Boolean!) {
+          setSharedEnvGroupAttachment(groupId: $groupId, serviceId: $serviceId, attached: $attached)
         }`,
-        { groupId: group.id, projectId, attached: next },
+        { groupId: group.id, serviceId, attached: next },
       );
       if (res.ok) {
         toast.success(next ? "Group attached" : "Group detached");
@@ -684,11 +716,11 @@ function parseEnv(text: string): { key: string; value: string }[] {
  * default environments. Existing vars keep their own type + environments.
  */
 function EnvEditor({
-  projectId,
+  serviceId,
   vars,
   onDone,
 }: {
-  projectId: string;
+  serviceId: string;
   vars: EnvVarDTO[];
   onDone: () => void;
 }) {
@@ -710,12 +742,12 @@ function EnvEditor({
   function save() {
     startTransition(async () => {
       const entries = parseEnv(text);
-      const res = await gqlAction<{ setProjectEnv: number }, number>(
-        `mutation($projectId: String!, $entries: [EnvEntryInput!]!, $defaultTargets: [EnvTarget!]!) {
-          setProjectEnv(projectId: $projectId, entries: $entries, defaultTargets: $defaultTargets)
+      const res = await gqlAction<{ setServiceEnv: number }, number>(
+        `mutation($serviceId: String!, $entries: [EnvEntryInput!]!, $defaultTargets: [EnvTarget!]!) {
+          setServiceEnv(serviceId: $serviceId, entries: $entries, defaultTargets: $defaultTargets)
         }`,
-        { projectId, entries, defaultTargets: targets },
-        (d) => d.setProjectEnv,
+        { serviceId, entries, defaultTargets: targets },
+        (d) => d.setServiceEnv,
       );
       if (res.ok) {
         toast.success("Environment saved");

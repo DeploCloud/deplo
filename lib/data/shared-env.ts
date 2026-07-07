@@ -5,9 +5,9 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import type { DbTx } from "../db/client";
 import {
-  projects as projectsTable,
+  services as servicesTable,
   sharedEnvGroups as sharedEnvGroupsTable,
-  sharedEnvGroupProjects,
+  sharedEnvGroupServices,
   sharedEnvGroupTargets,
   sharedEnvGroupVars,
 } from "../db/schema/control-plane";
@@ -15,16 +15,16 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
-import { requireFolderCapabilityForProject } from "./folder-access";
+import { requireFolderCapabilityForService } from "./folder-access";
 import { encryptSecret, decryptSecret } from "../crypto";
 import { ALL_ENV_TARGETS } from "../types";
 import { groupTargets } from "../deploy/env-resolve";
 import {
   loadSharedEnvGroup,
   loadSharedEnvGroupsForTeam,
-  projectInTeam,
-} from "./project-graph-load";
-import { sharedEnvGroupToRow } from "./project-graph-rows";
+  serviceInTeam,
+} from "./service-graph-load";
+import { sharedEnvGroupToRow } from "./service-graph-rows";
 import type { EnvTarget, SharedEnvGroup, SharedEnvVar } from "../types";
 
 const MASK = "••••••••••••";
@@ -48,8 +48,8 @@ export interface SharedEnvGroupDTO {
   description: string;
   variables: SharedEnvVarDTO[];
   targets: EnvTarget[];
-  projectIds: string[];
-  projects: { id: string; name: string; slug: string }[];
+  serviceIds: string[];
+  services: { id: string; name: string; slug: string }[];
   updatedAt: string;
 }
 
@@ -68,8 +68,8 @@ async function toDTO(
       type: v.type,
     })),
     targets: groupTargets(g),
-    projectIds: g.projectIds,
-    projects: g.projectIds
+    serviceIds: g.serviceIds,
+    services: g.serviceIds
       .map((id) => projectsById.get(id))
       .filter((p): p is NonNullable<typeof p> => Boolean(p))
       .map((p) => ({ id: p.id, name: p.name, slug: p.slug })),
@@ -83,22 +83,22 @@ export async function listSharedEnvGroups(): Promise<SharedEnvGroupDTO[]> {
   const groups = (await loadSharedEnvGroupsForTeam(teamId)).sort((a, b) =>
     a.name.localeCompare(b.name),
   );
-  const projectsById = await teamProjectsById(teamId);
+  const projectsById = await teamServicesById(teamId);
   return Promise.all(groups.map((g) => toDTO(g, projectsById)));
 }
 
-/** The team's projects keyed by id (the DTO's attached-project decoration). */
-async function teamProjectsById(
+/** The team's services keyed by id (the DTO's attached-project decoration). */
+async function teamServicesById(
   teamId: string,
 ): Promise<Map<string, { id: string; name: string; slug: string }>> {
   const rows = await getDb()
     .select({
-      id: projectsTable.id,
-      name: projectsTable.name,
-      slug: projectsTable.slug,
+      id: servicesTable.id,
+      name: servicesTable.name,
+      slug: servicesTable.slug,
     })
-    .from(projectsTable)
-    .where(eq(projectsTable.teamId, teamId));
+    .from(servicesTable)
+    .where(eq(servicesTable.teamId, teamId));
   return new Map(rows.map((p) => [p.id, p] as const));
 }
 
@@ -149,7 +149,7 @@ export async function saveSharedEnvGroup(input: {
   name: string;
   description: string;
   blob: string;
-  projectIds: string[];
+  serviceIds: string[];
   targets: EnvTarget[];
 }): Promise<void> {
   const { membership } = await requireCapability("manage_env");
@@ -158,9 +158,9 @@ export async function saveSharedEnvGroup(input: {
   if (!name) throw new Error("Enter a name");
   const variables = parseBlob(input.blob);
   const targets = sanitizeTargets(input.targets);
-  // Only attach to the active team's projects that actually exist.
-  const validIds = new Set((await teamProjectsById(membership.teamId)).keys());
-  const projectIds = [...new Set(input.projectIds.filter((id) => validIds.has(id)))];
+  // Only attach to the active team's services that actually exist.
+  const validIds = new Set((await teamServicesById(membership.teamId)).keys());
+  const serviceIds = [...new Set(input.serviceIds.filter((id) => validIds.has(id)))];
 
   const group: SharedEnvGroup = {
     id: input.id ?? newId("shenv"),
@@ -168,7 +168,7 @@ export async function saveSharedEnvGroup(input: {
     name,
     description: input.description.trim(),
     variables,
-    projectIds,
+    serviceIds,
     targets,
     createdAt: nowIso(),
     updatedAt: nowIso(),
@@ -186,7 +186,7 @@ export async function saveSharedEnvGroup(input: {
         .where(eq(sharedEnvGroupsTable.id, input.id));
       // Whole-set replace of the 3 child sets.
       await tx.delete(sharedEnvGroupVars).where(eq(sharedEnvGroupVars.groupId, input.id));
-      await tx.delete(sharedEnvGroupProjects).where(eq(sharedEnvGroupProjects.groupId, input.id));
+      await tx.delete(sharedEnvGroupServices).where(eq(sharedEnvGroupServices.groupId, input.id));
       await tx.delete(sharedEnvGroupTargets).where(eq(sharedEnvGroupTargets.groupId, input.id));
     } else {
       await tx.insert(sharedEnvGroupsTable).values(sharedEnvGroupToRow(group));
@@ -210,10 +210,10 @@ async function insertSharedEnvChildren(
         type: v.type,
       })),
     );
-  if (group.projectIds.length > 0)
+  if (group.serviceIds.length > 0)
     await tx
-      .insert(sharedEnvGroupProjects)
-      .values(group.projectIds.map((projectId) => ({ groupId: group.id, projectId })));
+      .insert(sharedEnvGroupServices)
+      .values(group.serviceIds.map((serviceId) => ({ groupId: group.id, serviceId })));
   if (group.targets.length > 0)
     await tx
       .insert(sharedEnvGroupTargets)
@@ -225,7 +225,7 @@ async function insertSharedEnvChildren(
  * data behind the per-project "Shared groups" picker. Variable values are never
  * decrypted here; only keys and metadata travel to the client.
  */
-export interface ProjectSharedEnvGroupDTO {
+export interface ServiceSharedEnvGroupDTO {
   id: string;
   name: string;
   description: string;
@@ -234,11 +234,11 @@ export interface ProjectSharedEnvGroupDTO {
   attached: boolean;
 }
 
-export async function listSharedEnvGroupsForProject(
-  projectId: string,
-): Promise<ProjectSharedEnvGroupDTO[]> {
+export async function listSharedEnvGroupsForService(
+  serviceId: string,
+): Promise<ServiceSharedEnvGroupDTO[]> {
   const { teamId } = await requireCapability("manage_env");
-  await requireFolderCapabilityForProject(projectId, "manage_env");
+  await requireFolderCapabilityForService(serviceId, "manage_env");
   return (await loadSharedEnvGroupsForTeam(teamId))
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((g) => ({
@@ -247,35 +247,35 @@ export async function listSharedEnvGroupsForProject(
       description: g.description,
       keys: g.variables.map((v) => v.key),
       targets: groupTargets(g),
-      attached: g.projectIds.includes(projectId),
+      attached: g.serviceIds.includes(serviceId),
     }));
 }
 
 /** Attach or detach a single shared group to one project (idempotent). */
 export async function setSharedEnvGroupAttachment(
   groupId: string,
-  projectId: string,
+  serviceId: string,
   attached: boolean,
 ): Promise<void> {
   const { membership } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
-  if (!(await projectInTeam(projectId, membership.teamId)))
-    throw new Error("Project not found");
-  await requireFolderCapabilityForProject(projectId, "manage_env");
+  if (!(await serviceInTeam(serviceId, membership.teamId)))
+    throw new Error("Service not found");
+  await requireFolderCapabilityForService(serviceId, "manage_env");
   const g = await loadSharedEnvGroup(groupId);
   if (!g || g.teamId !== membership.teamId) throw new Error("Group not found");
   if (attached) {
     await getDb()
-      .insert(sharedEnvGroupProjects)
-      .values({ groupId, projectId })
+      .insert(sharedEnvGroupServices)
+      .values({ groupId, serviceId })
       .onConflictDoNothing();
   } else {
     await getDb()
-      .delete(sharedEnvGroupProjects)
+      .delete(sharedEnvGroupServices)
       .where(
         and(
-          eq(sharedEnvGroupProjects.groupId, groupId),
-          eq(sharedEnvGroupProjects.projectId, projectId),
+          eq(sharedEnvGroupServices.groupId, groupId),
+          eq(sharedEnvGroupServices.serviceId, serviceId),
         ),
       );
   }
@@ -287,7 +287,7 @@ export async function setSharedEnvGroupAttachment(
     "env",
     `${attached ? "Attached" : "Detached"} shared variables ${g.name}`,
     user.name,
-    projectId,
+    serviceId,
   );
 }
 

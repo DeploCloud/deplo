@@ -34,7 +34,7 @@ import type { InstalledApp } from "../types";
  * gated on `manage_infra` (ADR-0005: the whole app lifecycle). An installed app
  * is a host-managed container, never a project — uninstall tears the container
  * down directly via the app runtime and NEVER calls the `deploy`-gated
- * `deleteProject`. Status is read live from the socket, never stored.
+ * `deleteService`. Status is read live from the socket, never stored.
  */
 
 /** What the UI/API sees for an installed app — its live status + computed URL. */
@@ -234,7 +234,7 @@ export async function installApp(catalogId: string): Promise<InstalledAppDTO> {
 /**
  * Uninstall an app (`manage_infra`): destroy the container + its Traefik router
  * and drop the row. No token to revoke (the app held none); does NOT call the
- * `deploy`-gated `deleteProject` (there is no project record).
+ * `deploy`-gated `deleteService` (there is no project record).
  */
 export async function uninstallApp(id: string): Promise<void> {
   const { membership } = await requireCapability("manage_infra");

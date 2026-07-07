@@ -11,7 +11,7 @@ import type { Activity } from "@/lib/types";
 const ActivityTypeEnum = builder.enumType("ActivityType", {
   values: [
     "deployment",
-    "project",
+    "service",
     "database",
     "domain",
     "env",
@@ -33,7 +33,7 @@ const ActivityRef = builder.objectRef<Activity>("Activity").implement({
     type: t.field({ type: ActivityTypeEnum, resolve: (a) => a.type }),
     message: t.exposeString("message"),
     actor: t.exposeString("actor"),
-    projectId: t.exposeID("projectId", { nullable: true }),
+    serviceId: t.exposeID("serviceId", { nullable: true }),
     createdAt: t.exposeString("createdAt"),
   }),
 });

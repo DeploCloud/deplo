@@ -287,7 +287,7 @@ test("dev_ssh_user: a row requires at least one credential (CHECK)", async () =>
   // Here we just confirm the CHECK rejects a no-credential row via a raw exec.
   await assert.rejects(
     pg.exec(
-      `insert into dev_ssh_user (id, project_id, username, public_key, password_enc, created_at)
+      `insert into dev_ssh_user (id, service_id, username, public_key, password_enc, created_at)
        values ('ssh_x', 'prj_missing', 'u', null, null, '${T0}')`,
     ),
     /dev_ssh_user_has_credential|violates|foreign key/,

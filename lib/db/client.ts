@@ -32,7 +32,7 @@ import { schema } from "./schema";
  * onto one Drizzle instance over the one shared pool.
  *
  * Access tables through thin per-table queries colocated with their data module
- * (e.g. `lib/data/projects.ts` owns its `projects` queries directly via this
+ * (e.g. `lib/data/services.ts` owns its `services` queries directly via this
  * client) — not a generic ORM-of-an-ORM wrapper.
  */
 export type DrizzleClient = NodePgDatabase<typeof schema>;

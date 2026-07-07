@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { GitHubIcon } from "@/components/shared/brand-icons";
-import { GithubConnectButton } from "@/components/projects/github-connect-button";
+import { GithubConnectButton } from "@/components/services/github-connect-button";
 import { gqlAction } from "@/lib/graphql-client";
 import type { GithubAppDTO } from "@/lib/data/github";
 
@@ -135,7 +135,7 @@ export function GithubPanel({
         open={deleteId !== null}
         onOpenChange={(v) => !v && setDeleteId(null)}
         title="Remove GitHub App?"
-        description="Projects importing from this App will stop auto-deploying and private clones will fail until you reconnect."
+        description="Services importing from this App will stop auto-deploying and private clones will fail until you reconnect."
         confirmLabel="Remove"
         successMessage="GitHub App removed"
         onConfirm={async () => {

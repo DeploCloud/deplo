@@ -4,6 +4,7 @@ import { listDeployments } from "@/lib/data/deployments";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { CommitLink } from "@/components/services/commit-link";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
@@ -26,7 +27,7 @@ export default async function DeploymentsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Deployments"
-        description="Every deployment across all of your projects, newest first."
+        description="Every deployment across all of your services, newest first."
       />
 
       {deployments.length === 0 ? (
@@ -41,7 +42,7 @@ export default async function DeploymentsPage() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Deployment</TableHead>
-                <TableHead>Project</TableHead>
+                <TableHead>Service</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Environment</TableHead>
                 <TableHead>Branch</TableHead>
@@ -56,17 +57,19 @@ export default async function DeploymentsPage() {
                     <p className="truncate font-medium text-foreground">
                       {d.commitMessage}
                     </p>
-                    <code className="font-mono text-xs text-muted-foreground">
-                      {d.commitSha.slice(0, 7)}
-                    </code>
+                    <CommitLink
+                      sha={d.commitSha}
+                      url={d.commitUrl}
+                      className="font-mono text-xs text-muted-foreground"
+                    />
                   </TableCell>
 
                   <TableCell>
                     <Link
-                      href={`/projects/${d.projectSlug}`}
+                      href={`/services/${d.serviceSlug}`}
                       className="cursor-pointer font-medium text-foreground hover:underline"
                     >
-                      {d.projectName}
+                      {d.serviceName}
                     </Link>
                   </TableCell>
 
@@ -106,7 +109,7 @@ export default async function DeploymentsPage() {
                   <TableCell className="text-right">
                     <DeploymentActions
                       id={d.id}
-                      projectId={d.projectId}
+                      serviceId={d.serviceId}
                       url={d.url}
                       status={d.status}
                       environment={d.environment}

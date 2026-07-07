@@ -23,7 +23,7 @@ import { traefikRouterLabels } from "./routing";
  *     `compose up` — that's the user's explicit mapping, surfaced loudly rather
  *     than silently dropped.)
  *  4. Strip `container_name` everywhere  it is globally unique on the host and
- *     would collide between projects; Compose's project-prefixed names are safe
+ *     would collide between services; Compose's project-prefixed names are safe
  *     and services still reach each other by service name on the shared network.
  *  5. Inject the project's settings env vars into EVERY service's `environment:`
  *     as bare `- KEY` pass-through entries (the value comes from the env-file),
@@ -68,7 +68,7 @@ export interface ComposeStackInput {
   /** Router/service name + label namespace, e.g. `deplo-<slug>`. */
   name: string;
   slug: string;
-  projectId: string;
+  serviceId: string;
   /**
    * The routed domains — one Traefik router each, to the route's named compose
    * service. The SOLE routing source (from the `domains` table). Empty ⇒ the
@@ -78,12 +78,12 @@ export interface ComposeStackInput {
   domainRoutes: ComposeDomainRoute[];
   /**
    * Absolute host directory holding this project's mount files. Compose
-   * bind-mounts that reference `./<x>` (the project-files convention) are
+   * bind-mounts that reference `./<x>` (the service-files convention) are
    * rewritten to `<filesDir>/<x>` so each project's config files stay isolated.
    */
   filesDir?: string;
   /**
-   * Project-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
+   * Service-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
    * single-`$`). When non-empty, a generated `basicauth` middleware is defined
    * and prepended to EVERY router's chain so all of the stack's routed hostnames
    * are gated. Empty/absent ⇒ no middleware (byte-identical to a stack without
@@ -172,8 +172,8 @@ function detectExpose(
 /** Labels that mark a container as Deplo-owned. Applied to EVERY service so the
  * whole stack is discoverable by `label=deplo.project=<id>` / `deplo.slug=<slug>`
  * — container counts, the console, health waits and teardown all rely on this. */
-function deploLabels(projectId: string, slug: string): string[] {
-  return ["deplo.managed=true", `deplo.project=${projectId}`, `deplo.slug=${slug}`];
+function deploLabels(serviceId: string, slug: string): string[] {
+  return ["deplo.managed=true", `deplo.project=${serviceId}`, `deplo.slug=${slug}`];
 }
 
 /**
@@ -192,7 +192,7 @@ function traefikLabels(opts: {
   pathPrefix?: string;
   /** Strip the path prefix before forwarding (ignored without a path). */
   stripPrefix?: boolean;
-  /** Project-wide Basic Auth: a generated `basicauth` middleware (defined once
+  /** Service-wide Basic Auth: a generated `basicauth` middleware (defined once
    * and prepended to this router's chain). Absent ⇒ no auth. */
   basicAuth?: { name: string; users: string };
 }): string[] {
@@ -328,8 +328,8 @@ function serviceNetworks(svc: Service): string[] {
 }
 
 export function buildComposeStack(input: ComposeStackInput): string {
-  const { compose, name, slug, projectId, domainRoutes } = input;
-  // Project settings env-var NAMES injected into every service as bare `- KEY`
+  const { compose, name, slug, serviceId, domainRoutes } = input;
+  // Service settings env-var NAMES injected into every service as bare `- KEY`
   // pass-throughs below (values stay in the env-file). Empty/absent ⇒ no env
   // change at all (byte-identical to a stack without injected env).
   const envKeys = input.envKeys ?? [];
@@ -362,7 +362,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // EVERY service so the whole stack (not just the routed ones) is discoverable
   // by label — otherwise sidecars/databases are invisible to the container
   // count, console, health wait and teardown.
-  const tracking = deploLabels(projectId, slug);
+  const tracking = deploLabels(serviceId, slug);
   for (const svc of Object.values(services)) {
     if (svc && typeof svc === "object") {
       delete (svc as Service).container_name;

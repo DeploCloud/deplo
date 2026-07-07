@@ -34,9 +34,9 @@ export type SourcePlan =
   | { kind: "upload"; upload: UploadArchive }
   | { kind: "none" };
 
-/** The minimal project shape the source decision reads. A `Project` satisfies
+/** The minimal project shape the source decision reads. A `Service` satisfies
  * this structurally; kept narrow so the decision stays free of the store graph. */
-export interface SourcePlanProject {
+export interface SourcePlanService {
   source: string;
   dockerImage?: string | null;
   repo?: GitRepo | null;
@@ -51,7 +51,7 @@ export interface SourcePlanProject {
  * docker-image needs an image set, git needs a repo, upload needs an archive.
  */
 export function planDeploySource(
-  project: SourcePlanProject,
+  project: SourcePlanService,
   opts: { buildSource?: "dev-workspace" },
 ): SourcePlan {
   if (opts.buildSource === "dev-workspace") return { kind: "dev-workspace" };

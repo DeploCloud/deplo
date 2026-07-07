@@ -17,22 +17,22 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   deployments as deploymentsTable,
   deploymentLogs,
-  projects as projectsTable,
+  services as servicesTable,
 } from "../db/schema/control-plane";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import {
   seedServer,
-  seedProject,
+  seedService,
   seedDeployment,
   TRUNCATE_PROJECT_GRAPH,
-} from "../data/project-graph-test-helpers";
+} from "../data/service-graph-test-helpers";
 import { isInFlightStatus, reconcileInFlightDeployments } from "./build";
 import { __resetDeploymentLogBuffers } from "../data/deployment-logs";
 
 /**
  * Step 4 deployment-reconcile test (relational-store PLAN §8 "Rewrite the
  * store-coupled tests inside the cut-sets"). The reconcile is now async and
- * relational: it marks orphaned `queued`/`building` deployments + their projects
+ * relational: it marks orphaned `queued`/`building` deployments + their services
  * `error` at boot. Seeded via the Drizzle test-seed helpers against pglite.
  */
 
@@ -65,11 +65,11 @@ test("isInFlightStatus identifies non-terminal deploy states", () => {
   assert.equal(isInFlightStatus("canceled"), false);
 });
 
-test("reconcile marks queued/building deploys (and their projects) errored", async () => {
-  await seedProject(db, { id: "prj_1", status: "building" });
-  await seedDeployment(db, { id: "dpl_a", projectId: "prj_1", status: "building" });
-  await seedDeployment(db, { id: "dpl_b", projectId: "prj_1", status: "queued" });
-  await seedDeployment(db, { id: "dpl_c", projectId: "prj_1", status: "ready" });
+test("reconcile marks queued/building deploys (and their services) errored", async () => {
+  await seedService(db, { id: "prj_1", status: "building" });
+  await seedDeployment(db, { id: "dpl_a", serviceId: "prj_1", status: "building" });
+  await seedDeployment(db, { id: "dpl_b", serviceId: "prj_1", status: "queued" });
+  await seedDeployment(db, { id: "dpl_c", serviceId: "prj_1", status: "ready" });
 
   const n = await reconcileInFlightDeployments();
   assert.equal(n, 2, "exactly the two in-flight deploys are reconciled");
@@ -80,7 +80,7 @@ test("reconcile marks queued/building deploys (and their projects) errored", asy
   assert.equal(byId.get("dpl_b")!.status, "error");
   assert.equal(byId.get("dpl_c")!.status, "ready", "ready is untouched");
 
-  const proj = await db.select().from(projectsTable).where(eq(projectsTable.id, "prj_1"));
+  const proj = await db.select().from(servicesTable).where(eq(servicesTable.id, "prj_1"));
   assert.equal(proj[0]!.status, "error", "the mid-deploy project settles off building");
 
   // Each reconciled deployment got an interrupted-log line (flushed by reconcile).
@@ -93,7 +93,7 @@ test("reconcile marks queued/building deploys (and their projects) errored", asy
 });
 
 test("reconcile is idempotent — a second run finds nothing", async () => {
-  await seedProject(db, { id: "prj_1", status: "active" });
-  await seedDeployment(db, { id: "dpl_x", projectId: "prj_1", status: "ready" });
+  await seedService(db, { id: "prj_1", status: "active" });
+  await seedDeployment(db, { id: "dpl_x", serviceId: "prj_1", status: "ready" });
   assert.equal(await reconcileInFlightDeployments(), 0);
 });

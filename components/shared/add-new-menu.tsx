@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
-import { CreateFolderDialog } from "@/components/projects/create-folder-dialog";
+import { CreateFolderDialog } from "@/components/services/create-folder-dialog";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 

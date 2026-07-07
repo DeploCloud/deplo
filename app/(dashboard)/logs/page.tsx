@@ -19,8 +19,8 @@ export default async function LogsPage() {
 
   const summaries: DeploymentSummary[] = recent.map((d) => ({
     id: d.id,
-    projectName: d.projectName,
-    projectSlug: d.projectSlug,
+    serviceName: d.serviceName,
+    serviceSlug: d.serviceSlug,
     commitMessage: d.commitMessage,
     status: d.status,
     createdAt: d.createdAt,

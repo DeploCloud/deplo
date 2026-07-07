@@ -29,7 +29,7 @@ import { gqlAction } from "@/lib/graphql-client";
  * compose stack) so the service selector can be populated client-side, and its
  * default container port so a new single-image domain's port field is pre-filled
  * (every domain now carries an explicit port). */
-export interface AddDomainProject {
+export interface AddDomainService {
   id: string;
   name: string;
   compose?: string | null;
@@ -41,7 +41,7 @@ export interface AddDomainProject {
  * nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`) resolved
  * server-side; the dialog offers a one-click button to drop it into the field. */
 export interface AddDomainProps {
-  project: AddDomainProject;
+  project: AddDomainService;
   suggestedDomain?: string;
 }
 
@@ -88,11 +88,11 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
     }
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation AddDomain($projectId: String!, $name: String!, $config: DomainConfigInput) {
-          addDomain(projectId: $projectId, name: $name, config: $config) { id }
+        `mutation AddDomain($serviceId: String!, $name: String!, $config: DomainConfigInput) {
+          addDomain(serviceId: $serviceId, name: $name, config: $config) { id }
         }`,
         {
-          projectId: project.id,
+          serviceId: project.id,
           name,
           config: {
             port: resolved.port,

@@ -210,7 +210,7 @@ builder.mutationFields((t) => ({
     type: ServerRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has projects or databases on the server would lose access.",
+      "Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has services or databases on the server would lose access.",
     args: { input: t.arg({ type: SetServerTeamsInputType, required: true }) },
     resolve: (_r, { input }) =>
       setServerTeams(input.serverId, {

@@ -25,7 +25,7 @@ const TeamPlanEnum = builder.enumType("TeamPlan", {
 /* ------------------------------------------------------------------ */
 
 export const TeamRef = builder.objectRef<Team>("Team").implement({
-  description: "A team that owns projects, infra and members.",
+  description: "A team that owns services, infra and members.",
   fields: (t) => ({
     id: t.exposeID("id"),
     name: t.exposeString("name"),

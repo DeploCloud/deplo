@@ -35,7 +35,7 @@ import type { ActionResult } from "./result";
  * the UI's call sites already branch on (`if (res.ok) … else res.error`). This
  * is the drop-in replacement for calling a server action: swap
  * `await someAction(args)` for `await gqlAction(QUERY, vars, d => d.field)`.
- * The optional `pick` projects the response data to what the call site wants.
+ * The optional `pick` services the response data to what the call site wants.
  */
 export async function gqlAction<TData = unknown, TPick = TData>(
   query: string,

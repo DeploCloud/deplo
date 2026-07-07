@@ -6,7 +6,7 @@ import { runtimeFor } from "../frameworks";
 /**
  * Generate a Dockerfile from a project's build settings when the repository
  * does not ship one. Node-oriented (the common case for the supported
- * frameworks); projects in other languages should provide their own Dockerfile.
+ * frameworks); services in other languages should provide their own Dockerfile.
  */
 export function generateDockerfile(build: BuildConfig): string {
   // runtimeVersion only names the Node version for Node-language frameworks;

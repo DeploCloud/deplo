@@ -8,7 +8,7 @@ import yaml from "js-yaml";
 import { volumeSource, isEscapingSource } from "./compose-lint";
 
 /**
- * Guard the convention swap: every bundled blueprint must use the project-files
+ * Guard the convention swap: every bundled blueprint must use the service-files
  * `./<x>` convention for its bind mounts — never the legacy `../files/<x>` /
  * `./files/<x>` form, and never a `..` escape (which the host-bind gate would
  * now block on deploy, breaking the one-click template for a non-privileged

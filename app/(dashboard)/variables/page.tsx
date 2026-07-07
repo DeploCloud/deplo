@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Braces, ArrowUpRight, Lock } from "lucide-react";
-import { listAllProjectEnv } from "@/lib/data/env";
+import { listAllServiceEnv } from "@/lib/data/env";
 import { listSharedEnvGroups } from "@/lib/data/shared-env";
 import { listTeamGlobalEnv, listInstanceEnv } from "@/lib/data/global-env";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SharedEnvManager } from "@/components/env/shared-env-manager";
 import { GlobalEnvManager } from "@/components/env/global-env-manager";
+import { EnvValueCell } from "@/components/env/env-value-cell";
 
 export const metadata = { title: "Environment Variables" };
 
@@ -46,7 +47,7 @@ export default async function VariablesPage(
       <div className="space-y-6">
         <PageHeader
           title="Variables"
-          description="Project & shared environment variables."
+          description="Service & shared environment variables."
         />
         <EmptyState
           icon={Lock}
@@ -58,32 +59,32 @@ export default async function VariablesPage(
   }
 
   const admin = await isInstanceAdmin();
-  const [allProjectGroups, sharedGroups, teamGlobals, instanceGlobals] =
+  const [allServiceGroups, sharedGroups, teamGlobals, instanceGlobals] =
     await Promise.all([
-      listAllProjectEnv(),
+      listAllServiceEnv(),
       listSharedEnvGroups(),
       listTeamGlobalEnv(),
       // Instance-wide vars are admin-only; skip the (throwing) read otherwise.
       admin ? listInstanceEnv() : Promise.resolve([]),
     ]);
-  const projects = allProjectGroups.map((g) => g.project);
+  const services = allServiceGroups.map((g) => g.service);
 
   // Only surface a project here if it has variables to show: its own vars, or
-  // at least one attached shared group. Empty projects add noise, not signal.
+  // at least one attached shared group. Empty services add noise, not signal.
   const projectsWithSharedGroup = new Set(
-    sharedGroups.flatMap((g) => g.projectIds),
+    sharedGroups.flatMap((g) => g.serviceIds),
   );
-  const projectGroups = allProjectGroups.filter(
-    (g) => g.vars.length > 0 || projectsWithSharedGroup.has(g.project.id),
+  const serviceGroups = allServiceGroups.filter(
+    (g) => g.vars.length > 0 || projectsWithSharedGroup.has(g.service.id),
   );
 
   const allowedTabs = new Set([
-    "project",
+    "service",
     "shared",
     "team",
     ...(admin ? ["instance"] : []),
   ]);
-  const defaultTab = tab && allowedTabs.has(tab) ? tab : "project";
+  const defaultTab = tab && allowedTabs.has(tab) ? tab : "service";
 
   return (
     <div className="space-y-6">
@@ -94,7 +95,7 @@ export default async function VariablesPage(
 
       <Tabs defaultValue={defaultTab}>
         <UnderlineTabsList>
-          <UnderlineTabsTrigger value="project">Project</UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="service">Service</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="team">Team globals</UnderlineTabsTrigger>
           {admin && (
@@ -104,21 +105,21 @@ export default async function VariablesPage(
           )}
         </UnderlineTabsList>
 
-        {/* Project: every project's variables, grouped by project */}
-        <TabsContent value="project" className="space-y-4">
-          {projectGroups.length === 0 ? (
+        {/* Service: every project's variables, grouped by project */}
+        <TabsContent value="service" className="space-y-4">
+          {serviceGroups.length === 0 ? (
             <EmptyState
               icon={Braces}
               title="No variables yet"
-              description="Projects appear here once they have their own variables or an attached shared group."
+              description="Services appear here once they have their own variables or an attached shared group."
             />
           ) : (
-            projectGroups.map((g) => (
-              <Card key={g.project.id}>
+            serviceGroups.map((g) => (
+              <Card key={g.service.id}>
                 <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-                  <CardTitle className="text-base">{g.project.name}</CardTitle>
+                  <CardTitle className="text-base">{g.service.name}</CardTitle>
                   <Button variant="outline" size="sm" asChild>
-                    <Link href={`/projects/${g.project.slug}/environment`}>
+                    <Link href={`/services/${g.service.slug}/environment`}>
                       Manage
                       <ArrowUpRight className="size-4" />
                     </Link>
@@ -146,9 +147,10 @@ export default async function VariablesPage(
                                 {v.key}
                               </TableCell>
                               <TableCell>
-                                <code className="font-mono text-xs text-muted-foreground">
-                                  {v.value}
-                                </code>
+                                <EnvValueCell
+                                  value={v.value}
+                                  masked={v.masked}
+                                />
                               </TableCell>
                               <TableCell>
                                 <div className="flex flex-wrap gap-1">
@@ -175,9 +177,9 @@ export default async function VariablesPage(
           )}
         </TabsContent>
 
-        {/* Shared: reusable groups attached to multiple projects */}
+        {/* Shared: reusable groups attached to multiple services */}
         <TabsContent value="shared">
-          <SharedEnvManager groups={sharedGroups} projects={projects} />
+          <SharedEnvManager groups={sharedGroups} services={services} />
         </TabsContent>
 
         {/* Team globals: injected into every project in this team */}

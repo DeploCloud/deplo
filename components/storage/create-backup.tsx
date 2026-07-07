@@ -31,16 +31,16 @@ import {
 } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
-type TargetKind = "database" | "project";
+type TargetKind = "database" | "service";
 
 export function CreateBackup({
   databases,
-  projects = [],
+  services = [],
   destinations,
   autoOpen = false,
 }: {
   databases: { id: string; name: string }[];
-  projects?: { id: string; name: string }[];
+  services?: { id: string; name: string }[];
   destinations: { id: string; name: string }[];
   /** Open on mount — used by the global "New ▸ Schedule backup" menu
    *  (which links to /storage?new=backup). */
@@ -57,15 +57,15 @@ export function CreateBackup({
   }, []);
   const [name, setName] = React.useState("");
   // Default to whichever target type actually has options — a team with only
-  // projects (no databases) should land on "Project" rather than an empty select.
+  // services (no databases) should land on "Service" rather than an empty select.
   const [targetKind, setTargetKind] = React.useState<TargetKind>(
-    databases.length === 0 && projects.length > 0 ? "project" : "database"
+    databases.length === 0 && services.length > 0 ? "service" : "database"
   );
   const [databaseId, setDatabaseId] = React.useState<string>(
     databases[0]?.id ?? ""
   );
-  const [projectId, setProjectId] = React.useState<string>(
-    projects[0]?.id ?? ""
+  const [serviceId, setServiceId] = React.useState<string>(
+    services[0]?.id ?? ""
   );
   const [destinationId, setDestinationId] = React.useState<string>(
     destinations[0]?.id ?? ""
@@ -76,7 +76,7 @@ export function CreateBackup({
   const noDeps = destinations.length === 0;
   // The chosen target must have a concrete id selected — otherwise the schedule
   // would point at nothing.
-  const targetId = targetKind === "database" ? databaseId : projectId;
+  const targetId = targetKind === "database" ? databaseId : serviceId;
 
   function submit() {
     startTransition(async () => {
@@ -87,7 +87,7 @@ export function CreateBackup({
             name,
             targetKind,
             databaseId: targetKind === "database" ? databaseId || null : null,
-            projectId: targetKind === "project" ? projectId || null : null,
+            serviceId: targetKind === "service" ? serviceId || null : null,
             destinationId,
             schedule,
             retentionDays: retention,
@@ -164,10 +164,10 @@ export function CreateBackup({
               <Button
                 type="button"
                 size="sm"
-                variant={targetKind === "project" ? "secondary" : "ghost"}
-                onClick={() => setTargetKind("project")}
+                variant={targetKind === "service" ? "secondary" : "ghost"}
+                onClick={() => setTargetKind("service")}
               >
-                Project
+                Service
               </Button>
             </div>
           </div>
@@ -191,13 +191,13 @@ export function CreateBackup({
                 </>
               ) : (
                 <>
-                  <Label>Project</Label>
-                  <Select value={projectId} onValueChange={setProjectId}>
+                  <Label>Service</Label>
+                  <Select value={serviceId} onValueChange={setServiceId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select…" />
                     </SelectTrigger>
                     <SelectContent>
-                      {projects.map((p) => (
+                      {services.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}
                         </SelectItem>

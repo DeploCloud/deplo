@@ -51,6 +51,8 @@
      Per-theme: sRGB luminance is compressed near black, so the dark theme needs
      a larger step to read as the same subtle sweep. */
   --skeleton-shimmer: 10%;
+
+  @apply selection:bg-white/10;
 }
 
 .dark {

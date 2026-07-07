@@ -4,11 +4,11 @@ import { readdir, cp } from "node:fs/promises";
 import { join } from "node:path";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
-import { loadGlobalEnvForProject } from "../data/global-env";
+import { loadGlobalEnvForService } from "../data/global-env";
 import {
-  loadEnvVarsForProject,
-  loadSharedEnvGroupsForProject,
-} from "../data/project-graph-load";
+  loadEnvVarsForService,
+  loadSharedEnvGroupsForService,
+} from "../data/service-graph-load";
 import { dataVolumeHostMountpoint } from "./builders";
 import {
   devCommandFor,
@@ -24,7 +24,7 @@ import {
 } from "./domains";
 import { portFor } from "./ports";
 import { traefikRouterLabels } from "./routing";
-import type { DevConfig, Project } from "../types";
+import type { DevConfig, Service } from "../types";
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 const STACK_DIR = join(DATA_DIR, "stacks");
@@ -35,7 +35,7 @@ const ENTRY_DIR = join(DEV_DIR, "_entry");
 const ENTRY_PATH = join(ENTRY_DIR, "deplo-dev-entry");
 
 /** Compose project / container name for a project's dev container. */
-export function devProjectName(slug: string): string {
+export function devServiceName(slug: string): string {
   return `deplo-dev-${slug}`;
 }
 
@@ -82,7 +82,7 @@ export { portFor } from "./ports";
  * the persisted value is written by the dev-start path, not here.
  */
 export function devPreviewUrl(
-  project: Pick<Project, "slug" | "dev">,
+  project: Pick<Service, "slug" | "dev">,
   ip = instanceHost(),
 ): string {
   const host = project.dev?.previewHost || newDevPreviewHost(project.slug, ip);
@@ -94,7 +94,7 @@ export function devPreviewUrl(
  * (ADR-0004). A custom image is used verbatim; a preset resolves through the
  * preset→base table.
  */
-export function devImage(project: Project): string {
+export function devImage(project: Service): string {
   const dev = project.dev;
   if (dev?.imageKind === "custom" && dev.image.trim()) return dev.image.trim();
   if (dev?.imageKind === "preset" && dev.image.trim()) {
@@ -108,7 +108,7 @@ export function devImage(project: Project): string {
  * from `framework`; the dev command from the framework's `dev` command; the
  * dev port defaults to the production port; preview is ON by default.
  */
-export function defaultDevConfig(project: Project): DevConfig {
+export function defaultDevConfig(project: Service): DevConfig {
   return {
     enabled: true,
     status: "off",
@@ -137,18 +137,18 @@ export function newDevPreviewHost(slug: string, ip = instanceHost()): string {
  * `resolveEnvEntries` seam with the production stack — only the target differs —
  * so the two runtimes can never drift on what `development` inherits.
  */
-async function devEnv(projectId: string): Promise<Record<string, string>> {
+async function devEnv(serviceId: string): Promise<Record<string, string>> {
   // env vars + attached shared groups are relational (cut-set c); load the
   // bounded set and decrypt at this edge (the `development` target).
   const [vars, groups, globals] = await Promise.all([
-    loadEnvVarsForProject(projectId),
-    loadSharedEnvGroupsForProject(projectId),
-    loadGlobalEnvForProject(projectId),
+    loadEnvVarsForService(serviceId),
+    loadSharedEnvGroupsForService(serviceId),
+    loadGlobalEnvForService(serviceId),
   ]);
   const out: Record<string, string> = {};
   for (const e of resolveEnvEntries(
     "development",
-    projectId,
+    serviceId,
     vars,
     groups,
     globals.teamGlobals,
@@ -171,7 +171,7 @@ function cloneSecretPath(slug: string): string {
  * stack file. The URL is staged to a root-owned 0600 file the entrypoint reads
  * (see writeCloneSecret); only the branch + source kind travel as env.
  */
-function seedEnv(project: Project): Record<string, string> {
+function seedEnv(project: Service): Record<string, string> {
   if (project.source === "github" || project.source === "git") {
     if (project.repo) {
       return {
@@ -275,9 +275,9 @@ function yamlValue(v: string): string {
  * route to the stored `dev-<slug>-<words>-<hexip>.nip.io` preview host (never a
  * Domain row). Ports are NOT published: Traefik fronts HTTP, SSH via the gateway.
  */
-export async function renderDevCompose(project: Project): Promise<string> {
+export async function renderDevCompose(project: Service): Promise<string> {
   const slug = project.slug;
-  const name = devProjectName(slug);
+  const name = devServiceName(slug);
   const port = portFor(project, "development");
   const image = devImage(project);
 

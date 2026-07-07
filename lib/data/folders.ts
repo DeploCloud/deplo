@@ -5,7 +5,7 @@ import { and, eq, inArray, ne } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   folders as foldersTable,
-  projects as projectsTable,
+  services as servicesTable,
   teamFolderOrder,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
@@ -24,12 +24,12 @@ import {
 } from "./folder-access";
 import { recordActivity } from "./activity";
 import { normalizeHexColor } from "../utils";
-import { assembleFolder, folderToRow } from "./project-graph-rows";
+import { assembleFolder, folderToRow } from "./service-graph-rows";
 import type { Folder } from "../types";
 
 export interface FolderSummary extends Folder {
-  /** Live count of projects DIRECTLY in this folder (derived, never stored). */
-  projectCount: number;
+  /** Live count of services DIRECTLY in this folder (derived, never stored). */
+  serviceCount: number;
   /** Live count of immediate child folders (derived, never stored). */
   subfolderCount: number;
 }
@@ -39,12 +39,12 @@ const MAX_NAME = 60;
 
 function summarizeFolder(
   f: Folder,
-  projectCounts: Map<string, number>,
+  serviceCounts: Map<string, number>,
   subfolderCounts: Map<string, number>,
 ): FolderSummary {
   return {
     ...f,
-    projectCount: projectCounts.get(f.id) ?? 0,
+    serviceCount: serviceCounts.get(f.id) ?? 0,
     subfolderCount: subfolderCounts.get(f.id) ?? 0,
   };
 }
@@ -83,7 +83,7 @@ async function teamFoldersWithCounts(
   teamId: string,
 ): Promise<{
   folders: Folder[];
-  projectCounts: Map<string, number>;
+  serviceCounts: Map<string, number>;
   subfolderCounts: Map<string, number>;
 }> {
   const folderRows = await getDb()
@@ -91,29 +91,29 @@ async function teamFoldersWithCounts(
     .from(foldersTable)
     .where(eq(foldersTable.teamId, teamId));
   const folders = folderRows.map(assembleFolder);
-  // Project counts: GROUP BY folder_id over the team's projects.
+  // Service counts: GROUP BY folder_id over the team's services.
   const projRows = await getDb()
-    .select({ folderId: projectsTable.folderId })
-    .from(projectsTable)
-    .where(eq(projectsTable.teamId, teamId));
-  const projectCounts = new Map<string, number>();
+    .select({ folderId: servicesTable.folderId })
+    .from(servicesTable)
+    .where(eq(servicesTable.teamId, teamId));
+  const serviceCounts = new Map<string, number>();
   for (const r of projRows)
-    if (r.folderId) projectCounts.set(r.folderId, (projectCounts.get(r.folderId) ?? 0) + 1);
+    if (r.folderId) serviceCounts.set(r.folderId, (serviceCounts.get(r.folderId) ?? 0) + 1);
   const subfolderCounts = new Map<string, number>();
   for (const f of folders)
     if (f.parentId)
       subfolderCounts.set(f.parentId, (subfolderCounts.get(f.parentId) ?? 0) + 1);
-  return { folders, projectCounts, subfolderCounts };
+  return { folders, serviceCounts, subfolderCounts };
 }
 
 /**
  * Folders in the active team, honouring the team-wide manual order (Overview
  * drag-and-drop) when present and falling back to newest-first — the same
- * contract as `listProjects`. Each carries a live project count.
+ * contract as `listServices`. Each carries a live project count.
  */
 export async function listFolders(): Promise<FolderSummary[]> {
   const teamId = await requireActiveTeamId();
-  const { folders, projectCounts, subfolderCounts } =
+  const { folders, serviceCounts, subfolderCounts } =
     await teamFoldersWithCounts(teamId);
   const rank = await folderOrderRank(teamId);
   // Only surface folders the caller may SEE: the ones they own or hold a grant
@@ -122,8 +122,8 @@ export async function listFolders(): Promise<FolderSummary[]> {
   const seen = visible === "all" ? folders : folders.filter((f) => visible.has(f.id));
   // Recompute subfolderCount over the VISIBLE set so a folder doesn't disclose the
   // existence of child folders the caller can't see (child folders carry their own
-  // independent ownership/grants). projectCount stays team-scoped — a folder's
-  // projects are part of what any folder-viewer works with. Super-users (visible
+  // independent ownership/grants). serviceCount stays team-scoped — a folder's
+  // services are part of what any folder-viewer works with. Super-users (visible
   // === "all") keep the full team counts.
   const shownSubfolderCounts =
     visible === "all"
@@ -136,7 +136,7 @@ export async function listFolders(): Promise<FolderSummary[]> {
           return m;
         })();
   return seen
-    .map((f) => summarizeFolder(f, projectCounts, shownSubfolderCounts))
+    .map((f) => summarizeFolder(f, serviceCounts, shownSubfolderCounts))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
       const rb = rank.get(b.id) ?? Infinity;
@@ -228,9 +228,9 @@ export async function createFolder(
       .insert(teamFolderOrder)
       .values({ teamId, folderId: folder.id, position: next });
   });
-  await recordActivity("project", `Created folder ${folder.name}`, userName, null, teamId);
-  const { projectCounts, subfolderCounts } = await teamFoldersWithCounts(teamId);
-  return summarizeFolder(folder, projectCounts, subfolderCounts);
+  await recordActivity("service", `Created folder ${folder.name}`, userName, null, teamId);
+  const { serviceCounts, subfolderCounts } = await teamFoldersWithCounts(teamId);
+  return summarizeFolder(folder, serviceCounts, subfolderCounts);
 }
 
 /** True if a folder belongs to a team. */
@@ -269,7 +269,7 @@ export async function renameFolder(id: string, name: string): Promise<void> {
     if (!(await folderInTeam(id, teamId))) throw new Error("Folder not found");
     return;
   }
-  await recordActivity("project", `Renamed folder to ${clean}`, userName, null, teamId);
+  await recordActivity("service", `Renamed folder to ${clean}`, userName, null, teamId);
 }
 
 /**
@@ -296,7 +296,7 @@ export async function setFolderColor(
     .set({ color: next, updatedAt: nowIso() })
     .where(eq(foldersTable.id, id));
   await recordActivity(
-    "project",
+    "service",
     next ? `Changed colour of folder ${f.name}` : `Cleared colour of folder ${f.name}`,
     userName,
     null,
@@ -338,11 +338,11 @@ export async function moveFolder(
     .update(foldersTable)
     .set({ parentId: parentId ?? null, updatedAt: nowIso() })
     .where(eq(foldersTable.id, id));
-  if (msg) await recordActivity("project", msg, userName, null, teamId);
+  if (msg) await recordActivity("service", msg, userName, null, teamId);
 }
 
 /**
- * Delete a folder. Nothing inside is deleted: its projects and its CHILD folders
+ * Delete a folder. Nothing inside is deleted: its services and its CHILD folders
  * are re-parented to the deleted folder's own parent (so a nested subtree stays
  * intact one level up). The team_folder_order row CASCADEs on the delete.
  */
@@ -357,11 +357,11 @@ export async function deleteFolder(id: string): Promise<void> {
     const f = rows[0];
     if (!f) throw new Error("Folder not found");
     const grandparent = f.parentId ?? null;
-    // Projects in the folder fall to its parent (or the top level if none).
+    // Services in the folder fall to its parent (or the top level if none).
     await tx
-      .update(projectsTable)
+      .update(servicesTable)
       .set({ folderId: grandparent })
-      .where(and(eq(projectsTable.teamId, teamId), eq(projectsTable.folderId, id)));
+      .where(and(eq(servicesTable.teamId, teamId), eq(servicesTable.folderId, id)));
     // Child folders re-parent to the grandparent so the subtree survives.
     await tx
       .update(foldersTable)
@@ -369,7 +369,7 @@ export async function deleteFolder(id: string): Promise<void> {
       .where(and(eq(foldersTable.teamId, teamId), eq(foldersTable.parentId, id)));
     // The team_folder_order row CASCADEs when the folder row is deleted.
     await tx.delete(foldersTable).where(eq(foldersTable.id, id));
-    await recordActivity("project", `Deleted folder ${f.name}`, userName, null, teamId);
+    await recordActivity("service", `Deleted folder ${f.name}`, userName, null, teamId);
   });
 }
 
@@ -377,19 +377,19 @@ export async function deleteFolder(id: string): Promise<void> {
  * Move a project into a folder, or back to the top level when `folderId` is
  * null. No-op when already in place.
  */
-export async function moveProjectToFolder(
-  projectId: string,
+export async function moveServiceToFolder(
+  serviceId: string,
   folderId: string | null,
 ): Promise<void> {
   const { teamId } = await requireCapability("deploy");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const proj = await getDb()
-    .select({ id: projectsTable.id, name: projectsTable.name, folderId: projectsTable.folderId })
-    .from(projectsTable)
-    .where(and(eq(projectsTable.id, projectId), eq(projectsTable.teamId, teamId)))
+    .select({ id: servicesTable.id, name: servicesTable.name, folderId: servicesTable.folderId })
+    .from(servicesTable)
+    .where(and(eq(servicesTable.id, serviceId), eq(servicesTable.teamId, teamId)))
     .limit(1);
   const p = proj[0];
-  if (!p) throw new Error("Project not found");
+  if (!p) throw new Error("Service not found");
   // Pulling a project OUT of its current folder needs `deploy` on that source
   // folder (a no-op when the project is already at the top level). This blocks
   // a member from evicting a project from a folder they don't control.
@@ -413,19 +413,19 @@ export async function moveProjectToFolder(
     msg = `Moved ${p.name} out of its folder`;
   }
   await getDb()
-    .update(projectsTable)
+    .update(servicesTable)
     .set({ folderId, updatedAt: nowIso() })
-    .where(eq(projectsTable.id, projectId));
-  if (msg) await recordActivity("project", msg, userName, projectId, teamId);
+    .where(eq(servicesTable.id, serviceId));
+  if (msg) await recordActivity("service", msg, userName, serviceId, teamId);
 }
 
 /**
- * Move SEVERAL projects into a folder (or to the top level) in one write — the
- * bulk counterpart to `moveProjectToFolder`. Team-scoped; foreign/stale ids and
- * projects already in place are skipped. Returns how many actually moved.
+ * Move SEVERAL services into a folder (or to the top level) in one write — the
+ * bulk counterpart to `moveServiceToFolder`. Team-scoped; foreign/stale ids and
+ * services already in place are skipped. Returns how many actually moved.
  */
-export async function moveProjectsToFolder(
-  projectIds: string[],
+export async function moveServicesToFolder(
+  serviceIds: string[],
   folderId: string | null,
 ): Promise<number> {
   const { teamId } = await requireCapability("deploy");
@@ -442,17 +442,17 @@ export async function moveProjectsToFolder(
     await requireFolderCapability(folderId, "deploy");
     folderName = f[0].name;
   }
-  // Only the caller's own team projects that actually change folder.
+  // Only the caller's own team services that actually change folder.
   const owned = await getDb()
-    .select({ id: projectsTable.id, folderId: projectsTable.folderId })
-    .from(projectsTable)
-    .where(and(eq(projectsTable.teamId, teamId), inArray(projectsTable.id, [...new Set(projectIds)])));
+    .select({ id: servicesTable.id, folderId: servicesTable.folderId })
+    .from(servicesTable)
+    .where(and(eq(servicesTable.teamId, teamId), inArray(servicesTable.id, [...new Set(serviceIds)])));
   const toMove = owned
     .filter((p) => (p.folderId ?? null) !== folderId)
     .map((p) => p.id);
   if (toMove.length === 0) return 0;
-  // Pulling projects OUT of their current folders needs `deploy` on each distinct
-  // source folder the selection touches — so a member can't evict projects from a
+  // Pulling services OUT of their current folders needs `deploy` on each distinct
+  // source folder the selection touches — so a member can't evict services from a
   // folder they don't control via the bulk path.
   const sourceFolders = new Set(
     owned
@@ -463,12 +463,12 @@ export async function moveProjectsToFolder(
     await requireFolderCapability(src, "deploy");
   }
   await getDb()
-    .update(projectsTable)
+    .update(servicesTable)
     .set({ folderId, updatedAt: nowIso() })
-    .where(inArray(projectsTable.id, toMove));
+    .where(inArray(servicesTable.id, toMove));
   const n = `${toMove.length} project${toMove.length === 1 ? "" : "s"}`;
   await recordActivity(
-    "project",
+    "service",
     folderId ? `Moved ${n} to ${folderName}` : `Moved ${n} out of their folder`,
     userName,
     null,
@@ -479,12 +479,12 @@ export async function moveProjectsToFolder(
 
 /**
  * Persist the team-wide order of folders in the Overview grid. Same total-and-
- * self-healing contract as `reorderProjects`: ids are sanitised to the caller's
+ * self-healing contract as `reorderServices`: ids are sanitised to the caller's
  * own team folders, any omitted team folder is appended, and the
  * `team_folder_order` junction is rewritten over the survivors.
  */
 export async function reorderFolders(orderedIds: string[]): Promise<void> {
-  // The Overview folder order is a single TEAM-WIDE setting (like reorderProjects),
+  // The Overview folder order is a single TEAM-WIDE setting (like reorderServices),
   // so a lone folder owner can't define it — gate on the super-user role.
   const { teamId } = await requireMembership();
   if (!(await isInstanceAdmin()) && !(await hasCapability("manage_team")))

@@ -82,7 +82,7 @@ export interface RouterLabelOptions {
    */
   perRouteKey?: (route: RouterRoute) => string;
   /**
-   * Project-wide HTTP Basic Auth. When set, a generated Traefik `basicauth`
+   * Service-wide HTTP Basic Auth. When set, a generated Traefik `basicauth`
    * middleware named `<name>` is DEFINED once (`traefik.http.middlewares.<name>.
    * basicauth.users=<users>`) and PREPENDED to every route's middleware chain, so
    * the credential gates ALL of the project's hostnames. `users` is the raw
@@ -133,7 +133,7 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
     labels.push(`traefik.docker.network=${opts.dockerNetwork}`);
   }
 
-  // Project-wide Basic Auth: DEFINE the generated middleware once, then prepend
+  // Service-wide Basic Auth: DEFINE the generated middleware once, then prepend
   // its name to every route's chain so it gates ALL hostnames. The `$` in the
   // htpasswd hashes is doubled to `$$` — these labels are embedded in a
   // docker-compose YAML, which treats a single `$` as variable interpolation and

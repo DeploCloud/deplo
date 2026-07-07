@@ -27,8 +27,8 @@ import { type AttachHandle } from "../infra/docker";
 
 export interface AttachSession {
   id: string;
-  /** Project that authorised this session — POST/GET must match it. */
-  projectId: string;
+  /** Service that authorised this session — POST/GET must match it. */
+  serviceId: string;
   /** Real container name being attached. */
   containerName: string;
   handle: AttachHandle;
@@ -55,7 +55,7 @@ function armIdleReaper(s: AttachSession) {
 
 /**
  * Open a new attach session over a pre-built backing handle. The caller MUST
- * have already verified the container belongs to `projectId`, chosen the tty
+ * have already verified the container belongs to `serviceId`, chosen the tty
  * backing, and built the handle against the project's OWNING server (local
  * docker for localhost, the agent's bidi Attach for remote). `cleanup` runs once
  * when the backing exits/closes (e.g. `conn.close()` for a remote gRPC client) —
@@ -63,7 +63,7 @@ function armIdleReaper(s: AttachSession) {
  * back on the GET (to stream) and POST (to send input).
  */
 export function open(
-  projectId: string,
+  serviceId: string,
   containerName: string,
   handle: AttachHandle,
   cleanup?: () => void,
@@ -71,7 +71,7 @@ export function open(
   const id = `att_${randomBytes(12).toString("hex")}`;
   const session: AttachSession = {
     id,
-    projectId,
+    serviceId,
     containerName,
     handle,
     subscribers: new Set(),
@@ -97,9 +97,9 @@ export function open(
 }
 
 /** Look up a session, scoped to its project so ids can't be used cross-project. */
-export function get(id: string, projectId: string): AttachSession | undefined {
+export function get(id: string, serviceId: string): AttachSession | undefined {
   const s = sessions.get(id);
-  return s && s.projectId === projectId ? s : undefined;
+  return s && s.serviceId === serviceId ? s : undefined;
 }
 
 /** Subscribe to a session's output; returns an unsubscribe fn. */

@@ -6,8 +6,8 @@ import { createPubSub } from "@graphql-yoga/subscription";
  * In-process publish/subscribe used to push live updates to GraphQL
  * subscribers over SSE. One logical channel per project, keyed by project id:
  *
- *   pubSub.publish("projectChanged", projectId, projectId)  // a project changed
- *   pubSub.subscribe("projectChanged", projectId)           // pings for that id
+ *   pubSub.publish("serviceChanged", serviceId, serviceId)  // a project changed
+ *   pubSub.subscribe("serviceChanged", serviceId)           // pings for that id
  *
  * The payload is just the project id — a publish means "this project changed,
  * re-read it". The subscription resolver reloads the project from the store and
@@ -24,16 +24,16 @@ import { createPubSub } from "@graphql-yoga/subscription";
  * by the GraphQL route. Pinning it on `globalThis` collapses every module
  * instance onto a single emitter.
  */
-type Channels = { projectChanged: [id: string, payload: string] };
-type ProjectPubSub = ReturnType<typeof createPubSub<Channels>>;
+type Channels = { serviceChanged: [id: string, payload: string] };
+type ServicePubSub = ReturnType<typeof createPubSub<Channels>>;
 
 const PUBSUB_KEY = Symbol.for("deplo.graphql.pubsub.singleton");
-const g = globalThis as unknown as { [PUBSUB_KEY]?: ProjectPubSub };
+const g = globalThis as unknown as { [PUBSUB_KEY]?: ServicePubSub };
 
-export const pubSub: ProjectPubSub = (g[PUBSUB_KEY] ??=
+export const pubSub: ServicePubSub = (g[PUBSUB_KEY] ??=
   createPubSub<Channels>());
 
 /** Notify every subscriber that this project's state changed. */
-export function publishProjectChanged(projectId: string): void {
-  pubSub.publish("projectChanged", projectId, projectId);
+export function publishServiceChanged(serviceId: string): void {
+  pubSub.publish("serviceChanged", serviceId, serviceId);
 }

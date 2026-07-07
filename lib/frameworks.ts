@@ -99,7 +99,7 @@ export function devCommandFor(framework: FrameworkId): string {
  * Official base image each dev image preset resolves to (ADR-0004). Used
  * directly — Deplo builds no per-language dev images. `node` is the safe
  * fallback for frameworks with no Deplo-controllable runtime (the JS toolchain
- * covers most source-bearing projects).
+ * covers most source-bearing services).
  */
 export const DEV_PRESET_IMAGE: Record<DevImagePreset, string> = {
   node: "node:22",
@@ -464,14 +464,14 @@ export function defaultBuildMethod(framework: FrameworkId): BuildMethod {
 }
 
 /**
- * Backfill build-method fields on a BuildConfig read from the store. Projects
+ * Backfill build-method fields on a BuildConfig read from the store. Services
  * created before build methods existed have no `buildMethod`/`methodSettings`;
- * derive sane defaults from the framework so old projects keep deploying and the
+ * derive sane defaults from the framework so old services keep deploying and the
  * settings form renders. Pure and idempotent — safe to call on every read.
  */
 export function normalizeBuildConfig(build: BuildConfig): BuildConfig {
   // Migrate the legacy `nodeVersion` field to the language-neutral
-  // `runtimeVersion` (older projects stored only `nodeVersion`).
+  // `runtimeVersion` (older services stored only `nodeVersion`).
   const legacyVersion = (build as { nodeVersion?: string }).nodeVersion;
   const withRuntime: BuildConfig =
     build.runtimeVersion == null && legacyVersion != null
