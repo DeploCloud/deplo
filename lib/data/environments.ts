@@ -6,6 +6,7 @@ import { getDb } from "../db/client";
 import {
   environments as environmentsTable,
   projects as projectsTable,
+  services as servicesTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
@@ -204,7 +205,12 @@ export async function setDefaultEnvironment(id: string): Promise<void> {
   });
 }
 
-/** Delete a non-default environment; never the default or the last one. */
+/**
+ * Delete a non-default environment; never the default or the last one. The
+ * environment's services are NOT deleted: they re-parent to the project's
+ * default environment (ADR-0009 — an environment is a sub-folder of services,
+ * so removing the sub-folder keeps its contents in the project).
+ */
 export async function deleteEnvironment(id: string): Promise<void> {
   await requireCapability("deploy");
   const env = (
@@ -214,12 +220,18 @@ export async function deleteEnvironment(id: string): Promise<void> {
   await requireOwnedProject(env.projectId);
   if (env.isDefault)
     throw new Error("Can't delete the default environment — pick another default first.");
-  const count = (
-    await getDb()
-      .select({ id: environmentsTable.id })
-      .from(environmentsTable)
-      .where(eq(environmentsTable.projectId, env.projectId))
-  ).length;
-  if (count <= 1) throw new Error("A project must keep at least one environment.");
-  await getDb().delete(environmentsTable).where(eq(environmentsTable.id, id));
+  const siblings = await getDb()
+    .select({ id: environmentsTable.id, isDefault: environmentsTable.isDefault })
+    .from(environmentsTable)
+    .where(eq(environmentsTable.projectId, env.projectId));
+  if (siblings.length <= 1)
+    throw new Error("A project must keep at least one environment.");
+  const fallback = siblings.find((e) => e.isDefault && e.id !== id) ?? null;
+  await getDb().transaction(async (tx) => {
+    await tx
+      .update(servicesTable)
+      .set({ environmentId: fallback?.id ?? null, updatedAt: nowIso() })
+      .where(eq(servicesTable.environmentId, id));
+    await tx.delete(environmentsTable).where(eq(environmentsTable.id, id));
+  });
 }

@@ -414,7 +414,13 @@ export async function moveServiceToFolder(
   }
   await getDb()
     .update(servicesTable)
-    .set({ folderId, updatedAt: nowIso() })
+    // A service lives in ONE place: filing it into a folder also pulls it out of
+    // any project/environment (ADR-0009 — folders and projects don't nest).
+    .set({
+      folderId,
+      ...(folderId ? { projectId: null, environmentId: null } : {}),
+      updatedAt: nowIso(),
+    })
     .where(eq(servicesTable.id, serviceId));
   if (msg) await recordActivity("service", msg, userName, serviceId, teamId);
 }
@@ -464,7 +470,13 @@ export async function moveServicesToFolder(
   }
   await getDb()
     .update(servicesTable)
-    .set({ folderId, updatedAt: nowIso() })
+    // Same one-home rule as the single move: filing into a folder leaves the
+    // project/environment (ADR-0009).
+    .set({
+      folderId,
+      ...(folderId ? { projectId: null, environmentId: null } : {}),
+      updatedAt: nowIso(),
+    })
     .where(inArray(servicesTable.id, toMove));
   const n = `${toMove.length} project${toMove.length === 1 ? "" : "s"}`;
   await recordActivity(

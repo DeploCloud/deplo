@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  Boxes,
   ChevronLeft,
   GripVertical,
   Plus,
@@ -45,7 +46,12 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { ServiceCard } from "./service-card";
 import { FolderCard, folderHref, type FolderCardData } from "./folder-card";
+import {
+  ProjectContainerCard,
+  type ProjectCardData,
+} from "./project-container-card";
 import { CreateFolderDialog } from "./create-folder-dialog";
+import { CreateProjectDialog } from "./create-project-dialog";
 import { useOverviewSelection } from "./use-overview-selection";
 import {
   ContextMenu,
@@ -65,9 +71,11 @@ import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { ServiceSummary } from "@/lib/data/services";
 
-const REORDER_PROJECTS = `mutation($ids: [ID!]!) { reorderServices(serviceIds: $ids) }`;
+const REORDER_SERVICES = `mutation($ids: [ID!]!) { reorderServices(serviceIds: $ids) }`;
 const REORDER_FOLDERS = `mutation($ids: [ID!]!) { reorderFolders(folderIds: $ids) }`;
+const REORDER_PROJECT_CONTAINERS = `mutation($ids: [ID!]!) { reorderProjects(projectIds: $ids) }`;
 const MOVE_TO_FOLDER = `mutation($serviceId: ID!, $folderId: ID) { moveServiceToFolder(serviceId: $serviceId, folderId: $folderId) }`;
+const MOVE_SERVICE_TO_PROJECT = `mutation($serviceId: ID!, $projectId: ID) { moveServiceToProject(serviceId: $serviceId, projectId: $projectId) }`;
 const DELETE_FOLDER = `mutation($id: ID!) { deleteFolder(id: $id) }`;
 // Bulk variants: each is ONE server round-trip + ONE store write for the whole
 // selection (instead of N fanned-out per-id mutations).
@@ -86,6 +94,10 @@ const DRAG_DROP_ANIMATION: DropAnimation = {
 };
 
 type FolderRef = { id: string; name: string };
+type ProjectRef = { id: string; name: string };
+/** One breadcrumb segment; `href` overrides the default folder link (used for
+ *  the project segment, which opens `/?project=<id>` instead of a folder). */
+export type TrailSeg = { id: string; name: string; href?: string };
 
 function gridClass(view: "grid" | "list"): string {
   return view === "list" ? "flex flex-col gap-3" : "grid gap-4 sm:grid-cols-2";
@@ -96,13 +108,16 @@ function allServicesHref(view: "grid" | "list"): string {
 }
 
 /** The "New ▸" submenu shared by both grids' empty-space context menu. Service
- *  and Database are links; Folder opens the create dialog via `onNewFolder`. */
+ *  and Database are links; Folder / Project open their create dialogs via the
+ *  callbacks. Folder and project creation share the same `deploy` gate. */
 function NewMenuItems({
   canCreateFolder,
   onNewFolder,
+  onNewProject,
 }: {
   canCreateFolder: boolean;
   onNewFolder: () => void;
+  onNewProject: () => void;
 }) {
   return (
     <MenuSubTooltip
@@ -136,6 +151,17 @@ function NewMenuItems({
           <ContextMenuItem onSelect={onNewFolder}>
             <FolderPlus className="size-4" />
             Folder
+          </ContextMenuItem>
+        </SimpleTooltip>
+      )}
+      {canCreateFolder && (
+        <SimpleTooltip
+          content="Create a project with its own environments"
+          side="left"
+        >
+          <ContextMenuItem onSelect={onNewProject}>
+            <Boxes className="size-4" />
+            Project
           </ContextMenuItem>
         </SimpleTooltip>
       )}
@@ -277,6 +303,7 @@ function OverviewContextMenu({
   canCreateFolder,
   canManageAllFolders,
   onNewFolder,
+  onNewProject,
   onRefresh,
   selection,
   children,
@@ -284,6 +311,7 @@ function OverviewContextMenu({
   canCreateFolder: boolean;
   canManageAllFolders: boolean;
   onNewFolder: () => void;
+  onNewProject: () => void;
   onRefresh: () => void;
   selection?: SelectionBulk;
   children: React.ReactNode;
@@ -296,6 +324,7 @@ function OverviewContextMenu({
         <NewMenuItems
           canCreateFolder={canCreateFolder}
           onNewFolder={onNewFolder}
+          onNewProject={onNewProject}
         />
         {selection && !hasSelection && (
           <SimpleTooltip
@@ -345,13 +374,19 @@ export interface ServicesGridProps {
   allServiceIds: string[];
   /** Folder cards to show before the services (top level only; [] otherwise). */
   folders: FolderCardData[];
+  /** Project CONTAINER cards, shown above the folders (team top level only; []
+   *  inside a folder/project or during a search). */
+  projects: ProjectCardData[];
   /** Every team folder (id + name) for the cards' "Move to folder" menu. */
   allFolders: FolderRef[];
   /** The folder currently open (with its parent, for "move out"), or null at the
    *  top level. */
   openFolder: (FolderRef & { parentId: string | null }) | null;
-  /** Breadcrumb trail from the top level down to the open folder (inclusive). */
-  folderPath: FolderRef[];
+  /** The project container currently open (drill-in view), or null. Mutually
+   *  exclusive with `openFolder` — a folder param wins over a project param. */
+  openProject: ProjectRef | null;
+  /** Breadcrumb trail from the top level down to the open folder or project. */
+  folderPath: TrailSeg[];
   view: "grid" | "list";
   /** Drag-to-reorder + drag-into-folder are enabled (gated; off during search). */
   canReorder: boolean;
@@ -362,6 +397,13 @@ export interface ServicesGridProps {
    *  team-wide bulk move/delete, reorder, and the manage menu on folders they
    *  don't own. Per-folder manage is derived from each folder's own capabilities. */
   canManageAllFolders: boolean;
+  /** The viewer may mutate project containers (holds `deploy`, or is an
+   *  instance admin) — gates each project card's rename/colour/delete menu and
+   *  the service cards' "Move to environment" action. */
+  canManageProjects: boolean;
+  /** The open project's environments — set only in the drill-in view, where it
+   *  feeds each service card's "Move to environment" submenu (ADR-0009). */
+  environments?: { id: string; name: string }[];
 }
 
 /**
@@ -389,30 +431,50 @@ export function ServicesGrid(props: ServicesGridProps) {
 function StaticGrid({
   services,
   folders,
+  projects,
   allFolders,
   openFolder,
+  openProject,
   folderPath,
   view,
   canCreateFolder,
   canManageAllFolders,
+  canManageProjects,
+  environments,
 }: ServicesGridProps) {
   const router = useRouter();
   const [createFolderOpen, setCreateFolderOpen] = React.useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = React.useState(false);
   return (
     <>
       <OverviewContextMenu
         canCreateFolder={canCreateFolder}
         canManageAllFolders={canManageAllFolders}
         onNewFolder={() => setCreateFolderOpen(true)}
+        onNewProject={() => setCreateProjectOpen(true)}
         onRefresh={() => router.refresh()}
       >
         <div className="relative min-h-[40vh] space-y-6">
           {/* px-1 py-1 mirrors the DroppableBreadcrumb padding so the trail sits
               in the same spot whether or not the grid is drag-reorderable. */}
-          {openFolder && (
+          {(openFolder || openProject) && (
             <div className="px-1 py-1">
               <FolderTrail path={folderPath} view={view} />
             </div>
+          )}
+          {projects.length > 0 && (
+            <section className="space-y-3">
+              <div className={gridClass(view)}>
+                {projects.map((p) => (
+                  <ProjectContainerCard
+                    key={p.id}
+                    project={p}
+                    view={view}
+                    canManage={canManageProjects}
+                  />
+                ))}
+              </div>
+            </section>
           )}
           {folders.length > 0 && (
             <section className="space-y-3">
@@ -439,6 +501,7 @@ function StaticGrid({
                     view={view}
                     folders={allFolders}
                     canManageFolders={canManageAllFolders}
+                    environments={canManageProjects ? environments : undefined}
                   />
                 ))}
               </div>
@@ -453,24 +516,30 @@ function StaticGrid({
           parentId={openFolder?.id ?? null}
         />
       )}
+      {canCreateFolder && (
+        <CreateProjectDialog
+          open={createProjectOpen}
+          onOpenChange={setCreateProjectOpen}
+        />
+      )}
     </>
   );
 }
 
 /**
- * The nested-folder breadcrumb: "All services / A / B / Current". Every ancestor
- * segment links to that level; the last (current) folder is plain text. Folders
- * nest, so the trail can be several levels deep.
+ * The drill-in breadcrumb: "Overview / A / B / Current". Every ancestor segment
+ * links to that level; the last (current) folder or project is plain text. A
+ * segment can carry its own `href` (the project segment links to `/?project=`).
  *
- * Exported so an EMPTY open folder (which renders a full-page empty state instead
- * of this grid) can still show the same trail above it — the breadcrumb is the
- * only way back out, so it must survive the folder having no contents.
+ * Exported so an EMPTY open folder/project (which renders a full-page empty
+ * state instead of this grid) can still show the same trail above it — the
+ * breadcrumb is the only way back out, so it must survive having no contents.
  */
 export function FolderTrail({
   path,
   view,
 }: {
-  path: FolderRef[];
+  path: TrailSeg[];
   view: "grid" | "list";
 }) {
   return (
@@ -480,7 +549,7 @@ export function FolderTrail({
         className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
       >
         <ChevronLeft className="size-4" />
-        All services
+        Overview
       </Link>
       {path.map((seg, i) => {
         const last = i === path.length - 1;
@@ -491,7 +560,7 @@ export function FolderTrail({
               <span className="font-medium">{seg.name}</span>
             ) : (
               <Link
-                href={folderHref(seg.id, view)}
+                href={seg.href ?? folderHref(seg.id, view)}
                 className="text-muted-foreground hover:text-foreground"
               >
                 {seg.name}
@@ -512,12 +581,16 @@ function SortableGrid({
   services,
   allServiceIds,
   folders,
+  projects,
   allFolders,
   openFolder,
+  openProject,
   folderPath,
   view,
   canCreateFolder,
   canManageAllFolders,
+  canManageProjects,
+  environments,
 }: ServicesGridProps) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
@@ -531,9 +604,13 @@ function SortableGrid({
   const [folderOrder, setFolderOrder] = React.useState<string[]>(() =>
     folders.map((f) => f.id),
   );
-  // Services optimistically hidden from the current view while a move-to-folder
-  // round-trips. Cleared whenever the visible projection actually changes (the
-  // refresh landing, or navigating in/out of a folder) — see the effect below.
+  const [projectOrder, setProjectOrder] = React.useState<string[]>(() =>
+    projects.map((p) => p.id),
+  );
+  // Services AND folders optimistically hidden from the current view while a
+  // move (into a folder or a project container) round-trips. Cleared whenever
+  // the visible projection actually changes (the refresh landing, or navigating
+  // in/out of a folder/project) — see the render-time reset below.
   const [movedIds, setMovedIds] = React.useState<Set<string>>(
     () => new Set(),
   );
@@ -553,12 +630,19 @@ function SortableGrid({
     () => new Map(folders.map((f) => [f.id, f])),
     [folders],
   );
+  const projectById = React.useMemo(
+    () => new Map(projects.map((p) => [p.id, p])),
+    [projects],
+  );
 
   // Clear optimistic move-hides whenever the visible projection actually changes
   // — the move's refresh landing, or navigating in/out of a folder. Done in
   // render via the previous-value pattern (not an effect) so it never triggers a
   // cascading render; a pending move keeps its hide until its own refresh lands.
-  const sig = services.map((p) => `${p.id}:${p.folderId ?? ""}`).join(",");
+  const sig = [
+    ...services.map((p) => `${p.id}:${p.folderId ?? ""}`),
+    ...folders.map((f) => `${f.id}:${f.parentId ?? ""}`),
+  ].join(",");
   const [prevSig, setPrevSig] = React.useState(sig);
   if (sig !== prevSig) {
     setPrevSig(sig);
@@ -566,18 +650,36 @@ function SortableGrid({
   }
 
   // The folders to render, in local order, dropping stale ids and appending any
-  // the local order hasn't seen yet (a freshly created folder).
+  // the local order hasn't seen yet (a freshly created folder). Anything
+  // optimistically moved into a project is hidden until its refresh lands.
   const folderItems = React.useMemo(() => {
     const ordered = folderOrder
       .map((id) => folderById.get(id))
-      .filter((f): f is FolderCardData => f != null);
+      .filter((f): f is FolderCardData => f != null && !movedIds.has(f.id));
     const known = new Set(folderOrder);
-    return [...ordered, ...folders.filter((f) => !known.has(f.id))];
-  }, [folderOrder, folderById, folders]);
+    return [
+      ...ordered,
+      ...folders.filter((f) => !known.has(f.id) && !movedIds.has(f.id)),
+    ];
+  }, [folderOrder, folderById, folders, movedIds]);
 
   const folderIdSet = React.useMemo(
     () => new Set(folderItems.map((f) => f.id)),
     [folderItems],
+  );
+
+  // Project container cards, in local order (same contract as folderItems).
+  const projectItems = React.useMemo(() => {
+    const ordered = projectOrder
+      .map((id) => projectById.get(id))
+      .filter((p): p is ProjectCardData => p != null);
+    const known = new Set(projectOrder);
+    return [...ordered, ...projects.filter((p) => !known.has(p.id))];
+  }, [projectOrder, projectById, projects]);
+
+  const projectIdSet = React.useMemo(
+    () => new Set(projectItems.map((p) => p.id)),
+    [projectItems],
   );
 
   // The visible services, in the full local order, filtered to the displayed
@@ -595,17 +697,22 @@ function SortableGrid({
     ];
   }, [order, byId, services, movedIds]);
 
-  const activeIsService = activeId !== null && !folderIdSet.has(activeId);
+  const activeIsFolder = activeId !== null && folderIdSet.has(activeId);
+  const activeIsProject = activeId !== null && projectIdSet.has(activeId);
+  const activeIsService =
+    activeId !== null && !activeIsFolder && !activeIsProject;
   // The actual card behind the floating drag clone (the lifted card that tracks
-  // the cursor). A folder never absorbs into another, so only a service clone
-  // shrinks when hovering a folder.
+  // the cursor).
   const activeFolder = activeId ? folderById.get(activeId) ?? null : null;
-  const activeService =
-    activeId && !activeFolder ? byId.get(activeId) ?? null : null;
-  // A dragged project is hovering a folder → its card shrinks (scale-0) as a
-  // preview of being dropped in; it grows back the moment it leaves.
+  const activeProject = activeId ? projectById.get(activeId) ?? null : null;
+  const activeService = activeIsService ? byId.get(activeId!) ?? null : null;
+  // A dragged service hovering a container it can be dropped INTO (a folder or
+  // a project card) → it shrinks (scale-0) as a preview of being absorbed; it
+  // grows back the moment it leaves.
   const draggedOverFolder =
-    activeIsService && overId != null && folderIdSet.has(overId);
+    activeIsService &&
+    overId != null &&
+    (folderIdSet.has(overId) || projectIdSet.has(overId));
 
   /* ---- Multi-selection (marquee + ctrl/shift-click) + bulk actions ------- */
   // Selectable ids in display order: folders first, then the visible services.
@@ -634,6 +741,7 @@ function SortableGrid({
   const selectionCount = effectiveSelected.length;
 
   const [createFolderOpen, setCreateFolderOpen] = React.useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = React.useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
   // When true, the create-folder dialog moves the current selection into the
   // freshly-created folder ("New folder with selection").
@@ -765,6 +873,67 @@ function SortableGrid({
     });
   }
 
+  // Move a service into a project container (or out, when projectId is null),
+  // with the same optimistic hide + refresh contract as moveService.
+  function moveServiceToProject(serviceId: string, projectId: string | null) {
+    setMovedIds((prev) => new Set(prev).add(serviceId));
+    startTransition(async () => {
+      const res = await gqlAction(MOVE_SERVICE_TO_PROJECT, {
+        serviceId,
+        projectId,
+      });
+      if (res.ok) {
+        toast.success(projectId ? "Moved into project" : "Moved out of project");
+        router.refresh();
+      } else {
+        toast.error(res.error);
+        setMovedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(serviceId);
+          return next;
+        });
+      }
+    });
+  }
+
+  // The multi-selection variant: one mutation per service (no bulk endpoint),
+  // fired together and settled with a single refresh.
+  function moveServicesToProject(ids: string[], projectId: string | null) {
+    if (ids.length === 0) return;
+    setMovedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+    startTransition(async () => {
+      const results = await Promise.all(
+        ids.map((serviceId) =>
+          gqlAction(MOVE_SERVICE_TO_PROJECT, { serviceId, projectId }),
+        ),
+      );
+      const failed = results.find((r) => !r.ok);
+      if (!failed) {
+        toast.success(
+          `Moved ${ids.length} service${ids.length === 1 ? "" : "s"}`,
+        );
+        clearSelection();
+      } else {
+        toast.error(failed.error);
+        // Revert the whole batch's optimistic hide (like the single-item move):
+        // if EVERY mutation failed the refresh returns identical props, the sig
+        // never changes, and un-reverted ids would stay invisible forever. Any
+        // ids that DID move are re-hidden by the refresh itself.
+        setMovedIds((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
+      }
+      // Refresh either way: a partial failure re-reveals whatever didn't move.
+      router.refresh();
+    });
+  }
+
   function reorderServiceList(activeId: string, overId: string) {
     const oldIndex = order.indexOf(activeId);
     const newIndex = order.indexOf(overId);
@@ -772,7 +941,7 @@ function SortableGrid({
     const previous = order;
     const next = arrayMove(order, oldIndex, newIndex);
     setOrder(next);
-    persistReorder(REORDER_PROJECTS, next, () => setOrder(previous));
+    persistReorder(REORDER_SERVICES, next, () => setOrder(previous));
   }
 
   // Reorder a whole multi-selection together: lift every selected project out of
@@ -794,7 +963,7 @@ function SortableGrid({
     const previous = order;
     const next = [...rest.slice(0, target), ...selIds, ...rest.slice(target)];
     setOrder(next);
-    persistReorder(REORDER_PROJECTS, next, () => setOrder(previous));
+    persistReorder(REORDER_SERVICES, next, () => setOrder(previous));
   }
 
   function reorderFolderList(activeId: string, overId: string) {
@@ -808,16 +977,39 @@ function SortableGrid({
     persistReorder(REORDER_FOLDERS, next, () => setFolderOrder(previous));
   }
 
-  // A folder being dragged only ever targets OTHER folders (reorder), never a
-  // project. Folders and ungrouped services share one grid flow, so a plain
-  // closestCenter can resolve a folder drag onto an adjacent project card —
-  // which the drop handler then ignores, making folder reorder feel broken.
-  // Restricting a folder's candidate droppables to folders makes it reliable.
-  // A project keeps every droppable (sibling services to reorder among, folders
-  // to drop into, and the breadcrumb to leave a folder).
+  function reorderProjectList(activeId: string, overId: string) {
+    const ids = projectItems.map((p) => p.id);
+    const oldIndex = ids.indexOf(activeId);
+    const newIndex = ids.indexOf(overId);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const previous = projectOrder;
+    const next = arrayMove(ids, oldIndex, newIndex);
+    setProjectOrder(next);
+    persistReorder(REORDER_PROJECT_CONTAINERS, next, () =>
+      setProjectOrder(previous),
+    );
+  }
+
+  // Restrict each card kind to the droppables it can meaningfully land on, so
+  // closestCenter never resolves a drag onto a neighbour the drop handler would
+  // ignore (which makes reordering feel broken):
+  //  - a project container only reorders among other projects;
+  //  - a folder only reorders among other folders (folders never enter a
+  //    project — ADR-0009: a project's contents are its environments' services);
+  //  - a service keeps every droppable (siblings to reorder among, folders and
+  //    projects to drop into, and the breadcrumb to move out a level).
   const collisionDetection = React.useCallback<CollisionDetection>(
     (args) => {
-      if (folderIdSet.has(String(args.active.id))) {
+      const a = String(args.active.id);
+      if (projectIdSet.has(a)) {
+        return closestCenter({
+          ...args,
+          droppableContainers: args.droppableContainers.filter((c) =>
+            projectIdSet.has(String(c.id)),
+          ),
+        });
+      }
+      if (folderIdSet.has(a)) {
         return closestCenter({
           ...args,
           droppableContainers: args.droppableContainers.filter((c) =>
@@ -827,7 +1019,7 @@ function SortableGrid({
       }
       return closestCenter(args);
     },
-    [folderIdSet],
+    [folderIdSet, projectIdSet],
   );
 
   // Track the hovered droppable during the drag (cheap: only re-renders when the
@@ -845,41 +1037,61 @@ function SortableGrid({
     const a = String(active.id);
     const o = String(over.id);
 
+    const aIsFolder = folderIdSet.has(a);
+    const aIsProject = projectIdSet.has(a);
+
     // The dragged card belongs to a multi-selection of ≥2 services → the whole
-    // group moves together (reorder, into a folder, or out of one).
+    // group moves together (reorder, into a folder/project, or out of one).
     const selServices = order.filter(
       (id) => selected.has(id) && !folderIdSet.has(id),
     );
     const groupDrag =
-      !folderIdSet.has(a) && selected.has(a) && selServices.length >= 2;
+      !aIsFolder && !aIsProject && selected.has(a) && selServices.length >= 2;
 
-    // Drop onto the breadcrumb zone → move OUT one level, to the open folder's
-    // own parent (or the top level when it has none).
+    // Drop onto the breadcrumb zone → move OUT one level: to the open folder's
+    // own parent, or out of the open project, back to the top level.
     if (o === UNGROUP_DROP_ID) {
-      if (!folderIdSet.has(a)) {
-        const dest = openFolder?.parentId ?? null;
+      if (aIsProject || aIsFolder) return;
+      if (openFolder) {
+        const dest = openFolder.parentId ?? null;
         if (groupDrag) bulkMoveTo(dest);
         else moveService(a, dest);
+      } else if (openProject) {
+        // selectedServiceIds() (not the raw selection) so a stale off-screen id
+        // left in `selected` by a concurrent move is never dragged along — the
+        // same visibility guard every other bulk action routes through.
+        if (groupDrag) moveServicesToProject(selectedServiceIds(), null);
+        else moveServiceToProject(a, null);
       }
       return;
     }
     if (a === o) return;
 
-    const aIsFolder = folderIdSet.has(a);
     const oIsFolder = folderIdSet.has(o);
-    if (aIsFolder && oIsFolder) {
-      reorderFolderList(a, o); // reorder folders among themselves
-    } else if (!aIsFolder && oIsFolder) {
+    const oIsProject = projectIdSet.has(o);
+    if (aIsProject) {
+      // Projects only reorder among themselves (collision detection already
+      // restricts their targets, this is the belt to those braces).
+      if (oIsProject) reorderProjectList(a, o);
+    } else if (aIsFolder) {
+      if (oIsFolder) reorderFolderList(a, o); // reorder among folders
+      // (folder onto a service/project: ignored — folders don't nest there)
+    } else if (oIsProject) {
+      // Service(s) dropped onto a project container card. The group path uses
+      // selectedServiceIds() — the visibility-guarded selection — not the raw
+      // `selServices` (see the breadcrumb branch above).
+      if (groupDrag) moveServicesToProject(selectedServiceIds(), o);
+      else moveServiceToProject(a, o);
+    } else if (oIsFolder) {
       // Service(s) dropped onto a folder → move the whole selection (or just the
       // one) into it.
       if (groupDrag) bulkMoveTo(o);
       else moveService(a, o);
-    } else if (!aIsFolder && !oIsFolder) {
+    } else {
       // Reorder among services — the whole selected group when multi-selecting.
       if (groupDrag) reorderServiceGroup(a, o, selServices);
       else reorderServiceList(a, o);
     }
-    // (folder dropped onto a service: ignored — folders can't nest in services)
   }
 
   const serviceStrategy =
@@ -937,6 +1149,7 @@ function SortableGrid({
         canCreateFolder={canCreateFolder}
         canManageAllFolders={canManageAllFolders}
         onNewFolder={() => openNewFolder(false)}
+        onNewProject={() => setCreateProjectOpen(true)}
         onRefresh={() => router.refresh()}
         selection={bulkSelection}
       >
@@ -955,12 +1168,44 @@ function SortableGrid({
             ref={marqueeRef}
             className="pointer-events-none absolute z-20 hidden rounded-sm border border-primary bg-primary/10"
           />
-          {openFolder && (
+          {(openFolder || openProject) && (
             <DroppableBreadcrumb
               path={folderPath}
               view={view}
               dragging={dragging && activeIsService}
             />
+          )}
+          {/* Project containers get the topmost section: they are the coarsest
+              grouping, so they sit above folders and ungrouped services. */}
+          {projectItems.length > 0 && (
+            <section className="space-y-3">
+              <SortableContext
+                items={projectItems.map((p) => p.id)}
+                strategy={rectSortingStrategy}
+              >
+                <div className={gridClass(view)}>
+                  {projectItems.map((p) => (
+                    <SortableItem
+                      key={p.id}
+                      id={p.id}
+                      dragging={dragging}
+                      dataKind="project"
+                    >
+                      {({ handle, dragActive, isOver }) => (
+                        <ProjectContainerCard
+                          project={p}
+                          view={view}
+                          canManage={canManageProjects}
+                          dragHandle={handle}
+                          dragActive={dragActive}
+                          dropActive={isOver && activeIsService}
+                        />
+                      )}
+                    </SortableItem>
+                  ))}
+                </div>
+              </SortableContext>
+            </section>
           )}
           {/* Folders get their own section, above and separate from the
               folder-less services — never interleaved at the same level. */}
@@ -1027,6 +1272,9 @@ function SortableGrid({
                         dragActive={dragActive}
                         folders={allFolders}
                         canManageFolders={canManageAllFolders}
+                        environments={
+                          canManageProjects ? environments : undefined
+                        }
                         contextMenuOverride={
                           showBulkMenuFor(p.id) ? bulkMenuNode : undefined
                         }
@@ -1044,7 +1292,15 @@ function SortableGrid({
           a portal above everything, so it is never clipped by the grid's
           overflow/stacking. The original card stays as a dimmed placeholder. */}
       <DragOverlay dropAnimation={DRAG_DROP_ANIMATION}>
-        {activeFolder ? (
+        {activeProject ? (
+          <div className="pointer-events-none rotate-[1.5deg] cursor-grabbing rounded-xl shadow-2xl ring-1 ring-border/60">
+            <ProjectContainerCard
+              project={activeProject}
+              view={view}
+              canManage={canManageProjects}
+            />
+          </div>
+        ) : activeFolder ? (
           <div className="pointer-events-none rotate-[1.5deg] cursor-grabbing rounded-xl shadow-2xl ring-1 ring-border/60">
             <FolderCard
               folder={activeFolder}
@@ -1057,8 +1313,8 @@ function SortableGrid({
           <div
             className={cn(
               "pointer-events-none relative rotate-[1.5deg] cursor-grabbing rounded-xl shadow-2xl ring-1 ring-border/60 transition-transform duration-200 ease-out",
-              // Hovering a folder → the floating clone shrinks as a preview of
-              // being absorbed into it.
+              // Hovering a folder or project → the floating clone shrinks as a
+              // preview of being absorbed into it.
               draggedOverFolder && "scale-50 opacity-80",
             )}
           >
@@ -1091,6 +1347,10 @@ function SortableGrid({
             ? `Create a folder and move the ${selectedServiceIds().length} selected project(s) into it.`
             : undefined
         }
+      />
+      <CreateProjectDialog
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
       />
       <ConfirmAction
         open={bulkDeleteOpen}

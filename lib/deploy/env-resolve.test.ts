@@ -250,6 +250,21 @@ test("a custom environment's vars stay inert (no legacy target matches)", () => 
   }
 });
 
+test("membership entries apply to EVERY runtime, whatever their kind (ADR-0009)", () => {
+  // The service LIVES in a Development (or even custom) environment — its
+  // environment's vars follow it to any legacy deploy target.
+  const envs = [
+    { ...environEntry("HOME_VAR", "development"), membership: true },
+    { ...environEntry("CUSTOM_HOME_VAR", "custom"), membership: true },
+  ];
+  for (const target of ALL) {
+    assert.deepEqual(keys(resolveEnvEntries(target, PID, [], [], [], [], envs)), [
+      "HOME_VAR",
+      "CUSTOM_HOME_VAR",
+    ]);
+  }
+});
+
 test("an environment var overrides a team-global of the same key", () => {
   const key = "API_URL";
   const out = resolveEnvEntries(

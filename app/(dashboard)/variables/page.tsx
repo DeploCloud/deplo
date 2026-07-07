@@ -206,7 +206,7 @@ export default async function VariablesPage(
                 <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
                   <CardTitle className="text-base">{project.name}</CardTitle>
                   <Button variant="outline" size="sm" asChild>
-                    <Link href={`/projects/${project.slug}`}>
+                    <Link href={`/?project=${project.id}`}>
                       Open project
                       <ArrowUpRight className="size-4" />
                     </Link>

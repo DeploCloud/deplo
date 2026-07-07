@@ -7,8 +7,8 @@ import {
   setProjectColor,
   deleteProject,
   reorderProjects,
-  moveFolderToProject,
   moveServiceToProject,
+  moveServiceToEnvironment,
   type ProjectSummary,
 } from "@/lib/data/projects";
 import { listEnvironmentsForProject } from "@/lib/data/environments";
@@ -41,6 +41,9 @@ export const ProjectRef = builder
       }),
       serviceCount: t.int({
         resolve: (p) => ("serviceCount" in p ? p.serviceCount : 0),
+      }),
+      environmentCount: t.int({
+        resolve: (p) => ("environmentCount" in p ? p.environmentCount : 0),
       }),
       // The container's environments (seeded Development/Preview/Production).
       environments: t.field({
@@ -146,28 +149,11 @@ builder.mutationFields((t) => ({
       return true;
     },
   }),
-  moveFolderToProject: t.field({
-    type: "Boolean",
-    authScopes: deployScope,
-    description:
-      "Move a folder into a Project container, or back to the top level when projectId is omitted/null.",
-    args: {
-      folderId: t.arg.id({ required: true }),
-      projectId: t.arg.id({ required: false }),
-    },
-    resolve: async (_r, { folderId, projectId }) => {
-      await moveFolderToProject(
-        String(folderId),
-        projectId != null ? String(projectId) : null,
-      );
-      return true;
-    },
-  }),
   moveServiceToProject: t.field({
     type: "Boolean",
     authScopes: deployScope,
     description:
-      "Move a service into a Project container, or back to the top level when projectId is omitted/null.",
+      "Move a service into a Project (landing in its default environment), or back to the top level when projectId is omitted/null.",
     args: {
       serviceId: t.arg.id({ required: true }),
       projectId: t.arg.id({ required: false }),
@@ -177,6 +163,20 @@ builder.mutationFields((t) => ({
         String(serviceId),
         projectId != null ? String(projectId) : null,
       );
+      return true;
+    },
+  }),
+  moveServiceToEnvironment: t.field({
+    type: "Boolean",
+    authScopes: deployScope,
+    description:
+      "Move a service into a specific environment of a Project (ADR-0009: each environment holds its own services). The service's project follows the environment.",
+    args: {
+      serviceId: t.arg.id({ required: true }),
+      environmentId: t.arg.id({ required: true }),
+    },
+    resolve: async (_r, { serviceId, environmentId }) => {
+      await moveServiceToEnvironment(String(serviceId), String(environmentId));
       return true;
     },
   }),

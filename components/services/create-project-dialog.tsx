@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +20,8 @@ import { gqlAction } from "@/lib/graphql-client";
 /**
  * Create a Project CONTAINER (ADR-0008) in the active team. Controlled (no
  * trigger of its own) so it can be opened from an "Add new" menu or the
- * `/projects` index header. Folders and services are moved into it afterward.
+ * Overview's context menu. Folders and services are moved into it afterward;
+ * creation lands on the container's Overview drill-in view (`/?project=<id>`).
  */
 export function CreateProjectDialog({
   open,
@@ -38,8 +38,8 @@ export function CreateProjectDialog({
   function create() {
     if (!name.trim()) return;
     startTransition(async () => {
-      const res = await gqlAction<{ createProject: { slug: string } }>(
-        `mutation($name: String!, $color: String) { createProject(name: $name, color: $color) { slug } }`,
+      const res = await gqlAction<{ createProject: { id: string } }>(
+        `mutation($name: String!, $color: String) { createProject(name: $name, color: $color) { id } }`,
         { name: name.trim(), color },
       );
       if (res.ok) {
@@ -47,8 +47,8 @@ export function CreateProjectDialog({
         onOpenChange(false);
         setName("");
         setColor(null);
-        const created = res.data?.createProject.slug;
-        if (created) router.push(`/projects/${created}`);
+        const created = res.data?.createProject.id;
+        if (created) router.push(`/?project=${created}`);
         router.refresh();
       } else toast.error(res.error);
     });
@@ -69,8 +69,9 @@ export function CreateProjectDialog({
         <DialogHeader>
           <DialogTitle>New project</DialogTitle>
           <DialogDescription>
-            A project groups folders and services and owns their environments.
-            You can move existing items into it afterward.
+            A project is an advanced folder: each of its environments holds its
+            own services and its own shared variables. You can move services
+            into it afterward.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -100,20 +101,3 @@ export function CreateProjectDialog({
   );
 }
 
-/**
- * A self-contained "New project" button that owns the {@link CreateProjectDialog}
- * open state, so a server component (the `/projects` index) can drop it into a
- * header without managing client state itself.
- */
-export function NewProjectButton({ label = "New project" }: { label?: string }) {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <>
-      <Button onClick={() => setOpen(true)}>
-        <Plus className="size-4" />
-        {label}
-      </Button>
-      <CreateProjectDialog open={open} onOpenChange={setOpen} />
-    </>
-  );
-}

@@ -892,9 +892,9 @@ type Mutation {
   moveFolder(id: ID!, parentId: ID): Boolean
 
   """
-  Move a folder into a Project container, or back to the top level when projectId is omitted/null.
+  Move a service into a specific environment of a Project (ADR-0009: each environment holds its own services). The service's project follows the environment.
   """
-  moveFolderToProject(folderId: ID!, projectId: ID): Boolean
+  moveServiceToEnvironment(environmentId: ID!, serviceId: ID!): Boolean
 
   """
   Move a service into a folder, or back to the top level when folderId is omitted/null.
@@ -902,7 +902,7 @@ type Mutation {
   moveServiceToFolder(folderId: ID, serviceId: ID!): Boolean
 
   """
-  Move a service into a Project container, or back to the top level when projectId is omitted/null.
+  Move a service into a Project (landing in its default environment), or back to the top level when projectId is omitted/null.
   """
   moveServiceToProject(projectId: ID, serviceId: ID!): Boolean
 
@@ -1200,6 +1200,7 @@ A top-level, team-scoped CONTAINER (ADR-0008): folder-like, but it owns Environm
 type Project {
   color: String
   createdAt: String
+  environmentCount: Int
   environments: [Environment!]
   folderCount: Int
   id: ID

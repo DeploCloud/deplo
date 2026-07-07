@@ -254,31 +254,44 @@ export async function deleteEnvironmentEnv(id: string): Promise<void> {
 /* Deploy-time loader — NO auth gate (the deploy is already authorized). */
 /* ------------------------------------------------------------------ */
 
-/** Still-encrypted entry the deploy merge consumes; `kind` gates the runtime. */
+/** Still-encrypted entry the deploy merge consumes. `membership: true` marks a
+ *  variable of the service's OWN environment (applies to every runtime,
+ *  ADR-0009); otherwise `kind` gates the runtime (legacy bridge). */
 export interface EnvironmentEnvEntry {
   key: string;
   valueEnc: string;
   kind: EnvironmentKind;
+  membership?: boolean;
 }
 
 /**
- * The environment-scoped entries that apply to one service: every variable of
- * every Environment of the service's Project (a service with no Project has
- * none). The resolver keeps only entries whose `kind` matches the deploy
- * target — a `custom` environment's vars reach no legacy runtime until the
- * per-environment pipeline lands. Returns encrypted entries; the caller
- * decrypts at the edge.
+ * The environment-scoped entries that apply to one service (a service with no
+ * Project has none). Two modes (ADR-0009):
+ *
+ *  - the service LIVES in an environment (`services.environment_id`) — return
+ *    ONLY that environment's variables, marked `membership: true` so the
+ *    resolver applies them to every runtime of the service. The membership is
+ *    the scope: vars of a project's other environments never reach it.
+ *  - legacy (in a project, no environment membership) — every variable of every
+ *    Environment of the Project; the resolver keeps only entries whose `kind`
+ *    matches the deploy target.
+ *
+ * Returns encrypted entries; the caller decrypts at the edge.
  */
 export async function loadEnvironmentEnvForService(
   serviceId: string,
 ): Promise<EnvironmentEnvEntry[]> {
   const srow = await getDb()
-    .select({ projectId: servicesTable.projectId })
+    .select({
+      projectId: servicesTable.projectId,
+      environmentId: servicesTable.environmentId,
+    })
     .from(servicesTable)
     .where(eq(servicesTable.id, serviceId))
     .limit(1);
   const projectId = srow[0]?.projectId;
   if (!projectId) return [];
+  const environmentId = srow[0]?.environmentId ?? null;
   const rows = await getDb()
     .select({
       key: envVarsTable.key,
@@ -290,11 +303,16 @@ export async function loadEnvironmentEnvForService(
       environmentsTable,
       eq(envVarsTable.environmentId, environmentsTable.id),
     )
-    .where(eq(environmentsTable.projectId, projectId))
+    .where(
+      environmentId
+        ? eq(envVarsTable.environmentId, environmentId)
+        : eq(environmentsTable.projectId, projectId),
+    )
     .orderBy(asc(envVarsTable.key));
   return rows.map((r) => ({
     key: r.key,
     valueEnc: r.valueEnc,
     kind: r.kind as EnvironmentKind,
+    ...(environmentId ? { membership: true } : {}),
   }));
 }

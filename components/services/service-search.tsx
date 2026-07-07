@@ -13,30 +13,40 @@ export function ServiceSearch({
   initialQuery,
   initialView,
   initialFolder = "",
+  initialProject = "",
+  initialEnv = "",
 }: {
   initialQuery: string;
   initialView: ServiceView;
   /** The open folder id, preserved across view toggles (dropped when searching). */
   initialFolder?: string;
+  /** The open project id, same contract as `initialFolder`. */
+  initialProject?: string;
+  /** The selected environment inside the open project, preserved with it. */
+  initialEnv?: string;
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState(initialQuery);
   const [view, setView] = React.useState<ServiceView>(initialView);
 
-  // Build the dashboard URL from query + view (+ open folder), omitting defaults
-  // (empty query, grid view) so the address bar stays clean. A query is a GLOBAL
-  // search, so it drops the folder scope; with no query the folder is preserved
-  // so toggling the view doesn't kick you out of an open folder.
+  // Build the dashboard URL from query + view (+ open folder/project), omitting
+  // defaults (empty query, grid view) so the address bar stays clean. A query is
+  // a GLOBAL search, so it drops the folder/project scope; with no query the
+  // scope is preserved so toggling the view doesn't kick you out of it.
   const buildHref = React.useCallback(
     (nextQ: string, nextView: ServiceView) => {
       const params = new URLSearchParams();
       if (nextQ.trim()) params.set("q", nextQ.trim());
       else if (initialFolder) params.set("folder", initialFolder);
+      else if (initialProject) {
+        params.set("project", initialProject);
+        if (initialEnv) params.set("env", initialEnv);
+      }
       if (nextView === "list") params.set("view", "list");
       const qs = params.toString();
       return qs ? `/?${qs}` : "/";
     },
-    [initialFolder],
+    [initialFolder, initialProject, initialEnv],
   );
 
   // Debounce text input -> URL. `view` is read via ref so a stale closure here

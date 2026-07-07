@@ -20,10 +20,10 @@ import {
   setProjectColor,
   deleteProject,
   reorderProjects,
-  moveFolderToProject,
   moveServiceToProject,
+  moveServiceToEnvironment,
 } from "./projects";
-import { createFolder } from "./folders";
+import { createFolder, moveServiceToFolder } from "./folders";
 import {
   listEnvironmentsForProject,
   createEnvironment,
@@ -32,9 +32,11 @@ import {
 } from "./environments";
 
 /**
- * Integration tests for the Project CONTAINER data layer (ADR-0008 Phase 2)
- * against pglite. Proves the folder-like contract: team-scoped slugging, live
- * folder/service counts, additive move-in/move-out, and a delete that re-parents
+ * Integration tests for the Project data layer (ADR-0008, remodeled per
+ * ADR-0009: a project is an ADVANCED FOLDER whose contents live per
+ * Environment) against pglite. Proves: team-scoped slugging, live counts,
+ * environment membership on move-in (default env), moveServiceToEnvironment,
+ * the one-home folder/project exclusivity, and a delete that re-parents
  * contents to the top level rather than cascading.
  */
 
@@ -104,31 +106,142 @@ test("renameProject + setProjectColor mutate in place", async () => {
   });
 });
 
-test("moveFolderToProject / moveServiceToProject update the live counts", async () => {
+test("moveServiceToProject lands in the DEFAULT environment and updates live counts", async () => {
   await asOwner(async () => {
     const p = await createProject("Container");
-    const f = await createFolder("Docs");
     await seedService(db, { id: "prj_svc1", teamId: TEAM_A });
-    await moveFolderToProject(f.id, p.id);
     await moveServiceToProject("prj_svc1", p.id);
     const got = (await listProjects()).find((x) => x.id === p.id)!;
-    assert.equal(got.folderCount, 1);
     assert.equal(got.serviceCount, 1);
-    // move the folder back out → count drops
-    await moveFolderToProject(f.id, null);
-    assert.equal((await listProjects())[0].folderCount, 0);
+    assert.equal(got.environmentCount, 3);
+    const row = (
+      await db
+        .select({
+          projectId: servicesTable.projectId,
+          environmentId: servicesTable.environmentId,
+        })
+        .from(servicesTable)
+        .where(eq(servicesTable.id, "prj_svc1"))
+    )[0];
+    assert.equal(row.projectId, p.id);
+    const prod = (await listEnvironmentsForProject(p.id)).find((e) => e.isDefault)!;
+    assert.equal(row.environmentId, prod.id, "lands in the default environment");
+    // move back out → project AND environment cleared, count drops
+    await moveServiceToProject("prj_svc1", null);
+    const out = (
+      await db
+        .select({
+          projectId: servicesTable.projectId,
+          environmentId: servicesTable.environmentId,
+        })
+        .from(servicesTable)
+        .where(eq(servicesTable.id, "prj_svc1"))
+    )[0];
+    assert.equal(out.projectId, null);
+    assert.equal(out.environmentId, null);
+    assert.equal((await listProjects())[0].serviceCount, 0);
   });
 });
 
-test("deleteProject re-parents its folders and services to the top level (no cascade)", async () => {
+test("moveServiceToEnvironment switches environments; the project follows", async () => {
+  await asOwner(async () => {
+    const p = await createProject("Container");
+    await seedService(db, { id: "prj_svc1", teamId: TEAM_A });
+    const dev = (await listEnvironmentsForProject(p.id)).find(
+      (e) => e.slug === "development",
+    )!;
+    // Straight from the top level into a specific environment.
+    await moveServiceToEnvironment("prj_svc1", dev.id);
+    const row = (
+      await db
+        .select({
+          projectId: servicesTable.projectId,
+          environmentId: servicesTable.environmentId,
+        })
+        .from(servicesTable)
+        .where(eq(servicesTable.id, "prj_svc1"))
+    )[0];
+    assert.equal(row.projectId, p.id, "the project follows the environment");
+    assert.equal(row.environmentId, dev.id);
+  });
+});
+
+test("one home only: filing into a folder leaves the project, and vice versa", async () => {
   await asOwner(async () => {
     const p = await createProject("Container");
     const f = await createFolder("Docs");
     await seedService(db, { id: "prj_svc1", teamId: TEAM_A });
-    await moveFolderToProject(f.id, p.id);
+    await moveServiceToProject("prj_svc1", p.id);
+    // Project → folder: project/environment cleared.
+    await moveServiceToFolder("prj_svc1", f.id);
+    let row = (
+      await db
+        .select({
+          folderId: servicesTable.folderId,
+          projectId: servicesTable.projectId,
+          environmentId: servicesTable.environmentId,
+        })
+        .from(servicesTable)
+        .where(eq(servicesTable.id, "prj_svc1"))
+    )[0];
+    assert.equal(row.folderId, f.id);
+    assert.equal(row.projectId, null);
+    assert.equal(row.environmentId, null);
+    // Folder → project: folder cleared.
+    await moveServiceToProject("prj_svc1", p.id);
+    row = (
+      await db
+        .select({
+          folderId: servicesTable.folderId,
+          projectId: servicesTable.projectId,
+          environmentId: servicesTable.environmentId,
+        })
+        .from(servicesTable)
+        .where(eq(servicesTable.id, "prj_svc1"))
+    )[0];
+    assert.equal(row.folderId, null);
+    assert.equal(row.projectId, p.id);
+    assert.notEqual(row.environmentId, null);
+  });
+});
+
+test("deleteEnvironment re-parents its services to the default environment", async () => {
+  await asOwner(async () => {
+    const p = await createProject("Container");
+    await seedService(db, { id: "prj_svc1", teamId: TEAM_A });
+    const envs = await listEnvironmentsForProject(p.id);
+    const dev = envs.find((e) => e.slug === "development")!;
+    const prod = envs.find((e) => e.isDefault)!;
+    await moveServiceToEnvironment("prj_svc1", dev.id);
+    await deleteEnvironment(dev.id);
+    const row = (
+      await db
+        .select({
+          projectId: servicesTable.projectId,
+          environmentId: servicesTable.environmentId,
+        })
+        .from(servicesTable)
+        .where(eq(servicesTable.id, "prj_svc1"))
+    )[0];
+    assert.equal(row.projectId, p.id, "stays in the project");
+    assert.equal(row.environmentId, prod.id, "falls back to the default environment");
+  });
+});
+
+test("deleteProject re-parents its services (and legacy folders) to the top level (no cascade)", async () => {
+  await asOwner(async () => {
+    const p = await createProject("Container");
+    const f = await createFolder("Docs");
+    await seedService(db, { id: "prj_svc1", teamId: TEAM_A });
+    // A LEGACY folder-in-project row (pre-ADR-0009; the UI can no longer write
+    // this) — deleteProject must still clear it.
+    await db
+      .update(foldersTable)
+      .set({ projectId: p.id })
+      .where(eq(foldersTable.id, f.id));
     await moveServiceToProject("prj_svc1", p.id);
     await deleteProject(p.id);
-    // The container is gone…
+    // The project is gone…
     assert.equal((await listProjects()).length, 0);
     // …but the folder and service survive, back at the top level.
     const folderRow = await db
@@ -136,13 +249,17 @@ test("deleteProject re-parents its folders and services to the top level (no cas
       .from(foldersTable)
       .where(eq(foldersTable.id, f.id));
     const svcRow = await db
-      .select({ projectId: servicesTable.projectId })
+      .select({
+        projectId: servicesTable.projectId,
+        environmentId: servicesTable.environmentId,
+      })
       .from(servicesTable)
       .where(eq(servicesTable.id, "prj_svc1"));
     assert.equal(folderRow.length, 1);
     assert.equal(folderRow[0].projectId, null);
     assert.equal(svcRow.length, 1);
     assert.equal(svcRow[0].projectId, null);
+    assert.equal(svcRow[0].environmentId, null);
   });
 });
 

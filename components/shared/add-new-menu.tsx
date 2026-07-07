@@ -9,6 +9,7 @@ import {
   Sparkles,
   LayoutTemplate,
   FolderPlus,
+  Boxes,
   Database,
   Users,
   UserPlus,
@@ -28,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { CreateFolderDialog } from "@/components/services/create-folder-dialog";
+import { CreateProjectDialog } from "@/components/services/create-project-dialog";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 
@@ -54,6 +56,7 @@ export function AddNewMenu({
 }) {
   const [teamOpen, setTeamOpen] = React.useState(false);
   const [folderOpen, setFolderOpen] = React.useState(false);
+  const [projectOpen, setProjectOpen] = React.useState(false);
   const [memberOpen, setMemberOpen] = React.useState(false);
   const [userOpen, setUserOpen] = React.useState(false);
 
@@ -108,6 +111,18 @@ export function AddNewMenu({
               New folder
             </DropdownMenuItem>
           )}
+          {canCreateFolder && (
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={(e) => {
+                e.preventDefault();
+                setProjectOpen(true);
+              }}
+            >
+              <Boxes className="size-4" />
+              New project
+            </DropdownMenuItem>
+          )}
 
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Team</DropdownMenuLabel>
@@ -156,6 +171,9 @@ export function AddNewMenu({
       <CreateTeamDialog open={teamOpen} onOpenChange={setTeamOpen} />
       {canCreateFolder && (
         <CreateFolderDialog open={folderOpen} onOpenChange={setFolderOpen} />
+      )}
+      {canCreateFolder && (
+        <CreateProjectDialog open={projectOpen} onOpenChange={setProjectOpen} />
       )}
       {canManageMembers && (
         <AddMemberDialog

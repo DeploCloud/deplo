@@ -194,7 +194,8 @@ export const folders = pgTable(
  * owner + per-container `project_grants` + `color` + team-wide ordering
  * (`team_project_order`). It has NO `parent_id` — a Project never nests in a
  * Project. Folders and Services point INTO it via their nullable `project_id`.
- * `slug` is UNIQUE PER TEAM (drives `/projects/<slug>`). id prefix `prc_`.
+ * `slug` is UNIQUE PER TEAM (kept for the legacy `/projects/<slug>` redirect;
+ * the UI opens containers on the Overview via `/?project=<id>`). id prefix `prc_`.
  * The table name `projects` is reclaimed after the 0015 rename freed it (the old
  * deployable-app `projects` is now `services`).
  */
@@ -580,12 +581,20 @@ export const services = pgTable(
     folderId: text("folder_id").references(() => folders.id, {
       onDelete: "set null",
     }),
-    // The Project CONTAINER this service belongs to (directly, or transitively via
-    // its folder), or NULL when the service sits at the team top level (additive —
-    // ADR-0008). `ON DELETE SET NULL`: deleting a container orphans its services
-    // to the top level. Distinct from `folder_id` (a service may be filed in a
-    // folder AND/OR attached to a container).
+    // The Project this service belongs to, or NULL at the team top level
+    // (additive — ADR-0008). `ON DELETE SET NULL`: deleting a project orphans
+    // its services to the top level.
     projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    // The Environment (of `project_id`'s Project) this service LIVES in — the
+    // membership axis of the advanced-folder model (ADR-0009): each environment
+    // of a project holds its OWN services, like a sub-folder. NULL outside a
+    // project. The data layer keeps the pair consistent (environment_id set ⇒
+    // project_id is that environment's project; entering a project defaults to
+    // its default environment). `SET NULL` is only the FK backstop — deleting an
+    // environment re-parents its services to the project default first.
+    environmentId: text("environment_id").references(() => environments.id, {
       onDelete: "set null",
     }),
     serverId: text("server_id")
@@ -629,6 +638,7 @@ export const services = pgTable(
     index("services_team_idx").on(t.teamId),
     index("services_folder_idx").on(t.folderId),
     index("services_project_idx").on(t.projectId),
+    index("services_environment_idx").on(t.environmentId),
   ],
 );
 

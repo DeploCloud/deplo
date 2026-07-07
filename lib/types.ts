@@ -252,14 +252,16 @@ export interface Folder {
  * Folder-like (owner + per-container grants + colour + team ordering) but it also
  * owns a set of {@link Environment}s (added in a later phase). Folders and
  * Services live INSIDE a Project via their `projectId`; a Project never nests in
- * another Project (no `parentId`). Its `slug` is unique within the team and drives
- * the `/projects/<slug>` route. NOT the deployable app — that is a {@link Service}.
+ * another Project (no `parentId`). Projects have no page of their own: they are
+ * browsed on the Overview via the `/?project=<id>` drill-in (the old
+ * `/projects/<slug>` route only survives as a redirect). NOT the deployable
+ * app — that is a {@link Service}.
  */
 export interface Project {
   id: ID;
   teamId: ID;
   name: string;
-  /** Team-unique, URL-safe key driving `/projects/<slug>`. */
+  /** Team-unique, URL-safe key (kept for the legacy `/projects/<slug>` redirect). */
   slug: string;
   /** Optional accent colour (`#rrggbb`), same semantics as {@link Folder.color}. */
   color?: string | null;
@@ -714,11 +716,20 @@ export interface Service {
    */
   folderId?: ID | null;
   /**
-   * The {@link Project} CONTAINER this service belongs to, or null/absent when it
-   * sits at the team top level (ADR-0008, additive). Independent of `folderId` —
-   * a service may be filed in a folder and/or attached to a container.
+   * The {@link Project} this service belongs to, or null/absent when it sits at
+   * the team top level (ADR-0008, additive). Mutually exclusive with `folderId`
+   * since ADR-0009: a service lives in one place — a folder, or an environment
+   * of a project.
    */
   projectId?: ID | null;
+  /**
+   * The {@link Environment} (of `projectId`'s Project) this service LIVES in —
+   * ADR-0009's membership axis: each environment of a project holds its own
+   * services, like a sub-folder picked from the project's environment dropdown.
+   * null/absent outside a project. Kept coherent with `projectId` by the data
+   * layer (entering a project defaults to its default environment).
+   */
+  environmentId?: ID | null;
   serverId: ID;
   framework: FrameworkId;
   /**

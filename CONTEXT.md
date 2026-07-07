@@ -124,13 +124,17 @@ _Avoid_: project (that is now the **container**), app (reserved for an installed
 component (a compose service inside one stack).
 
 **Project**:
-A top-level, team-scoped **container** (ADR-0008) that groups **Folders** and **Services**
-and **owns a set of Environments**. Folder-like — it has an owner, per-container grants, a
-colour, and a team-wide order — but it additionally owns environments, and it **never
-nests** in another Project. Reached at `/projects/<slug>`; id prefix `prc_`. Adoption is
-**additive**: top-level folders and services that belong to no Project keep working.
-_Avoid_: folder (a Project owns environments; a folder does not), workspace, group, the old
-sense of "project" (the deployable app, now a **Service**).
+A top-level, team-scoped **advanced folder** (ADR-0008, remodeled by ADR-0009) whose
+contents are scoped per **Environment**: each environment (picked from a dropdown in the
+Overview drill-in) holds its **own Services** — like sub-folders — and its own shared
+variables. Folder-like (owner, colour, team-wide order) but it **never nests** in another
+Project and **Folders never live inside it**. No page of its own: browsed on the Overview
+via the `/?project=<id>&env=<envId>` drill-in (old `/projects/<slug>` URLs redirect there);
+id prefix `prc_`. Adoption is **additive**: top-level folders and services that belong to
+no Project keep working.
+_Avoid_: container (it is not a passive grouping — the environment axis is the point),
+folder (a Project owns environments; a folder does not), workspace, group, the old sense of
+"project" (the deployable app, now a **Service**).
 
 **Environment**:
 A per-**Project**, first-class **isolated deploy target** (ADR-0008): its own containers,

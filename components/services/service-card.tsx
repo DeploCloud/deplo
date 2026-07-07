@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Loader2,
   FolderInput,
+  Boxes,
 } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { describeServiceSource } from "@/components/services/service-source";
@@ -85,6 +86,7 @@ export function ServiceCard({
   dragActive = false,
   folders,
   canManageFolders = false,
+  environments,
   contextMenuOverride,
 }: {
   project: ServiceSummary;
@@ -109,6 +111,10 @@ export function ServiceCard({
   folders?: { id: string; name: string }[];
   /** Whether the viewer may move this service between folders. */
   canManageFolders?: boolean;
+  /** The surrounding project's environments, for the "Move to environment"
+   *  menu (ADR-0009). Only passed inside a project drill-in view; omitted ⇒
+   *  the menu is hidden. The caller gates it on the `deploy` capability. */
+  environments?: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -189,6 +195,28 @@ export function ServiceCard({
       );
       if (res.ok) {
         toast.success(folderId ? "Moved to folder" : "Moved out of folder");
+        router.refresh();
+      } else toast.error(res.error);
+    });
+  }
+
+  // Move this service to another environment of its project (ADR-0009: each
+  // environment holds its own services), or out of the project entirely.
+  function moveToEnvironment(environmentId: string | null) {
+    startTransition(async () => {
+      const res = environmentId
+        ? await gqlAction(
+            `mutation($serviceId: ID!, $environmentId: ID!) { moveServiceToEnvironment(serviceId: $serviceId, environmentId: $environmentId) }`,
+            { serviceId: project.id, environmentId },
+          )
+        : await gqlAction(
+            `mutation($serviceId: ID!) { moveServiceToProject(serviceId: $serviceId) }`,
+            { serviceId: project.id },
+          );
+      if (res.ok) {
+        toast.success(
+          environmentId ? "Moved to environment" : "Moved out of project",
+        );
         router.refresh();
       } else toast.error(res.error);
     });
@@ -325,6 +353,52 @@ export function ServiceCard({
               </K.Item>
             </SimpleTooltip>
           ))}
+        </MenuSubTooltip>
+      )}
+      {environments && environments.length > 0 && (
+        <MenuSubTooltip
+          Sub={K.Sub}
+          SubTrigger={K.SubTrigger}
+          SubContent={K.SubContent}
+          content="Move this service to another environment of this project"
+          subContentClassName="max-h-72 overflow-y-auto"
+          trigger={
+            <>
+              <Boxes className="size-4" />
+              Move to environment
+            </>
+          }
+        >
+          {environments.map((e) => (
+            <SimpleTooltip
+              key={e.id}
+              content={`Move to ${e.name}`}
+              side="left"
+            >
+              <K.Item
+                onSelect={() => moveToEnvironment(e.id)}
+                disabled={pending || e.id === project.environmentId}
+              >
+                {e.name}
+              </K.Item>
+            </SimpleTooltip>
+          ))}
+          {project.projectId && (
+            <>
+              <K.Separator />
+              <SimpleTooltip
+                content="Move back to the Overview top level, out of this project"
+                side="left"
+              >
+                <K.Item
+                  onSelect={() => moveToEnvironment(null)}
+                  disabled={pending}
+                >
+                  Out of project
+                </K.Item>
+              </SimpleTooltip>
+            </>
+          )}
         </MenuSubTooltip>
       )}
       <K.Separator />

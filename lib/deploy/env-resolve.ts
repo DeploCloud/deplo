@@ -41,18 +41,24 @@ export interface GlobalEnvEntryLike {
 }
 
 /**
- * An ENVIRONMENT-scoped entry (ADR-0008) — a variable shared by every service
- * of the owning Project, in one Environment's context. It carries no `targets`:
- * the environment IS the scope, and its `kind` bridges to the legacy target
- * axis (`production` kind → production deploys, `development` → the dev
- * container, …). A `custom` kind matches no legacy target, so a custom
- * environment's vars stay inert until the per-environment pipeline lands.
+ * An ENVIRONMENT-scoped entry (ADR-0008, membership per ADR-0009). It carries
+ * no `targets`: the environment IS the scope. Two injection modes:
+ *
+ *  - `membership: true` — the entry belongs to the environment the service
+ *    LIVES in (`services.environment_id`), so it applies UNCONDITIONALLY: the
+ *    membership is the scope, whatever legacy target the deploy runs under.
+ *  - otherwise (legacy: a project service with no environment membership) —
+ *    the environment's `kind` bridges to the legacy target axis (`production`
+ *    kind → production deploys, …). A `custom` kind matches no legacy target,
+ *    so a custom environment's vars stay inert for those services.
  */
 export interface EnvironmentEnvEntryLike {
   key: string;
   valueEnc: string;
   /** The owning environment's `kind` (an `EnvironmentKind`). */
   kind: string;
+  /** True when the entry comes from the service's OWN environment (ADR-0009). */
+  membership?: boolean;
 }
 
 /**
@@ -99,7 +105,11 @@ export function resolveEnvEntries(
     if (e.targets.includes(target)) out.push({ key: e.key, valueEnc: e.valueEnc });
   }
   for (const e of environmentEnvs) {
-    if (e.kind === target) out.push({ key: e.key, valueEnc: e.valueEnc });
+    // Membership-scoped entries (the service LIVES in that environment,
+    // ADR-0009) apply to every runtime of the service; legacy project-wide
+    // entries still bridge via kind === target.
+    if (e.membership === true || e.kind === target)
+      out.push({ key: e.key, valueEnc: e.valueEnc });
   }
   for (const e of envVars) {
     if (e.serviceId === serviceId && e.targets.includes(target)) {
