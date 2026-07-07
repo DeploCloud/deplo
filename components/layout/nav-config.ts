@@ -1,5 +1,6 @@
 import {
   LayoutGrid,
+  Boxes,
   Rocket,
   ScrollText,
   Database,
@@ -52,6 +53,12 @@ export const NAV: NavSection[] = [
         icon: LayoutGrid,
         tooltip: "Services & usage overview",
         exact: true,
+      },
+      {
+        label: "Projects",
+        href: "/projects",
+        icon: Boxes,
+        tooltip: "Project containers & their environments",
       },
       {
         label: "Deployments",

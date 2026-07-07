@@ -21,7 +21,7 @@ import {
 import { recordActivity } from "./activity";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
-import type { Project } from "../types";
+import type { Project, ServiceStatus } from "../types";
 
 /**
  * The Project CONTAINER data layer (ADR-0008). A Project is a top-level,
@@ -152,6 +152,37 @@ export async function listProjects(): Promise<ProjectSummary[]> {
       if (ra !== rb) return ra - rb;
       return a.createdAt < b.createdAt ? 1 : -1;
     });
+}
+
+/** A container's directly-contained folders and services (for the detail page). */
+export async function projectContents(projectId: string): Promise<{
+  folders: { id: string; name: string; color: string | null }[];
+  services: { id: string; name: string; slug: string; status: ServiceStatus }[];
+}> {
+  const teamId = await requireActiveTeamId();
+  const folders = (
+    await getDb()
+      .select({ id: foldersTable.id, name: foldersTable.name, color: foldersTable.color })
+      .from(foldersTable)
+      .where(and(eq(foldersTable.teamId, teamId), eq(foldersTable.projectId, projectId)))
+  ).map((f) => ({ id: f.id, name: f.name, color: f.color ?? null }));
+  const services = (
+    await getDb()
+      .select({
+        id: servicesTable.id,
+        name: servicesTable.name,
+        slug: servicesTable.slug,
+        status: servicesTable.status,
+      })
+      .from(servicesTable)
+      .where(and(eq(servicesTable.teamId, teamId), eq(servicesTable.projectId, projectId)))
+  ).map((s) => ({
+    id: s.id,
+    name: s.name,
+    slug: s.slug,
+    status: s.status as ServiceStatus,
+  }));
+  return { folders, services };
 }
 
 /** A single container by its team-scoped slug (active team), or null. */
