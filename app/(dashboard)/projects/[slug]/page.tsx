@@ -3,10 +3,11 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Boxes, Folder } from "lucide-react";
 import { getProjectBySlug, projectContents } from "@/lib/data/projects";
 import { listEnvironmentsForProject } from "@/lib/data/environments";
+import { hasCapability } from "@/lib/membership";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { EnvironmentManager } from "@/components/services/environment-manager";
 import { readableTextColor } from "@/lib/utils";
 
 export async function generateMetadata(props: PageProps<"/projects/[slug]">) {
@@ -26,9 +27,10 @@ export default async function ProjectDetail(
   const project = await getProjectBySlug(slug);
   if (!project) notFound();
 
-  const [{ folders, services }, environments] = await Promise.all([
+  const [{ folders, services }, environments, canManage] = await Promise.all([
     projectContents(project.id),
     listEnvironmentsForProject(project.id),
+    hasCapability("deploy"),
   ]);
   const empty = folders.length === 0 && services.length === 0;
   const tileStyle = project.color
@@ -64,28 +66,18 @@ export default async function ProjectDetail(
         </div>
       </div>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Environments</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {environments.map((e) => (
-            <Card key={e.id} className="flex items-center justify-between gap-3 p-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="truncate font-medium">{e.name}</span>
-                  {e.isDefault && (
-                    <Badge variant="secondary" className="text-[10px]">
-                      Default
-                    </Badge>
-                  )}
-                </div>
-                <p className="truncate text-xs text-muted-foreground">
-                  {e.gitBranch ? `branch: ${e.gitBranch}` : `kind: ${e.kind}`}
-                </p>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </section>
+      <EnvironmentManager
+        projectId={project.id}
+        canManage={canManage}
+        environments={environments.map((e) => ({
+          id: e.id,
+          name: e.name,
+          slug: e.slug,
+          kind: e.kind,
+          gitBranch: e.gitBranch,
+          isDefault: e.isDefault,
+        }))}
+      />
 
       {empty ? (
         <EmptyState
