@@ -40,13 +40,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CopyButton } from "@/components/shared/copy-button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -60,26 +53,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { Domain } from "@/lib/types";
 
 type Row = Domain & { serviceName: string; serviceSlug: string };
-
-/**
- * The menu-primitive set used to render the row's action list once and reuse it
- * for BOTH the ⋯ dropdown (left-click) and the right-click context menu — same
- * items, same handlers, no duplication. Radix dropdown and context menus share
- * an isomorphic API, so the renderer just takes whichever component set applies.
- */
-type MenuKit = {
-  Item: React.ElementType;
-  Separator: React.ElementType;
-};
-
-const DROPDOWN_KIT: MenuKit = {
-  Item: DropdownMenuItem,
-  Separator: DropdownMenuSeparator,
-};
-const CONTEXT_KIT: MenuKit = {
-  Item: ContextMenuItem,
-  Separator: ContextMenuSeparator,
-};
 
 /** Service names declared in a compose file, parsed in the browser (js-yaml is
  * a client-safe dep). [] for a missing/malformed compose ⇒ single-image edit. */
@@ -199,282 +172,268 @@ export function DomainRow({
     });
   }
 
-  // The row's actions, rendered once for whichever menu primitive is passed.
-  // Shared by the ⋯ dropdown (left-click) and the right-click context menu.
-  const menu = (K: MenuKit) => (
-    <>
-      <K.Item asChild>
-        <a
-          href={`${scheme}://${domain.name}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="cursor-pointer"
-        >
-          <ExternalLink className="size-4" />
-          Visit
-        </a>
-      </K.Item>
-      <K.Item
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          openEdit();
-        }}
-      >
-        <Pencil className="size-4" />
-        Edit
-      </K.Item>
-      {domain.status !== "valid" && (
-        <K.Item
-          onClick={() =>
-            call(
-              () =>
-                gqlAction<{ verifyDomain: { id: string } }, undefined>(
-                  `mutation($id: String!) { verifyDomain(id: $id) { id } }`,
-                  { id: domain.id },
-                  () => undefined,
-                ),
-              "Domain verified",
-            )
-          }
-          disabled={pending}
-        >
-          <RefreshCw className="size-4" />
-          Verify
-        </K.Item>
-      )}
-      {!domain.primary && (
-        <K.Item
-          onClick={() =>
-            call(
-              () =>
-                gqlAction<{ setPrimaryDomain: boolean }, undefined>(
-                  `mutation($id: String!) { setPrimaryDomain(id: $id) }`,
-                  { id: domain.id },
-                  () => undefined,
-                ),
-              "Set as primary",
-            )
-          }
-          // A misconfigured domain has no working DNS to this server, so it can't
-          // be the canonical host — disabled here, and the server rejects it too.
-          disabled={pending || domain.status === "misconfigured"}
-        >
-          <Star className="size-4" />
-          Set as primary
-        </K.Item>
-      )}
-      <K.Separator />
-      <K.Item
-        variant="destructive"
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setConfirmOpen(true);
-        }}
-      >
-        <Trash2 className="size-4" />
-        Remove
-      </K.Item>
-    </>
-  );
-
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <TableRow onContextMenu={(e) => e.stopPropagation()}>
-          <TableCell>
-            <div className="flex flex-wrap items-center gap-2">
+    <TableRow>
+      <TableCell>
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={`${scheme}://${domain.name}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="cursor-pointer font-medium hover:underline"
+          >
+            {domain.name}
+          </a>
+          {domain.primary && (
+            <Badge variant="secondary" className="gap-1">
+              <Star className="size-3" />
+              Primary
+            </Badge>
+          )}
+          {domain.port != null && (
+            <Badge variant="outline" className="gap-1 font-mono">
+              <Network className="size-3" />:{domain.port}
+            </Badge>
+          )}
+          {effectiveProvider === "none" ? (
+            <Badge variant="outline" className="gap-1">
+              <ShieldOff className="size-3 text-muted-foreground" />
+              HTTP
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="gap-1">
+              <ShieldCheck className="size-3 text-success" />
+              {effectiveProvider === "cloudflare"
+                ? "Cloudflare"
+                : "Let's Encrypt"}
+            </Badge>
+          )}
+          {middlewares.length > 0 && (
+            <SimpleTooltip content={middlewares.join(", ")}>
+              <Badge variant="outline" className="gap-1">
+                <Layers className="size-3" />
+                {middlewares.length === 1
+                  ? middlewares[0]
+                  : `${middlewares.length} middlewares`}
+              </Badge>
+            </SimpleTooltip>
+          )}
+          {domain.pathPrefix && (
+            <SimpleTooltip
+              content={
+                domain.stripPrefix
+                  ? `path ${domain.pathPrefix} (stripped)`
+                  : `path ${domain.pathPrefix}`
+              }
+            >
+              <Badge variant="outline" className="gap-1 font-mono">
+                <Route className="size-3" />
+                {domain.pathPrefix}
+              </Badge>
+            </SimpleTooltip>
+          )}
+        </div>
+        {domain.redirectTo && (
+          <p className="text-xs text-muted-foreground">
+            → {domain.redirectTo}
+          </p>
+        )}
+        {domain.status === "misconfigured" && (
+          // A misconfigured domain resolves somewhere other than this
+          // service's server. Tell the user exactly where to point DNS: the
+          // A record must resolve to THIS service's server IP, which is
+          // server-specific (a service on another server needs a different
+          // address) — so the concrete IP is shown, never a generic one.
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+            <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+            {serverIp ? (
+              <>
+                <span>
+                  This domain’s DNS doesn’t point here. Add an{" "}
+                  <span className="font-medium text-foreground">
+                    A record
+                  </span>{" "}
+                  for{" "}
+                  <span className="font-mono text-foreground">
+                    {domain.name}
+                  </span>{" "}
+                  →
+                </span>
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
+                  {serverIp}
+                </code>
+                <CopyButton value={serverIp} className="size-6" />
+                <span>
+                  — the IP of the server this service runs on (unique to this
+                  server), then Verify.
+                </span>
+              </>
+            ) : (
+              <span>
+                This domain’s DNS doesn’t point here. Point its{" "}
+                <span className="font-medium text-foreground">A record</span>{" "}
+                at the IP of the server this service is deployed on (unique to
+                that server), then Verify.
+              </span>
+            )}
+          </div>
+        )}
+      </TableCell>
+      <TableCell>
+        <Link
+          href={`/services/${domain.serviceSlug}`}
+          className="cursor-pointer text-sm text-muted-foreground hover:text-foreground"
+        >
+          {domain.serviceName}
+        </Link>
+      </TableCell>
+      <TableCell>
+        <StatusBadge status={domain.status} />
+      </TableCell>
+      <TableCell className="text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" aria-label="Domain menu">
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem asChild>
               <a
                 href={`${scheme}://${domain.name}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="cursor-pointer font-medium hover:underline"
+                className="cursor-pointer"
               >
-                {domain.name}
+                <ExternalLink className="size-4" />
+                Visit
               </a>
-              {domain.primary && (
-                <Badge variant="secondary" className="gap-1">
-                  <Star className="size-3" />
-                  Primary
-                </Badge>
-              )}
-              {domain.port != null && (
-                <Badge variant="outline" className="gap-1 font-mono">
-                  <Network className="size-3" />:{domain.port}
-                </Badge>
-              )}
-              {effectiveProvider === "none" ? (
-                <Badge variant="outline" className="gap-1">
-                  <ShieldOff className="size-3 text-muted-foreground" />
-                  HTTP
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="gap-1">
-                  <ShieldCheck className="size-3 text-success" />
-                  {effectiveProvider === "cloudflare"
-                    ? "Cloudflare"
-                    : "Let's Encrypt"}
-                </Badge>
-              )}
-              {middlewares.length > 0 && (
-                <SimpleTooltip content={middlewares.join(", ")}>
-                  <Badge variant="outline" className="gap-1">
-                    <Layers className="size-3" />
-                    {middlewares.length === 1
-                      ? middlewares[0]
-                      : `${middlewares.length} middlewares`}
-                  </Badge>
-                </SimpleTooltip>
-              )}
-              {domain.pathPrefix && (
-                <SimpleTooltip
-                  content={
-                    domain.stripPrefix
-                      ? `path ${domain.pathPrefix} (stripped)`
-                      : `path ${domain.pathPrefix}`
-                  }
-                >
-                  <Badge variant="outline" className="gap-1 font-mono">
-                    <Route className="size-3" />
-                    {domain.pathPrefix}
-                  </Badge>
-                </SimpleTooltip>
-              )}
-            </div>
-            {domain.redirectTo && (
-              <p className="text-xs text-muted-foreground">
-                → {domain.redirectTo}
-              </p>
-            )}
-            {domain.status === "misconfigured" && (
-              // A misconfigured domain resolves somewhere other than this
-              // service's server. Tell the user exactly where to point DNS: the
-              // A record must resolve to THIS service's server IP, which is
-              // server-specific (a service on another server needs a different
-              // address) — so the concrete IP is shown, never a generic one.
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-                <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
-                {serverIp ? (
-                  <>
-                    <span>
-                      This domain’s DNS doesn’t point here. Add an{" "}
-                      <span className="font-medium text-foreground">
-                        A record
-                      </span>{" "}
-                      for{" "}
-                      <span className="font-mono text-foreground">
-                        {domain.name}
-                      </span>{" "}
-                      →
-                    </span>
-                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
-                      {serverIp}
-                    </code>
-                    <CopyButton value={serverIp} className="size-6" />
-                    <span>
-                      — the IP of the server this service runs on (unique to this
-                      server), then Verify.
-                    </span>
-                  </>
-                ) : (
-                  <span>
-                    This domain’s DNS doesn’t point here. Point its{" "}
-                    <span className="font-medium text-foreground">A record</span>{" "}
-                    at the IP of the server this service is deployed on (unique to
-                    that server), then Verify.
-                  </span>
-                )}
-              </div>
-            )}
-          </TableCell>
-          <TableCell>
-            <Link
-              href={`/services/${domain.serviceSlug}`}
-              className="cursor-pointer text-sm text-muted-foreground hover:text-foreground"
-            >
-              {domain.serviceName}
-            </Link>
-          </TableCell>
-          <TableCell>
-            <StatusBadge status={domain.status} />
-          </TableCell>
-          <TableCell className="text-right">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label="Domain menu">
-                  <MoreHorizontal className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {menu(DROPDOWN_KIT)}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <ConfirmAction
-              open={confirmOpen}
-              onOpenChange={setConfirmOpen}
-              title={`Remove ${domain.name}?`}
-              description="The domain will stop routing to this service. You can re-add it later."
-              confirmLabel="Remove domain"
-              successMessage="Domain removed"
-              onConfirm={async () => {
-                const res = await gqlAction<{ removeDomain: boolean }>(
-                  `mutation($id: String!) { removeDomain(id: $id) }`,
-                  { id: domain.id },
-                );
-                // No revalidatePath on the GraphQL API — refresh so the removed row
-                // disappears from the RSC-rendered list.
-                if (res.ok) router.refresh();
-                return res;
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                openEdit();
               }}
-            />
-            <Dialog open={editOpen} onOpenChange={setEditOpen}>
-              <DialogContent className="max-h-[85vh] overflow-y-auto text-left">
-                <DialogHeader>
-                  <DialogTitle>Edit domain</DialogTitle>
-                  <DialogDescription>
-                    Routing for{" "}
-                    <span className="font-medium">{domain.serviceName}</span>.
-                    Changes apply instantly when the service is running,
-                    otherwise on the next deploy.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor={`edit-name-${domain.id}`}>Domain</Label>
-                    <Input
-                      id={`edit-name-${domain.id}`}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="app.example.com"
-                      className="font-mono text-sm"
-                    />
-                  </div>
-                  <DomainConfigFields
-                    state={config}
-                    onChange={setConfig}
-                    services={services}
-                    idPrefix={`edit-${domain.id}`}
-                  />
-                </div>
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => setEditOpen(false)}
-                    disabled={pending}
-                  >
-                    Cancel
-                  </Button>
-                  <Button onClick={saveEdit} disabled={pending || !name.trim()}>
-                    {pending ? "Saving…" : "Save changes"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </TableCell>
-        </TableRow>
-      </ContextMenuTrigger>
-      <ContextMenuContent className="w-48">
-        {menu(CONTEXT_KIT)}
-      </ContextMenuContent>
-    </ContextMenu>
+            >
+              <Pencil className="size-4" />
+              Edit
+            </DropdownMenuItem>
+            {domain.status !== "valid" && (
+              <DropdownMenuItem
+                onClick={() =>
+                  call(
+                    () =>
+                      gqlAction<{ verifyDomain: { id: string } }, undefined>(
+                        `mutation($id: String!) { verifyDomain(id: $id) { id } }`,
+                        { id: domain.id },
+                        () => undefined,
+                      ),
+                    "Domain verified",
+                  )
+                }
+                disabled={pending}
+              >
+                <RefreshCw className="size-4" />
+                Verify
+              </DropdownMenuItem>
+            )}
+            {!domain.primary && (
+              <DropdownMenuItem
+                onClick={() =>
+                  call(
+                    () =>
+                      gqlAction<{ setPrimaryDomain: boolean }, undefined>(
+                        `mutation($id: String!) { setPrimaryDomain(id: $id) }`,
+                        { id: domain.id },
+                        () => undefined,
+                      ),
+                    "Set as primary",
+                  )
+                }
+                // A misconfigured domain has no working DNS to this server, so it
+                // can't be the canonical host — disabled here, and the server
+                // rejects it too.
+                disabled={pending || domain.status === "misconfigured"}
+              >
+                <Star className="size-4" />
+                Set as primary
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onSelect={(e) => {
+                e.preventDefault();
+                setConfirmOpen(true);
+              }}
+            >
+              <Trash2 className="size-4" />
+              Remove
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <ConfirmAction
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={`Remove ${domain.name}?`}
+          description="The domain will stop routing to this service. You can re-add it later."
+          confirmLabel="Remove domain"
+          successMessage="Domain removed"
+          onConfirm={async () => {
+            const res = await gqlAction<{ removeDomain: boolean }>(
+              `mutation($id: String!) { removeDomain(id: $id) }`,
+              { id: domain.id },
+            );
+            // No revalidatePath on the GraphQL API — refresh so the removed row
+            // disappears from the RSC-rendered list.
+            if (res.ok) router.refresh();
+            return res;
+          }}
+        />
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto text-left">
+            <DialogHeader>
+              <DialogTitle>Edit domain</DialogTitle>
+              <DialogDescription>
+                Routing for{" "}
+                <span className="font-medium">{domain.serviceName}</span>.
+                Changes apply instantly when the service is running,
+                otherwise on the next deploy.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor={`edit-name-${domain.id}`}>Domain</Label>
+                <Input
+                  id={`edit-name-${domain.id}`}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="app.example.com"
+                  className="font-mono text-sm"
+                />
+              </div>
+              <DomainConfigFields
+                state={config}
+                onChange={setConfig}
+                services={services}
+                idPrefix={`edit-${domain.id}`}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setEditOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button onClick={saveEdit} disabled={pending || !name.trim()}>
+                {pending ? "Saving…" : "Save changes"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </TableCell>
+    </TableRow>
   );
 }

@@ -47,13 +47,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
@@ -61,22 +54,6 @@ import { formatBytes, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import { DB_ICONS, ENGINE_CREDS } from "./db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases";
-
-/** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
- *  right-click context menu (see the note in service-card.tsx). */
-type MenuKit = {
-  Item: React.ElementType;
-  Separator: React.ElementType;
-};
-
-const DROPDOWN_KIT: MenuKit = {
-  Item: DropdownMenuItem,
-  Separator: DropdownMenuSeparator,
-};
-const CONTEXT_KIT: MenuKit = {
-  Item: ContextMenuItem,
-  Separator: ContextMenuSeparator,
-};
 
 export function DatabaseCard({
   db,
@@ -135,39 +112,8 @@ export function DatabaseCard({
     });
   }
 
-  // The card's actions, rendered once for whichever menu primitive is passed —
-  // the ⋯ dropdown (left-click) and the right-click context menu share them.
-  const menu = (K: MenuKit) => (
-    <>
-      <K.Item onSelect={toggleRunning} disabled={pending}>
-        {running ? <Square className="size-4" /> : <Play className="size-4" />}
-        {running ? "Stop" : "Start"}
-      </K.Item>
-      <K.Item
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setEditOpen(true);
-        }}
-      >
-        <Pencil className="size-4" />
-        Edit…
-      </K.Item>
-      <K.Separator />
-      <K.Item
-        variant="destructive"
-        onSelect={(e: Event) => {
-          e.preventDefault();
-          setConfirmOpen(true);
-        }}
-      >
-        <Trash2 className="size-4" />
-        Delete
-      </K.Item>
-    </>
-  );
-
-  const cardInner = (
-    <Card onContextMenu={(e) => e.stopPropagation()}>
+  return (
+    <Card>
       <CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -190,7 +136,30 @@ export function DatabaseCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                {menu(DROPDOWN_KIT)}
+                <DropdownMenuItem onSelect={toggleRunning} disabled={pending}>
+                  {running ? <Square className="size-4" /> : <Play className="size-4" />}
+                  {running ? "Stop" : "Start"}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setEditOpen(true);
+                  }}
+                >
+                  <Pencil className="size-4" />
+                  Edit…
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setConfirmOpen(true);
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                  Delete
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -255,13 +224,6 @@ export function DatabaseCard({
         onOpenChange={setEditOpen}
       />
     </Card>
-  );
-
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{cardInner}</ContextMenuTrigger>
-      <ContextMenuContent className="w-44">{menu(CONTEXT_KIT)}</ContextMenuContent>
-    </ContextMenu>
   );
 }
 
@@ -374,7 +336,7 @@ function EditDatabaseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent onContextMenu={(e) => e.stopPropagation()}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit {db.name}</DialogTitle>
           <DialogDescription>

@@ -5,16 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Boxes,
+  ChevronDown,
   ChevronLeft,
   GripVertical,
-  Plus,
-  Rocket,
   FolderPlus,
-  Database,
   FolderInput,
   MousePointerSquareDashed,
-  RotateCw,
   Trash2,
   X,
 } from "lucide-react";
@@ -51,22 +47,16 @@ import {
   type ProjectCardData,
 } from "./project-container-card";
 import { CreateFolderDialog } from "./create-folder-dialog";
-import { CreateProjectDialog } from "./create-project-dialog";
 import { useOverviewSelection } from "./use-overview-selection";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuShortcut,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { ServiceSummary } from "@/lib/data/services";
@@ -111,76 +101,6 @@ function allServicesHref(view: "grid" | "list"): string {
   return view === "list" ? "/?view=list" : "/";
 }
 
-/** The "New ▸" submenu shared by both grids' empty-space context menu. Service
- *  and Database are links; Folder / Project open their create dialogs via the
- *  callbacks. Folder and project creation share the same `deploy` gate. */
-function NewMenuItems({
-  canCreateFolder,
-  onNewFolder,
-  onNewProject,
-}: {
-  canCreateFolder: boolean;
-  onNewFolder: () => void;
-  onNewProject: () => void;
-}) {
-  return (
-    <MenuSubTooltip
-      Sub={ContextMenuSub}
-      SubTrigger={ContextMenuSubTrigger}
-      SubContent={ContextMenuSubContent}
-      content="Create something new in this team"
-      trigger={
-        <>
-          <Plus className="size-4" />
-          New
-        </>
-      }
-    >
-      <SimpleTooltip
-        content="Import a Git repository or start from a template"
-        side="left"
-      >
-        <ContextMenuItem asChild>
-          <Link href="/new" className="cursor-pointer">
-            <Rocket className="size-4" />
-            Service
-          </Link>
-        </ContextMenuItem>
-      </SimpleTooltip>
-      {canCreateFolder && (
-        <SimpleTooltip
-          content="Create an empty folder to group services"
-          side="left"
-        >
-          <ContextMenuItem onSelect={onNewFolder}>
-            <FolderPlus className="size-4" />
-            Folder
-          </ContextMenuItem>
-        </SimpleTooltip>
-      )}
-      {canCreateFolder && (
-        <SimpleTooltip
-          content="Create a project with its own environments"
-          side="left"
-        >
-          <ContextMenuItem onSelect={onNewProject}>
-            <Boxes className="size-4" />
-            Project
-          </ContextMenuItem>
-        </SimpleTooltip>
-      )}
-      <SimpleTooltip content="Provision a managed database" side="left">
-        <ContextMenuItem asChild>
-          <Link href="/storage?new=database" className="cursor-pointer">
-            <Database className="size-4" />
-            Database
-          </Link>
-        </ContextMenuItem>
-      </SimpleTooltip>
-    </MenuSubTooltip>
-  );
-}
-
 /** Selection-aware bulk actions, composed by the grid that owns the selection. */
 interface SelectionBulk {
   count: number;
@@ -193,14 +113,14 @@ interface SelectionBulk {
 }
 
 /**
- * The selection-aware BULK actions, rendered with the ContextMenu primitives so
- * they can appear BOTH on the empty-canvas menu AND — replacing a card's own
- * single-item menu — when right-clicking a selected card. "New folder with
- * selection" is a CREATE action (gated on `canCreateFolder`); the team-wide
- * move/delete are gated on `canManageAllFolders`. Select all + Clear are always
- * shown. This is the one place the bulk actions are defined.
+ * The dynamic BULK-actions bar. It floats at the bottom of the viewport whenever
+ * one or more cards are selected (marquee drag / ⌘-click), replacing what used to
+ * be a right-click menu. "New folder with selection" is a CREATE action (gated on
+ * `canCreateFolder`); the team-wide Move / Delete are gated on `canManageAllFolders`.
+ * Select all + Clear are always shown. Keyboard shortcuts (⌘A / Esc / ⌫) stay wired
+ * on the grid regardless of the bar. This is the one place the bulk actions live.
  */
-function BulkActionsMenuItems({
+function SelectionActionBar({
   selection,
   canCreateFolder,
   canManageAllFolders,
@@ -209,158 +129,79 @@ function BulkActionsMenuItems({
   canCreateFolder: boolean;
   canManageAllFolders: boolean;
 }) {
+  if (selection.count === 0) return null;
   return (
-    <>
-      <ContextMenuLabel>{selection.count} selected</ContextMenuLabel>
-      {canCreateFolder && (
-        <SimpleTooltip
-          content="Create a folder and move the selected services into it"
-          side="left"
-        >
-          <ContextMenuItem onSelect={selection.onNewFolderWithSelection}>
+    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4">
+      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pl-4 pr-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
+        <span className="whitespace-nowrap text-sm font-medium">
+          {selection.count} selected
+        </span>
+        <span className="mx-1.5 h-5 w-px bg-border" />
+        {canCreateFolder && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={selection.onNewFolderWithSelection}
+          >
             <FolderPlus className="size-4" />
-            New folder with selection
-          </ContextMenuItem>
-        </SimpleTooltip>
-      )}
-      {canManageAllFolders && (
-        <>
-          <MenuSubTooltip
-            Sub={ContextMenuSub}
-            SubTrigger={ContextMenuSubTrigger}
-            SubContent={ContextMenuSubContent}
-            content="Move the selected services into a folder"
-            subContentClassName="max-h-72 overflow-y-auto"
-            trigger={
-              <>
-                <FolderInput className="size-4" />
-                Move selection to
-              </>
-            }
-          >
-            <SimpleTooltip
-              content="Move to the top level (ungrouped)"
-              side="left"
-            >
-              <ContextMenuItem onSelect={() => selection.onMoveTo(null)}>
-                Ungrouped
-              </ContextMenuItem>
-            </SimpleTooltip>
-            {selection.moveTargets.length > 0 && <ContextMenuSeparator />}
-            {selection.moveTargets.map((f) => (
-              <SimpleTooltip
-                key={f.id}
-                content={`Move into ${f.name}`}
-                side="left"
+            New folder
+          </Button>
+        )}
+        {canManageAllFolders && (
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <FolderInput className="size-4" />
+                  Move to
+                  <ChevronDown className="size-3.5 opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="top"
+                align="center"
+                className="max-h-72 w-52 overflow-y-auto"
               >
-                <ContextMenuItem onSelect={() => selection.onMoveTo(f.id)}>
-                  {f.name}
-                </ContextMenuItem>
-              </SimpleTooltip>
-            ))}
-          </MenuSubTooltip>
-          <SimpleTooltip
-            content="Delete the selected services and folders"
-            side="left"
-          >
-            <ContextMenuItem
-              variant="destructive"
-              onSelect={selection.onDelete}
+                <DropdownMenuItem onSelect={() => selection.onMoveTo(null)}>
+                  Ungrouped
+                </DropdownMenuItem>
+                {selection.moveTargets.length > 0 && <DropdownMenuSeparator />}
+                {selection.moveTargets.map((f) => (
+                  <DropdownMenuItem
+                    key={f.id}
+                    onSelect={() => selection.onMoveTo(f.id)}
+                  >
+                    {f.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={selection.onDelete}
             >
               <Trash2 className="size-4" />
-              Delete selection
-              <ContextMenuShortcut>⌫</ContextMenuShortcut>
-            </ContextMenuItem>
-          </SimpleTooltip>
-        </>
-      )}
-      <ContextMenuSeparator />
-      <SimpleTooltip
-        content="Select every service and folder on this page"
-        side="left"
-      >
-        <ContextMenuItem onSelect={selection.onSelectAll}>
-          <MousePointerSquareDashed className="size-4" />
-          Select all
-          <ContextMenuShortcut>⌘A</ContextMenuShortcut>
-        </ContextMenuItem>
-      </SimpleTooltip>
-      <SimpleTooltip content="Clear the current selection" side="left">
-        <ContextMenuItem onSelect={selection.onClear}>
-          <X className="size-4" />
-          Clear selection
-          <ContextMenuShortcut>Esc</ContextMenuShortcut>
-        </ContextMenuItem>
-      </SimpleTooltip>
-    </>
-  );
-}
-
-/**
- * Right-click menu for the EMPTY canvas: "New ▸", Select all, Refresh, and —
- * when a selection exists — the selection-aware bulk actions. Its single child
- * becomes the right-click trigger (the canvas). Per-card right-clicks are
- * handled by each card's own context menu (which stops propagation), so exactly
- * one menu ever opens.
- */
-function OverviewContextMenu({
-  canCreateFolder,
-  canManageAllFolders,
-  onNewFolder,
-  onNewProject,
-  onRefresh,
-  selection,
-  children,
-}: {
-  canCreateFolder: boolean;
-  canManageAllFolders: boolean;
-  onNewFolder: () => void;
-  onNewProject: () => void;
-  onRefresh: () => void;
-  selection?: SelectionBulk;
-  children: React.ReactNode;
-}) {
-  const hasSelection = (selection?.count ?? 0) > 0;
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent className="w-60">
-        <NewMenuItems
-          canCreateFolder={canCreateFolder}
-          onNewFolder={onNewFolder}
-          onNewProject={onNewProject}
-        />
-        {selection && !hasSelection && (
-          <SimpleTooltip
-            content="Select every service and folder on this page"
-            side="left"
-          >
-            <ContextMenuItem onSelect={selection.onSelectAll}>
-              <MousePointerSquareDashed className="size-4" />
-              Select all
-              <ContextMenuShortcut>⌘A</ContextMenuShortcut>
-            </ContextMenuItem>
-          </SimpleTooltip>
-        )}
-        {selection && hasSelection && (
-          <>
-            <ContextMenuSeparator />
-            <BulkActionsMenuItems
-              selection={selection}
-              canCreateFolder={canCreateFolder}
-              canManageAllFolders={canManageAllFolders}
-            />
+              Delete
+            </Button>
           </>
         )}
-        <ContextMenuSeparator />
-        <SimpleTooltip content="Reload the latest data" side="left">
-          <ContextMenuItem onSelect={onRefresh}>
-            <RotateCw className="size-4" />
-            Refresh
-          </ContextMenuItem>
-        </SimpleTooltip>
-      </ContextMenuContent>
-    </ContextMenu>
+        <span className="mx-1.5 h-5 w-px bg-border" />
+        <Button variant="ghost" size="sm" onClick={selection.onSelectAll}>
+          <MousePointerSquareDashed className="size-4" />
+          Select all
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Clear selection"
+          onClick={selection.onClear}
+        >
+          <X className="size-4" />
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -441,85 +282,58 @@ function StaticGrid({
   openProject,
   folderPath,
   view,
-  canCreateFolder,
   canManageAllFolders,
   canManageProjects,
   environments,
 }: ServicesGridProps) {
-  const router = useRouter();
-  const [createFolderOpen, setCreateFolderOpen] = React.useState(false);
-  const [createProjectOpen, setCreateProjectOpen] = React.useState(false);
   return (
-    <>
-      <OverviewContextMenu
-        canCreateFolder={canCreateFolder}
-        canManageAllFolders={canManageAllFolders}
-        onNewFolder={() => setCreateFolderOpen(true)}
-        onNewProject={() => setCreateProjectOpen(true)}
-        onRefresh={() => router.refresh()}
-      >
-        <div className="relative min-h-[40vh] space-y-6">
-          {/* px-1 py-1 mirrors the DroppableBreadcrumb padding so the trail sits
-              in the same spot whether or not the grid is drag-reorderable. */}
-          {(openFolder || openProject) && (
-            <div className="px-1 py-1">
-              <FolderTrail path={folderPath} view={view} />
-            </div>
-          )}
-          {/* Projects and folders share one grid — projects first, then folders,
-              on the same level (ADR-0009). */}
-          {(projects.length > 0 || folders.length > 0) && (
-            <div className={gridClass(view)}>
-              {projects.map((p) => (
-                <ProjectContainerCard
-                  key={p.id}
-                  project={p}
-                  view={view}
-                  canManage={canManageProjects}
-                />
-              ))}
-              {folders.map((f) => (
-                <FolderCard
-                  key={f.id}
-                  folder={f}
-                  view={view}
-                  isAdminOverride={canManageAllFolders}
-                  folders={allFolders}
-                />
-              ))}
-            </div>
-          )}
-          {/* Ungrouped services always get their own separate grid, same size. */}
-          {services.length > 0 && (
-            <div className={gridClass(view)}>
-              {services.map((p) => (
-                <ServiceCard
-                  key={p.id}
-                  project={p}
-                  view={view}
-                  folders={allFolders}
-                  canManageFolders={canManageAllFolders}
-                  environments={canManageProjects ? environments : undefined}
-                />
-              ))}
-            </div>
-          )}
+    <div className="relative min-h-[40vh] space-y-6">
+      {/* px-1 py-1 mirrors the DroppableBreadcrumb padding so the trail sits
+          in the same spot whether or not the grid is drag-reorderable. */}
+      {(openFolder || openProject) && (
+        <div className="px-1 py-1">
+          <FolderTrail path={folderPath} view={view} />
         </div>
-      </OverviewContextMenu>
-      {canCreateFolder && (
-        <CreateFolderDialog
-          open={createFolderOpen}
-          onOpenChange={setCreateFolderOpen}
-          parentId={openFolder?.id ?? null}
-        />
       )}
-      {canCreateFolder && (
-        <CreateProjectDialog
-          open={createProjectOpen}
-          onOpenChange={setCreateProjectOpen}
-        />
+      {/* Projects and folders share one grid — projects first, then folders,
+          on the same level (ADR-0009). */}
+      {(projects.length > 0 || folders.length > 0) && (
+        <div className={gridClass(view)}>
+          {projects.map((p) => (
+            <ProjectContainerCard
+              key={p.id}
+              project={p}
+              view={view}
+              canManage={canManageProjects}
+            />
+          ))}
+          {folders.map((f) => (
+            <FolderCard
+              key={f.id}
+              folder={f}
+              view={view}
+              isAdminOverride={canManageAllFolders}
+              folders={allFolders}
+            />
+          ))}
+        </div>
       )}
-    </>
+      {/* Ungrouped services always get their own separate grid, same size. */}
+      {services.length > 0 && (
+        <div className={gridClass(view)}>
+          {services.map((p) => (
+            <ServiceCard
+              key={p.id}
+              project={p}
+              view={view}
+              folders={allFolders}
+              canManageFolders={canManageAllFolders}
+              environments={canManageProjects ? environments : undefined}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -738,7 +552,6 @@ function SortableGrid({
   const selectionCount = effectiveSelected.length;
 
   const [createFolderOpen, setCreateFolderOpen] = React.useState(false);
-  const [createProjectOpen, setCreateProjectOpen] = React.useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
   // When true, the create-folder dialog moves the current selection into the
   // freshly-created folder ("New folder with selection").
@@ -1094,8 +907,8 @@ function SortableGrid({
   const serviceStrategy =
     view === "list" ? verticalListSortingStrategy : rectSortingStrategy;
 
-  // The selection-aware bulk actions, defined once and reused by the empty-canvas
-  // menu AND (via `bulkMenuNode`) the right-click menu of every selected card.
+  // The selection-aware bulk actions, fed to the floating SelectionActionBar
+  // that appears whenever one or more cards are selected.
   const bulkSelection: SelectionBulk = {
     count: selectionCount,
     onSelectAll: selectAll,
@@ -1105,14 +918,6 @@ function SortableGrid({
     moveTargets: allFolders,
     onMoveTo: bulkMoveTo,
   };
-  // Shown in place of a card's own menu while it is part of a multi-selection.
-  const bulkMenuNode = (
-    <BulkActionsMenuItems
-      selection={bulkSelection}
-      canCreateFolder={canCreateFolder}
-      canManageAllFolders={canManageAllFolders}
-    />
-  );
   // The selected services in the team-wide `order`, so a group drag keeps their
   // relative order. A multi-selection drag (≥2 selected services, the dragged
   // one among them) reorders / moves the whole group together.
@@ -1124,12 +929,6 @@ function SortableGrid({
     !folderIdSet.has(activeId) &&
     selected.has(activeId) &&
     selectedServiceOrder.length >= 2;
-  // Whether right-clicking a given card should show the BULK menu instead of its
-  // own: only for a real multi-selection of which the card is a member. Gated on
-  // the super-user flag since the bulk menu's headline actions are team-wide.
-  const showBulkMenuFor = (id: string) =>
-    canManageAllFolders && selectionCount >= 2 && selected.has(id);
-
   return (
     <DndContext
       sensors={sensors}
@@ -1142,14 +941,7 @@ function SortableGrid({
         setOverId(null);
       }}
     >
-      <OverviewContextMenu
-        canCreateFolder={canCreateFolder}
-        canManageAllFolders={canManageAllFolders}
-        onNewFolder={() => openNewFolder(false)}
-        onNewProject={() => setCreateProjectOpen(true)}
-        onRefresh={() => router.refresh()}
-        selection={bulkSelection}
-      >
+      <>
         {/* The canvas: a relative, tall surface so there's empty space to start
             a marquee, and the coordinate space the marquee hit-tests against. */}
         <div
@@ -1226,9 +1018,6 @@ function SortableGrid({
                           dragHandle={handle}
                           dragActive={dragActive}
                           dropActive={isOver && activeIsService}
-                          contextMenuOverride={
-                            showBulkMenuFor(f.id) ? bulkMenuNode : undefined
-                          }
                         />
                       )}
                     </SortableItem>
@@ -1267,9 +1056,6 @@ function SortableGrid({
                       environments={
                         canManageProjects ? environments : undefined
                       }
-                      contextMenuOverride={
-                        showBulkMenuFor(p.id) ? bulkMenuNode : undefined
-                      }
                     />
                   )}
                 </SortableItem>
@@ -1277,7 +1063,12 @@ function SortableGrid({
             </div>
           </SortableContext>
         </div>
-      </OverviewContextMenu>
+        <SelectionActionBar
+          selection={bulkSelection}
+          canCreateFolder={canCreateFolder}
+          canManageAllFolders={canManageAllFolders}
+        />
+      </>
 
       {/* The lifted card that follows the cursor (macOS/Notion feel). Rendered in
           a portal above everything, so it is never clipped by the grid's
@@ -1338,10 +1129,6 @@ function SortableGrid({
             ? `Create a folder and move the ${selectedServiceIds().length} selected project(s) into it.`
             : undefined
         }
-      />
-      <CreateProjectDialog
-        open={createProjectOpen}
-        onOpenChange={setCreateProjectOpen}
       />
       <ConfirmAction
         open={bulkDeleteOpen}

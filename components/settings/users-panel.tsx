@@ -11,6 +11,7 @@ import {
   Ban,
   UserCheck,
   UserCog,
+  MoreHorizontal,
   ChevronRight,
 } from "lucide-react";
 import {
@@ -21,12 +22,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -108,7 +109,7 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
-  // Quick context-menu actions flip ONE global flag while preserving the rest
+  // Quick ⋯-menu actions flip ONE global flag while preserving the rest
   // (updateUserAdmin replaces the whole set). The last-admin and can't-touch-self
   // guards are enforced server-side and surfaced verbatim as a toast.
   function flip(patch: { isInstanceAdmin?: boolean; suspended?: boolean }) {
@@ -151,10 +152,7 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
   const card = (
     <button
       onClick={() => setOpen(true)}
-      className={cn(
-        "flex w-full items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent",
-        user.suspended && "opacity-60",
-      )}
+      className="flex min-w-0 flex-1 items-center gap-3 text-left"
     >
       <Avatar>
         <AvatarFallback
@@ -192,57 +190,77 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
 
   return (
     <>
-      {/* Right-click the card for quick actions; left-click still opens the full
-          editor. Mirrors the members row + project/server card context menus. */}
-      <ContextMenu>
-        <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
-        <ContextMenuContent className="w-52">
-          <SimpleTooltip
-            content="View details and edit this user's global permissions"
-            side="left"
-          >
-            <ContextMenuItem
-              onSelect={(e: Event) => {
-                e.preventDefault();
-                setOpen(true);
-              }}
+      {/* Left-click the card to open the full editor; the ⋯ menu offers the
+          quick admin/suspend actions. */}
+      <div
+        className={cn(
+          "flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20 hover:bg-accent",
+          user.suspended && "opacity-60",
+        )}
+      >
+        {card}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="-mr-1 shrink-0"
+              aria-label={`@${user.username} menu`}
             >
-              <UserCog className="size-4" />
-              Manage user
-            </ContextMenuItem>
-          </SimpleTooltip>
-          <ContextMenuSeparator />
-          <SimpleTooltip content="Grant or revoke instance-admin" side="left">
-            <ContextMenuItem
-              disabled={isSelf || pending}
-              onSelect={() => flip({ isInstanceAdmin: !user.isInstanceAdmin })}
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <SimpleTooltip
+              content="View details and edit this user's global permissions"
+              side="left"
             >
-              {user.isInstanceAdmin ? (
-                <ShieldOff className="size-4" />
-              ) : (
-                <ShieldCheck className="size-4" />
-              )}
-              {user.isInstanceAdmin
-                ? "Remove instance admin"
-                : "Make instance admin"}
-            </ContextMenuItem>
-          </SimpleTooltip>
-          <SimpleTooltip content="Suspend or reactivate this account" side="left">
-            <ContextMenuItem
-              variant={user.suspended ? undefined : "destructive"}
-              disabled={isSelf || pending}
-              onSelect={() => flip({ suspended: !user.suspended })}
+              <DropdownMenuItem
+                onSelect={(e: Event) => {
+                  e.preventDefault();
+                  setOpen(true);
+                }}
+              >
+                <UserCog className="size-4" />
+                Manage user
+              </DropdownMenuItem>
+            </SimpleTooltip>
+            <DropdownMenuSeparator />
+            <SimpleTooltip content="Grant or revoke instance-admin" side="left">
+              <DropdownMenuItem
+                disabled={isSelf || pending}
+                onSelect={() => flip({ isInstanceAdmin: !user.isInstanceAdmin })}
+              >
+                {user.isInstanceAdmin ? (
+                  <ShieldOff className="size-4" />
+                ) : (
+                  <ShieldCheck className="size-4" />
+                )}
+                {user.isInstanceAdmin
+                  ? "Remove instance admin"
+                  : "Make instance admin"}
+              </DropdownMenuItem>
+            </SimpleTooltip>
+            <SimpleTooltip
+              content="Suspend or reactivate this account"
+              side="left"
             >
-              {user.suspended ? (
-                <UserCheck className="size-4" />
-              ) : (
-                <Ban className="size-4" />
-              )}
-              {user.suspended ? "Reactivate account" : "Suspend account"}
-            </ContextMenuItem>
-          </SimpleTooltip>
-        </ContextMenuContent>
-      </ContextMenu>
+              <DropdownMenuItem
+                variant={user.suspended ? undefined : "destructive"}
+                disabled={isSelf || pending}
+                onSelect={() => flip({ suspended: !user.suspended })}
+              >
+                {user.suspended ? (
+                  <UserCheck className="size-4" />
+                ) : (
+                  <Ban className="size-4" />
+                )}
+                {user.suspended ? "Reactivate account" : "Suspend account"}
+              </DropdownMenuItem>
+            </SimpleTooltip>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       {open && (
         <EditUserDialog
           user={{

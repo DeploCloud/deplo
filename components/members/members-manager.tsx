@@ -34,13 +34,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,26 +45,6 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { Capability, Role } from "@/lib/types";
 import type { MemberDTO } from "@/lib/data/members";
-
-/**
- * The menu-primitive set used to render a member card's action list once and
- * reuse it for BOTH the ⋯ dropdown (left-click) and the right-click context
- * menu — same items, same handlers, no duplication. Radix dropdown and context
- * menus share an isomorphic API, so the renderer just takes whichever applies.
- */
-type MenuKit = {
-  Item: React.ElementType;
-  Separator: React.ElementType;
-};
-
-const DROPDOWN_KIT: MenuKit = {
-  Item: DropdownMenuItem,
-  Separator: DropdownMenuSeparator,
-};
-const CONTEXT_KIT: MenuKit = {
-  Item: ContextMenuItem,
-  Separator: ContextMenuSeparator,
-};
 
 export function MembersManager({
   members,
@@ -173,8 +146,8 @@ function MemberCard({
   const canEditPerms = canManage && !isFounder && (!isOwner || viewerIsOwner);
   const canEditGlobal = isAdmin;
   const canRemove = canManage && !isFounder && (!isOwner || viewerIsOwner);
-  // The ⋯ menu (and the right-click menu) only appear on OTHER members with at
-  // least one available action — never on your own card.
+  // The ⋯ menu only appears on OTHER members with at least one available
+  // action — never on your own card.
   const actionable = !isSelf && (canEditPerms || canEditGlobal);
 
   function remove() {
@@ -191,64 +164,6 @@ function MemberCard({
       }
     });
   }
-
-  // The card's actions, rendered once for whichever menu primitive is passed.
-  // Each item carries a native `title` so hovering it for ~a second explains
-  // what it does (reliable inside menus, unlike a nested styled tooltip).
-  const menu = (K: MenuKit) => (
-    <>
-      {canEditPerms && (
-        <SimpleTooltip
-          content="Adjust this member's role and capabilities in the team"
-          side="left"
-        >
-          <K.Item
-            onSelect={(e: Event) => {
-              e.preventDefault();
-              setEditOpen(true);
-            }}
-          >
-            <Pencil className="size-4" />
-            Edit permissions
-          </K.Item>
-        </SimpleTooltip>
-      )}
-      {canEditGlobal && (
-        <SimpleTooltip
-          content="View and edit this user's instance-wide account and permissions"
-          side="left"
-        >
-          <K.Item
-            onSelect={(e: Event) => {
-              e.preventDefault();
-              setUserEditOpen(true);
-            }}
-          >
-            <UserCog className="size-4" />
-            Manage user account
-          </K.Item>
-        </SimpleTooltip>
-      )}
-      {canRemove && (
-        <>
-          <K.Separator />
-          <SimpleTooltip content="Remove this member from the team" side="left">
-            <K.Item
-              variant="destructive"
-              disabled={pending}
-              onSelect={(e: Event) => {
-                e.preventDefault();
-                remove();
-              }}
-            >
-              <Trash2 className="size-4" />
-              Remove from team
-            </K.Item>
-          </SimpleTooltip>
-        </>
-      )}
-    </>
-  );
 
   const inner = (
     <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4">
@@ -304,7 +219,59 @@ function MemberCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
-              {menu(DROPDOWN_KIT)}
+              {canEditPerms && (
+                <SimpleTooltip
+                  content="Adjust this member's role and capabilities in the team"
+                  side="left"
+                >
+                  <DropdownMenuItem
+                    onSelect={(e: Event) => {
+                      e.preventDefault();
+                      setEditOpen(true);
+                    }}
+                  >
+                    <Pencil className="size-4" />
+                    Edit permissions
+                  </DropdownMenuItem>
+                </SimpleTooltip>
+              )}
+              {canEditGlobal && (
+                <SimpleTooltip
+                  content="View and edit this user's instance-wide account and permissions"
+                  side="left"
+                >
+                  <DropdownMenuItem
+                    onSelect={(e: Event) => {
+                      e.preventDefault();
+                      setUserEditOpen(true);
+                    }}
+                  >
+                    <UserCog className="size-4" />
+                    Manage user account
+                  </DropdownMenuItem>
+                </SimpleTooltip>
+              )}
+              {canRemove && (
+                <>
+                  <DropdownMenuSeparator />
+                  <SimpleTooltip
+                    content="Remove this member from the team"
+                    side="left"
+                  >
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={pending}
+                      onSelect={(e: Event) => {
+                        e.preventDefault();
+                        remove();
+                      }}
+                    >
+                      <Trash2 className="size-4" />
+                      Remove from team
+                    </DropdownMenuItem>
+                  </SimpleTooltip>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -357,20 +324,12 @@ function MemberCard({
   );
 
   // Inert cards (your own, the owner with nothing to manage, or a viewer who
-  // can't act) get no ⋯ and no right-click menu — the global shell menu still
-  // opens. No triggers ⇒ no dialogs to mount.
+  // can't act) get no ⋯ menu. No triggers ⇒ no dialogs to mount.
   if (!actionable) return inner;
 
   return (
     <>
-      {/* Left-click the ⋯ for the action menu; right-click anywhere on the card
-          opens the same items — mirrors the service/server card menus. */}
-      <ContextMenu>
-        <ContextMenuTrigger asChild>{inner}</ContextMenuTrigger>
-        <ContextMenuContent className="w-52">
-          {menu(CONTEXT_KIT)}
-        </ContextMenuContent>
-      </ContextMenu>
+      {inner}
       {dialogs}
     </>
   );

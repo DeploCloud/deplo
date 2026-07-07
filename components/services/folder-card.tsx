@@ -26,16 +26,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -99,13 +89,6 @@ const DROPDOWN_KIT: MenuKit = {
   SubTrigger: DropdownMenuSubTrigger,
   SubContent: DropdownMenuSubContent,
 };
-const CONTEXT_KIT: MenuKit = {
-  Item: ContextMenuItem,
-  Separator: ContextMenuSeparator,
-  Sub: ContextMenuSub,
-  SubTrigger: ContextMenuSubTrigger,
-  SubContent: ContextMenuSubContent,
-};
 
 /**
  * A folder tile in the Overview grid. The whole card is a link that opens the
@@ -127,7 +110,6 @@ export function FolderCard({
   dragHandle,
   dragActive = false,
   dropActive = false,
-  contextMenuOverride,
   folders,
 }: {
   folder: FolderCardData;
@@ -138,9 +120,6 @@ export function FolderCard({
   dragHandle?: React.ReactNode;
   dragActive?: boolean;
   dropActive?: boolean;
-  /** Shared BULK-actions menu shown in place of this folder's own right-click
-   *  menu while it is part of a multi-selection. Undefined ⇒ the normal menu. */
-  contextMenuOverride?: React.ReactNode;
   /** Every team folder (id + name) for the "Move to folder" menu (nesting).
    *  This folder itself is excluded; the server also rejects descendant moves. */
   folders?: { id: string; name: string }[];
@@ -508,7 +487,6 @@ export function FolderCard({
   const cardInner =
     view === "list" ? (
       <Card
-        onContextMenu={(e) => e.stopPropagation()}
         style={cardStyle}
         className={cn(
           "group relative flex items-center gap-4 p-4 transition-colors hover:border-foreground/20",
@@ -535,7 +513,6 @@ export function FolderCard({
       </Card>
     ) : (
       <Card
-        onContextMenu={(e) => e.stopPropagation()}
         style={cardStyle}
         className={cn(
           "group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20",
@@ -565,12 +542,9 @@ export function FolderCard({
     );
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{cardInner}</ContextMenuTrigger>
-      <ContextMenuContent className="w-48">
-        {contextMenuOverride ?? menu(CONTEXT_KIT)}
-      </ContextMenuContent>
+    <>
+      {cardInner}
       {dialogs}
-    </ContextMenu>
+    </>
   );
 }

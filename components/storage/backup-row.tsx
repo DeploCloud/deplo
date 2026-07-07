@@ -41,13 +41,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { RestoreRunsDialog } from "@/components/storage/restore-runs-dialog";
@@ -56,22 +49,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import type { BackupDTO } from "@/lib/data/backups";
 
 type Destination = { id: string; name: string };
-
-/** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
- *  right-click context menu (see the note in service-card.tsx). */
-type MenuKit = {
-  Item: React.ElementType;
-  Separator: React.ElementType;
-};
-
-const DROPDOWN_KIT: MenuKit = {
-  Item: DropdownMenuItem,
-  Separator: DropdownMenuSeparator,
-};
-const CONTEXT_KIT: MenuKit = {
-  Item: ContextMenuItem,
-  Separator: ContextMenuSeparator,
-};
 
 export function BackupRow({
   backup,
@@ -114,57 +91,8 @@ export function BackupRow({
     });
   }
 
-  // Backup actions, rendered once for whichever menu primitive is passed. Each
-  // item carries a native `title` so hovering it explains what it does. "Run now"
-  // is disabled while a mutation is in flight; delete confirms before removing.
-  const menu = (K: MenuKit) => (
-    <>
-      <SimpleTooltip content="Run this backup now" side="left">
-        <K.Item onSelect={run} disabled={pending}>
-          <Play className="size-4" />
-          Run now
-        </K.Item>
-      </SimpleTooltip>
-      <SimpleTooltip content="Edit this backup schedule" side="left">
-        <K.Item
-          onSelect={(e: Event) => {
-            e.preventDefault();
-            setEditOpen(true);
-          }}
-        >
-          <Pencil className="size-4" />
-          Edit…
-        </K.Item>
-      </SimpleTooltip>
-      <SimpleTooltip content="Restore from a recent backup" side="left">
-        <K.Item
-          onSelect={(e: Event) => {
-            e.preventDefault();
-            setRestoreOpen(true);
-          }}
-        >
-          <RotateCcw className="size-4" />
-          Restore…
-        </K.Item>
-      </SimpleTooltip>
-      <K.Separator />
-      <SimpleTooltip content="Delete this backup schedule" side="left">
-        <K.Item
-          variant="destructive"
-          onSelect={(e: Event) => {
-            e.preventDefault();
-            setConfirmOpen(true);
-          }}
-        >
-          <Trash2 className="size-4" />
-          Delete
-        </K.Item>
-      </SimpleTooltip>
-    </>
-  );
-
   const row = (
-    <TableRow onContextMenu={(e) => e.stopPropagation()}>
+    <TableRow>
       <TableCell className="font-medium">{backup.name}</TableCell>
       <TableCell className="text-muted-foreground">
         <span className="flex items-center gap-1.5">
@@ -215,7 +143,50 @@ export function BackupRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            {menu(DROPDOWN_KIT)}
+            {/* Each item carries a native `title` (via tooltip) so hovering it
+                explains what it does. "Run now" is disabled while a mutation is
+                in flight; delete confirms before removing. */}
+            <SimpleTooltip content="Run this backup now" side="left">
+              <DropdownMenuItem onSelect={run} disabled={pending}>
+                <Play className="size-4" />
+                Run now
+              </DropdownMenuItem>
+            </SimpleTooltip>
+            <SimpleTooltip content="Edit this backup schedule" side="left">
+              <DropdownMenuItem
+                onSelect={(e: Event) => {
+                  e.preventDefault();
+                  setEditOpen(true);
+                }}
+              >
+                <Pencil className="size-4" />
+                Edit…
+              </DropdownMenuItem>
+            </SimpleTooltip>
+            <SimpleTooltip content="Restore from a recent backup" side="left">
+              <DropdownMenuItem
+                onSelect={(e: Event) => {
+                  e.preventDefault();
+                  setRestoreOpen(true);
+                }}
+              >
+                <RotateCcw className="size-4" />
+                Restore…
+              </DropdownMenuItem>
+            </SimpleTooltip>
+            <DropdownMenuSeparator />
+            <SimpleTooltip content="Delete this backup schedule" side="left">
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={(e: Event) => {
+                  e.preventDefault();
+                  setConfirmOpen(true);
+                }}
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </DropdownMenuItem>
+            </SimpleTooltip>
           </DropdownMenuContent>
         </DropdownMenu>
         <ConfirmAction
@@ -257,14 +228,7 @@ export function BackupRow({
     </TableRow>
   );
 
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-      <ContextMenuContent className="w-44">
-        {menu(CONTEXT_KIT)}
-      </ContextMenuContent>
-    </ContextMenu>
-  );
+  return row;
 }
 
 /* ------------------------------------------------------------------ */

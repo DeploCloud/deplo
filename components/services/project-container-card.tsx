@@ -14,13 +14,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -47,7 +40,7 @@ export interface ProjectCardData {
   environmentCount: number;
 }
 
-/** Menu items shared by the ⋯ dropdown and the right-click context menu. */
+/** Menu items for the ⋯ dropdown. */
 type MenuKit = {
   Item: React.ElementType;
   Separator: React.ElementType;
@@ -57,8 +50,8 @@ type MenuKit = {
  * A Project tile on the Overview — an "advanced folder" (ADR-0009) whose
  * environments each hold their own services. The whole card links to the
  * drill-in view on the Overview itself (`/?project=<id>`, environment dropdown
- * inside); a ⋯ menu and a right-click menu (open / rename / colour / delete)
- * sit above the link. Delete re-parents the project's services back to the top
+ * inside); a ⋯ menu (open / rename / colour / delete) sits above the link.
+ * Delete re-parents the project's services back to the top
  * level — it never deletes them. While a reorder drag is active the link is
  * made inert, and `dropActive` highlights the card as a drop target.
  */
@@ -134,8 +127,7 @@ export function ProjectContainerCard({
     });
   }
 
-  // Project actions, rendered once for whichever menu primitive is passed —
-  // exactly the FolderCard pattern, so the ⋯ dropdown and right-click stay in sync.
+  // Project actions for the ⋯ dropdown (open / rename / colour / delete).
   const menu = (K: MenuKit) => (
     <>
       <K.Item asChild>
@@ -317,9 +309,6 @@ export function ProjectContainerCard({
     view === "list" ? (
       <Card
         style={cardStyle}
-        // Stop the right-click here so the canvas' own context menu never opens
-        // on top of this card's (the same guard Folder/Service cards use).
-        onContextMenu={(e) => e.stopPropagation()}
         className={cn(
           "group relative flex items-center gap-4 p-4 transition-colors hover:border-foreground/20",
           dropActive && "border-primary ring-2 ring-primary/40",
@@ -339,7 +328,6 @@ export function ProjectContainerCard({
     ) : (
       <Card
         style={cardStyle}
-        onContextMenu={(e) => e.stopPropagation()}
         className={cn(
           "group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20",
           dropActive && "border-primary ring-2 ring-primary/40",
@@ -360,12 +348,5 @@ export function ProjectContainerCard({
       </Card>
     );
 
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{card}</ContextMenuTrigger>
-      <ContextMenuContent className="w-44">
-        {menu({ Item: ContextMenuItem, Separator: ContextMenuSeparator })}
-      </ContextMenuContent>
-    </ContextMenu>
-  );
+  return card;
 }

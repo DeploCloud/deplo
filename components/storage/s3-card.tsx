@@ -13,13 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -35,22 +28,6 @@ const PROVIDER_LABEL: Record<string, string> = {
   wasabi: "Wasabi",
   minio: "MinIO",
   other: "S3-compatible",
-};
-
-/** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
- *  right-click context menu (see the note in service-card.tsx). */
-type MenuKit = {
-  Item: React.ElementType;
-  Separator: React.ElementType;
-};
-
-const DROPDOWN_KIT: MenuKit = {
-  Item: DropdownMenuItem,
-  Separator: DropdownMenuSeparator,
-};
-const CONTEXT_KIT: MenuKit = {
-  Item: ContextMenuItem,
-  Separator: ContextMenuSeparator,
 };
 
 export function S3Card({ dest }: { dest: S3DestinationDTO }) {
@@ -71,41 +48,8 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
     });
   }
 
-  // The destination's actions, rendered once for whichever menu primitive is
-  // passed — the ⋯ dropdown and the right-click context menu share these items
-  // and handlers. Each item carries a native `title` like the service card.
-  const menu = (K: MenuKit) => (
-    <>
-      <SimpleTooltip
-        content="Verify this destination's credentials and reachability"
-        side="left"
-      >
-        <K.Item onClick={test} disabled={pending}>
-          <PlugZap className="size-4" />
-          Test connection
-        </K.Item>
-      </SimpleTooltip>
-      <K.Separator />
-      <SimpleTooltip
-        content="Remove this destination — bucket contents are not affected"
-        side="left"
-      >
-        <K.Item
-          variant="destructive"
-          onSelect={(e: Event) => {
-            e.preventDefault();
-            setConfirmOpen(true);
-          }}
-        >
-          <Trash2 className="size-4" />
-          Remove
-        </K.Item>
-      </SimpleTooltip>
-    </>
-  );
-
   const cardInner = (
-    <Card onContextMenu={(e) => e.stopPropagation()}>
+    <Card>
       <CardContent className="space-y-4 p-5">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -128,7 +72,31 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                {menu(DROPDOWN_KIT)}
+                <SimpleTooltip
+                  content="Verify this destination's credentials and reachability"
+                  side="left"
+                >
+                  <DropdownMenuItem onClick={test} disabled={pending}>
+                    <PlugZap className="size-4" />
+                    Test connection
+                  </DropdownMenuItem>
+                </SimpleTooltip>
+                <DropdownMenuSeparator />
+                <SimpleTooltip
+                  content="Remove this destination — bucket contents are not affected"
+                  side="left"
+                >
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={(e: Event) => {
+                      e.preventDefault();
+                      setConfirmOpen(true);
+                    }}
+                  >
+                    <Trash2 className="size-4" />
+                    Remove
+                  </DropdownMenuItem>
+                </SimpleTooltip>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -161,9 +129,8 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
   );
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{cardInner}</ContextMenuTrigger>
-      <ContextMenuContent className="w-48">{menu(CONTEXT_KIT)}</ContextMenuContent>
+    <>
+      {cardInner}
 
       <ConfirmAction
         open={confirmOpen}
@@ -181,6 +148,6 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
           return res;
         }}
       />
-    </ContextMenu>
+    </>
   );
 }

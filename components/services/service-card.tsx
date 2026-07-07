@@ -31,16 +31,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
 import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { ServiceLogo } from "@/components/shared/project-logo";
@@ -71,13 +61,6 @@ const DROPDOWN_KIT: MenuKit = {
   SubContent: DropdownMenuSubContent,
   Separator: DropdownMenuSeparator,
 };
-const CONTEXT_KIT: MenuKit = {
-  Item: ContextMenuItem,
-  Sub: ContextMenuSub,
-  SubTrigger: ContextMenuSubTrigger,
-  SubContent: ContextMenuSubContent,
-  Separator: ContextMenuSeparator,
-};
 
 export function ServiceCard({
   project,
@@ -87,19 +70,11 @@ export function ServiceCard({
   folders,
   canManageFolders = false,
   environments,
-  contextMenuOverride,
 }: {
   project: ServiceSummary;
   view?: "grid" | "list";
   /** Optional drag-to-reorder handle, rendered with the card's controls. */
   dragHandle?: React.ReactNode;
-  /**
-   * When this card is part of a multi-selection, the grid passes the shared
-   * BULK-actions menu here; it replaces this card's own single-item right-click
-   * menu so a right-click acts on the whole selection. Undefined ⇒ the normal
-   * per-card menu.
-   */
-  contextMenuOverride?: React.ReactNode;
   /**
    * A reorder drag is in progress for the grid. While on, the card's stretched
    * navigation link is made inert so the whole card can be dragged without
@@ -498,7 +473,6 @@ export function ServiceCard({
   const cardInner =
     view === "list" ? (
       <Card
-        onContextMenu={(e) => e.stopPropagation()}
         className="group relative flex items-center gap-4 p-4 transition-colors hover:border-foreground/20"
       >
         {overlayLink}
@@ -552,7 +526,6 @@ export function ServiceCard({
       </Card>
     ) : (
       <Card
-        onContextMenu={(e) => e.stopPropagation()}
         className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20"
       >
         {/* Stretched link: the whole card is clickable. Interactive controls
@@ -633,12 +606,5 @@ export function ServiceCard({
       </Card>
     );
 
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{cardInner}</ContextMenuTrigger>
-      <ContextMenuContent className="w-56">
-        {contextMenuOverride ?? menu(CONTEXT_KIT)}
-      </ContextMenuContent>
-    </ContextMenu>
-  );
+  return cardInner;
 }

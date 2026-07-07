@@ -31,13 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
@@ -92,52 +85,31 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
         ) : (
           <div className="space-y-2">
             {registries.map((r) => (
-              // Right-clicking the row opens the same single action as the inline
-              // ⋯-less delete button (Remove); stopPropagation keeps the app-wide
-              // shell context menu from also firing on the row.
-              <ContextMenu key={r.id}>
-                <ContextMenuTrigger asChild>
-                  <div
-                    onContextMenu={(e) => e.stopPropagation()}
-                    className="flex items-center gap-3 rounded-lg border border-border p-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 text-sm font-medium">
-                        {r.name}
-                        <Badge variant="secondary" className="capitalize">
-                          {r.type}
-                        </Badge>
-                      </p>
-                      <p className="truncate font-mono text-xs text-muted-foreground">
-                        {r.username}@{r.registryUrl}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => setDeleteId(r.id)}
-                      aria-label="Remove registry"
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                </ContextMenuTrigger>
-                <ContextMenuContent className="w-44">
-                  <SimpleTooltip
-                    content="Remove this registry connection"
-                    side="left"
-                  >
-                    <ContextMenuItem
-                      variant="destructive"
-                      onSelect={() => setDeleteId(r.id)}
-                    >
-                      <Trash2 className="size-4" />
-                      Remove
-                    </ContextMenuItem>
-                  </SimpleTooltip>
-                </ContextMenuContent>
-              </ContextMenu>
+              <div
+                key={r.id}
+                className="flex items-center gap-3 rounded-lg border border-border p-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    {r.name}
+                    <Badge variant="secondary" className="capitalize">
+                      {r.type}
+                    </Badge>
+                  </p>
+                  <p className="truncate font-mono text-xs text-muted-foreground">
+                    {r.username}@{r.registryUrl}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() => setDeleteId(r.id)}
+                  aria-label="Remove registry"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
             ))}
           </div>
         )}
