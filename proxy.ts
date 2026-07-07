@@ -40,7 +40,10 @@ export function proxy(request: NextRequest) {
 
   const csp = [
     `default-src 'self'`,
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${
+    // 'wasm-unsafe-eval' lets the console's wterm terminal emulator compile its
+    // embedded WebAssembly WITHOUT enabling general eval(). Honoured alongside
+    // 'strict-dynamic'. Dev additionally keeps 'unsafe-eval' for Fast Refresh.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${
       isDev ? " 'unsafe-eval'" : ""
     }`,
     `style-src 'self' 'unsafe-inline'`,
