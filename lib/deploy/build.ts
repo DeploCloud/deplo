@@ -59,7 +59,7 @@ import {
   type AgentBuildPlan,
 } from "./agent-deploy";
 import { connectAgent, agentPreflight } from "../infra/agent-client";
-import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
+import type { Deployment, DeploymentEnvironment, EnvTarget, LogLine } from "../types";
 
 /**
  * The owning server id for a slug's project — its lifecycle verbs run on that
@@ -123,7 +123,10 @@ async function setService(
  * `production`, plus attached shared groups that also target `production`.
  * Selection lives in the shared `resolveEnvEntries` seam; we only decrypt here.
  */
-async function serviceEnv(serviceId: string): Promise<Record<string, string>> {
+async function serviceEnv(
+  serviceId: string,
+  target: EnvTarget = "production",
+): Promise<Record<string, string>> {
   const [vars, groups, globals] = await Promise.all([
     loadEnvVarsForService(serviceId),
     loadSharedEnvGroupsForService(serviceId),
@@ -131,7 +134,7 @@ async function serviceEnv(serviceId: string): Promise<Record<string, string>> {
   ]);
   const out: Record<string, string> = {};
   for (const e of resolveEnvEntries(
-    "production",
+    target,
     serviceId,
     vars,
     groups,
@@ -153,7 +156,10 @@ async function serviceEnv(serviceId: string): Promise<Record<string, string>> {
  * ever inject a key the env-file actually supplies (globals + shared groups
  * included), so an injected pass-through can never reference an undefined var.
  */
-async function serviceEnvKeys(serviceId: string): Promise<string[]> {
+async function serviceEnvKeys(
+  serviceId: string,
+  target: EnvTarget = "production",
+): Promise<string[]> {
   const [vars, groups, globals] = await Promise.all([
     loadEnvVarsForService(serviceId),
     loadSharedEnvGroupsForService(serviceId),
@@ -163,7 +169,7 @@ async function serviceEnvKeys(serviceId: string): Promise<string[]> {
   // wins on value, but for NAMES we just need the distinct set).
   const seen = new Set<string>();
   for (const e of resolveEnvEntries(
-    "production",
+    target,
     serviceId,
     vars,
     groups,
@@ -676,7 +682,7 @@ async function runDeployment(depId: string): Promise<void> {
     const renderStack = async (
       image: string,
     ): Promise<{ composeYaml: string; env: Record<string, string> }> => {
-      const env = await serviceEnv(project.id);
+      const env = await serviceEnv(project.id, dep.environment);
       const basicAuthUsers = await basicAuthUsersValue(project.id);
       const composeYaml = renderCompose({
         name,
@@ -963,7 +969,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   // The settings env-var NAMES injected into every service as bare `- KEY`
   // pass-throughs — the value itself rides the env-file the agent writes (see
   // deployComposeStackViaAgent), so no secret lands in the rendered YAML.
-  const envKeys = await serviceEnvKeys(project.id);
+  const envKeys = await serviceEnvKeys(project.id, opts.environment);
   const stackYaml = buildComposeStack({
     compose: project.compose ?? "",
     name,
@@ -1050,7 +1056,7 @@ async function deployComposeStackViaAgent(
   }
 
   const { stackYaml } = await prepareComposeStack(opts);
-  const env = await serviceEnv(project.id);
+  const env = await serviceEnv(project.id, opts.environment);
 
   const { outcome } = await tryAgent({
     depId,
