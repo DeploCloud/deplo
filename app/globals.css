@@ -131,6 +131,11 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Full-HD tier: the card galleries (Overview, Templates, Apps) only go to
+     3 columns at 1920px-wide (Full HD) screens and up; below that they stay at
+     2 columns, then 1 on mobile. 120rem = 1920px at the 16px root font size. */
+  --breakpoint-3xl: 120rem;
 }
 
 @layer base {

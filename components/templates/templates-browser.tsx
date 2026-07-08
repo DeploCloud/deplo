@@ -88,7 +88,7 @@ export function TemplatesBrowser({
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 3xl:grid-cols-3">
         {filtered.map((t) => (
           <Card
             key={t.id}

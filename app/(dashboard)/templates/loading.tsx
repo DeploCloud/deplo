@@ -26,7 +26,7 @@ export default function Loading() {
 
         {/* Card grid — 3×4 (12 cards) so the loading state fills the viewport
             like the real, populated template grid instead of a sparse 2 rows. */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 3xl:grid-cols-3">
           {Array.from({ length: 12 }).map((_, i) => (
             <div
               key={i}

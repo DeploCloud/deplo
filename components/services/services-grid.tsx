@@ -90,11 +90,13 @@ type ProjectRef = { id: string; name: string };
 export type TrailSeg = { id: string; name: string; href?: string };
 
 function gridClass(view: "grid" | "list"): string {
-  // Grid view: 1 col on mobile, 2 on small/medium, 3 from lg up — applied to
-  // every grouped surface (Overview, folder contents, sub-folders, projects).
+  // Grid view: 1 col on mobile, 2 from sm up, and 3 only on Full-HD (1920px)
+  // screens and wider (the `3xl` breakpoint) — applied to every grouped surface
+  // (Overview, folder contents, sub-folders, projects). Sibling galleries
+  // (Templates, Apps) mirror this exact scheme.
   return view === "list"
     ? "flex flex-col gap-3"
-    : "grid gap-4 sm:grid-cols-2 lg:grid-cols-3";
+    : "grid gap-4 sm:grid-cols-2 3xl:grid-cols-3";
 }
 
 function allServicesHref(view: "grid" | "list"): string {

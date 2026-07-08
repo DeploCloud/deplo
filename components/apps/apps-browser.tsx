@@ -50,7 +50,7 @@ export function AppsBrowser({
             description="Install an app from the catalog below to extend Deplo."
           />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 3xl:grid-cols-3">
             {installed.map((app) => {
               const listing = byId.get(app.catalogId);
               return (
@@ -93,7 +93,7 @@ export function AppsBrowser({
             description="No apps are published in the repository yet."
           />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 3xl:grid-cols-3">
             {catalog.map((listing) => (
               <CatalogAppCard
                 key={listing.id}
