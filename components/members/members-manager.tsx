@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -76,23 +77,40 @@ export function MembersManager({
             team.
           </CardDescription>
         </div>
-        {canManage && (
-          <>
-            <Button size="sm" onClick={() => setAddOpen(true)}>
-              <UserPlus className="size-4" />
-              Add member
-            </Button>
-            <AddMemberDialog
-              open={addOpen}
-              onOpenChange={setAddOpen}
-              canCreateUser={isAdmin}
-              canAssignOwner={viewerIsOwner}
-              onCreateUser={() => setUserOpen(true)}
-            />
+        {(isAdmin || canManage) && (
+          <div className="flex items-center gap-2">
+            {/* Instance admins get a shortcut into instance-wide user
+                administration, sitting just before the team-scoped add. */}
             {isAdmin && (
-              <RegisterUserDialog open={userOpen} onOpenChange={setUserOpen} />
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/settings/users">
+                  <UserCog className="size-4" />
+                  Manage users
+                </Link>
+              </Button>
             )}
-          </>
+            {canManage && (
+              <>
+                <Button size="sm" onClick={() => setAddOpen(true)}>
+                  <UserPlus className="size-4" />
+                  Add member
+                </Button>
+                <AddMemberDialog
+                  open={addOpen}
+                  onOpenChange={setAddOpen}
+                  canCreateUser={isAdmin}
+                  canAssignOwner={viewerIsOwner}
+                  onCreateUser={() => setUserOpen(true)}
+                />
+                {isAdmin && (
+                  <RegisterUserDialog
+                    open={userOpen}
+                    onOpenChange={setUserOpen}
+                  />
+                )}
+              </>
+            )}
+          </div>
         )}
       </CardHeader>
       <CardContent>
