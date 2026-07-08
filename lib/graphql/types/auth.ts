@@ -86,9 +86,12 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(200),
   // Optional: only own_team links collect a team name. existing_teams links
-  // pre-assign teams, so the registrant never names one (and any value is
-  // ignored — the team(s) come from the link, not the client).
-  teamName: z.string().min(1).max(80).optional(),
+  // pre-assign teams, so the registrant never names one and the form sends an
+  // explicit `null` (a nullable GraphQL arg). `.nullish()` accepts that null —
+  // `.optional()` alone rejects it ("expected string, received null") and blew
+  // up existing_teams registration. The team(s) come from the link, not the
+  // client, so the value is ignored downstream regardless.
+  teamName: z.string().min(1).max(80).nullish(),
 });
 
 builder.mutationFields((t) => ({
