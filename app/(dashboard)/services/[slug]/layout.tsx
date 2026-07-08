@@ -6,14 +6,13 @@ import { getServiceBySlug } from "@/lib/data/services";
 import { truncate } from "@/lib/utils";
 import { isDevEligible } from "@/lib/data/dev";
 import { serviceFilesExist } from "@/lib/data/service-files";
-import { hasCapability } from "@/lib/membership";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ServiceLogo } from "@/components/shared/project-logo";
 import { RedeployButton } from "@/components/services/redeploy-button";
 import { ServiceControls } from "@/components/services/service-controls";
 import { ServiceStatusDot } from "@/components/services/service-status-dot";
-import { ServiceTabs } from "@/components/services/service-tabs";
+import { ServiceNavSync } from "@/components/services/service-nav-sync";
 import {
   ServiceLiveStatusProvider,
   type LiveService,
@@ -46,13 +45,10 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
   const { slug } = await props.params;
   const project = await getServiceBySlug(slug);
   if (!project) notFound();
-  const canManageEnv = await hasCapability("manage_env");
-  // Backups are infra ops (provision a dump, overwrite-restore in place), gated
-  // on manage_infra — same capability the GraphQL mutations enforce.
-  const canBackup = await hasCapability("manage_infra");
-  // The Files tab only appears when the caller can manage files AND the service
+  // The Files entry only appears when the caller can manage files AND the service
   // actually has an on-disk files dir (serviceFilesExist returns false for both
   // a missing capability and a missing directory, so this one call covers both).
+  // Environment/Backups visibility is capability-gated in the sidebar itself.
   const showFiles = await serviceFilesExist(project.id);
 
   // Seed for the live-status subscription (kept current client-side thereafter).
@@ -125,13 +121,13 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
         </div>
       </div>
 
-      <ServiceTabs
+      {/* Publishes this service's live/per-service facts to the sidebar, which
+          renders the service sub-menu in place of the main nav. Renders nothing. */}
+      <ServiceNavSync
         slug={slug}
         running={project.status === "active"}
         devEligible={isDevEligible(project.source)}
-        canManageEnv={canManageEnv}
         showFiles={showFiles}
-        canBackup={canBackup}
       />
 
       {props.children}

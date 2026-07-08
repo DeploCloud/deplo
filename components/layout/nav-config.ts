@@ -1,5 +1,6 @@
 import {
   LayoutGrid,
+  LayoutDashboard,
   Rocket,
   ScrollText,
   Database,
@@ -16,6 +17,11 @@ import {
   User,
   Package,
   GitBranch,
+  Globe,
+  SquareTerminal,
+  Code2,
+  FolderTree,
+  Archive,
   Bell,
   KeyRound,
   type LucideIcon,
@@ -222,6 +228,148 @@ export const SETTINGS_NAV: NavSection[] = [
     ],
   },
 ];
+
+/** Per-service facts the sidebar can't derive itself (the URL gives the slug and
+ *  the viewer's capabilities gate Environment/Backups, but whether the container
+ *  is running and whether the service is dev-eligible / has a files dir are known
+ *  only to the service layout, which publishes them via the service-nav store). */
+export interface ServiceNavFlags {
+  /** Full current pathname — lets a section stay listed while it's the open page
+   *  even before the store has confirmed its flag (avoids a missing active item
+   *  on a hard load of e.g. /services/x/console). */
+  pathname: string;
+  canManageEnv: boolean;
+  canBackup: boolean;
+  running: boolean;
+  devEligible: boolean;
+  showFiles: boolean;
+}
+
+/**
+ * A service's navigation. When the viewer is anywhere under `/services/<slug>`
+ * the sidebar swaps {@link NAV} for this set — the same sidebar UI, a different
+ * left-hand nav — so each service section (Overview, Deployments, Domains, …) is
+ * its own icon-led entry instead of a horizontal tab. Mirrors {@link SETTINGS_NAV}:
+ * a "back" escape hatch on top, then the sections. The conditional entries match
+ * the visibility rules the old horizontal tabs used.
+ */
+export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
+  const base = `/services/${slug}`;
+  // True while the given sub-route is the page currently open.
+  const on = (seg: string) =>
+    f.pathname === base + seg || f.pathname.startsWith(base + seg + "/");
+
+  const items: NavItem[] = [
+    {
+      label: "Overview",
+      href: base,
+      icon: LayoutDashboard,
+      tooltip: "Service overview",
+      // Every service route starts with `base`, so Overview must match exactly
+      // or it would light up on every sub-page.
+      exact: true,
+    },
+    {
+      label: "Deployments",
+      href: `${base}/deployments`,
+      icon: Rocket,
+      tooltip: "Deployment history",
+    },
+    // Environment holds sensitive values — only for manage_env holders.
+    ...(f.canManageEnv
+      ? [
+          {
+            label: "Environment",
+            href: `${base}/environment`,
+            icon: Braces,
+            tooltip: "Environment variables",
+          } as NavItem,
+        ]
+      : []),
+    {
+      label: "Domains",
+      href: `${base}/domains`,
+      icon: Globe,
+      tooltip: "Custom domains & routing",
+    },
+    // Console/Logs stream from a live container, so they show only while the
+    // service is running (or when that page is itself the one open).
+    ...(f.running || on("/console")
+      ? [
+          {
+            label: "Console",
+            href: `${base}/console`,
+            icon: SquareTerminal,
+            tooltip: "Container console",
+          } as NavItem,
+        ]
+      : []),
+    ...(f.running || on("/logs")
+      ? [
+          {
+            label: "Logs",
+            href: `${base}/logs`,
+            icon: ScrollText,
+            tooltip: "Runtime logs",
+          } as NavItem,
+        ]
+      : []),
+    // Dev Mode — source-bearing services only.
+    ...(f.devEligible || on("/dev")
+      ? [
+          {
+            label: "Dev Mode",
+            href: `${base}/dev`,
+            icon: Code2,
+            tooltip: "Live dev container & SSH",
+          } as NavItem,
+        ]
+      : []),
+    // Files — only when an on-disk files dir exists and the viewer can manage it.
+    ...(f.showFiles || on("/files")
+      ? [
+          {
+            label: "Files",
+            href: `${base}/files`,
+            icon: FolderTree,
+            tooltip: "Service files",
+          } as NavItem,
+        ]
+      : []),
+    // Backups are infra ops — manage_infra only.
+    ...(f.canBackup || on("/backups")
+      ? [
+          {
+            label: "Backups",
+            href: `${base}/backups`,
+            icon: Archive,
+            tooltip: "Backups & restore",
+          } as NavItem,
+        ]
+      : []),
+    {
+      label: "Settings",
+      href: `${base}/settings`,
+      icon: Settings,
+      tooltip: "Service settings",
+    },
+  ];
+
+  return [
+    {
+      items: [
+        {
+          label: "Back to services",
+          href: "/",
+          icon: ArrowLeft,
+          tooltip: "Return to all services",
+          exact: true,
+        },
+      ],
+    },
+    { items },
+  ];
+}
 
 /**
  * The settings routes that are NOT team-scoped — the user's own account and the

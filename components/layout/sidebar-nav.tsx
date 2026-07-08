@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV, SETTINGS_NAV } from "./nav-config";
+import { NAV, SETTINGS_NAV, serviceNav, type NavSection } from "./nav-config";
+import { useServiceNav } from "@/components/services/service-nav-store";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -30,32 +31,82 @@ export function SidebarNav({
 }) {
   const pathname = usePathname();
   const caps = new Set(capabilities);
+  const service = useServiceNav();
 
-  // Inside settings, the same sidebar shows the settings nav instead of the
-  // main nav — one sidebar system, a different left-hand navigation.
+  // The same sidebar shows one of three navigations depending on where you are:
+  // inside a service it becomes that service's sub-menu; under /settings the
+  // settings sub-menu; otherwise the main dashboard nav. One sidebar system,
+  // three left-hand navigations.
+  const serviceSlug = pathname.match(/^\/services\/([^/]+)/)?.[1] ?? null;
   const inSettings = pathname.startsWith("/settings");
-  const sections = inSettings ? SETTINGS_NAV : NAV;
+  const menu: "service" | "settings" | "main" = serviceSlug
+    ? "service"
+    : inSettings
+      ? "settings"
+      : "main";
 
-  // Slide the nav horizontally when it swaps between the main nav and a sub-menu
-  // (e.g. Settings): in from the right going deeper, from the left coming back.
-  // Comparing against the previous render's value (a supported React pattern)
-  // applies the slide class only on the boundary crossing — so it plays on the
-  // transition, but not on the initial mount or same-menu navigations.
-  const [prevInSettings, setPrevInSettings] = React.useState(inSettings);
+  let sections: NavSection[];
+  if (serviceSlug) {
+    // Capability-gated entries come from the sidebar's own capability list; the
+    // live/per-service flags come from the store — but only when it matches the
+    // slug in the URL, so a stale value from the service you just left can't
+    // leak its Console/Logs/Dev/Files into the next one.
+    const matches = service?.slug === serviceSlug;
+    sections = serviceNav(serviceSlug, {
+      pathname,
+      canManageEnv: caps.has("manage_env"),
+      canBackup: caps.has("manage_infra"),
+      running: matches ? service!.running : false,
+      devEligible: matches ? service!.devEligible : false,
+      showFiles: matches ? service!.showFiles : false,
+    });
+  } else if (inSettings) {
+    sections = SETTINGS_NAV;
+  } else {
+    sections = NAV;
+  }
+
+  // Filter by capability/admin up front so the sliding-pill signature and the
+  // render use the exact same item set (service entries are pre-filtered by the
+  // builder, so this is a no-op for them).
+  const rendered = sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) =>
+          (!item.requires || caps.has(item.requires)) &&
+          (!item.requiresAdmin || isAdmin),
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
+
+  // Slide the nav horizontally when it swaps between navigations: in from the
+  // right going deeper (into a service or settings), from the left coming back
+  // to the main nav. Comparing against the previous render's value (a supported
+  // React pattern) plays the slide only on the boundary crossing — not on the
+  // initial mount or same-menu navigations.
+  const [prevMenu, setPrevMenu] = React.useState(menu);
   const [slide, setSlide] = React.useState("");
-  if (prevInSettings !== inSettings) {
-    setPrevInSettings(inSettings);
-    setSlide(inSettings ? "animate-slide-in-right" : "animate-slide-in-left");
+  if (prevMenu !== menu) {
+    setPrevMenu(menu);
+    setSlide(
+      menu === "main" ? "animate-slide-in-left" : "animate-slide-in-right",
+    );
   }
 
   // Single background "pill" that slides to the active item — only its
-  // background moves between entries (the font weight stays constant). Measured
-  // on navigation; the ResizeObserver also catches sidebar width changes.
+  // background moves between entries. Re-measured on navigation and whenever the
+  // rendered item set changes (a service's Console/Logs entries appear and
+  // disappear as its container starts/stops).
   const navRef = React.useRef<HTMLElement | null>(null);
+  const signature = rendered
+    .map((s) => s.items.map((i) => i.href).join(","))
+    .join("|");
   const bgRect = useSlidingRect(
     navRef,
-    () => navRef.current?.querySelector<HTMLElement>('[data-active="true"]') ?? null,
-    [pathname],
+    () =>
+      navRef.current?.querySelector<HTMLElement>('[data-active="true"]') ?? null,
+    [pathname, signature],
   );
 
   function isActive(href: string, exact?: boolean) {
@@ -73,14 +124,7 @@ export function SidebarNav({
       )}
     >
       <SlidingBackground rect={bgRect} />
-      {sections.map((section, i) => {
-        const items = section.items.filter(
-          (item) =>
-            (!item.requires || caps.has(item.requires)) &&
-            (!item.requiresAdmin || isAdmin),
-        );
-        if (items.length === 0) return null;
-        return (
+      {rendered.map((section, i) => (
         <div key={i} className="flex flex-col gap-0.5">
           {/* A titled group shows its label as a header; an untitled one falls
               back to a Vercel-style divider. Collapsed (icon-only) always uses a
@@ -89,7 +133,7 @@ export function SidebarNav({
             <div
               className={cn(
                 "px-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70",
-                i > 0 && "pt-3"
+                i > 0 && "pt-3",
               )}
             >
               {section.title}
@@ -99,12 +143,12 @@ export function SidebarNav({
               <hr
                 className={cn(
                   "my-2 border-t border-sidebar-border",
-                  collapsed ? "mx-1" : "mx-2"
+                  collapsed ? "mx-1" : "mx-2",
                 )}
               />
             )
           )}
-          {items.map((item) => {
+          {section.items.map((item) => {
             const active = isActive(item.href, item.exact);
             const Icon = item.icon;
             return (
@@ -121,7 +165,7 @@ export function SidebarNav({
                       collapsed ? "h-9 w-9 justify-center" : "px-3 py-1.5",
                       active
                         ? "text-foreground"
-                        : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5"
+                        : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5",
                     )}
                   >
                     <Icon
@@ -129,7 +173,7 @@ export function SidebarNav({
                         "size-4 shrink-0",
                         active
                           ? "text-foreground"
-                          : "text-muted-foreground group-hover:text-foreground"
+                          : "text-muted-foreground group-hover:text-foreground",
                       )}
                     />
                     {!collapsed && item.label}
@@ -142,8 +186,7 @@ export function SidebarNav({
             );
           })}
         </div>
-        );
-      })}
+      ))}
     </nav>
   );
 }
