@@ -15,7 +15,11 @@ import {
 } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
-import { connectAgent, mapCheckPortUnsupported } from "../infra/agent-client";
+import {
+  connectAgent,
+  mapCheckPortUnsupported,
+  mapVolumeCopyUnsupported,
+} from "../infra/agent-client";
 import {
   generateDatabaseCompose,
   buildConnectionString,
@@ -516,6 +520,68 @@ export async function setDatabaseRunning(
 }
 
 /**
+ * The host-side Docker volume name of a database's data volume. The DB compose
+ * declares the volume as `<slug>-data` with NO `name:` override (see
+ * generateDatabaseCompose), so Docker Compose prefixes it with the project name
+ * (`-p deplo-<slug>`) → `deplo-<slug>_<slug>-data`. This is the exact string the
+ * agent's ExportVolume/ImportVolume operate on. Matches the compose-stack
+ * convention `composeStackVolumeHostNames` uses for projects (`deplo-<slug>_<key>`).
+ */
+function dbVolumeHostName(slug: string): string {
+  return `deplo-${slug}_${slug}-data`;
+}
+
+/**
+ * Copy a database's data volume from its OLD server to its NEW one, for a move.
+ * Docker named volumes are host-local and the agent trust model is strictly star
+ * (an agent can neither dial nor trust a peer), so the bytes RELAY through the
+ * control plane: the source agent streams the volume's gzipped tar out
+ * (`exportVolume`), and those chunks are fed straight into the destination agent's
+ * `importVolume` (wipe-first, so it overwrites the empty volume the freshly-
+ * provisioned stack created). No S3 hop, no agent↔agent link. BOTH stacks must be
+ * STOPPED before this runs — the destination so nothing writes the volume under the
+ * untar, the source so its on-disk files can't change mid-read (a consistent copy).
+ * A too-old agent on either side surfaces AgentVolumeCopyUnsupportedError ("update
+ * the agent"). Throws on any failure so the caller can roll the move back.
+ */
+async function copyDatabaseVolume(
+  fromServerId: string,
+  toServerId: string,
+  slug: string,
+): Promise<void> {
+  const volume = dbVolumeHostName(slug);
+  const source = await connectAgent(fromServerId);
+  try {
+    const dest = await connectAgent(toServerId);
+    try {
+      // Drive the destination import with the source export as its chunk source —
+      // one async pipe, no full-volume buffering in the control plane. Any
+      // UNIMPLEMENTED (agent too old) is mapped to a clear "update the agent" error,
+      // attributed to the side that rejected.
+      let res: { ok: boolean; error: string };
+      try {
+        res = await dest.importVolume(volume, true, source.exportVolume(volume));
+      } catch (e) {
+        // The export (source) or import (dest) rejected. Attribute UNIMPLEMENTED to
+        // whichever side is too old — try mapping as source first, then dest; a
+        // non-UNIMPLEMENTED error passes through unchanged either way.
+        const mapped = mapVolumeCopyUnsupported(e, "source");
+        throw mapped instanceof Error &&
+          mapped.constructor.name === "AgentVolumeCopyUnsupportedError"
+          ? mapped
+          : mapVolumeCopyUnsupported(e, "destination");
+      }
+      if (!res.ok)
+        throw new Error(res.error || "agent failed to import the data volume");
+    } finally {
+      dest.close();
+    }
+  } finally {
+    source.close();
+  }
+}
+
+/**
  * Edit a database's post-create-mutable settings: its public exposure
  * (publish/unpublish + host port) and, optionally, the SERVER it runs on.
  * Everything else (engine, version, username, db name, password) is create-only —
@@ -528,15 +594,15 @@ export async function setDatabaseRunning(
  *    on its current host (`up -d --remove-orphans`), which PRESERVES the named data
  *    volume; the only material change to the rendered YAML is the `ports:` block.
  *
- *  - Move to a different server: mirrors a project move — the container is
- *    provisioned FRESH on the new host and the old host's stack is torn down. A
- *    Docker named volume is host-local and there is no cross-host copy primitive,
- *    so THE DATA DOES NOT FOLLOW: the DB comes up with an empty volume on the new
- *    server (re-initialised from the create-only credentials). The provision on the
- *    new host runs BEFORE the old host's teardown, so a failed reroute leaves the
- *    original untouched. The old stack is destroyed best-effort (its volume too),
- *    mirroring deleteDatabase; an unreachable/failed teardown is surfaced, not
- *    fatal — the move already succeeded, the leftover just needs a manual sweep.
+ *  - Move to a different server: the container is provisioned fresh on the new host,
+ *    then the data volume is COPIED host-to-host (relayed through the control plane
+ *    via the agent ExportVolume/ImportVolume RPCs — no S3), then the old host's
+ *    stack is torn down. So the data FOLLOWS the move. The sequence is: reroute on
+ *    the new host → stop BOTH stacks (destination so nothing writes the volume mid-
+ *    import, source for a consistent read) → copy the volume → start the new stack →
+ *    destroy the old. The old stack is only destroyed AFTER a verified successful
+ *    copy, so a copy failure ROLLS BACK (the half-built new stack is removed, the
+ *    old one restarted) and the original is left intact with its data.
  *
  * Because the connection string embeds a host:port that depends on reachability
  * (the internal service name + engine port when unexposed, the server's host +

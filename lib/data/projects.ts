@@ -45,7 +45,9 @@ export interface ProjectSummary extends Project {
    *  Legacy — the ADR-0009 model no longer files folders into projects; kept for
    *  rows written before the pivot. */
   folderCount: number;
-  /** Live count of services in this project, across all environments. */
+  /** Live count of services in this project, across all environments —
+   *  including services living anywhere inside a legacy folder-in-project
+   *  subtree (pre-ADR-0009 rows), which carry no `project_id` of their own. */
   serviceCount: number;
   /** Live count of this project's environments. */
   environmentCount: number;
@@ -116,18 +118,45 @@ async function counts(
   services: Map<string, number>;
   environments: Map<string, number>;
 }> {
-  const folders = new Map<string, number>();
-  for (const r of await getDb()
-    .select({ projectId: foldersTable.projectId })
+  const folderRows = await getDb()
+    .select({
+      id: foldersTable.id,
+      parentId: foldersTable.parentId,
+      projectId: foldersTable.projectId,
+    })
     .from(foldersTable)
-    .where(eq(foldersTable.teamId, teamId)))
+    .where(eq(foldersTable.teamId, teamId));
+  const folders = new Map<string, number>();
+  for (const r of folderRows)
     if (r.projectId) folders.set(r.projectId, (folders.get(r.projectId) ?? 0) + 1);
+  // A service counts toward a project either DIRECTLY (its own `project_id` —
+  // the ADR-0009 per-environment membership) or through a LEGACY
+  // folder-in-project row: filing into a folder clears the service's own
+  // project link, so a service anywhere inside a project-filed folder subtree
+  // is credited by walking its folder's parent chain to the nearest
+  // project-linked ancestor (cycle-safe, like the folder tree walks).
+  const folderById = new Map(folderRows.map((r) => [r.id, r] as const));
+  const projectOfFolder = (folderId: string): string | null => {
+    const seen = new Set<string>();
+    let cur = folderById.get(folderId);
+    while (cur && !seen.has(cur.id)) {
+      if (cur.projectId) return cur.projectId;
+      seen.add(cur.id);
+      cur = cur.parentId ? folderById.get(cur.parentId) : undefined;
+    }
+    return null;
+  };
   const services = new Map<string, number>();
   for (const r of await getDb()
-    .select({ projectId: servicesTable.projectId })
+    .select({
+      projectId: servicesTable.projectId,
+      folderId: servicesTable.folderId,
+    })
     .from(servicesTable)
-    .where(eq(servicesTable.teamId, teamId)))
-    if (r.projectId) services.set(r.projectId, (services.get(r.projectId) ?? 0) + 1);
+    .where(eq(servicesTable.teamId, teamId))) {
+    const pid = r.projectId ?? (r.folderId ? projectOfFolder(r.folderId) : null);
+    if (pid) services.set(pid, (services.get(pid) ?? 0) + 1);
+  }
   // Environments are project-scoped (no team column); count via the join.
   const environments = new Map<string, number>();
   for (const r of await getDb()

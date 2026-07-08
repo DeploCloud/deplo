@@ -77,3 +77,49 @@ test("descendantFolderIds returns the folder plus its whole subtree", async () =
   ];
   assert.deepEqual([...descendantFolderIds("x", cyclic)].sort(), ["x", "y"]);
 });
+
+test("rollUpServiceCounts credits every ancestor with its subtree's services", async () => {
+  const { rollUpServiceCounts } = await import("./folders");
+  // a → b → c, a → d, and e as a separate root.
+  const folders = [
+    { id: "a", parentId: null },
+    { id: "b", parentId: "a" },
+    { id: "c", parentId: "b" },
+    { id: "d", parentId: "a" },
+    { id: "e", parentId: null },
+  ];
+  const totals = rollUpServiceCounts(
+    folders,
+    new Map([
+      ["a", 1],
+      ["c", 2],
+      ["d", 1],
+    ]),
+  );
+  assert.equal(totals.get("a"), 4, "1 direct + 2 in grandchild c + 1 in child d");
+  assert.equal(totals.get("b"), 2, "c's services bubble up through b");
+  assert.equal(totals.get("c"), 2);
+  assert.equal(totals.get("d"), 1);
+  assert.equal(totals.get("e") ?? 0, 0, "a sibling root gets nothing");
+});
+
+test("rollUpServiceCounts tolerates cycles and dangling parents", async () => {
+  const { rollUpServiceCounts } = await import("./folders");
+  const broken = [
+    { id: "x", parentId: "y" },
+    { id: "y", parentId: "x" },
+    { id: "z", parentId: "ghost" },
+  ];
+  const totals = rollUpServiceCounts(
+    broken,
+    new Map([
+      ["x", 1],
+      ["z", 3],
+    ]),
+  );
+  // Each cycle member is credited exactly once — and the walk terminates.
+  assert.equal(totals.get("x"), 1);
+  assert.equal(totals.get("y"), 1);
+  // A dangling parentId just ends the walk (folder treated as top-level).
+  assert.equal(totals.get("z"), 3);
+});

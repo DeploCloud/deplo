@@ -28,7 +28,8 @@ import { assembleFolder, folderToRow } from "./service-graph-rows";
 import type { Folder } from "../types";
 
 export interface FolderSummary extends Folder {
-  /** Live count of services DIRECTLY in this folder (derived, never stored). */
+  /** Live count of services in this folder's WHOLE subtree — the folder itself
+   *  plus every subfolder nested anywhere beneath it (derived, never stored). */
   serviceCount: number;
   /** Live count of immediate child folders (derived, never stored). */
   subfolderCount: number;
@@ -78,6 +79,34 @@ export function descendantFolderIds(
   return out;
 }
 
+/**
+ * Roll DIRECT per-folder service counts up the folder tree so each folder's
+ * total covers its WHOLE subtree — itself plus every folder nested anywhere
+ * beneath it. Cycle-safe (a stale cycle's members are each credited once) and
+ * pure over the given folder list; a dangling `parentId` just ends the walk
+ * (the same "treated as top-level" tolerance as the rest of the tree code).
+ */
+export function rollUpServiceCounts(
+  folders: Pick<Folder, "id" | "parentId">[],
+  direct: Map<string, number>,
+): Map<string, number> {
+  const byId = new Map(folders.map((f) => [f.id, f] as const));
+  const totals = new Map<string, number>();
+  for (const f of folders) {
+    const n = direct.get(f.id) ?? 0;
+    if (n === 0) continue;
+    // Credit this folder and every ancestor; the seen-set breaks stale cycles.
+    const seen = new Set<string>();
+    let cur: Pick<Folder, "id" | "parentId"> | undefined = f;
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      totals.set(cur.id, (totals.get(cur.id) ?? 0) + n);
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+  }
+  return totals;
+}
+
 /** A team's folders (assembled) + live project/subfolder counts (one query each). */
 async function teamFoldersWithCounts(
   teamId: string,
@@ -91,14 +120,18 @@ async function teamFoldersWithCounts(
     .from(foldersTable)
     .where(eq(foldersTable.teamId, teamId));
   const folders = folderRows.map(assembleFolder);
-  // Service counts: GROUP BY folder_id over the team's services.
+  // Service counts: GROUP BY folder_id over the team's services, then rolled up
+  // the tree so a folder's count covers its whole subtree — the Overview shows
+  // one level at a time, so a parent tile saying "0 services" over populated
+  // subfolders would read as empty.
   const projRows = await getDb()
     .select({ folderId: servicesTable.folderId })
     .from(servicesTable)
     .where(eq(servicesTable.teamId, teamId));
-  const serviceCounts = new Map<string, number>();
+  const directCounts = new Map<string, number>();
   for (const r of projRows)
-    if (r.folderId) serviceCounts.set(r.folderId, (serviceCounts.get(r.folderId) ?? 0) + 1);
+    if (r.folderId) directCounts.set(r.folderId, (directCounts.get(r.folderId) ?? 0) + 1);
+  const serviceCounts = rollUpServiceCounts(folders, directCounts);
   const subfolderCounts = new Map<string, number>();
   for (const f of folders)
     if (f.parentId)
@@ -123,8 +156,8 @@ export async function listFolders(): Promise<FolderSummary[]> {
   // Recompute subfolderCount over the VISIBLE set so a folder doesn't disclose the
   // existence of child folders the caller can't see (child folders carry their own
   // independent ownership/grants). serviceCount stays team-scoped — a folder's
-  // services are part of what any folder-viewer works with. Super-users (visible
-  // === "all") keep the full team counts.
+  // services (including the subtree roll-up) are part of what any folder-viewer
+  // works with. Super-users (visible === "all") keep the full team counts.
   const shownSubfolderCounts =
     visible === "all"
       ? subfolderCounts

@@ -5,6 +5,7 @@ import {
   Metadata,
   status as GrpcStatus,
   type ClientReadableStream,
+  type ClientWritableStream,
   type ClientDuplexStream,
   type ServiceError,
 } from "@grpc/grpc-js";
@@ -31,6 +32,8 @@ import {
   type GatewayConfig as PbGatewayConfig,
   type UserSteps as PbUserSteps,
   type GatewayStep as PbGatewayStep,
+  type VolumeChunk,
+  type StackResult,
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
 import { getServerById, markServerSeen } from "../data/servers";
@@ -69,6 +72,10 @@ const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000; // agent downloads + verifies + swaps
 // is mandatory: these run under the per-DB lifecycle lock (lib/data/keyed-mutex),
 // so a hung RPC with no deadline would wedge every future op for that database.
 const STACK_DEADLINE_MS = 3 * 60_000;
+// A cross-host volume copy (export/import) tars a whole DB data volume across the
+// wire; the agent caps each side at ~30min. Match the backup-class deadline plus
+// dial slack — same reasoning as BACKUP_DEADLINE_MS (a volume-heavy move is long).
+const VOLUME_COPY_DEADLINE_MS = 60 * 60_000;
 // A port-availability probe is a single bind()+close() on the host — near-instant.
 // Keep the deadline short so an unreachable agent fails fast (this gates an
 // interactive "generate available port" click + the pre-provision guard).
@@ -172,6 +179,25 @@ export interface AgentConnection {
     env: Record<string, string>;
     mounts: { path: string; content: string }[];
   }): Promise<{ ok: boolean; error: string }>;
+  /** Stream a named Docker volume's gzipped tar OUT of this (source) host, for a
+   *  cross-host server move. Yields raw byte chunks until the stream ends. The
+   *  caller must have QUIESCED the source (stopped the owning stack) first so the
+   *  on-disk files can't change mid-read. An agent too old to implement it rejects
+   *  with UNIMPLEMENTED (mapped to AgentVolumeCopyUnsupportedError by the caller).
+   *  Data does not round-trip through S3 — the control plane relays these chunks
+   *  straight into {@link importVolume} on the destination host. */
+  exportVolume(volumeName: string): AsyncGenerator<Buffer, void, unknown>;
+  /** Untar a stream of gzipped-tar chunks INTO a named Docker volume on this
+   *  (destination) host — the receiving half of a cross-host move. `wipeFirst`
+   *  empties the target before untarring so the copy overwrites rather than merges.
+   *  The caller must have stopped the destination stack first. Resolves with the
+   *  terminal StackResult. Rejects with UNIMPLEMENTED on a too-old agent (mapped by
+   *  the caller). */
+  importVolume(
+    volumeName: string,
+    wipeFirst: boolean,
+    chunks: AsyncIterable<Buffer>,
+  ): Promise<{ ok: boolean; error: string }>;
   /** Read back the rendered stack YAML the agent has on disk, for the "View full
    *  compose" preview. `exists` is false (empty yaml) when never deployed. */
   readStack(slug: string): Promise<{ exists: boolean; yaml: string }>;
@@ -355,6 +381,35 @@ export function mapCheckPortUnsupported(e: unknown): Error {
   if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
     return new AgentCheckPortUnsupportedError(
       "This server's agent is too old to check port availability. Update the agent on this server, then try again.",
+    );
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
+
+/**
+ * The reachable agent does not (yet) implement the volume-copy RPCs
+ * ({@link AgentConnection.exportVolume} / {@link AgentConnection.importVolume}) —
+ * it doesn't advertise the `"volume-copy"` capability in Hello, or it answers with
+ * gRPC UNIMPLEMENTED. Moving a database to another server copies its data volume
+ * host-to-host through these RPCs, so until BOTH the source and destination servers
+ * run an agent new enough to answer, the data layer surfaces THIS error — distinct
+ * from {@link AgentUnreachableError} (the agent IS up, it just can't copy volumes
+ * yet) — and the UI says "update the agent on this server". Mirrors
+ * {@link AgentCheckPortUnsupportedError}.
+ */
+export class AgentVolumeCopyUnsupportedError extends Error {}
+
+/**
+ * Map a volume-copy RPC error to {@link AgentVolumeCopyUnsupportedError} when it is
+ * a gRPC UNIMPLEMENTED (the agent predates the RPCs); every other error passes
+ * through unchanged. `which` names the side ("source"/"destination") so the message
+ * points the operator at the right server.
+ */
+export function mapVolumeCopyUnsupported(e: unknown, which: string): Error {
+  if (e instanceof AgentVolumeCopyUnsupportedError) return e;
+  if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
+    return new AgentVolumeCopyUnsupportedError(
+      `The ${which} server's agent is too old to copy data volumes between servers. Update the agent on that server, then try again.`,
     );
   }
   return e instanceof Error ? e : new Error(String(e));
@@ -770,6 +825,75 @@ function dial(target: DialTarget): AgentConnection {
               ? reject(toAgentError(err))
               : resolve({ ok: resp.ok, error: resp.error }),
         );
+      });
+    },
+    exportVolume(volumeName: string) {
+      // Server-streaming: the agent tars the volume out as VolumeChunk{data}
+      // frames. Bridge to an async generator (like backup) and hand back the raw
+      // bytes; the caller relays them into importVolume on the other host.
+      return (async function* () {
+        const stream = client.exportVolume(
+          { volumeName },
+          { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
+        );
+        for await (const chunk of streamEvents<VolumeChunk>(stream)) {
+          // Export only ever emits `data` frames; ignore anything else defensively.
+          if (chunk.data && chunk.data.length) yield Buffer.from(chunk.data);
+        }
+      })();
+    },
+    importVolume(
+      volumeName: string,
+      wipeFirst: boolean,
+      chunks: AsyncIterable<Buffer>,
+    ) {
+      // Client-streaming: write the header first, then each data frame, then end().
+      // The terminal StackResult arrives via the callback. A write-side backpressure
+      // signal (`write` returning false) is honoured so a slow untar on the agent
+      // doesn't let the relay buffer the whole volume in memory.
+      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
+        const call: ClientWritableStream<VolumeChunk> = client.importVolume(
+          new Metadata(),
+          { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
+          (err: ServiceError | null, resp: StackResult) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({ ok: resp.ok, error: resp.error }),
+        );
+        // A transport error surfaces on the writable stream too (not only the
+        // callback) — reject once, then stop pumping.
+        let settled = false;
+        const fail = (e: unknown) => {
+          if (settled) return;
+          settled = true;
+          reject(toAgentError(e));
+        };
+        call.on("error", fail);
+
+        const writeChunk = (v: VolumeChunk) =>
+          new Promise<void>((res, rej) => {
+            // grpc-js write() returns false under backpressure; wait for drain.
+            if (call.write(v)) return res();
+            call.once("drain", res);
+            call.once("error", rej);
+          });
+
+        void (async () => {
+          try {
+            // Header frame first (the only message carrying `header`), then data
+            // frames. ts-proto models the oneof as flat optional fields.
+            await writeChunk({ header: { volumeName, wipeFirst } });
+            for await (const buf of chunks) {
+              if (settled) return; // a transport error already ended us
+              await writeChunk({ data: buf });
+            }
+            call.end();
+          } catch (e) {
+            // Cancel the RPC so the agent's untar sees the stream break, then reject.
+            call.cancel();
+            fail(e);
+          }
+        })();
       });
     },
     readStack(slug: string) {
