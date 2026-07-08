@@ -35,6 +35,12 @@ export interface NavItem {
   /** exact match for active state (default: startsWith) */
   exact?: boolean;
   /**
+   * A "back" escape hatch (top of a sub-menu). The sidebar routes a plain click
+   * through the browser's back so you return to wherever you came from; `href`
+   * is the fallback used when there's no in-app page to go back to.
+   */
+  back?: boolean;
+  /**
    * Per-team capability required to SEE this item. Absent ⇒ always visible.
    * The sidebar filters items the current member lacks (the destination page
    * also guards server-side). Matches the Capability strings in lib/types.ts.
@@ -150,6 +156,7 @@ export const SETTINGS_NAV: NavSection[] = [
         icon: ArrowLeft,
         tooltip: "Return to the dashboard",
         exact: true,
+        back: true,
       },
     ],
   },
@@ -364,6 +371,7 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
           icon: ArrowLeft,
           tooltip: "Return to all services",
           exact: true,
+          back: true,
         },
       ],
     },

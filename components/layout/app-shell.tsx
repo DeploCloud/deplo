@@ -1,6 +1,7 @@
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { UpdateBanner } from "./update-banner";
+import { NavigationHistoryTracker } from "./navigation-history";
 import type { PublicUser, Team, TeamSummary } from "@/lib/types";
 
 export function AppShell({
@@ -22,6 +23,9 @@ export function AppShell({
 }) {
   return (
     <div className="flex min-h-screen w-full">
+      {/* Tracks in-app history depth so sidebar back links can use the browser's
+          back when there's a page to return to (see navigation-history). */}
+      <NavigationHistoryTracker />
       <Sidebar capabilities={capabilities} isAdmin={isAdmin} />
 
       {/* Main */}

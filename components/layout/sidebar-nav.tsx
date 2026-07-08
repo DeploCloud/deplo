@@ -3,7 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV, SETTINGS_NAV, serviceNav, type NavSection } from "./nav-config";
+import {
+  NAV,
+  SETTINGS_NAV,
+  serviceNav,
+  type NavItem,
+  type NavSection,
+} from "./nav-config";
+import { backOutOf } from "./navigation-history";
 import { useServiceNav } from "@/components/services/service-nav-store";
 import { cn } from "@/lib/utils";
 import {
@@ -32,6 +39,34 @@ export function SidebarNav({
   const pathname = usePathname();
   const caps = new Set(capabilities);
   const service = useServiceNav();
+
+  // A "back" escape hatch leaves the whole current section via the browser's
+  // history — jumping to the last page you were on *outside* it — so it lands
+  // where you came from instead of stepping between sibling pages. Its href
+  // (Back to services / dashboard) is the fallback when there's no such page
+  // (a fresh load, a reload). Modified clicks (⌘/ctrl/shift/alt → new tab) fall
+  // through to the href untouched.
+  function handleNavClick(item: NavItem, e: React.MouseEvent<HTMLAnchorElement>) {
+    if (
+      item.back &&
+      e.button === 0 &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.shiftKey &&
+      !e.altKey
+    ) {
+      const slug = pathname.match(/^\/services\/([^/]+)/)?.[1];
+      const prefix = slug
+        ? `/services/${slug}`
+        : pathname.startsWith("/settings")
+          ? "/settings"
+          : null;
+      // Suppress the href when we handled it (jumped out, or a jump is already
+      // running); only "none" — no in-app page outside the section — follows it.
+      if (prefix && backOutOf(prefix) !== "none") e.preventDefault();
+    }
+    onNavigate?.();
+  }
 
   // The same sidebar shows one of three navigations depending on where you are:
   // inside a service it becomes that service's sub-menu; under /settings the
@@ -156,7 +191,7 @@ export function SidebarNav({
                 <TooltipTrigger asChild>
                   <Link
                     href={item.href}
-                    onClick={onNavigate}
+                    onClick={(e) => handleNavClick(item, e)}
                     aria-label={item.label}
                     data-active={active ? "true" : undefined}
                     className={cn(
