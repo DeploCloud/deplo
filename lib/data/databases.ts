@@ -527,8 +527,43 @@ export async function setDatabaseRunning(
  * agent's ExportVolume/ImportVolume operate on. Matches the compose-stack
  * convention `composeStackVolumeHostNames` uses for projects (`deplo-<slug>_<key>`).
  */
-function dbVolumeHostName(slug: string): string {
+export function dbVolumeHostName(slug: string): string {
   return `deplo-${slug}_${slug}-data`;
+}
+
+/** Stop a stack on a specific server, throwing on failure (a move can't proceed if
+ *  the stack won't quiesce — its volume would change under the copy). */
+async function stopStackOn(serverId: string, slug: string): Promise<void> {
+  const conn = await connectAgent(serverId);
+  try {
+    const r = await conn.stopStack(slug);
+    if (!r.ok) throw new Error(r.error || `agent failed to stop ${slug}`);
+  } finally {
+    conn.close();
+  }
+}
+
+/** Start a stack on a specific server, throwing on failure. */
+async function startStackOn(serverId: string, slug: string): Promise<void> {
+  const conn = await connectAgent(serverId);
+  try {
+    const r = await conn.startStack(slug);
+    if (!r.ok) throw new Error(r.error || `agent failed to start ${slug}`);
+  } finally {
+    conn.close();
+  }
+}
+
+/** Destroy a stack + its volume on a specific server, throwing on failure. Used by
+ *  the move rollback to remove a half-built new stack. */
+async function destroyStackOn(serverId: string, slug: string): Promise<void> {
+  const conn = await connectAgent(serverId);
+  try {
+    const r = await conn.destroyStack(slug, true);
+    if (!r.ok) throw new Error(r.error || `agent failed to destroy ${slug}`);
+  } finally {
+    conn.close();
+  }
 }
 
 /**
@@ -731,9 +766,9 @@ export async function updateDatabase(
         "Database is still provisioning — wait for it to finish before editing it.",
       );
     // Provision on the TARGET server first. On a move this creates the stack fresh
-    // on the new host (empty volume); in place it reroutes the existing container.
-    // Doing this BEFORE any old-host teardown means a failed reroute leaves the
-    // original stack untouched — the move is atomic from the operator's view.
+    // on the new host (empty volume, ready to receive the copied data); in place it
+    // reroutes the existing container. Doing this BEFORE any old-host teardown means
+    // a failed reroute leaves the original stack untouched.
     const agent = await connectAgent(targetServer.id);
     try {
       const res = await agent.reroute({
@@ -748,37 +783,67 @@ export async function updateDatabase(
       agent.close();
     }
 
-    // A move succeeded on the new host — now tear down the OLD host's stack + its
-    // (now-stale) data volume so it isn't left running and orphaned. Best-effort,
-    // exactly like deleteDatabase: the move is already done, so a failed/unreachable
-    // teardown is surfaced (and logged) rather than rolled back. `removeVolumes`
-    // reclaims the old volume; a too-old agent that ignores it leaves the volume to
-    // sweep by hand.
     if (movingFrom) {
+      // MOVE: migrate the data volume from the old host to the new one, then tear
+      // down the old. The data FOLLOWS the move (copied host-to-host, relayed
+      // through the control plane — no S3). Ordering is safety-critical:
+      //   1. stop the NEW stack — nothing may write its volume while we untar into it;
+      //   2. stop the OLD stack — a consistent read (its files can't change mid-tar);
+      //   3. copy old → new (wipe-first, overwriting the fresh-init empty volume);
+      //   4. start the NEW stack on the migrated data;
+      //   5. ONLY THEN destroy the OLD stack + its volume.
+      // If the copy fails, the old stack still has all the data — so ROLL BACK: tear
+      // down the half-built new stack and restart the old one, then surface the error
+      // (the move is undone, the DB stays where it was).
+      await stopStackOn(targetServer.id, cur.host);
+      await stopStackOn(movingFrom, cur.host);
+      try {
+        await copyDatabaseVolume(movingFrom, targetServer.id, cur.host);
+      } catch (copyErr) {
+        // Roll back: remove the new (empty/partial) stack + volume, bring the old DB
+        // back up so the operator is left exactly where they started. Rollback steps
+        // are best-effort — a rollback failure is appended, but the ORIGINAL copy
+        // error is what we throw (it's the actionable cause).
+        await destroyStackOn(targetServer.id, cur.host).catch(() => {});
+        await startStackOn(movingFrom, cur.host).catch(() => {});
+        throw new Error(
+          `Failed to copy ${cur.name}'s data to ${targetServer.name}: ` +
+            `${copyErr instanceof Error ? copyErr.message : String(copyErr)}. ` +
+            `The move was rolled back — the database is still on its original server.`,
+        );
+      }
+      // Copy succeeded — start the new stack on the migrated data.
+      await startStackOn(targetServer.id, cur.host);
+
+      // Tear down the OLD host's stack + its (now-migrated) data volume so it isn't
+      // left running and orphaned. Best-effort, exactly like deleteDatabase: the data
+      // is already safe on the new host, so a failed/unreachable teardown is surfaced
+      // (and logged) rather than rolled back.
       try {
         const old = await connectAgent(movingFrom);
         try {
           const r = await old.destroyStack(cur.host, true);
           if (!r.ok)
             moveWarning =
-              `Moved ${cur.name}, but the old server did not cleanly tear down ` +
-              `${cur.host} (${r.error || "unknown error"}). Its old container/` +
-              `volume may need a manual sweep on that host.`;
+              `Moved ${cur.name} to ${targetServer.name}, but the old server did ` +
+              `not cleanly tear down ${cur.host} (${r.error || "unknown error"}). ` +
+              `Its old container/volume may need a manual sweep on that host.`;
         } finally {
           old.close();
         }
       } catch (e) {
         moveWarning =
-          `Moved ${cur.name}, but the old server was unreachable to tear down ` +
-          `${cur.host} (${e instanceof Error ? e.message : String(e)}). Its old ` +
-          `container/volume may need a manual sweep on that host.`;
+          `Moved ${cur.name} to ${targetServer.name}, but the old server was ` +
+          `unreachable to tear down ${cur.host} ` +
+          `(${e instanceof Error ? e.message : String(e)}). Its old container/` +
+          `volume may need a manual sweep on that host.`;
       }
     }
 
     // Persist the new location + exposure + re-derived connection string. On a move
-    // the container comes up fresh, so reset the tracked size to 0 (the old volume's
-    // bytes didn't follow). `host`/`port`/`username`/`dbName` are untouched (the
-    // container's DNS identity and credentials are fixed at first init).
+    // the data followed, so `sizeMb` is left as-is (a metrics sweep refreshes it).
+    // `host`/`port`/`username`/`dbName` are untouched (the container's DNS identity
+    // and credentials are fixed at first init).
     await getDb()
       .update(databasesTable)
       .set({
@@ -786,7 +851,6 @@ export async function updateDatabase(
         exposedPublicly: exposed,
         exposedPort: newExposedPort,
         connectionStringEnc: connEnc,
-        ...(movingFrom ? { sizeMb: 0 } : {}),
       })
       .where(eq(databasesTable.id, id));
   });

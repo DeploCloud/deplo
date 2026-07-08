@@ -20,7 +20,10 @@ import {
   getDatabase,
   listDatabases,
   deleteDatabase,
+  dbVolumeHostName,
 } from "./databases";
+import { generateDatabaseCompose } from "../deploy/database-compose";
+import { composeStackVolumeHostNames } from "./project-backup-descriptor";
 
 /**
  * Data-layer tests for `databases` against pglite (PLAN Step 5, cut-set (d)).
@@ -121,4 +124,32 @@ test("deleteDatabase cascades schedules and SET NULLs run history (no orphans)",
   const run = await db.select().from(backupRunsTable).where(eq(backupRunsTable.id, "brun_1"));
   assert.equal(run.length, 1, "run history survives");
   assert.equal(run[0]!.databaseId, null, "run.databaseId SET NULL");
+});
+
+// The cross-host volume copy that backs a server MOVE operates on the DB's real
+// host-side Docker volume name. dbVolumeHostName must equal what the rendered DB
+// compose ACTUALLY produces on the host, or a move would export/import the wrong
+// (non-existent) volume and silently migrate nothing. Pin it AND cross-check it
+// against the compose renderer + the same prefix logic project backups use, so the
+// three can never drift.
+test("dbVolumeHostName matches the rendered DB compose volume (move copies the right volume)", () => {
+  const slug = "db-mydb";
+  // The literal contract the agent's ExportVolume/ImportVolume receive.
+  assert.equal(dbVolumeHostName(slug), "deplo-db-mydb_db-mydb-data");
+
+  // Cross-check: derive the host volume name(s) from the ACTUAL rendered compose
+  // exactly as buildProjectDescriptor does for a compose-stack backup. The DB
+  // stack declares one unnamed volume, so this yields the single data volume — and
+  // it must equal dbVolumeHostName. If someone changes the compose (e.g. pins a
+  // `name:` on the volume), this fails loudly instead of breaking moves silently.
+  const yaml = generateDatabaseCompose({
+    name: slug,
+    type: "postgres",
+    version: "16",
+    username: "app",
+    password: "pw",
+    dbName: "db-mydb",
+  });
+  const derived = composeStackVolumeHostNames(slug, yaml);
+  assert.deepEqual(derived, [dbVolumeHostName(slug)]);
 });

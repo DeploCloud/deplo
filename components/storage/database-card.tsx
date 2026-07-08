@@ -11,7 +11,7 @@ import {
   Square,
   Pencil,
   Trash2,
-  AlertTriangle,
+  ArrowRightLeft,
   Server as ServerIcon,
   Database as DatabaseIcon,
 } from "lucide-react";
@@ -236,11 +236,11 @@ export function DatabaseCard({
  * fixed at creation (the official images apply those env vars only on first init
  * against an empty volume), so they are shown READ-ONLY. Two things are editable:
  * public exposure + the host port (rerouted in place, data volume preserved), and
- * the SERVER it runs on. Moving to another server works like a service move — the
- * container is recreated fresh on the new host and its DATA DOES NOT FOLLOW (a
- * Docker volume is host-local), so that path shows a loud warning before it can be
- * saved. Mirrors EditBackupDialog: seeded from `db` on mount, remounted via `key`
- * on each open.
+ * the SERVER it runs on. Moving to another server copies the data volume across
+ * hosts, so the DATA FOLLOWS the move — the dialog shows an informational notice
+ * (the DB is briefly down while the volume copies, and the move rolls back if the
+ * copy fails). Mirrors EditBackupDialog: seeded from `db` on mount, remounted via
+ * `key` on each open.
  */
 function EditDatabaseDialog({
   db,
@@ -269,10 +269,10 @@ function EditDatabaseDialog({
   const portValid =
     Number.isInteger(parsedPort) && parsedPort >= 1024 && parsedPort <= 65535;
   const exposeReady = !exposed || portValid;
-  // Whether the DB is being moved to a different host. Its data does NOT follow, so
-  // the move is guarded by an explicit acknowledgement checkbox below.
+  // Whether the DB is being moved to a different host. The data volume is copied
+  // across, so the data follows — a move shows an informational notice (below)
+  // rather than a data-loss gate.
   const movingServer = serverId !== db.serverId;
-  const [ackMove, setAckMove] = React.useState(false);
   // Only offer the Server selector when there's somewhere else to move to. The
   // current server is always present in `servers` (it's a provisioned host); with
   // 0–1 total there's no alternative, so the selector stays hidden.
@@ -288,8 +288,8 @@ function EditDatabaseDialog({
     movingServer ||
     exposed !== db.exposedPublicly ||
     (exposed && parsedPort !== db.exposedPort);
-  // Block save on an un-acknowledged move (data loss) or an invalid port.
-  const saveReady = exposeReady && dirty && (!movingServer || ackMove);
+  // Block save only on an invalid port; a move is always OK to save (data follows).
+  const saveReady = exposeReady && dirty;
 
   // Ask the server for a free host port on the CURRENTLY SELECTED target server —
   // on a move that's the NEW host, where the port actually has to be free. The
@@ -373,9 +373,10 @@ function EditDatabaseDialog({
           </div>
 
           {/* Server location. Only rendered when there's an alternative host to
-              move to. A move recreates the container on the new server WITHOUT its
-              data (a Docker volume is host-local) — so it's gated by an explicit
-              acknowledgement below, mirroring how a service move relocates. */}
+              move to. A move recreates the container on the new server AND copies
+              the data volume across (relayed through the control plane), so the data
+              follows — an informational notice explains the brief downtime + the
+              rollback-on-failure behaviour. */}
           {canPickServer && (
             <div className="space-y-3 rounded-lg border border-border p-3">
               <div className="space-y-2">
@@ -397,32 +398,22 @@ function EditDatabaseDialog({
                 </p>
               </div>
               {movingServer && (
-                <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/10 p-3">
+                <div className="rounded-md border border-border bg-secondary/40 p-3">
                   <div className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                    <ArrowRightLeft className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                     <div className="space-y-1 text-xs">
-                      <p className="font-medium text-destructive">
-                        Moving to {targetServerName} recreates the database empty
+                      <p className="font-medium">
+                        Move {db.name} to {targetServerName}
                       </p>
                       <p className="text-muted-foreground">
-                        Like moving a service, the container is recreated fresh on
-                        the new server and its data does <strong>not</strong>{" "}
-                        follow — a database volume can&apos;t be copied between
-                        hosts. The old container and its data on{" "}
-                        {currentServerName} are torn down. To keep the data, back it
-                        up first and restore it after the move.
+                        The database and its data are copied from{" "}
+                        {currentServerName} to {targetServerName}. It will be briefly
+                        offline while the data volume copies. If the copy fails the
+                        move is rolled back and the database stays on{" "}
+                        {currentServerName}.
                       </p>
                     </div>
                   </div>
-                  <label className="flex items-center gap-2 text-xs">
-                    <input
-                      type="checkbox"
-                      className="size-3.5 accent-destructive"
-                      checked={ackMove}
-                      onChange={(e) => setAckMove(e.target.checked)}
-                    />
-                    I understand the data on {currentServerName} will be lost
-                  </label>
                 </div>
               )}
             </div>
