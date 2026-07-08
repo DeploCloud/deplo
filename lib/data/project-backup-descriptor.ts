@@ -196,6 +196,55 @@ export function assertSafeVolumeNames(slug: string, names: string[]): void {
 }
 
 /**
+ * The on-host docker volume names to COPY on a service server MOVE. Same as the
+ * backup enumeration (named for a single-container project, compose-stack volumes
+ * for a stack) EXCEPT `external:` compose volumes are EXCLUDED: an external volume
+ * is a pre-existing host volume Deplo doesn't own and didn't create, so it must not
+ * be relocated (unlike a backup, which copies it because it holds data the operator
+ * asked to snapshot). A move recreates the service on a new host; an external volume
+ * there is the operator's responsibility, exactly as it was on the old host.
+ *
+ * `renderedYaml` is the compose-stack project's rendered stack (empty for a single-
+ * container project, which has no compose `volumes:` block). Names are validated
+ * with {@link assertSafeVolumeNames} by the caller before they reach the wire.
+ */
+export function serviceMoveVolumeNames(
+  project: Service,
+  renderedYaml: string,
+): string[] {
+  const slug = project.slug;
+  if (!usesComposeStack(project)) {
+    // Single-container: only pinned `name:` named volumes (host mounts already
+    // excluded by namedVolumeHostNames). None of these are ever "external".
+    return namedVolumeHostNames(slug, project.volumes);
+  }
+  // Compose-stack: re-derive from the rendered YAML but drop external volumes.
+  let doc: unknown;
+  try {
+    doc = yaml.load(renderedYaml);
+  } catch {
+    return [];
+  }
+  const volumes = (doc as { volumes?: unknown } | null)?.volumes;
+  if (!volumes || typeof volumes !== "object") return [];
+  const names: string[] = [];
+  for (const [key, spec] of Object.entries(volumes as Record<string, unknown>)) {
+    const s = (spec ?? {}) as { name?: unknown; external?: unknown };
+    // Skip external volumes — Deplo doesn't own them, so a move must not relocate
+    // them (they stay the operator's responsibility on whatever host declares them).
+    if (s.external === true || (s.external && typeof s.external === "object")) {
+      continue;
+    }
+    if (typeof s.name === "string" && s.name) {
+      names.push(s.name);
+      continue;
+    }
+    names.push(`deplo-${slug}_${key}`);
+  }
+  return names;
+}
+
+/**
  * Build the full backup descriptor for a project. For a compose-stack project the
  * rendered YAML (the source of truth for the host volume names AND the snapshot)
  * is read back from the OWNING agent via `readStack`; for a single-container
@@ -255,7 +304,7 @@ export async function buildProjectDescriptor(
  * positive only costs an empty stat — but skipping a real files dir would lose
  * config, so we err toward including it.
  */
-function serviceHasFilesDir(project: Service): boolean {
+export function serviceHasFilesDir(project: Service): boolean {
   if (usesComposeStack(project)) return true;
   if ((project.mounts ?? []).length > 0) return true;
   return (project.volumes ?? []).some((v) => v.type === "service");

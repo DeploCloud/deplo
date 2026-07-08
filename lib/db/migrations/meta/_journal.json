@@ -148,6 +148,13 @@
       "when": 1783600401000,
       "tag": "0020_add_service_environment_membership",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783600402000,
+      "tag": "0021_add_service_migrate_from_server",
+      "breakpoints": true
     }
   ]
 }

@@ -600,6 +600,17 @@ export const services = pgTable(
     serverId: text("server_id")
       .notNull()
       .references(() => servers.id, { onDelete: "restrict" }),
+    // Set on a server MOVE when the OLD server still holds the service's data
+    // (a running stack): it names the source host the NEXT successful deploy on the
+    // new server must copy the data volumes + files dir FROM (host-to-host, via the
+    // agent ExportVolume/ImportVolume + ExportFiles/ImportFiles RPCs). The deploy
+    // clears it once the copy + old-host teardown complete. `SET NULL` if that old
+    // server is ever deleted (the source is gone → nothing to copy, drop the marker
+    // rather than block the delete). Null in the common case (no pending migration).
+    migrateFromServerId: text("migrate_from_server_id").references(
+      () => servers.id,
+      { onDelete: "set null" },
+    ),
     framework: text("framework").notNull(),
     logo: text("logo"),
     source: text("source").notNull(),

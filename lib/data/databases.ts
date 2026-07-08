@@ -15,11 +15,13 @@ import {
 } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
+import { connectAgent, mapCheckPortUnsupported } from "../infra/agent-client";
 import {
-  connectAgent,
-  mapCheckPortUnsupported,
-  mapVolumeCopyUnsupported,
-} from "../infra/agent-client";
+  migrateWorkloadData,
+  stopStackOn,
+  startStackOn,
+  destroyStackOn,
+} from "./volume-migration";
 import {
   generateDatabaseCompose,
   buildConnectionString,
@@ -531,91 +533,6 @@ export function dbVolumeHostName(slug: string): string {
   return `deplo-${slug}_${slug}-data`;
 }
 
-/** Stop a stack on a specific server, throwing on failure (a move can't proceed if
- *  the stack won't quiesce — its volume would change under the copy). */
-async function stopStackOn(serverId: string, slug: string): Promise<void> {
-  const conn = await connectAgent(serverId);
-  try {
-    const r = await conn.stopStack(slug);
-    if (!r.ok) throw new Error(r.error || `agent failed to stop ${slug}`);
-  } finally {
-    conn.close();
-  }
-}
-
-/** Start a stack on a specific server, throwing on failure. */
-async function startStackOn(serverId: string, slug: string): Promise<void> {
-  const conn = await connectAgent(serverId);
-  try {
-    const r = await conn.startStack(slug);
-    if (!r.ok) throw new Error(r.error || `agent failed to start ${slug}`);
-  } finally {
-    conn.close();
-  }
-}
-
-/** Destroy a stack + its volume on a specific server, throwing on failure. Used by
- *  the move rollback to remove a half-built new stack. */
-async function destroyStackOn(serverId: string, slug: string): Promise<void> {
-  const conn = await connectAgent(serverId);
-  try {
-    const r = await conn.destroyStack(slug, true);
-    if (!r.ok) throw new Error(r.error || `agent failed to destroy ${slug}`);
-  } finally {
-    conn.close();
-  }
-}
-
-/**
- * Copy a database's data volume from its OLD server to its NEW one, for a move.
- * Docker named volumes are host-local and the agent trust model is strictly star
- * (an agent can neither dial nor trust a peer), so the bytes RELAY through the
- * control plane: the source agent streams the volume's gzipped tar out
- * (`exportVolume`), and those chunks are fed straight into the destination agent's
- * `importVolume` (wipe-first, so it overwrites the empty volume the freshly-
- * provisioned stack created). No S3 hop, no agent↔agent link. BOTH stacks must be
- * STOPPED before this runs — the destination so nothing writes the volume under the
- * untar, the source so its on-disk files can't change mid-read (a consistent copy).
- * A too-old agent on either side surfaces AgentVolumeCopyUnsupportedError ("update
- * the agent"). Throws on any failure so the caller can roll the move back.
- */
-async function copyDatabaseVolume(
-  fromServerId: string,
-  toServerId: string,
-  slug: string,
-): Promise<void> {
-  const volume = dbVolumeHostName(slug);
-  const source = await connectAgent(fromServerId);
-  try {
-    const dest = await connectAgent(toServerId);
-    try {
-      // Drive the destination import with the source export as its chunk source —
-      // one async pipe, no full-volume buffering in the control plane. Any
-      // UNIMPLEMENTED (agent too old) is mapped to a clear "update the agent" error,
-      // attributed to the side that rejected.
-      let res: { ok: boolean; error: string };
-      try {
-        res = await dest.importVolume(volume, true, source.exportVolume(volume));
-      } catch (e) {
-        // The export (source) or import (dest) rejected. Attribute UNIMPLEMENTED to
-        // whichever side is too old — try mapping as source first, then dest; a
-        // non-UNIMPLEMENTED error passes through unchanged either way.
-        const mapped = mapVolumeCopyUnsupported(e, "source");
-        throw mapped instanceof Error &&
-          mapped.constructor.name === "AgentVolumeCopyUnsupportedError"
-          ? mapped
-          : mapVolumeCopyUnsupported(e, "destination");
-      }
-      if (!res.ok)
-        throw new Error(res.error || "agent failed to import the data volume");
-    } finally {
-      dest.close();
-    }
-  } finally {
-    source.close();
-  }
-}
-
 /**
  * Edit a database's post-create-mutable settings: its public exposure
  * (publish/unpublish + host port) and, optionally, the SERVER it runs on.
@@ -798,7 +715,10 @@ export async function updateDatabase(
       await stopStackOn(targetServer.id, cur.host);
       await stopStackOn(movingFrom, cur.host);
       try {
-        await copyDatabaseVolume(movingFrom, targetServer.id, cur.host);
+        // A database is a single compose volume with no files dir — copy just it.
+        await migrateWorkloadData(movingFrom, targetServer.id, {
+          volumeNames: [dbVolumeHostName(cur.host)],
+        });
       } catch (copyErr) {
         // Roll back: remove the new (empty/partial) stack + volume, bring the old DB
         // back up so the operator is left exactly where they started. Rollback steps

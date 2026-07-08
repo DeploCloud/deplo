@@ -42,6 +42,7 @@ import {
 import { normalizeBuildConfig } from "../frameworks";
 import { usesComposeStack, hostVolumeName } from "../utils";
 import { certResolver, previewDomain, resolveServerIp } from "./domains";
+import { completePendingServiceMigration } from "../data/service-migration";
 import { traefikRouterLabels } from "./routing";
 import { buildComposeStack } from "./compose-stack";
 import {
@@ -893,6 +894,19 @@ async function runDeployment(depId: string): Promise<void> {
           ? `Deployment ready at ${dep.url}`
           : "Deployment ready (no domain — add one to route traffic)",
       );
+      // If this PRODUCTION deploy landed on a NEW server after a move, copy the data
+      // across now that the fresh stack + empty volumes exist on the new host.
+      // Gated on production: a PREVIEW deploy runs on an ephemeral host/stack and
+      // must never consume the migration marker or tear down the old production
+      // host. No-ops when there's no pending migration. Errors are surfaced into the
+      // deploy log but never fail the (already-successful) deploy.
+      if (dep.environment === "production") {
+        await completePendingServiceMigration(project.id, (level, text) =>
+          log(depId, level, text),
+        ).catch((e) =>
+          log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
+        );
+      }
     } else {
       await setDep(depId, { status: "error", buildDurationMs });
       await setService(project.id, { status: "error" });
@@ -1010,6 +1024,15 @@ async function finishComposeStack(
         ? `Deployment ready at ${url}`
         : "Deployment ready (no domain — add one to route traffic)",
     );
+    // Same post-success data-migration hook as the single-image path — production
+    // only (a preview must not consume the marker or tear down the old host).
+    if (environment === "production") {
+      await completePendingServiceMigration(project.id, (level, text) =>
+        log(depId, level, text),
+      ).catch((e) =>
+        log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
+      );
+    }
   } else {
     await setDep(depId, { status: "error", buildDurationMs });
     await setService(project.id, { status: "error" });

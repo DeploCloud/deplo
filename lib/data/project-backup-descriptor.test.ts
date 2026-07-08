@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   namedVolumeHostNames,
   composeStackVolumeHostNames,
+  serviceMoveVolumeNames,
   assertSafeVolumeNames,
 } from "./project-backup-descriptor";
 import type { VolumeMount } from "../types";
@@ -103,6 +104,73 @@ services:
     image: nginx
 `;
   assert.deepEqual(composeStackVolumeHostNames("shop", yaml), []);
+});
+
+/* ------------------------------------------------------------------ */
+/* Service MOVE volume enumeration (excludes external volumes)         */
+/* ------------------------------------------------------------------ */
+
+// A minimal Service shaped just enough for serviceMoveVolumeNames (usesComposeStack
+// + slug + volumes). Cast keeps the test focused on the enumeration logic.
+const composeService = (slug: string) =>
+  ({
+    slug,
+    source: "compose",
+    compose: "services:\n  web:\n    image: nginx\n",
+    repo: null,
+    dockerImage: null,
+    volumes: [],
+  }) as unknown as Parameters<typeof serviceMoveVolumeNames>[0];
+
+const singleImageService = (slug: string, volumes: VolumeMount[]) =>
+  ({
+    slug,
+    source: "docker-image",
+    compose: null,
+    repo: null,
+    dockerImage: "nginx",
+    volumes,
+  }) as unknown as Parameters<typeof serviceMoveVolumeNames>[0];
+
+test("serviceMoveVolumeNames (compose): owns volumes are copied, external EXCLUDED", () => {
+  const yaml = `
+volumes:
+  dbdata: {}
+  cache:
+  shared:
+    external: true
+  legacy:
+    external:
+      name: legacy-vol
+  pinned:
+    name: my-pinned-volume
+`;
+  // Contrast with backup (composeStackVolumeHostNames) which INCLUDES externals: a
+  // move must NOT relocate a volume Deplo doesn't own.
+  assert.deepEqual(serviceMoveVolumeNames(composeService("shop"), yaml), [
+    "deplo-shop_dbdata",
+    "deplo-shop_cache",
+    "my-pinned-volume",
+  ]);
+});
+
+test("serviceMoveVolumeNames (single-container): named volumes, host mounts excluded", () => {
+  const volumes: VolumeMount[] = [
+    vol({ name: "pgdata", type: "named" }),
+    vol({ name: "hostbind", type: "host", hostPath: "/srv/x" }),
+  ];
+  // The rendered YAML is irrelevant for a single-container service (no compose
+  // volumes:), so pass "".
+  assert.deepEqual(serviceMoveVolumeNames(singleImageService("api", volumes), ""), [
+    "deplo-api-pgdata",
+  ]);
+});
+
+test("serviceMoveVolumeNames (compose): no volumes → empty", () => {
+  assert.deepEqual(
+    serviceMoveVolumeNames(composeService("shop"), "services:\n  web:\n    image: nginx\n"),
+    [],
+  );
 });
 
 test("compose-stack: malformed YAML → empty (never throws)", () => {

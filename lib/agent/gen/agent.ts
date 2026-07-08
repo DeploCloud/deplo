@@ -765,6 +765,32 @@ export interface VolumeChunk_Header {
   wipeFirst: boolean;
 }
 
+export interface ExportFilesRequest {
+  /**
+   * The service slug whose files dir (<stack_dir>/files/<slug>) to tar out.
+   * Re-validated agent-side (validateSlug) before it is joined into a path. A
+   * missing dir yields an empty archive, not an error.
+   */
+  slug: string;
+}
+
+/**
+ * A framed chunk of a cross-host FILES-DIR transfer, mirroring VolumeChunk.
+ * ExportFiles emits `data` chunks (no header); ImportFiles expects a `header` first
+ * then `data` frames.
+ */
+export interface FilesChunk {
+  header?: FilesChunk_Header | undefined;
+  data?: Uint8Array | undefined;
+}
+
+export interface FilesChunk_Header {
+  /** The service slug whose files dir to untar into on the DESTINATION host. */
+  slug: string;
+  /** Empty the target files dir before untarring (default true for a move). */
+  wipeFirst: boolean;
+}
+
 /**
  * A label-only reroute of an already-deployed stack (no build, no env change
  * beyond what the control plane re-sends). Mirrors the compose-write half of a
@@ -4019,6 +4045,222 @@ export const VolumeChunk_Header: MessageFns<VolumeChunk_Header> = {
   fromPartial<I extends Exact<DeepPartial<VolumeChunk_Header>, I>>(object: I): VolumeChunk_Header {
     const message = createBaseVolumeChunk_Header();
     message.volumeName = object.volumeName ?? "";
+    message.wipeFirst = object.wipeFirst ?? false;
+    return message;
+  },
+};
+
+function createBaseExportFilesRequest(): ExportFilesRequest {
+  return { slug: "" };
+}
+
+export const ExportFilesRequest: MessageFns<ExportFilesRequest> = {
+  encode(message: ExportFilesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExportFilesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseExportFilesRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ExportFilesRequest {
+    return { slug: isSet(object.slug) ? globalThis.String(object.slug) : "" };
+  },
+
+  toJSON(message: ExportFilesRequest): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExportFilesRequest>, I>>(base?: I): ExportFilesRequest {
+    return ExportFilesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExportFilesRequest>, I>>(object: I): ExportFilesRequest {
+    const message = createBaseExportFilesRequest();
+    message.slug = object.slug ?? "";
+    return message;
+  },
+};
+
+function createBaseFilesChunk(): FilesChunk {
+  return { header: undefined, data: undefined };
+}
+
+export const FilesChunk: MessageFns<FilesChunk> = {
+  encode(message: FilesChunk, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.header !== undefined) {
+      FilesChunk_Header.encode(message.header, writer.uint32(10).fork()).join();
+    }
+    if (message.data !== undefined) {
+      writer.uint32(18).bytes(message.data);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): FilesChunk {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseFilesChunk();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.header = FilesChunk_Header.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): FilesChunk {
+    return {
+      header: isSet(object.header) ? FilesChunk_Header.fromJSON(object.header) : undefined,
+      data: isSet(object.data) ? bytesFromBase64(object.data) : undefined,
+    };
+  },
+
+  toJSON(message: FilesChunk): unknown {
+    const obj: any = {};
+    if (message.header !== undefined) {
+      obj.header = FilesChunk_Header.toJSON(message.header);
+    }
+    if (message.data !== undefined) {
+      obj.data = base64FromBytes(message.data);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<FilesChunk>, I>>(base?: I): FilesChunk {
+    return FilesChunk.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<FilesChunk>, I>>(object: I): FilesChunk {
+    const message = createBaseFilesChunk();
+    message.header = (object.header !== undefined && object.header !== null)
+      ? FilesChunk_Header.fromPartial(object.header)
+      : undefined;
+    message.data = object.data ?? undefined;
+    return message;
+  },
+};
+
+function createBaseFilesChunk_Header(): FilesChunk_Header {
+  return { slug: "", wipeFirst: false };
+}
+
+export const FilesChunk_Header: MessageFns<FilesChunk_Header> = {
+  encode(message: FilesChunk_Header, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.slug !== "") {
+      writer.uint32(10).string(message.slug);
+    }
+    if (message.wipeFirst !== false) {
+      writer.uint32(16).bool(message.wipeFirst);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): FilesChunk_Header {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseFilesChunk_Header();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.wipeFirst = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): FilesChunk_Header {
+    return {
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      wipeFirst: isSet(object.wipeFirst)
+        ? globalThis.Boolean(object.wipeFirst)
+        : isSet(object.wipe_first)
+        ? globalThis.Boolean(object.wipe_first)
+        : false,
+    };
+  },
+
+  toJSON(message: FilesChunk_Header): unknown {
+    const obj: any = {};
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.wipeFirst !== false) {
+      obj.wipeFirst = message.wipeFirst;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<FilesChunk_Header>, I>>(base?: I): FilesChunk_Header {
+    return FilesChunk_Header.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<FilesChunk_Header>, I>>(object: I): FilesChunk_Header {
+    const message = createBaseFilesChunk_Header();
+    message.slug = object.slug ?? "";
     message.wipeFirst = object.wipeFirst ?? false;
     return message;
   },
@@ -9937,6 +10179,44 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
   },
   /**
+   * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts,
+   * for a server move — the sibling of ExportVolume/ImportVolume for the one piece
+   * of a service's state that is NOT a Docker volume. The files dir holds a
+   * compose-stack's `./` bind-mount files, template config-file mounts, and
+   * `type: "service"` volume mounts; most of it is re-materialised from the control
+   * plane on a deploy, but any RUNTIME data written under it would otherwise be lost
+   * on a move. ExportFiles tars the dir out (gzipped) and streams it; a missing dir
+   * streams an empty archive (not an error). Same relay + capability model as the
+   * volume RPCs.
+   */
+  exportFiles: {
+    path: "/deplo.agent.v1.Agent/ExportFiles" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: ExportFilesRequest): Buffer => Buffer.from(ExportFilesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ExportFilesRequest => ExportFilesRequest.decode(value),
+    responseSerialize: (value: FilesChunk): Buffer => Buffer.from(FilesChunk.encode(value).finish()),
+    responseDeserialize: (value: Buffer): FilesChunk => FilesChunk.decode(value),
+  },
+  /**
+   * The destination half of a files-dir copy (see ExportFiles). The FIRST client
+   * message MUST be a FilesChunk carrying `header` (the target slug + wipe flag);
+   * every subsequent message carries `data` (a slice of the gzipped tar). The agent
+   * wipes the target files dir (unless told not to), then untars the stream into it
+   * (anti-traversal enforced, symlinks skipped — same guard as Restore's files/
+   * arm). The caller must have stopped the destination stack first. Terminal
+   * StackResult reports success/failure.
+   */
+  importFiles: {
+    path: "/deplo.agent.v1.Agent/ImportFiles" as const,
+    requestStream: true as const,
+    responseStream: false as const,
+    requestSerialize: (value: FilesChunk): Buffer => Buffer.from(FilesChunk.encode(value).finish()),
+    requestDeserialize: (value: Buffer): FilesChunk => FilesChunk.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
+  /**
    * Read back the rendered stack YAML the agent has on disk (<stack_dir>/<slug>.yml)
    * for the "View full compose" preview. The single-image/built stack's image ref
    * + env live only in this file (not on the project), so the preview must read it
@@ -10449,6 +10729,28 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   importVolume: handleClientStreamingCall<VolumeChunk, StackResult>;
   /**
+   * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts,
+   * for a server move — the sibling of ExportVolume/ImportVolume for the one piece
+   * of a service's state that is NOT a Docker volume. The files dir holds a
+   * compose-stack's `./` bind-mount files, template config-file mounts, and
+   * `type: "service"` volume mounts; most of it is re-materialised from the control
+   * plane on a deploy, but any RUNTIME data written under it would otherwise be lost
+   * on a move. ExportFiles tars the dir out (gzipped) and streams it; a missing dir
+   * streams an empty archive (not an error). Same relay + capability model as the
+   * volume RPCs.
+   */
+  exportFiles: handleServerStreamingCall<ExportFilesRequest, FilesChunk>;
+  /**
+   * The destination half of a files-dir copy (see ExportFiles). The FIRST client
+   * message MUST be a FilesChunk carrying `header` (the target slug + wipe flag);
+   * every subsequent message carries `data` (a slice of the gzipped tar). The agent
+   * wipes the target files dir (unless told not to), then untars the stream into it
+   * (anti-traversal enforced, symlinks skipped — same guard as Restore's files/
+   * arm). The caller must have stopped the destination stack first. Terminal
+   * StackResult reports success/failure.
+   */
+  importFiles: handleClientStreamingCall<FilesChunk, StackResult>;
+  /**
    * Read back the rendered stack YAML the agent has on disk (<stack_dir>/<slug>.yml)
    * for the "View full compose" preview. The single-image/built stack's image ref
    * + env live only in this file (not on the project), so the preview must read it
@@ -10817,6 +11119,46 @@ export interface AgentClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: StackResult) => void,
   ): ClientWritableStream<VolumeChunk>;
+  /**
+   * Copy a service's host-side FILES DIR (<stack_dir>/files/<slug>) across hosts,
+   * for a server move — the sibling of ExportVolume/ImportVolume for the one piece
+   * of a service's state that is NOT a Docker volume. The files dir holds a
+   * compose-stack's `./` bind-mount files, template config-file mounts, and
+   * `type: "service"` volume mounts; most of it is re-materialised from the control
+   * plane on a deploy, but any RUNTIME data written under it would otherwise be lost
+   * on a move. ExportFiles tars the dir out (gzipped) and streams it; a missing dir
+   * streams an empty archive (not an error). Same relay + capability model as the
+   * volume RPCs.
+   */
+  exportFiles(request: ExportFilesRequest, options?: Partial<CallOptions>): ClientReadableStream<FilesChunk>;
+  exportFiles(
+    request: ExportFilesRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<FilesChunk>;
+  /**
+   * The destination half of a files-dir copy (see ExportFiles). The FIRST client
+   * message MUST be a FilesChunk carrying `header` (the target slug + wipe flag);
+   * every subsequent message carries `data` (a slice of the gzipped tar). The agent
+   * wipes the target files dir (unless told not to), then untars the stream into it
+   * (anti-traversal enforced, symlinks skipped — same guard as Restore's files/
+   * arm). The caller must have stopped the destination stack first. Terminal
+   * StackResult reports success/failure.
+   */
+  importFiles(callback: (error: ServiceError | null, response: StackResult) => void): ClientWritableStream<FilesChunk>;
+  importFiles(
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientWritableStream<FilesChunk>;
+  importFiles(
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientWritableStream<FilesChunk>;
+  importFiles(
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientWritableStream<FilesChunk>;
   /**
    * Read back the rendered stack YAML the agent has on disk (<stack_dir>/<slug>.yml)
    * for the "View full compose" preview. The single-image/built stack's image ref

@@ -731,6 +731,14 @@ export interface Service {
    */
   environmentId?: ID | null;
   serverId: ID;
+  /**
+   * Set on a server MOVE when the OLD server still holds this service's data: the
+   * source host the next successful deploy on `serverId` must copy the data volumes
+   * + files dir FROM (host-to-host). Cleared by that deploy once the copy + old-host
+   * teardown finish. null in the common case (no pending migration). See
+   * migrateWorkloadData / the deploy's post-success migration step.
+   */
+  migrateFromServerId?: ID | null;
   framework: FrameworkId;
   /**
    * Display logo for the project (a URL or local /templates/<x> path). Defaulted

@@ -638,6 +638,8 @@ export async function updateServiceSource(
   const serversById = new Map(
     (await listServersForTeam(membership.teamId)).map((s) => [s.id, s] as const),
   );
+  // Set inside the tx, consumed after commit to trigger the move's deploy.
+  let migrateFromServerId: string | null = null;
   await getDb().transaction(async (tx) => {
     const p = await loadServiceGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("Service not found");
@@ -645,11 +647,20 @@ export async function updateServiceSource(
     // Capture the OLD server IP before serverId is reassigned, so a move can
     // re-host the project's auto nip.io domains onto the new server's IP below.
     const oldIp = resolveServerIp(serversById.get(p.serverId));
+    const oldServerId = p.serverId;
     let serverId = p.serverId;
     if (input.serverId) {
       if (!serversById.has(input.serverId)) throw new Error("Server not found");
       serverId = input.serverId;
     }
+    const isMove = serverId !== oldServerId;
+    // On a MOVE, if the service was ever deployed (it may hold data on the old
+    // host), mark the OLD server as the migration source: the deploy we trigger on
+    // the new host below will copy the data volumes + files dir across once its
+    // fresh stack is up (completePendingServiceMigration). A never-deployed service
+    // has no data, so it just moves cheaply with no marker. `latestDeploymentId`
+    // being set is the "was deployed" signal.
+    migrateFromServerId = isMove && p.latestDeploymentId ? oldServerId : null;
 
     // MOVING the project to a different server: its auto nip.io domains encode
     // the OLD server's IP (as the trailing hex label), so re-host them onto the
@@ -676,6 +687,9 @@ export async function updateServiceSource(
       .update(servicesTable)
       .set({
         serverId,
+        // Record the migration source on a move (null clears any stale marker on a
+        // non-move edit). The post-commit deploy consumes it.
+        migrateFromServerId,
         source: input.source,
         repoProvider: input.repo?.provider ?? null,
         repoUrl: input.repo?.url ?? null,
@@ -691,6 +705,18 @@ export async function updateServiceSource(
       .where(eq(servicesTable.id, id));
   });
   await recordActivity("service", `Updated deploy source`, user.name, id);
+  // A MOVE takes effect on a deploy (the container physically relocates to the new
+  // host on the next build). Trigger it here so the move actually happens — and so
+  // the data migration runs when that deploy succeeds (it consumes the marker set
+  // above). Fire-and-forget, mirroring how creation deploys (startDeployment floats
+  // runDeployment). A non-move source edit is NOT auto-deployed (unchanged
+  // behavior); the user deploys when ready.
+  if (migrateFromServerId) {
+    await startDeployment(id, {
+      creator: user.name,
+      commitMessage: "Move to a different server",
+    });
+  }
 }
 
 /**

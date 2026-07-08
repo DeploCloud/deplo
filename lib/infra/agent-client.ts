@@ -33,6 +33,7 @@ import {
   type UserSteps as PbUserSteps,
   type GatewayStep as PbGatewayStep,
   type VolumeChunk,
+  type FilesChunk,
   type StackResult,
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
@@ -195,6 +196,20 @@ export interface AgentConnection {
    *  the caller). */
   importVolume(
     volumeName: string,
+    wipeFirst: boolean,
+    chunks: AsyncIterable<Buffer>,
+  ): Promise<{ ok: boolean; error: string }>;
+  /** Stream a service's host-side FILES DIR (a plain host directory, not a Docker
+   *  volume) OUT of this host as a gzipped tar — the files-dir sibling of
+   *  {@link exportVolume} for a service move. A missing dir yields an empty stream.
+   *  Rejects with UNIMPLEMENTED on a too-old agent (mapped by the caller). */
+  exportFiles(slug: string): AsyncGenerator<Buffer, void, unknown>;
+  /** Untar a stream of gzipped-tar chunks INTO a service's files dir on this host —
+   *  the receiving half. `wipeFirst` empties the dir first (overwrite, not merge).
+   *  Resolves with the terminal StackResult. Rejects with UNIMPLEMENTED on a too-old
+   *  agent (mapped by the caller). */
+  importFiles(
+    slug: string,
     wipeFirst: boolean,
     chunks: AsyncIterable<Buffer>,
   ): Promise<{ ok: boolean; error: string }>;
@@ -387,29 +402,31 @@ export function mapCheckPortUnsupported(e: unknown): Error {
 }
 
 /**
- * The reachable agent does not (yet) implement the volume-copy RPCs
- * ({@link AgentConnection.exportVolume} / {@link AgentConnection.importVolume}) —
- * it doesn't advertise the `"volume-copy"` capability in Hello, or it answers with
- * gRPC UNIMPLEMENTED. Moving a database to another server copies its data volume
- * host-to-host through these RPCs, so until BOTH the source and destination servers
- * run an agent new enough to answer, the data layer surfaces THIS error — distinct
- * from {@link AgentUnreachableError} (the agent IS up, it just can't copy volumes
- * yet) — and the UI says "update the agent on this server". Mirrors
+ * The reachable agent does not (yet) implement the cross-host data-copy RPCs used
+ * by a server move — the volume-copy pair ({@link AgentConnection.exportVolume} /
+ * {@link AgentConnection.importVolume}, capability `"volume-copy"`) and/or the
+ * files-dir pair ({@link AgentConnection.exportFiles} /
+ * {@link AgentConnection.importFiles}, capability `"files-copy"`) — or it answers
+ * with gRPC UNIMPLEMENTED. Moving a database or service to another server copies its
+ * data host-to-host through these RPCs, so until BOTH the source and destination
+ * servers run an agent new enough to answer, the data layer surfaces THIS error —
+ * distinct from {@link AgentUnreachableError} (the agent IS up, it just can't copy
+ * data yet) — and the UI says "update the agent on this server". Mirrors
  * {@link AgentCheckPortUnsupportedError}.
  */
 export class AgentVolumeCopyUnsupportedError extends Error {}
 
 /**
- * Map a volume-copy RPC error to {@link AgentVolumeCopyUnsupportedError} when it is
- * a gRPC UNIMPLEMENTED (the agent predates the RPCs); every other error passes
- * through unchanged. `which` names the side ("source"/"destination") so the message
- * points the operator at the right server.
+ * Map a cross-host data-copy RPC error (volume OR files) to
+ * {@link AgentVolumeCopyUnsupportedError} when it is a gRPC UNIMPLEMENTED (the agent
+ * predates the RPCs); every other error passes through unchanged. `which` names the
+ * side ("source"/"destination") so the message points at the right server.
  */
 export function mapVolumeCopyUnsupported(e: unknown, which: string): Error {
   if (e instanceof AgentVolumeCopyUnsupportedError) return e;
   if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
     return new AgentVolumeCopyUnsupportedError(
-      `The ${which} server's agent is too old to copy data volumes between servers. Update the agent on that server, then try again.`,
+      `The ${which} server's agent is too old to copy data between servers. Update the agent on that server, then try again.`,
     );
   }
   return e instanceof Error ? e : new Error(String(e));
@@ -890,6 +907,60 @@ function dial(target: DialTarget): AgentConnection {
             call.end();
           } catch (e) {
             // Cancel the RPC so the agent's untar sees the stream break, then reject.
+            call.cancel();
+            fail(e);
+          }
+        })();
+      });
+    },
+    exportFiles(slug: string) {
+      // Server-streaming files-dir tar out — the exact shape of exportVolume, with
+      // FilesChunk{data} frames instead of VolumeChunk{data}.
+      return (async function* () {
+        const stream = client.exportFiles(
+          { slug },
+          { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
+        );
+        for await (const chunk of streamEvents<FilesChunk>(stream)) {
+          if (chunk.data && chunk.data.length) yield Buffer.from(chunk.data);
+        }
+      })();
+    },
+    importFiles(slug: string, wipeFirst: boolean, chunks: AsyncIterable<Buffer>) {
+      // Client-streaming files-dir untar in — mirrors importVolume with a slug header.
+      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
+        const call: ClientWritableStream<FilesChunk> = client.importFiles(
+          new Metadata(),
+          { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
+          (err: ServiceError | null, resp: StackResult) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({ ok: resp.ok, error: resp.error }),
+        );
+        let settled = false;
+        const fail = (e: unknown) => {
+          if (settled) return;
+          settled = true;
+          reject(toAgentError(e));
+        };
+        call.on("error", fail);
+
+        const writeChunk = (v: FilesChunk) =>
+          new Promise<void>((res, rej) => {
+            if (call.write(v)) return res();
+            call.once("drain", res);
+            call.once("error", rej);
+          });
+
+        void (async () => {
+          try {
+            await writeChunk({ header: { slug, wipeFirst } });
+            for await (const buf of chunks) {
+              if (settled) return;
+              await writeChunk({ data: buf });
+            }
+            call.end();
+          } catch (e) {
             call.cancel();
             fail(e);
           }

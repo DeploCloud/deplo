@@ -716,6 +716,13 @@ export function BuildSettingsForm({
                 ))}
               </SelectContent>
             </Select>
+            {serverId !== initialServerId && (
+              <p className="text-xs text-muted-foreground">
+                Saving redeploys this service on the new server and copies its data
+                (volumes and files) across. It&apos;s briefly offline during the
+                copy; if the copy fails the old server is left intact.
+              </p>
+            )}
           </div>
         </CardContent>
         <CardFooter className="justify-end border-t border-border pt-4">
