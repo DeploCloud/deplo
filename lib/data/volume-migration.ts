@@ -48,13 +48,20 @@ export async function startStackOn(serverId: string, slug: string): Promise<void
   }
 }
 
-/** Destroy a stack + its volumes on a specific server, throwing on failure. Used by
- *  a move to tear down the OLD host after a verified copy (or to roll back a
- *  half-built NEW stack). */
-export async function destroyStackOn(serverId: string, slug: string): Promise<void> {
+/** Destroy a stack on a specific server, throwing on failure. `removeVolumes`
+ *  (default true) also reclaims the stack's named volumes — used to tear down the
+ *  OLD host after a verified copy, or to roll back a half-built NEW stack. Pass
+ *  false to leave the volumes intact (a plain `down`) when the data must be
+ *  recoverable — e.g. tearing down an old host we BELIEVE is stateless, where a
+ *  mis-enumeration should orphan the volume rather than destroy it. */
+export async function destroyStackOn(
+  serverId: string,
+  slug: string,
+  removeVolumes = true,
+): Promise<void> {
   const conn = await connectAgent(serverId);
   try {
-    const r = await conn.destroyStack(slug, true);
+    const r = await conn.destroyStack(slug, removeVolumes);
     if (!r.ok) throw new Error(r.error || `agent failed to destroy ${slug}`);
   } finally {
     conn.close();

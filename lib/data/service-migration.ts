@@ -10,6 +10,7 @@ import { connectAgent } from "../infra/agent-client";
 import {
   serviceMoveVolumeNames,
   serviceHasFilesDir,
+  assertSafeVolumeNames,
 } from "./project-backup-descriptor";
 import {
   migrateWorkloadData,
@@ -53,6 +54,9 @@ export async function completePendingServiceMigration(
   // Serialize on the service id so two concurrent production deploys can't both run
   // the migration: the first clears the marker under the lock, the second re-reads
   // inside the lock, sees it gone, and no-ops. Same lifecycle lock the DB moves use.
+  // NB: withKeyedLock is PROCESS-LOCAL (keyed-mutex.ts) — correct for the single
+  // `next start` process this app runs as; a multi-process deployment would need a
+  // DB-level guard (a conditional UPDATE on the marker) instead.
   await withKeyedLock(`service-migrate:${serviceId}`, async () => {
     await runMigration(serviceId, emit);
   });
@@ -78,11 +82,17 @@ async function runMigration(
 
   emit("info", `Migrating data from the previous server…`);
 
-  // Enumerate the data volumes to copy from the NEW host's rendered stack (the
-  // deploy just wrote it). external: volumes are excluded (Deplo doesn't own them).
+  // Enumerate the data volumes to copy from the OLD host's rendered stack — the OLD
+  // host is where the DATA actually lives, so it is the source of truth for what to
+  // copy. (Reading the NEW host's freshly-deployed stack would be wrong: if this
+  // move ALSO edited the compose to declare fewer volumes, the dropped volumes still
+  // hold data on the old host that must migrate — enumerating from the new stack
+  // would silently skip them and then destroy them below.) external: volumes are
+  // excluded (Deplo doesn't own them); the names are validated for the clear
+  // "interpolated volume name" error before they reach the wire.
   let volumeNames: string[] = [];
   try {
-    const conn = await connectAgent(toServerId);
+    const conn = await connectAgent(fromServerId);
     let renderedYaml = "";
     try {
       const stack = await conn.readStack(slug);
@@ -91,12 +101,13 @@ async function runMigration(
       conn.close();
     }
     volumeNames = serviceMoveVolumeNames(service, renderedYaml);
+    assertSafeVolumeNames(slug, volumeNames);
   } catch (e) {
     // Couldn't even enumerate — leave the old host intact, clear the marker, warn.
     await clearMigrationMarker(serviceId);
     emit(
       "warn",
-      `Could not read the new server's stack to migrate data ` +
+      `Could not read the old server's stack to migrate data ` +
         `(${e instanceof Error ? e.message : String(e)}). The old server was left ` +
         `intact — its data was not copied. Recover it manually if needed.`,
     );
@@ -105,10 +116,17 @@ async function runMigration(
 
   const includeFiles = serviceHasFilesDir(service);
   if (volumeNames.length === 0 && !includeFiles) {
-    // Stateless service — nothing to copy. Tear down the old host and clear.
-    await destroyStackOn(fromServerId, slug).catch(() => {});
+    // Nothing enumerated to copy. Tear down the old host, but WITHOUT removing
+    // volumes: if the enumeration somehow missed a volume that still holds data,
+    // a plain `down` orphans it (recoverable by hand) rather than destroying it.
+    // A genuinely stateless service has no volumes, so nothing is orphaned.
+    await destroyStackOn(fromServerId, slug, false).catch(() => {});
     await clearMigrationMarker(serviceId);
-    emit("info", "No persistent data to migrate; removed the old server's stack.");
+    emit(
+      "info",
+      "No persistent data to migrate; stopped the old server's stack " +
+        "(its volumes, if any, were left in place).",
+    );
     return;
   }
 

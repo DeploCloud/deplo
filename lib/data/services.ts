@@ -712,10 +712,23 @@ export async function updateServiceSource(
   // runDeployment). A non-move source edit is NOT auto-deployed (unchanged
   // behavior); the user deploys when ready.
   if (migrateFromServerId) {
-    await startDeployment(id, {
-      creator: user.name,
-      commitMessage: "Move to a different server",
-    });
+    try {
+      await startDeployment(id, {
+        creator: user.name,
+        commitMessage: "Move to a different server",
+      });
+    } catch (e) {
+      // The move (serverId + migration marker) is already committed, but the deploy
+      // that would relocate the container + migrate the data failed to start. The
+      // state is RECOVERABLE — the marker persists, so a manual production deploy
+      // will still complete the move + copy. Surface a legible error instead of a
+      // raw failure so the operator knows to redeploy.
+      throw new Error(
+        `The move was saved, but starting the initial deploy on the new server ` +
+          `failed (${e instanceof Error ? e.message : String(e)}). Trigger a ` +
+          `production deploy to complete the move and migrate the data.`,
+      );
+    }
   }
 }
 
