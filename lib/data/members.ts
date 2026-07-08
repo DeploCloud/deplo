@@ -41,7 +41,7 @@ import type {
   Role,
 } from "../types";
 
-const REGISTRATION_TTL_DAYS = 14;
+const REGISTRATION_TTL_DAYS = 7;
 
 /** A team member projected for the client (no password hash, no email). */
 export interface MemberDTO {
