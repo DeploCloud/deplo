@@ -55,6 +55,8 @@ import { gqlAction } from "@/lib/graphql-client";
 import { cn, serverLabel } from "@/lib/utils";
 import { GithubRepoPicker, type GithubSelection } from "@/components/services/github-repo-picker";
 import { GithubConnectButton } from "@/components/services/github-connect-button";
+import { UploadInput } from "@/components/services/upload-input";
+import { uploadArchive } from "@/lib/deploy/upload-client";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 
 export interface WizardServer {
@@ -180,6 +182,9 @@ export function NewServiceWizard({
     presetRepo ? `https://github.com/${presetRepo}` : "",
   );
   const [dockerImage, setDockerImage] = React.useState("");
+  // "Upload" source: a code archive picked here and held until deploy, then
+  // streamed to the freshly-created service (there's no service to POST to yet).
+  const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [name, setName] = React.useState(presetName ?? template?.name ?? "");
   const [branch, setBranch] = React.useState("main");
   const [framework, setFramework] = React.useState<FrameworkId>(
@@ -317,7 +322,7 @@ export function NewServiceWizard({
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($input: CreateServiceInput!) {
-          createService(input: $input) { slug }
+          createService(input: $input) { id slug }
         }`,
         {
           input: {
@@ -367,20 +372,57 @@ export function NewServiceWizard({
             mounts: templateCompose ? template!.mounts : null,
           },
         },
-        (d: { createService: { slug: string } }) => d.createService,
+        (d: { createService: { id: string; slug: string } }) => d.createService,
       );
-      if (res.ok && res.data) {
-        // An upload project has no archive yet, so nothing deploys until the
-        // user uploads one from Settings — don't claim it's deploying.
-        toast.success(
-          source === "upload"
-            ? "Service created — upload an archive from Settings to deploy"
-            : "Service created — deploying…",
-        );
-        router.push(`/services/${res.data.slug}`);
-      } else if (!res.ok) {
+      if (!res.ok) {
         toast.error(res.error);
+        return;
       }
+      const service = res.data;
+      if (!service) return;
+
+      // Upload source with an attached archive: stream it to the freshly-created
+      // (idle) service, then deploy — so creation ends on the live build logs like
+      // every other source instead of stranding the user on an empty service.
+      if (source === "upload" && uploadFile) {
+        try {
+          await uploadArchive(service.id, uploadFile);
+        } catch (e) {
+          // The service exists but the archive didn't land — send the user to its
+          // settings to retry rather than deploying nothing.
+          toast.error(
+            `Service created, but the upload failed (${
+              e instanceof Error ? e.message : "unknown error"
+            }). Upload the archive from Settings.`,
+          );
+          router.push(`/services/${service.slug}/settings`);
+          return;
+        }
+        const dep = await gqlAction(
+          `mutation($serviceId: String!) { redeploy(serviceId: $serviceId) { id } }`,
+          { serviceId: service.id },
+          (d: { redeploy: { id: string } }) => d.redeploy,
+        );
+        if (dep.ok && dep.data) {
+          toast.success("Uploaded — deploying…");
+          router.push(`/services/${service.slug}/deployments/${dep.data.id}`);
+        } else {
+          // The archive is stored; only the deploy kick-off failed. Land on
+          // settings so the user can hit Save & Deploy.
+          if (!dep.ok) toast.error(dep.error);
+          router.push(`/services/${service.slug}/settings`);
+        }
+        return;
+      }
+
+      // Non-upload sources deploy on create; a fileless upload stays idle until
+      // the user uploads from Settings — don't claim it's deploying.
+      toast.success(
+        source === "upload"
+          ? "Service created — upload an archive from Settings to deploy"
+          : "Service created — deploying…",
+      );
+      router.push(`/services/${service.slug}`);
     });
   }
 
@@ -644,13 +686,7 @@ export function NewServiceWizard({
               )}
 
               {source === "upload" && (
-                <div className="rounded-lg border border-dashed border-border p-6 text-center">
-                  <Upload className="mx-auto mb-2 size-6 text-muted-foreground" />
-                  <p className="text-sm">
-                    Create the service, then upload a code archive from its
-                    Settings page to trigger the first build.
-                  </p>
-                </div>
+                <UploadInput onSelect={setUploadFile} />
               )}
 
               {source === "compose" && (

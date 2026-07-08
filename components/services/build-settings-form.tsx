@@ -12,6 +12,7 @@ import {
   Image as ImageIcon,
   Server as ServerIcon,
   HardDrive,
+  Rocket,
 } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import {
@@ -367,6 +368,46 @@ export function BuildSettingsForm({
     });
   }
 
+  // Upload source: persist any server change, then deploy the stored archive.
+  // Uploading no longer auto-deploys (so the server can be changed first), so
+  // this button is the one that actually builds + releases the uploaded code.
+  function saveAndDeploy() {
+    if (!initialUpload) {
+      toast.error("Upload an archive above before deploying");
+      return;
+    }
+    startTransition(async () => {
+      // Commit a server change first — this moves the service and, for a
+      // previously-deployed one, marks its data for migration. updateServiceSource
+      // intentionally does NOT auto-deploy for the upload source, so the redeploy
+      // below is the single deploy that runs and it consumes that migration marker.
+      if (serverId !== initialServerId) {
+        const moved = await gqlAction(
+          `mutation($id: String!, $input: UpdateSourceInput!) { updateServiceSource(id: $id, input: $input) { id } }`,
+          {
+            id: serviceId,
+            input: { source: deploySourceEnumName("upload"), serverId },
+          },
+        );
+        if (!moved.ok) {
+          toast.error(moved.error);
+          return;
+        }
+      }
+      const res = await gqlAction(
+        `mutation($serviceId: String!) { redeploy(serviceId: $serviceId) { id } }`,
+        { serviceId },
+        (d: { redeploy: { id: string } }) => d.redeploy,
+      );
+      if (res.ok && res.data) {
+        toast.success("Deploying…");
+        router.push(`/services/${slug}/deployments/${res.data.id}`);
+      } else if (!res.ok) {
+        toast.error(res.error);
+      }
+    });
+  }
+
   function saveBuild() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -670,11 +711,7 @@ export function BuildSettingsForm({
           )}
 
           {source === "upload" && (
-            <UploadInput
-              serviceId={serviceId}
-              slug={slug}
-              current={initialUpload}
-            />
+            <UploadInput serviceId={serviceId} current={initialUpload} />
           )}
 
           {source === "compose" && (
@@ -726,10 +763,21 @@ export function BuildSettingsForm({
           </div>
         </CardContent>
         <CardFooter className="justify-end border-t border-border pt-4">
-          <Button size="sm" onClick={saveSource} disabled={pending}>
-            <Save className="size-4" />
-            Save source
-          </Button>
+          {source === "upload" ? (
+            <Button
+              size="sm"
+              onClick={saveAndDeploy}
+              disabled={pending || !initialUpload}
+            >
+              <Rocket className="size-4" />
+              Save &amp; Deploy
+            </Button>
+          ) : (
+            <Button size="sm" onClick={saveSource} disabled={pending}>
+              <Save className="size-4" />
+              Save source
+            </Button>
+          )}
         </CardFooter>
       </Card>
 

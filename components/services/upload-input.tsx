@@ -5,11 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Upload, FileArchive, Loader2, CheckCircle2 } from "lucide-react";
 import { cn, formatBytes, timeAgo } from "@/lib/utils";
-import {
-  MAX_UPLOAD_BYTES,
-  ACCEPT_ATTR,
-  ACCEPT_RE,
-} from "@/lib/deploy/upload-shared";
+import { MAX_UPLOAD_BYTES, ACCEPT_ATTR } from "@/lib/deploy/upload-shared";
+import { validateArchive, uploadArchive } from "@/lib/deploy/upload-client";
 
 export interface CurrentUpload {
   filename: string;
@@ -19,24 +16,35 @@ export interface CurrentUpload {
 
 /**
  * Drag-and-drop / file-picker upload of a code archive for an "upload"-source
- * project. Streams the file to the service's upload route (raw body, filename
- * in a header) with a live progress bar via XHR — `fetch` can't report upload
- * progress. On success the server has already kicked off a deploy; we refresh
- * so the new archive + deployment surface immediately.
+ * project. Two modes:
+ *
+ *   - Settings mode (a `serviceId` is passed): streams the file to the service's
+ *     upload route with a live progress bar. Storing the archive does NOT deploy
+ *     it — the settings form's "Save & Deploy" button does — so on success we
+ *     just refresh so the new archive surfaces and Save & Deploy lights up.
+ *   - Deferred mode (`onSelect` is passed, no service exists yet): the create
+ *     wizard captures the picked File and uploads it itself after the service is
+ *     created. Here we only validate and hand the File up; nothing is streamed.
  */
 export function UploadInput({
   serviceId,
-  slug,
   current,
+  onSelect,
 }: {
-  serviceId: string;
-  slug: string;
-  current: CurrentUpload | null;
+  /** Settings mode: the existing service to stream the archive to. */
+  serviceId?: string;
+  /** Settings mode: the archive currently stored on the service, if any. */
+  current?: CurrentUpload | null;
+  /** Deferred mode: report the picked File (or null when cleared) to the parent. */
+  onSelect?: (file: File | null) => void;
 }) {
   const router = useRouter();
+  const deferred = typeof onSelect === "function";
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = React.useState(false);
   const [progress, setProgress] = React.useState<number | null>(null);
+  // Deferred mode: the File held for the parent to upload post-create.
+  const [selected, setSelected] = React.useState<File | null>(null);
 
   const uploading = progress !== null;
 
@@ -44,58 +52,34 @@ export function UploadInput({
     if (!uploading) inputRef.current?.click();
   }
 
-  function upload(file: File) {
-    if (!ACCEPT_RE.test(file.name)) {
-      toast.error("Unsupported archive — use .tar.gz, .tgz, .tar or .zip");
-      return;
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      toast.error(`Archive too large (max ${formatBytes(MAX_UPLOAD_BYTES)})`);
+  function handle(file: File) {
+    const err = validateArchive(file);
+    if (err) {
+      toast.error(err);
       return;
     }
 
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/api/services/${serviceId}/upload`);
-    xhr.setRequestHeader("X-Upload-Filename", file.name);
-    xhr.setRequestHeader("Content-Type", "application/octet-stream");
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
-    };
-    xhr.onload = () => {
-      setProgress(null);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        toast.success("Upload complete — deploying");
-        // Jump to the deployment so the user watches the live build/extract
-        // logs; fall back to an in-place refresh if the id is missing.
-        let deploymentId: string | undefined;
-        try {
-          deploymentId = JSON.parse(xhr.responseText)?.deploymentId;
-        } catch {
-          /* non-JSON success body */
-        }
-        if (deploymentId) {
-          router.push(`/services/${slug}/deployments/${deploymentId}`);
-        } else {
-          router.refresh();
-        }
-      } else {
-        let msg = "Upload failed";
-        try {
-          msg = JSON.parse(xhr.responseText)?.error ?? msg;
-        } catch {
-          /* non-JSON error body */
-        }
-        toast.error(msg);
-      }
-    };
-    xhr.onerror = () => {
-      setProgress(null);
-      toast.error("Upload failed");
-    };
+    // Deferred mode: just hand the File to the parent — the create wizard streams
+    // it after the service exists (there's nothing to upload to yet).
+    if (deferred) {
+      setSelected(file);
+      onSelect!(file);
+      return;
+    }
 
     setProgress(0);
-    xhr.send(file);
+    uploadArchive(serviceId!, file, setProgress)
+      .then(() => {
+        setProgress(null);
+        // Archive stored, not deployed — refresh so it shows as the current
+        // upload and the form's "Save & Deploy" button enables.
+        toast.success("Archive saved — click Save & Deploy to deploy it");
+        router.refresh();
+      })
+      .catch((e: unknown) => {
+        setProgress(null);
+        toast.error(e instanceof Error ? e.message : "Upload failed");
+      });
   }
 
   function onDrop(e: React.DragEvent) {
@@ -103,18 +87,31 @@ export function UploadInput({
     setDragging(false);
     if (uploading) return;
     const file = e.dataTransfer.files?.[0];
-    if (file) upload(file);
+    if (file) handle(file);
   }
+
+  // What to show in the "current archive" chip: the just-picked File in deferred
+  // mode, otherwise the archive already stored on the service.
+  const shown = deferred
+    ? selected
+      ? { filename: selected.name, size: selected.size, uploadedAt: null }
+      : null
+    : current
+      ? { ...current, uploadedAt: current.uploadedAt as string | null }
+      : null;
 
   return (
     <div className="space-y-3">
-      {current && (
+      {shown && (
         <div className="flex items-center gap-3 rounded-md border border-border bg-muted/40 p-3">
           <FileArchive className="size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{current.filename}</p>
+            <p className="truncate text-sm font-medium">{shown.filename}</p>
             <p className="text-xs text-muted-foreground">
-              {formatBytes(current.size)} · uploaded {timeAgo(current.uploadedAt)}
+              {formatBytes(shown.size)}
+              {shown.uploadedAt
+                ? ` · uploaded ${timeAgo(shown.uploadedAt)}`
+                : " · ready to deploy"}
             </p>
           </div>
           <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
@@ -160,7 +157,7 @@ export function UploadInput({
           <>
             <Upload className="mb-2 size-6 text-muted-foreground" />
             <p className="text-sm font-medium">
-              {current ? "Upload a new build" : "Drop an archive or click to browse"}
+              {shown ? "Replace with a new archive" : "Drop an archive or click to browse"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               .tar.gz, .tgz, .tar or .zip · up to {formatBytes(MAX_UPLOAD_BYTES)}
@@ -170,8 +167,9 @@ export function UploadInput({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        The archive is extracted and built with the Build &amp; Output settings
-        below, then deployed automatically.
+        {deferred
+          ? "The archive is extracted and built with the Build & Output settings below when you deploy."
+          : "The archive is extracted and built with the Build & Output settings below. Use Save & Deploy to build and release it."}
       </p>
 
       <input
@@ -181,7 +179,7 @@ export function UploadInput({
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) upload(file);
+          if (file) handle(file);
           e.target.value = "";
         }}
       />

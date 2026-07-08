@@ -4,7 +4,6 @@ import { getCurrentUser } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
 import { deployments as deploymentsTable } from "@/lib/db/schema/control-plane";
 import { getServiceById, setServiceUpload } from "@/lib/data/services";
-import { redeploy } from "@/lib/data/deployments";
 import {
   storeUpload,
   pruneUploads,
@@ -14,11 +13,15 @@ import {
 } from "@/lib/deploy/upload";
 
 /**
- * Upload a code archive for an "upload"-source project, then deploy it.
+ * Upload a code archive for an "upload"-source project.
  *
  *   POST  body = raw archive bytes, `X-Upload-Filename: <name>` header
- *         → streams the archive to disk, points the service at it, and kicks
- *           off a production deploy (extract → build method → run).
+ *         → streams the archive to disk and points the service at it.
+ *
+ * Storing the archive does NOT deploy it: the caller (the service settings
+ * "Save & Deploy" button, or the create-service wizard) triggers the production
+ * build separately, so the user can pick/change the target server before the
+ * first deploy runs instead of it firing the instant the file lands.
  *
  * A Route Handler rather than a Server Action because archives blow past the
  * Server Action body-size cap; the raw body streams straight to disk so memory
@@ -118,8 +121,10 @@ export async function POST(
     // previous one intact (its subdir was pruned only on success here).
     await setServiceUpload(serviceId, upload);
     await pruneUploads(serviceId, upload.id).catch(() => {});
-    const deployment = await redeploy(serviceId);
 
+    // No deploy here — the archive is stored and the service points at it. The
+    // caller deploys on demand (Save & Deploy), which is what lets the server be
+    // chosen before the first build runs.
     return Response.json({
       ok: true,
       upload: {
@@ -127,7 +132,6 @@ export async function POST(
         size: upload.size,
         uploadedAt: upload.uploadedAt,
       },
-      deploymentId: deployment.id,
     });
   } finally {
     uploadsInFlight.delete(serviceId);

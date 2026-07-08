@@ -711,7 +711,12 @@ export async function updateServiceSource(
   // above). Fire-and-forget, mirroring how creation deploys (startDeployment floats
   // runDeployment). A non-move source edit is NOT auto-deployed (unchanged
   // behavior); the user deploys when ready.
-  if (migrateFromServerId) {
+  //
+  // Exception — the upload source: its deploy is driven explicitly (the settings
+  // "Save & Deploy" button calls this to persist the move, then redeploys). That
+  // redeploy consumes the same migration marker, so auto-deploying here too would
+  // double-fire. Leave the marker set and let the caller's deploy complete the move.
+  if (migrateFromServerId && input.source !== "upload") {
     try {
       await startDeployment(id, {
         creator: user.name,
