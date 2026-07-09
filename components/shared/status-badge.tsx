@@ -41,14 +41,16 @@ const COLORS: Record<string, string> = {
   pending: "bg-[var(--warning)]",
   unverified: "bg-[var(--warning)]",
   never: "bg-muted-foreground",
-  // red — stopped or failed. "idle" means the user stopped the service; it now
-  // reads as a hard "off" state rather than amber.
-  idle: "bg-destructive",
+  // red — a genuine failure/unreachable state (a crash, a build error, a server
+  // that's down). NOT a user-initiated stop; that is "idle" below.
   error: "bg-destructive",
   failed: "bg-destructive",
   misconfigured: "bg-destructive",
   offline: "bg-destructive",
-  // neutral
+  // neutral / grey — "off, but healthy". "idle" is a service the user stopped: it
+  // reads as a calm "Stopped", deliberately distinct from the red error states so
+  // a stopped container is never mistaken for a crashed one.
+  idle: "bg-muted-foreground",
   stopped: "bg-muted-foreground",
   canceled: "bg-muted-foreground",
 };
@@ -82,10 +84,25 @@ export function StatusDot({
   );
 }
 
+/**
+ * Friendlier labels for a few raw status keys. Only the service-lifecycle states
+ * are remapped — a user-stopped service reads "Stopped" (not "Idle") and a
+ * running one "Running" (not "Active"); every other status falls back to its
+ * capitalized key.
+ */
+const LABELS: Record<string, string> = {
+  idle: "Stopped",
+  active: "Running",
+};
+
 export function StatusBadge({ status }: { status: AnyStatus }) {
-  const label = String(status).replace(/^\w/, (c) => c.toUpperCase());
+  const key = String(status);
+  const label = LABELS[key] ?? key.replace(/^\w/, (c) => c.toUpperCase());
   return (
-    <Badge variant="outline" className="gap-1.5 capitalize">
+    <Badge
+      variant="outline"
+      className={cn("gap-1.5 capitalize", PULSE.has(key) && "animate-pulse")}
+    >
       <StatusDot status={status} />
       {label}
     </Badge>
