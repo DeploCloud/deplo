@@ -8,6 +8,8 @@ import {
 import { decryptSecret } from "@/lib/crypto";
 import { findAppByAppId } from "@/lib/github/app";
 import { startDeployment } from "@/lib/deploy/build";
+import { parseWatchPaths } from "@/lib/data/service-graph-rows";
+import { parsePushEvent, shouldAutoDeploy } from "@/lib/deploy/git-webhook";
 
 /**
  * Inbound GitHub App webhook. Verifies the HMAC signature against the receiving
@@ -54,12 +56,13 @@ export async function POST(request: Request) {
   }
 
   const fullName = payload.repository?.full_name;
-  const branch = payload.ref?.replace(/^refs\/heads\//, "");
   const numericInstall = payload.installation?.id;
-  if (!fullName || !branch || !numericInstall) {
-    // A branch/tag delete push has a null ref→empty branch; tag pushes have a
-    // non-heads ref. Nothing to deploy, but worth a line so it's not confused
-    // with a missing-config drop.
+  // Normalise the ref/commit metadata once; per-service gating (push vs tag,
+  // watch paths) happens below against each candidate's stored config.
+  const pushEvent = parsePushEvent(payload);
+  if (!fullName || !pushEvent.refName || !numericInstall) {
+    // A ref with no name (or a delivery missing repo/installation) has nothing to
+    // match. Worth a line so it's not confused with a missing-config drop.
     console.warn(
       `[github-webhook] push ignored: ref=${payload.ref} repo=${fullName ?? "?"} install=${numericInstall ?? "?"}`,
     );
@@ -94,23 +97,33 @@ export async function POST(request: Request) {
     (p) =>
       p.autoDeploy &&
       p.repoRepo === fullName &&
-      (p.repoBranch || "main") === branch,
+      shouldAutoDeploy(
+        {
+          branch: p.repoBranch || "main",
+          triggerType: p.repoTriggerType === "tag" ? "tag" : "push",
+          watchPaths: parseWatchPaths(p.repoWatchPaths),
+        },
+        pushEvent,
+      ),
   );
 
   if (targets.length === 0) {
     // The silent-failure heart of this endpoint: a delivered, verified push
     // that matches no project returns 200 with no deploy. Dump every github
     // service's match-relevant fields so the exact mismatched clause (source /
-    // autoDeploy / repo / installationId / branch) is obvious from one log line.
+    // autoDeploy / repo / installationId / branch / trigger / watch paths) is
+    // obvious from one log line.
     console.warn(
-      `[github-webhook] no auto-deploy target: repo=${fullName} branch=${branch} ` +
-        `install=${install.id}; candidates=` +
+      `[github-webhook] no auto-deploy target: repo=${fullName} ref=${pushEvent.refName} ` +
+        `isTag=${pushEvent.isTag} install=${install.id}; candidates=` +
         JSON.stringify(
           githubServices.map((p) => ({
             id: p.id,
             autoDeploy: p.autoDeploy,
             repo: p.repoRepo,
             branch: p.repoBranch,
+            triggerType: p.repoTriggerType,
+            watchPaths: p.repoWatchPaths,
             installationId: p.repoInstallationId,
           })),
         ),
@@ -122,8 +135,11 @@ export async function POST(request: Request) {
       await startDeployment(p.id, {
         environment: "production",
         creator: payload.pusher?.name || "github",
-        commitMessage: payload.head_commit?.message || "Push",
-        branch,
+        commitMessage:
+          payload.head_commit?.message || (pushEvent.isTag ? "Tag" : "Push"),
+        // For a tag trigger the deploy checks out the tag itself; for a push it's
+        // the tracked branch (pushEvent.refName === repoBranch here).
+        branch: pushEvent.refName,
       });
     } catch {
       /* keep processing the rest */
@@ -142,10 +158,18 @@ function verifySignature(body: string, secret: string, header: string): boolean 
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+interface PushCommitFiles {
+  added?: string[];
+  modified?: string[];
+  removed?: string[];
+}
+
 interface PushPayload {
   ref?: string;
+  deleted?: boolean;
   repository?: { full_name?: string };
   installation?: { id?: number };
   pusher?: { name?: string };
-  head_commit?: { message?: string };
+  head_commit?: ({ message?: string } & PushCommitFiles) | null;
+  commits?: PushCommitFiles[];
 }

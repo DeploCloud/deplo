@@ -10,10 +10,13 @@ import { gqlAction } from "@/lib/graphql-client";
 
 export function RedeployButton({
   serviceId,
+  slug,
   variant = "outline",
   size = "sm",
 }: {
   serviceId: string;
+  /** Owning service slug — used to route to the new deployment's live logs. */
+  slug: string;
   variant?: "outline" | "default" | "secondary";
   size?: "sm" | "default";
 }) {
@@ -32,7 +35,14 @@ export function RedeployButton({
       );
       if (res.ok) {
         toast.success("Redeploy started");
-        router.refresh();
+        // Follow the new build straight to its live logs (same destination as the
+        // create + Save & Deploy flows); fall back to a refresh if the redeploy
+        // returned no id.
+        if (res.data?.id) {
+          router.push(`/services/${slug}/deployments/${res.data.id}`);
+        } else {
+          router.refresh();
+        }
       } else toast.error(res.error);
     });
   }

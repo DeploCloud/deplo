@@ -95,7 +95,7 @@ export function TemplatesBrowser({
             className="group relative flex flex-col gap-3 p-5 transition-colors hover:border-foreground/20"
           >
             <div className="flex items-start justify-between gap-2">
-              <div className="flex size-11 items-center justify-center overflow-hidden rounded-lg border border-border bg-white p-1.5">
+              <div className="flex size-11 items-center justify-center overflow-hidden rounded-lg border border-border p-1.5">
                 {t.logo ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -105,7 +105,7 @@ export function TemplatesBrowser({
                     loading="lazy"
                   />
                 ) : (
-                  <span className="text-lg font-semibold text-black">
+                  <span className="text-lg font-semibold text-foreground">
                     {t.name.slice(0, 1)}
                   </span>
                 )}

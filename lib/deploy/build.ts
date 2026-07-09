@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getServerById } from "../data/servers";
 import { getDb } from "../db/client";
 import {
@@ -34,6 +34,8 @@ import { deploymentToRow } from "../data/service-graph-rows";
 import { ensureNetwork } from "../infra/docker";
 import { buildImage } from "./builders";
 import { extractArchive } from "./upload";
+import { detectTreeFavicon, detectGithubFavicon } from "../services/favicon-detect";
+import { isGithubRepo } from "../services/favicon-shared";
 import {
   planDeploySource,
   resolveBuildDir,
@@ -118,6 +120,67 @@ async function setService(
     .set({ ...patch, updatedAt: nowIso() })
     .where(eq(servicesTable.id, serviceId));
   publishServiceChanged(serviceId);
+}
+
+/**
+ * Set an auto-detected logo ONLY when the service has none yet — a conditional
+ * `WHERE logo IS NULL` UPDATE. The NULL guard is the guarantee that a template
+ * default (a `/templates/...` value) or any logo the user set/cleared is never
+ * clobbered by detection. No-op on a null/empty logo. (Inlined here rather than
+ * importing data/services' applyAutoLogoIfUnset to avoid a build↔services import
+ * cycle.)
+ */
+async function setLogoIfUnset(serviceId: string, logo: string | null): Promise<void> {
+  if (!logo) return;
+  const updated = await getDb()
+    .update(servicesTable)
+    .set({ logo, updatedAt: nowIso() })
+    .where(and(eq(servicesTable.id, serviceId), sql`${servicesTable.logo} is null`))
+    .returning({ id: servicesTable.id });
+  if (updated.length > 0) publishServiceChanged(serviceId);
+}
+
+/**
+ * Auto-detect a display logo from the source tree the deploy just extracted (an
+ * upload build) and set it when the service has none yet. Scanning reuses the
+ * tree already on disk (no second extraction of an attacker-controlled archive)
+ * and runs inside the one-deploy-at-a-time flow, so it's serialized and
+ * deploy-gated. Best-effort — never fails or delays the deploy.
+ */
+async function autoDetectLogoFromTree(
+  serviceId: string,
+  currentLogo: string | null,
+  root: string,
+  rootDirectory: string | null | undefined,
+): Promise<void> {
+  if (currentLogo) return; // already has a logo (template default / user's) — leave it
+  try {
+    await setLogoIfUnset(serviceId, await detectTreeFavicon(root, rootDirectory));
+  } catch {
+    /* detection is a cosmetic nicety; never let it disturb a deploy */
+  }
+}
+
+/**
+ * Auto-detect a display logo from a GitHub repo's own files via the API and set
+ * it when the service has none yet. GitHub repos are cloned on the AGENT, so the
+ * control plane can't scan a local tree — it reads the repo over the API here,
+ * on every deploy (guarded by the caller's null check, so once a logo exists no
+ * API call is made). This is what makes a github/git service get an icon at all,
+ * and covers services created before the feature (they pick one up on redeploy).
+ * FIRE-AND-FORGET: a GitHub round-trip must never delay or hang the deploy; the
+ * logo lands a moment later and pushes to live subscribers.
+ */
+function autoDetectRepoLogo(
+  serviceId: string,
+  currentLogo: string | null,
+  repo: Parameters<typeof detectGithubFavicon>[0],
+  rootDirectory: string | null | undefined,
+): void {
+  if (currentLogo || !isGithubRepo(repo)) return;
+  void detectGithubFavicon(repo, rootDirectory)
+    .then((logo) => setLogoIfUnset(serviceId, logo))
+    .catch(() => {});
 }
 
 /**
@@ -804,11 +867,22 @@ async function runDeployment(depId: string): Promise<void> {
       }
       case "git": {
         const repo = plan.repo;
+        // Auto-set the display logo from a favicon/icon in the repo (via the
+        // GitHub API — the tree is cloned on the agent, not here) when the
+        // service has none yet. Fire-and-forget so a GitHub round-trip never
+        // delays the deploy.
+        autoDetectRepoLogo(project.id, project.logo, repo, project.build.rootDirectory);
         // The OWNING AGENT clones the repo itself (PLAN Part B, D3), the host
         // running Deplo included, so the whole tree never crosses the wire — only
         // the descriptor does. The control plane resolves the authenticated clone
         // URL (short-lived token baked in for private GitHub) and hands the agent
         // the branch + subdir; the agent reports back the commit sha it checked out.
+        //
+        // NOTE: `repo.submodules` is persisted + surfaced in the UI, but taking
+        // effect requires the agent to clone with --recurse-submodules — a new
+        // field on the GitSource proto the agent decodes. Until the agent carries
+        // it, the stored preference is a no-op here (the clone descriptor below has
+        // no submodules flag to forward).
         const cloneUrl = await installationCloneUrl(
           repo.url,
           repo.installationId ?? null,
@@ -855,6 +929,14 @@ async function runDeployment(depId: string): Promise<void> {
             log(depId, "info", line),
           );
           imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
+          // Auto-set the display logo from an icon/favicon in the extracted tree
+          // when the service has none yet (reusing this tree — no re-extract).
+          await autoDetectLogoFromTree(
+            project.id,
+            project.logo,
+            root,
+            project.build.rootDirectory,
+          );
           await buildAndMaybeAgent({
             workDir: work,
             root,

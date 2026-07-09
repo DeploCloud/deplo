@@ -24,6 +24,10 @@ import {
   Archive,
   Bell,
   KeyRound,
+  Settings2,
+  HardDrive,
+  ShieldCheck,
+  TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 
@@ -299,8 +303,8 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
       icon: Globe,
       tooltip: "Custom domains & routing",
     },
-    // Console/Logs stream from a live container, so they show only while the
-    // service is running (or when that page is itself the one open).
+    // Console streams from a live container, so it shows only while the service
+    // is running (or when that page is itself the one open).
     ...(f.running || on("/console")
       ? [
           {
@@ -311,16 +315,14 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
           } as NavItem,
         ]
       : []),
-    ...(f.running || on("/logs")
-      ? [
-          {
-            label: "Logs",
-            href: `${base}/logs`,
-            icon: ScrollText,
-            tooltip: "Runtime logs",
-          } as NavItem,
-        ]
-      : []),
+    // Logs stays visible even when the service is stopped: it falls back to the
+    // most recent build's logs (flagged as not live) rather than a dead end.
+    {
+      label: "Logs",
+      href: `${base}/logs`,
+      icon: ScrollText,
+      tooltip: "Runtime & build logs",
+    },
     // Dev Mode — source-bearing services only.
     ...(f.devEligible || on("/dev")
       ? [
@@ -376,6 +378,74 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
       ],
     },
     { items },
+  ];
+}
+
+/**
+ * A service's SETTINGS sub-menu — one level deeper than {@link serviceNav}. When
+ * the viewer is under `/services/<slug>/settings` the sidebar swaps the service
+ * nav for this set, so each settings section (General, Deployments, Storage,
+ * Access, Danger) is its own dedicated page. The "back" escape hatch here goes UP
+ * one level to the service overview — unlike {@link serviceNav}'s "Back to
+ * services", which leaves the service entirely — so it is a plain link (not a
+ * history `back`, which would exit the whole `/services/<slug>` section).
+ */
+export function serviceSettingsNav(slug: string): NavSection[] {
+  const base = `/services/${slug}/settings`;
+  return [
+    {
+      items: [
+        {
+          label: "Back to service",
+          href: `/services/${slug}`,
+          icon: ArrowLeft,
+          tooltip: "Return to the service overview",
+          exact: true,
+        },
+      ],
+    },
+    {
+      title: "Settings",
+      items: [
+        {
+          label: "General",
+          href: base,
+          icon: Settings2,
+          tooltip: "Name & logo",
+          // Every settings route starts with `base`, so General must match
+          // exactly or it would light up on every sub-page.
+          exact: true,
+        },
+        {
+          label: "Deployments",
+          href: `${base}/deployments`,
+          icon: Rocket,
+          tooltip: "Deploy source, build & auto-deploy",
+        },
+        {
+          label: "Storage",
+          href: `${base}/storage`,
+          icon: HardDrive,
+          tooltip: "Persistent volumes",
+        },
+        {
+          label: "Access",
+          href: `${base}/access`,
+          icon: ShieldCheck,
+          tooltip: "HTTP basic auth",
+          // Basic auth is a domains concern — its data loader requires
+          // manage_domains (and throws without it), so only surface the entry to
+          // holders. Mirrors how Environment/Backups are capability-gated.
+          requires: "manage_domains",
+        },
+        {
+          label: "Danger",
+          href: `${base}/danger`,
+          icon: TriangleAlert,
+          tooltip: "Delete this service",
+        },
+      ],
+    },
   ];
 }
 

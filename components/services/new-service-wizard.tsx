@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   GitBranch,
-  Sparkles,
   ChevronDown,
   Rocket,
   Check,
@@ -43,19 +42,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { FrameworkGlyph } from "@/components/shared/framework-icon";
-import {
-  BuildConfigFields,
-  applyFrameworkToBuild,
-} from "@/components/services/build-config-fields";
-import { FRAMEWORKS, buildConfigFor } from "@/lib/frameworks";
-import type { DeploySource, FrameworkId } from "@/lib/types";
+import { BuildConfigFields } from "@/components/services/build-config-fields";
+import { buildConfigFor } from "@/lib/frameworks";
+import type { DeploySource } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, serverLabel } from "@/lib/utils";
 import { GithubRepoPicker, type GithubSelection } from "@/components/services/github-repo-picker";
 import { GithubConnectButton } from "@/components/services/github-connect-button";
 import { UploadInput } from "@/components/services/upload-input";
+import {
+  GitDeployOptions,
+  watchPathsToArray,
+  DEFAULT_GIT_DEPLOY_OPTIONS,
+  type GitDeployOptionsValue,
+} from "@/components/services/git-deploy-options";
 import { uploadArchive } from "@/lib/deploy/upload-client";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 
@@ -80,33 +81,6 @@ export interface WizardTemplate {
   autoDomain: string | null;
   /** Template config files to materialise at deploy time. */
   mounts: { filePath: string; content: string }[];
-}
-
-/** Lightweight client-side repo -> framework heuristic (Vercel-style guess). */
-function guessFramework(repo: string): FrameworkId {
-  const r = repo.toLowerCase();
-  const pairs: [string, FrameworkId][] = [
-    ["sveltekit", "sveltekit"],
-    ["svelte", "svelte"],
-    ["astro", "astro"],
-    ["nuxt", "nuxt"],
-    ["remix", "remix"],
-    ["gatsby", "gatsby"],
-    ["angular", "angular"],
-    ["vue", "vue"],
-    ["next", "nextjs"],
-    ["react", "react"],
-    ["vite", "vite"],
-    ["django", "python"],
-    ["flask", "python"],
-    ["fastapi", "python"],
-    ["rust", "rust"],
-    ["golang", "go"],
-    ["php", "php"],
-    ["laravel", "php"],
-  ];
-  for (const [k, v] of pairs) if (r.includes(k)) return v;
-  return "nextjs";
 }
 
 function parseRepo(
@@ -168,7 +142,7 @@ export function NewServiceWizard({
     null,
   );
   // Templates start in a locked summary view. "Edit template" unlocks the full
-  // source/framework/build configuration so the user can tweak before deploying.
+  // source/build configuration so the user can tweak before deploying.
   const [editing, setEditing] = React.useState(false);
   const locked = isTemplate && !editing;
 
@@ -187,15 +161,12 @@ export function NewServiceWizard({
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [name, setName] = React.useState(presetName ?? template?.name ?? "");
   const [branch, setBranch] = React.useState("main");
-  const [framework, setFramework] = React.useState<FrameworkId>(
-    isTemplate ? "docker" : "nextjs",
-  );
-  const [detected, setDetected] = React.useState<FrameworkId | null>(null);
   const [autoDeploy, setAutoDeploy] = React.useState(true);
-  const [advanced, setAdvanced] = React.useState(false);
-  const [build, setBuild] = React.useState(() =>
-    buildConfigFor(isTemplate ? "docker" : "nextjs"),
+  const [gitOptions, setGitOptions] = React.useState<GitDeployOptionsValue>(
+    DEFAULT_GIT_DEPLOY_OPTIONS,
   );
+  const [advanced, setAdvanced] = React.useState(false);
+  const [build, setBuild] = React.useState(() => buildConfigFor());
 
   // The compose editor is shared by templates (their baked stack) and the
   // non-template Compose source tab; env rows stay template-only.
@@ -213,25 +184,11 @@ export function NewServiceWizard({
   function onRepoChange(value: string) {
     setRepoUrl(value);
     const parsed = parseRepo(value);
-    if (parsed) {
-      const guessed = guessFramework(parsed.repo);
-      setDetected(guessed);
-      applyFramework(guessed);
-      if (!name) setName(parsed.repo.split("/")[1] ?? "");
-    } else {
-      setDetected(null);
-    }
-  }
-
-  function applyFramework(fw: FrameworkId) {
-    setFramework(fw);
-    setBuild((b) => applyFrameworkToBuild(b, fw));
+    if (parsed && !name) setName(parsed.repo.split("/")[1] ?? "");
   }
 
   function onSourceChange(next: DeploySource) {
     setSource(next);
-    setDetected(null);
-    if (next === "docker-image") applyFramework("docker");
   }
 
   // Whether this deploy ships a docker-compose stack. Two ways in:
@@ -268,9 +225,11 @@ export function NewServiceWizard({
       repo: string;
       branch: string;
       installationId?: string | null;
+      triggerType?: "push" | "tag";
+      watchPaths?: string[];
+      submodules?: boolean;
     };
     let image: string | null = null;
-    let serviceFramework = framework;
 
     if (source === "github") {
       if (!ghSelection) {
@@ -299,7 +258,6 @@ export function NewServiceWizard({
         branch: branch || "main",
       };
     } else if (source === "docker-image") {
-      serviceFramework = "docker";
       if (!isTemplate && !dockerImage.trim()) {
         toast.error("Enter a Docker image reference");
         return;
@@ -308,26 +266,37 @@ export function NewServiceWizard({
     } else if (source === "compose") {
       // Hand-written stack: the engine auto-detects the service to expose, so no
       // expose/exposes metadata is sent (templates supply theirs separately).
-      serviceFramework = "docker";
     } else if (source === "upload") {
       // Upload: a code archive is attached after creation; no repo/image.
     }
 
+    // Carry the git deploy options (trigger type / watch paths / submodules) on
+    // whichever repo the source produced (github or git).
+    if (repo) {
+      repo = {
+        ...repo,
+        triggerType: gitOptions.triggerType,
+        watchPaths: watchPathsToArray(gitOptions.watchPaths),
+        submodules: gitOptions.submodules,
+      };
+    }
+
     // The build config only matters when Deplo builds an image. For a prebuilt
     // image or a compose stack the build section is hidden, so persisting the
-    // editor's seed (e.g. nixpacks/bun) would land a misleading build method on
-    // the service; send docker defaults instead so settings reflects reality.
-    const payloadBuild = buildsImage ? build : buildConfigFor("docker");
+    // editor's seed would land a misleading build method on the service; send a
+    // dockerfile default instead so settings reflects reality.
+    const payloadBuild = buildsImage
+      ? build
+      : buildConfigFor({ buildMethod: "dockerfile" });
 
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($input: CreateServiceInput!) {
-          createService(input: $input) { id slug }
+          createService(input: $input) { id slug latestDeployment { id } }
         }`,
         {
           input: {
             name: name.trim(),
-            framework: serviceFramework,
             // A template deploying its own stack is stored as the `compose` source
             // so settings opens on the Compose tab and the deploy engine is
             // unambiguous.
@@ -372,7 +341,13 @@ export function NewServiceWizard({
             mounts: templateCompose ? template!.mounts : null,
           },
         },
-        (d: { createService: { id: string; slug: string } }) => d.createService,
+        (d: {
+          createService: {
+            id: string;
+            slug: string;
+            latestDeployment: { id: string } | null;
+          };
+        }) => d.createService,
       );
       if (!res.ok) {
         toast.error(res.error);
@@ -422,7 +397,18 @@ export function NewServiceWizard({
           ? "Service created — upload an archive from Settings to deploy"
           : "Service created — deploying…",
       );
-      router.push(`/services/${service.slug}`);
+      // Every non-upload source kicks off a first deployment inside createService
+      // (startDeployment sets latestDeployment synchronously before it returns), so
+      // land on that deployment's live build logs — the same destination the
+      // upload path above uses — instead of a still-empty overview. A fileless
+      // "upload" service is born idle with no deployment, so it falls back to its
+      // overview.
+      const firstDeploymentId = service.latestDeployment?.id;
+      router.push(
+        firstDeploymentId
+          ? `/services/${service.slug}/deployments/${firstDeploymentId}`
+          : `/services/${service.slug}`,
+      );
     });
   }
 
@@ -498,12 +484,7 @@ export function NewServiceWizard({
 
                 {advanced && (
                   <div className="rounded-lg border border-border p-4">
-                    <BuildConfigFields
-                      build={build}
-                      framework={framework}
-                      onBuildChange={setBuild}
-                      onFrameworkChange={applyFramework}
-                    />
+                    <BuildConfigFields build={build} onBuildChange={setBuild} />
                   </div>
                 )}
               </>
@@ -512,7 +493,7 @@ export function NewServiceWizard({
             {usesGit && (
               <div className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div className="flex items-center gap-2">
-                  <FrameworkGlyph framework={framework} className="size-5" />
+                  <GitBranch className="size-5 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Automatic deployments</p>
                     <p className="text-xs text-muted-foreground">
@@ -524,6 +505,14 @@ export function NewServiceWizard({
                   </div>
                 </div>
                 <Switch checked={autoDeploy} onCheckedChange={setAutoDeploy} />
+              </div>
+            )}
+
+            {/* Git deploy options — trigger type, watch paths, submodules. Same
+                controls the service settings page shows. */}
+            {usesGit && (
+              <div className="rounded-lg border border-border p-4">
+                <GitDeployOptions value={gitOptions} onChange={setGitOptions} />
               </div>
             )}
           </CardContent>
@@ -551,7 +540,7 @@ export function NewServiceWizard({
               </Button>
             </CardHeader>
             <CardContent className="flex items-center gap-4">
-              <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg border border-border bg-white p-2">
+              <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg border border-border p-2">
                 {template!.logo ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -560,7 +549,7 @@ export function NewServiceWizard({
                     className="size-full object-contain"
                   />
                 ) : (
-                  <Container className="size-6 text-black" />
+                  <Container className="size-6 text-foreground" />
                 )}
               </div>
               <div>
@@ -578,7 +567,7 @@ export function NewServiceWizard({
                 <CardTitle>Source</CardTitle>
                 <CardDescription>
                   {isTemplate
-                    ? `Customising ${template!.name}. Change the source, framework or build before deploying.`
+                    ? `Customising ${template!.name}. Change the source or build before deploying.`
                     : "Where your code or image comes from. Deplo builds and runs it in Docker."}
                 </CardDescription>
               </div>
@@ -641,7 +630,6 @@ export function NewServiceWizard({
                       setGhSelection(sel);
                       if (sel && !name) {
                         setName(sel.fullName.split("/")[1] ?? "");
-                        applyFramework(guessFramework(sel.fullName));
                       }
                     }}
                   />
@@ -660,12 +648,6 @@ export function NewServiceWizard({
                       className="pl-9 font-mono text-sm"
                     />
                   </div>
-                  {detected && (
-                    <div className="flex items-center gap-1.5 text-xs text-[var(--success)]">
-                      <Sparkles className="size-3.5" />
-                      Detected framework: {FRAMEWORKS[detected].name}
-                    </div>
-                  )}
                 </div>
               )}
 

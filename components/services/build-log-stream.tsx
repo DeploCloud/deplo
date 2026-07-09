@@ -90,19 +90,28 @@ export function BuildLogStream({
 
   const live = !TERMINAL.has(status);
 
-  // Seed + refresh the log list, entirely client-side (post-hydration):
-  //  1. Paint `initialLogs` immediately so the data already in the RSC payload
-  //     shows without a network round-trip.
-  //  2. Fetch once to reconcile against the latest server state (covers a
-  //     terminal deployment whose initialLogs seed may be stale).
-  //  3. Keep polling only while the build is live.
-  // Seeding synchronously before the async fetch means no seed-vs-fetch race.
+  // Seed the log list from the RSC payload, entirely client-side (post-
+  // hydration), so the data already in the payload paints without a network
+  // round-trip. Keyed on `deploymentId` ONLY — deliberately NOT on `live`: when
+  // a build finishes, `live` flips true→false and re-running this would clobber
+  // the freshly polled logs back to the (possibly empty) seed for a beat before
+  // the fetch below restores them.
   React.useEffect(() => {
     // Client-only seed: paints the RSC-payload logs post-hydration. Deliberate
     // setState-in-effect — it is what keeps the rows out of the SSR output.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLogs(initialLogs);
+    // initialLogs is intentionally omitted: it is the SSR snapshot for this
+    // deploymentId and only used to seed; re-seeding on its identity churn would
+    // clobber freshly fetched logs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deploymentId]);
 
+  // Fetch once to reconcile against the latest server state (covers a terminal
+  // deployment whose initialLogs seed may be stale), then keep polling only
+  // while the build is live. Runs after the seed effect on mount, so there's no
+  // seed-vs-fetch race.
+  React.useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
 
@@ -128,10 +137,6 @@ export function BuildLogStream({
       controller.abort();
       if (timer) clearInterval(timer);
     };
-    // initialLogs is intentionally omitted: it is the SSR snapshot for this
-    // deploymentId and only used to seed; re-seeding on its identity churn would
-    // clobber freshly fetched logs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deploymentId, live]);
 
   // Stick to the bottom when new lines arrive, but only while following.

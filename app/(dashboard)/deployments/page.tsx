@@ -110,6 +110,7 @@ export default async function DeploymentsPage() {
                     <DeploymentActions
                       id={d.id}
                       serviceId={d.serviceId}
+                      serviceSlug={d.serviceSlug}
                       url={d.url}
                       status={d.status}
                       environment={d.environment}

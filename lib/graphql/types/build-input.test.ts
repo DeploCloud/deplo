@@ -32,7 +32,6 @@ test("remapBuildInput re-keys settings → methodSettings", () => {
 
 test("remapBuildInput passes matching fields through untouched", () => {
   const out = remapBuildInput({
-    framework: "nextjs",
     buildMethod: "nixpacks",
     installCommand: "npm i",
     buildCommand: "npm run build",
@@ -41,7 +40,6 @@ test("remapBuildInput passes matching fields through untouched", () => {
     port: 3000,
   });
   assert.deepEqual(out, {
-    framework: "nextjs",
     buildMethod: "nixpacks",
     installCommand: "npm i",
     buildCommand: "npm run build",
@@ -71,7 +69,6 @@ test("remapBuildInput keeps an explicit empty-string edit (clearing a field)", (
 test("remapBuildInput end-to-end: the merge persists the edited rootDirectory", () => {
   // Mirrors the shallow merge in updateServiceBuild: { ...existing, ...remapped }.
   const existing = {
-    framework: "nextjs",
     buildMethod: "nixpacks",
     methodSettings: {},
     rootDirectory: "./",
@@ -83,7 +80,6 @@ test("remapBuildInput end-to-end: the merge persists the edited rootDirectory", 
     port: 3000,
   };
   const remapped = remapBuildInput({
-    framework: "nextjs",
     buildMethod: "nixpacks",
     settings: {},
     installCommand: "npm i",

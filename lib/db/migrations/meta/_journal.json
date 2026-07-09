@@ -155,6 +155,20 @@
       "when": 1783600402000,
       "tag": "0021_add_service_migrate_from_server",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783600403000,
+      "tag": "0022_drop_framework_and_heroku",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1783600404000,
+      "tag": "0023_add_git_deploy_options",
+      "breakpoints": true
     }
   ]
 }

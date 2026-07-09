@@ -611,7 +611,6 @@ export const services = pgTable(
       () => servers.id,
       { onDelete: "set null" },
     ),
-    framework: text("framework").notNull(),
     logo: text("logo"),
     source: text("source").notNull(),
     // Flattened GitRepo (NULL columns when there is no repo).
@@ -620,6 +619,16 @@ export const services = pgTable(
     repoRepo: text("repo_repo"),
     repoBranch: text("repo_branch"),
     repoInstallationId: text("repo_installation_id"),
+    // Git deploy options (also flattened GitRepo fields; defaults when no repo).
+    // `repo_trigger_type` — which git event auto-deploys: "push" (to repo_branch)
+    // or "tag" (any new tag). NULL ⇒ "push" (the historical behaviour). Read by
+    // the GitHub webhook to gate a delivery.
+    repoTriggerType: text("repo_trigger_type"),
+    // `repo_watch_paths` — newline-separated path globs; an auto-deploy only fires
+    // when a pushed commit changed a file matching one. NULL/empty ⇒ any change.
+    repoWatchPaths: text("repo_watch_paths"),
+    // `repo_submodules` — clone the repo's git submodules at build time.
+    repoSubmodules: boolean("repo_submodules").notNull().default(false),
     dockerImage: text("docker_image"),
     // Flattened UploadArchive (NULL columns when source !== "upload").
     uploadId: text("upload_id"),
@@ -655,16 +664,15 @@ export const services = pgTable(
 
 /**
  * [BuildConfig](../../types.ts) → 1-to-1 child (was `services.build`).
- * `project_id` PK + FK CASCADE. `framework`/`build_method` plain text, NO CHECK
- * (legacy values are coerced, never rejected). `runtime_version` (legacy
- * `nodeVersion` remapped by `normalizeBuildConfig` at backfill). The backfill
- * MUST run the read-time normalizer first so the NOT NULL columns hold (PLAN §2).
+ * `project_id` PK + FK CASCADE. `build_method` plain text, NO CHECK (legacy
+ * values are coerced, never rejected). `runtime_version` (legacy `nodeVersion`
+ * remapped by `normalizeBuildConfig` at backfill). The backfill MUST run the
+ * read-time normalizer first so the NOT NULL columns hold (PLAN §2).
  */
 export const serviceBuild = pgTable("service_build", {
   serviceId: text("service_id")
     .primaryKey()
     .references(() => services.id, { onDelete: "cascade" }),
-  framework: text("framework").notNull(),
   buildMethod: text("build_method").notNull(),
   rootDirectory: text("root_directory").notNull(),
   installCommand: text("install_command").notNull(),
@@ -693,7 +701,6 @@ export const serviceBuildMethodSettings = pgTable(
     dockerBuildStage: text("docker_build_stage"),
     railpackVersion: text("railpack_version"),
     nixpacksPublishDirectory: text("nixpacks_publish_directory"),
-    herokuVersion: text("heroku_version"),
     staticSinglePageApp: boolean("static_single_page_app"),
   },
 );

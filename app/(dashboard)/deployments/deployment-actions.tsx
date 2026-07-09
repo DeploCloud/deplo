@@ -24,12 +24,15 @@ import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
 export function DeploymentActions({
   id,
   serviceId,
+  serviceSlug,
   url,
   status,
   environment,
 }: {
   id: string;
   serviceId: string;
+  /** Owning service slug — used to route to the new deployment's live logs. */
+  serviceSlug: string;
   url: string;
   status: DeploymentStatus;
   environment: DeploymentEnvironment;
@@ -42,13 +45,23 @@ export function DeploymentActions({
 
   function redeploy() {
     startTransition(async () => {
-      const res = await gqlAction(
+      const res = await gqlAction<
+        { redeploy: { id: string | null } | null },
+        { id: string | null } | null
+      >(
         `mutation ($serviceId: String!) { redeploy(serviceId: $serviceId) { id } }`,
         { serviceId },
+        (d) => d.redeploy,
       );
       if (res.ok) {
         toast.success("Redeploy started");
-        router.refresh();
+        // Follow the new production build to its live logs; fall back to a
+        // refresh if no id came back.
+        if (res.data?.id) {
+          router.push(`/services/${serviceSlug}/deployments/${res.data.id}`);
+        } else {
+          router.refresh();
+        }
       } else toast.error(res.error);
     });
   }

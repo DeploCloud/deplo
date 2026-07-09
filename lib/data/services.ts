@@ -41,7 +41,6 @@ import type {
   DeploySource,
   EnvTarget,
   EnvVar,
-  FrameworkId,
   GitRepo,
   Service,
   ServiceStatus,
@@ -66,7 +65,8 @@ import { teardownService } from "./deployments";
 import { agentTeardownDev } from "../deploy/agent-dev";
 import { removeUploads } from "../deploy/upload";
 import { removeServiceDevSshUsers } from "./dev-ssh";
-import { isValidLogoValue } from "../services/logo-shared";
+import { isValidLogoValue, isTemplateLogo } from "../services/logo-shared";
+import { detectServiceFavicon } from "../services/favicon-detect";
 import { publishServiceChanged } from "../graphql/pubsub";
 import {
   insertEnvVars,
@@ -320,7 +320,6 @@ export async function findServiceSummaryBySlugForTeam(
 
 export interface CreateServiceInput {
   name: string;
-  framework: FrameworkId;
   source: DeploySource;
   repo: GitRepo | null;
   dockerImage?: string | null;
@@ -439,7 +438,6 @@ export async function createService(
     // the Overview (drag-into-folder or the card's "Move to folder" menu).
     folderId: null,
     serverId: server.id,
-    framework: input.framework,
     // Defaulted from a template's logo (a /templates path); ignore anything that
     // isn't a valid inline logo so a crafted create payload can't store a URL.
     logo: input.logo && isValidLogoValue(input.logo) ? input.logo : null,
@@ -449,7 +447,7 @@ export async function createService(
     upload: null,
     compose: input.compose ?? null,
     mounts: input.mounts?.length ? input.mounts : null,
-    build: buildConfigFor(input.framework, input.build),
+    build: buildConfigFor(input.build),
     dev: null,
     productionUrl: null,
     status: isUpload ? "idle" : "queued",
@@ -552,6 +550,11 @@ export async function createService(
       });
   }
 
+  // The display logo is auto-detected from the service's own files at DEPLOY
+  // time (the deploy engine reads a git repo's tree via the GitHub API and scans
+  // an upload's extracted tree), guarded so it only ever fills a still-empty
+  // logo. A git/github service deploys immediately below, so its icon lands on
+  // that first deploy; nothing to kick off here.
   if (!isUpload) {
     // Kick off the first real build + deploy. Runs in the background and flips
     // the project to active (or error) once the container is up.
@@ -590,7 +593,7 @@ export async function updateServiceBuild(
     };
     await tx
       .update(servicesTable)
-      .set({ framework: build.framework ?? existing.framework, updatedAt: nowIso() })
+      .set({ updatedAt: nowIso() })
       .where(eq(servicesTable.id, id));
     await tx
       .update(serviceBuildTable)
@@ -696,6 +699,11 @@ export async function updateServiceSource(
         repoRepo: input.repo?.repo ?? null,
         repoBranch: input.repo?.branch ?? null,
         repoInstallationId: input.repo?.installationId ?? null,
+        repoTriggerType: input.repo?.triggerType ?? null,
+        repoWatchPaths: input.repo?.watchPaths?.length
+          ? input.repo.watchPaths.join("\n")
+          : null,
+        repoSubmodules: input.repo?.submodules ?? false,
         dockerImage: input.dockerImage,
         // Persist compose edits when provided; never clear a stored stack on
         // switch so the user can flip back to Compose and recover it.
@@ -961,11 +969,17 @@ export async function setServiceUpload(
     uploadSize: upload.size,
     uploadUploadedAt: upload.uploadedAt,
     // Forget any repo / docker image so the deploy takes the upload branch.
+    // Clear ALL eight flattened repo_* columns as one unit (matching serviceToRow
+    // and updateServiceSource) so no stale git deploy option is left orphaned on a
+    // now-repoless service.
     repoProvider: null,
     repoUrl: null,
     repoRepo: null,
     repoBranch: null,
     repoInstallationId: null,
+    repoTriggerType: null,
+    repoWatchPaths: null,
+    repoSubmodules: false,
     dockerImage: null,
     updatedAt: nowIso(),
   });
@@ -994,7 +1008,7 @@ export async function renameService(id: string, name: string): Promise<void> {
 
 /**
  * Set (or clear) the project's display logo. An empty value clears it, falling
- * the UI back to the framework icon. The logo is stored INLINE on the project
+ * the UI back to a generic icon. The logo is stored INLINE on the project
  * as a base64 image data-URI (uploaded image) or a local /templates path
  * (template default) — never a remote URL, so it renders under the strict CSP
  * with no cross-origin fetch (see {@link isValidLogoValue}). Purely cosmetic:
@@ -1037,6 +1051,47 @@ export async function updateServiceLogo(
     return;
   }
   await recordActivity("service", `Updated project logo`, user.name, id);
+}
+
+/**
+ * Re-run favicon auto-detection for a service on demand (the settings "Detect
+ * from source" button) and, when one is found, set it as the logo — overwriting
+ * any current inline value, since the user explicitly asked to detect. Throws a
+ * friendly message when the source has no detectable icon so the caller can
+ * surface it. Returns the detected logo data-URI.
+ *
+ * EXCEPTION: a template's default icon ALWAYS takes priority — detection never
+ * replaces it. A template-sourced service keeps its bundled `/templates/...`
+ * logo unless the user removes it first (then it's a normal empty logo and
+ * detection may fill it). This mirrors the automatic hooks, which only ever fill
+ * a NULL logo.
+ */
+export async function redetectServiceLogo(id: string): Promise<string> {
+  const { membership } = await requireCapability("deploy");
+  await requireFolderCapabilityForService(id, "deploy");
+  const user = (await getCurrentUser())!;
+  const project = await loadServiceGraph(id);
+  if (!project || project.teamId !== membership.teamId) {
+    throw new Error("Service not found");
+  }
+  if (isTemplateLogo(project.logo)) {
+    throw new Error(
+      "This service keeps its template's default icon, which takes priority. Remove it first to detect one from your source files.",
+    );
+  }
+  const logo = await detectServiceFavicon(project);
+  if (!logo || !isValidLogoValue(logo)) {
+    throw new Error("No favicon (SVG or PNG) found in the service files");
+  }
+  await getDb()
+    .update(servicesTable)
+    .set({ logo, updatedAt: nowIso() })
+    .where(
+      and(eq(servicesTable.id, id), eq(servicesTable.teamId, membership.teamId)),
+    );
+  await recordActivity("service", `Detected project logo from source`, user.name, id);
+  publishServiceChanged(id);
+  return logo;
 }
 
 /** Set a project's status and notify every live subscriber. */

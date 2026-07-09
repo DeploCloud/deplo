@@ -16,6 +16,7 @@ import {
   setAutoDeploy,
   renameService,
   updateServiceLogo,
+  redetectServiceLogo,
   stopService,
   startService,
   rebuildService,
@@ -38,7 +39,7 @@ import {
   promoteToProduction,
 } from "@/lib/data/deployments";
 import { renderServiceStack } from "@/lib/deploy/build";
-import type { Deployment, LogLine, VolumeMount } from "@/lib/types";
+import type { Deployment, GitRepo, LogLine, VolumeMount } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /* Object types                                                        */
@@ -115,7 +116,6 @@ export const ServiceRef = builder
         resolve: (p) => p.projectId ?? null,
       }),
       serverId: t.exposeID("serverId"),
-      framework: t.exposeString("framework"),
       logo: t.exposeString("logo", { nullable: true }),
       source: t.field({ type: DeploySourceEnum, resolve: (p) => p.source }),
       dockerImage: t.exposeString("dockerImage", { nullable: true }),
@@ -156,14 +156,44 @@ const GitRepoInput = builder.inputType("GitRepoInput", {
     repo: t.string({ required: true }),
     branch: t.string({ required: true }),
     installationId: t.string({ required: false }),
+    // Deploy options (see GitRepo). Absent ⇒ historical defaults (push / no
+    // watch-path filter / no submodules).
+    triggerType: t.string({ required: false, description: '"push" or "tag".' }),
+    watchPaths: t.stringList({ required: false }),
+    submodules: t.boolean({ required: false }),
   }),
 });
+
+/** Coerce an untrusted GraphQL `triggerType` string to the GitTriggerType union. */
+function repoInputToGitRepo(repo: {
+  provider: string;
+  url: string;
+  repo: string;
+  branch: string;
+  installationId?: string | null;
+  triggerType?: string | null;
+  watchPaths?: (string | null)[] | null;
+  submodules?: boolean | null;
+}): GitRepo {
+  return {
+    provider: repo.provider as GitRepo["provider"],
+    url: repo.url,
+    repo: repo.repo,
+    branch: repo.branch,
+    installationId: repo.installationId ?? undefined,
+    triggerType: repo.triggerType === "tag" ? "tag" : "push",
+    watchPaths: (repo.watchPaths ?? [])
+      .filter((p): p is string => !!p)
+      .map((p) => p.trim())
+      .filter(Boolean),
+    submodules: repo.submodules ?? false,
+  };
+}
 
 const BuildConfigInput = builder.inputType("BuildConfigInput", {
   description:
     "Partial build configuration; only the provided fields are changed.",
   fields: (t) => ({
-    framework: t.string({ required: false }),
     buildMethod: t.string({ required: false }),
     rootDir: t.string({ required: false }),
     installCommand: t.string({ required: false }),
@@ -224,7 +254,6 @@ const VolumeInput = builder.inputType("VolumeInput", {
 const CreateServiceInputType = builder.inputType("CreateServiceInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
-    framework: t.string({ required: true }),
     source: t.field({ type: DeploySourceEnum, required: true }),
     repo: t.field({ type: GitRepoInput, required: false }),
     dockerImage: t.string({ required: false }),
@@ -311,17 +340,8 @@ builder.mutationFields((t) => ({
     resolve: (_r, { input }) =>
       createService({
         name: input.name,
-        framework: input.framework as never,
         source: input.source,
-        repo: input.repo
-          ? {
-              provider: input.repo.provider as never,
-              url: input.repo.url,
-              repo: input.repo.repo,
-              branch: input.repo.branch,
-              installationId: input.repo.installationId ?? undefined,
-            }
-          : null,
+        repo: input.repo ? repoInputToGitRepo(input.repo) : null,
         dockerImage: input.dockerImage ?? null,
         logo: input.logo ?? null,
         compose: input.compose ?? null,
@@ -393,15 +413,7 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { id, input }) => {
       await updateServiceSource(id, {
         source: input.source,
-        repo: input.repo
-          ? {
-              provider: input.repo.provider as never,
-              url: input.repo.url,
-              repo: input.repo.repo,
-              branch: input.repo.branch,
-              installationId: input.repo.installationId ?? undefined,
-            }
-          : null,
+        repo: input.repo ? repoInputToGitRepo(input.repo) : null,
         dockerImage: input.dockerImage ?? null,
         serverId: input.serverId ?? undefined,
         compose: input.compose ?? undefined,
@@ -460,6 +472,17 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, logo }) => {
       await updateServiceLogo(id, logo ?? null);
+      return reloadService(id);
+    },
+  }),
+  detectServiceLogo: t.field({
+    type: ServiceRef,
+    authScopes: { capability: "deploy" },
+    description:
+      "Auto-detect a favicon (SVG/PNG) from the service's GitHub repo or uploaded files and set it as the logo. Errors if none is found.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await redetectServiceLogo(id);
       return reloadService(id);
     },
   }),

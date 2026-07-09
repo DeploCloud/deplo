@@ -1,17 +1,12 @@
 "use client";
 
 import * as React from "react";
-import {
-  FileCode2,
-  Boxes,
-  Layers,
-  Hexagon,
-  Package,
-  FileText,
-} from "lucide-react";
+import { FileCode2, Boxes, Layers, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RailpackVersionInput } from "@/components/services/railpack-version-input";
+import { cn } from "@/lib/utils";
 import type { BuildMethod, BuildMethodSettings } from "@/lib/types";
 
 interface MethodMeta {
@@ -21,13 +16,13 @@ interface MethodMeta {
   blurb: string;
 }
 
-/** The six selectable build methods, in the order shown in the picker. */
+/** The selectable build methods, in the order shown in the picker. */
 export const BUILD_METHODS: MethodMeta[] = [
   {
-    id: "dockerfile",
-    name: "Dockerfile",
-    icon: FileCode2,
-    blurb: "Build straight from a Dockerfile in your repository.",
+    id: "nixpacks",
+    name: "Nixpacks",
+    icon: Boxes,
+    blurb: "Zero-config builder that detects and builds your app.",
   },
   {
     id: "railpack",
@@ -36,28 +31,16 @@ export const BUILD_METHODS: MethodMeta[] = [
     blurb: "Railway's BuildKit-based builder. Auto-detects your stack.",
   },
   {
-    id: "nixpacks",
-    name: "Nixpacks",
-    icon: Boxes,
-    blurb: "Zero-config builder that detects and builds your app.",
-  },
-  {
-    id: "heroku",
-    name: "Heroku Buildpacks",
-    icon: Hexagon,
-    blurb: "Cloud Native Buildpacks using the Heroku builder.",
-  },
-  {
-    id: "paketo",
-    name: "Paketo Buildpacks",
-    icon: Package,
-    blurb: "Cloud Native Buildpacks using the Paketo builder.",
+    id: "dockerfile",
+    name: "Dockerfile",
+    icon: FileCode2,
+    blurb: "Build straight from a Dockerfile in your repository.",
   },
   {
     id: "static",
     name: "Static",
     icon: FileText,
-    blurb: "Serve your build output as a static site behind nginx.",
+    blurb: "Serve a directory of files as a static site behind nginx.",
   },
 ];
 
@@ -76,13 +59,11 @@ export function BuildMethodFields({
   onMethodChange: (m: BuildMethod) => void;
   onSettingsChange: (patch: Partial<BuildMethodSettings>) => void;
 }) {
-  const active = BUILD_METHODS.find((m) => m.id === method) ?? BUILD_METHODS[2];
-
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Build Method</Label>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           {BUILD_METHODS.map((m) => {
             const Icon = m.icon;
             const selected = m.id === method;
@@ -92,19 +73,33 @@ export function BuildMethodFields({
                 type="button"
                 onClick={() => onMethodChange(m.id)}
                 aria-pressed={selected}
-                className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                className={cn(
+                  "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
                   selected
                     ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-border hover:bg-muted/50"
-                }`}
+                    : "border-border hover:border-foreground/20 hover:bg-muted/40",
+                )}
               >
-                <Icon className="size-4 shrink-0 text-muted-foreground" />
-                <span className="truncate font-medium">{m.name}</span>
+                <span
+                  className={cn(
+                    "flex size-8 shrink-0 items-center justify-center rounded-md border",
+                    selected
+                      ? "border-primary/40 bg-background text-foreground"
+                      : "border-border bg-muted/50 text-muted-foreground",
+                  )}
+                >
+                  <Icon className="size-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{m.name}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {m.blurb}
+                  </span>
+                </span>
               </button>
             );
           })}
         </div>
-        <p className="text-xs text-muted-foreground">{active.blurb}</p>
       </div>
 
       {method === "dockerfile" && (
@@ -135,13 +130,17 @@ export function BuildMethodFields({
 
       {method === "railpack" && (
         <div className="grid gap-4 sm:grid-cols-2">
-          <TextField
-            label="Railpack version"
-            placeholder="latest"
-            value={settings.railpackVersion ?? ""}
-            onChange={(v) => onSettingsChange({ railpackVersion: v })}
-            help="Railpack builder image tag (e.g. latest, 0.7)."
-          />
+          <div className="space-y-2">
+            <Label>Railpack version</Label>
+            <RailpackVersionInput
+              value={settings.railpackVersion ?? ""}
+              onChange={(v) => onSettingsChange({ railpackVersion: v })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Builder version, kept in sync with the railpack releases. Pick{" "}
+              <code className="font-mono">latest</code> or a specific tag.
+            </p>
+          </div>
         </div>
       )}
 
@@ -152,28 +151,9 @@ export function BuildMethodFields({
             placeholder="(auto)"
             value={settings.nixpacksPublishDirectory ?? ""}
             onChange={(v) => onSettingsChange({ nixpacksPublishDirectory: v })}
-            help="Directory your build publishes. Leave blank to let Nixpacks decide."
+            help="After the build finishes, serve just this directory as a static site through NGINX — handy when your build emits static assets to publish. Leave blank to run the app normally."
           />
         </div>
-      )}
-
-      {method === "heroku" && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField
-            label="Builder version"
-            placeholder="24"
-            value={settings.herokuVersion ?? ""}
-            onChange={(v) => onSettingsChange({ herokuVersion: v })}
-            help="Heroku builder tag, mapped to heroku/builder:<version>."
-          />
-        </div>
-      )}
-
-      {method === "paketo" && (
-        <p className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
-          Builds with the Paketo Jammy base builder. No extra configuration
-          required.
-        </p>
       )}
 
       {method === "static" && (

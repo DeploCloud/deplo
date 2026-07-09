@@ -400,27 +400,6 @@ export interface Server {
   lastSeenAt?: string;
 }
 
-export type FrameworkId =
-  | "nextjs"
-  | "svelte"
-  | "sveltekit"
-  | "astro"
-  | "vite"
-  | "remix"
-  | "nuxt"
-  | "react"
-  | "vue"
-  | "angular"
-  | "gatsby"
-  | "static"
-  | "node"
-  | "python"
-  | "go"
-  | "rust"
-  | "php"
-  | "docker"
-  | "other";
-
 export type ServiceStatus =
   | "active"
   | "building"
@@ -477,6 +456,14 @@ export interface UploadArchive {
   uploadedAt: string;
 }
 
+/**
+ * Which git event drives an automatic deployment when auto-deploy is on:
+ *  - push  a push to the repo's tracked `branch` (the historical default)
+ *  - tag   any new tag pushed to the repo
+ * Absent/`undefined` is treated as "push".
+ */
+export type GitTriggerType = "push" | "tag";
+
 export interface GitRepo {
   provider: "github" | "gitlab" | "bitbucket" | "git";
   url: string;
@@ -488,26 +475,38 @@ export interface GitRepo {
    * for public repos or plain Git URLs.
    */
   installationId?: string | null;
+  /**
+   * Which git event auto-deploys this service (see {@link GitTriggerType}).
+   * Absent ⇒ "push". Consumed by the GitHub webhook to gate a delivery.
+   */
+  triggerType?: GitTriggerType;
+  /**
+   * Optional path globs (one per entry). When set, an automatic deployment only
+   * fires if a pushed commit changed a file matching at least one glob; empty ⇒
+   * deploy on any change. Matching is best-effort (fail-open when the delivery
+   * carries no file list, e.g. an annotated-tag push).
+   */
+  watchPaths?: string[];
+  /**
+   * Clone the repository's git submodules (recurse-submodules) at build time.
+   * Absent ⇒ false.
+   */
+  submodules?: boolean;
 }
 
 /**
- * How Deplo turns a repository into a runnable image — orthogonal to the
- * framework preset (which only seeds the install/build/output commands). Mirrors
- * the "build pack" choice in Coolify/Dokploy/Railway. Each method runs entirely
- * inside Docker (the only build tool guaranteed present on the host):
+ * How Deplo turns a repository into a runnable image. Mirrors the "build pack"
+ * choice in Coolify/Dokploy/Railway. Each method runs entirely inside Docker
+ * (the only build tool guaranteed present on the host):
  *  - dockerfile  build straight from a Dockerfile in the repo
  *  - railpack    Railway's BuildKit-based builder (Nixpacks' successor)
  *  - nixpacks    Nixpacks auto-detects and builds an OCI image
- *  - heroku      Cloud Native Buildpacks with the Heroku builder
- *  - paketo      Cloud Native Buildpacks with the Paketo builder
- *  - static      build (if needed) then serve the output dir with nginx
+ *  - static      serve a directory of files with nginx (optionally SPA)
  */
 export type BuildMethod =
   | "dockerfile"
   | "railpack"
   | "nixpacks"
-  | "heroku"
-  | "paketo"
   | "static";
 
 /**
@@ -523,31 +522,34 @@ export interface BuildMethodSettings {
   dockerBuildStage?: string;
   /** railpack: builder image tag (e.g. "latest", "0.7"). */
   railpackVersion?: string;
-  /** nixpacks: directory the build publishes / serves (informational + static). */
+  /** nixpacks: after the build, serve just this directory as a static site via
+   *  nginx (informational elsewhere). */
   nixpacksPublishDirectory?: string;
-  /** heroku: builder image tag mapped to heroku/builder:<version> (e.g. "24"). */
-  herokuVersion?: string;
   /** static: serve as a single-page app (SPA history-API fallback to index.html). */
   staticSinglePageApp?: boolean;
 }
 
 export interface BuildConfig {
-  framework: FrameworkId;
   /** Which builder turns the repo into an image. Defaults to "nixpacks". */
   buildMethod: BuildMethod;
   /** Settings scoped to the active build method (see BuildMethodSettings). */
   methodSettings: BuildMethodSettings;
+  /**
+   * The following command/runtime fields are retained on the stored model for
+   * the deploy builders and legacy rows, but are no longer surfaced in the build
+   * settings UI (the builders auto-detect them). New services default them empty.
+   */
   rootDirectory: string;
   installCommand: string;
   buildCommand: string;
   outputDirectory: string;
   startCommand: string;
   /**
-   * Pinned runtime version for the framework's language (Node, Python, Go, …).
-   * Interpreted per language by the builder; empty means "use the builder's
-   * default". The UI labels it per language (see runtimeFor).
+   * Pinned runtime version, interpreted per language by the builder; empty means
+   * "use the builder's default".
    */
   runtimeVersion: string;
+  /** Container port Traefik routes to. The one build field still shown in the UI. */
   port: number;
 }
 
@@ -561,9 +563,8 @@ export type DevStatus = "off" | "starting" | "running" | "stopped" | "error";
 
 /**
  * Coarse base-language image a dev container runs on. A *different, coarser*
- * axis than `FrameworkId` (app type) and `runtimeVersion` (language version):
- * a Next.js project's preset is `node`. Derived by default from `framework`;
- * resolves to an OFFICIAL base image (node:22, python:3.12, …) used directly.
+ * axis than `runtimeVersion` (language version). Defaults to `node`; resolves to
+ * an OFFICIAL base image (node:22, python:3.12, …) used directly.
  */
 export type DevImagePreset = "node" | "python" | "go" | "rust" | "php" | "java";
 
@@ -739,11 +740,10 @@ export interface Service {
    * migrateWorkloadData / the deploy's post-success migration step.
    */
   migrateFromServerId?: ID | null;
-  framework: FrameworkId;
   /**
    * Display logo for the project (a URL or local /templates/<x> path). Defaulted
    * from the template's logo when deployed from one, editable from settings.
-   * Null ⇒ fall back to the framework icon. NOT the Docker image (`dockerImage`).
+   * Null ⇒ fall back to a generic icon. NOT the Docker image (`dockerImage`).
    */
   logo: string | null;
   /** How this project is deployed (git, docker image, dockerfile, upload). */

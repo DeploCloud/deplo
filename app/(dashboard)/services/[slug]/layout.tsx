@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ExternalLink, ArrowLeft } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { getServiceBySlug } from "@/lib/data/services";
 import { truncate } from "@/lib/utils";
 import { isDevEligible } from "@/lib/data/dev";
@@ -11,7 +10,10 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ServiceLogo } from "@/components/shared/project-logo";
 import { RedeployButton } from "@/components/services/redeploy-button";
 import { ServiceControls } from "@/components/services/service-controls";
-import { ServiceStatusDot } from "@/components/services/service-status-dot";
+import {
+  ServiceStatusDot,
+  ServiceStatusBadge,
+} from "@/components/services/service-status-dot";
 import { ServiceNavSync } from "@/components/services/service-nav-sync";
 import {
   ServiceLiveStatusProvider,
@@ -57,6 +59,7 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
     slug: project.slug,
     status: project.status,
     productionUrl: project.productionUrl ?? null,
+    latestDeploymentId: project.latestDeployment?.id ?? null,
     latestDeploymentStatus: project.latestDeployment?.status ?? null,
   };
 
@@ -64,29 +67,19 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
     <ServiceLiveStatusProvider key={initialLive.slug} initial={initialLive}>
     <div className="space-y-6">
       <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-          className="mb-3 -ml-2 text-muted-foreground"
-        >
-          <Link href="/">
-            <ArrowLeft className="size-4" />
-            Services
-          </Link>
-        </Button>
-
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <ServiceLogo
-              logo={project.logo}
-              framework={project.framework}
-              size={44}
-            />
+            <ServiceLogo logo={project.logo} size={44} />
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">
-                {project.name}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight">
+                  {project.name}
+                </h1>
+                {/* The live container lifecycle (Running / Stopped / Building /
+                    Error) — the header's headline status, distinct from any
+                    deployment status shown further down the page. */}
+                <ServiceStatusBadge status={project.status} />
+              </div>
               {project.productionUrl && (
                 <a
                   href={project.productionUrl}
@@ -116,7 +109,11 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
               </SimpleTooltip>
             )}
             <ServiceControls serviceId={project.id} status={project.status} />
-            <RedeployButton serviceId={project.id} variant="default" />
+            <RedeployButton
+              serviceId={project.id}
+              slug={project.slug}
+              variant="default"
+            />
           </div>
         </div>
       </div>

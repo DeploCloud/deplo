@@ -11,11 +11,7 @@ import {
   loadSharedEnvGroupsForService,
 } from "../data/service-graph-load";
 import { dataVolumeHostMountpoint } from "./builders";
-import {
-  devCommandFor,
-  devImagePresetFor,
-  devPresetImage,
-} from "../frameworks";
+import { devPresetImage } from "../frameworks";
 import { rejectSymlinks } from "./upload";
 import {
   certResolver,
@@ -101,21 +97,21 @@ export function devImage(project: Service): string {
   if (dev?.imageKind === "preset" && dev.image.trim()) {
     return devPresetImage(dev.image as Parameters<typeof devPresetImage>[0]);
   }
-  return devPresetImage(devImagePresetFor(project.framework));
+  return devPresetImage("node");
 }
 
 /**
- * Default DevConfig for a freshly-enabled project. The image preset is derived
- * from `framework`; the dev command from the framework's `dev` command; the
- * dev port defaults to the production port; preview is ON by default.
+ * Default DevConfig for a freshly-enabled project. Defaults to the `node` base
+ * image and no dev command (the user picks their base image and runs their own
+ * dev server); the dev port defaults to the production port; preview is ON.
  */
 export function defaultDevConfig(project: Service): DevConfig {
   return {
     enabled: true,
     status: "off",
     imageKind: "preset",
-    image: devImagePresetFor(project.framework),
-    devCommand: devCommandFor(project.framework),
+    image: "node",
+    devCommand: "",
     port: project.build.port,
     previewEnabled: true,
     // Generated + persisted when dev is enabled (enableDev); a freshly-derived

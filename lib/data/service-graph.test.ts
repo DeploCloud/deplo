@@ -263,7 +263,6 @@ test("two concurrent same-name createService calls both succeed with distinct sl
   // the post-commit deploy (no agent dial), keeping the test hermetic.
   const input = {
     name: "My App",
-    framework: "node" as const,
     source: "upload" as const,
     repo: null,
   };

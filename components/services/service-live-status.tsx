@@ -15,6 +15,7 @@ export type LiveService = {
   slug: string;
   status: ServiceStatus;
   productionUrl: string | null;
+  latestDeploymentId: string | null;
   latestDeploymentStatus: DeploymentStatus | null;
 };
 
@@ -26,6 +27,7 @@ const PROJECT_STATUS_SUBSCRIPTION = /* GraphQL */ `
       status
       productionUrl
       latestDeployment {
+        id
         status
       }
     }
@@ -38,7 +40,7 @@ type SubResult = {
     slug: string;
     status: ServiceStatus;
     productionUrl: string | null;
-    latestDeployment: { status: DeploymentStatus } | null;
+    latestDeployment: { id: string; status: DeploymentStatus } | null;
   };
 };
 
@@ -72,6 +74,7 @@ export function ServiceLiveStatusProvider({
           slug: p.slug,
           status: p.status,
           productionUrl: p.productionUrl,
+          latestDeploymentId: p.latestDeployment?.id ?? null,
           latestDeploymentStatus: p.latestDeployment?.status ?? null,
         });
       },

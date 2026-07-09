@@ -23,12 +23,12 @@ const STOP = `mutation($id: String!) { stopApp(id: $id) }`;
 /** Logo tile (data-URI / repo path / letter fallback), like a template card. */
 function Logo({ src, name }: { src?: string | null; name: string }) {
   return (
-    <div className="flex size-11 items-center justify-center overflow-hidden rounded-lg border border-border bg-white p-1.5">
+    <div className="flex size-11 items-center justify-center overflow-hidden rounded-lg border border-border p-1.5">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt={name} className="size-full object-contain" loading="lazy" />
       ) : (
-        <span className="text-lg font-semibold text-black">{name.slice(0, 1)}</span>
+        <span className="text-lg font-semibold text-foreground">{name.slice(0, 1)}</span>
       )}
     </div>
   );

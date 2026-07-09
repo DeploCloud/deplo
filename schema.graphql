@@ -164,7 +164,6 @@ type BasicAuthUser {
 input BuildConfigInput {
   buildCommand: String
   buildMethod: String
-  framework: String
   installCommand: String
   outputDir: String
   port: Int
@@ -256,7 +255,6 @@ input CreateServiceInput {
   dockerImage: String
   env: [ServiceEnvInput!]
   extraDomains: [ExtraDomainInput!]
-  framework: String!
   logo: String
   mounts: [MountInput!]
   name: String!
@@ -607,7 +605,12 @@ input GitRepoInput {
   installationId: String
   provider: String!
   repo: String!
+  submodules: Boolean
+
+  """"push" or "tag"."""
+  triggerType: String
   url: String!
+  watchPaths: [String!]
 }
 
 """A GitHub App connected to a team (no secrets exposed)."""
@@ -859,6 +862,11 @@ type Mutation {
   Deploy the current dev workspace files to production. Returns the deployment id.
   """
   deployDevWorkspace(serviceId: String!): String
+
+  """
+  Auto-detect a favicon (SVG/PNG) from the service's GitHub repo or uploaded files and set it as the logo. Errors if none is found.
+  """
+  detectServiceLogo(id: String!): Service
   disableDev(serviceId: String!): DevInfo
   enableDev(serviceId: String!): DevInfo
 
@@ -1127,7 +1135,7 @@ type Mutation {
   updateBasicAuthUserPassword(id: String!, password: String!): BasicAuthUser
 
   """
-  Edit a database's public exposure (publish/unpublish + host port) and, optionally, the server it runs on. An in-place edit re-renders the compose and reroutes the container on its current host (data volume preserved). A server change recreates the container fresh on the new host — like a project move, its data does NOT follow (a Docker volume is host-local) — and tears down the old host's stack. The connection string is re-derived. Everything else is create-only. The publish-ports grant is enforced in the data layer when exposure is turned on.
+  Edit a database's public exposure (publish/unpublish + host port) and, optionally, the server it runs on. An in-place edit re-renders the compose and reroutes the container on its current host (data volume preserved). A server change recreates the container on the new host, COPIES its data volume there host-to-host (relayed through the control plane, not via S3) so the data follows the move, then tears down the old host's stack. The copy runs with both stacks stopped and rolls back on failure (the DB stays put). The connection string is re-derived. Everything else is create-only. The publish-ports grant is enforced in the data layer when exposure is on.
   """
   updateDatabase(id: String!, input: UpdateDatabaseInput!): Database
   updateDev(patch: UpdateDevInput!, serviceId: String!): DevInfo
@@ -1625,7 +1633,6 @@ type Service {
   dockerImage: String
   domainCount: Int
   folderId: ID
-  framework: String
   id: ID
   latestDeployment: Deployment
   logo: String

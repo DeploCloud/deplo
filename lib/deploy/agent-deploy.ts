@@ -13,7 +13,11 @@ import {
 } from "../agent/gen/agent";
 import { connectAgent, agentPreflight } from "../infra/agent-client";
 import { generateDockerfile } from "./dockerfile";
-import { normalizeBuildConfig, runtimeFor } from "../frameworks";
+import {
+  normalizeBuildConfig,
+  DEFAULT_NODE_MAJOR,
+  usesDefaultNodeMajor,
+} from "../frameworks";
 import type { BuildConfig, BuildMethod, LogLevel } from "../types";
 
 /**
@@ -119,8 +123,6 @@ const HEAVY_METHOD: Record<
 > = {
   static: { kind: BuildKind.BUILD_KIND_STATIC, capability: "deploy.static" },
   nixpacks: { kind: BuildKind.BUILD_KIND_NIXPACKS, capability: "deploy.nixpacks" },
-  heroku: { kind: BuildKind.BUILD_KIND_BUILDPACKS, capability: "deploy.buildpacks" },
-  paketo: { kind: BuildKind.BUILD_KIND_BUILDPACKS, capability: "deploy.buildpacks" },
   railpack: { kind: BuildKind.BUILD_KIND_RAILPACK, capability: "deploy.railpack" },
 };
 
@@ -140,12 +142,26 @@ function heavyBuildKind(method: BuildMethod): BuildKind | null {
 }
 
 /** The BuildSpec the agent's heavy builders read — flattens BuildConfig +
- * methodSettings onto the wire, resolving the framework's runtime language here so
- * the agent stays dumb about Deplo's framework registry. Mirrors the fields
- * builders.ts reads. Pure (no I/O) so the mapping is unit-tested directly. */
+ * methodSettings onto the wire. Mirrors the fields builders.ts reads. Pure (no
+ * I/O) so the mapping is unit-tested directly.
+ *
+ * `runtimeLanguage` is how the agent knows which per-language version var to pin
+ * (`NIXPACKS_NODE_VERSION` / `RAILPACK_NODE_VERSION`) and whether to run the
+ * static Node builder stage. Framework detection is gone, but the ONE pinnable
+ * runtime Deplo now surfaces in build settings is Node — so declare "node"
+ * whenever a Node version is in play. For the auto-detecting Node builders
+ * (Nixpacks / Railpack) that means ALWAYS: when the user pinned nothing we send
+ * {@link DEFAULT_NODE_MAJOR} so a current Node is used instead of the builder's
+ * stale built-in default (Nixpacks otherwise picks Node 18). The version var is
+ * provider-scoped, so a non-Node repo built via these methods is unaffected. The
+ * Dockerfile family keeps its own default/auto-detection (empty). `herokuVersion`
+ * stays on the wire for proto compatibility with older agents but is always empty
+ * (the buildpack methods were removed). */
 export function buildSpecFor(build: BuildConfig): BuildSpec {
   const b = normalizeBuildConfig(build);
-  const lang = runtimeFor(b.framework).language;
+  const pinned = (b.runtimeVersion ?? "").trim();
+  const runtimeVersion =
+    pinned || (usesDefaultNodeMajor(b.buildMethod) ? DEFAULT_NODE_MAJOR : "");
   return {
     method: b.buildMethod,
     port: b.port ?? 0,
@@ -153,10 +169,10 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
     buildCommand: b.buildCommand ?? "",
     startCommand: b.startCommand ?? "",
     outputDirectory: b.outputDirectory ?? "",
-    runtimeVersion: b.runtimeVersion ?? "",
-    runtimeLanguage: lang,
+    runtimeVersion,
+    runtimeLanguage: runtimeVersion ? "node" : "",
     nixpacksPublishDirectory: b.methodSettings.nixpacksPublishDirectory?.trim() ?? "",
-    herokuVersion: b.methodSettings.herokuVersion?.trim() ?? "",
+    herokuVersion: "",
     railpackVersion: b.methodSettings.railpackVersion?.trim() ?? "",
     staticSinglePageApp: b.methodSettings.staticSinglePageApp ?? false,
   };

@@ -124,7 +124,9 @@ export async function POST(
 
     // No deploy here — the archive is stored and the service points at it. The
     // caller deploys on demand (Save & Deploy), which is what lets the server be
-    // chosen before the first build runs.
+    // chosen before the first build runs. A logo is auto-detected from the
+    // archive during that deploy (the engine reuses the tree it extracts to
+    // build), not here — so no second extraction of an attacker-controlled zip.
     return Response.json({
       ok: true,
       upload: {

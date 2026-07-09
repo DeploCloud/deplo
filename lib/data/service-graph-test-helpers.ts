@@ -83,7 +83,7 @@ export async function seedService(
 ): Promise<string> {
   const teamId = opts.teamId ?? TEAM_A;
   const serverId = opts.serverId ?? SERVER_1;
-  const build = buildConfigFor("nextjs", {});
+  const build = buildConfigFor({});
   const project: Service = {
     id: opts.id,
     name: opts.id,
@@ -91,7 +91,6 @@ export async function seedService(
     teamId,
     folderId: null,
     serverId,
-    framework: "nextjs",
     logo: null,
     source: opts.source ?? "github",
     repo: { provider: "github", url: "https://x", repo: "o/r", branch: "main" },

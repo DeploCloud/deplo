@@ -113,9 +113,15 @@ export function assembleBuild(
   build: ServiceBuildRow,
   ms: ServiceBuildMethodSettingsRow | null,
 ): BuildConfig {
+  // Legacy rows may still hold the removed "heroku"/"paketo" build methods.
+  // Surface them as "nixpacks" — the same remap normalizeBuildConfig applies on
+  // the deploy path — so the settings UI shows a valid, selected method (and a
+  // re-save can't persist a method the picker no longer offers).
+  const rawMethod = build.buildMethod;
+  const buildMethod =
+    rawMethod === "heroku" || rawMethod === "paketo" ? "nixpacks" : rawMethod;
   return {
-    framework: build.framework as BuildConfig["framework"],
-    buildMethod: build.buildMethod as BuildConfig["buildMethod"],
+    buildMethod: buildMethod as BuildConfig["buildMethod"],
     methodSettings: assembleMethodSettings(ms),
     rootDirectory: build.rootDirectory,
     installCommand: build.installCommand,
@@ -145,7 +151,6 @@ export function assembleMethodSettings(
   if (ms.railpackVersion != null) out.railpackVersion = ms.railpackVersion;
   if (ms.nixpacksPublishDirectory != null)
     out.nixpacksPublishDirectory = ms.nixpacksPublishDirectory;
-  if (ms.herokuVersion != null) out.herokuVersion = ms.herokuVersion;
   if (ms.staticSinglePageApp != null)
     out.staticSinglePageApp = ms.staticSinglePageApp;
   return out;
@@ -200,7 +205,6 @@ export function assembleService(
     environmentId: row.environmentId ?? null,
     serverId: row.serverId,
     migrateFromServerId: row.migrateFromServerId ?? null,
-    framework: row.framework as Service["framework"],
     logo: row.logo,
     source: row.source as Service["source"],
     repo: assembleRepo(row),
@@ -223,6 +227,10 @@ export function assembleService(
 
 function assembleRepo(row: ServiceRow): Service["repo"] {
   if (row.repoProvider == null) return null;
+  const watchPaths = parseWatchPaths(row.repoWatchPaths);
+  // Conditional spread (like installationId): a repo with default deploy options
+  // assembles to exactly {provider,url,repo,branch}, so it round-trips unchanged
+  // and never looks "dirty". The UIs apply their own display defaults.
   return {
     provider: row.repoProvider as NonNullable<Service["repo"]>["provider"],
     url: row.repoUrl ?? "",
@@ -231,7 +239,19 @@ function assembleRepo(row: ServiceRow): Service["repo"] {
     ...(row.repoInstallationId != null
       ? { installationId: row.repoInstallationId }
       : {}),
+    ...(row.repoTriggerType === "tag" ? { triggerType: "tag" as const } : {}),
+    ...(watchPaths.length ? { watchPaths } : {}),
+    ...(row.repoSubmodules ? { submodules: true } : {}),
   };
+}
+
+/** Split the stored newline/comma-separated watch-path globs into a clean list. */
+export function parseWatchPaths(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/[\n,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function assembleUpload(row: ServiceRow): Service["upload"] {
@@ -301,7 +321,6 @@ export function serviceToRow(p: Service): ServiceInsert {
     environmentId: p.environmentId ?? null,
     serverId: p.serverId,
     migrateFromServerId: p.migrateFromServerId ?? null,
-    framework: p.framework,
     logo: p.logo ?? null,
     source: p.source,
     repoProvider: p.repo?.provider ?? null,
@@ -309,6 +328,9 @@ export function serviceToRow(p: Service): ServiceInsert {
     repoRepo: p.repo?.repo ?? null,
     repoBranch: p.repo?.branch ?? null,
     repoInstallationId: p.repo?.installationId ?? null,
+    repoTriggerType: p.repo?.triggerType ?? null,
+    repoWatchPaths: p.repo?.watchPaths?.length ? p.repo.watchPaths.join("\n") : null,
+    repoSubmodules: p.repo?.submodules ?? false,
     dockerImage: p.dockerImage ?? null,
     uploadId: p.upload?.id ?? null,
     uploadFilename: p.upload?.filename ?? null,
@@ -331,7 +353,6 @@ export function serviceToRow(p: Service): ServiceInsert {
 export function buildToRow(serviceId: string, b: BuildConfig): ServiceBuildInsert {
   return {
     serviceId,
-    framework: b.framework,
     buildMethod: b.buildMethod,
     rootDirectory: b.rootDirectory,
     installCommand: b.installCommand,
@@ -359,7 +380,6 @@ export function methodSettingsToRow(
     dockerBuildStage: ms.dockerBuildStage ?? null,
     railpackVersion: ms.railpackVersion ?? null,
     nixpacksPublishDirectory: ms.nixpacksPublishDirectory ?? null,
-    herokuVersion: ms.herokuVersion ?? null,
     staticSinglePageApp: ms.staticSinglePageApp ?? null,
   } satisfies Record<keyof BuildMethodSettings, unknown>;
   return { serviceId, ...cols };

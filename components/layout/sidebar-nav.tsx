@@ -7,6 +7,7 @@ import {
   NAV,
   SETTINGS_NAV,
   serviceNav,
+  serviceSettingsNav,
   type NavItem,
   type NavSection,
 } from "./nav-config";
@@ -68,20 +69,29 @@ export function SidebarNav({
     onNavigate?.();
   }
 
-  // The same sidebar shows one of three navigations depending on where you are:
-  // inside a service it becomes that service's sub-menu; under /settings the
-  // settings sub-menu; otherwise the main dashboard nav. One sidebar system,
-  // three left-hand navigations.
+  // The same sidebar shows one of four navigations depending on where you are:
+  // inside a service it becomes that service's sub-menu; one level deeper, under
+  // that service's /settings, its settings sub-menu; under the top-level /settings
+  // the settings sub-menu; otherwise the main dashboard nav. One sidebar system,
+  // four left-hand navigations.
   const serviceSlug = pathname.match(/^\/services\/([^/]+)/)?.[1] ?? null;
+  // A service's own settings live one level deeper than its main nav, so the
+  // sidebar swaps again once you're under /services/<slug>/settings.
+  const inServiceSettings =
+    serviceSlug != null && /^\/services\/[^/]+\/settings(?:\/|$)/.test(pathname);
   const inSettings = pathname.startsWith("/settings");
-  const menu: "service" | "settings" | "main" = serviceSlug
-    ? "service"
+  const menu: "service-settings" | "service" | "settings" | "main" = serviceSlug
+    ? inServiceSettings
+      ? "service-settings"
+      : "service"
     : inSettings
       ? "settings"
       : "main";
 
   let sections: NavSection[];
-  if (serviceSlug) {
+  if (serviceSlug && inServiceSettings) {
+    sections = serviceSettingsNav(serviceSlug);
+  } else if (serviceSlug) {
     // Capability-gated entries come from the sidebar's own capability list; the
     // live/per-service flags come from the store — but only when it matches the
     // slug in the URL, so a stale value from the service you just left can't
@@ -116,16 +126,25 @@ export function SidebarNav({
     .filter((section) => section.items.length > 0);
 
   // Slide the nav horizontally when it swaps between navigations: in from the
-  // right going deeper (into a service or settings), from the left coming back
-  // to the main nav. Comparing against the previous render's value (a supported
-  // React pattern) plays the slide only on the boundary crossing — not on the
-  // initial mount or same-menu navigations.
+  // right going deeper (main → service → service-settings, or main → settings),
+  // from the left coming back up. Each navigation has a depth; the slide plays
+  // toward the deeper one. Comparing against the previous render's value (a
+  // supported React pattern) plays the slide only on the boundary crossing — not
+  // on the initial mount or same-menu navigations.
+  const DEPTH: Record<typeof menu, number> = {
+    main: 0,
+    settings: 1,
+    service: 1,
+    "service-settings": 2,
+  };
   const [prevMenu, setPrevMenu] = React.useState(menu);
   const [slide, setSlide] = React.useState("");
   if (prevMenu !== menu) {
     setPrevMenu(menu);
     setSlide(
-      menu === "main" ? "animate-slide-in-left" : "animate-slide-in-right",
+      DEPTH[menu] >= DEPTH[prevMenu]
+        ? "animate-slide-in-right"
+        : "animate-slide-in-left",
     );
   }
 

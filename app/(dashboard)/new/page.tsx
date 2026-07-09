@@ -58,7 +58,7 @@ export default async function NewServicePage(props: PageProps<"/new">) {
           description={
             template
               ? "Choose a server, edit the docker-compose and environment variables, then deploy. Deplo configures Docker + Traefik automatically."
-              : "Deploy from Git, a Docker image, a Dockerfile or an upload. Deplo detects your framework and configures Docker + Traefik for you."
+              : "Deploy from Git, a Docker image, a Dockerfile or an upload. Deplo builds it and configures Docker + Traefik for you."
           }
         />
       </div>

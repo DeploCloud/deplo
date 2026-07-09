@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { EditUserDialog } from "@/components/settings/edit-user-dialog";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
 import type { GlobalUserDTO, RegistrationLinkDTO } from "@/lib/data/members";
@@ -107,6 +108,7 @@ export function UsersPanel({
 function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
+  const [confirmSuspend, setConfirmSuspend] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
 
   // Quick ⋯-menu actions flip ONE global flag while preserving the rest
@@ -248,7 +250,16 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
               <DropdownMenuItem
                 variant={user.suspended ? undefined : "destructive"}
                 disabled={isSelf || pending}
-                onSelect={() => flip({ suspended: !user.suspended })}
+                onSelect={(e: Event) => {
+                  // Reactivating is safe → apply straight away. Suspending is
+                  // guarded by a confirm modal (opened once the menu closes).
+                  if (user.suspended) {
+                    flip({ suspended: false });
+                  } else {
+                    e.preventDefault();
+                    setConfirmSuspend(true);
+                  }
+                }}
               >
                 {user.suspended ? (
                   <UserCheck className="size-4" />
@@ -280,6 +291,34 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
           isSelf={isSelf}
           open={open}
           onOpenChange={setOpen}
+        />
+      )}
+      {confirmSuspend && (
+        <ConfirmAction
+          open={confirmSuspend}
+          onOpenChange={setConfirmSuspend}
+          title={`Suspend @${user.username}?`}
+          description="This blocks the account from signing in. Team memberships are kept and you can reactivate at any time."
+          confirmLabel="Suspend account"
+          successMessage="Account suspended"
+          onConfirm={async () => {
+            const res = await gqlAction(
+              `mutation ($input: UpdateUserAdminInput!) {
+                updateUserAdmin(input: $input) { userId }
+              }`,
+              {
+                input: {
+                  userId: user.userId,
+                  isInstanceAdmin: user.isInstanceAdmin,
+                  suspended: true,
+                  canExposePorts: user.canExposePorts,
+                  canMountHostVolumes: user.canMountHostVolumes,
+                },
+              },
+            );
+            if (res.ok) router.refresh();
+            return res;
+          }}
         />
       )}
     </>

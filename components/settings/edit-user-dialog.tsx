@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Ban, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -19,8 +19,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
-import { timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 import type { UserDetailDTO } from "@/lib/data/members";
 
 /* ------------------------------------------------------------------ */
@@ -89,6 +90,10 @@ export function EditUserDialog({
     seed?.canMountHostVolumes ?? false,
   );
   const [password, setPassword] = React.useState("");
+  // Suspending is destructive and sits among a stack of benign permission
+  // switches, so turning it ON is gated behind a confirm modal. Reactivating is
+  // safe and stays a single flip.
+  const [confirmSuspend, setConfirmSuspend] = React.useState(false);
   // Whether the caller seeded the editable flags. Stable per dialog instance
   // (a boolean, not the inline-rebuilt `seed` object), so it is safe both as an
   // effect dependency and read during render.
@@ -279,7 +284,12 @@ export function EditUserDialog({
                 detail="Block this account from signing in. Memberships are kept."
                 checked={suspended}
                 disabled={isSelf}
-                onChange={setSuspended}
+                tone="destructive"
+                // Turning suspension ON asks for confirmation first; turning it
+                // back off (reactivating) is safe and applies immediately.
+                onChange={(v) =>
+                  v ? setConfirmSuspend(true) : setSuspended(false)
+                }
               />
               {isSelf && (
                 <p className="text-xs text-muted-foreground">
@@ -318,6 +328,20 @@ export function EditUserDialog({
                 />
               </div>
             </div>
+
+            {/* Extra safety gate for the one destructive toggle. It only stages
+                the change (the switch flips on); "Save changes" still commits. */}
+            <ConfirmAction
+              open={confirmSuspend}
+              onOpenChange={setConfirmSuspend}
+              title={`Suspend @${user.username}?`}
+              description="This blocks the account from signing in. Team memberships are kept and you can reactivate at any time. Takes effect when you save your changes."
+              confirmLabel="Suspend account"
+              onConfirm={async () => {
+                setSuspended(true);
+                return { ok: true };
+              }}
+            />
           </>
         )}
 
@@ -357,18 +381,36 @@ function ToggleRow({
   detail,
   checked,
   disabled,
+  tone = "default",
   onChange,
 }: {
   title: string;
   detail: string;
   checked: boolean;
   disabled?: boolean;
+  /** "destructive" sets a row apart from the benign permission switches: a Ban
+   *  glyph on the title always, and a red accent once the toggle is active. */
+  tone?: "default" | "destructive";
   onChange: (v: boolean) => void;
 }) {
+  const danger = tone === "destructive" && checked;
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors",
+        danger ? "border-destructive/40 bg-destructive/5" : "border-border",
+      )}
+    >
       <div>
-        <p className="text-sm font-medium">{title}</p>
+        <p
+          className={cn(
+            "flex items-center gap-1.5 text-sm font-medium",
+            danger && "text-destructive",
+          )}
+        >
+          {tone === "destructive" && <Ban className="size-3.5 shrink-0" />}
+          {title}
+        </p>
         <p className="text-xs text-muted-foreground">{detail}</p>
       </div>
       <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />

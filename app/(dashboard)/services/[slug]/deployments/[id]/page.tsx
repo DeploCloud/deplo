@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CommitLink } from "@/components/services/commit-link";
 import { githubCommitUrl, timeAgo } from "@/lib/utils";
-import { BuildLogStream } from "./build-log-stream";
+import { BuildLogStream } from "@/components/services/build-log-stream";
 
 export const metadata = { title: "Deployment" };
 

@@ -11,15 +11,14 @@ import type { BuildConfig } from "../types";
 
 /**
  * The agent now runs EVERY build method (the Dockerfile family + the heavy
- * builders static/nixpacks/buildpacks/railpack, ported to deplo-agent). So
- * agentCanHandle is always true; the real gate is per-server —
- * agentCapabilityForMethod names the Hello capability the owning agent must
- * advertise, and the deploy path checks it before routing.
+ * builders static/nixpacks/railpack, ported to deplo-agent). So agentCanHandle
+ * is always true; the real gate is per-server — agentCapabilityForMethod names
+ * the Hello capability the owning agent must advertise, and the deploy path
+ * checks it before routing.
  */
 
 function build(method: BuildConfig["buildMethod"]): BuildConfig {
   return {
-    framework: "node",
     buildMethod: method,
     methodSettings: {},
     rootDirectory: "",
@@ -38,7 +37,7 @@ test("image source (no build config) is agent-eligible and needs no heavy capabi
 });
 
 test("every build method is now agent-eligible", () => {
-  for (const m of ["dockerfile", "nixpacks", "railpack", "heroku", "paketo", "static"] as const) {
+  for (const m of ["dockerfile", "nixpacks", "railpack", "static"] as const) {
     assert.equal(agentCanHandle(build(m)), true, `${m} is agent-eligible`);
   }
 });
@@ -47,13 +46,10 @@ test("the dockerfile family needs no heavy capability; each heavy method names i
   assert.equal(agentCapabilityForMethod(build("dockerfile")), null);
   assert.equal(agentCapabilityForMethod(build("static")), "deploy.static");
   assert.equal(agentCapabilityForMethod(build("nixpacks")), "deploy.nixpacks");
-  // heroku + paketo are both Cloud Native Buildpacks → one capability.
-  assert.equal(agentCapabilityForMethod(build("heroku")), "deploy.buildpacks");
-  assert.equal(agentCapabilityForMethod(build("paketo")), "deploy.buildpacks");
   assert.equal(agentCapabilityForMethod(build("railpack")), "deploy.railpack");
 });
 
-test("buildSpecFor flattens the build config + resolves the runtime language", () => {
+test("buildSpecFor flattens the build config", () => {
   const b = build("nixpacks");
   b.installCommand = "npm ci";
   b.buildCommand = "npm run build";
@@ -67,9 +63,40 @@ test("buildSpecFor flattens the build config + resolves the runtime language", (
   assert.equal(spec.buildCommand, "npm run build");
   assert.equal(spec.startCommand, "node server.js");
   assert.equal(spec.runtimeVersion, "20");
-  assert.equal(spec.runtimeLanguage, "node", "node framework → node language");
+  // Node is the one pinnable runtime Deplo surfaces, so a pinned version declares
+  // "node" — that's how the agent knows to set NIXPACKS_NODE_VERSION.
+  assert.equal(spec.runtimeLanguage, "node");
   assert.equal(spec.nixpacksPublishDirectory, "dist");
   assert.equal(spec.staticSinglePageApp, true);
+});
+
+test("buildSpecFor defaults Nixpacks/Railpack to the current Node major when unpinned", () => {
+  // No pin on an auto-detecting Node builder ⇒ force DEFAULT_NODE_MAJOR (Node 24)
+  // so the build uses a current Node instead of the builder's stale default
+  // (Nixpacks otherwise picks Node 18). runtimeLanguage rides along as "node".
+  for (const m of ["nixpacks", "railpack"] as const) {
+    const spec = buildSpecFor(build(m));
+    assert.equal(spec.runtimeVersion, "24", `${m} defaults to Node 24`);
+    assert.equal(spec.runtimeLanguage, "node", `${m} declares node`);
+  }
+});
+
+test("buildSpecFor leaves the Dockerfile family unpinned when no version is set", () => {
+  // Only Nixpacks/Railpack get the forced default; dockerfile/static keep their
+  // own default/auto-detection (empty ⇒ the agent decides).
+  for (const m of ["dockerfile", "static"] as const) {
+    const spec = buildSpecFor(build(m));
+    assert.equal(spec.runtimeVersion, "", `${m} stays unpinned`);
+    assert.equal(spec.runtimeLanguage, "", `${m} declares no language`);
+  }
+});
+
+test("buildSpecFor honours an explicit pin over the default", () => {
+  const b = build("nixpacks");
+  b.runtimeVersion = "20";
+  const spec = buildSpecFor(b);
+  assert.equal(spec.runtimeVersion, "20");
+  assert.equal(spec.runtimeLanguage, "node");
 });
 
 test("explicit dockerfile descriptor carries methodSettings (parity with builders.ts)", () => {

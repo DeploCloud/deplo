@@ -257,6 +257,90 @@ export async function listRepoBranches(
   return json.map((b) => b.name);
 }
 
+/** GET a fixed api.github.com path, authenticating only when a token is given
+ * (public repos can be read unauthenticated, subject to GitHub's IP rate
+ * limit). Same pinned host + headers as {@link githubFetch}; no SSRF surface. */
+async function githubGet(path: string, token: string | null): Promise<Response> {
+  return fetch(`${API}${path}`, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": UA,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+}
+
+/** A single blob entry from a repo's recursive git tree. */
+export interface RepoTreeBlob {
+  /** Repo-root-relative POSIX path. */
+  path: string;
+  /** Byte size of the blob. */
+  size: number;
+  /** The blob's git object SHA, for {@link fetchRepoBlob}. */
+  sha: string;
+}
+
+/**
+ * The recursive git tree of a GitHub repo at a ref (branch name, or "HEAD" for
+ * the default branch), as a flat list of blob entries. Best-effort and
+ * non-throwing: an inaccessible repo / bad ref / rate limit yields `[]` so a
+ * caller (favicon auto-detection) degrades to "no icon found" rather than
+ * failing. Uses the installation token for private repos and no auth for public
+ * ones. GitHub caps recursive trees (~100k entries) and sets `truncated` past
+ * that; we use whatever came back — a project's icon lives near the root anyway.
+ */
+export async function listRepoTree(
+  fullName: string,
+  ref: string,
+  installationId: string | null,
+): Promise<RepoTreeBlob[]> {
+  if (!OWNER_REPO_RE.test(fullName)) return [];
+  const token = installationId
+    ? await getInstallationToken(installationId).catch(() => null)
+    : null;
+  const res = await githubGet(
+    `/repos/${fullName}/git/trees/${encodeURIComponent(ref)}?recursive=1`,
+    token,
+  ).catch(() => null);
+  if (!res || !res.ok) return [];
+  const json = (await res.json().catch(() => null)) as {
+    tree?: { path: string; type: string; size?: number; sha: string }[];
+  } | null;
+  return (json?.tree ?? [])
+    .filter((e) => e.type === "blob" && typeof e.path === "string")
+    .map((e) => ({ path: e.path, size: e.size ?? 0, sha: e.sha }));
+}
+
+/**
+ * Fetch a single git blob's raw bytes by SHA, or null on any failure. GitHub's
+ * blobs API returns the content base64-encoded (with embedded newlines, which
+ * `Buffer.from(…, "base64")` tolerates). Used to pull an auto-detected icon's
+ * bytes so they can be inlined as the service logo. Best-effort; never throws.
+ */
+export async function fetchRepoBlob(
+  fullName: string,
+  sha: string,
+  installationId: string | null,
+): Promise<Buffer | null> {
+  if (!OWNER_REPO_RE.test(fullName) || !/^[0-9a-f]{40}$/i.test(sha)) return null;
+  const token = installationId
+    ? await getInstallationToken(installationId).catch(() => null)
+    : null;
+  const res = await githubGet(`/repos/${fullName}/git/blobs/${sha}`, token).catch(
+    () => null,
+  );
+  if (!res || !res.ok) return null;
+  const json = (await res.json().catch(() => null)) as {
+    content?: string;
+    encoding?: string;
+  } | null;
+  if (!json || json.encoding !== "base64" || typeof json.content !== "string") {
+    return null;
+  }
+  return Buffer.from(json.content, "base64");
+}
+
 /**
  * Clone URL for a repo, embedding a fresh installation token when one is given
  * (private repos). Returns the original URL unchanged for public repos / plain

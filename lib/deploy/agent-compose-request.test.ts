@@ -7,7 +7,6 @@ import type { BuildConfig } from "../types";
 
 function devBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
   return {
-    framework: "node",
     buildMethod: "dockerfile",
     methodSettings: {},
     rootDirectory: "",
@@ -155,6 +154,8 @@ test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfil
   assert.equal(req.dockerfile, undefined, "heavy method does not send a dockerfile descriptor");
   assert.equal(req.buildSpec?.method, "nixpacks");
   assert.equal(req.buildSpec?.installCommand, "npm ci");
+  // Unpinned Nixpacks/Railpack default to a current Node major (see buildSpecFor).
+  assert.equal(req.buildSpec?.runtimeVersion, "24");
   assert.equal(req.buildSpec?.runtimeLanguage, "node");
 });
 
@@ -175,21 +176,4 @@ test("dev-workspace plan with the static method → BUILD_KIND_STATIC + a BuildS
   assert.equal(req.buildSpec?.method, "static");
   assert.equal(req.buildSpec?.outputDirectory, "dist");
   assert.equal(req.buildSpec?.staticSinglePageApp, true);
-});
-
-test("the buildpacks methods (heroku/paketo) both map to BUILD_KIND_BUILDPACKS", async () => {
-  for (const method of ["heroku", "paketo"] as const) {
-    const req = await buildDeployRequest({
-      ...base,
-      plan: {
-        kind: "git",
-        url: "https://x@github.com/o/r.git",
-        branch: "main",
-        subdir: "",
-        build: devBuild({ buildMethod: method }),
-      },
-    });
-    assert.equal(req.buildKind, BuildKind.BUILD_KIND_BUILDPACKS, `${method} → BUILDPACKS`);
-    assert.equal(req.buildSpec?.method, method, "the flavor rides in the spec");
-  }
 });

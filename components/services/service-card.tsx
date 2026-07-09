@@ -34,7 +34,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { ServiceLogo } from "@/components/shared/project-logo";
-import { StatusDot } from "@/components/shared/status-badge";
+import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
@@ -112,13 +112,23 @@ export function ServiceCard({
 
   function redeploy() {
     startTransition(async () => {
-      const res = await gqlAction(
+      const res = await gqlAction<
+        { redeploy: { id: string | null } | null },
+        { id: string | null } | null
+      >(
         `mutation($serviceId: String!) { redeploy(serviceId: $serviceId) { id } }`,
         { serviceId: project.id },
+        (d) => d.redeploy,
       );
       if (res.ok) {
         toast.success(`Redeploying ${project.name}…`);
-        router.refresh();
+        // Follow the new build straight to its live logs; fall back to a refresh
+        // if no id came back.
+        if (res.data?.id) {
+          router.push(`/services/${project.slug}/deployments/${res.data.id}`);
+        } else {
+          router.refresh();
+        }
       } else toast.error(res.error);
     });
   }
@@ -477,11 +487,7 @@ export function ServiceCard({
       >
         {overlayLink}
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
-          <ServiceLogo
-            logo={project.logo}
-            framework={project.framework}
-            size={36}
-          />
+          <ServiceLogo logo={project.logo} size={36} />
           <div className="min-w-0 flex-1">
             <span className="truncate font-medium">{project.name}</span>
             {project.productionUrl ? (
@@ -492,6 +498,10 @@ export function ServiceCard({
               <p className="text-xs text-muted-foreground">No domain yet</p>
             )}
           </div>
+
+          {/* Service lifecycle status — kept by the name, distinct from the
+              deployment status in the commit/branch cluster to its right. */}
+          <StatusBadge status={project.status} />
 
           {dep ? (
             <div className="hidden items-center gap-2 text-xs text-muted-foreground md:flex">
@@ -535,11 +545,7 @@ export function ServiceCard({
         <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <ServiceLogo
-                logo={project.logo}
-                framework={project.framework}
-                size={36}
-              />
+              <ServiceLogo logo={project.logo} size={36} />
               <div className="min-w-0">
                 <span className="truncate font-medium">{project.name}</span>
                 {project.productionUrl ? (
@@ -552,7 +558,14 @@ export function ServiceCard({
               </div>
             </div>
 
-            {actions}
+            <div className="flex items-center gap-2">
+              {/* The SERVICE's live-cycle status (Running / Stopped / Building /
+                  Error) sits up here with the name — deliberately apart from the
+                  deployment status dot by the commit below, so the two are never
+                  read as the same thing. */}
+              <StatusBadge status={project.status} />
+              {actions}
+            </div>
           </div>
 
           {/* Latest deployment */}

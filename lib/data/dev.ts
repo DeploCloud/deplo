@@ -132,8 +132,8 @@ async function writeDevRow(serviceId: string, dev: DevConfig): Promise<void> {
 
 /**
  * Enable dev mode for a source-bearing project. Seeds a default DevConfig
- * (preset derived from framework, dev command from the framework, port =
- * build.port, preview on) into the `service_dev` row, materializing it if dev was
+ * (node base image, no dev command, port = build.port, preview on) into the
+ * `service_dev` row, materializing it if dev was
  * never enabled. Refuses non-source-bearing services. Does NOT start the
  * container — that is startDevContainer().
  */

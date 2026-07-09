@@ -5,7 +5,7 @@ import { join, dirname, basename, sep } from "node:path";
 import { docker } from "../infra/docker";
 import { spawnStream } from "../infra/exec";
 import { generateDockerfile } from "./dockerfile";
-import { runtimeFor } from "../frameworks";
+import { DEFAULT_NODE_MAJOR } from "../frameworks";
 import type { BuildConfig, BuildMethod } from "../types";
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
@@ -49,10 +49,6 @@ export async function buildImage(ctx: BuildContext): Promise<void> {
       return buildStatic(ctx);
     case "nixpacks":
       return buildNixpacks(ctx);
-    case "heroku":
-      return buildBuildpacks(ctx, "heroku");
-    case "paketo":
-      return buildBuildpacks(ctx, "paketo");
     case "railpack":
       return buildRailpack(ctx);
     default:
@@ -68,11 +64,21 @@ function methodLabel(m: BuildMethod): string {
       dockerfile: "Dockerfile",
       railpack: "Railpack",
       nixpacks: "Nixpacks",
-      heroku: "Heroku buildpacks",
-      paketo: "Paketo buildpacks",
       static: "Static (nginx)",
     } as Record<BuildMethod, string>
   )[m];
+}
+
+/**
+ * Normalise a pinned runtime version to a bare Node MAJOR: "v22.3.0" → "22",
+ * "20.x" → "20". Both Nixpacks (`NIXPACKS_NODE_VERSION`) and Railpack
+ * (`RAILPACK_NODE_VERSION`) pin the major only, and the generated Dockerfile
+ * uses `node:<major>-alpine`. Returns "" when nothing usable is pinned — callers
+ * decide the fallback (Nixpacks/Railpack default to {@link DEFAULT_NODE_MAJOR}).
+ */
+function nodeMajorFrom(runtimeVersion: string | undefined): string {
+  const digits = (runtimeVersion || "").replace(/[^\d.]/g, "");
+  return digits.split(".")[0] || "";
 }
 
 /** The three image labels every method stamps, as repeated `--label` argv. */
@@ -209,10 +215,8 @@ async function buildStatic(ctx: BuildContext): Promise<void> {
   let dockerfile: string;
   if (buildCmd) {
     // Two-stage: run install + build, then serve the output with nginx. The
-    // builder stage is Node-based, so only honour runtimeVersion for Node.
-    const nodeVersion =
-      runtimeFor(build.framework).language === "node" ? build.runtimeVersion : "";
-    const node = (nodeVersion || "20").replace(/[^\d.]/g, "").split(".")[0] || "20";
+    // builder stage is Node-based; honour a pinned runtimeVersion, else default.
+    const node = (build.runtimeVersion || "20").replace(/[^\d.]/g, "").split(".")[0] || "20";
     const install = (build.installCommand || "npm ci").trim();
     dockerfile = `FROM node:${node}-alpine AS builder
 WORKDIR /app
@@ -254,16 +258,15 @@ async function buildNixpacks(ctx: BuildContext): Promise<void> {
   // Phase 1: generate .nixpacks/Dockerfile WITHOUT the daemon (host binary).
   const prepArgs = ["build", ctx.buildDir, "--out", ctx.buildDir, "--no-error-without-start"];
   prepArgs.push("--env", `PORT=${build.port}`);
+  // Pin the Node major: the user's pin when set, else DEFAULT_NODE_MAJOR so a
+  // current Node is used instead of nixpacks' stale built-in default (it picks
+  // nodejs_18). nixpacks reads NIXPACKS_NODE_VERSION (major only) and it takes
+  // precedence over package.json engines / .nvmrc; it's ignored for non-Node repos.
+  const nodeMajor = nodeMajorFrom(build.runtimeVersion) || DEFAULT_NODE_MAJOR;
+  prepArgs.push("--env", `NIXPACKS_NODE_VERSION=${nodeMajor}`);
   if (build.installCommand?.trim()) prepArgs.push("-i", build.installCommand.trim());
   if (build.buildCommand?.trim()) prepArgs.push("-b", build.buildCommand.trim());
   if (build.startCommand?.trim()) prepArgs.push("-s", build.startCommand.trim());
-  // Pin the runtime via Nixpacks' per-language env var (NIXPACKS_NODE_VERSION,
-  // NIXPACKS_PYTHON_VERSION, …) when the user set a version for a known language.
-  const lang = runtimeFor(build.framework).language;
-  const version = (build.runtimeVersion || "").trim();
-  if (version && lang !== "none") {
-    prepArgs.push("--env", `NIXPACKS_${lang.toUpperCase()}_VERSION=${version}`);
-  }
 
   ctx.log("command", `nixpacks ${prepArgs.join(" ")}`);
   const code = await spawnStream("nixpacks", prepArgs, (l) => ctx.log("info", l), {
@@ -355,62 +358,6 @@ CMD ["nginx", "-g", "daemon off;"]
 }
 
 // ---------------------------------------------------------------------------
-// Cloud Native Buildpacks (heroku / paketo) — pack in a container, bind-mounted
-// ---------------------------------------------------------------------------
-
-const HEROKU_BUILDERS: Record<string, string> = {
-  "22": "heroku/builder:22",
-  "24": "heroku/builder:24",
-  "26": "heroku/builder:26",
-};
-
-async function buildBuildpacks(
-  ctx: BuildContext,
-  flavor: "heroku" | "paketo",
-): Promise<void> {
-  // pack runs in a container and bind-mounts the source, so the build dir must
-  // be a path the host daemon can resolve — stage it onto the data volume.
-  const { hostPath, cleanup } = await stageOnHostVolume(ctx);
-  try {
-    const builder =
-      flavor === "heroku"
-        ? HEROKU_BUILDERS[(ctx.build.methodSettings.herokuVersion || "24").trim()] ??
-          "heroku/builder:24"
-        : "paketobuildpacks/ubuntu-noble-builder";
-
-    await run(
-      ctx,
-      [
-        "run",
-        "--rm",
-        "-v",
-        "/var/run/docker.sock:/var/run/docker.sock",
-        "-v",
-        `${hostPath}:/workspace`,
-        "buildpacksio/pack",
-        "build",
-        ctx.imageRef,
-        "--builder",
-        builder,
-        "--path",
-        "/workspace",
-        "--docker-host",
-        "inherit",
-        "--pull-policy",
-        "if-not-present",
-        "--env",
-        `PORT=${ctx.build.port}`,
-      ],
-      1_200_000,
-    );
-    // pack does not stamp custom labels; re-stamp ours with a metadata-only build.
-    await relabel(ctx);
-  } finally {
-    await cleanup();
-  }
-}
-
-// ---------------------------------------------------------------------------
 // railpack — privileged buildkitd container + buildctl + tar load + relabel
 // ---------------------------------------------------------------------------
 
@@ -439,6 +386,22 @@ async function buildRailpack(ctx: BuildContext): Promise<void> {
   const buildkitd = `deplo-buildkitd-${ctx.slug}`;
   const tarPath = join(dir, "..", `${ctx.slug}.tar`);
 
+  // Node version + build/start overrides ride into the plan through the
+  // container ENVIRONMENT (docker `-e KEY=VALUE`, an argv — so a user-supplied
+  // command can never break out of the `bash -lc` string), then railpack reads
+  // each with a BARE `--env KEY` (it does os.LookupEnv on bare keys). Bare refs
+  // for an unset key are harmless no-ops, so they stay constant in the command.
+  const railEnv: string[] = [];
+  // Node major: the user's pin when set, else DEFAULT_NODE_MAJOR so a current
+  // Node is used instead of railpack's built-in default. Provider-scoped, so a
+  // non-Node repo built via railpack is unaffected.
+  const nodeMajor = nodeMajorFrom(ctx.build.runtimeVersion) || DEFAULT_NODE_MAJOR;
+  railEnv.push("-e", `RAILPACK_NODE_VERSION=${nodeMajor}`);
+  const railBuildCmd = (ctx.build.buildCommand || "").trim();
+  if (railBuildCmd) railEnv.push("-e", `RAILPACK_BUILD_CMD=${railBuildCmd}`);
+  const railStartCmd = (ctx.build.startCommand || "").trim();
+  if (railStartCmd) railEnv.push("-e", `RAILPACK_START_CMD=${railStartCmd}`);
+
   try {
     // Phase A: generate the railpack plan (daemon-free, glibc base).
     await run(
@@ -455,10 +418,11 @@ async function buildRailpack(ctx: BuildContext): Promise<void> {
         // Pin the CLI only when the user pinned a version; otherwise let
         // install.sh resolve the latest release from GitHub itself.
         ...(pinned ? ["-e", `RAILPACK_VERSION=${pinned}`] : []),
+        ...railEnv,
         "debian:bookworm-slim",
         "bash",
         "-lc",
-        "apt-get update -qq && apt-get install -y -qq curl ca-certificates tar && curl -sSL https://railpack.com/install.sh | bash && railpack prepare /app --plan-out /out/railpack-plan.json --info-out /out/railpack-info.json",
+        "apt-get update -qq && apt-get install -y -qq curl ca-certificates tar && curl -sSL https://railpack.com/install.sh | bash && railpack prepare /app --env RAILPACK_NODE_VERSION --env RAILPACK_BUILD_CMD --env RAILPACK_START_CMD --plan-out /out/railpack-plan.json --info-out /out/railpack-info.json",
       ],
       600_000,
     );

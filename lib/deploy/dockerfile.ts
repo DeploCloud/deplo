@@ -1,19 +1,15 @@
 import "server-only";
 
 import type { BuildConfig } from "../types";
-import { runtimeFor } from "../frameworks";
 
 /**
  * Generate a Dockerfile from a project's build settings when the repository
- * does not ship one. Node-oriented (the common case for the supported
- * frameworks); services in other languages should provide their own Dockerfile.
+ * does not ship one. Node-oriented (the common fallback case); services in
+ * other languages should provide their own Dockerfile.
  */
 export function generateDockerfile(build: BuildConfig): string {
-  // runtimeVersion only names the Node version for Node-language frameworks;
-  // for anything else fall back to a sane Node default (this path is Node-only).
-  const nodeVersion =
-    runtimeFor(build.framework).language === "node" ? build.runtimeVersion : "";
-  const node = (nodeVersion || "20").replace(/[^\d.]/g, "").split(".")[0] || "20";
+  // This generated path is Node-only; honour a pinned runtimeVersion, else default.
+  const node = (build.runtimeVersion || "20").replace(/[^\d.]/g, "").split(".")[0] || "20";
   const root = (build.rootDirectory || ".").replace(/^\.?\/?/, "") || ".";
   const workdir = root === "." || root === "" ? "/app" : `/app/${root}`;
   const install = build.installCommand?.trim() || "npm install";

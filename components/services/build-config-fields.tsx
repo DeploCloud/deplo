@@ -3,41 +3,30 @@
 import * as React from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { FrameworkGlyph } from "@/components/shared/framework-icon";
-import { FRAMEWORK_LIST, buildConfigFor, runtimeFor } from "@/lib/frameworks";
 import { BuildMethodFields } from "@/components/services/build-method-fields";
+import { NodeVersionInput } from "@/components/services/node-version-input";
+import { DEFAULT_NODE_MAJOR, usesDefaultNodeMajor } from "@/lib/frameworks";
 import type {
   BuildConfig,
   BuildMethod,
   BuildMethodSettings,
-  FrameworkId,
 } from "@/lib/types";
 
 /**
  * The build-method-aware "Build & Output" section shared by the new-project
- * wizard and the service settings form, so the two stay byte-for-byte in sync.
+ * wizard and the service settings form, so the two stay in sync.
  *
  * Owns no persistence: the parent holds the BuildConfig and decides how/when to
- * save it. This component only renders the method picker + the command/runtime/
- * port fields, surfacing exactly the controls the active build method consumes.
+ * save it. It surfaces the method picker + the per-method fields, optional
+ * build/start-command and Node-version OVERRIDES for the auto-detecting builders
+ * (shown only where the builder consumes them), and the container port.
  */
 export function BuildConfigFields({
   build,
-  framework,
   onBuildChange,
-  onFrameworkChange,
 }: {
   build: BuildConfig;
-  framework: FrameworkId;
   onBuildChange: (next: BuildConfig) => void;
-  onFrameworkChange: (fw: FrameworkId) => void;
 }) {
   function setBuild(updater: (b: BuildConfig) => BuildConfig) {
     onBuildChange(updater(build));
@@ -54,21 +43,43 @@ export function BuildConfigFields({
     }));
   }
 
-  // The framework preset and the install/build/output/start command fields only
-  // affect the two methods that consume them: Nixpacks (as optional overrides)
-  // and Static (which runs a two-stage build). Dockerfile, Railpack, and the
-  // buildpack methods (Heroku/Paketo) auto-detect the language and ignore them,
-  // so showing those controls there would be misleading.
-  const usesFrameworkCommands =
-    build.buildMethod === "nixpacks" || build.buildMethod === "static";
-  // The runtime-version field is language-aware and only meaningful when Deplo
-  // controls the build toolchain AND the framework has a pinnable runtime.
-  const runtime = runtimeFor(framework);
-  const showRuntimeVersion =
-    usesFrameworkCommands && runtime.language !== "none";
-  // Static serves a directory of files; its "build command" is what produces
-  // them, and its output dir is what nginx serves.
-  const isStatic = build.buildMethod === "static";
+  // Build command / start command / Node version are optional OVERRIDES for the
+  // auto-detecting builders. Show each only where the deploy path (agent-side
+  // builders) actually consumes it, so a field never silently does nothing:
+  //  - nixpacks: build (-b) + start (-s) commands + Node (NIXPACKS_NODE_VERSION)
+  //  - railpack: build + start commands + Node (RAILPACK_{BUILD,START}_CMD / _NODE_VERSION)
+  //  - static:   build command (produces the assets) + Node (the builder stage).
+  //              No start command — nginx serves the output, there is no app process.
+  //  - dockerfile: none — the repo's Dockerfile owns install/build/run.
+  const method = build.buildMethod;
+  const showBuildCommand =
+    method === "nixpacks" || method === "railpack" || method === "static";
+  const showStartCommand = method === "nixpacks" || method === "railpack";
+  const showNodeVersion =
+    method === "nixpacks" || method === "railpack" || method === "static";
+  const showOverrides = showBuildCommand || showStartCommand || showNodeVersion;
+
+  // The port field keeps its own text state so it can be emptied mid-edit. Only a
+  // valid positive integer is committed to the build config; while the field is
+  // blank/invalid the last committed port stays put (so clearing it to type a new
+  // number no longer snaps the default straight back). Blur restores the value if
+  // the user leaves it empty.
+  const [portText, setPortText] = React.useState(() => String(build.port));
+
+  function onPortChange(text: string) {
+    setPortText(text);
+    const n = Number(text);
+    if (text.trim() !== "" && Number.isInteger(n) && n > 0) {
+      setBuild((b) => ({ ...b, port: n }));
+    }
+  }
+
+  function onPortBlur() {
+    const n = Number(portText);
+    if (portText.trim() === "" || !Number.isInteger(n) || n <= 0) {
+      setPortText(String(build.port));
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -79,93 +90,78 @@ export function BuildConfigFields({
         onSettingsChange={patchMethodSettings}
       />
 
-      <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
-        {usesFrameworkCommands ? (
-          <>
+      {showOverrides && (
+        <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
+          {showBuildCommand && (
             <div className="space-y-2">
-              <Label>Framework Preset</Label>
-              <Select
-                value={framework}
-                onValueChange={(v) => onFrameworkChange(v as FrameworkId)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FRAMEWORK_LIST.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      <span className="flex items-center gap-2">
-                        <FrameworkGlyph framework={f.id} />
-                        {f.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Build command</Label>
+              <Input
+                className="font-mono text-xs"
+                placeholder="(auto-detected)"
+                value={build.buildCommand}
+                onChange={(e) =>
+                  setBuild((b) => ({ ...b, buildCommand: e.target.value }))
+                }
+              />
               <p className="text-xs text-muted-foreground">
-                {build.buildMethod === "nixpacks"
-                  ? "Optional overrides — Nixpacks auto-detects these if left as the preset defaults."
-                  : "Seeds the build commands that produce your static output."}
+                Overrides the command that builds your app. Leave blank to let the
+                builder detect it.
               </p>
             </div>
-            <Field
-              label="Root Directory"
-              value={build.rootDirectory}
-              onChange={(v) => setBuild((b) => ({ ...b, rootDirectory: v }))}
-            />
-            <Field
-              label="Install Command"
-              value={build.installCommand}
-              onChange={(v) => setBuild((b) => ({ ...b, installCommand: v }))}
-            />
-            <Field
-              label="Build Command"
-              value={build.buildCommand}
-              onChange={(v) => setBuild((b) => ({ ...b, buildCommand: v }))}
-            />
-            <Field
-              label="Output Directory"
-              value={build.outputDirectory}
-              onChange={(v) => setBuild((b) => ({ ...b, outputDirectory: v }))}
-            />
-            {/* Static is served by nginx, so there is no app start command. */}
-            {!isStatic && (
-              <Field
-                label="Start Command"
+          )}
+
+          {showStartCommand && (
+            <div className="space-y-2">
+              <Label>Start command</Label>
+              <Input
+                className="font-mono text-xs"
+                placeholder="(auto-detected)"
                 value={build.startCommand}
-                onChange={(v) => setBuild((b) => ({ ...b, startCommand: v }))}
+                onChange={(e) =>
+                  setBuild((b) => ({ ...b, startCommand: e.target.value }))
+                }
               />
-            )}
-            {showRuntimeVersion && (
-              <Field
-                label={runtime.versionLabel}
+              <p className="text-xs text-muted-foreground">
+                Overrides the command that starts your app inside the container.
+              </p>
+            </div>
+          )}
+
+          {showNodeVersion && (
+            <div className="space-y-2">
+              <Label>Node.js version</Label>
+              <NodeVersionInput
                 value={build.runtimeVersion}
-                onChange={(v) => setBuild((b) => ({ ...b, runtimeVersion: v }))}
+                onChange={(v) =>
+                  setBuild((b) => ({ ...b, runtimeVersion: v }))
+                }
+                placeholder={
+                  usesDefaultNodeMajor(method)
+                    ? `Default (Node ${DEFAULT_NODE_MAJOR})`
+                    : "Default (auto-detect)"
+                }
               />
-            )}
-          </>
-        ) : (
-          <>
-            <Field
-              label="Root Directory"
-              value={build.rootDirectory}
-              onChange={(v) => setBuild((b) => ({ ...b, rootDirectory: v }))}
-            />
-            <p className="self-end text-xs text-muted-foreground sm:col-span-2">
-              {build.buildMethod === "dockerfile"
-                ? "Your Dockerfile controls how the app is installed, built and started."
-                : "This builder auto-detects your language and build steps — no framework preset needed."}
-            </p>
-          </>
-        )}
+              <p className="text-xs text-muted-foreground">
+                Pins the Node.js major, kept in sync with the real Node releases.
+                {usesDefaultNodeMajor(method)
+                  ? ` Leave blank to use the default (Node ${DEFAULT_NODE_MAJOR}).`
+                  : " Leave blank to auto-detect from your project."}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label>Container Port</Label>
           <Input
             type="number"
-            value={build.port}
-            onChange={(e) =>
-              setBuild((b) => ({ ...b, port: Number(e.target.value) || 3000 }))
-            }
+            inputMode="numeric"
+            min={1}
+            value={portText}
+            onChange={(e) => onPortChange(e.target.value)}
+            onBlur={onPortBlur}
           />
           <p className="text-xs text-muted-foreground">
             The port your app listens on inside the container (Traefik routes
@@ -173,42 +169,6 @@ export function BuildConfigFields({
           </p>
         </div>
       </div>
-    </div>
-  );
-}
-
-/** Re-export so callers can reuse the same framework-change semantics. */
-export function applyFrameworkToBuild(
-  build: BuildConfig,
-  fw: FrameworkId,
-): BuildConfig {
-  return {
-    ...buildConfigFor(fw),
-    rootDirectory: build.rootDirectory,
-    // Keep the user's chosen build method and its settings across a framework
-    // change; only the command presets follow the new framework.
-    buildMethod: build.buildMethod,
-    methodSettings: build.methodSettings,
-  };
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="font-mono text-xs"
-      />
     </div>
   );
 }

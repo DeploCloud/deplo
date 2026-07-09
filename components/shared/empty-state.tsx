@@ -2,12 +2,15 @@ import { cn } from "@/lib/utils";
 
 export function EmptyState({
   icon: Icon,
+  iconClassName,
   title,
   description,
   action,
   className,
 }: {
   icon?: React.ComponentType<{ className?: string }>;
+  /** Extra classes on the icon itself (e.g. `animate-spin` for a loading state). */
+  iconClassName?: string;
   title: string;
   description?: string;
   action?: React.ReactNode;
@@ -22,7 +25,7 @@ export function EmptyState({
     >
       {Icon && (
         <div className="mb-4 flex size-12 items-center justify-center rounded-full border border-border bg-secondary">
-          <Icon className="size-5 text-muted-foreground" />
+          <Icon className={cn("size-5 text-muted-foreground", iconClassName)} />
         </div>
       )}
       <h3 className="text-sm font-medium">{title}</h3>
