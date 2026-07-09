@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, Loader2, RefreshCw, RotateCw, Wifi, WifiOff } from "lucide-react";
+import { CheckCircle2, Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { DeploLogo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,8 +19,8 @@ const HEARTBEAT_INTERVAL_MS = 10_000;
  * server hosting the panel and, when it becomes unreachable, locks the entire
  * UI behind a blocking overlay: nothing can be done until the server is back.
  * While locked, the overlay auto-reconnects — it probes for the server on a
- * backoff and reloads the page the instant it answers — and still keeps a
- * manual "Reload page" button as an escape hatch.
+ * backoff and reloads the page the instant it answers — and offers a single
+ * "Retry now" button to probe on demand instead of waiting out the timer.
  */
 export function ServerConnectionGuard() {
   const state = React.useSyncExternalStore(
@@ -56,7 +56,7 @@ export function ServerConnectionGuard() {
 }
 
 // Keys allowed to reach the app while locked — exactly what's needed to focus
-// and press the one Reload button, plus lone modifiers. Everything else (the
+// and press the one action button, plus lone modifiers. Everything else (the
 // app's window-level hotkeys: '[' sidebar toggle, Ctrl/Cmd+A select-all, and
 // crucially Delete/Backspace which opens a bulk-delete dialog) is stopped.
 const OPERABLE_KEYS = new Set([
@@ -84,27 +84,33 @@ type ReconnectPhase = "reconnecting" | "restored";
 /**
  * Drives the auto-reconnect loop that runs the whole time the overlay is up.
  *
- * It probes `/api/health` on a backoff (surfacing a live countdown and a
- * "checking now" flag for the UI) and, the instant a probe answers, flips to
- * "restored" and reloads the page. The reload — not an in-place un-latch — is
- * deliberate: it re-reads server data and resubscribes the SSE streams that
+ * It probes `/api/health` on a backoff and, the instant a probe answers, flips
+ * to "restored" and reloads the page. The reload — not an in-place un-latch —
+ * is deliberate: it re-reads server data and resubscribes the SSE streams that
  * `gqlSubscribe` tore down when the connection dropped. The browser's `online`
  * event and a tab regaining focus both trigger an immediate probe, so recovery
- * usually beats the countdown. All loop state lives in closure-local `let`s so
- * each effect run is self-contained — StrictMode's mount/unmount/mount cycle
- * tears the first run's timers down and re-arms the second cleanly.
+ * usually beats the timer. All loop state lives in closure-local `let`s so each
+ * effect run is self-contained — StrictMode's mount/unmount/mount cycle tears
+ * the first run's timers down and re-arms the second cleanly.
+ *
+ * The UI shows the wait as a progress bar rather than a number: each scheduled
+ * wait is one "cycle", and `cycle.key` bumps on every new one so the bar can
+ * remount and restart its fill animation over `cycle.ms`. `checking` marks a
+ * probe in flight (the bar yields to a spinner).
  */
 function useAutoReconnect(): {
   phase: ReconnectPhase;
   checking: boolean;
-  countdown: number;
+  cycleKey: number;
+  cycleMs: number;
   retryNow: () => void;
 } {
   const [phase, setPhase] = React.useState<ReconnectPhase>("reconnecting");
   const [checking, setChecking] = React.useState(false);
-  const [countdown, setCountdown] = React.useState(
-    Math.ceil(RECONNECT_BASE_DELAY_MS / 1000),
-  );
+  const [cycle, setCycle] = React.useState({
+    key: 0,
+    ms: RECONNECT_BASE_DELAY_MS,
+  });
 
   const retryNowRef = React.useRef<() => void>(() => {});
   const retryNow = React.useCallback(() => retryNowRef.current(), []);
@@ -112,32 +118,23 @@ function useAutoReconnect(): {
   React.useEffect(() => {
     let delay = RECONNECT_BASE_DELAY_MS;
     let attemptTimer: number | null = null;
-    let tickTimer: number | null = null;
     let reloadTimer: number | null = null;
     let checkingNow = false;
     let stopped = false;
 
-    const clearTimers = () => {
-      if (attemptTimer !== null) window.clearTimeout(attemptTimer);
-      if (tickTimer !== null) window.clearInterval(tickTimer);
-      attemptTimer = null;
-      tickTimer = null;
-    };
-
     const scheduleNext = (ms: number) => {
-      clearTimers();
+      if (attemptTimer !== null) window.clearTimeout(attemptTimer);
       if (stopped) return;
-      setCountdown(Math.max(1, Math.ceil(ms / 1000)));
-      tickTimer = window.setInterval(() => {
-        setCountdown((c) => (c > 1 ? c - 1 : 1));
-      }, 1_000);
+      // Bump the key so the progress bar restarts its fill over the new `ms`.
+      setCycle((c) => ({ key: c.key + 1, ms }));
       attemptTimer = window.setTimeout(() => void attempt(), ms);
     };
 
     const attempt = async () => {
       if (stopped || checkingNow) return;
       checkingNow = true;
-      clearTimers();
+      if (attemptTimer !== null) window.clearTimeout(attemptTimer);
+      attemptTimer = null;
       setChecking(true);
       const reachable = await probeServerReachable();
       checkingNow = false;
@@ -164,8 +161,8 @@ function useAutoReconnect(): {
     };
 
     // The browser knows the moment the machine rejoins the network, and a tab
-    // waking from the background may have idled through several ticks — probe
-    // right away in both cases rather than waiting out the countdown.
+    // waking from the background may have idled through the wait — probe right
+    // away in both cases rather than letting the bar run out.
     const onOnline = () => retryNowRef.current();
     const onVisible = () => {
       if (!document.hidden) retryNowRef.current();
@@ -177,14 +174,14 @@ function useAutoReconnect(): {
 
     return () => {
       stopped = true;
-      clearTimers();
+      if (attemptTimer !== null) window.clearTimeout(attemptTimer);
       if (reloadTimer !== null) window.clearTimeout(reloadTimer);
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
-  return { phase, checking, countdown, retryNow };
+  return { phase, checking, cycleKey: cycle.key, cycleMs: cycle.ms, retryNow };
 }
 
 /**
@@ -192,7 +189,7 @@ function useAutoReconnect(): {
  * that lets the effect below mark every OTHER body child `inert`, which blocks
  * pointer input and focus into the app — open Radix dialogs' focus traps
  * included. But `inert` does NOT silence window-level key listeners (a keydown
- * still bubbles from the focused Reload button to window, where the app's
+ * still bubbles from the focused action button to window, where the app's
  * hotkeys live) and does NOT cover body children portaled in AFTER the sweep
  * (a dialog a surviving hotkey could open). So the effect also (a) swallows
  * every non-operable key at capture phase and (b) inerts late-added body
@@ -202,8 +199,8 @@ function useAutoReconnect(): {
  */
 function DisconnectedOverlay() {
   const overlayRef = React.useRef<HTMLDivElement>(null);
-  const reloadRef = React.useRef<HTMLButtonElement>(null);
-  const { phase, checking, countdown, retryNow } = useAutoReconnect();
+  const actionRef = React.useRef<HTMLButtonElement>(null);
+  const { phase, checking, cycleKey, cycleMs, retryNow } = useAutoReconnect();
   const restored = phase === "restored";
 
   React.useEffect(() => {
@@ -223,10 +220,10 @@ function DisconnectedOverlay() {
 
     // Focus AFTER inerting the rest of the page: an open Radix dialog's focus
     // trap can no longer steal it back once its subtree is inert. Prefer the
-    // primary Reload button, but read it LIVE (the button set changes across
+    // action button, but read it LIVE (it can briefly swap contents across
     // phases) and fall back to the focusable overlay itself, so focus can never
     // slip out to <body> — where a stray app hotkey could catch it.
-    const focusTarget = (): HTMLElement | null => reloadRef.current ?? overlay;
+    const focusTarget = (): HTMLElement | null => actionRef.current ?? overlay;
     focusTarget()?.focus();
     const reclaimFocus = (): void => {
       if (overlay && !overlay.contains(document.activeElement)) focusTarget()?.focus();
@@ -389,66 +386,45 @@ function DisconnectedOverlay() {
               )}
             </p>
 
-            {/* Status line: "reloading" once recovered, otherwise the live
-                auto-reconnect state — a spinner while a probe is in flight, or a
-                ticking countdown to the next one. */}
-            {restored ? (
-              <div className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-                <Loader2 className="size-4 animate-spin" />
-                Reloading…
-              </div>
-            ) : (
-              <div className="mt-5 flex w-full items-center gap-2.5 rounded-lg border border-border bg-secondary/50 px-3.5 py-2.5 text-left">
-                {checking ? (
-                  <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
-                ) : (
-                  <RefreshCw className="size-4 shrink-0 text-muted-foreground" />
-                )}
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  {checking ? (
-                    "Checking the connection…"
-                  ) : (
-                    <>
-                      Trying to reconnect automatically — next attempt in{" "}
-                      <span className="font-medium tabular-nums text-foreground">
-                        {countdown}s
-                      </span>
-                      .
-                    </>
-                  )}
-                </p>
-              </div>
-            )}
-
-            {/* The manual Reload button stays mounted in EVERY phase. It is the
-                escape hatch if the auto-reload's `beforeunload` prompt is
-                declined (leaving us in "restored" with the loop stopped), and
-                keeping it mounted also keeps focus inside the dialog across the
-                phase flip. "Retry now" only makes sense while still probing; it
-                stays enabled during a check (retryNow() no-ops if one is already
-                in flight) so disabling it can't bump focus out to <body>. */}
-            <div className="mt-6 flex w-full flex-col gap-2.5">
-              <Button
-                ref={reloadRef}
-                size="lg"
-                className="w-full"
-                onClick={() => window.location.reload()}
-              >
-                <RotateCw />
-                Reload page
-              </Button>
-              {!restored && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-muted-foreground hover:text-foreground"
-                  onClick={retryNow}
-                >
-                  {checking ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                  Retry now
-                </Button>
+            {/* One button, and only one. Its own fill IS the timer: a bar
+                sweeps left-to-right over the current wait, and when it reaches
+                the end a probe fires on its own. Press it to probe immediately
+                instead of waiting; it stays mounted (and clickable) in every
+                phase so a declined auto-reload still has an escape hatch and
+                focus never slips out of the dialog. */}
+            <Button
+              ref={actionRef}
+              size="lg"
+              className="relative mt-6 w-full overflow-hidden"
+              onClick={() => (restored ? window.location.reload() : retryNow())}
+            >
+              {!restored && !checking && (
+                <span
+                  key={cycleKey}
+                  aria-hidden
+                  className="absolute inset-0 origin-left bg-primary-foreground/20 motion-reduce:hidden"
+                  style={{ animation: `reconnect-progress ${cycleMs}ms linear forwards` }}
+                />
               )}
-            </div>
+              <span className="relative z-10 inline-flex items-center gap-2">
+                {restored ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    Reloading…
+                  </>
+                ) : checking ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    Checking…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw />
+                    Retry now
+                  </>
+                )}
+              </span>
+            </Button>
           </div>
         </div>
       </div>

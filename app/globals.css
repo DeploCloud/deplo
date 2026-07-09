@@ -304,6 +304,19 @@
   animation-delay: var(--shimmer-delay, 0s);
 }
 
+/* Left-to-right fill for the connection-guard's auto-reconnect button: the bar
+   IS the countdown to the next probe. Driven inline with the cycle's duration;
+   the element it animates carries `motion-reduce:hidden`, so no reduced-motion
+   override is needed here. */
+@keyframes reconnect-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,
