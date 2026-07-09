@@ -3,10 +3,16 @@
 /**
  * Client-side watchdog for the connection to the web server hosting the panel.
  *
- * The state deliberately LATCHES: once the server is marked unreachable it
- * never flips back on its own — there is no automatic reconnection by design.
- * The only way out is the manual page reload offered by ServerConnectionGuard,
- * which renders a full-screen blocking overlay while disconnected.
+ * The in-memory state deliberately LATCHES: once the server is marked
+ * unreachable it never flips back to "connected" on its own. Recovery always
+ * goes through a full page reload — never an in-place un-latch — because a
+ * reload is what guarantees a clean slate: dropped SSE subscriptions
+ * resubscribe and any stale in-memory data is re-read from the server.
+ *
+ * That reload is no longer purely manual, though. While locked, the
+ * ServerConnectionGuard overlay both probes for the server's return
+ * (`probeServerReachable`, the auto-reconnect loop) and reloads the moment it
+ * answers, on top of still offering a manual "Reload page" button.
  *
  * Detection has two feeds:
  *  - a periodic heartbeat (driven by ServerConnectionGuard) calling
@@ -86,6 +92,17 @@ export function checkServerConnection(): Promise<void> {
     }
   })();
   return inFlightCheck;
+}
+
+/**
+ * Single reachability probe for the auto-reconnect loop the guard runs while
+ * locked. Unlike `checkServerConnection` this neither retries nor latches the
+ * state: a lone success is enough of a signal for the caller (the overlay) to
+ * reload the page, and the freshly-loaded panel re-verifies the connection from
+ * scratch — so a server that answered one probe then flapped is caught again.
+ */
+export function probeServerReachable(): Promise<boolean> {
+  return ping();
 }
 
 /**

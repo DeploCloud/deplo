@@ -2,12 +2,13 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { Info, RotateCw, WifiOff } from "lucide-react";
+import { CheckCircle2, Loader2, RefreshCw, RotateCw, Wifi, WifiOff } from "lucide-react";
 import { DeploLogo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import {
   checkServerConnection,
   getServerConnectionSnapshot,
+  probeServerReachable,
   subscribeServerConnection,
 } from "@/lib/server-connection";
 
@@ -17,8 +18,9 @@ const HEARTBEAT_INTERVAL_MS = 10_000;
  * Full-screen guard mounted once in the root layout. Heartbeats the web
  * server hosting the panel and, when it becomes unreachable, locks the entire
  * UI behind a blocking overlay: nothing can be done until the server is back.
- * There is intentionally NO automatic reconnection — the overlay only offers
- * a manual "Reload page" button.
+ * While locked, the overlay auto-reconnects — it probes for the server on a
+ * backoff and reloads the page the instant it answers — and still keeps a
+ * manual "Reload page" button as an escape hatch.
  */
 export function ServerConnectionGuard() {
   const state = React.useSyncExternalStore(
@@ -67,6 +69,124 @@ const OPERABLE_KEYS = new Set([
   "Meta",
 ]);
 
+// Auto-reconnect cadence. The first probe fires quickly (outages are often a
+// blip), then backs off geometrically up to a ceiling so a long outage doesn't
+// hammer a dead server — while still checking often enough to feel responsive.
+const RECONNECT_BASE_DELAY_MS = 2_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+const RECONNECT_BACKOFF = 1.7;
+// Once a probe succeeds, hold the "back online" state briefly so the recovery
+// registers visually before the page reloads itself.
+const RESTORED_RELOAD_DELAY_MS = 900;
+
+type ReconnectPhase = "reconnecting" | "restored";
+
+/**
+ * Drives the auto-reconnect loop that runs the whole time the overlay is up.
+ *
+ * It probes `/api/health` on a backoff (surfacing a live countdown and a
+ * "checking now" flag for the UI) and, the instant a probe answers, flips to
+ * "restored" and reloads the page. The reload — not an in-place un-latch — is
+ * deliberate: it re-reads server data and resubscribes the SSE streams that
+ * `gqlSubscribe` tore down when the connection dropped. The browser's `online`
+ * event and a tab regaining focus both trigger an immediate probe, so recovery
+ * usually beats the countdown. All loop state lives in closure-local `let`s so
+ * each effect run is self-contained — StrictMode's mount/unmount/mount cycle
+ * tears the first run's timers down and re-arms the second cleanly.
+ */
+function useAutoReconnect(): {
+  phase: ReconnectPhase;
+  checking: boolean;
+  countdown: number;
+  retryNow: () => void;
+} {
+  const [phase, setPhase] = React.useState<ReconnectPhase>("reconnecting");
+  const [checking, setChecking] = React.useState(false);
+  const [countdown, setCountdown] = React.useState(
+    Math.ceil(RECONNECT_BASE_DELAY_MS / 1000),
+  );
+
+  const retryNowRef = React.useRef<() => void>(() => {});
+  const retryNow = React.useCallback(() => retryNowRef.current(), []);
+
+  React.useEffect(() => {
+    let delay = RECONNECT_BASE_DELAY_MS;
+    let attemptTimer: number | null = null;
+    let tickTimer: number | null = null;
+    let reloadTimer: number | null = null;
+    let checkingNow = false;
+    let stopped = false;
+
+    const clearTimers = () => {
+      if (attemptTimer !== null) window.clearTimeout(attemptTimer);
+      if (tickTimer !== null) window.clearInterval(tickTimer);
+      attemptTimer = null;
+      tickTimer = null;
+    };
+
+    const scheduleNext = (ms: number) => {
+      clearTimers();
+      if (stopped) return;
+      setCountdown(Math.max(1, Math.ceil(ms / 1000)));
+      tickTimer = window.setInterval(() => {
+        setCountdown((c) => (c > 1 ? c - 1 : 1));
+      }, 1_000);
+      attemptTimer = window.setTimeout(() => void attempt(), ms);
+    };
+
+    const attempt = async () => {
+      if (stopped || checkingNow) return;
+      checkingNow = true;
+      clearTimers();
+      setChecking(true);
+      const reachable = await probeServerReachable();
+      checkingNow = false;
+      if (stopped) return;
+      setChecking(false);
+      if (reachable) {
+        stopped = true;
+        setPhase("restored");
+        reloadTimer = window.setTimeout(
+          () => window.location.reload(),
+          RESTORED_RELOAD_DELAY_MS,
+        );
+        return;
+      }
+      delay = Math.min(Math.round(delay * RECONNECT_BACKOFF), RECONNECT_MAX_DELAY_MS);
+      scheduleNext(delay);
+    };
+
+    retryNowRef.current = () => {
+      if (!stopped && !checkingNow) {
+        delay = RECONNECT_BASE_DELAY_MS;
+        void attempt();
+      }
+    };
+
+    // The browser knows the moment the machine rejoins the network, and a tab
+    // waking from the background may have idled through several ticks — probe
+    // right away in both cases rather than waiting out the countdown.
+    const onOnline = () => retryNowRef.current();
+    const onVisible = () => {
+      if (!document.hidden) retryNowRef.current();
+    };
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
+
+    scheduleNext(delay);
+
+    return () => {
+      stopped = true;
+      clearTimers();
+      if (reloadTimer !== null) window.clearTimeout(reloadTimer);
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
+  return { phase, checking, countdown, retryNow };
+}
+
 /**
  * The lock screen itself. Portaled to <body> so it is a direct body child:
  * that lets the effect below mark every OTHER body child `inert`, which blocks
@@ -83,10 +203,11 @@ const OPERABLE_KEYS = new Set([
 function DisconnectedOverlay() {
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const reloadRef = React.useRef<HTMLButtonElement>(null);
+  const { phase, checking, countdown, retryNow } = useAutoReconnect();
+  const restored = phase === "restored";
 
   React.useEffect(() => {
     const overlay = overlayRef.current;
-    const reloadBtn = reloadRef.current;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
@@ -101,10 +222,14 @@ function DisconnectedOverlay() {
     for (const child of Array.from(document.body.children)) inert(child);
 
     // Focus AFTER inerting the rest of the page: an open Radix dialog's focus
-    // trap can no longer steal it back once its subtree is inert.
-    reloadBtn?.focus();
+    // trap can no longer steal it back once its subtree is inert. Prefer the
+    // primary Reload button, but read it LIVE (the button set changes across
+    // phases) and fall back to the focusable overlay itself, so focus can never
+    // slip out to <body> — where a stray app hotkey could catch it.
+    const focusTarget = (): HTMLElement | null => reloadRef.current ?? overlay;
+    focusTarget()?.focus();
     const reclaimFocus = (): void => {
-      if (overlay && !overlay.contains(document.activeElement)) reloadBtn?.focus();
+      if (overlay && !overlay.contains(document.activeElement)) focusTarget()?.focus();
     };
 
     // A body child added after the sweep (e.g. a Radix dialog portaled from a
@@ -141,6 +266,23 @@ function DisconnectedOverlay() {
     };
   }, []);
 
+  // Accent tracks the phase: destructive while the server is gone, emerald the
+  // moment a probe brings it back. These must be complete literal class strings
+  // — Tailwind can't see interpolated (`bg-${x}`) ones, so it never emits them.
+  const tone = restored
+    ? {
+        halo: "bg-emerald-500/[0.07]",
+        ring: "bg-emerald-500/10",
+        core: "border-emerald-500/30 bg-emerald-500/15 text-emerald-500",
+        glow: "#10b981",
+      }
+    : {
+        halo: "bg-destructive/[0.07]",
+        ring: "bg-destructive/10",
+        core: "border-destructive/30 bg-destructive/15 text-destructive",
+        glow: "var(--destructive)",
+      };
+
   return createPortal(
     <div
       ref={overlayRef}
@@ -148,7 +290,8 @@ function DisconnectedOverlay() {
       aria-modal="true"
       aria-labelledby="server-connection-lost-title"
       aria-describedby="server-connection-lost-description"
-      className="pointer-events-auto fixed inset-0 z-[2147483647] flex items-center justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-md animate-in fade-in-0 duration-200"
+      tabIndex={-1}
+      className="pointer-events-auto fixed inset-0 z-[2147483647] flex items-center justify-center overflow-y-auto bg-black/80 p-4 outline-none backdrop-blur-md animate-in fade-in-0 duration-200"
     >
       {/* Radial vignette: darkens the corners so attention falls on the card. */}
       <div
@@ -161,13 +304,12 @@ function DisconnectedOverlay() {
       />
 
       <div className="relative isolate w-full max-w-md animate-in fade-in-0 zoom-in-95 duration-300">
-        {/* Soft destructive glow bleeding out from behind the card top. */}
+        {/* Soft glow bleeding out from behind the card top — tracks the accent. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -inset-x-8 -top-10 -z-10 h-40 opacity-70 blur-3xl"
+          className="pointer-events-none absolute -inset-x-8 -top-10 -z-10 h-40 opacity-70 blur-3xl transition-colors duration-500"
           style={{
-            background:
-              "radial-gradient(50% 60% at 50% 0%, color-mix(in srgb, var(--destructive) 24%, transparent), transparent 72%)",
+            background: `radial-gradient(50% 60% at 50% 0%, color-mix(in srgb, ${tone.glow} 24%, transparent), transparent 72%)`,
           }}
         />
 
@@ -175,26 +317,50 @@ function DisconnectedOverlay() {
           {/* Header: brand on the left, live status on the right. */}
           <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5">
             <DeploLogo className="h-4 text-foreground/75" />
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive">
-              <span className="size-1.5 rounded-full bg-destructive" />
-              Offline
-            </span>
+            {restored ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="size-3" />
+                Back online
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                {checking ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-amber-500 animate-pulse motion-reduce:animate-none" />
+                )}
+                Reconnecting
+              </span>
+            )}
           </div>
 
           <div className="flex flex-col items-center px-6 pb-6 pt-8 text-center">
-            {/* Concentric badge — a "signal" motif, deliberately static (the
-                panel does not poll while locked, so nothing here may imply it). */}
+            {/* Concentric "signal" badge. It now animates — the panel really is
+                probing while locked, so the motion is honest. The expanding
+                ring is suppressed under prefers-reduced-motion. */}
             <div className="relative mb-5 flex size-16 items-center justify-center">
               <span
                 aria-hidden
-                className="absolute inset-0 rounded-full bg-destructive/[0.07]"
+                className={`absolute inset-0 rounded-full ${tone.halo}`}
               />
               <span
                 aria-hidden
-                className="absolute inset-[7px] rounded-full bg-destructive/10"
+                className={`absolute inset-[7px] rounded-full ${tone.ring}`}
               />
-              <span className="relative flex size-11 items-center justify-center rounded-full border border-destructive/30 bg-destructive/15 text-destructive shadow-sm">
-                <WifiOff className="size-5" />
+              {!restored && (
+                <span
+                  aria-hidden
+                  className="absolute inset-0 rounded-full border border-destructive/30 animate-ping [animation-duration:2.4s] motion-reduce:hidden"
+                />
+              )}
+              <span
+                className={`relative flex size-11 items-center justify-center rounded-full border shadow-sm transition-colors duration-500 ${tone.core}`}
+              >
+                {restored ? (
+                  <Wifi className="size-5 animate-in zoom-in-50 duration-300" />
+                ) : (
+                  <WifiOff className="size-5" />
+                )}
               </span>
             </div>
 
@@ -202,34 +368,87 @@ function DisconnectedOverlay() {
               id="server-connection-lost-title"
               className="text-lg font-semibold tracking-tight text-foreground"
             >
-              Connection to the server lost
+              {restored ? "Back online" : "Connection lost"}
             </h2>
             <p
               id="server-connection-lost-description"
+              aria-live="polite"
               className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground"
             >
-              The web server hosting this Deplo panel is unreachable. Everything
-              is paused until it&apos;s back online — no changes can be made
-              right now.
+              {restored ? (
+                <>
+                  The server is responding again. Reloading the panel to pick up
+                  right where you left off…
+                </>
+              ) : (
+                <>
+                  The web server hosting this Deplo panel is unreachable.
+                  Everything is paused until the connection is restored — no
+                  changes can be made right now.
+                </>
+              )}
             </p>
 
-            <div className="mt-5 flex w-full items-start gap-2.5 rounded-lg border border-border bg-secondary/50 px-3.5 py-2.5 text-left">
-              <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                This page won&apos;t reconnect on its own. Once the server is
-                back online, reload to continue.
-              </p>
-            </div>
+            {/* Status line: "reloading" once recovered, otherwise the live
+                auto-reconnect state — a spinner while a probe is in flight, or a
+                ticking countdown to the next one. */}
+            {restored ? (
+              <div className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                <Loader2 className="size-4 animate-spin" />
+                Reloading…
+              </div>
+            ) : (
+              <div className="mt-5 flex w-full items-center gap-2.5 rounded-lg border border-border bg-secondary/50 px-3.5 py-2.5 text-left">
+                {checking ? (
+                  <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+                ) : (
+                  <RefreshCw className="size-4 shrink-0 text-muted-foreground" />
+                )}
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {checking ? (
+                    "Checking the connection…"
+                  ) : (
+                    <>
+                      Trying to reconnect automatically — next attempt in{" "}
+                      <span className="font-medium tabular-nums text-foreground">
+                        {countdown}s
+                      </span>
+                      .
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
 
-            <Button
-              ref={reloadRef}
-              size="lg"
-              className="mt-6 w-full"
-              onClick={() => window.location.reload()}
-            >
-              <RotateCw />
-              Reload page
-            </Button>
+            {/* The manual Reload button stays mounted in EVERY phase. It is the
+                escape hatch if the auto-reload's `beforeunload` prompt is
+                declined (leaving us in "restored" with the loop stopped), and
+                keeping it mounted also keeps focus inside the dialog across the
+                phase flip. "Retry now" only makes sense while still probing; it
+                stays enabled during a check (retryNow() no-ops if one is already
+                in flight) so disabling it can't bump focus out to <body>. */}
+            <div className="mt-6 flex w-full flex-col gap-2.5">
+              <Button
+                ref={reloadRef}
+                size="lg"
+                className="w-full"
+                onClick={() => window.location.reload()}
+              >
+                <RotateCw />
+                Reload page
+              </Button>
+              {!restored && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-muted-foreground hover:text-foreground"
+                  onClick={retryNow}
+                >
+                  {checking ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                  Retry now
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
