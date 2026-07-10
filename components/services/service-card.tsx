@@ -34,7 +34,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { ServiceLogo } from "@/components/shared/project-logo";
-import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
+import { StatusDot } from "@/components/shared/status-badge";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
@@ -105,6 +105,14 @@ export function ServiceCard({
   // overview, so a refresh after each action keeps the menu in sync).
   const stopped = project.status === "idle";
   const stopping = project.status === "stopping";
+  // Friendly label for the status dot's hover tooltip. The visible text badge is
+  // gone — the dot's colour carries the state; this only spells it out on hover.
+  const statusLabel =
+    project.status === "idle"
+      ? "Stopped"
+      : project.status === "active"
+        ? "Running"
+        : project.status.charAt(0).toUpperCase() + project.status.slice(1);
 
   // Clicking anywhere on the card opens the service overview. The latest commit
   // is shown on the card itself (compact) rather than deep-linking to it.
@@ -405,9 +413,15 @@ export function ServiceCard({
     </>
   );
 
-  // Shared interactive controls (drag handle + ⋯ menu). Used by both layouts.
+  // Shared interactive controls (status dot + drag handle + ⋯ menu). Used by
+  // both layouts. Order: status dot → drag handle (hover only) → ⋯ menu.
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
+      {/* Service status as a bare dot (green / amber / red / grey), no label —
+          the dot's colour is the status; hovering it shows the word. */}
+      <span title={statusLabel} className="mx-1 inline-flex items-center">
+        <StatusDot status={project.status} />
+      </span>
       {dragHandle}
       <div
         data-card-actions
@@ -499,13 +513,8 @@ export function ServiceCard({
             )}
           </div>
 
-          {/* Service lifecycle status — kept by the name, distinct from the
-              deployment status in the commit/branch cluster to its right. */}
-          <StatusBadge status={project.status} />
-
           {dep ? (
             <div className="hidden items-center gap-2 text-xs text-muted-foreground md:flex">
-              <StatusDot status={dep.status} />
               <span className="whitespace-nowrap">
                 {timeAgo(dep.createdAt)}
               </span>
@@ -558,21 +567,13 @@ export function ServiceCard({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {/* The SERVICE's live-cycle status (Running / Stopped / Building /
-                  Error) sits up here with the name — deliberately apart from the
-                  deployment status dot by the commit below, so the two are never
-                  read as the same thing. */}
-              <StatusBadge status={project.status} />
-              {actions}
-            </div>
+            {actions}
           </div>
 
           {/* Latest deployment */}
           {dep ? (
             <div className="rounded-lg border border-border bg-secondary/40 p-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <StatusDot status={dep.status} />
                 <code className="shrink-0 font-mono text-foreground">
                   {dep.commitSha.slice(0, 7)}
                 </code>
