@@ -414,15 +414,23 @@ export function ServiceCard({
   );
 
   // Shared interactive controls (status dot + drag handle + ⋯ menu). Used by
-  // both layouts. Order: status dot → drag handle (hover only) → ⋯ menu.
+  // both layouts. At rest the status dot sits flush against the ⋯; the drag
+  // handle is zero-width until hover, when it expands and slides the dot left.
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
       {/* Service status as a bare dot (green / amber / red / grey), no label —
           the dot's colour is the status; hovering it shows the word. */}
-      <span title={statusLabel} className="mx-1 inline-flex items-center">
+      <span title={statusLabel} className="inline-flex items-center">
         <StatusDot status={project.status} />
       </span>
-      {dragHandle}
+      {/* Drag handle is taken out of the flow at rest (display:none) so it
+          leaves no empty gap; it appears on hover / keyboard focus. The row's
+          single gap-1 then spaces all three icons identically. Going from
+          display:none → flex restarts the enter animation, so the handle slides
+          + fades in each time it reveals. */}
+      <span className="hidden items-center animate-in fade-in-0 slide-in-from-right-2 duration-200 group-hover:flex focus-within:flex">
+        {dragHandle}
+      </span>
       <div
         data-card-actions
         onPointerDown={(e) => e.stopPropagation()}
@@ -503,7 +511,7 @@ export function ServiceCard({
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
           <ServiceLogo logo={project.logo} size={36} />
           <div className="min-w-0 flex-1">
-            <span className="truncate font-medium">{project.name}</span>
+            <span className="block truncate font-medium">{project.name}</span>
             {project.productionUrl ? (
               <p className="truncate text-xs text-muted-foreground">
                 {project.productionUrl.replace(/^https?:\/\//, "")}
@@ -553,10 +561,10 @@ export function ServiceCard({
 
         <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <ServiceLogo logo={project.logo} size={36} />
-              <div className="min-w-0">
-                <span className="truncate font-medium">{project.name}</span>
+              <div className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{project.name}</span>
                 {project.productionUrl ? (
                   <p className="truncate text-xs text-muted-foreground">
                     {project.productionUrl.replace(/^https?:\/\//, "")}
@@ -574,9 +582,14 @@ export function ServiceCard({
           {dep ? (
             <div className="rounded-lg border border-border bg-secondary/40 p-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <code className="shrink-0 font-mono text-foreground">
-                  {dep.commitSha.slice(0, 7)}
-                </code>
+                {/* Non-git deploys (compose / image / upload) have no commit
+                    SHA; render it only when present so an empty <code> + gap
+                    doesn't leave a blank space before the commit message. */}
+                {dep.commitSha && (
+                  <code className="shrink-0 font-mono text-foreground">
+                    {dep.commitSha.slice(0, 7)}
+                  </code>
+                )}
                 <span className="min-w-0 flex-1 truncate">
                   {dep.commitMessage}
                 </span>

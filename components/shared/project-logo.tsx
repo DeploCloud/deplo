@@ -25,7 +25,7 @@ export function ServiceLogo({
     return (
       <span
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-foreground",
+          "flex shrink-0 items-center justify-center rounded-md bg-secondary text-foreground",
           className,
         )}
         style={{ width: size, height: size }}
@@ -38,7 +38,7 @@ export function ServiceLogo({
   return (
     <span
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border",
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-md",
         className,
       )}
       style={{ width: size, height: size }}
