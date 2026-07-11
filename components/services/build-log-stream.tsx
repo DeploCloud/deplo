@@ -1,7 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { gql } from "@/lib/graphql-client";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Ban } from "lucide-react";
+import { gql, gqlAction } from "@/lib/graphql-client";
+import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import { cn } from "@/lib/utils";
@@ -89,6 +93,29 @@ export function BuildLogStream({
   const programmaticScroll = React.useRef(false);
 
   const live = !TERMINAL.has(status);
+
+  const router = useRouter();
+  const [stopping, startStop] = React.useTransition();
+
+  // Stop the build you're watching. cancelDeployment flips the row to `canceled`;
+  // the next log poll (below) picks that up, `live` goes false, and this button
+  // disappears on its own. router.refresh() re-renders the server card's status
+  // badge, which doesn't share this component's polled state.
+  function stopBuild() {
+    startStop(async () => {
+      const res = await gqlAction<{ cancelDeployment: boolean }, boolean>(
+        `mutation ($id: String!) { cancelDeployment(id: $id) }`,
+        { id: deploymentId },
+        (d) => d.cancelDeployment,
+      );
+      if (res.ok) {
+        // false ⇒ the build finished in the window before the click landed.
+        if (res.data) toast.success("Build stopped");
+        else toast.info("This build already finished");
+        router.refresh();
+      } else toast.error(res.error);
+    });
+  }
 
   // Seed the log list from the RSC payload, entirely client-side (post-
   // hydration), so the data already in the payload paints without a network
@@ -188,6 +215,18 @@ export function BuildLogStream({
           )}
         </span>
         <div className="flex items-center gap-2">
+          {live && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={stopBuild}
+              disabled={stopping}
+              className="h-7 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Ban className="size-3.5" />
+              {stopping ? "Stopping…" : "Stop build"}
+            </Button>
+          )}
           <CopyButton value={logText} label="Copy logs" />
           <DownloadButton
             value={logText}

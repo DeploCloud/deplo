@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getTeam, listMyTeams } from "@/lib/data/teams";
 import { currentCapabilities, isInstanceAdmin } from "@/lib/membership";
+import { getBreadcrumbGraph } from "@/lib/data/breadcrumb";
 import { AppShell } from "@/components/layout/app-shell";
 
 export default async function DashboardLayout({
@@ -16,9 +17,10 @@ export default async function DashboardLayout({
   // to the standalone create-team screen instead of throwing "No active team".
   if (teams.length === 0) redirect("/welcome");
   const team = await getTeam();
-  const [capabilities, isAdmin] = await Promise.all([
+  const [capabilities, isAdmin, breadcrumb] = await Promise.all([
     currentCapabilities(),
     isInstanceAdmin(),
+    getBreadcrumbGraph(),
   ]);
 
   return (
@@ -26,6 +28,7 @@ export default async function DashboardLayout({
       user={user}
       team={team}
       teams={teams}
+      breadcrumb={breadcrumb}
       capabilities={capabilities}
       isAdmin={isAdmin}
     >

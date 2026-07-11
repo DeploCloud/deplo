@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getServerById } from "../data/servers";
 import { getDb } from "../db/client";
 import {
@@ -63,6 +63,7 @@ import {
   type AgentBuildPlan,
 } from "./agent-deploy";
 import { connectAgent, agentPreflight } from "../infra/agent-client";
+import { enqueueDeployment } from "./deploy-queue";
 import type { Deployment, DeploymentEnvironment, EnvTarget, LogLine } from "../types";
 
 /**
@@ -88,7 +89,17 @@ function log(depId: string, level: LogLine["level"], text: string): void {
   appendLog(depId, { ts: nowIso(), level, text });
 }
 
-async function setDep(depId: string, patch: Partial<Deployment>): Promise<void> {
+/**
+ * Patch a deployment row. Returns whether a row was written. With
+ * `onlyIfNotCanceled`, the UPDATE is a compare-and-swap (`... AND status <>
+ * 'canceled'`) so it never clobbers a "Stop build" that landed first — the caller
+ * uses the `false` return to settle the service instead of the outcome.
+ */
+async function setDep(
+  depId: string,
+  patch: Partial<Deployment>,
+  opts: { onlyIfNotCanceled?: boolean } = {},
+): Promise<boolean> {
   const set: Record<string, unknown> = {};
   if (patch.status !== undefined) set.status = patch.status;
   if (patch.environment !== undefined) set.environment = patch.environment;
@@ -103,12 +114,20 @@ async function setDep(depId: string, patch: Partial<Deployment>): Promise<void> 
   const rows = await getDb()
     .update(deploymentsTable)
     .set(set)
-    .where(eq(deploymentsTable.id, depId))
+    .where(
+      opts.onlyIfNotCanceled
+        ? and(
+            eq(deploymentsTable.id, depId),
+            ne(deploymentsTable.status, "canceled"),
+          )
+        : eq(deploymentsTable.id, depId),
+    )
     .returning({ serviceId: deploymentsTable.serviceId });
   // A deployment's status feeds the project's `latestDeployment` view, so push
   // the owning project to live subscribers when it changes.
   const serviceId = rows[0]?.serviceId;
   if (serviceId && "status" in patch) publishServiceChanged(serviceId);
+  return rows.length > 0;
 }
 
 async function setService(
@@ -120,6 +139,65 @@ async function setService(
     .set({ ...patch, updatedAt: nowIso() })
     .where(eq(servicesTable.id, serviceId));
   publishServiceChanged(serviceId);
+}
+
+/**
+ * A user "Stop build" won: log it and settle the service to `idle` ("Stopped").
+ * The build job is fire-and-forget with no agent-side abort, so a build already
+ * running on the host may finish in the background — its container is left as-is
+ * (a later Start/Redeploy reconciles it); we only guarantee its result is never
+ * deployed and never overwrites the `canceled` deployment status.
+ */
+async function markStopped(depId: string, serviceId: string): Promise<void> {
+  log(
+    depId,
+    "warn",
+    "Build stopped by user — result discarded. A build already running on the host may finish in the background; its output is not deployed.",
+  );
+  await setService(serviceId, { status: "idle" });
+}
+
+/**
+ * Atomically write a deployment's terminal outcome UNLESS a "Stop build" already
+ * claimed the row. `cancelDeployment` flips the row to `canceled` on another
+ * connection while this job keeps running; the write is a compare-and-swap
+ * (setDep `onlyIfNotCanceled`), so a cancel that landed at ANY point before it
+ * wins — 0 rows match, the deployment stays `canceled`, and the service settles
+ * to `idle`. Returns true when the outcome was applied (the caller may then run
+ * its success side effects — the ready log, the data-migration hook), false when
+ * the cancel won and the caller must skip them.
+ */
+async function commitOutcome(
+  depId: string,
+  serviceId: string,
+  depPatch: Partial<Deployment>,
+  servicePatch: Partial<typeof servicesTable.$inferInsert>,
+): Promise<boolean> {
+  if (!(await setDep(depId, depPatch, { onlyIfNotCanceled: true }))) {
+    await markStopped(depId, serviceId);
+    return false;
+  }
+  await setService(serviceId, servicePatch);
+  return true;
+}
+
+/**
+ * Read-only cancel check for the pre-build window (the queued→building claim
+ * failed): if the row is already `canceled`, settle the service; otherwise no-op.
+ * The terminal outcome sites use {@link commitOutcome} (an atomic CAS) instead.
+ */
+async function settleIfCanceled(
+  depId: string,
+  serviceId: string,
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({ status: deploymentsTable.status })
+    .from(deploymentsTable)
+    .where(eq(deploymentsTable.id, depId))
+    .limit(1);
+  if (rows[0]?.status !== "canceled") return false;
+  await markStopped(depId, serviceId);
+  return true;
 }
 
 /**
@@ -413,37 +491,45 @@ export function isInFlightStatus(s: Deployment["status"]): boolean {
  */
 export async function reconcileInFlightDeployments(): Promise<number> {
   const db = getDb();
-  // Find the orphaned in-flight deployments, mark them error, and append one
-  // interrupted-log line each (through the buffered writer, finalized below).
-  const inFlight = await db
+  // Orphaned BUILDING deploys: the fire-and-forget job died with the process and
+  // there is no agent-side abort, so the row would lie "building" forever. Mark
+  // them error and settle their service off the transient build state. (Scoped to
+  // `building` only now — queued rows are handled durably below.)
+  const orphaned = await db
     .select({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId })
     .from(deploymentsTable)
-    .where(inArray(deploymentsTable.status, ["queued", "building"]));
-  if (inFlight.length === 0) return 0;
-  const affectedServices = new Set(inFlight.map((d) => d.serviceId));
-  await db
-    .update(deploymentsTable)
-    .set({ status: "error" })
-    .where(inArray(deploymentsTable.status, ["queued", "building"]));
-  for (const dep of inFlight) {
-    log(dep.id, "error", "Deployment interrupted by a control-plane restart and marked failed.");
-  }
-  await Promise.all(inFlight.map((d) => finalizeDeploymentLogs(d.id)));
-  // A project left mid-deploy settles off the transient build state.
-  await db
-    .update(servicesTable)
-    .set({ status: "error", updatedAt: nowIso() })
-    .where(
-      and(
-        inArray(servicesTable.id, [...affectedServices]),
-        inArray(servicesTable.status, ["building", "queued"]),
-      ),
+    .where(eq(deploymentsTable.status, "building"));
+  if (orphaned.length > 0) {
+    const affectedServices = new Set(orphaned.map((d) => d.serviceId));
+    await db
+      .update(deploymentsTable)
+      .set({ status: "error" })
+      .where(eq(deploymentsTable.status, "building"));
+    for (const dep of orphaned) {
+      log(dep.id, "error", "Deployment interrupted by a control-plane restart and marked failed.");
+    }
+    await Promise.all(orphaned.map((d) => finalizeDeploymentLogs(d.id)));
+    await db
+      .update(servicesTable)
+      .set({ status: "error", updatedAt: nowIso() })
+      .where(
+        and(
+          inArray(servicesTable.id, [...affectedServices]),
+          eq(servicesTable.status, "building"),
+        ),
+      );
+    for (const serviceId of affectedServices) publishServiceChanged(serviceId);
+    console.warn(
+      `[deplo] reconciled ${orphaned.length} interrupted deployment(s) to error on startup`,
     );
-  for (const serviceId of affectedServices) publishServiceChanged(serviceId);
-  console.warn(
-    `[deplo] reconciled ${inFlight.length} interrupted deployment(s) to error on startup`,
-  );
-  return inFlight.length;
+  }
+  // QUEUED deploys are DURABLE across a restart: no build ever started, so nothing
+  // was lost. This function deliberately leaves them `queued` (their service stays
+  // "queued"); boot RE-DRAINS them via the per-server queue in `instrumentation.ts`
+  // (`startDeployQueue`, chained AFTER this reconcile so it never dispatches
+  // alongside a not-yet-errored orphan). Kept out of here so the reconcile stays a
+  // pure DB settle with no live build dispatch.
+  return orphaned.length;
 }
 
 /**
@@ -502,7 +588,11 @@ export async function startDeployment(
 
   // Insert the deployment, then point the project at it (latestDeployment +
   // queued). A fresh build starts from an empty log stream (drain-then-DELETE).
-  await getDb().insert(deploymentsTable).values(deploymentToRow(dep));
+  // `serverId` is denormalized onto the row so the deploy queue can drain
+  // per-server without a services join.
+  await getDb()
+    .insert(deploymentsTable)
+    .values({ ...deploymentToRow(dep), serverId: project.serverId });
   await clearDeploymentLogs(depId);
   await getDb()
     .update(servicesTable)
@@ -514,19 +604,52 @@ export async function startDeployment(
     })
     .where(eq(servicesTable.id, serviceId));
   await recordActivity("deployment", `Deploying ${project.name}`, opts.creator, serviceId);
+
+  // Supersede: a newer trigger for this service wins, so cancel any of its
+  // still-QUEUED deploys that haven't started yet (nothing was built — safe to
+  // drop) EXCEPT the one just inserted. A deploy already `building` is untouched:
+  // the new one simply queues behind it. This is the Coolify "skip a duplicate
+  // commit" behavior, done by collapsing the older queued rows so a webhook burst
+  // (or an impatient redeploy) doesn't rebuild the same tree N times.
+  await getDb()
+    .update(deploymentsTable)
+    .set({ status: "canceled" })
+    .where(
+      and(
+        eq(deploymentsTable.serviceId, serviceId),
+        eq(deploymentsTable.status, "queued"),
+        ne(deploymentsTable.id, depId),
+      ),
+    );
+
   // A new deployment flips the project to "queued" and sets latestDeployment —
   // push it to live subscribers so the header/tabs update without a reload.
   publishServiceChanged(serviceId);
 
-  // Fire-and-forget: the standalone Node server keeps the event loop alive.
-  // runDeployment finalizes its own logs in a finally; this guards a throw from
-  // its pre-try setup (e.g. ensureAutoDomain) and flushes that error line too.
-  void runDeployment(depId).catch(async (e) => {
-    log(depId, "error", e instanceof Error ? e.message : String(e));
-    await setDep(depId, { status: "error" });
-    await finalizeDeploymentLogs(depId);
-  });
+  // Hand the queued deploy to the per-server queue instead of firing it inline:
+  // it starts once its OWNING server has a free slot (default 1) and no other
+  // deploy of this service is in flight. Deploys on OTHER servers run in parallel.
+  // Returns immediately — the standalone Node server keeps the event loop alive
+  // and the queue runs the build in the background (see lib/deploy/deploy-queue).
+  enqueueDeployment({ depId, serverId: project.serverId, serviceId });
   return depId;
+}
+
+/**
+ * Run a queued deployment to completion for the deploy queue, flushing a clean
+ * terminal error if `runDeployment`'s pre-try setup throws (it finalizes its own
+ * logs in a finally otherwise). Resolves — never rejects — when the deploy has
+ * fully settled, so the queue can free the server slot in its `finally`. A cancel
+ * that raced a pre-try failure wins: the CAS keeps the row `canceled`.
+ */
+export async function runDeploymentGuarded(depId: string): Promise<void> {
+  try {
+    await runDeployment(depId);
+  } catch (e) {
+    log(depId, "error", e instanceof Error ? e.message : String(e));
+    await setDep(depId, { status: "error" }, { onlyIfNotCanceled: true });
+    await finalizeDeploymentLogs(depId);
+  }
 }
 
 /**
@@ -633,7 +756,7 @@ async function runDeployment(depId: string): Promise<void> {
   if (!dep) return;
   const project = await loadServiceGraph(dep.serviceId);
   if (!project) {
-    await setDep(depId, { status: "error" });
+    await setDep(depId, { status: "error" }, { onlyIfNotCanceled: true });
     return;
   }
   const slug = project.slug;
@@ -652,7 +775,24 @@ async function runDeployment(depId: string): Promise<void> {
   // has no domain — the renderers emit no router (traefik.enable=false).
   const routeDomains = await routableForDeploy(project.id, dep.environment, domain);
 
-  await setDep(depId, { status: "building" });
+  // Claim the deploy: queued -> building, but ONLY while it is still queued. A
+  // "Stop build" that landed in the brief queued window (this job runs several
+  // awaits above before it gets here) already flipped the row to `canceled`; this
+  // conditional write then matches 0 rows, and we settle + bail instead of
+  // clobbering the cancel with `building`. The terminal commitOutcome CAS only
+  // covers a cancel that arrives DURING the build — this covers the window before
+  // it starts.
+  const claimed = await getDb()
+    .update(deploymentsTable)
+    .set({ status: "building" })
+    .where(and(eq(deploymentsTable.id, depId), eq(deploymentsTable.status, "queued")))
+    .returning({ id: deploymentsTable.id });
+  if (claimed.length === 0) {
+    await settleIfCanceled(depId, project.id);
+    await finalizeDeploymentLogs(depId);
+    return;
+  }
+  publishServiceChanged(project.id);
   await setService(project.id, { status: "building" });
 
   try {
@@ -729,8 +869,12 @@ async function runDeployment(depId: string): Promise<void> {
               `build method. Update the agent (reissue the install command from the ` +
               `server's actions menu).`,
           );
-          await setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-          await setService(project.id, { status: "error" });
+          await commitOutcome(
+            depId,
+            project.id,
+            { status: "error", buildDurationMs: Date.now() - started },
+            { status: "error" },
+          );
           return;
         }
       } catch (e) {
@@ -739,8 +883,12 @@ async function runDeployment(depId: string): Promise<void> {
           "error",
           `Agent unavailable: ${e instanceof Error ? e.message : String(e)}`,
         );
-        await setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-        await setService(project.id, { status: "error" });
+        await commitOutcome(
+          depId,
+          project.id,
+          { status: "error", buildDurationMs: Date.now() - started },
+          { status: "error" },
+        );
         return;
       }
     }
@@ -957,46 +1105,65 @@ async function runDeployment(depId: string): Promise<void> {
     // `agentOutcome` is always set by the time we get here.
     const buildDurationMs = Date.now() - started;
     if (agentOutcome === "agent") {
-      await setDep(depId, {
-        status: "ready",
-        readyAt: nowIso(),
-        buildDurationMs,
-        commitSha: commitSha || dep.commitSha,
-      });
-      await setService(project.id, {
-        status: "active",
-        // No domain ⇒ dep.url is "" ⇒ null productionUrl (the container ran but
-        // is unrouted until a domain is added back).
-        ...(dep.environment === "production" ? { productionUrl: dep.url || null } : {}),
-      });
-      log(
+      // commitOutcome's CAS discards this success if a "Stop build" already
+      // claimed the row (settling the service to idle); the ready log + the
+      // data-migration hook then run ONLY when the outcome actually applied.
+      const applied = await commitOutcome(
         depId,
-        "success",
-        dep.url
-          ? `Deployment ready at ${dep.url}`
-          : "Deployment ready (no domain — add one to route traffic)",
+        project.id,
+        {
+          status: "ready",
+          readyAt: nowIso(),
+          buildDurationMs,
+          commitSha: commitSha || dep.commitSha,
+        },
+        {
+          status: "active",
+          // No domain ⇒ dep.url is "" ⇒ null productionUrl (the container ran but
+          // is unrouted until a domain is added back).
+          ...(dep.environment === "production" ? { productionUrl: dep.url || null } : {}),
+        },
       );
-      // If this PRODUCTION deploy landed on a NEW server after a move, copy the data
-      // across now that the fresh stack + empty volumes exist on the new host.
-      // Gated on production: a PREVIEW deploy runs on an ephemeral host/stack and
-      // must never consume the migration marker or tear down the old production
-      // host. No-ops when there's no pending migration. Errors are surfaced into the
-      // deploy log but never fail the (already-successful) deploy.
-      if (dep.environment === "production") {
-        await completePendingServiceMigration(project.id, (level, text) =>
-          log(depId, level, text),
-        ).catch((e) =>
-          log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
+      if (applied) {
+        log(
+          depId,
+          "success",
+          dep.url
+            ? `Deployment ready at ${dep.url}`
+            : "Deployment ready (no domain — add one to route traffic)",
         );
+        // If this PRODUCTION deploy landed on a NEW server after a move, copy the
+        // data across now that the fresh stack + empty volumes exist on the new
+        // host. Gated on production: a PREVIEW deploy runs on an ephemeral
+        // host/stack and must never consume the migration marker or tear down the
+        // old production host. No-ops when there's no pending migration. Errors are
+        // surfaced into the deploy log but never fail the (already-successful)
+        // deploy.
+        if (dep.environment === "production") {
+          await completePendingServiceMigration(project.id, (level, text) =>
+            log(depId, level, text),
+          ).catch((e) =>
+            log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
+          );
+        }
       }
     } else {
-      await setDep(depId, { status: "error", buildDurationMs });
-      await setService(project.id, { status: "error" });
+      await commitOutcome(
+        depId,
+        project.id,
+        { status: "error", buildDurationMs },
+        { status: "error" },
+      );
     }
   } catch (e) {
     log(depId, "error", e instanceof Error ? e.message : String(e));
-    await setDep(depId, { status: "error", buildDurationMs: Date.now() - started });
-    await setService(project.id, { status: "error" });
+    // A cancel that raced the failure wins: commitOutcome's CAS keeps `canceled`.
+    await commitOutcome(
+      depId,
+      project.id,
+      { status: "error", buildDurationMs: Date.now() - started },
+      { status: "error" },
+    );
   } finally {
     // GUARANTEED final flush (PLAN §6 Decision 18): every deploy end/error path —
     // success, build failure, agent-unavailable, a thrown error, or an early
@@ -1093,32 +1260,48 @@ async function finishComposeStack(
   const buildDurationMs = Date.now() - started;
   // No domain ⇒ no URL: the stack ran but is unrouted until a domain is added.
   const url = domain ? `https://${domain}` : "";
+  // commitOutcome honors a "Stop build" pressed while the stack came up (covers
+  // every finishComposeStack caller: success, agent-too-old, unreachable-agent):
+  // its CAS keeps the row `canceled` and settles the service to idle, and the
+  // follow-up logs run ONLY when the outcome actually applied.
   if (running) {
-    await setDep(depId, { status: "ready", readyAt: nowIso(), buildDurationMs });
-    await setService(project.id, {
-      status: "active",
-      ...(environment === "production" ? { productionUrl: url || null } : {}),
-    });
-    log(
+    const applied = await commitOutcome(
       depId,
-      "success",
-      url
-        ? `Deployment ready at ${url}`
-        : "Deployment ready (no domain — add one to route traffic)",
+      project.id,
+      { status: "ready", readyAt: nowIso(), buildDurationMs },
+      {
+        status: "active",
+        ...(environment === "production" ? { productionUrl: url || null } : {}),
+      },
     );
-    // Same post-success data-migration hook as the single-image path — production
-    // only (a preview must not consume the marker or tear down the old host).
-    if (environment === "production") {
-      await completePendingServiceMigration(project.id, (level, text) =>
-        log(depId, level, text),
-      ).catch((e) =>
-        log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
+    if (applied) {
+      log(
+        depId,
+        "success",
+        url
+          ? `Deployment ready at ${url}`
+          : "Deployment ready (no domain — add one to route traffic)",
       );
+      // Same post-success data-migration hook as the single-image path — production
+      // only (a preview must not consume the marker or tear down the old host).
+      if (environment === "production") {
+        await completePendingServiceMigration(project.id, (level, text) =>
+          log(depId, level, text),
+        ).catch((e) =>
+          log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
+        );
+      }
     }
   } else {
-    await setDep(depId, { status: "error", buildDurationMs });
-    await setService(project.id, { status: "error" });
-    log(depId, "error", "Stack did not reach a running state");
+    if (
+      await commitOutcome(
+        depId,
+        project.id,
+        { status: "error", buildDurationMs },
+        { status: "error" },
+      )
+    )
+      log(depId, "error", "Stack did not reach a running state");
   }
 }
 

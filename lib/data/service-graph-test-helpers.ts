@@ -116,7 +116,8 @@ export async function seedService(
   return project.id;
 }
 
-/** Seed a deployment row for a project. */
+/** Seed a deployment row for a project. `serverId` denormalizes the owning server
+ *  onto the row (what the deploy queue drains on) — omit to leave it null. */
 export async function seedDeployment(
   db: TestDb,
   opts: {
@@ -124,6 +125,7 @@ export async function seedDeployment(
     serviceId: string;
     status?: Deployment["status"];
     createdAt?: string;
+    serverId?: string;
   },
 ): Promise<void> {
   const dep: Deployment = {
@@ -141,7 +143,9 @@ export async function seedDeployment(
     buildDurationMs: null,
     creator: "Owner",
   };
-  await db.insert(deploymentsTable).values(deploymentToRow(dep));
+  await db
+    .insert(deploymentsTable)
+    .values({ ...deploymentToRow(dep), serverId: opts.serverId ?? null });
 }
 
 export { TEAM_A, USER_1 };

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Check, Globe, Users } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
 
 export interface TeamOption {
@@ -44,7 +44,9 @@ export function ServerTeamAccess({
 
   return (
     <div className="space-y-2">
-      <Label>Team access</Label>
+      <FieldLabel info="Which teams are allowed to deploy to this server.">
+        Team access
+      </FieldLabel>
       <div className="grid grid-cols-2 gap-2">
         <AccessOption
           icon={Globe}

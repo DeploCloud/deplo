@@ -61,6 +61,8 @@ export function buildConfigFor(overrides: Partial<BuildConfig> = {}): BuildConfi
       ...overrides.methodSettings,
     },
     rootDirectory: "./",
+    includeFilesOutsideRoot: true,
+    skipUnchangedDeployments: false,
     installCommand: "",
     buildCommand: "",
     outputDirectory: "",
@@ -92,6 +94,20 @@ export function normalizeBuildConfig(build: BuildConfig): BuildConfig {
   const legacyMethod = normalized.buildMethod as string;
   if (legacyMethod === "heroku" || legacyMethod === "paketo") {
     normalized = { ...normalized, buildMethod: "nixpacks" };
+  }
+
+  // The root-directory build toggles were added later; a config read before they
+  // existed (or a partial fixture) may lack them. Seed the shipping defaults so
+  // every normalized config carries them (whole repo in context; don't skip).
+  if (
+    normalized.includeFilesOutsideRoot == null ||
+    normalized.skipUnchangedDeployments == null
+  ) {
+    normalized = {
+      ...normalized,
+      includeFilesOutsideRoot: normalized.includeFilesOutsideRoot ?? true,
+      skipUnchangedDeployments: normalized.skipUnchangedDeployments ?? false,
+    };
   }
 
   if (normalized.buildMethod && normalized.methodSettings) return normalized;

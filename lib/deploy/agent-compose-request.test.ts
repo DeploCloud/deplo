@@ -10,6 +10,8 @@ function devBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
     buildMethod: "dockerfile",
     methodSettings: {},
     rootDirectory: "",
+    includeFilesOutsideRoot: true,
+    skipUnchangedDeployments: false,
     installCommand: "",
     buildCommand: "",
     outputDirectory: "",

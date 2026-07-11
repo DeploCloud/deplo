@@ -381,6 +381,15 @@ export interface Server {
    * Editable post-install from Settings → Servers; gated by `manage_infra`.
    */
   allTeams: boolean;
+  /**
+   * How many deployments this server runs concurrently — the per-server slot count
+   * the deploy queue enforces (the Coolify `concurrent_builds` analogue). 1 (the
+   * default a server is born with) = strict serialization: one deploy at a time on
+   * this host, deploys on other servers still run in parallel. A same-service
+   * deploy never overlaps regardless of this value. Editable from Settings →
+   * Servers (instance-admin), clamped to >= 1.
+   */
+  deployConcurrency: number;
   createdAt: string;
   /**
    * Agent trust material — present once a server is provisioned (Part B). Absent
@@ -540,6 +549,19 @@ export interface BuildConfig {
    * settings UI (the builders auto-detect them). New services default them empty.
    */
   rootDirectory: string;
+  /**
+   * Include files OUTSIDE the root directory in the build context. Default true —
+   * the whole repository is available to the build (monorepo packages shared
+   * across apps resolve). When false, the build sees only the root-directory
+   * subtree. Physical enforcement of the build context is agent-side.
+   */
+  includeFilesOutsideRoot: boolean;
+  /**
+   * Skip an auto-deploy when an inbound push changed nothing inside the root
+   * directory. Default false. Gates git push-triggered deploys only — a manual
+   * redeploy always runs regardless.
+   */
+  skipUnchangedDeployments: boolean;
   installCommand: string;
   buildCommand: string;
   outputDirectory: string;

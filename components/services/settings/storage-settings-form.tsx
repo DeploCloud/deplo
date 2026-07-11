@@ -7,12 +7,12 @@ import { Save } from "lucide-react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { VolumeFields } from "@/components/services/volume-fields";
 import { UnsavedChangesGuard } from "@/components/services/unsaved-changes-guard";
 import { DirtyHint } from "@/components/services/settings/settings-shared";
@@ -155,11 +155,10 @@ export function StorageSettingsForm({
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Volumes</CardTitle>
-          <CardDescription>
-            Persistent named volumes mounted into your container. Data survives
-            redeploys.
-          </CardDescription>
+          <CardTitle className="flex w-fit items-center gap-2 text-base">
+            Volumes
+            <InfoTip content="Persistent named volumes mounted into your container. Data survives redeploys." />
+          </CardTitle>
         </CardHeader>
         {isComposeStack ? (
           <CardContent>

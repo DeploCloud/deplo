@@ -32,6 +32,7 @@ function provisioningServer(over: Partial<Server> = {}): Server {
     memoryUsage: 0,
     diskUsage: 0,
     allTeams: true,
+    deployConcurrency: 1,
     createdAt: new Date("2020-01-01").toISOString(),
     bootstrap: stored,
     ...over,

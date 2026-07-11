@@ -18,10 +18,10 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  CardDescription,
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { InfoTip } from "@/components/ui/info-tip";
 import { listAllServers, listAllServerTeamIds } from "@/lib/data/servers";
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { isInstanceAdmin } from "@/lib/membership";
@@ -110,6 +110,7 @@ function ServerCard({
               teams={teams}
               accessAllTeams={server.allTeams}
               accessTeamIds={accessTeamIds}
+              deployConcurrency={server.deployConcurrency}
             />
           </div>
         </div>
@@ -198,15 +199,22 @@ export default async function ServersPage(
       />
 
       <Card>
-        <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
           <div className="space-y-1.5">
-            <CardTitle>Add a server</CardTitle>
-            <CardDescription>
-              Start with <strong>this host</strong>: add it (use its IP), then run
-              the one-time install command it gives you here on the box to install
-              the agent. Add more Linux hosts the same way. The agent calls home and
-              provisions itself — Deplo never needs SSH access to your servers.
-            </CardDescription>
+            <CardTitle className="flex w-fit items-center gap-2">
+              Add a server
+              <InfoTip
+                content={
+                  <>
+                    Start with <strong>this host</strong>: add it (use its IP),
+                    then run the one-time install command it gives you here on
+                    the box to install the agent. Add more Linux hosts the same
+                    way. The agent calls home and provisions itself — Deplo never
+                    needs SSH access to your servers.
+                  </>
+                }
+              />
+            </CardTitle>
           </div>
           <AddServer autoOpen={autoOpenServer} teams={teams} />
         </CardHeader>

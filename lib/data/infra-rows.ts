@@ -85,6 +85,7 @@ const SERVER_FIELDS = {
   memoryUsage: true,
   diskUsage: true,
   allTeams: true,
+  deployConcurrency: true,
   createdAt: true,
   agent: true,
   bootstrap: true,
@@ -110,6 +111,7 @@ export function serverToRow(s: Server): ServerInsert {
     memoryUsage: s.memoryUsage,
     diskUsage: s.diskUsage,
     allTeams: s.allTeams,
+    deployConcurrency: s.deployConcurrency,
     // Flattened ServerAgent (NULL columns when not yet provisioned).
     agentPort: s.agent?.port ?? null,
     agentCertFingerprint: s.agent?.certFingerprint ?? null,
@@ -147,6 +149,8 @@ export function assembleServer(row: ServerRow): Server {
     memoryUsage: row.memoryUsage,
     diskUsage: row.diskUsage,
     allTeams: row.allTeams,
+    // NULL-safe: rows created before the column default to strict serialization.
+    deployConcurrency: row.deployConcurrency ?? 1,
     createdAt: row.createdAt,
   };
   if (row.agentPort !== null) {

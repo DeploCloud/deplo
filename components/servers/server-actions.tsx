@@ -10,6 +10,7 @@ import {
   ServerCog,
   CircleFadingArrowUp,
   Users,
+  Gauge,
 } from "lucide-react";
 import {
   Dialog,
@@ -28,6 +29,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
@@ -64,6 +67,7 @@ export function ServerActions({
   teams,
   accessAllTeams,
   accessTeamIds,
+  deployConcurrency,
 }: {
   serverId: string;
   serverName: string;
@@ -80,6 +84,8 @@ export function ServerActions({
   /** This server's current access scope. */
   accessAllTeams: boolean;
   accessTeamIds: string[];
+  /** How many deployments this server runs at once (the deploy-queue slot count). */
+  deployConcurrency: number;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -91,6 +97,8 @@ export function ServerActions({
     allTeams: accessAllTeams,
     teamIds: accessTeamIds,
   });
+  const [concurrencyOpen, setConcurrencyOpen] = React.useState(false);
+  const [concurrency, setConcurrency] = React.useState(String(deployConcurrency));
 
   function reissue() {
     startTransition(async () => {
@@ -169,6 +177,38 @@ export function ServerActions({
         access.allTeams
           ? `${serverName} is now available to all teams`
           : `${serverName} team access updated`,
+      );
+      router.refresh();
+    });
+  }
+
+  function openConcurrency() {
+    setConcurrency(String(deployConcurrency));
+    setConcurrencyOpen(true);
+  }
+
+  function saveConcurrency() {
+    const n = Number(concurrency);
+    if (!Number.isInteger(n) || n < 1 || n > 50) {
+      toast.error("Enter a whole number between 1 and 50");
+      return;
+    }
+    startTransition(async () => {
+      const res = await gqlAction<{ setServerDeployConcurrency: { id: string } }>(
+        `mutation SetServerDeployConcurrency($id: String!, $concurrency: Int!) {
+          setServerDeployConcurrency(id: $id, concurrency: $concurrency) { id }
+        }`,
+        { id: serverId, concurrency: n },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setConcurrencyOpen(false);
+      toast.success(
+        n === 1
+          ? `${serverName} runs one deploy at a time`
+          : `${serverName} runs up to ${n} deploys at once`,
       );
       router.refresh();
     });
@@ -256,6 +296,23 @@ export function ServerActions({
               >
                 <Users className="size-4" />
                 Team access
+              </DropdownMenuItem>
+            </SimpleTooltip>
+          ) : null}
+          {canManageInfra ? (
+            <SimpleTooltip
+              content="How many deployments this server runs at once"
+              side="left"
+            >
+              <DropdownMenuItem
+                onSelect={(e: Event) => {
+                  e.preventDefault();
+                  openConcurrency();
+                }}
+                disabled={pending}
+              >
+                <Gauge className="size-4" />
+                Build concurrency
               </DropdownMenuItem>
             </SimpleTooltip>
           ) : null}
@@ -351,6 +408,53 @@ export function ServerActions({
             </Button>
             <Button onClick={() => saveAccess()} disabled={pending}>
               {pending ? "Saving…" : "Save access"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit per-server deploy concurrency (the deploy-queue slot count). */}
+      <Dialog open={concurrencyOpen} onOpenChange={setConcurrencyOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gauge className="size-4" />
+              Build concurrency for {serverName}
+            </DialogTitle>
+            <DialogDescription>
+              How many deployments this server runs at the same time. Extra deploys
+              wait in a queue and start as slots free up; deploys on other servers
+              are unaffected and run in parallel.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <FieldLabel
+              htmlFor="deploy-concurrency"
+              info="1 means one deploy at a time on this server (the safe default). Two deploys of the same service never run at once regardless of this value."
+            >
+              Concurrent deployments
+            </FieldLabel>
+            <Input
+              id="deploy-concurrency"
+              type="number"
+              min={1}
+              max={50}
+              value={concurrency}
+              onChange={(e) => setConcurrency(e.target.value)}
+              disabled={pending}
+              className="w-28"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConcurrencyOpen(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => saveConcurrency()} disabled={pending}>
+              {pending ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

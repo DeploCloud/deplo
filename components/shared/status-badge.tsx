@@ -61,6 +61,35 @@ const COLORS: Record<string, string> = {
 
 const PULSE = new Set(["building", "queued", "provisioning", "stopping"]);
 
+// Maps each status to a translucent Badge variant, used when a caller opts into
+// `tinted` (e.g. a green "Online" chip). Mirrors the hues of COLORS: green =
+// healthy, amber = in-progress, red = failure, grey = off-but-healthy. Callers
+// that don't pass `tinted` keep the plain outline badge, so nothing else moves.
+const VARIANTS: Record<string, "success" | "warning" | "destructive" | "muted"> = {
+  ready: "success",
+  running: "success",
+  online: "success",
+  valid: "success",
+  cloudflare: "success",
+  connected: "success",
+  active: "success",
+  success: "success",
+  building: "warning",
+  queued: "warning",
+  stopping: "warning",
+  provisioning: "warning",
+  pending: "warning",
+  unverified: "warning",
+  error: "destructive",
+  failed: "destructive",
+  misconfigured: "destructive",
+  offline: "destructive",
+  never: "muted",
+  idle: "muted",
+  stopped: "muted",
+  canceled: "muted",
+};
+
 export function StatusDot({
   status,
   className,
@@ -99,12 +128,27 @@ const LABELS: Record<string, string> = {
   active: "Running",
 };
 
-export function StatusBadge({ status }: { status: AnyStatus }) {
+export function StatusBadge({
+  status,
+  tinted,
+  labels,
+}: {
+  status: AnyStatus;
+  /**
+   * Fill the badge with a translucent, status-coloured background (per
+   * {@link VARIANTS}) instead of the default outline — e.g. a green "Online"
+   * chip. Off by default so existing call sites are unaffected.
+   */
+  tinted?: boolean;
+  /** Per-status label overrides merged over the defaults, e.g. `{ active: "Online" }`. */
+  labels?: Record<string, string>;
+}) {
   const key = String(status);
-  const label = LABELS[key] ?? key.replace(/^\w/, (c) => c.toUpperCase());
+  const label =
+    labels?.[key] ?? LABELS[key] ?? key.replace(/^\w/, (c) => c.toUpperCase());
   return (
     <Badge
-      variant="outline"
+      variant={tinted ? VARIANTS[key] ?? "muted" : "outline"}
       className={cn("gap-1.5 capitalize", PULSE.has(key) && "animate-pulse")}
     >
       <StatusDot status={status} />

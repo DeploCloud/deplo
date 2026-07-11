@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Accordion,
@@ -196,7 +196,12 @@ export function DomainConfigFields({
     <>
       {isCompose && (
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-service`}>Service</Label>
+          <FieldLabel
+            htmlFor={`${idPrefix}-service`}
+            info="Which compose service this domain routes to."
+          >
+            Service
+          </FieldLabel>
           <Select
             value={state.service}
             onValueChange={(v) => set("service", v)}
@@ -212,14 +217,20 @@ export function DomainConfigFields({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-muted-foreground">
-            Which compose service this domain routes to.
-          </p>
         </div>
       )}
 
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-port`}>Service port</Label>
+        <FieldLabel
+          htmlFor={`${idPrefix}-port`}
+          info={
+            isCompose
+              ? "The container port of the selected service to route to."
+              : "The container port this domain routes to. Defaults to the service's port."
+          }
+        >
+          Service port
+        </FieldLabel>
         <Input
           id={`${idPrefix}-port`}
           type="number"
@@ -230,11 +241,6 @@ export function DomainConfigFields({
           placeholder="e.g. 8080"
           className="font-mono text-sm"
         />
-        <p className="text-xs text-muted-foreground">
-          {isCompose
-            ? "The container port of the selected service to route to."
-            : "The container port this domain routes to. Defaults to the service's port."}
-        </p>
       </div>
 
       <Accordion type="single" collapsible>
@@ -242,7 +248,12 @@ export function DomainConfigFields({
           <AccordionTrigger className="py-2">Advanced settings</AccordionTrigger>
           <AccordionContent className="space-y-4 pt-1 text-foreground">
             <div className="space-y-2">
-              <Label htmlFor={`${idPrefix}-cert`}>Certificate provider</Label>
+              <FieldLabel
+                htmlFor={`${idPrefix}-cert`}
+                info="The source of this domain's TLS certificate. Choosing None serves the domain over plain HTTP with no TLS."
+              >
+                Certificate provider
+              </FieldLabel>
               <Select
                 value={state.certProvider}
                 onValueChange={(v) => set("certProvider", v as CertProvider)}
@@ -274,12 +285,20 @@ export function DomainConfigFields({
                   disabled={noCert}
                   onCheckedChange={(c) => set("manualEntrypoint", c === true)}
                 />
-                <Label
+                <FieldLabel
                   htmlFor={`${idPrefix}-manual-ep`}
                   className="cursor-pointer font-normal"
+                  info={
+                    <>
+                      The proxy entrypoint this domain binds to —{" "}
+                      <code className="font-mono">web</code> (:80) or{" "}
+                      <code className="font-mono">websecure</code> (:443). Leave
+                      off to derive it from the certificate provider.
+                    </>
+                  }
                 >
                   Set entrypoint manually
-                </Label>
+                </FieldLabel>
               </div>
               {noCert ? (
                 <p className="text-xs text-muted-foreground">
@@ -311,12 +330,15 @@ export function DomainConfigFields({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor={`${idPrefix}-path`}>
+              <FieldLabel
+                htmlFor={`${idPrefix}-path`}
+                info="Only requests under this path are routed to this target. Leave blank to route the whole host."
+              >
                 Internal path{" "}
                 <span className="text-xs font-normal text-muted-foreground">
                   (optional)
                 </span>
-              </Label>
+              </FieldLabel>
               <Input
                 id={`${idPrefix}-path`}
                 value={state.path}
@@ -324,10 +346,6 @@ export function DomainConfigFields({
                 placeholder="/api"
                 className="font-mono text-sm"
               />
-              <p className="text-xs text-muted-foreground">
-                Only requests under this path are routed to this target. Leave
-                blank to route the whole host.
-              </p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -337,9 +355,16 @@ export function DomainConfigFields({
                 disabled={!hasPath}
                 onCheckedChange={(c) => set("stripPath", c === true)}
               />
-              <Label
+              <FieldLabel
                 htmlFor={`${idPrefix}-strip`}
                 className="cursor-pointer font-normal"
+                info={
+                  <>
+                    Removes the internal path prefix from the request before
+                    forwarding, so the target receives the path without it
+                    (Traefik <code className="font-mono">stripprefix</code>).
+                  </>
+                }
               >
                 Strip path before forwarding
                 {!hasPath && (
@@ -347,16 +372,19 @@ export function DomainConfigFields({
                     (set an internal path first)
                   </span>
                 )}
-              </Label>
+              </FieldLabel>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor={`${idPrefix}-middlewares`}>
+              <FieldLabel
+                htmlFor={`${idPrefix}-middlewares`}
+                info="Comma-separated Traefik middlewares applied in order. Each must already be defined on the proxy."
+              >
                 Middlewares{" "}
                 <span className="text-xs font-normal text-muted-foreground">
                   (optional)
                 </span>
-              </Label>
+              </FieldLabel>
               <Input
                 id={`${idPrefix}-middlewares`}
                 value={state.middlewares}
@@ -364,10 +392,6 @@ export function DomainConfigFields({
                 placeholder="redirect-https, secure-headers@file, rate-limit, auth@file, compress"
                 className="font-mono text-sm"
               />
-              <p className="text-xs text-muted-foreground">
-                Comma-separated Traefik middlewares applied in order. Each must
-                already be defined on the proxy.
-              </p>
             </div>
           </AccordionContent>
         </AccordionItem>

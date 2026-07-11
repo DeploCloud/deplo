@@ -82,7 +82,9 @@ path** (see Persistence). Deploy execution is the Go agent over gRPC/mTLS.
   `*.test.ts` glob). `server-only-shim.cjs` no-ops the `server-only` guard.
 - **DB (drizzle-kit, needs `DEPLO_DATABASE_URL`):** `bun run db:push` (dev, apply directly),
   `db:generate` (emit SQL + snapshot + `_journal.json` — commit all three; tests replay the
-  journal), `db:migrate` (prod). Migrations are **not** auto-applied at boot.
+  journal), `db:migrate` (prod). Migrations **auto-apply at boot** via the `instrumentation.ts`
+  hook (`lib/db/migrate.ts` → Drizzle migrator, idempotent, re-throws on failure); `db:migrate`
+  stays available to apply them out-of-band.
 
 ## API layer (Pothos + yoga)
 

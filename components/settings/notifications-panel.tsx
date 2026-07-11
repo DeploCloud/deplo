@@ -8,7 +8,6 @@ import { DiscordIcon } from "@/components/shared/brand-icons";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -17,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { NotificationEvent, NotificationSettings } from "@/lib/types";
 
@@ -129,14 +129,11 @@ export function NotificationsPanel({
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex w-fit items-center gap-2 text-base">
             <Bell className="size-4" />
             Alert channels
+            <InfoTip content="Get notified about anomalies and important events through one or more channels." />
           </CardTitle>
-          <CardDescription>
-            Get notified about anomalies and important events through one or more
-            channels.
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {/* Browser push */}
@@ -144,6 +141,7 @@ export function NotificationsPanel({
             icon={<MonitorSmartphone className="size-4" />}
             title="Browser push"
             description="Desktop notifications in this browser."
+            titleInfo="Requires this browser's permission to show notifications, and only alerts this browser on this device."
             enabled={channels.push.enabled}
             onToggle={onTogglePush}
             onTest={testPush}
@@ -215,10 +213,10 @@ export function NotificationsPanel({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Alert on</CardTitle>
-          <CardDescription>
-            Which conditions trigger an alert across your enabled channels.
-          </CardDescription>
+          <CardTitle className="flex w-fit items-center gap-2 text-base">
+            Alert on
+            <InfoTip content="Which conditions trigger an alert across your enabled channels." />
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-1">
           {EVENT_ORDER.map((event) => (
@@ -248,6 +246,7 @@ export function NotificationsPanel({
 function ChannelRow({
   icon,
   title,
+  titleInfo,
   description,
   enabled,
   onToggle,
@@ -258,6 +257,7 @@ function ChannelRow({
 }: {
   icon: React.ReactNode;
   title: string;
+  titleInfo?: React.ReactNode;
   description: string;
   enabled: boolean;
   onToggle: (on: boolean) => void;
@@ -273,7 +273,10 @@ function ChannelRow({
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">{title}</p>
+          <div className="flex w-fit items-center gap-1.5">
+            <p className="text-sm font-medium">{title}</p>
+            {titleInfo != null && <InfoTip content={titleInfo} />}
+          </div>
           <p className="text-xs text-muted-foreground">{description}</p>
         </div>
         <Button

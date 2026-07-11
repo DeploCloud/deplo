@@ -16,13 +16,13 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -54,16 +54,13 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
 
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <div className="space-y-1.5">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex w-fit items-center gap-2 text-base">
             <Boxes className="size-4" />
             Container registries
+            <InfoTip content="Connect registries to pull private images and push built images. Credentials are encrypted at rest." />
           </CardTitle>
-          <CardDescription>
-            Connect registries to pull private images and push built images.
-            Credentials are encrypted at rest.
-          </CardDescription>
         </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
@@ -189,7 +186,9 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label>Type</Label>
+            <FieldLabel info="The registry provider. Selecting one sets the default host and a matching username placeholder.">
+              Type
+            </FieldLabel>
             <Select value={type} onValueChange={(v) => setType(v as RegistryType)}>
               <SelectTrigger>
                 <SelectValue />
@@ -204,7 +203,17 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Registry host</Label>
+            <FieldLabel
+              info={
+                <>
+                  Hostname of the registry to authenticate against, such as{" "}
+                  <code className="font-mono">ghcr.io</code>. Leave blank to use
+                  the selected provider&apos;s default host.
+                </>
+              }
+            >
+              Registry host
+            </FieldLabel>
             <Input
               value={registryUrl}
               onChange={(e) => setRegistryUrl(e.target.value)}
@@ -214,7 +223,9 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
           </div>
         </div>
         <div className="space-y-2">
-          <Label>Username</Label>
+          <FieldLabel info="The account name used to sign in to the selected registry.">
+            Username
+          </FieldLabel>
           <Input
             value={username}
             onChange={(e) => setUsername(e.target.value)}

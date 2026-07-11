@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { BuildMethodFields } from "@/components/services/build-method-fields";
 import { NodeVersionInput } from "@/components/services/node-version-input";
 import { DEFAULT_NODE_MAJOR, usesDefaultNodeMajor } from "@/lib/frameworks";
@@ -94,7 +94,9 @@ export function BuildConfigFields({
         <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
           {showBuildCommand && (
             <div className="space-y-2">
-              <Label>Build command</Label>
+              <FieldLabel info="Overrides the command that builds your app. Leave blank to let the builder detect it.">
+                Build command
+              </FieldLabel>
               <Input
                 className="font-mono text-xs"
                 placeholder="(auto-detected)"
@@ -103,16 +105,14 @@ export function BuildConfigFields({
                   setBuild((b) => ({ ...b, buildCommand: e.target.value }))
                 }
               />
-              <p className="text-xs text-muted-foreground">
-                Overrides the command that builds your app. Leave blank to let the
-                builder detect it.
-              </p>
             </div>
           )}
 
           {showStartCommand && (
             <div className="space-y-2">
-              <Label>Start command</Label>
+              <FieldLabel info="Overrides the command that starts your app inside the container.">
+                Start command
+              </FieldLabel>
               <Input
                 className="font-mono text-xs"
                 placeholder="(auto-detected)"
@@ -121,15 +121,24 @@ export function BuildConfigFields({
                   setBuild((b) => ({ ...b, startCommand: e.target.value }))
                 }
               />
-              <p className="text-xs text-muted-foreground">
-                Overrides the command that starts your app inside the container.
-              </p>
             </div>
           )}
 
           {showNodeVersion && (
             <div className="space-y-2">
-              <Label>Node.js version</Label>
+              <FieldLabel
+                info={
+                  <>
+                    Pins the Node.js major, kept in sync with the real Node
+                    releases.
+                    {usesDefaultNodeMajor(method)
+                      ? ` Leave blank to use the default (Node ${DEFAULT_NODE_MAJOR}).`
+                      : " Leave blank to auto-detect from your project."}
+                  </>
+                }
+              >
+                Node.js version
+              </FieldLabel>
               <NodeVersionInput
                 value={build.runtimeVersion}
                 onChange={(v) =>
@@ -141,12 +150,6 @@ export function BuildConfigFields({
                     : "Default (auto-detect)"
                 }
               />
-              <p className="text-xs text-muted-foreground">
-                Pins the Node.js major, kept in sync with the real Node releases.
-                {usesDefaultNodeMajor(method)
-                  ? ` Leave blank to use the default (Node ${DEFAULT_NODE_MAJOR}).`
-                  : " Leave blank to auto-detect from your project."}
-              </p>
             </div>
           )}
         </div>
@@ -154,7 +157,9 @@ export function BuildConfigFields({
 
       <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label>Container Port</Label>
+          <FieldLabel info="The port your app listens on inside the container (Traefik routes here).">
+            Container Port
+          </FieldLabel>
           <Input
             type="number"
             inputMode="numeric"
@@ -163,10 +168,6 @@ export function BuildConfigFields({
             onChange={(e) => onPortChange(e.target.value)}
             onBlur={onPortBlur}
           />
-          <p className="text-xs text-muted-foreground">
-            The port your app listens on inside the container (Traefik routes
-            here).
-          </p>
         </div>
       </div>
     </div>

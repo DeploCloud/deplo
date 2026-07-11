@@ -25,6 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InfoTip } from "@/components/ui/info-tip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -65,11 +66,10 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-medium">API Tokens</h3>
-          <p className="text-sm text-muted-foreground">
-            Tokens authenticate the Deplo CLI and API. Treat them like
-            passwords.
-          </p>
+          <h3 className="flex w-fit items-center gap-2 text-sm font-medium">
+            API Tokens
+            <InfoTip content="Tokens authenticate the Deplo CLI and API. Treat them like passwords." />
+          </h3>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>

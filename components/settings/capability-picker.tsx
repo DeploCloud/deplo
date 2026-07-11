@@ -9,8 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { ALL_CAPABILITIES, type Capability, type Role } from "@/lib/types";
 import { CAPABILITY_META, CAPABILITY_PRESETS } from "@/lib/membership-shared";
 
@@ -62,7 +62,9 @@ export function CapabilityPicker({
   return (
     <div className="space-y-3">
       <div className="space-y-2">
-        <Label>Role</Label>
+        <FieldLabel info="A role is a preset. Fine-tune the exact permissions below.">
+          Role
+        </FieldLabel>
         <Select value={role} onValueChange={(v) => pickRole(v as Role)}>
           <SelectTrigger>
             <SelectValue />
@@ -75,13 +77,12 @@ export function CapabilityPicker({
             ))}
           </SelectContent>
         </Select>
-        <p className="text-xs text-muted-foreground">
-          A role is a preset. Fine-tune the exact permissions below.
-        </p>
       </div>
 
       <div className="space-y-2">
-        <Label>Permissions</Label>
+        <FieldLabel info="Fine-tune exactly what this role can do. Ticking or unticking a capability tailors the set without changing the role; view access is always on and can't be removed.">
+          Permissions
+        </FieldLabel>
         <div className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-2">
           {ALL_CAPABILITIES.map((cap) => {
             const checked = capabilities.includes(cap);

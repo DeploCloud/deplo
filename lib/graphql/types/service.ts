@@ -196,6 +196,9 @@ const BuildConfigInput = builder.inputType("BuildConfigInput", {
   fields: (t) => ({
     buildMethod: t.string({ required: false }),
     rootDir: t.string({ required: false }),
+    // Same names as BuildConfig, so remapBuildInput forwards them untouched.
+    includeFilesOutsideRoot: t.boolean({ required: false }),
+    skipUnchangedDeployments: t.boolean({ required: false }),
     installCommand: t.string({ required: false }),
     buildCommand: t.string({ required: false }),
     outputDir: t.string({ required: false }),
@@ -562,10 +565,8 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "deploy" },
     args: { id: t.arg.string({ required: true }) },
-    resolve: async (_r, { id }) => {
-      await cancelDeployment(id);
-      return true;
-    },
+    // Returns false if the deployment had already finished (nothing to stop).
+    resolve: (_r, { id }) => cancelDeployment(id),
   }),
   promoteDeployment: t.field({
     type: "Boolean",

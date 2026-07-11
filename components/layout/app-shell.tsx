@@ -2,12 +2,14 @@ import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { UpdateBanner } from "./update-banner";
 import { NavigationHistoryTracker } from "./navigation-history";
+import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
 import type { PublicUser, Team, TeamSummary } from "@/lib/types";
 
 export function AppShell({
   user,
   team,
   teams,
+  breadcrumb,
   capabilities,
   isAdmin,
   children,
@@ -15,6 +17,8 @@ export function AppShell({
   user: PublicUser;
   team: Team;
   teams: TeamSummary[];
+  /** Team snapshot for the topbar breadcrumb (folders/services/projects). */
+  breadcrumb: BreadcrumbGraph;
   /** Current member's capabilities — drives capability-gated nav visibility. */
   capabilities: string[];
   /** Instance admin — gates admin-only nav (the Users settings section). */
@@ -34,6 +38,7 @@ export function AppShell({
           user={user}
           team={team}
           teams={teams}
+          breadcrumb={breadcrumb}
           capabilities={capabilities}
           isAdmin={isAdmin}
         />

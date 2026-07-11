@@ -7,6 +7,7 @@ import { Rocket, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Card,
   CardContent,
@@ -120,7 +121,12 @@ export function RegisterForm({
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="reg-username">Username</Label>
+            <FieldLabel
+              htmlFor="reg-username"
+              info="Your public handle. Lowercase letters, numbers, - and _."
+            >
+              Username
+            </FieldLabel>
             <Input
               id="reg-username"
               value={form.username}
@@ -130,13 +136,15 @@ export function RegisterForm({
               minLength={3}
               maxLength={32}
             />
-            <p className="text-xs text-muted-foreground">
-              Your public handle. Lowercase letters, numbers, - and _.
-            </p>
           </div>
           {ownTeam && (
             <div className="space-y-2">
-              <Label htmlFor="reg-team">Team name</Label>
+              <FieldLabel
+                htmlFor="reg-team"
+                info="Must be unique across the instance."
+              >
+                Team name
+              </FieldLabel>
               <Input
                 id="reg-team"
                 value={form.teamName}
@@ -144,9 +152,6 @@ export function RegisterForm({
                 placeholder="Acme"
                 maxLength={80}
               />
-              <p className="text-xs text-muted-foreground">
-                Must be unique across the instance.
-              </p>
             </div>
           )}
           <div className="space-y-2">

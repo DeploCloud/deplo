@@ -1,11 +1,34 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { toast } from "sonner";
-import { Search, Lock, RefreshCw, Check } from "lucide-react";
+import {
+  Search,
+  Lock,
+  RefreshCw,
+  Check,
+  ChevronsUpDown,
+  Plus,
+  SlidersHorizontal,
+  Building2,
+  User as UserIcon,
+  ExternalLink,
+  GitBranch,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -13,7 +36,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import { FieldLabel } from "@/components/ui/info-tip";
+import { GitHubIcon } from "@/components/shared/brand-icons";
+import { useGithubConnect } from "@/components/services/github-connect-button";
+import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 import type { GithubRepoSummary } from "@/lib/github/app";
@@ -35,16 +61,76 @@ const REPO_SKELETON_WIDTHS = [
   "w-1/2",
 ];
 
+/** GitHub's per-installation "configure repository access" settings page. */
+function installationSettingsUrl(inst: GithubInstallationDTO): string {
+  return inst.accountType === "Organization"
+    ? `https://github.com/organizations/${inst.accountLogin}/settings/installations/${inst.installationId}`
+    : `https://github.com/settings/installations/${inst.installationId}`;
+}
+
+/** A round GitHub account avatar with an initials fallback if the image fails. */
+function AccountAvatar({
+  inst,
+  className,
+}: {
+  inst: GithubInstallationDTO;
+  className?: string;
+}) {
+  return (
+    <Avatar className={cn("size-5", className)}>
+      <AvatarImage src={inst.avatarUrl} alt="" />
+      <AvatarFallback className="text-[10px]">
+        {inst.accountLogin.slice(0, 2).toUpperCase()}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+/** The connect-your-first-App empty state, shown when no App is connected yet. */
+function ConnectPanel({
+  connect,
+  connecting,
+}: {
+  connect: () => void;
+  connecting: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
+      <GitHubIcon className="size-6 text-muted-foreground" />
+      <div className="space-y-1">
+        <p className="text-sm font-medium">Connect GitHub to pick a repo</p>
+        <p className="text-xs text-muted-foreground">
+          Deplo creates a GitHub App with only the permissions it needs, then you
+          pick which repositories it can access.
+        </p>
+      </div>
+      <Button type="button" size="sm" onClick={connect} disabled={connecting}>
+        <GitHubIcon className="size-4" />
+        {connecting ? "Redirecting…" : "Connect GitHub"}
+      </Button>
+    </div>
+  );
+}
+
 /**
- * Repo source picker for the new-project wizard: choose an installation, search
- * the repositories it can access, then pick a branch. Replaces pasting a raw
+ * Repo source picker for the GitHub deploy source (service settings + the
+ * new-service wizard): choose the connected account, search the repositories its
+ * App installation can access, then pick a branch. Replaces pasting a raw
  * repository URL  the URL is built from the chosen repo and cloned with the
  * App's installation token.
+ *
+ * The account switcher is ALWAYS rendered — even with zero connected Apps — so
+ * the layout never jumps and there's always an obvious path to connect or manage
+ * Apps. Once a repo is chosen the search list collapses to a compact "selected
+ * repo" card (Change reopens it), so the common already-configured case reads as
+ * a confirmation, not a wall of repositories. `manageHref`, when set, adds a
+ * "Manage connected apps" affordance linking to the team's GitHub settings.
  */
 export function GithubRepoPicker({
   installations,
   initial,
   onChange,
+  manageHref,
 }: {
   installations: GithubInstallationDTO[];
   /**
@@ -54,7 +140,10 @@ export function GithubRepoPicker({
    */
   initial?: { installationId?: string | null; fullName: string; branch: string };
   onChange: (value: GithubSelection | null) => void;
+  /** When set, show a "Manage connected apps" link pointing here (e.g. /settings/git). */
+  manageHref?: string;
 }) {
+  const { connect, pending: connecting } = useGithubConnect();
   const [installationId, setInstallationId] = React.useState(
     (initial?.installationId &&
       installations.some((i) => i.id === initial.installationId)
@@ -67,9 +156,16 @@ export function GithubRepoPicker({
   const [selected, setSelected] = React.useState<GithubRepoSummary | null>(null);
   const [branches, setBranches] = React.useState<string[]>([]);
   const [branch, setBranch] = React.useState("");
+  // Once a repo is chosen the list collapses to a compact "selected repo" summary;
+  // "Change" flips this back on to reveal the search + list again.
+  const [browsing, setBrowsing] = React.useState(false);
   // Apply the initial selection only against the first repo list we load for
   // the installation it belongs to; afterwards the user is in control.
   const seededRef = React.useRef(false);
+
+  const activeInstallation =
+    installations.find((i) => i.id === installationId) ?? null;
+  const hasInstallations = installations.length > 0;
 
   const loadRepos = React.useCallback(
     async (instId: string) => {
@@ -161,6 +257,7 @@ export function GithubRepoPicker({
 
   async function pickRepo(repo: GithubRepoSummary) {
     setSelected(repo);
+    setBrowsing(false);
     setBranch(repo.defaultBranch);
     setBranches([repo.defaultBranch]);
     await hydrateBranches(installationId, repo);
@@ -172,97 +269,272 @@ export function GithubRepoPicker({
 
   return (
     <div className="space-y-3">
-      {installations.length > 1 && (
-        <Select value={installationId} onValueChange={setInstallationId}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select an account" />
-          </SelectTrigger>
-          <SelectContent>
-            {installations.map((i) => (
-              <SelectItem key={i.id} value={i.id}>
-                {i.accountLogin}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search repositories…"
-          className="pl-9"
-        />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground"
-          onClick={() => loadRepos(installationId)}
-          aria-label="Refresh repositories"
+      {/* Account — always rendered so the layout is stable and there's always a
+          path to switch, connect, or manage Apps, even with none connected. */}
+      <div className="space-y-1.5">
+        <FieldLabel
+          className="text-sm font-medium"
+          info="The connected GitHub App / account whose repositories you deploy from. Switch accounts, connect another, or manage your connected apps."
         >
-          <RefreshCw className={cn("size-4", loadingRepos && "animate-spin")} />
-        </Button>
+          GitHub account
+        </FieldLabel>
+        <div className="flex flex-wrap items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 basis-64 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {activeInstallation ? (
+                  <>
+                    <AccountAvatar inst={activeInstallation} />
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {activeInstallation.accountLogin}
+                    </span>
+                    {activeInstallation.accountType === "Organization" ? (
+                      <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <UserIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <GitHubIcon className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      No connected apps
+                    </span>
+                  </>
+                )}
+                <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-64">
+              {hasInstallations && (
+                <>
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    Connected accounts
+                  </DropdownMenuLabel>
+                  {installations.map((i) => (
+                    <DropdownMenuItem
+                      key={i.id}
+                      onSelect={() => setInstallationId(i.id)}
+                      className="gap-2"
+                    >
+                      <AccountAvatar inst={i} />
+                      <span className="min-w-0 flex-1 truncate">
+                        {i.accountLogin}
+                      </span>
+                      {i.id === installationId && (
+                        <Check className="size-4 shrink-0 text-[var(--success)]" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem
+                onSelect={connect}
+                disabled={connecting}
+                className="gap-2"
+              >
+                <Plus className="size-4" />
+                {hasInstallations ? "Connect another account" : "Connect GitHub"}
+              </DropdownMenuItem>
+              {manageHref && (
+                <DropdownMenuItem asChild className="gap-2">
+                  <Link href={manageHref}>
+                    <SlidersHorizontal className="size-4" />
+                    Manage connected apps
+                  </Link>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {manageHref && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={manageHref}>
+                <SlidersHorizontal className="size-4" />
+                Manage connected apps
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
-        {loadingRepos ? (
-          REPO_SKELETON_WIDTHS.map((width, i) => (
-            <div
-              key={i}
-              className="flex w-full items-center gap-2 px-3 py-2"
-            >
-              <Skeleton className={cn("h-3.5", width)} />
+      {!hasInstallations ? (
+        <ConnectPanel connect={connect} connecting={connecting} />
+      ) : selected && !browsing ? (
+        // Chosen repo — a compact confirmation with its branch, so the common
+        // "already picked" case isn't a wall of repos. "Change" reopens the list.
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-accent/30 p-3">
+            {activeInstallation && (
+              <AccountAvatar inst={activeInstallation} className="size-8" />
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-medium">
+                  {selected.fullName}
+                </span>
+                {selected.private && (
+                  <Badge variant="secondary" className="gap-1 px-1.5 py-0">
+                    <Lock className="size-3" />
+                    Private
+                  </Badge>
+                )}
+              </div>
+              <p className="truncate text-xs text-muted-foreground">
+                {selected.updatedAt
+                  ? `Updated ${timeAgo(selected.updatedAt)}`
+                  : "Selected repository"}
+              </p>
             </div>
-          ))
-        ) : filtered.length === 0 ? (
-          <p className="p-4 text-center text-sm text-muted-foreground">
-            {repos.length === 0
-              ? "No repositories. Grant the App access to more repos on GitHub."
-              : "No repositories match your search."}
-          </p>
-        ) : (
-          filtered.map((repo) => (
-            <button
-              key={repo.fullName}
-              type="button"
-              onClick={() => pickRepo(repo)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
-                selected?.fullName === repo.fullName && "bg-accent",
-              )}
+            <a
+              href={selected.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open repository on GitHub"
+              className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
             >
-              <span className="flex-1 truncate font-mono text-xs">
-                {repo.fullName}
-              </span>
-              {repo.private && (
-                <Lock className="size-3.5 text-muted-foreground" />
-              )}
-              {selected?.fullName === repo.fullName && (
-                <Check className="size-4 text-[var(--success)]" />
-              )}
-            </button>
-          ))
-        )}
-      </div>
+              <ExternalLink className="size-4" />
+            </a>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setBrowsing(true)}
+            >
+              Change
+            </Button>
+          </div>
 
-      {selected && (
+          <div className="space-y-2">
+            <FieldLabel
+              className="text-sm font-medium"
+              info="The branch Deplo clones and deploys. New pushes to it can trigger a redeploy."
+            >
+              Branch
+            </FieldLabel>
+            <Select value={branch} onValueChange={setBranch}>
+              <SelectTrigger className="max-w-xs">
+                <span className="flex min-w-0 items-center gap-2">
+                  <GitBranch className="size-4 shrink-0 text-muted-foreground" />
+                  <SelectValue />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {branches.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      ) : (
         <div className="space-y-2">
-          <label className="text-sm font-medium">Branch</label>
-          <Select value={branch} onValueChange={setBranch}>
-            <SelectTrigger className="max-w-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {branches.map((b) => (
-                <SelectItem key={b} value={b}>
-                  {b}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center justify-between gap-2">
+            <FieldLabel
+              className="text-sm font-medium"
+              info="Search the repositories this GitHub App installation can access. Don't see one? Grant the App access to it on GitHub."
+            >
+              Repository
+            </FieldLabel>
+            {selected && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setBrowsing(false)}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search repositories…"
+              className="pl-9 pr-9"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground"
+              onClick={() => loadRepos(installationId)}
+              aria-label="Refresh repositories"
+            >
+              <RefreshCw className={cn("size-4", loadingRepos && "animate-spin")} />
+            </Button>
+          </div>
+
+          <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
+            {loadingRepos ? (
+              REPO_SKELETON_WIDTHS.map((width, i) => (
+                <div key={i} className="flex w-full items-center gap-2 px-3 py-2">
+                  <Skeleton className={cn("h-3.5", width)} />
+                </div>
+              ))
+            ) : filtered.length === 0 ? (
+              <div className="flex flex-col items-center gap-1.5 p-4 text-center">
+                <p className="text-sm text-muted-foreground">
+                  {repos.length === 0
+                    ? "No repositories accessible to this App."
+                    : "No repositories match your search."}
+                </p>
+                {repos.length === 0 && activeInstallation && (
+                  <a
+                    href={installationSettingsUrl(activeInstallation)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                  >
+                    Configure repository access on GitHub
+                    <ExternalLink className="size-3" />
+                  </a>
+                )}
+              </div>
+            ) : (
+              filtered.map((repo) => {
+                const isSelected = selected?.fullName === repo.fullName;
+                const owner = repo.fullName.split("/")[0];
+                return (
+                  <button
+                    key={repo.fullName}
+                    type="button"
+                    onClick={() => pickRepo(repo)}
+                    aria-pressed={isSelected}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                      isSelected && "bg-accent",
+                    )}
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="font-medium">{repo.name}</span>
+                      <span className="text-muted-foreground"> · {owner}</span>
+                    </span>
+                    {repo.private && (
+                      <Lock className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                    {repo.updatedAt && (
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {timeAgo(repo.updatedAt)}
+                      </span>
+                    )}
+                    {isSelected && (
+                      <Check className="size-4 shrink-0 text-[var(--success)]" />
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -3,19 +3,18 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Save, GitBranch, Container, FileText, Upload, Server as ServerIcon, Rocket } from "lucide-react";
+import { Save, GitBranch, Container, FileText, Upload, Server as ServerIcon, Rocket, ChevronDown } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -33,10 +32,10 @@ import {
   GithubRepoPicker,
   type GithubSelection,
 } from "@/components/services/github-repo-picker";
-import { GithubConnectButton } from "@/components/services/github-connect-button";
 import { UploadInput, type CurrentUpload } from "@/components/services/upload-input";
 import { UnsavedChangesGuard } from "@/components/services/unsaved-changes-guard";
 import { BuildConfigFields } from "@/components/services/build-config-fields";
+import { RootDirectoryFields } from "@/components/services/settings/root-directory-fields";
 import {
   GitDeployOptions,
   watchPathsToArray,
@@ -50,7 +49,7 @@ import { hasBlockingErrors, type LintDiagnostic } from "@/lib/deploy/compose-lin
 import type { GithubInstallationDTO } from "@/lib/data/github";
 import type { BuildConfig, DeploySource, GitRepo } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
-import { serverLabel, usesComposeStack } from "@/lib/utils";
+import { cn, serverLabel, usesComposeStack } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 
 const SOURCE_TABS: {
@@ -151,6 +150,13 @@ export function DeploymentSettingsForm({
   const [build, setBuild] = React.useState<BuildConfig>(initialBuild);
   const [autoDeploy, setAutoDeploy] = React.useState(initialAutoDeploy);
   const [pending, startTransition] = React.useTransition();
+  // The git deploy-trigger options are advanced and rarely changed, so the whole
+  // section is collapsed by default (a summary of the active trigger shows in the
+  // closed header).
+  const [triggerOpen, setTriggerOpen] = React.useState(false);
+  // The Root Directory now lives in a second collapsed "Additional options" panel
+  // of the Deploy Source card (advanced, rarely changed for a single-folder repo).
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
   // Compose stack (template / multi-service deploys). Lives as a source tab.
   const [compose, setCompose] = React.useState(initialCompose ?? "");
@@ -211,6 +217,19 @@ export function DeploymentSettingsForm({
   });
   const buildCardVisible = !isComposeStack && source !== "docker-image";
 
+  // A repo the deploy trigger + root directory can actually attach to: a plain
+  // Git URL, or a GitHub source once at least one App is connected (so a repo can
+  // be picked). Gates both advanced panels so neither shows before there's a repo.
+  const repoConfigVisible =
+    usesGitUrl || (usesGithubApp && installations.length > 0);
+
+  // Root Directory applies to source-bearing repo builds (git / GitHub) that
+  // materialise a tree: a compose stack builds its own images and a prebuilt
+  // Docker image has no tree to root into. (Upload also has a tree but isn't
+  // push-driven, so the skip-unchanged toggle would be inert — scope it to the
+  // repo sources where all three controls fully apply.)
+  const rootCardVisible = buildCardVisible && repoConfigVisible;
+
   // ── Per-section dirty tracking ──────────────────────────────────────────────
   // Each editable card keeps a snapshot of its last-saved value; it is "dirty"
   // when the live state diverges from that snapshot. Snapshots start at the
@@ -263,18 +282,55 @@ export function DeploymentSettingsForm({
       ? false
       : currentSourceKey !== savedSourceKey;
 
-  const currentBuildKey = React.useMemo(() => JSON.stringify(build), [build]);
+  // The build config drives TWO cards (Build & Output, Root Directory), so its
+  // dirty tracking is split by facet: each card's Unsaved-changes cue reflects
+  // only its own fields. Both cards persist the WHOLE build via updateServiceBuild,
+  // so a save from either advances BOTH snapshots (see saveBuild).
+  const currentBuildKey = React.useMemo(
+    () =>
+      JSON.stringify({
+        buildMethod: build.buildMethod,
+        methodSettings: build.methodSettings,
+        installCommand: build.installCommand,
+        buildCommand: build.buildCommand,
+        outputDirectory: build.outputDirectory,
+        startCommand: build.startCommand,
+        runtimeVersion: build.runtimeVersion,
+        port: build.port,
+      }),
+    [build],
+  );
+  const currentRootKey = React.useMemo(
+    () => JSON.stringify({ rootDirectory: build.rootDirectory }),
+    [build.rootDirectory],
+  );
   const [savedBuildKey, setSavedBuildKey] = React.useState(currentBuildKey);
+  const [savedRootKey, setSavedRootKey] = React.useState(currentRootKey);
   const buildDirty = currentBuildKey !== savedBuildKey;
+  const rootDirty = currentRootKey !== savedRootKey;
+
+  // The Deploy Source card now also hosts the Root Directory field, so its one
+  // Save button lights up for either a source edit or a root-directory edit.
+  const deploySourceCardDirty = sourceDirty || (rootCardVisible && rootDirty);
 
   // Only count the Build card's dirt toward the leave guard when its Save control
   // is actually on screen. The card unmounts for compose/docker-image sources —
   // without this gate an edit made before switching source could strand the guard
   // true with no visible button to clear it. The flag isn't lost: switching the
   // source back re-exposes the control and re-counts it.
-  const overallDirty = sourceDirty || (buildCardVisible && buildDirty);
+  const overallDirty =
+    sourceDirty ||
+    (buildCardVisible && buildDirty) ||
+    (rootCardVisible && rootDirty);
 
   function saveSource() {
+    // If only the root directory changed (the deploy source itself is untouched),
+    // persist just that — Root Directory moved into this card, so the single Save
+    // button commits it too, via its own build mutation.
+    if (!sourceDirty) {
+      if (rootCardVisible && rootDirty) saveRootDir();
+      return;
+    }
     // The Upload source is committed by the upload control (its own route),
     // not by this form — and saving source=upload with no archive would break
     // the next deploy. Block it here so the button can't strand the service.
@@ -348,6 +404,7 @@ export function DeploymentSettingsForm({
     // Snapshot the exact config being committed so the button greys out on
     // success (the async closure captured this render's key).
     const committedSourceKey = currentSourceKey;
+    const committedRootKey = currentRootKey;
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $input: UpdateSourceInput!) { updateServiceSource(id: $id, input: $input) { id } }`,
@@ -362,11 +419,26 @@ export function DeploymentSettingsForm({
           },
         },
       );
-      if (res.ok) {
-        setSavedSourceKey(committedSourceKey);
-        router.refresh();
-        toast.success("Deploy source saved");
-      } else toast.error(res.error);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setSavedSourceKey(committedSourceKey);
+      // Persist the root directory in the same round-trip when it also changed —
+      // it lives in this card now, so the single Save commits both facets.
+      if (rootCardVisible && rootDirty) {
+        const rootRes = await gqlAction(
+          `mutation($id: String!, $build: BuildConfigInput!) { updateServiceBuild(id: $id, build: $build) { id } }`,
+          { id: serviceId, build: { rootDir: build.rootDirectory } },
+        );
+        if (!rootRes.ok) {
+          toast.error(rootRes.error);
+          return;
+        }
+        setSavedRootKey(committedRootKey);
+      }
+      router.refresh();
+      toast.success("Deploy source saved");
     });
   }
 
@@ -410,32 +482,54 @@ export function DeploymentSettingsForm({
     });
   }
 
-  function saveBuild() {
-    const committedBuildKey = currentBuildKey;
+  // Persist a PARTIAL build config. updateServiceBuild merges field-by-field, so
+  // each card sends ONLY its own fields — saving one card never commits the
+  // other's pending edits (its dirty cue stays put). `onSaved` advances just that
+  // card's snapshot. NOTE: `settings` (methodSettings) fully REPLACES its row when
+  // present, so only the Build & Output card — which owns it — sends it.
+  function persistBuildPatch(
+    input: Record<string, unknown>,
+    onSaved: () => void,
+    successMessage: string,
+  ) {
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $build: BuildConfigInput!) { updateServiceBuild(id: $id, build: $build) { id } }`,
-        {
-          id: serviceId,
-          build: {
-            buildMethod: build.buildMethod,
-            settings: build.methodSettings,
-            installCommand: build.installCommand,
-            buildCommand: build.buildCommand,
-            outputDir: build.outputDirectory,
-            startCommand: build.startCommand,
-            rootDir: build.rootDirectory,
-            runtimeVersion: build.runtimeVersion,
-            port: build.port,
-          },
-        },
+        { id: serviceId, build: input },
       );
       if (res.ok) {
-        setSavedBuildKey(committedBuildKey);
+        onSaved();
         router.refresh();
-        toast.success("Build settings saved");
+        toast.success(successMessage);
       } else toast.error(res.error);
     });
+  }
+
+  function saveBuild() {
+    const committed = currentBuildKey;
+    persistBuildPatch(
+      {
+        buildMethod: build.buildMethod,
+        settings: build.methodSettings,
+        installCommand: build.installCommand,
+        buildCommand: build.buildCommand,
+        outputDir: build.outputDirectory,
+        startCommand: build.startCommand,
+        runtimeVersion: build.runtimeVersion,
+        port: build.port,
+      },
+      () => setSavedBuildKey(committed),
+      "Build settings saved",
+    );
+  }
+
+  function saveRootDir() {
+    const committed = currentRootKey;
+    persistBuildPatch(
+      { rootDir: build.rootDirectory },
+      () => setSavedRootKey(committed),
+      "Root directory saved",
+    );
   }
 
   function toggleAuto(v: boolean) {
@@ -456,10 +550,10 @@ export function DeploymentSettingsForm({
         {/* Deploy source */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Deploy Source</CardTitle>
-            <CardDescription>
-              Change how this service is deployed and which server runs it.
-            </CardDescription>
+            <CardTitle className="flex w-fit items-center gap-2 text-base">
+              Deploy Source
+              <InfoTip content="Change how this service is deployed and which server runs it." />
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Segmented control (app Tabs primitive, no panels — the
@@ -478,39 +572,32 @@ export function DeploymentSettingsForm({
               </TabsList>
             </Tabs>
 
-            {usesGithubApp &&
-              (installations.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
-                  <GitHubIcon className="size-6 text-muted-foreground" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">Connect GitHub to pick a repo</p>
-                    <p className="text-xs text-muted-foreground">
-                      Deplo creates a GitHub App with only the permissions it
-                      needs, then you pick which repositories it can access.
-                    </p>
-                  </div>
-                  <GithubConnectButton size="sm" />
-                </div>
-              ) : (
-                <GithubRepoPicker
-                  installations={installations}
-                  initial={
-                    initialSource === "github" && initialRepo
-                      ? {
-                          installationId: initialRepo.installationId,
-                          fullName: initialRepo.repo,
-                          branch: initialRepo.branch,
-                        }
-                      : undefined
-                  }
-                  onChange={setGhSelection}
-                />
-              ))}
+            {usesGithubApp && (
+              // Always render the picker — it owns the account switcher (with a
+              // Manage-connected-apps affordance) and its own connect empty state,
+              // so the layout stays put whether or not an App is connected yet.
+              <GithubRepoPicker
+                installations={installations}
+                manageHref="/settings/git"
+                initial={
+                  initialSource === "github" && initialRepo
+                    ? {
+                        installationId: initialRepo.installationId,
+                        fullName: initialRepo.repo,
+                        branch: initialRepo.branch,
+                      }
+                    : undefined
+                }
+                onChange={setGhSelection}
+              />
+            )}
 
             {usesGitUrl && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Repository URL</Label>
+                  <FieldLabel info="The Git repository URL to clone and deploy. The provider (GitHub, GitLab, Bitbucket) is detected from the host in the URL.">
+                    Repository URL
+                  </FieldLabel>
                   <div className="relative">
                     <GitHubIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -522,7 +609,16 @@ export function DeploymentSettingsForm({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Production Branch</Label>
+                  <FieldLabel
+                    info={
+                      <>
+                        The branch Deplo deploys from and watches for pushes.
+                        Defaults to <code className="font-mono">main</code>.
+                      </>
+                    }
+                  >
+                    Production Branch
+                  </FieldLabel>
                   <div className="relative">
                     <GitBranch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -536,26 +632,107 @@ export function DeploymentSettingsForm({
             )}
 
             {/* Git deploy options (trigger type, watch paths, submodules) — for
-                the GitHub App repo picker (once connected) and the plain Git URL. */}
-            {(usesGitUrl || (usesGithubApp && installations.length > 0)) && (
-              <div className="rounded-lg border border-border p-4">
-                <GitDeployOptions
-                  value={gitOptions}
-                  onChange={setGitOptions}
-                  disabled={pending}
-                />
+                the GitHub App repo picker (once connected) and the plain Git URL.
+                Collapsed by default; the closed header summarises the active
+                trigger so the setting is legible without expanding. */}
+            {repoConfigVisible && (
+              <div className="rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setTriggerOpen((v) => !v)}
+                  aria-expanded={triggerOpen}
+                  className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="font-medium">Deploy trigger</span>
+                    {!triggerOpen && (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {gitOptions.triggerType === "tag"
+                          ? "On new tag"
+                          : "On push to branch"}
+                        {watchPathsToArray(gitOptions.watchPaths).length > 0 &&
+                          " · path-filtered"}
+                        {gitOptions.submodules && " · submodules"}
+                      </span>
+                    )}
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "size-4 shrink-0 text-muted-foreground transition-transform",
+                      triggerOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+                {triggerOpen && (
+                  <div className="border-t border-border p-4">
+                    <GitDeployOptions
+                      value={gitOptions}
+                      onChange={setGitOptions}
+                      disabled={pending}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Additional options (Root Directory) — advanced, rarely changed for
+                a single-folder repo, so collapsed by default with the current root
+                shown in the closed header. Repo sources only (git / GitHub); a
+                compose stack or prebuilt image has no tree to root into. Saved by
+                this card's Save button alongside the source. */}
+            {rootCardVisible && (
+              <div className="rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setAdvancedOpen((v) => !v)}
+                  aria-expanded={advancedOpen}
+                  className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="font-medium">Additional options</span>
+                    {!advancedOpen && (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {build.rootDirectory &&
+                        build.rootDirectory !== "./" &&
+                        build.rootDirectory !== "."
+                          ? `Root: ${build.rootDirectory}`
+                          : "Root directory"}
+                      </span>
+                    )}
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "size-4 shrink-0 text-muted-foreground transition-transform",
+                      advancedOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+                {advancedOpen && (
+                  <div className="border-t border-border p-4">
+                    <RootDirectoryFields
+                      build={build}
+                      onBuildChange={setBuild}
+                      disabled={pending}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
             {source === "docker-image" && (
               <div className="space-y-2">
-                <Label>Docker image</Label>
+                <FieldLabel
+                  info={
+                    <>
+                      Start typing to search registries; add{" "}
+                      <code className="font-mono">:</code> to pick a tag. A green
+                      check confirms the image exists.
+                    </>
+                  }
+                >
+                  Docker image
+                </FieldLabel>
                 <ImageInput value={dockerImage} onChange={setDockerImage} />
-                <p className="text-xs text-muted-foreground">
-                  Start typing to search registries; add{" "}
-                  <code className="font-mono">:</code> to pick a tag. A green check
-                  confirms the image exists.
-                </p>
               </div>
             )}
 
@@ -566,10 +743,13 @@ export function DeploymentSettingsForm({
             {source === "compose" && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <Label className="flex items-center gap-1.5">
+                  <FieldLabel
+                    className="flex items-center gap-1.5"
+                    info="The Compose file defining this stack's services. Deplo builds or pulls each service's image and deploys them together."
+                  >
                     <FileText className="size-3.5" />
                     docker-compose.yml
-                  </Label>
+                  </FieldLabel>
                   <FullComposeDialog serviceId={serviceId} />
                 </div>
                 <ComposeEditor
@@ -583,10 +763,13 @@ export function DeploymentSettingsForm({
             )}
 
             <div className="max-w-md space-y-2">
-              <Label className="flex items-center gap-1.5">
+              <FieldLabel
+                className="flex items-center gap-1.5"
+                info="The server (host machine) that builds and runs this service."
+              >
                 <ServerIcon className="size-3.5" />
                 Server
-              </Label>
+              </FieldLabel>
               <Select value={serverId} onValueChange={setServerId}>
                 <SelectTrigger>
                   <SelectValue />
@@ -602,7 +785,7 @@ export function DeploymentSettingsForm({
                   ))}
                 </SelectContent>
               </Select>
-              {serverId !== initialServerId && (
+              {serverId !== initialServerId && !(usesGithubApp && !ghSelection) && (
                 <p className="text-xs text-muted-foreground">
                   Saving redeploys this service on the new server and copies its data
                   (volumes and files) across. It&apos;s briefly offline during the
@@ -626,8 +809,12 @@ export function DeploymentSettingsForm({
               </>
             ) : (
               <>
-                <DirtyHint dirty={sourceDirty} />
-                <Button size="sm" onClick={saveSource} disabled={pending || !sourceDirty}>
+                <DirtyHint dirty={deploySourceCardDirty} />
+                <Button
+                  size="sm"
+                  onClick={saveSource}
+                  disabled={pending || !deploySourceCardDirty}
+                >
                   <Save className="size-4" />
                   Save source
                 </Button>
@@ -643,10 +830,10 @@ export function DeploymentSettingsForm({
         {buildCardVisible && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Build &amp; Output Settings</CardTitle>
-              <CardDescription>
-                How Deplo installs, builds and runs your app inside Docker.
-              </CardDescription>
+              <CardTitle className="flex w-fit items-center gap-2 text-base">
+                Build &amp; Output Settings
+                <InfoTip content="How Deplo installs, builds and runs your app inside Docker." />
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <BuildConfigFields build={build} onBuildChange={setBuild} />
@@ -664,10 +851,10 @@ export function DeploymentSettingsForm({
         {/* Automatic deployments — deploy-on-push behaviour. */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Automatic deployments</CardTitle>
-            <CardDescription>
-              Deploy automatically on every push to the production branch.
-            </CardDescription>
+            <CardTitle className="flex w-fit items-center gap-2 text-base">
+              Automatic deployments
+              <InfoTip content="Deploy automatically on every push to the production branch." />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between rounded-lg border border-border p-3">

@@ -16,10 +16,13 @@ export function ServiceStatusDot({ status }: { status: ServiceStatus }) {
 
 /**
  * The same live service status as {@link ServiceStatusDot}, but as a LABELLED
- * badge ("Running" / "Stopped" / "Building" / "Error") for the service header —
+ * badge ("Online" / "Stopped" / "Building" / "Error") for the service header —
  * so the container's lifecycle reads clearly and in real time, kept separate
- * from the deployment/commit status shown elsewhere on the page.
+ * from the deployment/commit status shown elsewhere on the page. Rendered as a
+ * tinted chip: a running service reads "Online" on a translucent green fill.
  */
 export function ServiceStatusBadge({ status }: { status: ServiceStatus }) {
-  return <StatusBadge status={useLiveStatus(status)} />;
+  return (
+    <StatusBadge status={useLiveStatus(status)} tinted labels={{ active: "Online" }} />
+  );
 }

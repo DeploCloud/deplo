@@ -24,7 +24,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
@@ -437,7 +437,19 @@ export function DomainRow({
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor={`edit-name-${domain.id}`}>Domain</Label>
+                <FieldLabel
+                  htmlFor={`edit-name-${domain.id}`}
+                  info={
+                    <>
+                      The fully-qualified hostname that routes to this service,
+                      e.g. <code className="font-mono">app.example.com</code>.
+                      Its DNS A record must point at this server for the domain
+                      to verify.
+                    </>
+                  }
+                >
+                  Domain
+                </FieldLabel>
                 <Input
                   id={`edit-name-${domain.id}`}
                   value={name}

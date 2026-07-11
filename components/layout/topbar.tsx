@@ -10,19 +10,24 @@ import { SidebarNav } from "./sidebar-nav";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 import { TeamSwitcher } from "./team-switcher";
+import { Breadcrumbs } from "./breadcrumbs";
 import { isNonTeamSettings } from "./nav-config";
+import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
 import type { PublicUser, Team, TeamSummary } from "@/lib/types";
 
 export function Topbar({
   user,
   team,
   teams,
+  breadcrumb: graph,
   capabilities = [],
   isAdmin = false,
 }: {
   user: PublicUser;
   team: Team;
   teams: TeamSummary[];
+  /** Team snapshot the breadcrumb navigates over (folders/services/projects). */
+  breadcrumb: BreadcrumbGraph;
   capabilities?: string[];
   isAdmin?: boolean;
 }) {
@@ -65,10 +70,27 @@ export function Topbar({
         <TeamSwitcher team={team} teams={teams} />
       )}
 
-      <span className="hidden text-muted-foreground/40 sm:inline">/</span>
-      <span className="hidden text-sm text-muted-foreground sm:inline">
-        {breadcrumb(pathname)}
-      </span>
+      {/* Rich trail on the services tree (Overview ▾ / Folder ▾ / Service ▾ /
+          Section ▾ with sibling menus), a plain "/ Label" everywhere else. Wrapped
+          in Suspense because Breadcrumbs reads the URL's search params
+          (?folder=/?project=) via useSearchParams. */}
+      <React.Suspense
+        fallback={
+          <span className="hidden items-center gap-2 sm:flex">
+            <span className="text-muted-foreground/40">/</span>
+            <span className="text-sm text-muted-foreground">
+              {breadcrumb(pathname)}
+            </span>
+          </span>
+        }
+      >
+        <Breadcrumbs
+          pathname={pathname}
+          graph={graph}
+          capabilities={capabilities}
+          fallback={breadcrumb(pathname)}
+        />
+      </React.Suspense>
 
       <div className="flex flex-1 items-center justify-end gap-2">
         {/* Creation lives on the Overview's "Add New" menu only — the header

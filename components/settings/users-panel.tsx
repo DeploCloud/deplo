@@ -17,7 +17,6 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -32,6 +31,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { InfoTip } from "@/components/ui/info-tip";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { EditUserDialog } from "@/components/settings/edit-user-dialog";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -55,11 +55,10 @@ export function UsersPanel({
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
           <div>
-            <CardTitle className="text-base">Users</CardTitle>
-            <CardDescription>
-              Everyone registered on this instance. Click a user to view details
-              and edit their global permissions.
-            </CardDescription>
+            <CardTitle className="flex w-fit items-center gap-2 text-base">
+              Users
+              <InfoTip content="Everyone registered on this instance. Click a user to view details and edit their global permissions." />
+            </CardTitle>
           </div>
           <Button size="sm" onClick={() => setRegisterOpen(true)}>
             <UserPlus className="size-4" />
@@ -87,12 +86,10 @@ export function UsersPanel({
       {pendingLinks.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">
+            <CardTitle className="flex w-fit items-center gap-2 text-base">
               Pending registration links
+              <InfoTip content="Single-use links that haven't been used yet." />
             </CardTitle>
-            <CardDescription>
-              Single-use links that haven&apos;t been used yet.
-            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {pendingLinks.map((l) => (

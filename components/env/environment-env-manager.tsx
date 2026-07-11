@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -250,7 +251,12 @@ function EnvironmentEnvDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="ee-key">Key</Label>
+            <FieldLabel
+              htmlFor="ee-key"
+              info="The variable name your services read from the environment. It can't be renamed after the variable is created."
+            >
+              Key
+            </FieldLabel>
             <Input
               id="ee-key"
               value={key}
@@ -261,18 +267,22 @@ function EnvironmentEnvDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ee-value">Value</Label>
+            <FieldLabel
+              htmlFor="ee-value"
+              info={
+                editing?.masked
+                  ? "Leave the mask to keep the current secret; type to replace it."
+                  : undefined
+              }
+            >
+              Value
+            </FieldLabel>
             <Input
               id="ee-value"
               value={value}
               onChange={(e) => setValue(e.target.value)}
               className="font-mono text-sm"
             />
-            {editing?.masked && (
-              <p className="text-xs text-muted-foreground">
-                Leave the mask to keep the current secret; type to replace it.
-              </p>
-            )}
           </div>
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">

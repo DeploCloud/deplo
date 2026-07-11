@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import {
   DomainConfigFields,
   initialDomainConfig,
@@ -137,7 +137,22 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
         <div className="space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="domain-name">Domain</Label>
+              <FieldLabel
+                htmlFor="domain-name"
+                info={
+                  suggestedDomain ? (
+                    <>
+                      No domain? Generate a free{" "}
+                      <span className="font-mono">{suggestedDomain}</span> that
+                      works with zero DNS setup.
+                    </>
+                  ) : (
+                    "The custom hostname to route to this service, e.g. app.example.com. Add its DNS record afterward to verify."
+                  )
+                }
+              >
+                Domain
+              </FieldLabel>
               {suggestedDomain ? (
                 <Button
                   type="button"
@@ -158,13 +173,6 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
               placeholder="app.example.com"
               className="font-mono text-sm"
             />
-            {suggestedDomain ? (
-              <p className="text-xs text-muted-foreground">
-                No domain? Generate a free{" "}
-                <span className="font-mono">{suggestedDomain}</span> that works
-                with zero DNS setup.
-              </p>
-            ) : null}
           </div>
           <DomainConfigFields
             state={config}

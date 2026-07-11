@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -318,7 +318,18 @@ export function EditUserDialog({
                 </p>
               )}
               <div className="space-y-2">
-                <Label htmlFor="reset-pw">Reset password (optional)</Label>
+                <FieldLabel
+                  htmlFor="reset-pw"
+                  info={
+                    <>
+                      Sets a new password for this account. Leave blank to keep
+                      the current one; a new password must be at least 8
+                      characters.
+                    </>
+                  }
+                >
+                  Reset password (optional)
+                </FieldLabel>
                 <Input
                   id="reset-pw"
                   type="password"

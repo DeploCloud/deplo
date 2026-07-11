@@ -4,6 +4,7 @@ import * as React from "react";
 import { HardDrive, Plus, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -97,7 +98,20 @@ export function VolumeFields({
               >
                 <div className="grid gap-3 sm:grid-cols-[auto_1fr_1fr]">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Type</Label>
+                    <FieldLabel
+                      className="text-xs"
+                      info={
+                        <>
+                          Named volume is a persistent Docker volume that
+                          survives deploys. Service file mounts a path inside
+                          this service&apos;s isolated files directory. Host path
+                          binds an absolute path on the deploy host and requires
+                          the host-volume permission.
+                        </>
+                      }
+                    >
+                      Type
+                    </FieldLabel>
                     <Select
                       value={type}
                       onValueChange={(t) =>
@@ -133,7 +147,18 @@ export function VolumeFields({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Mount path (in container)</Label>
+                    <FieldLabel
+                      className="text-xs"
+                      info={
+                        <>
+                          Absolute path inside the container where the volume is
+                          mounted, such as{" "}
+                          <code className="font-mono">/data</code>.
+                        </>
+                      }
+                    >
+                      Mount path (in container)
+                    </FieldLabel>
                     <Input
                       value={v.mountPath}
                       onChange={(e) =>

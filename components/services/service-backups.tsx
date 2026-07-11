@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Select,
   SelectContent,
@@ -262,7 +263,9 @@ function BackUpNow({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Label>Destination</Label>
+          <FieldLabel info="The S3 destination this backup is uploaded to.">
+            Destination
+          </FieldLabel>
           <Select value={destinationId} onValueChange={setDestinationId}>
             <SelectTrigger>
               <SelectValue placeholder="Select…" />
@@ -421,7 +424,9 @@ function ScheduleFormFields({
         />
       </div>
       <div className="space-y-2">
-        <Label>Destination</Label>
+        <FieldLabel info="The S3 destination scheduled backups are uploaded to.">
+          Destination
+        </FieldLabel>
         <Select
           value={fields.destinationId}
           onValueChange={(v) => onChange((f) => ({ ...f, destinationId: v }))}
@@ -440,11 +445,9 @@ function ScheduleFormFields({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          <SimpleTooltip content="Standard cron expression (UTC)">
-            <Label className="cursor-help underline decoration-dotted underline-offset-4">
-              Schedule (cron)
-            </Label>
-          </SimpleTooltip>
+          <FieldLabel info="Standard cron expression, evaluated in UTC.">
+            Schedule (cron)
+          </FieldLabel>
           <Input
             value={fields.schedule}
             onChange={(e) =>
@@ -454,7 +457,9 @@ function ScheduleFormFields({
           />
         </div>
         <div className="space-y-2">
-          <Label>Retention (days)</Label>
+          <FieldLabel info="How long completed backup artifacts are kept in the destination before older ones are pruned.">
+            Retention (days)
+          </FieldLabel>
           <Input
             type="number"
             value={fields.retention}

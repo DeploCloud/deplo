@@ -164,12 +164,14 @@ type BasicAuthUser {
 input BuildConfigInput {
   buildCommand: String
   buildMethod: String
+  includeFilesOutsideRoot: Boolean
   installCommand: String
   outputDir: String
   port: Int
   rootDir: String
   runtimeVersion: String
   settings: JSON
+  skipUnchangedDeployments: Boolean
   startCommand: String
 }
 
@@ -1071,6 +1073,11 @@ type Mutation {
   setProjectColor(color: String, id: ID!): Boolean
 
   """
+  Set how many deployments this server runs at once (the per-server slot count the deploy queue enforces). 1 = strict serialization. Whole number in [1, 50].
+  """
+  setServerDeployConcurrency(concurrency: Int!, id: String!): Server
+
+  """
   Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has services or databases on the server would lose access.
   """
   setServerTeams(input: SetServerTeamsInput!): Server
@@ -1554,6 +1561,11 @@ type Server {
   cpuCores: Int
   cpuUsage: Int
   createdAt: String
+
+  """
+  How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-service deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin).
+  """
+  deployConcurrency: Int
   diskGb: Int
   diskUsage: Int
   dockerVersion: String

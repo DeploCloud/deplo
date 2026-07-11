@@ -31,6 +31,20 @@ export interface RepoTriggerConfig {
   triggerType: GitTriggerType;
   /** Parsed watch-path globs (repo_watch_paths). Empty ⇒ deploy on any change. */
   watchPaths: string[];
+  /** The build root directory (service_build.root_directory). Only consulted when
+   *  {@link skipUnchanged} is on. Empty/"."/unset ⇒ the whole repo is the root. */
+  rootDirectory?: string | null;
+  /** When true, an auto-deploy is skipped unless the push touched a file inside
+   *  the root directory (service_build.skip_unchanged_deployments). */
+  skipUnchanged?: boolean;
+}
+
+/** Normalise a rootDirectory to a clean forward-slash relative path with no
+ *  leading `./` or `/`; `""`/`"."`/unset all collapse to `"."` (the repo root).
+ *  Inlined (rather than importing `normalizeRootRel` from `source.ts`) to keep
+ *  this module dependency-free — `source.ts` pulls in `node:fs`/`node:path`. */
+function normalizeRoot(rootDirectory: string | null | undefined): string {
+  return (rootDirectory || ".").replace(/\\/g, "/").replace(/^\.?\/?/, "");
 }
 
 /** The subset of GitHub's push payload the parser reads. */
@@ -101,6 +115,21 @@ export function shouldAutoDeploy(
   // "best effort" contract documented on GitRepo.watchPaths.
   if (cfg.watchPaths.length > 0 && ev.changedPaths.length > 0) {
     return ev.changedPaths.some((f) => pathMatchesAnyGlob(f, cfg.watchPaths));
+  }
+
+  // "Skip when the root directory is untouched" — like an implicit watch path of
+  // the root directory. Only gates when the option is on, an explicit root dir is
+  // set, and we actually have a file list (a fileless delivery falls open, same
+  // contract as the watch-path filter). A path INSIDE the root dir keeps it.
+  //
+  // Reached only when no EXPLICIT watch-path allowlist matched above (that branch
+  // early-returns): a user who authored watch paths has taken direct control of
+  // path filtering, so their allowlist wins over this root-directory heuristic.
+  if (cfg.skipUnchanged && ev.changedPaths.length > 0) {
+    const root = normalizeRoot(cfg.rootDirectory);
+    if (root && root !== ".") {
+      return ev.changedPaths.some((f) => pathMatchesGlob(normalizePath(f), root));
+    }
   }
   return true;
 }

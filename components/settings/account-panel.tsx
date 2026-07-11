@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -14,6 +13,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { PublicUser } from "@/lib/types";
 
@@ -51,8 +51,10 @@ function ProfileCard({ user }: { user: PublicUser }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Profile</CardTitle>
-        <CardDescription>Your name and avatar.</CardDescription>
+        <CardTitle className="flex w-fit items-center gap-2 text-base">
+          Profile
+          <InfoTip content="Your name and avatar." />
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-3">
@@ -112,10 +114,10 @@ function EmailCard({ user }: { user: PublicUser }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Email</CardTitle>
-        <CardDescription>
-          Changing your email requires your current password.
-        </CardDescription>
+        <CardTitle className="flex w-fit items-center gap-2 text-base">
+          Email
+          <InfoTip content="Changing your email requires your current password." />
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -182,8 +184,10 @@ function PasswordCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Password</CardTitle>
-        <CardDescription>Choose a strong, unique password.</CardDescription>
+        <CardTitle className="flex w-fit items-center gap-2 text-base">
+          Password
+          <InfoTip content="Choose a strong, unique password." />
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">

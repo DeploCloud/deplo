@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -291,7 +292,9 @@ function SharedEnvDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Variables (.env)</Label>
+            <FieldLabel info="Keys matching secret patterns (key, token, secret…) are masked automatically.">
+              Variables (.env)
+            </FieldLabel>
             <Textarea
               value={blob}
               onChange={(e) => setBlob(e.target.value)}
@@ -300,13 +303,19 @@ function SharedEnvDialog({
               spellCheck={false}
               className="font-mono text-xs"
             />
-            <p className="text-xs text-muted-foreground">
-              Keys matching secret patterns (key, token, secret…) are masked
-              automatically.
-            </p>
           </div>
           <div className="space-y-2">
-            <Label>Targets</Label>
+            <FieldLabel
+              info={
+                <>
+                  The runtimes these variables reach. Include{" "}
+                  <code className="font-mono">development</code> to inject them
+                  into attached services&apos; dev containers.
+                </>
+              }
+            >
+              Targets
+            </FieldLabel>
             <div className="flex flex-wrap gap-4">
               {ALL_ENV_TARGETS.map((t) => (
                 <label
@@ -321,11 +330,6 @@ function SharedEnvDialog({
                 </label>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">
-              The runtimes these variables reach. Include{" "}
-              <code className="font-mono">development</code> to inject them into
-              attached services&apos; dev containers.
-            </p>
           </div>
           <div className="space-y-2">
             <Label>Attach to services</Label>

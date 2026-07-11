@@ -10,10 +10,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ServiceLogo } from "@/components/shared/project-logo";
 import { RedeployButton } from "@/components/services/redeploy-button";
 import { ServiceControls } from "@/components/services/service-controls";
-import {
-  ServiceStatusDot,
-  ServiceStatusBadge,
-} from "@/components/services/service-status-dot";
+import { ServiceStatusBadge } from "@/components/services/service-status-dot";
 import { ServiceNavSync } from "@/components/services/service-nav-sync";
 import {
   ServiceLiveStatusProvider,
@@ -87,7 +84,6 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
                   rel="noopener noreferrer"
                   className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
                 >
-                  <ServiceStatusDot status={project.status} />
                   {project.productionUrl.replace(/^https?:\/\//, "")}
                 </a>
               )}

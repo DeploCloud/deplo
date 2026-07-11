@@ -40,6 +40,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EnvValueCell } from "@/components/env/env-value-cell";
@@ -377,7 +378,9 @@ function EnvDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Key</Label>
+            <FieldLabel info="The environment variable's name, exposed to your app at runtime. It can't be renamed once the variable is created.">
+              Key
+            </FieldLabel>
             <Input
               value={key}
               onChange={(e) => setKey(e.target.value)}
@@ -396,7 +399,9 @@ function EnvDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Environments</Label>
+            <FieldLabel info="The environments this variable is injected into. A deployment only receives variables enabled for its environment.">
+              Environments
+            </FieldLabel>
             <div className="flex flex-wrap gap-4">
               {ALL_TARGETS.map((t) => (
                 <label key={t} className="flex cursor-pointer items-center gap-2 text-sm capitalize">
@@ -494,7 +499,9 @@ function ImportDialog({
             rows={8}
           />
           <div className="space-y-2">
-            <Label>Environments</Label>
+            <FieldLabel info="The environments every imported variable is added to. Each parsed line is applied to all the environments you select here.">
+              Environments
+            </FieldLabel>
             <div className="flex flex-wrap gap-4">
               {ALL_TARGETS.map((t) => (
                 <label key={t} className="flex cursor-pointer items-center gap-2 text-sm capitalize">
@@ -777,7 +784,9 @@ function EnvEditor({
       />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1.5">
-          <Label className="text-xs">New variables apply to</Label>
+          <FieldLabel className="text-xs" info="Environments assigned to any variable you add here. Existing variables keep the environments they already have.">
+            New variables apply to
+          </FieldLabel>
           <div className="flex flex-wrap gap-4">
             {ALL_TARGETS.map((t) => (
               <label

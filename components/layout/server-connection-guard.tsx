@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { DeploLogo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import {
@@ -311,24 +311,9 @@ function DisconnectedOverlay() {
         />
 
         <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-          {/* Header: brand on the left, live status on the right. */}
-          <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5">
+          {/* Header: just the brand. */}
+          <div className="flex items-center border-b border-border/70 px-5 py-3.5">
             <DeploLogo className="h-4 text-foreground/75" />
-            {restored ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="size-3" />
-                Back online
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
-                {checking ? (
-                  <Loader2 className="size-3 animate-spin" />
-                ) : (
-                  <span className="size-1.5 rounded-full bg-amber-500 animate-pulse motion-reduce:animate-none" />
-                )}
-                Reconnecting
-              </span>
-            )}
           </div>
 
           <div className="flex flex-col items-center px-6 pb-6 pt-8 text-center">

@@ -169,6 +169,20 @@
       "when": 1783600404000,
       "tag": "0023_add_git_deploy_options",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1783600405000,
+      "tag": "0024_add_root_directory_build_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783600406000,
+      "tag": "0025_add_deploy_queue",
+      "breakpoints": true
     }
   ]
 }

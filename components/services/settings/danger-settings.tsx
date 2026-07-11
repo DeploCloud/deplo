@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import {
   Card,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -29,10 +29,10 @@ export function DangerSettings({
   return (
     <Card className="border-destructive/40">
       <CardHeader>
-        <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
-        <CardDescription>
-          Permanently delete this service and all of its data.
-        </CardDescription>
+        <CardTitle className="flex w-fit items-center gap-2 text-base text-destructive">
+          Danger Zone
+          <InfoTip content="Permanently delete this service and all of its data." />
+        </CardTitle>
       </CardHeader>
       <CardFooter className="justify-end">
         <DeleteWithArtifacts

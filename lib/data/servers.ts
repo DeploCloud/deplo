@@ -244,6 +244,8 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
     memoryUsage: 0,
     diskUsage: 0,
     allTeams,
+    // Born strict: one deploy at a time on this host until an admin raises it.
+    deployConcurrency: 1,
     createdAt: nowIso(),
     bootstrap: stored,
   };
@@ -567,6 +569,41 @@ export async function setServerTeams(
     allTeams
       ? `Made server ${server.name} available to all teams`
       : `Set server ${server.name} access to ${teamIds.length} team${teamIds.length === 1 ? "" : "s"}`,
+    user.name,
+    null,
+    teamId,
+  );
+  return (await getServerById(id))!;
+}
+
+/**
+ * Set a server's deploy concurrency — how many deployments its agent runs at once
+ * (the Coolify `concurrent_builds` analogue, read by lib/deploy/deploy-queue).
+ * 1 = strict per-server serialization; deploys on OTHER servers still run in
+ * parallel, and a same-service deploy never overlaps regardless of this value.
+ * Instance-admin only, like every server-config mutation — servers are shared
+ * cross-team infra, never team-scoped. Clamped to a whole number in [1, 50].
+ */
+export async function setServerDeployConcurrency(
+  id: string,
+  concurrency: number,
+): Promise<Server> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  const server = await getServerById(id);
+  if (!server) throw new Error("Server not found");
+  const n = Math.floor(concurrency);
+  if (!Number.isFinite(n) || n < 1)
+    throw new Error("Concurrency must be a whole number of at least 1");
+  if (n > 50) throw new Error("Concurrency above 50 isn't supported");
+  await getDb()
+    .update(serversTable)
+    .set({ deployConcurrency: n })
+    .where(eq(serversTable.id, id));
+  await recordActivity(
+    "member",
+    `Set deploy concurrency for server ${server.name} to ${n}`,
     user.name,
     null,
     teamId,

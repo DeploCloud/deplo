@@ -7,12 +7,12 @@ import { Trash2, CheckCircle2, ExternalLink } from "lucide-react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { GitHubIcon } from "@/components/shared/brand-icons";
@@ -50,17 +50,13 @@ export function GithubPanel({
 
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <div className="space-y-1.5">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex w-fit items-center gap-2 text-base">
             <GitHubIcon className="size-4" />
             GitHub
+            <InfoTip content="Connect a GitHub App to deploy from your repositories. Deplo creates the App for you with only the permissions it needs, then you choose which repositories to grant access to." />
           </CardTitle>
-          <CardDescription>
-            Connect a GitHub App to deploy from your repositories. Deplo creates
-            the App for you with only the permissions it needs, then you choose
-            which repositories to grant access to.
-          </CardDescription>
         </div>
         <GithubConnectButton
           size="sm"

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { InfoTip } from "@/components/ui/info-tip";
 
 /** A server whose id/name/type feed the Deploy Source server picker. */
 export interface SettingsServer {
@@ -16,9 +17,12 @@ export interface SettingsServer {
 export function SettingsSection({
   icon: Icon,
   title,
+  info,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
+  /** Optional explanation for the section, shown via a trailing info icon. */
+  info?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-2 border-b border-border pb-2">
@@ -26,6 +30,7 @@ export function SettingsSection({
       <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         {title}
       </h2>
+      {info != null && <InfoTip content={info} />}
     </div>
   );
 }

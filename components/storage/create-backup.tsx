@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Select,
   SelectContent,
@@ -24,7 +25,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  SimpleTooltip,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -151,7 +151,17 @@ export function CreateBackup({
           {/* Target-kind toggle: a schedule backs up either a database or a
               whole project (volumes + files + compose/env snapshot). */}
           <div className="space-y-2">
-            <Label>Target</Label>
+            <FieldLabel
+              info={
+                <>
+                  Choose whether this schedule backs up a database or a service.
+                  A service backup captures its volumes, files, and compose/env
+                  snapshot.
+                </>
+              }
+            >
+              Target
+            </FieldLabel>
             <div className="grid grid-cols-2 gap-1 rounded-lg border border-border p-1">
               <Button
                 type="button"
@@ -208,7 +218,9 @@ export function CreateBackup({
               )}
             </div>
             <div className="space-y-2">
-              <Label>Destination</Label>
+              <FieldLabel info="The S3 destination where backup archives are uploaded and stored.">
+                Destination
+              </FieldLabel>
               <Select value={destinationId} onValueChange={setDestinationId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select…" />
@@ -225,11 +237,17 @@ export function CreateBackup({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <SimpleTooltip content="Standard cron expression (UTC)">
-                <Label className="cursor-help underline decoration-dotted underline-offset-4">
-                  Schedule (cron)
-                </Label>
-              </SimpleTooltip>
+              <FieldLabel
+                info={
+                  <>
+                    Standard cron expression (UTC). Defaults to{" "}
+                    <code className="font-mono">0 3 * * *</code> — daily at
+                    03:00.
+                  </>
+                }
+              >
+                Schedule (cron)
+              </FieldLabel>
               <Input
                 value={schedule}
                 onChange={(e) => setSchedule(e.target.value)}
@@ -237,7 +255,9 @@ export function CreateBackup({
               />
             </div>
             <div className="space-y-2">
-              <Label>Retention (days)</Label>
+              <FieldLabel info="Number of days to keep each backup before it is automatically deleted.">
+                Retention (days)
+              </FieldLabel>
               <Input
                 type="number"
                 value={retention}

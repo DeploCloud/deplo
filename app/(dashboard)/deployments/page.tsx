@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { timeAgo } from "@/lib/utils";
-import { DeploymentActions } from "./deployment-actions";
+import { DeploymentActions } from "@/components/services/deployment-actions";
 
 export const metadata = { title: "Deployments" };
 
@@ -47,7 +47,7 @@ export default async function DeploymentsPage() {
                 <TableHead>Environment</TableHead>
                 <TableHead>Branch</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead className="w-10" />
+                <TableHead className="w-28 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

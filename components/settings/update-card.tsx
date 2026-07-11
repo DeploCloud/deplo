@@ -5,12 +5,12 @@ import { RefreshCw, CheckCircle2, ArrowUpRight, TriangleAlert } from "lucide-rea
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { UpdateInfo } from "@/lib/data/updates";
 
@@ -55,12 +55,12 @@ export function UpdateCard({ current }: { current: string }) {
 
   return (
     <Card>
-      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <div className="space-y-1.5">
-          <CardTitle className="text-base">Updates</CardTitle>
-          <CardDescription>
-            Deplo checks the official repository for new releases.
-          </CardDescription>
+          <CardTitle className="flex w-fit items-center gap-2 text-base">
+            Updates
+            <InfoTip content="Deplo checks the official repository for new releases." />
+          </CardTitle>
         </div>
         <Button
           type="button"

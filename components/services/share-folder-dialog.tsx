@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { CAPABILITY_META } from "@/lib/membership-shared";
 import { ALL_CAPABILITIES } from "@/lib/types";
@@ -433,7 +434,9 @@ export function ShareFolderDialog({
               </div>
 
               <div className="space-y-2">
-                <Label>What can they do?</Label>
+                <FieldLabel info="You can only grant capabilities you hold yourself on this folder. View access is always included and can't be removed.">
+                  What can they do?
+                </FieldLabel>
                 {/* `view` is implied, always on — shown as a fixed, disabled row
                     rather than a togglable box. */}
                 <div className="flex items-start gap-3 rounded-md px-1 py-1.5 opacity-70">

@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
 import {
@@ -144,7 +145,12 @@ export function AddServer({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="srv-host">Host or IP</Label>
+              <FieldLabel
+                htmlFor="srv-host"
+                info="The address this control plane will reach the agent at, and where deployed apps for this server will be routed."
+              >
+                Host or IP
+              </FieldLabel>
               <Input
                 id="srv-host"
                 value={host}
@@ -152,10 +158,6 @@ export function AddServer({
                 placeholder="203.0.113.24"
                 className="font-mono text-sm"
               />
-              <p className="text-muted-foreground text-xs">
-                The address this control plane will reach the agent at, and where
-                deployed apps for this server will be routed.
-              </p>
             </div>
             <ServerTeamAccess
               value={access}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -51,7 +52,18 @@ export function TeamForm({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="team-slug">Slug</Label>
+          <FieldLabel
+            htmlFor="team-slug"
+            info={
+              <>
+                A short, URL-safe identifier for the team, used in links and to
+                seed the names of installed app containers. Use lowercase
+                letters, numbers, and hyphens.
+              </>
+            }
+          >
+            Slug
+          </FieldLabel>
           <Input
             id="team-slug"
             value={slug}

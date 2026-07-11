@@ -130,6 +130,7 @@ async function main() {
       traefikEnabled: false,
       cpuCores: 0, memoryMb: 0, diskGb: 0,
       cpuUsage: 0, memoryUsage: 0, diskUsage: 0, allTeams: true,
+      deployConcurrency: 1,
       createdAt: new Date(0).toISOString(),
       agent: { port: AGENT_PORT, certFingerprint: pinnedFingerprint, certPem: "", version: "" },
     }),

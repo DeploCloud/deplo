@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { and, eq, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
@@ -186,7 +187,9 @@ function summarize(
  * Containers in the active team, honouring the team-wide manual order and
  * falling back to newest-first — the same contract as `listFolders`/`listServices`.
  */
-export async function listProjects(): Promise<ProjectSummary[]> {
+export const listProjects = cache(async function listProjects(): Promise<
+  ProjectSummary[]
+> {
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
     .select()
@@ -203,7 +206,7 @@ export async function listProjects(): Promise<ProjectSummary[]> {
       if (ra !== rb) return ra - rb;
       return a.createdAt < b.createdAt ? 1 : -1;
     });
-}
+});
 
 /** A container's directly-contained folders and services (for the detail page). */
 export async function projectContents(projectId: string): Promise<{

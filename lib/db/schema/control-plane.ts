@@ -523,6 +523,13 @@ export const servers = pgTable(
     // historical instance-wide behaviour. `false` restricts the server to the
     // teams enumerated in `server_teams`. See [Server.allTeams](../../types.ts).
     allTeams: boolean("all_teams").notNull().default(true),
+    // How many deployments this server's agent runs at once (the Coolify
+    // `concurrent_builds` analogue). Default 1 = strict per-server serialization:
+    // deploys on THIS server run one at a time; deploys on OTHER servers run in
+    // parallel. The deploy queue (lib/deploy/deploy-queue.ts) reads it as the
+    // per-server slot count; a same-service deploy never overlaps regardless.
+    // Editable from Settings → Servers (instance-admin). Clamped >=1 at read.
+    deployConcurrency: integer("deploy_concurrency").notNull().default(1),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
@@ -675,6 +682,15 @@ export const serviceBuild = pgTable("service_build", {
     .references(() => services.id, { onDelete: "cascade" }),
   buildMethod: text("build_method").notNull(),
   rootDirectory: text("root_directory").notNull(),
+  // Include files outside the root directory in the build context (default on);
+  // skip an auto-deploy when a push left the root directory untouched (default
+  // off). Additive booleans with defaults so existing rows keep today's behaviour.
+  includeFilesOutsideRoot: boolean("include_files_outside_root")
+    .notNull()
+    .default(true),
+  skipUnchangedDeployments: boolean("skip_unchanged_deployments")
+    .notNull()
+    .default(false),
   installCommand: text("install_command").notNull(),
   buildCommand: text("build_command").notNull(),
   outputDirectory: text("output_directory").notNull(),
@@ -784,6 +800,13 @@ export const deployments = pgTable(
     serviceId: text("service_id")
       .notNull()
       .references(() => services.id, { onDelete: "cascade" }),
+    // Denormalized owning server (mirrors services.server_id at insert time). The
+    // deploy queue drains per server, so it needs the owning host on the row
+    // without a services join on every finish/boot scan. Nullable: backfilled for
+    // rows that predate the queue; every new deploy sets it. NOT a FK — a
+    // deployment is a historical record that must survive its server's deletion
+    // (services.server_id is RESTRICT, so a live service can't lose its server).
+    serverId: text("server_id"),
     status: text("status").notNull(),
     environment: text("environment").notNull(),
     commitSha: text("commit_sha").notNull(),
@@ -803,6 +826,13 @@ export const deployments = pgTable(
       t.createdAt.desc(),
       t.seq.desc(),
     ),
+    // The deploy queue's hot path: pick the OLDEST queued deploy for a server.
+    // Partial (queued-only) so it indexes just the live backlog, not the whole
+    // deploy history; ascending (createdAt, seq) matches the drain's oldest-first
+    // ORDER BY.
+    index("deployments_queued_server_idx")
+      .on(t.serverId, t.createdAt, t.seq)
+      .where(sql`${t.status} = 'queued'`),
   ],
 );
 

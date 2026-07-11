@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 // Textarea no longer used here — the compose editor replaces it.
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { ComposeEditor } from "@/components/services/compose-editor";
 import { ComposeLintSummary } from "@/components/services/compose-lint-summary";
 import { ImageInput } from "@/components/services/image-input";
@@ -356,6 +357,11 @@ export function NewServiceWizard({
       const service = res.data;
       if (!service) return;
 
+      // Invalidate the router cache so the shared dashboard layout re-runs on the
+      // destination — otherwise the topbar breadcrumb's team snapshot is stale and
+      // the brand-new service is missing from it until a hard reload.
+      router.refresh();
+
       // Upload source with an attached archive: stream it to the freshly-created
       // (idle) service, then deploy — so creation ends on the live build logs like
       // every other source instead of stranding the user on an empty service.
@@ -448,7 +454,18 @@ export function NewServiceWizard({
               </div>
               {usesGit && source !== "github" && (
                 <div className="space-y-2">
-                  <Label htmlFor="branch">Production Branch</Label>
+                  <FieldLabel
+                    htmlFor="branch"
+                    info={
+                      <>
+                        The Git branch Deplo deploys from and watches for
+                        pushes. Defaults to{" "}
+                        <code className="font-mono">main</code>.
+                      </>
+                    }
+                  >
+                    Production Branch
+                  </FieldLabel>
                   <div className="relative">
                     <GitBranch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -637,7 +654,19 @@ export function NewServiceWizard({
 
               {source === "git" && (
                 <div className="space-y-2">
-                  <Label htmlFor="repo">Repository URL</Label>
+                  <FieldLabel
+                    htmlFor="repo"
+                    info={
+                      <>
+                        The HTTPS URL of the public Git repository to deploy.
+                        GitHub, GitLab and Bitbucket links are recognised; a
+                        bare <code className="font-mono">owner/repo</code> is
+                        treated as GitHub.
+                      </>
+                    }
+                  >
+                    Repository URL
+                  </FieldLabel>
                   <div className="relative">
                     <GitHubIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -653,17 +682,23 @@ export function NewServiceWizard({
 
               {source === "docker-image" && (
                 <div className="space-y-2">
-                  <Label htmlFor="image">Docker image</Label>
+                  <FieldLabel
+                    htmlFor="image"
+                    info={
+                      <>
+                        Pulls a prebuilt image from any registry. No build step
+                        runs. Start typing to search; add{" "}
+                        <code className="font-mono">:</code> for tags.
+                      </>
+                    }
+                  >
+                    Docker image
+                  </FieldLabel>
                   <ImageInput
                     id="image"
                     value={dockerImage}
                     onChange={setDockerImage}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Pulls a prebuilt image from any registry. No build step runs.
-                    Start typing to search; add <code className="font-mono">:</code>{" "}
-                    for tags.
-                  </p>
                 </div>
               )}
 

@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Select,
   SelectContent,
@@ -112,7 +113,7 @@ export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
               <Input value={form.name} onChange={set("name")} placeholder="Backups bucket" />
             </div>
             <div className="space-y-2">
-              <Label>Provider</Label>
+              <FieldLabel info="Picks the S3-compatible service. Choosing one pre-fills the matching endpoint format below.">Provider</FieldLabel>
               <Select value={provider} onValueChange={(v) => setProvider(v as S3Provider)}>
                 <SelectTrigger>
                   <SelectValue />
@@ -128,7 +129,7 @@ export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Endpoint</Label>
+            <FieldLabel info="The S3 API URL for your bucket. Leave blank to use the default endpoint for the selected provider.">Endpoint</FieldLabel>
             <Input
               value={form.endpoint}
               onChange={set("endpoint")}
@@ -138,7 +139,7 @@ export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label>Region</Label>
+              <FieldLabel info={<>The bucket&apos;s region. Use <code className="font-mono">auto</code> for providers like Cloudflare R2 that don&apos;t require a specific region.</>}>Region</FieldLabel>
               <Input value={form.region} onChange={set("region")} placeholder="auto" />
             </div>
             <div className="space-y-2">

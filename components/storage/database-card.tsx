@@ -18,7 +18,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -380,7 +380,9 @@ function EditDatabaseDialog({
           {canPickServer && (
             <div className="space-y-3 rounded-lg border border-border p-3">
               <div className="space-y-2">
-                <Label>Server</Label>
+                <FieldLabel info="The host this database runs on.">
+                  Server
+                </FieldLabel>
                 <Select value={serverId} onValueChange={setServerId}>
                   <SelectTrigger>
                     <SelectValue />
@@ -393,9 +395,6 @@ function EditDatabaseDialog({
                     ))}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  The host this database runs on.
-                </p>
               </div>
               {movingServer && (
                 <div className="rounded-md border border-border bg-secondary/40 p-3">
@@ -445,7 +444,20 @@ function EditDatabaseDialog({
             </div>
             {exposed && (
               <div className="space-y-1.5">
-                <Label htmlFor="edit-db-port">Host port</Label>
+                <FieldLabel
+                  htmlFor="edit-db-port"
+                  info={
+                    <>
+                      The port on the server clients connect to. Use an
+                      unprivileged port (1024–65535) that is free on the host, or
+                      click Generate.
+                      {movingServer &&
+                        " On a move it must be free on the new server — regenerate it if unsure."}
+                    </>
+                  }
+                >
+                  Host port
+                </FieldLabel>
                 <div className="flex gap-2">
                   <Input
                     id="edit-db-port"
@@ -467,12 +479,6 @@ function EditDatabaseDialog({
                     {generatingPort ? "Finding…" : "Generate"}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  The port on the server clients connect to. Use an unprivileged
-                  port (1024–65535) that is free on the host, or click Generate.
-                  {movingServer &&
-                    " On a move it must be free on the new server — regenerate it if unsure."}
-                </p>
               </div>
             )}
           </div>

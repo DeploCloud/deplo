@@ -8,6 +8,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { ServiceLogo } from "@/components/shared/project-logo";
 import {
   LOGO_ACCEPT_ATTR,
@@ -137,14 +138,17 @@ export function GeneralSettingsForm({
         <CardContent className="space-y-6 pt-6">
           {/* Logo */}
           <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Logo</Label>
-              <p className="text-xs text-muted-foreground">
-                Shown for this service on the dashboard. It&apos;s set
-                automatically from a <code>favicon</code> in your source files
-                (or a template&apos;s logo) — replace or remove it any time.
-              </p>
-            </div>
+            <FieldLabel
+              info={
+                <>
+                  Shown for this service on the dashboard. It&apos;s set
+                  automatically from a <code>favicon</code> in your source files
+                  (or a template&apos;s logo) — replace or remove it any time.
+                </>
+              }
+            >
+              Logo
+            </FieldLabel>
             <div className="flex flex-wrap items-center gap-4">
               <ServiceLogo logo={logo} size={48} />
               <div className="flex flex-wrap items-center gap-2">

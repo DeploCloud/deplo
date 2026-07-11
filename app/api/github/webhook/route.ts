@@ -1,9 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import {
   githubInstallation as githubInstallationTable,
   services as servicesTable,
+  serviceBuild as serviceBuildTable,
 } from "@/lib/db/schema/control-plane";
 import { decryptSecret } from "@/lib/crypto";
 import { findAppByAppId } from "@/lib/github/app";
@@ -93,18 +94,36 @@ export async function POST(request: Request) {
         eq(servicesTable.repoInstallationId, install.id),
       ),
     );
-  const targets = githubServices.filter(
-    (p) =>
-      p.autoDeploy &&
-      p.repoRepo === fullName &&
-      shouldAutoDeploy(
-        {
-          branch: p.repoBranch || "main",
-          triggerType: p.repoTriggerType === "tag" ? "tag" : "push",
-          watchPaths: parseWatchPaths(p.repoWatchPaths),
-        },
-        pushEvent,
-      ),
+  // First cut on the row-local facts (auto-deploy + repo match). The root-dir
+  // "skip unchanged" filter needs each candidate's build row (root_directory +
+  // skip_unchanged_deployments live on service_build, not the flattened services
+  // row), so load those in one query keyed by service id before the final filter.
+  const candidates = githubServices.filter(
+    (p) => p.autoDeploy && p.repoRepo === fullName,
+  );
+  const buildRows = candidates.length
+    ? await getDb()
+        .select()
+        .from(serviceBuildTable)
+        .where(
+          inArray(
+            serviceBuildTable.serviceId,
+            candidates.map((p) => p.id),
+          ),
+        )
+    : [];
+  const buildById = new Map(buildRows.map((b) => [b.serviceId, b]));
+  const targets = candidates.filter((p) =>
+    shouldAutoDeploy(
+      {
+        branch: p.repoBranch || "main",
+        triggerType: p.repoTriggerType === "tag" ? "tag" : "push",
+        watchPaths: parseWatchPaths(p.repoWatchPaths),
+        rootDirectory: buildById.get(p.id)?.rootDirectory ?? null,
+        skipUnchanged: buildById.get(p.id)?.skipUnchangedDeployments ?? false,
+      },
+      pushEvent,
+    ),
   );
 
   if (targets.length === 0) {

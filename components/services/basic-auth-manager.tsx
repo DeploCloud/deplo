@@ -7,7 +7,6 @@ import { Plus, Pencil, Trash2, Lock } from "lucide-react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -30,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
@@ -66,14 +66,12 @@ export function BasicAuthManager({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <CardTitle className="text-base">HTTP Basic Auth</CardTitle>
-            <CardDescription>
-              Protect every domain of this service behind a username and
-              password. Changes apply on the next deploy, or instantly via
-              Reload.
-            </CardDescription>
+            <CardTitle className="flex w-fit items-center gap-2 text-base">
+              HTTP Basic Auth
+              <InfoTip content="Protect every domain of this service behind a username and password. Changes apply on the next deploy, or instantly via Reload." />
+            </CardTitle>
           </div>
           <Button
             size="sm"

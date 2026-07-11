@@ -6,10 +6,10 @@ import { PageHeader } from "@/components/shared/page-header";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { InfoTip } from "@/components/ui/info-tip";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { TeamForm } from "@/components/settings/team-form";
 import { UpdateCard } from "@/components/settings/update-card";
@@ -34,8 +34,10 @@ export default async function SettingsGeneralPage() {
       <div className="space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Team</CardTitle>
-            <CardDescription>Your workspace details.</CardDescription>
+            <CardTitle className="flex w-fit items-center gap-2 text-base">
+              Team
+              <InfoTip content="Your workspace details." />
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <TeamForm
@@ -48,8 +50,10 @@ export default async function SettingsGeneralPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Appearance</CardTitle>
-            <CardDescription>Switch between light and dark.</CardDescription>
+            <CardTitle className="flex w-fit items-center gap-2 text-base">
+              Appearance
+              <InfoTip content="Switch between light and dark." />
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-between rounded-lg border border-border p-3">

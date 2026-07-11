@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { and, eq, inArray, ne } from "drizzle-orm";
 
 import { getDb } from "../db/client";
@@ -144,7 +145,9 @@ async function teamFoldersWithCounts(
  * drag-and-drop) when present and falling back to newest-first — the same
  * contract as `listServices`. Each carries a live project count.
  */
-export async function listFolders(): Promise<FolderSummary[]> {
+export const listFolders = cache(async function listFolders(): Promise<
+  FolderSummary[]
+> {
   const teamId = await requireActiveTeamId();
   const { folders, serviceCounts, subfolderCounts } =
     await teamFoldersWithCounts(teamId);
@@ -176,7 +179,7 @@ export async function listFolders(): Promise<FolderSummary[]> {
       if (ra !== rb) return ra - rb;
       return a.createdAt < b.createdAt ? 1 : -1;
     });
-}
+});
 
 /** Team-wide manual folder order (the `team_folder_order` junction), id→rank. */
 async function folderOrderRank(teamId: string): Promise<Map<string, number>> {

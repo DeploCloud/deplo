@@ -132,6 +132,107 @@ test("watch paths fail open when the delivery carries no file list", () => {
   );
 });
 
+/* ---- shouldAutoDeploy: skip when root directory untouched ------------- */
+
+test("skipUnchanged: a push that touches the root directory deploys", () => {
+  const cfg: RepoTriggerConfig = {
+    branch: "main",
+    triggerType: "push",
+    watchPaths: [],
+    rootDirectory: "apps/web",
+    skipUnchanged: true,
+  };
+  assert.equal(
+    shouldAutoDeploy(
+      cfg,
+      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["apps/web/page.tsx"] } }),
+    ),
+    true,
+  );
+});
+
+test("skipUnchanged: a push that leaves the root directory untouched is skipped", () => {
+  const cfg: RepoTriggerConfig = {
+    branch: "main",
+    triggerType: "push",
+    watchPaths: [],
+    rootDirectory: "apps/web",
+    skipUnchanged: true,
+  };
+  assert.equal(
+    shouldAutoDeploy(
+      cfg,
+      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["apps/api/server.ts"] } }),
+    ),
+    false,
+  );
+});
+
+test("skipUnchanged normalises a ./-prefixed root and matches changed files under it", () => {
+  const cfg: RepoTriggerConfig = {
+    branch: "main",
+    triggerType: "push",
+    watchPaths: [],
+    rootDirectory: "./apps/web",
+    skipUnchanged: true,
+  };
+  assert.equal(
+    shouldAutoDeploy(
+      cfg,
+      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["apps/web/lib/x.ts"] } }),
+    ),
+    true,
+  );
+});
+
+test("skipUnchanged is inert at the repo root (rootDirectory empty/'.') — always deploys", () => {
+  const cfg: RepoTriggerConfig = {
+    branch: "main",
+    triggerType: "push",
+    watchPaths: [],
+    rootDirectory: ".",
+    skipUnchanged: true,
+  };
+  assert.equal(
+    shouldAutoDeploy(
+      cfg,
+      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["anywhere.ts"] } }),
+    ),
+    true,
+  );
+});
+
+test("skipUnchanged fails open when the delivery carries no file list", () => {
+  const cfg: RepoTriggerConfig = {
+    branch: "main",
+    triggerType: "push",
+    watchPaths: [],
+    rootDirectory: "apps/web",
+    skipUnchanged: true,
+  };
+  assert.equal(
+    shouldAutoDeploy(cfg, parsePushEvent({ ref: "refs/heads/main", head_commit: null })),
+    true,
+  );
+});
+
+test("skipUnchanged off (default): a push outside the root directory still deploys", () => {
+  const cfg: RepoTriggerConfig = {
+    branch: "main",
+    triggerType: "push",
+    watchPaths: [],
+    rootDirectory: "apps/web",
+    skipUnchanged: false,
+  };
+  assert.equal(
+    shouldAutoDeploy(
+      cfg,
+      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["apps/api/server.ts"] } }),
+    ),
+    true,
+  );
+});
+
 /* ---- glob matching --------------------------------------------------- */
 
 test("pathMatchesGlob: literal patterns are file-or-directory-prefix matches", () => {

@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { FieldLabel } from "@/components/ui/info-tip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -295,7 +296,9 @@ function EditBackupDialog({
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>Destination</Label>
+            <FieldLabel info="Where backup files are uploaded, chosen from your configured storage destinations.">
+              Destination
+            </FieldLabel>
             <Select value={destinationId} onValueChange={setDestinationId}>
               <SelectTrigger>
                 <SelectValue placeholder="Select…" />
@@ -311,11 +314,9 @@ function EditBackupDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <SimpleTooltip content="Standard cron expression (UTC)">
-                <Label className="cursor-help underline decoration-dotted underline-offset-4">
-                  Schedule (cron)
-                </Label>
-              </SimpleTooltip>
+              <FieldLabel info="Standard cron expression (UTC).">
+                Schedule (cron)
+              </FieldLabel>
               <Input
                 value={schedule}
                 onChange={(e) => setSchedule(e.target.value)}
@@ -323,7 +324,9 @@ function EditBackupDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>Retention (days)</Label>
+              <FieldLabel info="How many days to keep each backup before it's pruned.">
+                Retention (days)
+              </FieldLabel>
               <Input
                 type="number"
                 value={retention}

@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { GitBranch, Info, Tag } from "lucide-react";
-import { Label } from "@/components/ui/label";
+import { GitBranch, Tag } from "lucide-react";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import type { GitTriggerType } from "@/lib/types";
 
 /**
@@ -60,7 +59,9 @@ export function GitDeployOptions({
     <div className="grid gap-4 sm:grid-cols-2">
       {/* Deploy trigger — push to branch vs any new tag. */}
       <div className="space-y-2">
-        <Label>Deploy trigger</Label>
+        <FieldLabel info="When automatic deployments are on, deploy on a push to the branch, or on any new tag.">
+          Deploy trigger
+        </FieldLabel>
         <Select
           value={value.triggerType}
           onValueChange={(v) => set({ triggerType: v as GitTriggerType })}
@@ -84,36 +85,24 @@ export function GitDeployOptions({
             </SelectItem>
           </SelectContent>
         </Select>
-        <p className="text-xs text-muted-foreground">
-          When automatic deployments are on, deploy on a push to the branch, or on
-          any new tag.
-        </p>
       </div>
 
       {/* Include submodules — clone git submodules at build time. */}
       <div className="space-y-2">
-        <Label className="flex items-center gap-1.5">
+        <FieldLabel
+          info={
+            <>
+              Git submodules embed another repository inside this one, pinned to a
+              specific commit. Enabling this clones them too (
+              <code className="font-mono">git clone --recurse-submodules</code>), so
+              their code is present when your app builds. Leave it off if your
+              repository doesn&apos;t use submodules.
+            </>
+          }
+          infoLabel="What are submodules?"
+        >
           Include submodules
-          <SimpleTooltip
-            content={
-              <span className="block max-w-xs">
-                Git submodules embed another repository inside this one, pinned to a
-                specific commit. Enabling this clones them too (
-                <code className="font-mono">git clone --recurse-submodules</code>),
-                so their code is present when your app builds. Leave it off if your
-                repository doesn&apos;t use submodules.
-              </span>
-            }
-          >
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="What are submodules?"
-            >
-              <Info className="size-3.5" />
-            </button>
-          </SimpleTooltip>
-        </Label>
+        </FieldLabel>
         <div className="flex items-center justify-between rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground">
             Clone the repository&apos;s git submodules.
@@ -128,10 +117,10 @@ export function GitDeployOptions({
 
       {/* Watch paths — optional path filter for auto-deploys. */}
       <div className="space-y-2 sm:col-span-2">
-        <Label>
+        <FieldLabel info="Only auto-deploy when a changed file matches one of these globs (one per line). Leave empty to deploy on any change.">
           Watch paths{" "}
           <span className="font-normal text-muted-foreground">(optional)</span>
-        </Label>
+        </FieldLabel>
         <Textarea
           value={value.watchPaths}
           onChange={(e) => set({ watchPaths: e.target.value })}
@@ -139,10 +128,6 @@ export function GitDeployOptions({
           rows={3}
           disabled={disabled}
         />
-        <p className="text-xs text-muted-foreground">
-          Only auto-deploy when a changed file matches one of these globs (one per
-          line). Leave empty to deploy on any change.
-        </p>
       </div>
     </div>
   );

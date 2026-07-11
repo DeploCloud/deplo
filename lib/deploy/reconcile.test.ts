@@ -31,9 +31,11 @@ import { __resetDeploymentLogBuffers } from "../data/deployment-logs";
 
 /**
  * Step 4 deployment-reconcile test (relational-store PLAN §8 "Rewrite the
- * store-coupled tests inside the cut-sets"). The reconcile is now async and
- * relational: it marks orphaned `queued`/`building` deployments + their services
- * `error` at boot. Seeded via the Drizzle test-seed helpers against pglite.
+ * store-coupled tests inside the cut-sets"). The reconcile marks orphaned
+ * `building` deployments + their services `error` at boot. `queued` deployments
+ * are DURABLE (no build started, nothing lost): reconcile leaves them queued for
+ * the per-server deploy queue to re-drain at boot. Seeded via the Drizzle
+ * test-seed helpers against pglite.
  */
 
 let db: TestDb;
@@ -65,31 +67,41 @@ test("isInFlightStatus identifies non-terminal deploy states", () => {
   assert.equal(isInFlightStatus("canceled"), false);
 });
 
-test("reconcile marks queued/building deploys (and their services) errored", async () => {
+test("reconcile errors orphaned building deploys but leaves queued durable", async () => {
+  // prj_1 is mid-BUILD (its latest deploy dpl_a was building); prj_2 only has a
+  // QUEUED deploy dpl_b (never started) — that one must survive the restart.
   await seedService(db, { id: "prj_1", status: "building" });
+  await seedService(db, { id: "prj_2", status: "queued" });
   await seedDeployment(db, { id: "dpl_a", serviceId: "prj_1", status: "building" });
-  await seedDeployment(db, { id: "dpl_b", serviceId: "prj_1", status: "queued" });
+  await seedDeployment(db, { id: "dpl_b", serviceId: "prj_2", status: "queued" });
   await seedDeployment(db, { id: "dpl_c", serviceId: "prj_1", status: "ready" });
 
   const n = await reconcileInFlightDeployments();
-  assert.equal(n, 2, "exactly the two in-flight deploys are reconciled");
+  assert.equal(n, 1, "only the one BUILDING deploy is reconciled to error");
 
   const deps = await db.select().from(deploymentsTable).orderBy(asc(deploymentsTable.id));
   const byId = new Map(deps.map((d) => [d.id, d]));
-  assert.equal(byId.get("dpl_a")!.status, "error");
-  assert.equal(byId.get("dpl_b")!.status, "error");
+  assert.equal(byId.get("dpl_a")!.status, "error", "orphaned building -> error");
+  assert.equal(byId.get("dpl_b")!.status, "queued", "queued is durable — left for re-drain");
   assert.equal(byId.get("dpl_c")!.status, "ready", "ready is untouched");
 
-  const proj = await db.select().from(servicesTable).where(eq(servicesTable.id, "prj_1"));
-  assert.equal(proj[0]!.status, "error", "the mid-deploy project settles off building");
+  const proj1 = await db.select().from(servicesTable).where(eq(servicesTable.id, "prj_1"));
+  assert.equal(proj1[0]!.status, "error", "the mid-build project settles off building");
+  const proj2 = await db.select().from(servicesTable).where(eq(servicesTable.id, "prj_2"));
+  assert.equal(proj2[0]!.status, "queued", "the queued project stays queued for re-drain");
 
-  // Each reconciled deployment got an interrupted-log line (flushed by reconcile).
+  // Only the errored (building) deployment got an interrupted-log line.
   const logsA = await db
     .select()
     .from(deploymentLogs)
     .where(eq(deploymentLogs.deploymentId, "dpl_a"));
   assert.equal(logsA.length, 1);
   assert.match(logsA[0]!.text, /interrupted by a control-plane restart/);
+  const logsB = await db
+    .select()
+    .from(deploymentLogs)
+    .where(eq(deploymentLogs.deploymentId, "dpl_b"));
+  assert.equal(logsB.length, 0, "the durable queued deploy is not logged as interrupted");
 });
 
 test("reconcile is idempotent — a second run finds nothing", async () => {

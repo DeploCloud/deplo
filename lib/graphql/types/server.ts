@@ -10,6 +10,7 @@ import {
   removeServer,
   updateServerAgent,
   setServerTeams,
+  setServerDeployConcurrency,
 } from "@/lib/data/servers";
 import {
   isAgentOutdated,
@@ -60,6 +61,10 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     allTeams: t.exposeBoolean("allTeams", {
       description:
         "True (the default) when every team may target this server. False restricts it to `teams` (Settings → Servers → Team access).",
+    }),
+    deployConcurrency: t.exposeInt("deployConcurrency", {
+      description:
+        "How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-service deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin).",
     }),
     teams: t.field({
       type: [TeamRef],
@@ -217,6 +222,18 @@ builder.mutationFields((t) => ({
         allTeams: input.allTeams,
         teamIds: input.teamIds ?? [],
       }),
+  }),
+  setServerDeployConcurrency: t.field({
+    type: ServerRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Set how many deployments this server runs at once (the per-server slot count the deploy queue enforces). 1 = strict serialization. Whole number in [1, 50].",
+    args: {
+      id: t.arg.string({ required: true }),
+      concurrency: t.arg.int({ required: true }),
+    },
+    resolve: (_r, { id, concurrency }) =>
+      setServerDeployConcurrency(id, concurrency),
   }),
   reissueServerBootstrap: t.field({
     type: AddServerPayloadRef,

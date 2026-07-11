@@ -9,24 +9,16 @@ import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * Kicks off GitHub's App Manifest flow: asks the server for a manifest + signed
- * state, then POSTs them to GitHub via a transient form so the browser
- * navigates to GitHub to create (and then install) the App  no manual id/key
- * copy/paste, the way Dokploy does it.
+ * state, then POSTs them to GitHub via a transient form so the browser navigates
+ * to GitHub to create (and then install) the App  no manual id/key copy/paste,
+ * the way Dokploy does it. Exposed as a hook so surfaces that aren't a button
+ * (e.g. a menu item in the repo picker's account switcher) can trigger the exact
+ * same flow.
  */
-export function GithubConnectButton({
-  label = "Connect GitHub",
-  variant = "default",
-  size,
-  className,
-}: {
-  label?: string;
-  variant?: VariantProps<typeof buttonVariants>["variant"];
-  size?: VariantProps<typeof buttonVariants>["size"];
-  className?: string;
-}) {
+export function useGithubConnect() {
   const [pending, startTransition] = React.useTransition();
 
-  function connect() {
+  const connect = React.useCallback(() => {
     startTransition(async () => {
       const res = await gqlAction<
         {
@@ -63,7 +55,23 @@ export function GithubConnectButton({
       document.body.appendChild(form);
       form.submit();
     });
-  }
+  }, [startTransition]);
+
+  return { connect, pending };
+}
+
+export function GithubConnectButton({
+  label = "Connect GitHub",
+  variant = "default",
+  size,
+  className,
+}: {
+  label?: string;
+  variant?: VariantProps<typeof buttonVariants>["variant"];
+  size?: VariantProps<typeof buttonVariants>["size"];
+  className?: string;
+}) {
+  const { connect, pending } = useGithubConnect();
 
   return (
     <Button

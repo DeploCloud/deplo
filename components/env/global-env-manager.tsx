@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -264,7 +265,18 @@ function GlobalEnvDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="ge-key">Key</Label>
+            <FieldLabel
+              htmlFor="ge-key"
+              info={
+                <>
+                  The environment variable name injected into deployments, e.g.{" "}
+                  <code className="font-mono">API_BASE_URL</code>. It can&apos;t
+                  be renamed after the variable is created.
+                </>
+              }
+            >
+              Key
+            </FieldLabel>
             <Input
               id="ge-key"
               value={key}
@@ -275,18 +287,22 @@ function GlobalEnvDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ge-value">Value</Label>
+            <FieldLabel
+              htmlFor="ge-value"
+              info={
+                editing?.masked
+                  ? "Leave the mask to keep the current secret; type to replace it."
+                  : undefined
+              }
+            >
+              Value
+            </FieldLabel>
             <Input
               id="ge-value"
               value={value}
               onChange={(e) => setValue(e.target.value)}
               className="font-mono text-sm"
             />
-            {editing?.masked && (
-              <p className="text-xs text-muted-foreground">
-                Leave the mask to keep the current secret; type to replace it.
-              </p>
-            )}
           </div>
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
@@ -298,7 +314,19 @@ function GlobalEnvDialog({
             <Switch id="ge-secret" checked={secret} onCheckedChange={setSecret} />
           </div>
           <div className="space-y-2">
-            <Label>Environments</Label>
+            <FieldLabel
+              info={
+                <>
+                  Which deployment environments this variable is injected into —{" "}
+                  <code className="font-mono">production</code>,{" "}
+                  <code className="font-mono">preview</code> and{" "}
+                  <code className="font-mono">development</code>. Deselect one to
+                  withhold the variable there.
+                </>
+              }
+            >
+              Environments
+            </FieldLabel>
             <div className="flex flex-wrap gap-3">
               {ALL_ENV_TARGETS.map((t) => (
                 <label

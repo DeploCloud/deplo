@@ -5,11 +5,11 @@ import { Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -33,10 +33,10 @@ export function DeleteTeamCard({
   return (
     <Card className="border-destructive/40">
       <CardHeader>
-        <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
-        <CardDescription>
-          Permanently delete this team, its services, databases and members.
-        </CardDescription>
+        <CardTitle className="flex w-fit items-center gap-2 text-base text-destructive">
+          Danger zone
+          <InfoTip content="Permanently delete this team, its services, databases and members." />
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-4">
         <p className="text-xs text-muted-foreground">

@@ -22,6 +22,8 @@ function build(method: BuildConfig["buildMethod"]): BuildConfig {
     buildMethod: method,
     methodSettings: {},
     rootDirectory: "",
+    includeFilesOutsideRoot: true,
+    skipUnchangedDeployments: false,
     installCommand: "",
     buildCommand: "",
     outputDirectory: "",

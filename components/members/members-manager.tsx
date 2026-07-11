@@ -16,7 +16,6 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -43,6 +42,7 @@ import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { EditUserDialog } from "@/components/settings/edit-user-dialog";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { Capability, Role } from "@/lib/types";
 import type { MemberDTO } from "@/lib/data/members";
@@ -71,11 +71,17 @@ export function MembersManager({
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
         <div>
-          <CardTitle className="text-base">Members</CardTitle>
-          <CardDescription>
-            {members.length} member{members.length === 1 ? "" : "s"} in this
-            team.
-          </CardDescription>
+          <CardTitle className="flex w-fit items-center gap-2 text-base">
+            Members
+            <InfoTip
+              content={
+                <>
+                  {members.length} member{members.length === 1 ? "" : "s"} in
+                  this team.
+                </>
+              }
+            />
+          </CardTitle>
         </div>
         {(isAdmin || canManage) && (
           <div className="flex items-center gap-2">

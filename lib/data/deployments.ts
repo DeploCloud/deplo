@@ -1,6 +1,6 @@
 import "server-only";
 
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -11,6 +11,7 @@ import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { githubCommitUrl } from "../utils";
+import { publishServiceChanged } from "../graphql/pubsub";
 import { recordActivity } from "./activity";
 import { startDeployment, destroyStack, rerouteService } from "../deploy/build";
 import {
@@ -141,21 +142,49 @@ export async function redeploy(serviceId: string): Promise<Deployment> {
   return (await loadDeployment(depId))!;
 }
 
-export async function cancelDeployment(id: string): Promise<void> {
+/**
+ * Stop a queued/building deployment. Flips the row to `canceled`; the running
+ * build job (fire-and-forget, no agent-side abort) keeps going, but its terminal
+ * write honors this flag — `settleIfCanceled` in build.ts never overwrites a
+ * canceled row back to ready/error and settles the service off "building". The
+ * in-progress build on the host may still finish in the background; its result is
+ * simply not deployed. Truly killing that host build needs a new agent RPC.
+ *
+ * Returns whether a build was actually stopped — `false` when it had already
+ * finished (0 rows), so the caller can avoid a misleading "Build stopped" toast.
+ */
+export async function cancelDeployment(id: string): Promise<boolean> {
   const { membership } = await requireCapability("deploy");
+  const user = (await getCurrentUser())!;
   const dep = await loadDeployment(id);
   if (!dep) throw new Error("Deployment not found");
   if (!(await serviceInTeam(dep.serviceId, membership.teamId)))
     throw new Error("Deployment not found");
   await requireFolderCapabilityForService(dep.serviceId, "deploy");
-  // Only a queued/building deployment can be cancelled; a conditional UPDATE so
-  // a terminal one is left as-is.
-  if (dep.status === "building" || dep.status === "queued") {
-    await getDb()
-      .update(deploymentsTable)
-      .set({ status: "canceled" })
-      .where(eq(deploymentsTable.id, id));
-  }
+  // The queued/building state is part of the WHERE, not just a pre-check: a build
+  // that finished between the read above and this write must NOT be retroactively
+  // flipped from ready/error to canceled (0 rows → no-op).
+  const stopped = await getDb()
+    .update(deploymentsTable)
+    .set({ status: "canceled" })
+    .where(
+      and(
+        eq(deploymentsTable.id, id),
+        inArray(deploymentsTable.status, ["queued", "building"]),
+      ),
+    )
+    .returning({ id: deploymentsTable.id });
+  if (stopped.length === 0) return false;
+  // Push the "Canceled" status to live subscribers so the badge flips at once,
+  // without waiting for the build job to notice and settle the service.
+  publishServiceChanged(dep.serviceId);
+  await recordActivity(
+    "deployment",
+    "Stopped a running build",
+    user.name,
+    dep.serviceId,
+  );
+  return true;
 }
 
 export async function promoteToProduction(id: string): Promise<void> {

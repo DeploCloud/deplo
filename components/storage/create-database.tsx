@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -242,7 +243,9 @@ export function CreateDatabase({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Version</Label>
+              <FieldLabel info="The major version of the selected engine to provision. Pick the version your application targets.">
+                Version
+              </FieldLabel>
               <Select value={version} onValueChange={setVersion}>
                 <SelectTrigger>
                   <SelectValue />
@@ -376,7 +379,12 @@ export function CreateDatabase({
             </div>
             {exposed && (
               <div className="space-y-1.5">
-                <Label htmlFor="db-port">Host port</Label>
+                <FieldLabel
+                  htmlFor="db-port"
+                  info="The port on the server clients connect to. Use an unprivileged port (1024–65535) that is free on the host, or click Generate."
+                >
+                  Host port
+                </FieldLabel>
                 <div className="flex gap-2">
                   <Input
                     id="db-port"
@@ -397,10 +405,6 @@ export function CreateDatabase({
                     {generatingPort ? "Finding…" : "Generate"}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  The port on the server clients connect to. Use an unprivileged
-                  port (1024–65535) that is free on the host, or click Generate.
-                </p>
               </div>
             )}
           </div>

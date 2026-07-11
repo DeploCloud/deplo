@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Select,
   SelectContent,
@@ -153,7 +154,7 @@ function CopyChip({
   );
 }
 
-/** A small label + helper-text block reused at the top of grouped sections. */
+/** A small label (with optional info tooltip) above a grouped field. */
 function SectionField({
   label,
   hint,
@@ -165,9 +166,8 @@ function SectionField({
 }) {
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
+      <FieldLabel info={hint}>{label}</FieldLabel>
       {children}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -1061,10 +1061,20 @@ export function DevModeFields({
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">
+                  <FieldLabel
+                    className="text-xs"
+                    info={
+                      <>
+                        The user&apos;s SSH public key (the{" "}
+                        <code className="font-mono">.pub</code> file, e.g.{" "}
+                        <code className="font-mono">~/.ssh/id_ed25519.pub</code>
+                        ). They connect with the matching private key.
+                      </>
+                    }
+                  >
                     SSH public key{" "}
                     <span className="text-muted-foreground">(recommended)</span>
-                  </Label>
+                  </FieldLabel>
                   <Textarea
                     value={newKey}
                     onChange={(e) => setNewKey(e.target.value)}

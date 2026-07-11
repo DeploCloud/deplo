@@ -7,6 +7,7 @@ import { gql } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Card,
   CardContent,
@@ -90,7 +91,12 @@ export function SetupForm() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
+            <FieldLabel
+              htmlFor="username"
+              info="Your public handle. Lowercase letters, numbers, - and _."
+            >
+              Username
+            </FieldLabel>
             <Input
               id="username"
               name="username"
@@ -101,9 +107,6 @@ export function SetupForm() {
               maxLength={32}
               pattern="[A-Za-z0-9_\-]+"
             />
-            <p className="text-xs text-muted-foreground">
-              Your public handle. Lowercase letters, numbers, - and _.
-            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="name">Display name</Label>
