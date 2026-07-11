@@ -28,6 +28,10 @@ const COLORS: Record<string, string> = {
   running: "bg-[var(--success)]",
   online: "bg-[var(--success)]",
   valid: "bg-[var(--success)]",
+  // A domain proxied through Cloudflare is a working, routable state (Cloudflare
+  // forwards to this origin, TLS at the edge) — green, like `valid`, not an
+  // error. The "Cloudflare" label + the row hint say it's proxied.
+  cloudflare: "bg-[var(--success)]",
   connected: "bg-[var(--success)]",
   active: "bg-[var(--success)]",
   success: "bg-[var(--success)]",

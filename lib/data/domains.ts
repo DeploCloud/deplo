@@ -24,6 +24,7 @@ import {
   rehostNip,
   domainTlsConfig,
 } from "../deploy/domains";
+import { classifyDomainDns, type DomainDnsClass } from "../deploy/cloudflare";
 import { usesComposeStack } from "../utils";
 import { portFor } from "../deploy/ports";
 import {
@@ -604,17 +605,27 @@ export async function updateDomain(
 }
 
 /**
- * Verify a domain against real DNS: its A records — following any CNAME chain,
- * which resolve4 does — must include the public IPv4 of the server this project
- * runs on. A host that merely resolves to *some* address (a domain pointed at a
- * different server, or an unrelated site like google.com) is `misconfigured`,
- * NOT `valid`. Traefik then issues the Let's Encrypt cert on the next request,
- * so `ssl` flips on only once DNS actually points here.
+ * Verify a domain against real DNS and settle its status into one of three
+ * outcomes (the classification is pure — {@link classifyDomainDns}):
  *
- * Caveat: a domain proxied through a CDN (e.g. Cloudflare's orange-cloud)
- * resolves to the CDN's IPs, not this server's, so it reads as misconfigured —
- * those setups terminate at the CDN and use the `none`/`cloudflare` cert flow
- * rather than this server-IP DNS check.
+ *   - `valid`         its A records — following any CNAME chain, which resolve4
+ *                     does — include the public IPv4 of the server this project
+ *                     runs on. Traefik issues the Let's Encrypt cert on the next
+ *                     request, so `ssl` flips on. (The long-standing check.)
+ *   - `cloudflare`    the domain is proxied through Cloudflare's orange-cloud:
+ *                     its A records are Cloudflare's shared anycast IPs, which
+ *                     INTENTIONALLY mask the origin, so a bare server-IP match
+ *                     can never see this server. That is a correct, working setup
+ *                     — not a misconfiguration — so it gets its own status and is
+ *                     treated as routable (see {@link routableRoutes}). TLS is
+ *                     served at Cloudflare's edge, so `ssl` is on.
+ *   - `misconfigured` its A records point at some unrelated address (a different
+ *                     server, an unrelated site) or it doesn't resolve at all.
+ *
+ * The server-IP DNS check (deplo's core) is unchanged; the Cloudflare case is a
+ * new, additive branch that stops a correctly-proxied domain from reading as
+ * broken. A domain whose DNS is on Cloudflare but NOT proxied (grey-cloud)
+ * resolves straight to the origin and so verifies as `valid` exactly as before.
  */
 export async function verifyDomain(id: string): Promise<Domain> {
   const { membership } = await requireCapability("manage_domains");
@@ -627,15 +638,20 @@ export async function verifyDomain(id: string): Promise<Domain> {
   // The domain must point at the server THIS project runs on — not always the
   // panel host: a project on a remote server needs its A record on that server.
   const target = await serviceServerIp(dom.serviceId);
-  const ok = await domainPointsAt(dom.name, target);
+  const status = await checkDomainDns(dom.name, target);
+  // `valid` (points straight here) and `cloudflare` (proxied — DNS correctly
+  // delegated to Cloudflare, origin masked) are both working, routable states;
+  // only `misconfigured` means DNS doesn't reach this server, so `ssl` (a cert
+  // is in effect for end users) is on for the first two.
+  const ssl = status !== "misconfigured";
 
   const updated = await getDb()
     .update(domainsTable)
-    .set({ status: ok ? "valid" : "misconfigured", ssl: ok })
+    .set({ status, ssl })
     .where(eq(domainsTable.id, id))
     .returning();
   if (updated.length === 0) throw new Error("Not found");
-  return { ...dom, status: ok ? "valid" : "misconfigured", ssl: ok };
+  return { ...dom, status, ssl };
 }
 
 /** The public IPv4 a project's custom domains must resolve to: the IP of the
@@ -649,28 +665,42 @@ async function serviceServerIp(serviceId: string): Promise<string> {
   return resolveServerIp(server ?? undefined);
 }
 
-/** True iff `name` actually resolves to `target`. resolve4 follows CNAME chains
- * and returns the final A records, so a CNAME'd host is handled here too; a name
- * with no A record (NXDOMAIN, resolve failure) or one pointing elsewhere is not
- * a match. IPv4-only, matching the IPv4 the rest of the domain system uses. */
-async function domainPointsAt(name: string, target: string): Promise<boolean> {
+/**
+ * Resolve `name`'s A records and classify them against `target` (the server IP
+ * this domain must reach) into `valid` / `cloudflare` / `misconfigured`. This is
+ * the thin resolver boundary; the verdict itself is pure ({@link
+ * classifyDomainDns}) so it stays exhaustively unit-testable without a network.
+ *
+ * resolve4 follows CNAME chains and returns the final A records, so a CNAME'd
+ * host is handled here too — including a Cloudflare-proxied host, whose CNAME is
+ * flattened to Cloudflare's anycast A records. A resolution failure (NXDOMAIN,
+ * SERVFAIL, no A record) yields an empty set ⇒ `misconfigured`. IPv4-only,
+ * matching the IPv4 the rest of the domain system uses.
+ */
+async function checkDomainDns(
+  name: string,
+  target: string,
+): Promise<DomainDnsClass> {
+  let ips: string[] = [];
   try {
-    const ips = await resolve4(name);
-    return ips.includes(target);
+    ips = await resolve4(name);
   } catch {
-    return false;
+    ips = [];
   }
+  return classifyDomainDns(ips, target);
 }
 
 /**
- * Valid, routable hostnames for a project, primary first.
+ * Working, routable hostnames for a project, primary first.
  *
- * Only `valid` domains are returned: a pending/misconfigured host has no
- * working DNS, so routing to it would make Traefik fail HTTP-01 issuance and
- * (because all hosts share one cert order) could jeopardise the cert for the
- * domains that *do* work. The primary is sorted first so it stays the canonical
- * host. Store-direct (no auth) so the deploy engine can call it like
- * [[ensure-auto-domain]] does. Empty when the project has no valid domain.
+ * Only `valid` and `cloudflare` domains are returned: a pending/misconfigured
+ * host has no working DNS, so routing to it would make Traefik fail HTTP-01
+ * issuance and (because all hosts share one cert order) could jeopardise the
+ * cert for the domains that *do* work. A `cloudflare` (proxied) host DOES route
+ * — Cloudflare forwards to this origin — so it must be included. The primary is
+ * sorted first so it stays the canonical host. Store-direct (no auth) so the
+ * deploy engine can call it like [[ensure-auto-domain]] does. Empty when the
+ * project has no working domain.
  */
 export async function routableDomains(serviceId: string): Promise<string[]> {
   return (await routableRoutes(serviceId)).map((d) => d.name);
@@ -733,14 +763,17 @@ export function defaultRoute(
  * override and resolved TLS triplet. The per-domain port lets one container
  * expose different services on different hostnames; the TLS triplet lets each
  * host pick its entrypoint and certificate provider. A `null` port means "use
- * the project's default port". Same `valid`-only filtering rationale as
+ * the project's default port". Same `valid`/`cloudflare` filtering rationale as
  * {@link routableDomains}.
  */
 export async function routableRoutes(
   serviceId: string,
 ): Promise<RoutableDomain[]> {
   return (await loadDomainsForService(serviceId))
-    .filter((d) => d.status === "valid")
+    // `valid` (points straight here) and `cloudflare` (proxied — Cloudflare
+    // forwards to this origin) are both working, routable hosts; a
+    // pending/misconfigured host has no working DNS and is left off the router.
+    .filter((d) => d.status === "valid" || d.status === "cloudflare")
     .sort((a, b) => Number(b.primary) - Number(a.primary))
     .map((d) => ({
       name: d.name,

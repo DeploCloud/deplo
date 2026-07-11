@@ -52,7 +52,7 @@ export const DatabaseTypeEnum = builder.enumType("DatabaseType", {
 });
 
 export const DomainStatusEnum = builder.enumType("DomainStatus", {
-  values: ["valid", "pending", "misconfigured", "error"] as const,
+  values: ["valid", "cloudflare", "pending", "misconfigured", "error"] as const,
 });
 
 export const S3ProviderEnum = builder.enumType("S3Provider", {

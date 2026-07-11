@@ -448,6 +448,7 @@ input DomainPatchInput {
 }
 
 enum DomainStatus {
+  cloudflare
   error
   misconfigured
   pending

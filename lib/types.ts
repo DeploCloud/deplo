@@ -929,7 +929,23 @@ export interface EnvironmentEnvVarDTO {
   updatedAt: string;
 }
 
-export type DomainStatus = "valid" | "pending" | "misconfigured" | "error";
+/**
+ * A custom domain's DNS verification state.
+ *  - valid          an A record points straight at this project's server.
+ *  - cloudflare     proxied through Cloudflare's orange-cloud: the A records are
+ *                   Cloudflare's anycast IPs (the origin is masked), which is a
+ *                   correct, working setup — routed and TLS-terminated at the
+ *                   edge, distinct from a genuine misconfiguration.
+ *  - pending        added but not yet verified (no DNS check has run).
+ *  - misconfigured  resolves nowhere useful, or to an unrelated address.
+ *  - error          a check failed unexpectedly (reserved).
+ */
+export type DomainStatus =
+  | "valid"
+  | "cloudflare"
+  | "pending"
+  | "misconfigured"
+  | "error";
 
 /**
  * The Traefik entrypoint a domain's router binds to. Mirrors the two entrypoints
