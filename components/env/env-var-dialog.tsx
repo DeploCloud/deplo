@@ -29,11 +29,15 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { gql, gqlAction } from "@/lib/graphql-client";
+import { cn } from "@/lib/utils";
 import { parseEnv } from "@/components/env/env-parse";
 import type { EnvTarget, EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
 
 const ALL_TARGETS: EnvTarget[] = ["production", "preview", "development"];
+
+/** Mirrors the server's key rule (lib/data/env.ts) so a bad key fails loudly here. */
+const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 /** Human labels for how a shared var reaches an app. */
 const VIA_LABEL: Record<string, string> = {
@@ -97,7 +101,9 @@ function EditForm({
   appId: string;
   editing: EnvVarDTO;
 }) {
-  const [value, setValue] = React.useState("");
+  // Prefill: a plain var shows its value; a secret shows the MASK, which the
+  // server keeps as-is (so editing only the environments can't blank the value).
+  const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");
   const [targets, setTargets] = React.useState<EnvTarget[]>(editing.targets);
   const [pending, startTransition] = React.useTransition();
@@ -159,7 +165,7 @@ function EditForm({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending}>
+          <Button onClick={submit} disabled={pending || targets.length === 0}>
             {pending ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
@@ -227,6 +233,9 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
   const router = useRouter();
 
   const filled = rows.filter((r) => r.key.trim() !== "");
+  // The server silently SKIPS keys it can't parse (importEnv), so surface them
+  // here instead — a pasted `export FOO=bar` would otherwise vanish without a word.
+  const invalid = filled.filter((r) => !KEY_RE.test(r.key.trim()));
 
   function setRow(i: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -238,12 +247,14 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
     setRows((prev) => [...prev, { key: "", value: "" }]);
   }
 
-  // Pasting `.env` content into a key field explodes into editable rows.
+  // Pasting `.env` content into a key field explodes into editable rows. A key can
+  // never contain "=", so ANY paste that parses into at least one KEY=VALUE pair is
+  // a .env paste — including the single most common case, one `KEY=value` line.
+  // A paste with no "=" is just a key name and falls through to the normal paste.
   function onPaste(i: number, e: React.ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData("text");
     const parsed = parseEnv(text);
-    // Only intercept multi-var / KEY=VALUE pastes; a plain value pastes normally.
-    if (parsed.length === 0 || (parsed.length === 1 && !text.includes("\n"))) return;
+    if (parsed.length === 0) return;
     e.preventDefault();
     setRows((prev) => {
       const kept = prev.filter((r, idx) => idx !== i && r.key.trim() !== "");
@@ -308,38 +319,54 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
         <code className="font-mono">.env</code> into a key field to fill the rows.
       </p>
       <div className="space-y-2">
-        {rows.map((r, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <Input
-              value={r.key}
-              onChange={(e) => setRow(i, { key: e.target.value })}
-              onPaste={(e) => onPaste(i, e)}
-              placeholder="KEY"
-              className="font-mono text-xs"
-            />
-            <Input
-              value={r.value}
-              onChange={(e) => setRow(i, { value: e.target.value })}
-              placeholder="value"
-              className="text-xs"
-            />
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="shrink-0 text-muted-foreground hover:text-destructive"
-              onClick={() => removeRow(i)}
-              disabled={rows.length === 1}
-              aria-label="Remove row"
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          </div>
-        ))}
+        {rows.map((r, i) => {
+          const bad = r.key.trim() !== "" && !KEY_RE.test(r.key.trim());
+          return (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                value={r.key}
+                onChange={(e) => setRow(i, { key: e.target.value })}
+                onPaste={(e) => onPaste(i, e)}
+                placeholder="KEY"
+                aria-invalid={bad}
+                className={cn(
+                  "font-mono text-xs",
+                  bad && "border-destructive focus-visible:ring-destructive",
+                )}
+              />
+              <Input
+                value={r.value}
+                onChange={(e) => setRow(i, { value: e.target.value })}
+                placeholder="value"
+                className="text-xs"
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0 text-muted-foreground hover:text-destructive"
+                onClick={() => removeRow(i)}
+                disabled={rows.length === 1}
+                aria-label="Remove row"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          );
+        })}
         <Button variant="ghost" size="sm" onClick={addRow} className="text-muted-foreground">
           <Plus className="size-4" />
           Add another
         </Button>
       </div>
+      {invalid.length > 0 && (
+        <p className="text-xs text-destructive">
+          {invalid.length === 1
+            ? `“${invalid[0].key.trim()}” isn't a valid variable name.`
+            : `${invalid.length} keys aren't valid variable names.`}{" "}
+          Names must start with a letter or underscore and contain only letters,
+          digits and underscores.
+        </p>
+      )}
       <TargetsField targets={targets} onToggle={(t) => setTargets(toggle(targets, t))} />
       {filled.length > 1 ? (
         <p className="text-xs text-muted-foreground">
@@ -353,7 +380,15 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
         <Button variant="outline" onClick={onDone} disabled={pending}>
           Cancel
         </Button>
-        <Button onClick={save} disabled={pending || filled.length === 0 || targets.length === 0}>
+        <Button
+          onClick={save}
+          disabled={
+            pending ||
+            filled.length === 0 ||
+            invalid.length > 0 ||
+            targets.length === 0
+          }
+        >
           {pending ? "Saving…" : filled.length > 1 ? `Add ${filled.length}` : "Add"}
         </Button>
       </DialogFooter>
@@ -460,13 +495,19 @@ function SharedVarLinkRow({
       <div className="min-w-0 space-y-1">
         <p className="truncate font-mono text-xs font-medium">{sharedVar.key}</p>
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="muted" className="text-[10px]">
-            {VIA_LABEL[sharedVar.via] ?? "Shared"}
-          </Badge>
-          {sharedVar.inherited && (
-            <span className="text-[10px] text-muted-foreground">
-              Auto-applied
-            </span>
+          {sharedVar.applied ? (
+            <>
+              <Badge variant="muted" className="text-[10px]">
+                {VIA_LABEL[sharedVar.via] ?? "Shared"}
+              </Badge>
+              {sharedVar.inherited && (
+                <span className="text-[10px] text-muted-foreground">
+                  Auto-applied
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">Not applied</span>
           )}
         </div>
       </div>

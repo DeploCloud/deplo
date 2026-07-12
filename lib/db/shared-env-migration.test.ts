@@ -120,11 +120,18 @@ before(async () => {
       values ('ee1', 'env_dev', 'EE', 'enc:ee', 'plain', '${T0}', '${T0}');
 
     insert into shared_env_groups (id, team_id, name, description, created_at, updated_at)
-      values ('g1', 'team_a', 'G', '', '${T0}', '${T0}');
+      values ('g1', '${TEAM_A}', 'G', '', '${T0}', '${T0}');
     insert into shared_env_group_vars (group_id, key, value_enc, type)
       values ('g1', 'SG', 'enc:sg', 'plain'), ('g1', 'DUP', 'enc:sgdup', 'plain');
     insert into shared_env_group_apps (group_id, app_id) values ('g1', 'app_p');
     insert into shared_env_group_targets (group_id, target) values ('g1', 'production');
+
+    -- g2: a group attached to NO app. It reached nothing before, so it must reach
+    -- nothing after (and is the one legitimate mode-less row post-migration).
+    insert into shared_env_groups (id, team_id, name, description, created_at, updated_at)
+      values ('g2', '${TEAM_A}', 'Unattached', '', '${T0}', '${T0}');
+    insert into shared_env_group_vars (group_id, key, value_enc, type)
+      values ('g2', 'UNUSED', 'enc:unused', 'plain');
   `);
 
   // Now run 0027 — it CREATES the new tables and backfills from the seeds above.
@@ -154,18 +161,42 @@ async function resolved(appId: string, target: EnvTarget): Promise<Record<string
 
 test("backfill produced one shared var per legacy source", async () => {
   const rows = await pg.query<{ key: string }>(`select key from shared_env_vars order by key`);
-  assert.deepEqual(rows.rows.map((r) => r.key).sort(), ["DUP", "EE", "SG", "TG"]);
+  assert.deepEqual(rows.rows.map((r) => r.key).sort(), [
+    "DUP",
+    "EE",
+    "SG",
+    "TG",
+    "UNUSED",
+  ]);
 });
 
-test("every migrated shared var has ≥1 mode or a per-app link (no orphans)", async () => {
-  const orphans = await pg.query<{ id: string }>(`
-    select v.id from shared_env_vars v
+test("the only mode-less/link-less var is the one whose group reached no app", async () => {
+  // Spec §4's "no shared var left without a valid sharing mode" — the ONE legitimate
+  // exception is a var exploded from a group that was attached to nothing: it
+  // injected nowhere before and injects nowhere after, so parity holds and the row
+  // is kept rather than destroying the user's authored value. It is editable in the
+  // Shared tab (assigning it a mode is exactly what saveSharedVar demands).
+  const orphans = await pg.query<{ key: string }>(`
+    select v.key from shared_env_vars v
     where v.team_wide = false
       and not exists (select 1 from shared_env_var_environments e where e.var_id = v.id)
       and not exists (select 1 from shared_env_var_projects p where p.var_id = v.id)
       and not exists (select 1 from shared_env_var_apps a where a.var_id = v.id)
   `);
-  assert.deepEqual(orphans.rows, []);
+  assert.deepEqual(orphans.rows.map((r) => r.key), ["UNUSED"]);
+});
+
+test("every var that reached an app before still reaches it (no lost coverage)", async () => {
+  // The unattached group's var must reach NOTHING, on every app and every target.
+  for (const app of ["app_p", "app_top"]) {
+    for (const target of ["production", "preview", "development"] as EnvTarget[]) {
+      assert.equal(
+        (await resolved(app, target)).UNUSED,
+        undefined,
+        `${app}/${target} must not inherit the unattached group's var`,
+      );
+    }
+  }
 });
 
 test("parity: app_p production resolves identically (env membership + link overrides app-own)", async () => {

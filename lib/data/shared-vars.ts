@@ -45,6 +45,24 @@ function sanitizeTargets(targets: EnvTarget[]): EnvTarget[] {
   return kept.length ? kept : ALL_ENV_TARGETS;
 }
 
+/**
+ * The layer a shared var injects into one app through, in DEPLOY PRECEDENCE order
+ * (lib/deploy/env-resolve.ts): a per-app link is the highest layer, so it wins the
+ * badge over any mode. Meaningless when the var doesn't apply — callers gate the
+ * badge on `applied`.
+ */
+function viaFor(m: {
+  linked: boolean;
+  byProject: boolean;
+  byOwnEnv: boolean;
+  teamWide: boolean;
+}): SharedVarMode {
+  if (m.linked) return "link";
+  if (m.byProject) return "project";
+  if (m.byOwnEnv) return "environment";
+  return "teamWide";
+}
+
 /* ------------------------------------------------------------------ */
 /* Internal loader (no auth gate) — stitch a team's vars + junctions.  */
 /* ------------------------------------------------------------------ */
@@ -198,10 +216,15 @@ export interface AppSharedVarDTO {
 }
 
 /**
- * The shared vars relevant to one app — those already applied to it (via any
- * mode or a link) plus those merely OFFERED to its project (shared to a sibling
- * environment of the same project). The app modal lists these and toggles the
- * per-app link.
+ * EVERY shared var of the team, as seen from one app: whether it currently
+ * injects (`applied`), through which layer (`via`), whether that is a MODE the
+ * app can't switch off (`inherited`), and its per-app link state (`linked`).
+ *
+ * The full team set is returned — not just the in-scope ones — because the app
+ * modal's per-app LINK is the escape hatch for attaching an EXTRA shared var to
+ * one app (one that no mode already covers). Filtering to in-scope vars would
+ * make that impossible for a top-level app (no project/environment) and would
+ * strand a link-only var the moment its last link is removed.
  */
 export async function listSharedVarsForApp(
   appId: string,
@@ -221,48 +244,30 @@ export async function listSharedVarsForApp(
   )[0];
   const projectId = app?.projectId ?? null;
   const environmentId = app?.environmentId ?? null;
-  // The environment ids of the app's project — a var shared to any of them is a
-  // candidate for this app even if it lives in a different environment.
-  const projectEnvIds = new Set<string>();
-  if (projectId) {
-    const rows = await getDb()
-      .select({ id: environmentsTable.id })
-      .from(environmentsTable)
-      .where(eq(environmentsTable.projectId, projectId));
-    for (const r of rows) projectEnvIds.add(r.id);
-  }
   const vars = await loadSharedVarsForTeam(teamId);
-  const out: AppSharedVarDTO[] = [];
-  for (const v of vars) {
-    const byProject = projectId != null && v.projectIds.includes(projectId);
-    const byOwnEnv =
-      environmentId != null && v.environmentIds.includes(environmentId);
-    const linked = v.appIds.includes(appId);
-    const inherited = v.teamWide || byProject || byOwnEnv;
-    const applied = inherited || linked;
-    const bySiblingEnv = v.environmentIds.some((id) => projectEnvIds.has(id));
-    const candidate = applied || byProject || bySiblingEnv || v.teamWide;
-    if (!candidate) continue;
-    const via: SharedVarMode = byProject
-      ? "project"
-      : byOwnEnv || bySiblingEnv
-        ? "environment"
-        : v.teamWide
-          ? "teamWide"
-          : "link";
-    out.push({
-      id: v.id,
-      key: v.key,
-      masked: v.type === "secret",
-      type: v.type,
-      targets: sanitizeTargets(v.targets),
-      via,
-      applied,
-      inherited,
-      linked,
-    });
-  }
-  return out.sort((a, b) => a.key.localeCompare(b.key));
+  return vars
+    .map((v) => {
+      const byProject = projectId != null && v.projectIds.includes(projectId);
+      const byOwnEnv =
+        environmentId != null && v.environmentIds.includes(environmentId);
+      const linked = v.appIds.includes(appId);
+      // A MODE applies → the app can't switch it off from here.
+      const inherited = v.teamWide || byProject || byOwnEnv;
+      return {
+        id: v.id,
+        key: v.key,
+        masked: v.type === "secret",
+        type: v.type,
+        targets: sanitizeTargets(v.targets),
+        // The layer it actually injects through, in deploy precedence order
+        // (a per-app link is the HIGHEST layer — see lib/deploy/env-resolve.ts).
+        via: viaFor({ linked, byProject, byOwnEnv, teamWide: v.teamWide }),
+        applied: inherited || linked,
+        inherited,
+        linked,
+      };
+    })
+    .sort((a, b) => a.key.localeCompare(b.key));
 }
 
 /** One applied shared var as seen on the aggregate App tab (no values). */
@@ -301,19 +306,12 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
         app.environmentId != null && v.environmentIds.includes(app.environmentId);
       const linked = v.appIds.includes(app.id);
       if (!(v.teamWide || byProject || byEnv || linked)) continue;
-      const via: SharedVarMode = byProject
-        ? "project"
-        : byEnv
-          ? "environment"
-          : v.teamWide
-            ? "teamWide"
-            : "link";
       out.push({
         appId: app.id,
         id: v.id,
         key: v.key,
         masked: v.type === "secret",
-        via,
+        via: viaFor({ linked, byProject, byOwnEnv: byEnv, teamWide: v.teamWide }),
         targets: sanitizeTargets(v.targets),
       });
     }
@@ -363,23 +361,40 @@ export async function saveSharedVar(input: {
   teamWide: boolean;
   environmentIds: string[];
   projectIds: string[];
-}): Promise<void> {
+}): Promise<string> {
   const { teamId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
+  if (input.targets.length === 0)
+    throw new Error("Select at least one environment");
   const targets = sanitizeTargets(input.targets);
 
   // Keep only environments/projects that belong to the active team.
   const environmentIds = await filterTeamEnvironments(teamId, input.environmentIds);
   const projectIds = await filterTeamProjects(teamId, input.projectIds);
   const teamWide = Boolean(input.teamWide);
-  if (!teamWide && environmentIds.length === 0 && projectIds.length === 0)
-    throw new Error("Share with at least one environment, project, or team-wide");
+
+  // A shared var must REACH something. Normally that means ≥1 sharing mode — but a
+  // var carrying explicit per-app LINKS already reaches those apps, and that is
+  // exactly the shape migration 0027 gives every var exploded out of a legacy
+  // shared GROUP (links, no modes). Rejecting it here would make every migrated
+  // group variable permanently unsavable, so links count as reach on update.
+  if (!teamWide && environmentIds.length === 0 && projectIds.length === 0) {
+    const links = input.id
+      ? await getDb()
+          .select({ appId: appJunction.appId })
+          .from(appJunction)
+          .where(eq(appJunction.varId, input.id))
+      : [];
+    if (links.length === 0)
+      throw new Error("Share with at least one environment, project, or team-wide");
+  }
 
   // The editor sends the MASK back unchanged when only scope/type changed on a
   // secret — keep the stored value rather than encrypting the mask string.
   const keepValue = input.value === MASK;
+  let savedId = input.id ?? "";
 
   await getDb().transaction(async (tx) => {
     if (input.id) {
@@ -398,13 +413,14 @@ export async function saveSharedVar(input: {
           teamWide,
           updatedAt: nowIso(),
         })
-        .where(eq(varsTable.id, input.id));
+        .where(and(eq(varsTable.id, input.id), eq(varsTable.teamId, teamId)));
       // Whole-set replace the scope junctions (NOT the per-app links — those are
       // owned by the app UI's setSharedVarAppLink).
       await tx.delete(targetsTable).where(eq(targetsTable.varId, input.id));
       await tx.delete(envJunction).where(eq(envJunction.varId, input.id));
       await tx.delete(projJunction).where(eq(projJunction.varId, input.id));
       await insertScopeChildren(tx, input.id, targets, environmentIds, projectIds);
+      savedId = input.id;
     } else {
       const id = newId("svar");
       const now = nowIso();
@@ -419,6 +435,7 @@ export async function saveSharedVar(input: {
         updatedAt: now,
       });
       await insertScopeChildren(tx, id, targets, environmentIds, projectIds);
+      savedId = id;
     }
   });
   await recordActivity(
@@ -428,6 +445,7 @@ export async function saveSharedVar(input: {
     null,
     teamId,
   );
+  return savedId;
 }
 
 /** Attach or detach one shared var to one app (idempotent, the per-app link). */

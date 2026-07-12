@@ -155,7 +155,7 @@ builder.mutationFields((t) => ({
     description: "Create or update a shared variable; returns the saved entity.",
     args: { input: t.arg({ type: SaveSharedVarInputType, required: true }) },
     resolve: async (_r, { input }) => {
-      await saveSharedVar({
+      const id = await saveSharedVar({
         id: input.id ?? undefined,
         key: input.key,
         value: input.value,
@@ -165,9 +165,11 @@ builder.mutationFields((t) => ({
         environmentIds: input.environmentIds,
         projectIds: input.projectIds,
       });
-      // The data fn returns void; reload by id (update) or by key (create, id is
-      // server-minted) so the mutation can hand back the saved entity.
-      return reloadSharedVar({ id: input.id ?? null, key: input.key });
+      // Reload by the id the data fn minted — matching by key would be ambiguous
+      // (keys are deliberately NOT unique per team; a key repeats across scopes).
+      const saved = (await listSharedVars()).find((v) => v.id === id);
+      if (!saved) throw new Error("Shared variable not found");
+      return saved;
     },
   }),
   setSharedVarAppLink: t.field({
@@ -197,30 +199,9 @@ builder.mutationFields((t) => ({
   revealSharedVar: t.field({
     type: "String",
     authScopes: { capability: "manage_env" },
-    description: "Reveal a shared variable's decrypted value (prefills edits).",
+    description:
+      "Reveal one shared variable's decrypted value (the `manage_env`-gated reveal; the UI keeps secrets masked).",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => revealSharedVar(id),
   }),
 }));
-
-/**
- * Reload a shared var after a void save so we can return the entity. On update we
- * match by id; on create the id is minted server-side, so match the most
- * recently-updated var with the saved key.
- */
-async function reloadSharedVar(saved: {
-  id: string | null;
-  key: string;
-}): Promise<SharedVarDTO> {
-  const all = await listSharedVars();
-  if (saved.id) {
-    const byId = all.find((v) => v.id === saved.id);
-    if (byId) return byId;
-  }
-  const trimmed = saved.key.trim();
-  const matches = all
-    .filter((v) => v.key === trimmed)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  if (!matches[0]) throw new Error("Shared variable not found");
-  return matches[0];
-}

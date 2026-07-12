@@ -118,6 +118,11 @@ export async function upsertEnv(input: {
   if (!(await appInTeam(input.appId, membership.teamId)))
     throw new Error("App not found");
   await requireFolderCapabilityForApp(input.appId, "manage_env");
+  // The editor sends the MASK back unchanged when only the targets/type changed on
+  // a secret (you cannot read back a secret you didn't set) — keep the stored value
+  // rather than encrypting the mask string over it. Same contract as the shared and
+  // global scopes; without it, editing a secret's environments WIPED its value.
+  const keepValue = input.value === MASK;
 
   await getDb().transaction(async (tx) => {
     const existing = await tx
@@ -135,7 +140,7 @@ export async function upsertEnv(input: {
       await tx
         .update(envVarsTable)
         .set({
-          valueEnc: encryptSecret(input.value),
+          ...(keepValue ? {} : { valueEnc: encryptSecret(input.value) }),
           type: input.type,
           updatedAt: nowIso(),
         })

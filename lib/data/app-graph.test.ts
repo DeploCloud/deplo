@@ -236,6 +236,41 @@ test("env vars + targets round-trip through the relational layer", async () => {
   assert.notEqual(rows[0]!.valueEnc, "s3cret");
 });
 
+test("re-saving a secret with the MASK keeps its value (editing targets can't wipe it)", async () => {
+  // The edit dialog prefills a secret's value with the MASK (you can't read back a
+  // secret you didn't set). Without a keep-value contract, changing ONLY the
+  // environments would silently overwrite the real value with the mask string.
+  await seedApp(db, { id: "prj_1", status: "active" });
+  await asUser1(async () => {
+    await upsertEnv({
+      appId: "prj_1",
+      key: "API_KEY",
+      value: "s3cret",
+      targets: ["production"],
+      type: "secret",
+    });
+    const before = await db
+      .select()
+      .from(envVarsTable)
+      .where(eq(envVarsTable.appId, "prj_1"));
+    // Re-save with the MASK sentinel and an extra target.
+    await upsertEnv({
+      appId: "prj_1",
+      key: "API_KEY",
+      value: "••••••••••••",
+      targets: ["production", "preview"],
+      type: "secret",
+    });
+    const after = await db
+      .select()
+      .from(envVarsTable)
+      .where(eq(envVarsTable.appId, "prj_1"));
+    assert.equal(after[0]!.valueEnc, before[0]!.valueEnc, "value preserved");
+    const list = await listEnv("prj_1");
+    assert.deepEqual([...list[0]!.targets].sort(), ["preview", "production"]);
+  });
+});
+
 test("shared-var link attach/detach toggles the junction", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   let varId = "";

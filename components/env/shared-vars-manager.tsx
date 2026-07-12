@@ -183,7 +183,12 @@ export function SharedVarsManager({
   );
 }
 
-function SharedVarDialog({
+/**
+ * Create/edit one shared variable + its three sharing modes. Exported so the
+ * aggregate App tab can open it directly on a shared row (the spec's "dedicated
+ * button to edit each variable" applies to shared vars too).
+ */
+export function SharedVarDialog({
   open,
   onOpenChange,
   editing,
@@ -212,8 +217,14 @@ function SharedVarDialog({
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
 
+  // A var must reach something: a sharing MODE, or — for a var migrated out of a
+  // legacy shared group — the per-app links it already carries (the server accepts
+  // those as reach too, so don't disable Save on them).
   const hasScope =
-    teamWide || environmentIds.length > 0 || projectIds.length > 0;
+    teamWide ||
+    environmentIds.length > 0 ||
+    projectIds.length > 0 ||
+    (editing?.appIds.length ?? 0) > 0;
 
   // Environments grouped by their owning project, for a readable checkbox list.
   const envsByProject = React.useMemo(() => {
@@ -391,6 +402,13 @@ function SharedVarDialog({
                 Pick at least one environment, project, or team-wide.
               </p>
             )}
+            {(editing?.appIds.length ?? 0) > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Also linked directly to {editing!.appIds.length} app
+                {editing!.appIds.length > 1 ? "s" : ""} — unlink from an app&apos;s
+                Environment tab.
+              </p>
+            )}
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-border p-3">
@@ -407,7 +425,10 @@ function SharedVarDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending || !key.trim() || !hasScope}>
+          <Button
+            onClick={submit}
+            disabled={pending || !key.trim() || !hasScope || targets.length === 0}
+          >
             {pending ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

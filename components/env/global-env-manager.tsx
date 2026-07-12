@@ -38,16 +38,13 @@ import type { EnvTarget, GlobalEnvScope, GlobalEnvVarDTO } from "@/lib/types";
 // an operator edit ONLY a secret's targets without re-entering its value.
 const MASK = "••••••••••••";
 
-// GraphQL mutation field names per scope — the only difference between the two.
+// GraphQL mutation field names per scope. The `team` scope is GONE — team-global
+// vars became team-wide SHARED vars (ADR-0010) and their mutations were deleted
+// from the schema; leaving a dead `team` branch here would 500 at runtime.
 const MUTATIONS: Record<
   GlobalEnvScope,
   { upsert: string; del: string; input: string }
 > = {
-  team: {
-    upsert: "upsertTeamGlobalEnv",
-    del: "deleteTeamGlobalEnv",
-    input: "UpsertGlobalEnvInput",
-  },
   instance: {
     upsert: "upsertInstanceEnv",
     del: "deleteInstanceEnv",
@@ -56,10 +53,9 @@ const MUTATIONS: Record<
 };
 
 /**
- * Manage one scope of GLOBAL variables (team-wide or instance-wide). A flat
- * key/value/targets table with add/edit/delete — no per-app attachment,
- * because a global applies to every app automatically. The scope only
- * selects which mutations run; the shape is identical.
+ * Manage INSTANCE-wide global variables (every app of every team, admin-only). A
+ * flat key/value/targets table with add/edit/delete — no per-app attachment,
+ * because a global applies to every app automatically.
  */
 export function GlobalEnvManager({
   scope,
@@ -78,13 +74,10 @@ export function GlobalEnvManager({
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-medium">
-            {scope === "team" ? "Team variables" : "All-teams variables"}
-          </h3>
+          <h3 className="text-sm font-medium">All-teams variables</h3>
           <p className="text-sm text-muted-foreground">
-            {scope === "team"
-              ? "Injected into every app in this team. An app's own variable overrides one with the same key."
-              : "Injected into every app of every team. Any team or project variable with the same key overrides it."}
+            Injected into every app of every team. Any shared or app variable with
+            the same key overrides it.
           </p>
         </div>
         <Button
@@ -103,11 +96,7 @@ export function GlobalEnvManager({
         <EmptyState
           icon={Plus}
           title="No variables yet"
-          description={
-            scope === "team"
-              ? "Add a variable to share it across every app in this team."
-              : "Add a variable to inject it into every app of every team."
-          }
+          description="Add a variable to inject it into every app of every team."
         />
       ) : (
         <div className="rounded-xl border border-border">

@@ -898,7 +898,12 @@ export interface EnvVarDTO {
  * the scope determines storage table, gating, and deploy precedence (instance is
  * the lowest, then team, then a project's own var, then shared groups).
  */
-export type GlobalEnvScope = "team" | "instance";
+/**
+ * Global env scope. Only `instance` remains: team-global vars became team-wide
+ * SHARED vars (ADR-0010), so there is no `team` scope any more — the union is kept
+ * (rather than deleted) so the manager keeps one explicit, checkable scope name.
+ */
+export type GlobalEnvScope = "instance";
 
 export interface GlobalEnvVar {
   id: ID;

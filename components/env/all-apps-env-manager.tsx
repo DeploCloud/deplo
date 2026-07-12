@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Pencil, Trash2, Share2, ArrowUpRight } from "lucide-react";
+import { SharedVarDialog } from "@/components/env/shared-vars-manager";
 import {
   Card,
   CardContent,
@@ -27,7 +28,8 @@ import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppEnvGroup } from "@/lib/data/env";
-import type { AppliedSharedVarDTO } from "@/lib/data/shared-vars";
+import type { AppliedSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
+import type { TeamEnvironment } from "@/lib/data/environments";
 
 const VIA_LABEL: Record<string, string> = {
   teamWide: "Team-wide",
@@ -45,16 +47,30 @@ const VIA_LABEL: Record<string, string> = {
 export function AllAppsEnvManager({
   groups,
   sharedByApp,
+  sharedVars,
+  projects,
+  environments,
 }: {
   groups: AppEnvGroup[];
   sharedByApp: Record<string, AppliedSharedVarDTO[]>;
+  /** Full shared-var DTOs, so a shared row's Edit can open the shared dialog. */
+  sharedVars: SharedVarDTO[];
+  projects: { id: string; name: string; slug: string }[];
+  environments: TeamEnvironment[];
 }) {
   const [dialog, setDialog] = React.useState<{
     appId: string;
     editing: EnvVarDTO | null;
   } | null>(null);
+  const [sharedEditing, setSharedEditing] = React.useState<SharedVarDTO | null>(
+    null,
+  );
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
+  const sharedById = React.useMemo(
+    () => new Map(sharedVars.map((v) => [v.id, v] as const)),
+    [sharedVars],
+  );
 
   if (groups.length === 0) {
     return (
@@ -174,14 +190,19 @@ export function AllAppsEnvManager({
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="link"
-                              size="sm"
-                              asChild
-                              className="h-auto p-0 text-xs text-muted-foreground"
-                            >
-                              <Link href="/variables?tab=shared">Manage</Link>
-                            </Button>
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() => {
+                                  const full = sharedById.get(v.id);
+                                  if (full) setSharedEditing(full);
+                                }}
+                                aria-label="Edit shared variable"
+                              >
+                                <Pencil className="size-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -201,6 +222,16 @@ export function AllAppsEnvManager({
           onOpenChange={(v) => !v && setDialog(null)}
           appId={dialog.appId}
           editing={dialog.editing}
+        />
+      )}
+      {sharedEditing && (
+        <SharedVarDialog
+          key={sharedEditing.id}
+          open
+          onOpenChange={(v) => !v && setSharedEditing(null)}
+          editing={sharedEditing}
+          projects={projects}
+          environments={environments}
         />
       )}
       <ConfirmAction

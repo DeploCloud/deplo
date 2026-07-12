@@ -146,6 +146,84 @@ test("saveSharedVar rejects a var with no sharing mode", async () => {
   );
 });
 
+test("a link-only var (the migrated shared-group shape) can still be saved", async () => {
+  // Migration 0027 explodes every legacy shared GROUP var into a var with per-app
+  // LINKS and NO modes. If the ≥1-mode rule rejected that shape, every migrated
+  // group variable would be permanently unsavable (you could never rotate its value).
+  const id = await asUser1(() => mkVar({ key: "FROMGROUP", teamWide: true }));
+  await asUser1(() => setSharedVarAppLink(id, "app_p", true));
+  // Strip the only mode → now it reaches app_p purely through the link.
+  await asUser1(() =>
+    saveSharedVar({
+      id,
+      key: "FROMGROUP",
+      value: "rotated",
+      type: "plain",
+      targets: [...ALL],
+      teamWide: false,
+      environmentIds: [],
+      projectIds: [],
+    }),
+  );
+  const [v] = await asUser1(() => listSharedVars());
+  assert.equal(v!.teamWide, false);
+  assert.equal(v!.value, "rotated");
+  assert.deepEqual(v!.appIds, ["app_p"]);
+  // It still injects into the linked app, through the `link` layer.
+  assert.deepEqual(
+    (await loadSharedVarsForApp("app_p")).map((e) => [e.key, e.mode]),
+    [["FROMGROUP", "link"]],
+  );
+});
+
+test("a var with neither a mode nor a link is rejected", async () => {
+  const id = await asUser1(() => mkVar({ key: "NOREACH", teamWide: true }));
+  await assert.rejects(
+    asUser1(() =>
+      saveSharedVar({
+        id,
+        key: "NOREACH",
+        value: "x",
+        type: "plain",
+        targets: [...ALL],
+        teamWide: false,
+        environmentIds: [],
+        projectIds: [],
+      }),
+    ),
+    /at least one/i,
+  );
+});
+
+test("saveSharedVar rejects an empty target set", async () => {
+  await assert.rejects(
+    asUser1(() =>
+      saveSharedVar({
+        key: "NOTARGET",
+        value: "x",
+        type: "plain",
+        targets: [],
+        teamWide: true,
+        environmentIds: [],
+        projectIds: [],
+      }),
+    ),
+    /at least one environment/i,
+  );
+});
+
+test("listSharedVarsForApp returns EVERY team var so any can be linked", async () => {
+  // Including one scoped to an environment this app does not live in — the per-app
+  // link is the escape hatch for attaching an extra shared var to one app.
+  await asUser1(() => mkVar({ key: "OTHERENV", environmentIds: [ENV_PROD] }));
+  const rows = await asUser1(() => listSharedVarsForApp("app_top")); // top-level app
+  const other = rows.find((r) => r.key === "OTHERENV")!;
+  assert.ok(other, "an out-of-scope var is still listed (linkable)");
+  assert.equal(other.applied, false);
+  assert.equal(other.inherited, false);
+  assert.equal(other.linked, false);
+});
+
 test("a secret shared var is masked in the list and revealed on demand", async () => {
   const id = await asUser1(() =>
     mkVar({ key: "SECRET", value: "s3cr3t", type: "secret", teamWide: true }),

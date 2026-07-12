@@ -73,7 +73,10 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
         description="Per-app variables and reusable shared variables across your workspace."
       />
 
-      <Tabs defaultValue={defaultTab}>
+      {/* `key` forces a remount when ?tab= changes: Radix Tabs is uncontrolled, so
+          a soft-navigation (the "Manage" links → ?tab=shared) would otherwise keep
+          the old panel and the click would appear to do nothing. */}
+      <Tabs key={defaultTab} defaultValue={defaultTab}>
         <UnderlineTabsList>
           <UnderlineTabsTrigger value="app">App</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
@@ -84,7 +87,13 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
 
         {/* App: every app's variables (standalone + applied shared), editable */}
         <TabsContent value="app" className="space-y-4">
-          <AllAppsEnvManager groups={allAppGroups} sharedByApp={sharedByApp} />
+          <AllAppsEnvManager
+            groups={allAppGroups}
+            sharedByApp={sharedByApp}
+            sharedVars={sharedVars}
+            projects={projects}
+            environments={teamEnvironments}
+          />
         </TabsContent>
 
         {/* Shared: individual shared variables + their sharing modes */}

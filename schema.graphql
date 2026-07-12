@@ -1077,7 +1077,9 @@ type Mutation {
   """Reveal an instance-wide secret's plaintext value."""
   revealInstanceEnv(id: String!): String
 
-  """Reveal a shared variable's decrypted value (prefills edits)."""
+  """
+  Reveal one shared variable's decrypted value (the `manage_env`-gated reveal; the UI keeps secrets masked).
+  """
   revealSharedVar(id: String!): String
 
   """Revoke a pending registration link. Returns true."""
