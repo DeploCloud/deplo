@@ -415,8 +415,12 @@ export function DeploymentsTable({
     6 + (showApp ? 1 : 0) + (showServer ? 1 : 0) + (canManage ? 1 : 0);
   // Server/App narrowers only exist on the global page (showServer); Status,
   // Environment and Sort surface wherever the rows warrant them — the app's own
-  // history included. Each control hides until it would actually offer a choice.
-  const showServerFilter = showServer && serverOptions.length >= 2;
+  // history included. The Server selector is the PRIMARY scoping axis of this
+  // "across all of your apps and servers" view, so it stays visible whenever any
+  // server is resolvable — even a single one (it names where the builds ran and is
+  // ready the instant a second server appears). The rest auto-hide until they'd
+  // offer a real choice (≥2 distinct values).
+  const showServerFilter = showServer && serverOptions.length >= 1;
   const showAppFilter = showServer && appOptions.length >= 2;
   const showStatusFilter = statusOptions.length >= 2;
   const showEnvFilter = envOptions.length >= 2;
