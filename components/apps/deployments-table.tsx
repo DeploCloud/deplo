@@ -12,6 +12,7 @@ import {
   ListFilter,
   ChevronLeft,
   ChevronRight,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,16 +35,16 @@ import {
 } from "@/components/ui/select";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { CommitLink } from "@/components/services/commit-link";
-import { DeploymentActions } from "@/components/services/deployment-actions";
+import { CommitLink } from "@/components/apps/commit-link";
+import { DeploymentActions } from "@/components/apps/deployment-actions";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
 
 const DELETE_DEPLOYMENTS = `mutation ($ids: [ID!]!) { deleteDeployments(ids: $ids) }`;
-const DELETE_ALL = `mutation ($serviceId: ID, $serverId: ID) { deleteAllDeployments(serviceId: $serviceId, serverId: $serverId) }`;
-const CANCEL_ALL = `mutation ($serviceId: ID, $serverId: ID) { cancelAllDeployments(serviceId: $serviceId, serverId: $serverId) }`;
+const DELETE_ALL = `mutation ($appId: ID, $serverId: ID) { deleteAllDeployments(appId: $appId, serverId: $serverId) }`;
+const CANCEL_ALL = `mutation ($appId: ID, $serverId: ID) { cancelAllDeployments(appId: $appId, serverId: $serverId) }`;
 
 /** In-progress deployments (queued/building) are still owned by the queue and the
  *  build job, so they can only be CANCELED — never selected for deletion. */
@@ -57,8 +58,8 @@ const PAGE_SIZE = 10;
 
 export interface DeploymentRow {
   id: string;
-  serviceId: string;
-  serviceSlug: string;
+  appId: string;
+  appSlug: string;
   serviceName: string;
   /** Owning server id — present on the global page (for the Server filter). */
   serverId?: string | null;
@@ -77,14 +78,14 @@ export interface DeploymentRow {
 
 /**
  * The deployments table with multi-select DELETION. Shared by the global
- * Deployments page and a service's own Deployment history. It owns the page header
+ * Deployments page and an app's own Deployment history. It owns the page header
  * row (`header` on the left, the bulk-action buttons on the right — a
  * `justify-between` layout), the filters, the table, and client-side pagination
  * (10 rows/page over the filtered set).
  *
- * The global page also gets a Server column and Server/Service filters
+ * The global page also gets a Server column and Server/App filters
  * (`showServer`). Filtering is a VIEW concern — it narrows the rendered rows AND
- * the scope of the bulk "Stop all builds" / "Delete all" sweeps (their serviceId /
+ * the scope of the bulk "Stop all builds" / "Delete all" sweeps (their appId /
  * serverId args follow the active filters), so the buttons always act on what you
  * see. Only FINISHED deployments (ready/error/canceled) are selectable; an
  * in-progress one must be canceled first. Everything is capability-gated
@@ -93,21 +94,21 @@ export interface DeploymentRow {
 export function DeploymentsTable({
   deployments,
   header,
-  showService = false,
+  showApp = false,
   showServer = false,
-  scopeServiceId,
+  scopeAppId,
   canManage,
 }: {
   deployments: DeploymentRow[];
   /** Title/subtitle block rendered on the left of the header row, opposite the
    *  bulk-action buttons. Plain markup — passed straight through from the RSC page. */
   header?: React.ReactNode;
-  /** Show the owning-service column (the global page). Off on a service's page. */
-  showService?: boolean;
-  /** Show the owning-server column + Server/Service filters (the global page). */
+  /** Show the owning-app column (the global page). Off on an app's page. */
+  showApp?: boolean;
+  /** Show the owning-server column + Server/App filters (the global page). */
   showServer?: boolean;
-  /** Scope the bulk sweeps to this service; omit to scope across the whole team. */
-  scopeServiceId?: string;
+  /** Scope the bulk sweeps to this app; omit to scope across the whole team. */
+  scopeAppId?: string;
   /** Whether to show the delete affordances (cosmetic — server re-checks). */
   canManage: boolean;
 }) {
@@ -117,10 +118,10 @@ export function DeploymentsTable({
   const [deleteAllOpen, setDeleteAllOpen] = React.useState(false);
   const [cancelAllOpen, setCancelAllOpen] = React.useState(false);
   const [serverFilter, setServerFilter] = React.useState<string | null>(null);
-  const [serviceFilter, setServiceFilter] = React.useState<string | null>(null);
+  const [appFilter, setAppFilter] = React.useState<string | null>(null);
   const [page, setPage] = React.useState(0);
 
-  // Distinct servers / services present in the current rows — the filter options.
+  // Distinct servers / apps present in the current rows — the filter options.
   // Derived from ALL rows (not the filtered view) so each dropdown stays stable
   // while the other filter narrows the table.
   const serverOptions = React.useMemo(() => {
@@ -131,27 +132,27 @@ export function DeploymentsTable({
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [deployments]);
-  const serviceOptions = React.useMemo(() => {
+  const appOptions = React.useMemo(() => {
     const m = new Map<string, string>();
     for (const d of deployments)
-      if (!m.has(d.serviceId)) m.set(d.serviceId, d.serviceName || d.serviceId);
+      if (!m.has(d.appId)) m.set(d.appId, d.serviceName || d.appId);
     return [...m]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [deployments]);
 
   // Reconcile the chosen filters against what's still present (a refresh may have
-  // dropped the last row on a server/service). Done in render — no effect — so a
+  // dropped the last row on a server/app). Done in render — no effect — so a
   // now-empty filter simply behaves as "All" without a stale, un-clearable value.
   const effectiveServerFilter =
     serverFilter && serverOptions.some((s) => s.id === serverFilter)
       ? serverFilter
       : null;
-  const effectiveServiceFilter =
-    serviceFilter && serviceOptions.some((s) => s.id === serviceFilter)
-      ? serviceFilter
+  const effectiveAppFilter =
+    appFilter && appOptions.some((s) => s.id === appFilter)
+      ? appFilter
       : null;
-  const hasFilter = effectiveServerFilter != null || effectiveServiceFilter != null;
+  const hasFilter = effectiveServerFilter != null || effectiveAppFilter != null;
 
   // The rows matching the filters — everything downstream (selection, counts, bulk
   // scope) keys off this so the buttons act on exactly what's in scope.
@@ -160,9 +161,9 @@ export function DeploymentsTable({
       deployments.filter(
         (d) =>
           (!effectiveServerFilter || d.serverId === effectiveServerFilter) &&
-          (!effectiveServiceFilter || d.serviceId === effectiveServiceFilter),
+          (!effectiveAppFilter || d.appId === effectiveAppFilter),
       ),
-    [deployments, effectiveServerFilter, effectiveServiceFilter],
+    [deployments, effectiveServerFilter, effectiveAppFilter],
   );
 
   // Client-side pagination over the filtered set. Clamp in render (no effect) so a
@@ -202,26 +203,26 @@ export function DeploymentsTable({
   const allSelected = selectableIds.length > 0 && selectedCount === selectableIds.length;
   const someSelected = selectedCount > 0 && !allSelected;
 
-  // The scope the bulk sweeps target: the service page pins one service; the
+  // The scope the bulk sweeps target: the app page pins one app; the
   // global page follows the active filters (both optional).
-  const sweepServiceId = scopeServiceId ?? effectiveServiceFilter ?? null;
+  const sweepAppId = scopeAppId ?? effectiveAppFilter ?? null;
   const sweepServerId = effectiveServerFilter ?? null;
-  const activeServiceName = effectiveServiceFilter
-    ? (serviceOptions.find((s) => s.id === effectiveServiceFilter)?.name ?? null)
+  const activeAppName = effectiveAppFilter
+    ? (appOptions.find((s) => s.id === effectiveAppFilter)?.name ?? null)
     : null;
   const activeServerName = effectiveServerFilter
     ? (serverOptions.find((s) => s.id === effectiveServerFilter)?.name ?? null)
     : null;
   // Human-readable scope for the confirm dialogs, mirroring the sweep args.
-  const scopeText = scopeServiceId
-    ? "this service"
-    : activeServiceName && activeServerName
-      ? `service ${activeServiceName} on server ${activeServerName}`
-      : activeServiceName
-        ? `service ${activeServiceName}`
+  const scopeText = scopeAppId
+    ? "this app"
+    : activeAppName && activeServerName
+      ? `app ${activeAppName} on server ${activeServerName}`
+      : activeAppName
+        ? `app ${activeAppName}`
         : activeServerName
           ? `server ${activeServerName}`
-          : "all your services";
+          : "all your apps";
 
   // Reset to the first page whenever the filter set changes — otherwise a narrowed
   // list could open on a now-empty tail page.
@@ -229,13 +230,13 @@ export function DeploymentsTable({
     setServerFilter(v === ALL ? null : v);
     setPage(0);
   }
-  function applyServiceFilter(v: string) {
-    setServiceFilter(v === ALL ? null : v);
+  function applyAppFilter(v: string) {
+    setAppFilter(v === ALL ? null : v);
     setPage(0);
   }
   function clearFilters() {
     setServerFilter(null);
-    setServiceFilter(null);
+    setAppFilter(null);
     setPage(0);
   }
 
@@ -269,7 +270,7 @@ export function DeploymentsTable({
   async function deleteAll() {
     const res = await gqlAction<{ deleteAllDeployments: number }, number>(
       DELETE_ALL,
-      { serviceId: sweepServiceId, serverId: sweepServerId },
+      { appId: sweepAppId, serverId: sweepServerId },
       (d) => d.deleteAllDeployments,
     );
     if (res.ok) {
@@ -283,7 +284,7 @@ export function DeploymentsTable({
   async function cancelAll() {
     const res = await gqlAction<{ cancelAllDeployments: number }, number>(
       CANCEL_ALL,
-      { serviceId: sweepServiceId, serverId: sweepServerId },
+      { appId: sweepAppId, serverId: sweepServerId },
       (d) => d.cancelAllDeployments,
     );
     if (res.ok) {
@@ -297,9 +298,9 @@ export function DeploymentsTable({
   }
 
   const colSpan =
-    6 + (showService ? 1 : 0) + (showServer ? 1 : 0) + (canManage ? 1 : 0);
+    6 + (showApp ? 1 : 0) + (showServer ? 1 : 0) + (canManage ? 1 : 0);
   const showFilters =
-    showServer && (serverOptions.length >= 2 || serviceOptions.length >= 2);
+    showServer && (serverOptions.length >= 2 || appOptions.length >= 2);
 
   return (
     <div className="space-y-4">
@@ -337,74 +338,52 @@ export function DeploymentsTable({
         </div>
       )}
 
-      {/* Filters (global page) and the multi-select controls, left-aligned on one
-          row. Both are contextual: filters appear on the global page; the
-          selection controls only while rows are checked. */}
-      {(showFilters || selectedCount > 0) && (
-        <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2">
-          {showFilters && (
-            <div className="flex flex-wrap items-center gap-2">
-              <ListFilter className="size-4 text-muted-foreground" />
-              {serverOptions.length >= 2 && (
-                <Select
-                  value={effectiveServerFilter ?? ALL}
-                  onValueChange={applyServerFilter}
-                >
-                  <SelectTrigger className="w-[180px]" aria-label="Filter by server">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL}>All servers</SelectItem>
-                    {serverOptions.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {serviceOptions.length >= 2 && (
-                <Select
-                  value={effectiveServiceFilter ?? ALL}
-                  onValueChange={applyServiceFilter}
-                >
-                  <SelectTrigger className="w-[200px]" aria-label="Filter by service">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL}>All services</SelectItem>
-                    {serviceOptions.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {hasFilter && (
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  Clear filters
-                </Button>
-              )}
-            </div>
+      {/* Filters (global page only), left-aligned on one row. The multi-select
+          delete controls have moved into a floating bottom-center pill (rendered
+          near the end of this component). */}
+      {showFilters && (
+        <div className="flex min-h-9 flex-wrap items-center gap-2">
+          <ListFilter className="size-4 text-muted-foreground" />
+          {serverOptions.length >= 2 && (
+            <Select
+              value={effectiveServerFilter ?? ALL}
+              onValueChange={applyServerFilter}
+            >
+              <SelectTrigger className="w-[180px]" aria-label="Filter by server">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All servers</SelectItem>
+                {serverOptions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
-          {selectedCount > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {selectedCount} selected
-              </span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setDeleteSelectedOpen(true)}
-              >
-                <Trash2 className="size-4" />
-                Delete selected
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-                Clear
-              </Button>
-            </div>
+          {appOptions.length >= 2 && (
+            <Select
+              value={effectiveAppFilter ?? ALL}
+              onValueChange={applyAppFilter}
+            >
+              <SelectTrigger className="w-[200px]" aria-label="Filter by app">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All apps</SelectItem>
+                {appOptions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {hasFilter && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
           )}
         </div>
       )}
@@ -436,7 +415,7 @@ export function DeploymentsTable({
                 </TableHead>
               )}
               <TableHead>Deployment</TableHead>
-              {showService && <TableHead>Service</TableHead>}
+              {showApp && <TableHead>App</TableHead>}
               {showServer && <TableHead>Server</TableHead>}
               <TableHead>Status</TableHead>
               <TableHead>Environment</TableHead>
@@ -493,10 +472,10 @@ export function DeploymentsTable({
                       />
                     </TableCell>
 
-                    {showService && (
+                    {showApp && (
                       <TableCell>
                         <Link
-                          href={`/services/${d.serviceSlug}`}
+                          href={`/apps/${d.appSlug}`}
                           className="cursor-pointer font-medium text-foreground hover:underline"
                         >
                           {d.serviceName}
@@ -553,8 +532,8 @@ export function DeploymentsTable({
                     <TableCell className="text-right">
                       <DeploymentActions
                         id={d.id}
-                        serviceId={d.serviceId}
-                        serviceSlug={d.serviceSlug}
+                        appId={d.appId}
+                        appSlug={d.appSlug}
                         url={d.url}
                         status={d.status}
                         environment={d.environment}
@@ -597,6 +576,39 @@ export function DeploymentsTable({
             >
               Next
               <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-select action bar — floats at the bottom-center of the viewport
+          whenever one or more finished deployments are checked. Mirrors the
+          Overview selection pill (counter + Delete + Clear), scoped to this
+          table's delete flow. Shared component, so both the global Deployments
+          page and an app's own history get it. */}
+      {selectedCount > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-6">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pl-4 pr-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
+            <span className="whitespace-nowrap text-sm font-medium">
+              {selectedCount} selected
+            </span>
+            <span className="mx-1.5 h-5 w-px bg-border" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setDeleteSelectedOpen(true)}
+            >
+              <Trash2 className="size-4" />
+              Delete {selectedCount} deployment{selectedCount === 1 ? "" : "s"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelected(new Set())}
+            >
+              <X className="size-4" />
+              Clear
             </Button>
           </div>
         </div>
