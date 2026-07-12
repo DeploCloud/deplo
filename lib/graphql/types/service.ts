@@ -36,6 +36,8 @@ import {
   redeploy,
   reloadService as reapplyRouting,
   cancelDeployment,
+  deleteDeployments,
+  deleteAllDeployments,
   promoteToProduction,
 } from "@/lib/data/deployments";
 import { renderServiceStack } from "@/lib/deploy/build";
@@ -577,6 +579,23 @@ builder.mutationFields((t) => ({
       await promoteToProduction(id);
       return true;
     },
+  }),
+  deleteDeployments: t.field({
+    type: "Int",
+    authScopes: { capability: "deploy" },
+    description:
+      "Delete finished deployments (ready/error/canceled) by id; in-progress ones (queued/building) are left to be canceled first. Returns how many were deleted.",
+    args: { ids: t.arg.idList({ required: true }) },
+    resolve: (_r, { ids }) => deleteDeployments(ids.map(String)),
+  }),
+  deleteAllDeployments: t.field({
+    type: "Int",
+    authScopes: { capability: "deploy" },
+    description:
+      "Delete every finished deployment for one service (serviceId given) or across the whole active team (serviceId omitted). In-progress deployments are left. Returns how many were deleted.",
+    args: { serviceId: t.arg.id({ required: false }) },
+    resolve: (_r, { serviceId }) =>
+      deleteAllDeployments(serviceId != null ? String(serviceId) : null),
   }),
 }));
 

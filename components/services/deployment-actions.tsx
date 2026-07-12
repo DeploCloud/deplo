@@ -11,6 +11,7 @@ import {
   RotateCw,
   ArrowUpToLine,
   Ban,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -21,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
 
@@ -31,6 +33,7 @@ export function DeploymentActions({
   url,
   status,
   environment,
+  canDelete = false,
 }: {
   id: string;
   serviceId: string;
@@ -39,14 +42,20 @@ export function DeploymentActions({
   url: string;
   status: DeploymentStatus;
   environment: DeploymentEnvironment;
+  /** Show the "Delete" item (a finished deployment only). Cosmetic — the data
+   *  layer re-checks `deploy` on the service's folder. */
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const isPreview = environment === "preview";
   // A build in flight can be stopped; a still-queued one is simply canceled.
   const isBuilding = status === "building";
   const canCancel = isBuilding || status === "queued";
+  // A finished deployment (not queued/building) is terminal history — deletable.
+  const isTerminal = !canCancel;
 
   function redeploy() {
     startTransition(async () => {
@@ -102,12 +111,25 @@ export function DeploymentActions({
     });
   }
 
+  // Delete this one finished deployment. Returns the ActionResult so ConfirmAction
+  // owns the toast + dialog close; we refresh the RSC reads on success.
+  async function deleteThis() {
+    const res = await gqlAction<{ deleteDeployments: number }, number>(
+      `mutation ($ids: [ID!]!) { deleteDeployments(ids: $ids) }`,
+      { ids: [id] },
+      (d) => d.deleteDeployments,
+    );
+    if (res.ok) router.refresh();
+    return res;
+  }
+
   // Two one-click destinations sit out in the open — "Open deployment" (its build
   // logs & details) and "Visit" (the live app) — so neither is buried in the menu;
   // the ⋯ keeps the mutating actions (Redeploy / Promote / Stop build). Visit only
   // shows when the deployment actually has a reachable URL.
   const detailHref = `/services/${serviceSlug}/deployments/${id}`;
   return (
+    <>
     <div className="flex items-center justify-end gap-0.5">
       <SimpleTooltip content="Open this deployment — build logs & details">
         <Button variant="ghost" size="icon-sm" asChild>
@@ -167,8 +189,34 @@ export function DeploymentActions({
               </DropdownMenuItem>
             </>
           )}
+          {canDelete && isTerminal && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setDeleteOpen(true);
+                }}
+                disabled={pending}
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+      <ConfirmAction
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete this deployment?"
+        description="This removes the deployment and its build logs. The running app is unaffected, but this can't be undone."
+        confirmLabel="Delete deployment"
+        successMessage="Deployment deleted"
+        onConfirm={deleteThis}
+      />
+    </>
   );
 }

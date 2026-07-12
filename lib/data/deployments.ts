@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -185,6 +185,125 @@ export async function cancelDeployment(id: string): Promise<boolean> {
     dep.serviceId,
   );
   return true;
+}
+
+/**
+ * A deployment is "in progress" while it sits in the queue or is being built —
+ * its row is still referenced by the deploy queue and the fire-and-forget build
+ * job, so it must be CANCELED (see `cancelDeployment`), not deleted. Everything
+ * else (`ready` / `error` / `canceled`) is terminal history and safe to remove.
+ */
+const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
+
+/** Terminal (deletable) deployment rows for the team, optionally narrowed to a
+ *  set of ids or a single service. Joined through `services` so a foreign/stale
+ *  id is simply absent (team isolation). */
+async function terminalDeploymentRows(
+  teamId: string,
+  filter: { ids?: string[]; serviceId?: string },
+): Promise<{ id: string; serviceId: string }[]> {
+  const conds = [
+    eq(servicesTable.teamId, teamId),
+    notInArray(deploymentsTable.status, IN_PROGRESS),
+  ];
+  if (filter.serviceId) conds.push(eq(deploymentsTable.serviceId, filter.serviceId));
+  if (filter.ids) conds.push(inArray(deploymentsTable.id, filter.ids));
+  return getDb()
+    .select({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId })
+    .from(deploymentsTable)
+    .innerJoin(servicesTable, eq(deploymentsTable.serviceId, servicesTable.id))
+    .where(and(...conds));
+}
+
+/** The actual delete: removes the rows (cascading their logs and NULLing any
+ *  `latest_deployment_id` pointer via the FKs), nudges live subscribers, and logs
+ *  one activity line. Returns how many rows were removed. */
+async function removeDeploymentRows(
+  rows: { id: string; serviceId: string }[],
+  teamId: string,
+  userName: string,
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const deleted = await getDb()
+    .delete(deploymentsTable)
+    .where(inArray(deploymentsTable.id, rows.map((r) => r.id)))
+    .returning({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId });
+  const services = new Set(deleted.map((d) => d.serviceId));
+  // Deleting the latest deployment NULLs the service's pointer (FK set-null), so
+  // the live status/latest-deployment reads must refresh.
+  for (const sid of services) publishServiceChanged(sid);
+  if (deleted.length > 0)
+    await recordActivity(
+      "deployment",
+      `Deleted ${deleted.length} deployment${deleted.length === 1 ? "" : "s"}`,
+      userName,
+      services.size === 1 ? [...services][0]! : null,
+      teamId,
+    );
+  return deleted.length;
+}
+
+/** True if the caller may `deploy` on the service's folder (top-level ⇒ team caps
+ *  already suffice). Non-throwing companion to `requireFolderCapabilityForService`,
+ *  for the broad "delete all" sweep where a locked folder is skipped, not fatal. */
+async function mayManageServiceFolder(serviceId: string): Promise<boolean> {
+  try {
+    await requireFolderCapabilityForService(serviceId, "deploy");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Delete finished deployments by id (the multi-select "Delete selected"). Only
+ * terminal rows are removed; any in-progress id in the selection is left for the
+ * caller to cancel first. Team-scoped, and — like `moveServicesToFolder` — it
+ * requires `deploy` on each distinct service's folder, throwing on one the caller
+ * can't manage. Returns how many were actually deleted.
+ */
+export async function deleteDeployments(ids: string[]): Promise<number> {
+  const { membership } = await requireCapability("deploy");
+  const user = (await getCurrentUser())!;
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return 0;
+  const rows = await terminalDeploymentRows(membership.teamId, { ids: unique });
+  if (rows.length === 0) return 0;
+  for (const sid of new Set(rows.map((r) => r.serviceId)))
+    await requireFolderCapabilityForService(sid, "deploy");
+  return removeDeploymentRows(rows, membership.teamId, user.name);
+}
+
+/**
+ * Delete EVERY finished deployment — for one service (`serviceId` given, the
+ * service page's "Delete all") or across the whole active team (`serviceId`
+ * null/absent, the global page's "Delete all"). The single-service form enforces
+ * folder `deploy` (throws if the caller can't manage it); the team-wide sweep
+ * SKIPS services whose folder the caller can't manage rather than failing whole,
+ * so one locked folder never blocks clearing the rest. In-progress deployments
+ * are always left. Returns how many were deleted.
+ */
+export async function deleteAllDeployments(
+  serviceId?: string | null,
+): Promise<number> {
+  const { membership } = await requireCapability("deploy");
+  const user = (await getCurrentUser())!;
+  if (serviceId) {
+    if (!(await serviceInTeam(serviceId, membership.teamId)))
+      throw new Error("Service not found");
+    await requireFolderCapabilityForService(serviceId, "deploy");
+    const rows = await terminalDeploymentRows(membership.teamId, { serviceId });
+    return removeDeploymentRows(rows, membership.teamId, user.name);
+  }
+  const rows = await terminalDeploymentRows(membership.teamId, {});
+  const allowed = new Map<string, boolean>();
+  const permitted: { id: string; serviceId: string }[] = [];
+  for (const r of rows) {
+    if (!allowed.has(r.serviceId))
+      allowed.set(r.serviceId, await mayManageServiceFolder(r.serviceId));
+    if (allowed.get(r.serviceId)) permitted.push(r);
+  }
+  return removeDeploymentRows(permitted, membership.teamId, user.name);
 }
 
 export async function promoteToProduction(id: string): Promise<void> {
