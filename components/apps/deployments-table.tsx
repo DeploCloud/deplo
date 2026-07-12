@@ -10,6 +10,7 @@ import {
   CircleStop,
   Server,
   ListFilter,
+  ArrowUpDown,
   ChevronLeft,
   ChevronRight,
   X,
@@ -39,12 +40,12 @@ import { CommitLink } from "@/components/apps/commit-link";
 import { DeploymentActions } from "@/components/apps/deployment-actions";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
-import { timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
 
 const DELETE_DEPLOYMENTS = `mutation ($ids: [ID!]!) { deleteDeployments(ids: $ids) }`;
-const DELETE_ALL = `mutation ($appId: ID, $serverId: ID) { deleteAllDeployments(appId: $appId, serverId: $serverId) }`;
-const CANCEL_ALL = `mutation ($appId: ID, $serverId: ID) { cancelAllDeployments(appId: $appId, serverId: $serverId) }`;
+const DELETE_ALL = `mutation ($appId: ID, $serverId: ID, $environment: String, $status: String) { deleteAllDeployments(appId: $appId, serverId: $serverId, environment: $environment, status: $status) }`;
+const CANCEL_ALL = `mutation ($appId: ID, $serverId: ID, $environment: String, $status: String) { cancelAllDeployments(appId: $appId, serverId: $serverId, environment: $environment, status: $status) }`;
 
 /** In-progress deployments (queued/building) are still owned by the queue and the
  *  build job, so they can only be CANCELED — never selected for deletion. */
@@ -55,6 +56,34 @@ const ALL = "__all__";
 
 /** Rows shown per page (client-side pagination over the filtered set). */
 const PAGE_SIZE = 10;
+
+/** Created-column sort. Newest-first matches the server's ordering (the default);
+ *  oldest-first is the exact reverse of the fully-ordered set. */
+type SortDir = "newest" | "oldest";
+
+/** Canonical dropdown order + labels for the Status filter — a fixed lifecycle
+ *  order (not row/insertion order) so the menu reads the same on every page. */
+const STATUS_ORDER: DeploymentStatus[] = [
+  "queued",
+  "building",
+  "ready",
+  "error",
+  "canceled",
+];
+const STATUS_LABELS: Record<DeploymentStatus, string> = {
+  queued: "Queued",
+  building: "Building",
+  ready: "Ready",
+  error: "Error",
+  canceled: "Canceled",
+};
+
+/** Canonical dropdown order + labels for the Environment filter. */
+const ENV_ORDER: DeploymentEnvironment[] = ["production", "preview"];
+const ENV_LABELS: Record<DeploymentEnvironment, string> = {
+  production: "Production",
+  preview: "Preview",
+};
 
 export interface DeploymentRow {
   id: string;
@@ -83,13 +112,15 @@ export interface DeploymentRow {
  * `justify-between` layout), the filters, the table, and client-side pagination
  * (10 rows/page over the filtered set).
  *
- * The global page also gets a Server column and Server/App filters
- * (`showServer`). Filtering is a VIEW concern — it narrows the rendered rows AND
- * the scope of the bulk "Stop all builds" / "Delete all" sweeps (their appId /
- * serverId args follow the active filters), so the buttons always act on what you
- * see. Only FINISHED deployments (ready/error/canceled) are selectable; an
- * in-progress one must be canceled first. Everything is capability-gated
- * server-side; `canManage` only hides the affordances.
+ * The global page also gets a Server column and Server/App filters (`showServer`);
+ * Status, Environment and a Created sort surface on EITHER page whenever the rows
+ * warrant them (≥2 distinct values, or >1 row for the sort). Filtering is a VIEW
+ * concern — it narrows the rendered rows AND the scope of the bulk "Stop all builds"
+ * / "Delete all" sweeps (their appId/serverId/environment/status args all follow the
+ * active filters), so the buttons always act on exactly what you see. Sorting is
+ * pure ordering — it never changes the swept set. Only FINISHED deployments
+ * (ready/error/canceled) are selectable; an in-progress one must be canceled first.
+ * Everything is capability-gated server-side; `canManage` only hides the affordances.
  */
 export function DeploymentsTable({
   deployments,
@@ -119,6 +150,11 @@ export function DeploymentsTable({
   const [cancelAllOpen, setCancelAllOpen] = React.useState(false);
   const [serverFilter, setServerFilter] = React.useState<string | null>(null);
   const [appFilter, setAppFilter] = React.useState<string | null>(null);
+  const [statusFilter, setStatusFilter] =
+    React.useState<DeploymentStatus | null>(null);
+  const [envFilter, setEnvFilter] =
+    React.useState<DeploymentEnvironment | null>(null);
+  const [sortDir, setSortDir] = React.useState<SortDir>("newest");
   const [page, setPage] = React.useState(0);
 
   // Distinct servers / apps present in the current rows — the filter options.
@@ -140,6 +176,17 @@ export function DeploymentsTable({
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [deployments]);
+  // Distinct statuses / environments present, each in its canonical lifecycle order
+  // (not insertion order). Also derived from ALL rows so an option never vanishes
+  // just because another filter narrowed the table.
+  const statusOptions = React.useMemo(() => {
+    const present = new Set(deployments.map((d) => d.status));
+    return STATUS_ORDER.filter((s) => present.has(s));
+  }, [deployments]);
+  const envOptions = React.useMemo(() => {
+    const present = new Set(deployments.map((d) => d.environment));
+    return ENV_ORDER.filter((e) => present.has(e));
+  }, [deployments]);
 
   // Reconcile the chosen filters against what's still present (a refresh may have
   // dropped the last row on a server/app). Done in render — no effect — so a
@@ -152,7 +199,15 @@ export function DeploymentsTable({
     appFilter && appOptions.some((s) => s.id === appFilter)
       ? appFilter
       : null;
-  const hasFilter = effectiveServerFilter != null || effectiveAppFilter != null;
+  const effectiveStatusFilter =
+    statusFilter && statusOptions.includes(statusFilter) ? statusFilter : null;
+  const effectiveEnvFilter =
+    envFilter && envOptions.includes(envFilter) ? envFilter : null;
+  const hasFilter =
+    effectiveServerFilter != null ||
+    effectiveAppFilter != null ||
+    effectiveStatusFilter != null ||
+    effectiveEnvFilter != null;
 
   // The rows matching the filters — everything downstream (selection, counts, bulk
   // scope) keys off this so the buttons act on exactly what's in scope.
@@ -161,18 +216,36 @@ export function DeploymentsTable({
       deployments.filter(
         (d) =>
           (!effectiveServerFilter || d.serverId === effectiveServerFilter) &&
-          (!effectiveAppFilter || d.appId === effectiveAppFilter),
+          (!effectiveAppFilter || d.appId === effectiveAppFilter) &&
+          (!effectiveStatusFilter || d.status === effectiveStatusFilter) &&
+          (!effectiveEnvFilter || d.environment === effectiveEnvFilter),
       ),
-    [deployments, effectiveServerFilter, effectiveAppFilter],
+    [
+      deployments,
+      effectiveServerFilter,
+      effectiveAppFilter,
+      effectiveStatusFilter,
+      effectiveEnvFilter,
+    ],
   );
 
-  // Client-side pagination over the filtered set. Clamp in render (no effect) so a
-  // filter change or a post-delete refresh that shrinks the list never strands the
-  // view on a page that no longer exists.
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  // The Created sort is a VIEW concern over the already-filtered set. The incoming
+  // rows are a total order (createdAt DESC, seq DESC), so "newest" is the set as-is
+  // and "oldest" is its exact reverse — preserving the seq tie-break without a lossy
+  // string compare. Selection/counts key off `visible` (order-free), so only the
+  // rendered page reads from `sorted`.
+  const sorted = React.useMemo(
+    () => (sortDir === "oldest" ? [...visible].reverse() : visible),
+    [visible, sortDir],
+  );
+
+  // Client-side pagination over the filtered+sorted set. Clamp in render (no effect)
+  // so a filter change or a post-delete refresh that shrinks the list never strands
+  // the view on a page that no longer exists.
+  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
   const pageStart = safePage * PAGE_SIZE;
-  const paged = visible.slice(pageStart, pageStart + PAGE_SIZE);
+  const paged = sorted.slice(pageStart, pageStart + PAGE_SIZE);
 
   const selectableIds = React.useMemo(
     () => visible.filter((d) => !IN_PROGRESS.has(d.status)).map((d) => d.id),
@@ -203,18 +276,24 @@ export function DeploymentsTable({
   const allSelected = selectableIds.length > 0 && selectedCount === selectableIds.length;
   const someSelected = selectedCount > 0 && !allSelected;
 
-  // The scope the bulk sweeps target: the app page pins one app; the
-  // global page follows the active filters (both optional).
+  // The scope the bulk sweeps target: the app page pins one app; the global page
+  // follows the active filters. ALL active view filters flow into the sweep args
+  // (app/server/environment/status) so "Delete all" / "Stop all builds" act on
+  // exactly the rows the filters leave visible.
   const sweepAppId = scopeAppId ?? effectiveAppFilter ?? null;
   const sweepServerId = effectiveServerFilter ?? null;
+  const sweepEnv = effectiveEnvFilter ?? null;
+  const sweepStatus = effectiveStatusFilter ?? null;
   const activeAppName = effectiveAppFilter
     ? (appOptions.find((s) => s.id === effectiveAppFilter)?.name ?? null)
     : null;
   const activeServerName = effectiveServerFilter
     ? (serverOptions.find((s) => s.id === effectiveServerFilter)?.name ?? null)
     : null;
-  // Human-readable scope for the confirm dialogs, mirroring the sweep args.
-  const scopeText = scopeAppId
+  // Human-readable scope for the confirm dialogs, mirroring the sweep args. The
+  // who (app/server) reads as a phrase; the environment/status narrowers ride along
+  // in parentheses so the dialog names exactly what's about to be swept.
+  const scopeWho = scopeAppId
     ? "this app"
     : activeAppName && activeServerName
       ? `app ${activeAppName} on server ${activeServerName}`
@@ -223,6 +302,14 @@ export function DeploymentsTable({
         : activeServerName
           ? `server ${activeServerName}`
           : "all your apps";
+  const scopeQualifiers = [
+    effectiveEnvFilter ? ENV_LABELS[effectiveEnvFilter] : null,
+    effectiveStatusFilter ? STATUS_LABELS[effectiveStatusFilter] : null,
+  ].filter(Boolean);
+  const scopeText =
+    scopeQualifiers.length > 0
+      ? `${scopeWho} (${scopeQualifiers.join(", ")})`
+      : scopeWho;
 
   // Reset to the first page whenever the filter set changes — otherwise a narrowed
   // list could open on a now-empty tail page.
@@ -234,9 +321,26 @@ export function DeploymentsTable({
     setAppFilter(v === ALL ? null : v);
     setPage(0);
   }
+  function applyStatusFilter(v: string) {
+    setStatusFilter(v === ALL ? null : (v as DeploymentStatus));
+    setPage(0);
+  }
+  function applyEnvFilter(v: string) {
+    setEnvFilter(v === ALL ? null : (v as DeploymentEnvironment));
+    setPage(0);
+  }
+  // Re-sorting jumps back to the first page so the newly-first rows are in view.
+  function applySort(v: string) {
+    setSortDir(v as SortDir);
+    setPage(0);
+  }
+  // "Clear filters" resets the narrowing filters only; the Created sort is an
+  // ordering, not a filter, so it deliberately stays put.
   function clearFilters() {
     setServerFilter(null);
     setAppFilter(null);
+    setStatusFilter(null);
+    setEnvFilter(null);
     setPage(0);
   }
 
@@ -270,7 +374,12 @@ export function DeploymentsTable({
   async function deleteAll() {
     const res = await gqlAction<{ deleteAllDeployments: number }, number>(
       DELETE_ALL,
-      { appId: sweepAppId, serverId: sweepServerId },
+      {
+        appId: sweepAppId,
+        serverId: sweepServerId,
+        environment: sweepEnv,
+        status: sweepStatus,
+      },
       (d) => d.deleteAllDeployments,
     );
     if (res.ok) {
@@ -284,7 +393,12 @@ export function DeploymentsTable({
   async function cancelAll() {
     const res = await gqlAction<{ cancelAllDeployments: number }, number>(
       CANCEL_ALL,
-      { appId: sweepAppId, serverId: sweepServerId },
+      {
+        appId: sweepAppId,
+        serverId: sweepServerId,
+        environment: sweepEnv,
+        status: sweepStatus,
+      },
       (d) => d.cancelAllDeployments,
     );
     if (res.ok) {
@@ -299,8 +413,20 @@ export function DeploymentsTable({
 
   const colSpan =
     6 + (showApp ? 1 : 0) + (showServer ? 1 : 0) + (canManage ? 1 : 0);
-  const showFilters =
-    showServer && (serverOptions.length >= 2 || appOptions.length >= 2);
+  // Server/App narrowers only exist on the global page (showServer); Status,
+  // Environment and Sort surface wherever the rows warrant them — the app's own
+  // history included. Each control hides until it would actually offer a choice.
+  const showServerFilter = showServer && serverOptions.length >= 2;
+  const showAppFilter = showServer && appOptions.length >= 2;
+  const showStatusFilter = statusOptions.length >= 2;
+  const showEnvFilter = envOptions.length >= 2;
+  const showSort = deployments.length > 1;
+  // Any actual narrower present? The funnel glyph rides on this, not on the whole
+  // bar, so a sort-only row (e.g. an app whose history is all one status+env)
+  // doesn't display a filter icon over a control that only sorts.
+  const showNarrowers =
+    showServerFilter || showAppFilter || showStatusFilter || showEnvFilter;
+  const showFilters = showNarrowers || showSort;
 
   return (
     <div className="space-y-4">
@@ -338,18 +464,22 @@ export function DeploymentsTable({
         </div>
       )}
 
-      {/* Filters (global page only), left-aligned on one row. The multi-select
-          delete controls have moved into a floating bottom-center pill (rendered
-          near the end of this component). */}
+      {/* Filters + Created sort on one wrapping row. Server/App exist only on the
+          global page (showServer); Status/Environment/Sort appear wherever the rows
+          warrant them (the app's own history included). The multi-select delete
+          controls live in a floating bottom-center pill near the end of this
+          component. */}
       {showFilters && (
         <div className="flex min-h-9 flex-wrap items-center gap-2">
-          <ListFilter className="size-4 text-muted-foreground" />
-          {serverOptions.length >= 2 && (
+          {showNarrowers && (
+            <ListFilter className="size-4 text-muted-foreground" />
+          )}
+          {showServerFilter && (
             <Select
               value={effectiveServerFilter ?? ALL}
               onValueChange={applyServerFilter}
             >
-              <SelectTrigger className="w-[180px]" aria-label="Filter by server">
+              <SelectTrigger className="w-[170px]" aria-label="Filter by server">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -362,12 +492,12 @@ export function DeploymentsTable({
               </SelectContent>
             </Select>
           )}
-          {appOptions.length >= 2 && (
+          {showAppFilter && (
             <Select
               value={effectiveAppFilter ?? ALL}
               onValueChange={applyAppFilter}
             >
-              <SelectTrigger className="w-[200px]" aria-label="Filter by app">
+              <SelectTrigger className="w-[180px]" aria-label="Filter by app">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -380,10 +510,71 @@ export function DeploymentsTable({
               </SelectContent>
             </Select>
           )}
+          {showStatusFilter && (
+            <Select
+              value={effectiveStatusFilter ?? ALL}
+              onValueChange={applyStatusFilter}
+            >
+              <SelectTrigger className="w-[150px]" aria-label="Filter by status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All statuses</SelectItem>
+                {statusOptions.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {STATUS_LABELS[s]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {showEnvFilter && (
+            <Select
+              value={effectiveEnvFilter ?? ALL}
+              onValueChange={applyEnvFilter}
+            >
+              <SelectTrigger
+                className="w-[160px]"
+                aria-label="Filter by environment"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All environments</SelectItem>
+                {envOptions.map((e) => (
+                  <SelectItem key={e} value={e}>
+                    {ENV_LABELS[e]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {hasFilter && (
             <Button variant="ghost" size="sm" onClick={clearFilters}>
               Clear filters
             </Button>
+          )}
+          {showSort && (
+            <Select value={sortDir} onValueChange={applySort}>
+              <SelectTrigger
+                className={cn("w-[150px]", showNarrowers && "sm:ml-auto")}
+                aria-label="Sort by created date"
+              >
+                {/* `flex!` is load-bearing: SelectTrigger applies
+                    `[&>span]:line-clamp-1` to its direct-child spans, whose
+                    `display:-webkit-box` outranks a plain `flex` class (the
+                    `>span` selector is more specific) and would stack the icon
+                    above the value. The important modifier keeps them on one row. */}
+                <span className="flex! items-center gap-2">
+                  <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+                  <SelectValue />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest first</SelectItem>
+                <SelectItem value="oldest">Oldest first</SelectItem>
+              </SelectContent>
+            </Select>
           )}
         </div>
       )}
