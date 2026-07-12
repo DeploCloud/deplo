@@ -254,6 +254,13 @@ export default async function OverviewPage(props: PageProps<"/">) {
             canManageMembers={canManageMembers}
             canCreateFolder={canCreateFolder}
             isAdmin={isAdmin}
+            // Drill-in context so "New folder" nests under the folder currently
+            // open (ADR-0009: folders nest via parentId). Null inside a project —
+            // folders never live in a project — so a folder made there stays at
+            // the top level.
+            parentFolder={
+              openFolder ? { id: openFolder.id, name: openFolder.name } : null
+            }
           />
         </div>
 

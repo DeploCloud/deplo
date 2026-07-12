@@ -47,12 +47,18 @@ export function AddNewMenu({
   canManageMembers,
   canCreateFolder,
   isAdmin,
+  parentFolder = null,
 }: {
   canManageMembers: boolean;
   /** Whether the viewer may create folders (has the deploy capability, or is an
    *  instance admin). */
   canCreateFolder: boolean;
   isAdmin: boolean;
+  /** The folder currently open on the Overview, if any. A folder created from
+   *  this menu nests under it (ADR-0009: folders nest via `parentId`). Null at the
+   *  top level, or inside a project — folders never live in a project, so one made
+   *  there stays at the top level. Projects always create at the top level. */
+  parentFolder?: { id: string; name: string } | null;
 }) {
   const [teamOpen, setTeamOpen] = React.useState(false);
   const [folderOpen, setFolderOpen] = React.useState(false);
@@ -108,7 +114,7 @@ export function AddNewMenu({
               }}
             >
               <FolderPlus className="size-4" />
-              New folder
+              {parentFolder ? "New subfolder" : "New folder"}
             </DropdownMenuItem>
           )}
           {canCreateFolder && (
@@ -170,7 +176,16 @@ export function AddNewMenu({
 
       <CreateTeamDialog open={teamOpen} onOpenChange={setTeamOpen} />
       {canCreateFolder && (
-        <CreateFolderDialog open={folderOpen} onOpenChange={setFolderOpen} />
+        <CreateFolderDialog
+          open={folderOpen}
+          onOpenChange={setFolderOpen}
+          parentId={parentFolder?.id ?? null}
+          description={
+            parentFolder
+              ? `This folder will be created inside “${parentFolder.name}”. Services are moved into it afterward from the grid.`
+              : undefined
+          }
+        />
       )}
       {canCreateFolder && (
         <CreateProjectDialog open={projectOpen} onOpenChange={setProjectOpen} />
