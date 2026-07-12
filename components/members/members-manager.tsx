@@ -402,9 +402,21 @@ function EditMemberDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit @{member.username}&apos;s permissions</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Avatar className="size-8">
+              <AvatarFallback
+                style={{ backgroundColor: member.avatarColor, color: "#000" }}
+              >
+                {member.username.slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            @{member.username}
+          </DialogTitle>
           <DialogDescription>
-            Adjust this member&apos;s role and capabilities in the team.
+            {member.name && member.name !== member.username
+              ? `${member.name} — `
+              : ""}
+            Set what this member can do in the team.
           </DialogDescription>
         </DialogHeader>
         <CapabilityPicker
