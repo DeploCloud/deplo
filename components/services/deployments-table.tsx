@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GitBranch, Trash2 } from "lucide-react";
+import { GitBranch, Trash2, CircleStop, Server, ListFilter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -17,6 +17,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CommitLink } from "@/components/services/commit-link";
@@ -27,17 +34,25 @@ import { timeAgo } from "@/lib/utils";
 import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
 
 const DELETE_DEPLOYMENTS = `mutation ($ids: [ID!]!) { deleteDeployments(ids: $ids) }`;
-const DELETE_ALL = `mutation ($serviceId: ID) { deleteAllDeployments(serviceId: $serviceId) }`;
+const DELETE_ALL = `mutation ($serviceId: ID, $serverId: ID) { deleteAllDeployments(serviceId: $serviceId, serverId: $serverId) }`;
+const CANCEL_ALL = `mutation ($serviceId: ID, $serverId: ID) { cancelAllDeployments(serviceId: $serviceId, serverId: $serverId) }`;
 
 /** In-progress deployments (queued/building) are still owned by the queue and the
  *  build job, so they can only be CANCELED — never selected for deletion. */
 const IN_PROGRESS = new Set<DeploymentStatus>(["queued", "building"]);
+
+/** Sentinel for the "no filter" option — shadcn `SelectItem` can't hold "". */
+const ALL = "__all__";
 
 export interface DeploymentRow {
   id: string;
   serviceId: string;
   serviceSlug: string;
   serviceName: string;
+  /** Owning server id — present on the global page (for the Server filter). */
+  serverId?: string | null;
+  /** Owning server name — present on the global page (for the Server column). */
+  serverName?: string | null;
   commitMessage: string;
   commitSha: string;
   commitUrl: string | null;
@@ -52,25 +67,30 @@ export interface DeploymentRow {
 /**
  * The deployments table with multi-select DELETION. Shared by the global
  * Deployments page and a service's own Deployment history. Selection exists only
- * to delete (the request: "multi-select, only for deletion") — every other action
- * (open, visit, redeploy, promote, stop/cancel) stays per-row in `DeploymentActions`.
+ * to delete — every other action (open, visit, redeploy, promote, stop/cancel)
+ * stays per-row in `DeploymentActions`.
  *
- * Only FINISHED deployments (ready/error/canceled) are selectable; an in-progress
- * one must be canceled first, so its checkbox is disabled. "Delete all" clears
- * every finished deployment in scope — one service (`scopeServiceId`) or the whole
- * active team (omitted). Deletion is capability-gated server-side; `canManage`
- * only hides the affordances.
+ * The global page also gets a Server column and Server/Service filters
+ * (`showServer`). Filtering is a VIEW concern — it narrows the rendered rows AND
+ * the scope of the bulk "Stop all builds" / "Delete all" sweeps (their serviceId /
+ * serverId args follow the active filters), so the buttons always act on what you
+ * see. Only FINISHED deployments (ready/error/canceled) are selectable; an
+ * in-progress one must be canceled first. Everything is capability-gated
+ * server-side; `canManage` only hides the affordances.
  */
 export function DeploymentsTable({
   deployments,
   showService = false,
+  showServer = false,
   scopeServiceId,
   canManage,
 }: {
   deployments: DeploymentRow[];
   /** Show the owning-service column (the global page). Off on a service's page. */
   showService?: boolean;
-  /** Scope "Delete all" to this service; omit to delete across the whole team. */
+  /** Show the owning-server column + Server/Service filters (the global page). */
+  showServer?: boolean;
+  /** Scope the bulk sweeps to this service; omit to scope across the whole team. */
   scopeServiceId?: string;
   /** Whether to show the delete affordances (cosmetic — server re-checks). */
   canManage: boolean;
@@ -79,19 +99,75 @@ export function DeploymentsTable({
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
   const [deleteSelectedOpen, setDeleteSelectedOpen] = React.useState(false);
   const [deleteAllOpen, setDeleteAllOpen] = React.useState(false);
+  const [cancelAllOpen, setCancelAllOpen] = React.useState(false);
+  const [serverFilter, setServerFilter] = React.useState<string | null>(null);
+  const [serviceFilter, setServiceFilter] = React.useState<string | null>(null);
+
+  // Distinct servers / services present in the current rows — the filter options.
+  // Derived from ALL rows (not the filtered view) so each dropdown stays stable
+  // while the other filter narrows the table.
+  const serverOptions = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of deployments)
+      if (d.serverId && !m.has(d.serverId)) m.set(d.serverId, d.serverName ?? d.serverId);
+    return [...m]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [deployments]);
+  const serviceOptions = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of deployments)
+      if (!m.has(d.serviceId)) m.set(d.serviceId, d.serviceName || d.serviceId);
+    return [...m]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [deployments]);
+
+  // Reconcile the chosen filters against what's still present (a refresh may have
+  // dropped the last row on a server/service). Done in render — no effect — so a
+  // now-empty filter simply behaves as "All" without a stale, un-clearable value.
+  const effectiveServerFilter =
+    serverFilter && serverOptions.some((s) => s.id === serverFilter)
+      ? serverFilter
+      : null;
+  const effectiveServiceFilter =
+    serviceFilter && serviceOptions.some((s) => s.id === serviceFilter)
+      ? serviceFilter
+      : null;
+  const hasFilter = effectiveServerFilter != null || effectiveServiceFilter != null;
+
+  // The rows actually shown — everything downstream (selection, counts, bulk
+  // scope) keys off this so the buttons act on exactly what's visible.
+  const visible = React.useMemo(
+    () =>
+      deployments.filter(
+        (d) =>
+          (!effectiveServerFilter || d.serverId === effectiveServerFilter) &&
+          (!effectiveServiceFilter || d.serviceId === effectiveServiceFilter),
+      ),
+    [deployments, effectiveServerFilter, effectiveServiceFilter],
+  );
 
   const selectableIds = React.useMemo(
-    () => deployments.filter((d) => !IN_PROGRESS.has(d.status)).map((d) => d.id),
-    [deployments],
+    () => visible.filter((d) => !IN_PROGRESS.has(d.status)).map((d) => d.id),
+    [visible],
+  );
+  // In-progress (queued/building) deployments in the visible scope — the "Stop all
+  // builds" targets. A live count off the current rows; the server re-derives the
+  // real set (and honors folder caps) when the mutation runs.
+  const inProgressCount = React.useMemo(
+    () => visible.filter((d) => IN_PROGRESS.has(d.status)).length,
+    [visible],
   );
   const selectableSet = React.useMemo(
     () => new Set(selectableIds),
     [selectableIds],
   );
 
-  // Keep the selection honest across refreshes: drop ids that are gone or no
-  // longer selectable (e.g. a row that started building). Done in render via the
-  // previous-value pattern so it never cascades a re-render.
+  // Keep the selection honest across refreshes and filter changes: drop ids that
+  // are gone, filtered out, or no longer selectable (e.g. a row that started
+  // building). Render-time via the previous-value pattern — never cascades a
+  // re-render.
   const effectiveSelected = React.useMemo(
     () => [...selected].filter((id) => selectableSet.has(id)),
     [selected, selectableSet],
@@ -100,6 +176,27 @@ export function DeploymentsTable({
 
   const allSelected = selectableIds.length > 0 && selectedCount === selectableIds.length;
   const someSelected = selectedCount > 0 && !allSelected;
+
+  // The scope the bulk sweeps target: the service page pins one service; the
+  // global page follows the active filters (both optional).
+  const sweepServiceId = scopeServiceId ?? effectiveServiceFilter ?? null;
+  const sweepServerId = effectiveServerFilter ?? null;
+  const activeServiceName = effectiveServiceFilter
+    ? (serviceOptions.find((s) => s.id === effectiveServiceFilter)?.name ?? null)
+    : null;
+  const activeServerName = effectiveServerFilter
+    ? (serverOptions.find((s) => s.id === effectiveServerFilter)?.name ?? null)
+    : null;
+  // Human-readable scope for the confirm dialogs, mirroring the sweep args.
+  const scopeText = scopeServiceId
+    ? "this service"
+    : activeServiceName && activeServerName
+      ? `service ${activeServiceName} on server ${activeServerName}`
+      : activeServiceName
+        ? `service ${activeServiceName}`
+        : activeServerName
+          ? `server ${activeServerName}`
+          : "all your services";
 
   function toggleAll(checked: boolean) {
     setSelected(checked ? new Set(selectableIds) : new Set());
@@ -131,7 +228,7 @@ export function DeploymentsTable({
   async function deleteAll() {
     const res = await gqlAction<{ deleteAllDeployments: number }, number>(
       DELETE_ALL,
-      { serviceId: scopeServiceId ?? null },
+      { serviceId: sweepServiceId, serverId: sweepServerId },
       (d) => d.deleteAllDeployments,
     );
     if (res.ok) {
@@ -142,12 +239,91 @@ export function DeploymentsTable({
     return res;
   }
 
-  const colSpan = showService ? 8 : 7;
+  async function cancelAll() {
+    const res = await gqlAction<{ cancelAllDeployments: number }, number>(
+      CANCEL_ALL,
+      { serviceId: sweepServiceId, serverId: sweepServerId },
+      (d) => d.cancelAllDeployments,
+    );
+    if (res.ok) {
+      // Outcome-only copy: the server returns how many were ACTUALLY stopped, which
+      // can be 0 either because they finished in the gap or because they sit in
+      // folders the caller can't manage (silently skipped). Don't assert none existed.
+      toast.success(`Stopped ${res.data} build${res.data === 1 ? "" : "s"}`);
+      router.refresh();
+    }
+    return res;
+  }
+
+  const colSpan =
+    6 + (showService ? 1 : 0) + (showServer ? 1 : 0) + (canManage ? 1 : 0);
+  const showFilters =
+    showServer && (serverOptions.length >= 2 || serviceOptions.length >= 2);
 
   return (
     <div className="space-y-3">
-      {/* Toolbar: bulk-delete on the left when a selection exists, "Delete all"
-          on the right. Both are hidden when the caller can't manage deletions. */}
+      {/* Filters (global page): narrow the rows AND the bulk-sweep scope. Shown to
+          everyone who can see the page — filtering isn't a mutation. */}
+      {showFilters && (
+        <div className="flex flex-wrap items-center gap-2">
+          <ListFilter className="size-4 text-muted-foreground" />
+          {serverOptions.length >= 2 && (
+            <Select
+              value={effectiveServerFilter ?? ALL}
+              onValueChange={(v) => setServerFilter(v === ALL ? null : v)}
+            >
+              <SelectTrigger className="w-[180px]" aria-label="Filter by server">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All servers</SelectItem>
+                {serverOptions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {serviceOptions.length >= 2 && (
+            <Select
+              value={effectiveServiceFilter ?? ALL}
+              onValueChange={(v) => setServiceFilter(v === ALL ? null : v)}
+            >
+              <SelectTrigger className="w-[200px]" aria-label="Filter by service">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All services</SelectItem>
+                {serviceOptions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {hasFilter && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setServerFilter(null);
+                setServiceFilter(null);
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
+          <span className="text-sm text-muted-foreground">
+            {visible.length} of {deployments.length}
+          </span>
+        </div>
+      )}
+
+      {/* Toolbar: bulk-delete on the left when a selection exists; on the right,
+          "Stop all builds" (when any visible deployment is in progress) and
+          "Delete all" (when any is finished). All hidden when the caller can't manage. */}
       {canManage && (
         <div className="flex min-h-9 items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -174,17 +350,30 @@ export function DeploymentsTable({
               </>
             )}
           </div>
-          {selectableIds.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={() => setDeleteAllOpen(true)}
-            >
-              <Trash2 className="size-4" />
-              Delete all
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {inProgressCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCancelAllOpen(true)}
+              >
+                <CircleStop className="size-4" />
+                Stop all builds
+                <span className="text-muted-foreground">({inProgressCount})</span>
+              </Button>
+            )}
+            {selectableIds.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setDeleteAllOpen(true)}
+              >
+                <Trash2 className="size-4" />
+                Delete all
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
@@ -216,6 +405,7 @@ export function DeploymentsTable({
               )}
               <TableHead>Deployment</TableHead>
               {showService && <TableHead>Service</TableHead>}
+              {showServer && <TableHead>Server</TableHead>}
               <TableHead>Status</TableHead>
               <TableHead>Environment</TableHead>
               <TableHead>Branch</TableHead>
@@ -224,17 +414,17 @@ export function DeploymentsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {deployments.length === 0 ? (
+            {visible.length === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell
                   colSpan={colSpan}
                   className="py-8 text-center text-sm text-muted-foreground"
                 >
-                  No deployments.
+                  {hasFilter ? "No deployments match the filters." : "No deployments."}
                 </TableCell>
               </TableRow>
             ) : (
-              deployments.map((d) => {
+              visible.map((d) => {
                 const inProgress = IN_PROGRESS.has(d.status);
                 const checked = selectableSet.has(d.id) && selected.has(d.id);
                 return (
@@ -279,6 +469,19 @@ export function DeploymentsTable({
                         >
                           {d.serviceName}
                         </Link>
+                      </TableCell>
+                    )}
+
+                    {showServer && (
+                      <TableCell>
+                        {d.serverName ? (
+                          <span className="flex items-center gap-1.5 text-muted-foreground">
+                            <Server className="size-3.5 shrink-0" />
+                            <span className="truncate">{d.serverName}</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                     )}
 
@@ -345,14 +548,19 @@ export function DeploymentsTable({
       <ConfirmAction
         open={deleteAllOpen}
         onOpenChange={setDeleteAllOpen}
-        title="Delete all deployments?"
-        description={
-          scopeServiceId
-            ? "Every finished deployment for this service (and its build logs) is permanently removed. In-progress builds are left. The running app is unaffected, but this can't be undone."
-            : "Every finished deployment across all your services (and its build logs) is permanently removed. In-progress builds are left. Running apps are unaffected, but this can't be undone."
-        }
+        title={`Delete ${selectableIds.length} finished deployment${selectableIds.length === 1 ? "" : "s"}?`}
+        description={`Every finished deployment for ${scopeText} (and its build logs) is permanently removed. In-progress builds are left. Running apps are unaffected, but this can't be undone.`}
         confirmLabel="Delete all"
         onConfirm={deleteAll}
+      />
+      <ConfirmAction
+        open={cancelAllOpen}
+        onOpenChange={setCancelAllOpen}
+        variant="default"
+        title={`Stop ${inProgressCount} running build${inProgressCount === 1 ? "" : "s"}?`}
+        description={`Every queued or building deployment for ${scopeText} is canceled. A build already running on its host may finish in the background, but its result won't be deployed.`}
+        confirmLabel="Stop all builds"
+        onConfirm={cancelAll}
       />
     </div>
   );

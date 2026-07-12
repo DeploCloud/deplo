@@ -752,6 +752,11 @@ type Mutation {
   """Add a registry credential to the active team. Returns true."""
   addRegistry(input: AddRegistryInput!): Boolean
   addServer(input: AddServerInput!): AddServerPayload
+
+  """
+  Cancel every in-progress deployment (queued/building) for one service (serviceId given) or across the whole active team (serviceId omitted), optionally narrowed to one owning server (serverId). Terminal deployments are left. Returns how many builds were stopped.
+  """
+  cancelAllDeployments(serverId: ID, serviceId: ID): Int
   cancelDeployment(id: String!): Boolean
 
   """
@@ -801,9 +806,9 @@ type Mutation {
   createToken(name: String!): CreateTokenPayload
 
   """
-  Delete every finished deployment for one service (serviceId given) or across the whole active team (serviceId omitted). In-progress deployments are left. Returns how many were deleted.
+  Delete every finished deployment for one service (serviceId given) or across the whole active team (serviceId omitted), optionally narrowed to one owning server (serverId). In-progress deployments are left. Returns how many were deleted.
   """
-  deleteAllDeployments(serviceId: ID): Int
+  deleteAllDeployments(serverId: ID, serviceId: ID): Int
 
   """Delete a backup schedule. Returns true."""
   deleteBackup(id: String!): Boolean

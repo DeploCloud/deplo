@@ -1,11 +1,12 @@
 import "server-only";
 
-import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
   deployments as deploymentsTable,
   services as servicesTable,
+  servers as serversTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
@@ -36,16 +37,24 @@ export async function listDeployments(filter?: {
      * source — lets a list decorate the SHA with a link without loading the
      * project graph. */
     commitUrl: string | null;
+    /** Owning server of the deployment — the host it ran on (`deployments.server_id`,
+     *  denormalized) falling back to the service's current server. null only when
+     *  neither is set (a legacy row on a service with no resolvable server). */
+    serverId: string | null;
+    /** Display name of {@link serverId}, or null when it can't be resolved. */
+    serverName: string | null;
   })[]
 > {
   const teamId = await requireActiveTeamId();
   // The caller's team services, by id (the deployment join target + the name/slug
-  // decoration, plus the repo columns needed to build the commit link).
+  // decoration, the owning server for the server column, plus the repo columns
+  // needed to build the commit link).
   const teamServices = await getDb()
     .select({
       id: servicesTable.id,
       name: servicesTable.name,
       slug: servicesTable.slug,
+      serverId: servicesTable.serverId,
       repoProvider: servicesTable.repoProvider,
       repoRepo: servicesTable.repoRepo,
       repoUrl: servicesTable.repoUrl,
@@ -67,19 +76,46 @@ export async function listDeployments(filter?: {
     .where(inArray(deploymentsTable.serviceId, serviceIds))
     .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq));
 
+  // Resolve owning-server NAMES for the "Server" column / filter. A deployment's
+  // own `serverId` is the host it ran on (may be null on legacy rows) — fall back
+  // to the service's current server. Names are looked up by id: servers aren't
+  // team-scoped, but we only resolve ids the team's own rows already reference, so
+  // this leaks nothing (a team can't conjure a server id it never deployed on).
+  const serverIds = [
+    ...new Set(
+      [
+        ...rows.map((r) => r.serverId),
+        ...teamServices.map((s) => s.serverId),
+      ].filter((id): id is string => !!id),
+    ),
+  ];
+  const serverNameById = new Map(
+    serverIds.length === 0
+      ? []
+      : (
+          await getDb()
+            .select({ id: serversTable.id, name: serversTable.name })
+            .from(serversTable)
+            .where(inArray(serversTable.id, serverIds))
+        ).map((s) => [s.id, s.name] as const),
+  );
+
   return rows
-    .map(assembleDeployment)
-    .filter((x) => !filter?.environment || x.environment === filter.environment)
-    .filter((x) => !filter?.status || x.status === filter.status)
-    .map((x) => {
-      const p = byId.get(x.serviceId);
+    .map((row) => ({ dep: assembleDeployment(row), rowServerId: row.serverId }))
+    .filter(({ dep }) => !filter?.environment || dep.environment === filter.environment)
+    .filter(({ dep }) => !filter?.status || dep.status === filter.status)
+    .map(({ dep, rowServerId }) => {
+      const p = byId.get(dep.serviceId);
+      const serverId = rowServerId ?? p?.serverId ?? null;
       return {
-        ...x,
+        ...dep,
         serviceName: p?.name ?? "",
         serviceSlug: p?.slug ?? "",
+        serverId,
+        serverName: serverId ? (serverNameById.get(serverId) ?? null) : null,
         commitUrl: githubCommitUrl(
           { provider: p?.repoProvider, repo: p?.repoRepo, url: p?.repoUrl },
-          x.commitSha,
+          dep.commitSha,
         ),
       };
     });
@@ -195,18 +231,27 @@ export async function cancelDeployment(id: string): Promise<boolean> {
  */
 const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
 
+/** Narrow a deployment sweep to one owning server. Matches the SAME effective
+ *  server the list shows — the deployment's own `server_id`, or the service's when
+ *  the row's is null — so filtering by a server on the deployments page and then
+ *  sweeping it hits exactly the visible rows (including legacy rows with a null
+ *  `deployments.server_id`). Both columns are in scope via the `services` join. */
+const onServer = (serverId: string) =>
+  sql`coalesce(${deploymentsTable.serverId}, ${servicesTable.serverId}) = ${serverId}`;
+
 /** Terminal (deletable) deployment rows for the team, optionally narrowed to a
- *  set of ids or a single service. Joined through `services` so a foreign/stale
- *  id is simply absent (team isolation). */
+ *  set of ids, a single service, and/or a single owning server. Joined through
+ *  `services` so a foreign/stale id is simply absent (team isolation). */
 async function terminalDeploymentRows(
   teamId: string,
-  filter: { ids?: string[]; serviceId?: string },
+  filter: { ids?: string[]; serviceId?: string; serverId?: string },
 ): Promise<{ id: string; serviceId: string }[]> {
   const conds = [
     eq(servicesTable.teamId, teamId),
     notInArray(deploymentsTable.status, IN_PROGRESS),
   ];
   if (filter.serviceId) conds.push(eq(deploymentsTable.serviceId, filter.serviceId));
+  if (filter.serverId) conds.push(onServer(filter.serverId));
   if (filter.ids) conds.push(inArray(deploymentsTable.id, filter.ids));
   return getDb()
     .select({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId })
@@ -274,28 +319,13 @@ export async function deleteDeployments(ids: string[]): Promise<number> {
   return removeDeploymentRows(rows, membership.teamId, user.name);
 }
 
-/**
- * Delete EVERY finished deployment — for one service (`serviceId` given, the
- * service page's "Delete all") or across the whole active team (`serviceId`
- * null/absent, the global page's "Delete all"). The single-service form enforces
- * folder `deploy` (throws if the caller can't manage it); the team-wide sweep
- * SKIPS services whose folder the caller can't manage rather than failing whole,
- * so one locked folder never blocks clearing the rest. In-progress deployments
- * are always left. Returns how many were deleted.
- */
-export async function deleteAllDeployments(
-  serviceId?: string | null,
-): Promise<number> {
-  const { membership } = await requireCapability("deploy");
-  const user = (await getCurrentUser())!;
-  if (serviceId) {
-    if (!(await serviceInTeam(serviceId, membership.teamId)))
-      throw new Error("Service not found");
-    await requireFolderCapabilityForService(serviceId, "deploy");
-    const rows = await terminalDeploymentRows(membership.teamId, { serviceId });
-    return removeDeploymentRows(rows, membership.teamId, user.name);
-  }
-  const rows = await terminalDeploymentRows(membership.teamId, {});
+/** Keep only rows whose service's folder the caller may `deploy` on — the
+ *  team-wide-sweep guard shared by delete-all and cancel-all. SKIPS (rather than
+ *  throws on) a locked folder so one never blocks clearing the rest, memoizing the
+ *  per-service check. */
+async function folderPermittedRows(
+  rows: { id: string; serviceId: string }[],
+): Promise<{ id: string; serviceId: string }[]> {
   const allowed = new Map<string, boolean>();
   const permitted: { id: string; serviceId: string }[] = [];
   for (const r of rows) {
@@ -303,7 +333,131 @@ export async function deleteAllDeployments(
       allowed.set(r.serviceId, await mayManageServiceFolder(r.serviceId));
     if (allowed.get(r.serviceId)) permitted.push(r);
   }
+  return permitted;
+}
+
+/**
+ * Delete EVERY finished deployment — for one service (`serviceId` given, the
+ * service page's "Delete all") or across the whole active team (`serviceId`
+ * null/absent, the global page's "Delete all"). An optional `serverId` narrows the
+ * sweep to one owning server (the deployments page's server filter). The
+ * single-service form enforces folder `deploy` (throws if the caller can't manage
+ * it); the team-wide sweep SKIPS services whose folder the caller can't manage
+ * rather than failing whole, so one locked folder never blocks clearing the rest.
+ * In-progress deployments are always left. Returns how many were deleted.
+ */
+export async function deleteAllDeployments(
+  serviceId?: string | null,
+  serverId?: string | null,
+): Promise<number> {
+  const { membership } = await requireCapability("deploy");
+  const user = (await getCurrentUser())!;
+  if (serviceId) {
+    if (!(await serviceInTeam(serviceId, membership.teamId)))
+      throw new Error("Service not found");
+    await requireFolderCapabilityForService(serviceId, "deploy");
+    const rows = await terminalDeploymentRows(membership.teamId, {
+      serviceId,
+      serverId: serverId ?? undefined,
+    });
+    return removeDeploymentRows(rows, membership.teamId, user.name);
+  }
+  const rows = await terminalDeploymentRows(membership.teamId, {
+    serverId: serverId ?? undefined,
+  });
+  const permitted = await folderPermittedRows(rows);
   return removeDeploymentRows(permitted, membership.teamId, user.name);
+}
+
+/** In-progress (queued/building) deployment rows for the team, optionally narrowed
+ *  to one service and/or one owning server. Mirror of `terminalDeploymentRows` for
+ *  the cancel sweep; joined through `services` so a foreign/stale id is simply
+ *  absent (team isolation). */
+async function inProgressDeploymentRows(
+  teamId: string,
+  filter: { serviceId?: string; serverId?: string },
+): Promise<{ id: string; serviceId: string }[]> {
+  const conds = [
+    eq(servicesTable.teamId, teamId),
+    inArray(deploymentsTable.status, IN_PROGRESS),
+  ];
+  if (filter.serviceId) conds.push(eq(deploymentsTable.serviceId, filter.serviceId));
+  if (filter.serverId) conds.push(onServer(filter.serverId));
+  return getDb()
+    .select({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId })
+    .from(deploymentsTable)
+    .innerJoin(servicesTable, eq(deploymentsTable.serviceId, servicesTable.id))
+    .where(and(...conds));
+}
+
+/** Flip the given in-progress rows to `canceled` (same semantics as the single
+ *  `cancelDeployment`: the host build may finish in the background, its result just
+ *  isn't deployed). The `status IN (queued, building)` guard stays in the WHERE —
+ *  not just the read above — so a build that settled to ready/error in the gap is
+ *  never retroactively flipped to canceled (it drops out at 0 rows). Nudges live
+ *  subscribers so each badge flips at once, and logs one activity line. Returns how
+ *  many were actually stopped. */
+async function cancelDeploymentRows(
+  rows: { id: string; serviceId: string }[],
+  teamId: string,
+  userName: string,
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const stopped = await getDb()
+    .update(deploymentsTable)
+    .set({ status: "canceled" })
+    .where(
+      and(
+        inArray(deploymentsTable.id, rows.map((r) => r.id)),
+        inArray(deploymentsTable.status, IN_PROGRESS),
+      ),
+    )
+    .returning({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId });
+  const services = new Set(stopped.map((d) => d.serviceId));
+  for (const sid of services) publishServiceChanged(sid);
+  if (stopped.length > 0)
+    await recordActivity(
+      "deployment",
+      `Stopped ${stopped.length} running build${stopped.length === 1 ? "" : "s"}`,
+      userName,
+      services.size === 1 ? [...services][0]! : null,
+      teamId,
+    );
+  return stopped.length;
+}
+
+/**
+ * Cancel EVERY in-progress deployment — for one service (`serviceId` given, the
+ * service page's "Stop all builds") or across the whole active team (`serviceId`
+ * null/absent, the global page's "Stop all builds"). An optional `serverId` narrows
+ * the sweep to one owning server (the deployments page's server filter). The
+ * counterpart to `deleteAllDeployments`: same folder-`deploy` rules (single-service
+ * throws if the caller can't manage that folder; the team-wide sweep SKIPS folders
+ * it can't manage rather than failing whole) but it flips queued/building rows to
+ * `canceled` instead of deleting terminal ones. Terminal deployments are always
+ * left. Returns how many builds were actually stopped.
+ */
+export async function cancelAllDeployments(
+  serviceId?: string | null,
+  serverId?: string | null,
+): Promise<number> {
+  const { membership } = await requireCapability("deploy");
+  const user = (await getCurrentUser())!;
+  if (serviceId) {
+    if (!(await serviceInTeam(serviceId, membership.teamId)))
+      throw new Error("Service not found");
+    await requireFolderCapabilityForService(serviceId, "deploy");
+    const rows = await inProgressDeploymentRows(membership.teamId, {
+      serviceId,
+      serverId: serverId ?? undefined,
+    });
+    return cancelDeploymentRows(rows, membership.teamId, user.name);
+  }
+  const rows = await inProgressDeploymentRows(membership.teamId, {
+    serverId: serverId ?? undefined,
+  });
+  const permitted = await folderPermittedRows(rows);
+  return cancelDeploymentRows(permitted, membership.teamId, user.name);
 }
 
 export async function promoteToProduction(id: string): Promise<void> {

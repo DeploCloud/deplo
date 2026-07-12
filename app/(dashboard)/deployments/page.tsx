@@ -19,7 +19,7 @@ export default async function DeploymentsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Deployments"
-        description="Every deployment across all of your services, newest first."
+        description="Every deployment across all of your services and servers, newest first."
       />
 
       {deployments.length === 0 ? (
@@ -31,12 +31,15 @@ export default async function DeploymentsPage() {
       ) : (
         <DeploymentsTable
           showService
+          showServer
           canManage={canManage}
           deployments={deployments.map((d) => ({
             id: d.id,
             serviceId: d.serviceId,
             serviceSlug: d.serviceSlug,
             serviceName: d.serviceName,
+            serverId: d.serverId,
+            serverName: d.serverName,
             commitMessage: d.commitMessage,
             commitSha: d.commitSha,
             commitUrl: d.commitUrl,

@@ -36,6 +36,7 @@ import {
   redeploy,
   reloadService as reapplyRouting,
   cancelDeployment,
+  cancelAllDeployments,
   deleteDeployments,
   deleteAllDeployments,
   promoteToProduction,
@@ -570,6 +571,21 @@ builder.mutationFields((t) => ({
     // Returns false if the deployment had already finished (nothing to stop).
     resolve: (_r, { id }) => cancelDeployment(id),
   }),
+  cancelAllDeployments: t.field({
+    type: "Int",
+    authScopes: { capability: "deploy" },
+    description:
+      "Cancel every in-progress deployment (queued/building) for one service (serviceId given) or across the whole active team (serviceId omitted), optionally narrowed to one owning server (serverId). Terminal deployments are left. Returns how many builds were stopped.",
+    args: {
+      serviceId: t.arg.id({ required: false }),
+      serverId: t.arg.id({ required: false }),
+    },
+    resolve: (_r, { serviceId, serverId }) =>
+      cancelAllDeployments(
+        serviceId != null ? String(serviceId) : null,
+        serverId != null ? String(serverId) : null,
+      ),
+  }),
   promoteDeployment: t.field({
     type: "Boolean",
     authScopes: { capability: "deploy" },
@@ -592,10 +608,16 @@ builder.mutationFields((t) => ({
     type: "Int",
     authScopes: { capability: "deploy" },
     description:
-      "Delete every finished deployment for one service (serviceId given) or across the whole active team (serviceId omitted). In-progress deployments are left. Returns how many were deleted.",
-    args: { serviceId: t.arg.id({ required: false }) },
-    resolve: (_r, { serviceId }) =>
-      deleteAllDeployments(serviceId != null ? String(serviceId) : null),
+      "Delete every finished deployment for one service (serviceId given) or across the whole active team (serviceId omitted), optionally narrowed to one owning server (serverId). In-progress deployments are left. Returns how many were deleted.",
+    args: {
+      serviceId: t.arg.id({ required: false }),
+      serverId: t.arg.id({ required: false }),
+    },
+    resolve: (_r, { serviceId, serverId }) =>
+      deleteAllDeployments(
+        serviceId != null ? String(serviceId) : null,
+        serverId != null ? String(serverId) : null,
+      ),
   }),
 }));
 
