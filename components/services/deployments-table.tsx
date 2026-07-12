@@ -4,7 +4,15 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GitBranch, Trash2, CircleStop, Server, ListFilter } from "lucide-react";
+import {
+  GitBranch,
+  Trash2,
+  CircleStop,
+  Server,
+  ListFilter,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -44,6 +52,9 @@ const IN_PROGRESS = new Set<DeploymentStatus>(["queued", "building"]);
 /** Sentinel for the "no filter" option — shadcn `SelectItem` can't hold "". */
 const ALL = "__all__";
 
+/** Rows shown per page (client-side pagination over the filtered set). */
+const PAGE_SIZE = 10;
+
 export interface DeploymentRow {
   id: string;
   serviceId: string;
@@ -66,9 +77,10 @@ export interface DeploymentRow {
 
 /**
  * The deployments table with multi-select DELETION. Shared by the global
- * Deployments page and a service's own Deployment history. Selection exists only
- * to delete — every other action (open, visit, redeploy, promote, stop/cancel)
- * stays per-row in `DeploymentActions`.
+ * Deployments page and a service's own Deployment history. It owns the page header
+ * row (`header` on the left, the bulk-action buttons on the right — a
+ * `justify-between` layout), the filters, the table, and client-side pagination
+ * (10 rows/page over the filtered set).
  *
  * The global page also gets a Server column and Server/Service filters
  * (`showServer`). Filtering is a VIEW concern — it narrows the rendered rows AND
@@ -80,12 +92,16 @@ export interface DeploymentRow {
  */
 export function DeploymentsTable({
   deployments,
+  header,
   showService = false,
   showServer = false,
   scopeServiceId,
   canManage,
 }: {
   deployments: DeploymentRow[];
+  /** Title/subtitle block rendered on the left of the header row, opposite the
+   *  bulk-action buttons. Plain markup — passed straight through from the RSC page. */
+  header?: React.ReactNode;
   /** Show the owning-service column (the global page). Off on a service's page. */
   showService?: boolean;
   /** Show the owning-server column + Server/Service filters (the global page). */
@@ -102,6 +118,7 @@ export function DeploymentsTable({
   const [cancelAllOpen, setCancelAllOpen] = React.useState(false);
   const [serverFilter, setServerFilter] = React.useState<string | null>(null);
   const [serviceFilter, setServiceFilter] = React.useState<string | null>(null);
+  const [page, setPage] = React.useState(0);
 
   // Distinct servers / services present in the current rows — the filter options.
   // Derived from ALL rows (not the filtered view) so each dropdown stays stable
@@ -136,8 +153,8 @@ export function DeploymentsTable({
       : null;
   const hasFilter = effectiveServerFilter != null || effectiveServiceFilter != null;
 
-  // The rows actually shown — everything downstream (selection, counts, bulk
-  // scope) keys off this so the buttons act on exactly what's visible.
+  // The rows matching the filters — everything downstream (selection, counts, bulk
+  // scope) keys off this so the buttons act on exactly what's in scope.
   const visible = React.useMemo(
     () =>
       deployments.filter(
@@ -147,6 +164,14 @@ export function DeploymentsTable({
       ),
     [deployments, effectiveServerFilter, effectiveServiceFilter],
   );
+
+  // Client-side pagination over the filtered set. Clamp in render (no effect) so a
+  // filter change or a post-delete refresh that shrinks the list never strands the
+  // view on a page that no longer exists.
+  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageStart = safePage * PAGE_SIZE;
+  const paged = visible.slice(pageStart, pageStart + PAGE_SIZE);
 
   const selectableIds = React.useMemo(
     () => visible.filter((d) => !IN_PROGRESS.has(d.status)).map((d) => d.id),
@@ -197,6 +222,22 @@ export function DeploymentsTable({
         : activeServerName
           ? `server ${activeServerName}`
           : "all your services";
+
+  // Reset to the first page whenever the filter set changes — otherwise a narrowed
+  // list could open on a now-empty tail page.
+  function applyServerFilter(v: string) {
+    setServerFilter(v === ALL ? null : v);
+    setPage(0);
+  }
+  function applyServiceFilter(v: string) {
+    setServiceFilter(v === ALL ? null : v);
+    setPage(0);
+  }
+  function clearFilters() {
+    setServerFilter(null);
+    setServiceFilter(null);
+    setPage(0);
+  }
 
   function toggleAll(checked: boolean) {
     setSelected(checked ? new Set(selectableIds) : new Set());
@@ -261,119 +302,110 @@ export function DeploymentsTable({
     showServer && (serverOptions.length >= 2 || serviceOptions.length >= 2);
 
   return (
-    <div className="space-y-3">
-      {/* Filters (global page): narrow the rows AND the bulk-sweep scope. Shown to
-          everyone who can see the page — filtering isn't a mutation. */}
-      {showFilters && (
-        <div className="flex flex-wrap items-center gap-2">
-          <ListFilter className="size-4 text-muted-foreground" />
-          {serverOptions.length >= 2 && (
-            <Select
-              value={effectiveServerFilter ?? ALL}
-              onValueChange={(v) => setServerFilter(v === ALL ? null : v)}
-            >
-              <SelectTrigger className="w-[180px]" aria-label="Filter by server">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All servers</SelectItem>
-                {serverOptions.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <div className="space-y-4">
+      {/* Header: title/subtitle on the left, bulk-action buttons on the right
+          (justify-between). The buttons are hidden when the caller can't manage. */}
+      {(header || canManage) && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">{header}</div>
+          {canManage && (
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {inProgressCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCancelAllOpen(true)}
+                >
+                  <CircleStop className="size-4" />
+                  Stop all builds
+                  <span className="text-muted-foreground">({inProgressCount})</span>
+                </Button>
+              )}
+              {selectableIds.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setDeleteAllOpen(true)}
+                >
+                  <Trash2 className="size-4" />
+                  Delete all
+                </Button>
+              )}
+            </div>
           )}
-          {serviceOptions.length >= 2 && (
-            <Select
-              value={effectiveServiceFilter ?? ALL}
-              onValueChange={(v) => setServiceFilter(v === ALL ? null : v)}
-            >
-              <SelectTrigger className="w-[200px]" aria-label="Filter by service">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All services</SelectItem>
-                {serviceOptions.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {hasFilter && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setServerFilter(null);
-                setServiceFilter(null);
-              }}
-            >
-              Clear filters
-            </Button>
-          )}
-          <span className="text-sm text-muted-foreground">
-            {visible.length} of {deployments.length}
-          </span>
         </div>
       )}
 
-      {/* Toolbar: bulk-delete on the left when a selection exists; on the right,
-          "Stop all builds" (when any visible deployment is in progress) and
-          "Delete all" (when any is finished). All hidden when the caller can't manage. */}
-      {canManage && (
-        <div className="flex min-h-9 items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            {selectedCount > 0 && (
-              <>
-                <span className="text-sm text-muted-foreground">
-                  {selectedCount} selected
-                </span>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setDeleteSelectedOpen(true)}
+      {/* Filters (global page) and the multi-select controls, left-aligned on one
+          row. Both are contextual: filters appear on the global page; the
+          selection controls only while rows are checked. */}
+      {(showFilters || selectedCount > 0) && (
+        <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2">
+          {showFilters && (
+            <div className="flex flex-wrap items-center gap-2">
+              <ListFilter className="size-4 text-muted-foreground" />
+              {serverOptions.length >= 2 && (
+                <Select
+                  value={effectiveServerFilter ?? ALL}
+                  onValueChange={applyServerFilter}
                 >
-                  <Trash2 className="size-4" />
-                  Delete selected
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelected(new Set())}
+                  <SelectTrigger className="w-[180px]" aria-label="Filter by server">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All servers</SelectItem>
+                    {serverOptions.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {serviceOptions.length >= 2 && (
+                <Select
+                  value={effectiveServiceFilter ?? ALL}
+                  onValueChange={applyServiceFilter}
                 >
-                  Clear
+                  <SelectTrigger className="w-[200px]" aria-label="Filter by service">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All services</SelectItem>
+                    {serviceOptions.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {hasFilter && (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  Clear filters
                 </Button>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {inProgressCount > 0 && (
+              )}
+            </div>
+          )}
+          {selectedCount > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                {selectedCount} selected
+              </span>
               <Button
-                variant="outline"
+                variant="destructive"
                 size="sm"
-                onClick={() => setCancelAllOpen(true)}
-              >
-                <CircleStop className="size-4" />
-                Stop all builds
-                <span className="text-muted-foreground">({inProgressCount})</span>
-              </Button>
-            )}
-            {selectableIds.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setDeleteAllOpen(true)}
+                onClick={() => setDeleteSelectedOpen(true)}
               >
                 <Trash2 className="size-4" />
-                Delete all
+                Delete selected
               </Button>
-            )}
-          </div>
+              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                Clear
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -424,7 +456,7 @@ export function DeploymentsTable({
                 </TableCell>
               </TableRow>
             ) : (
-              visible.map((d) => {
+              paged.map((d) => {
                 const inProgress = IN_PROGRESS.has(d.status);
                 const checked = selectableSet.has(d.id) && selected.has(d.id);
                 return (
@@ -536,6 +568,39 @@ export function DeploymentsTable({
           </TableBody>
         </Table>
       </Card>
+
+      {/* Pagination — only when the filtered set spills past one page. */}
+      {pageCount > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-muted-foreground">
+            Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, visible.length)} of{" "}
+            {visible.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={safePage === 0}
+              onClick={() => setPage(safePage - 1)}
+            >
+              <ChevronLeft className="size-4" />
+              Previous
+            </Button>
+            <span className="px-1 text-sm text-muted-foreground">
+              Page {safePage + 1} of {pageCount}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={safePage >= pageCount - 1}
+              onClick={() => setPage(safePage + 1)}
+            >
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <ConfirmAction
         open={deleteSelectedOpen}

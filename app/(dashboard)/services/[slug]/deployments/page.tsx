@@ -25,32 +25,36 @@ export default async function ServiceDeploymentsPage(
   const inProgress = deployments.filter((d) => IN_PROGRESS.has(d.status)).length;
   const canManage = canDeploy || isAdmin;
 
+  // Passed into the table so it sits opposite the bulk-action buttons on one
+  // justify-between row; reused above the empty state.
+  const header = (
+    <div className="space-y-1">
+      <h2 className="text-lg font-semibold tracking-tight">Deployment history</h2>
+      <p className="text-sm text-muted-foreground">
+        {deployments.length} total
+        {inProgress > 0 && (
+          <>
+            {" · "}
+            <span className="inline-flex items-center gap-1 text-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              {inProgress} in progress
+            </span>
+          </>
+        )}
+      </p>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">
-            Deployment history
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {deployments.length} total
-            {inProgress > 0 && (
-              <>
-                {" · "}
-                <span className="inline-flex items-center gap-1 text-foreground">
-                  <Loader2 className="size-3.5 animate-spin" />
-                  {inProgress} in progress
-                </span>
-              </>
-            )}
-          </p>
-        </div>
-      </div>
-
       {deployments.length === 0 ? (
-        <EmptyState icon={Rocket} title="No deployments yet" />
+        <>
+          {header}
+          <EmptyState icon={Rocket} title="No deployments yet" />
+        </>
       ) : (
         <DeploymentsTable
+          header={header}
           canManage={canManage}
           scopeServiceId={project.id}
           deployments={deployments.map((d) => ({

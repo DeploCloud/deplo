@@ -1,7 +1,6 @@
 import { Rocket } from "lucide-react";
 import { listDeployments } from "@/lib/data/deployments";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
-import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploymentsTable } from "@/components/services/deployments-table";
 
@@ -15,21 +14,31 @@ export default async function DeploymentsPage() {
   ]);
   const canManage = canDeploy || isAdmin;
 
+  // Passed into the table so it can sit opposite the bulk-action buttons on one
+  // justify-between row; reused above the empty state.
+  const header = (
+    <div className="space-y-1">
+      <h1 className="text-2xl font-semibold tracking-tight">Deployments</h1>
+      <p className="text-sm text-muted-foreground">
+        Every deployment across all of your services and servers, newest first.
+      </p>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Deployments"
-        description="Every deployment across all of your services and servers, newest first."
-      />
-
       {deployments.length === 0 ? (
-        <EmptyState
-          icon={Rocket}
-          title="No deployments yet"
-          description="Once you deploy a service, every build will show up here."
-        />
+        <>
+          {header}
+          <EmptyState
+            icon={Rocket}
+            title="No deployments yet"
+            description="Once you deploy a service, every build will show up here."
+          />
+        </>
       ) : (
         <DeploymentsTable
+          header={header}
           showService
           showServer
           canManage={canManage}
