@@ -96,6 +96,12 @@ export function BuildLogStream({
 
   const router = useRouter();
   const [stopping, startStop] = React.useTransition();
+  // Last status we pushed to the server-rendered parts of the page. The top
+  // "Status" badge and "Build time" are RSC-rendered from `getDeployment` and
+  // DON'T share this component's polled `status`, so they'd sit stale through a
+  // queued→building→ready run until a manual reload. When the poll below sees the
+  // status move, refresh the route so those server-rendered cells re-render too.
+  const lastSyncedStatus = React.useRef<DeploymentStatus>(initialStatus);
 
   // Stop the build you're watching. cancelDeployment flips the row to `canceled`;
   // the next log poll (below) picks that up, `live` goes false, and this button
@@ -152,6 +158,13 @@ export function BuildLogStream({
         if (cancelled || !data.deployment) return;
         setLogs(data.deployment.logs);
         setStatus(data.deployment.status);
+        // Sync the server-rendered status badge / build time on each transition
+        // (queued→building→ready/error/canceled) so they update live, not just on
+        // reload. Guarded by a ref so it fires once per change, not every poll.
+        if (data.deployment.status !== lastSyncedStatus.current) {
+          lastSyncedStatus.current = data.deployment.status;
+          router.refresh();
+        }
       } catch {
         // Transient fetch/abort error — keep polling; the next tick retries.
       }
@@ -164,7 +177,7 @@ export function BuildLogStream({
       controller.abort();
       if (timer) clearInterval(timer);
     };
-  }, [deploymentId, live]);
+  }, [deploymentId, live, router]);
 
   // Stick to the bottom when new lines arrive, but only while following.
   React.useEffect(() => {
