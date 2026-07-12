@@ -762,12 +762,17 @@ export function DeploymentsTable({
 
                     {showApp && (
                       <TableCell>
-                        <Link
-                          href={`/apps/${d.appSlug}`}
-                          className="cursor-pointer font-medium text-foreground hover:underline"
-                        >
-                          {d.serviceName}
-                        </Link>
+                        {/* On the global page the App name opens THIS row's build
+                            logs (its deployment detail), not the app overview —
+                            the fastest path from "which build is this?" to its logs. */}
+                        <SimpleTooltip content="Open this deployment's build logs">
+                          <Link
+                            href={`/apps/${d.appSlug}/deployments/${d.id}`}
+                            className="cursor-pointer font-medium text-foreground hover:underline"
+                          >
+                            {d.serviceName}
+                          </Link>
+                        </SimpleTooltip>
                       </TableCell>
                     )}
 
