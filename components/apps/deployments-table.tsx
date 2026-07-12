@@ -39,7 +39,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { CommitLink } from "@/components/apps/commit-link";
 import { DeploymentActions } from "@/components/apps/deployment-actions";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { gqlAction } from "@/lib/graphql-client";
+import { gqlAction, gqlSubscribe } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
 import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
 
@@ -84,6 +84,95 @@ const ENV_LABELS: Record<DeploymentEnvironment, string> = {
   production: "Production",
   preview: "Preview",
 };
+
+/** Live status feed. Reuses the app-keyed `appStatus` stream (the one the app
+ *  header/tabs already ride) — its `latestDeployment` carries the in-flight
+ *  build's current status. */
+const DEPLOYMENT_STATUS_SUB = /* GraphQL */ `
+  subscription DeploymentRowStatus($slug: String!) {
+    appStatus(slug: $slug) {
+      id
+      latestDeployment {
+        id
+        status
+      }
+    }
+  }
+`;
+type StatusSub = {
+  appStatus: {
+    id: string;
+    latestDeployment: { id: string; status: DeploymentStatus } | null;
+  } | null;
+};
+
+/**
+ * Keeps the deployment Status chips live without a reload, on BOTH the global and
+ * an app's own history. A deployment's status only moves while it's queued/building
+ * → ready/error/canceled, and an app's in-flight build is (bar the rare concurrent
+ * -preview case) its LATEST deployment — exactly what the `appStatus` subscription
+ * streams. So we open one SSE per app that currently has an in-progress row and
+ * overlay each pushed status onto the matching deployment id. When a tracked build
+ * settles we also refresh the RSC read so the rest of the row (actions,
+ * selectability, any newly-appeared build) reconciles from the authoritative data.
+ *
+ * Returns `statusOf(id, serverStatus)` → the row's effective (live) status. The
+ * overlay only ever holds a status pushed by the authoritative stream, so it can
+ * never show something the server would contradict (ids are never reused).
+ */
+function useLiveDeploymentStatuses(
+  rows: { id: string; appSlug: string; status: DeploymentStatus }[],
+): (id: string, serverStatus: DeploymentStatus) => DeploymentStatus {
+  const router = useRouter();
+  const [overlay, setOverlay] = React.useState<
+    ReadonlyMap<string, DeploymentStatus>
+  >(() => new Map());
+
+  const statusOf = React.useCallback(
+    (id: string, serverStatus: DeploymentStatus) =>
+      overlay.get(id) ?? serverStatus,
+    [overlay],
+  );
+
+  // Distinct app slugs with an in-progress row, by EFFECTIVE status — the only
+  // apps whose deployment status can still change. Sorted + comma-joined into a
+  // stable key so the effect re-subscribes only when the SET changes, not on
+  // every render.
+  const slugKey = React.useMemo(() => {
+    const s = new Set<string>();
+    for (const r of rows)
+      if (IN_PROGRESS.has(overlay.get(r.id) ?? r.status)) s.add(r.appSlug);
+    return [...s].sort().join(",");
+  }, [rows, overlay]);
+
+  React.useEffect(() => {
+    if (!slugKey) return;
+    const unsubs = slugKey.split(",").map((slug) =>
+      gqlSubscribe<StatusSub>(
+        DEPLOYMENT_STATUS_SUB,
+        { slug },
+        (data) => {
+          const dep = data.appStatus?.latestDeployment;
+          if (!dep) return;
+          setOverlay((prev) => {
+            if (prev.get(dep.id) === dep.status) return prev;
+            const next = new Map(prev);
+            next.set(dep.id, dep.status);
+            return next;
+          });
+          // A settled build flips its actions/selectability too — pull fresh
+          // server data. Bounded: fires once, on the in-progress→terminal edge.
+          if (!IN_PROGRESS.has(dep.status)) router.refresh();
+        },
+        // A slug we can no longer watch (deleted/renamed app) must not spam.
+        () => {},
+      ),
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [slugKey, router]);
+
+  return statusOf;
+}
 
 export interface DeploymentRow {
   id: string;
@@ -156,6 +245,10 @@ export function DeploymentsTable({
     React.useState<DeploymentEnvironment | null>(null);
   const [sortDir, setSortDir] = React.useState<SortDir>("newest");
   const [page, setPage] = React.useState(0);
+
+  // Live Status chips: overlays the in-flight build's status onto its row so the
+  // badge tracks queued → building → ready/error without a reload (both pages).
+  const liveStatusOf = useLiveDeploymentStatuses(deployments);
 
   // Distinct servers / apps present in the current rows — the filter options.
   // Derived from ALL rows (not the filtered view) so each dropdown stays stable
@@ -692,7 +785,7 @@ export function DeploymentsTable({
                     )}
 
                     <TableCell>
-                      <StatusBadge status={d.status} />
+                      <StatusBadge status={liveStatusOf(d.id, d.status)} />
                     </TableCell>
 
                     <TableCell>
