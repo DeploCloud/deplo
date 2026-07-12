@@ -179,12 +179,13 @@ export async function redeploy(serviceId: string): Promise<Deployment> {
 }
 
 /**
- * Stop a queued/building deployment. Flips the row to `canceled`; the running
+ * Stop a queued/building deployment. Flips the row to `canceled` and settles the
+ * service off "building" right away (see `settleServiceAfterCancel`); the running
  * build job (fire-and-forget, no agent-side abort) keeps going, but its terminal
  * write honors this flag — `settleIfCanceled` in build.ts never overwrites a
- * canceled row back to ready/error and settles the service off "building". The
- * in-progress build on the host may still finish in the background; its result is
- * simply not deployed. Truly killing that host build needs a new agent RPC.
+ * canceled row back to ready/error. The in-progress build on the host may still
+ * finish in the background; its result is simply not deployed. Truly killing that
+ * host build needs a new agent RPC.
  *
  * Returns whether a build was actually stopped — `false` when it had already
  * finished (0 rows), so the caller can avoid a misleading "Build stopped" toast.
@@ -211,8 +212,10 @@ export async function cancelDeployment(id: string): Promise<boolean> {
     )
     .returning({ id: deploymentsTable.id });
   if (stopped.length === 0) return false;
-  // Push the "Canceled" status to live subscribers so the badge flips at once,
-  // without waiting for the build job to notice and settle the service.
+  // Settle the service off "building" NOW (before the publish), then push the
+  // change so the badge flips to "Stopped" at once — without waiting for the build
+  // job to notice and settle it minutes later.
+  await settleServiceAfterCancel(dep.serviceId);
   publishServiceChanged(dep.serviceId);
   await recordActivity(
     "deployment",
@@ -390,13 +393,48 @@ async function inProgressDeploymentRows(
     .where(and(...conds));
 }
 
+/**
+ * Settle a service off the in-progress states the instant its build is canceled.
+ * The service is flipped to `building`/`queued` at deploy time (build.ts) and only
+ * settled back when the fire-and-forget build job finally reaches `markStopped` —
+ * which can be minutes away, so until then the live badge lies "building" even
+ * though the deployment already reads `canceled`. Flip it to `idle` ("Stopped")
+ * now, matching that eventual outcome. Guarded two ways so it never overreaches:
+ * only when the service has NO other queued/building deployment left (a superseding
+ * build keeps it going) and only FROM `building`/`queued` (never clobbering a
+ * running/errored/idle service). No publish here — the caller emits one snapshot
+ * after settling so subscribers paint the settled status.
+ */
+async function settleServiceAfterCancel(serviceId: string): Promise<void> {
+  const remaining = await getDb()
+    .select({ id: deploymentsTable.id })
+    .from(deploymentsTable)
+    .where(
+      and(
+        eq(deploymentsTable.serviceId, serviceId),
+        inArray(deploymentsTable.status, IN_PROGRESS),
+      ),
+    )
+    .limit(1);
+  if (remaining.length > 0) return;
+  await getDb()
+    .update(servicesTable)
+    .set({ status: "idle", updatedAt: nowIso() })
+    .where(
+      and(
+        eq(servicesTable.id, serviceId),
+        inArray(servicesTable.status, ["building", "queued"]),
+      ),
+    );
+}
+
 /** Flip the given in-progress rows to `canceled` (same semantics as the single
  *  `cancelDeployment`: the host build may finish in the background, its result just
  *  isn't deployed). The `status IN (queued, building)` guard stays in the WHERE —
  *  not just the read above — so a build that settled to ready/error in the gap is
- *  never retroactively flipped to canceled (it drops out at 0 rows). Nudges live
- *  subscribers so each badge flips at once, and logs one activity line. Returns how
- *  many were actually stopped. */
+ *  never retroactively flipped to canceled (it drops out at 0 rows). Settles each
+ *  affected service off "building", nudges live subscribers so each badge flips at
+ *  once, and logs one activity line. Returns how many were actually stopped. */
 async function cancelDeploymentRows(
   rows: { id: string; serviceId: string }[],
   teamId: string,
@@ -414,6 +452,9 @@ async function cancelDeploymentRows(
     )
     .returning({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId });
   const services = new Set(stopped.map((d) => d.serviceId));
+  // Settle each service BEFORE publishing so the emitted snapshot carries the
+  // settled status, not the stale "building".
+  for (const sid of services) await settleServiceAfterCancel(sid);
   for (const sid of services) publishServiceChanged(sid);
   if (stopped.length > 0)
     await recordActivity(

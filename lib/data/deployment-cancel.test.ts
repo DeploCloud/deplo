@@ -5,7 +5,10 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { deployments as deploymentsTable } from "../db/schema/control-plane";
+import {
+  deployments as deploymentsTable,
+  services as servicesTable,
+} from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import {
   seedIdentity,
@@ -20,7 +23,11 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./service-graph-test-helpers";
-import { cancelAllDeployments, listDeployments } from "./deployments";
+import {
+  cancelAllDeployments,
+  cancelDeployment,
+  listDeployments,
+} from "./deployments";
 
 /**
  * `cancelAllDeployments` against pglite — the "Stop all builds" bulk action.
@@ -182,6 +189,66 @@ test("server filter matches the deployment's own server_id over the service's", 
     await statusOf("dep_queued"),
     "queued",
     "SVC's other queued build (null server_id → SERVER_1) is left",
+  );
+});
+
+const serviceStatusOf = async (id: string): Promise<string> =>
+  (
+    await db
+      .select({ status: servicesTable.status })
+      .from(servicesTable)
+      .where(eq(servicesTable.id, id))
+  )[0]!.status;
+
+test("canceling a service's build settles the service off 'building'", async () => {
+  // Put SVC into the "building" state its in-flight deploy leaves it in.
+  await db
+    .update(servicesTable)
+    .set({ status: "building" })
+    .where(eq(servicesTable.id, SVC));
+  await as(OWNER, TEAM_A, () => cancelAllDeployments(SVC));
+  assert.equal(
+    await serviceStatusOf(SVC),
+    "idle",
+    "the service drops to idle (Stopped) at once, not stuck building",
+  );
+});
+
+test("canceling one queued build leaves the service building while another is in progress", async () => {
+  // SVC is building (dep_building) with dep_queued also in progress. Canceling
+  // ONLY the queued one must not settle the service — a build is still running.
+  await db
+    .update(servicesTable)
+    .set({ status: "building" })
+    .where(eq(servicesTable.id, SVC));
+  await as(OWNER, TEAM_A, () => cancelDeployment("dep_queued"));
+  assert.equal(await statusOf("dep_queued"), "canceled");
+  assert.equal(
+    await serviceStatusOf(SVC),
+    "building",
+    "dep_building is still in progress, so the service stays building",
+  );
+});
+
+test("canceling does not clobber a service that isn't building/queued", async () => {
+  // SVC2 is running ("active") with a single stray queued build. Canceling it
+  // leaves zero in-progress builds, but the status guard must still spare an
+  // active service — only building/queued ones settle to idle.
+  await seedDeployment(db, {
+    id: "dep_active_svc2",
+    serviceId: SVC2,
+    status: "queued",
+  });
+  await db
+    .update(servicesTable)
+    .set({ status: "active" })
+    .where(eq(servicesTable.id, SVC2));
+  await as(OWNER, TEAM_A, () => cancelDeployment("dep_active_svc2"));
+  assert.equal(await statusOf("dep_active_svc2"), "canceled");
+  assert.equal(
+    await serviceStatusOf(SVC2),
+    "active",
+    "an active service is left alone even with no builds remaining",
   );
 });
 

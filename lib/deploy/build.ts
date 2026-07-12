@@ -154,7 +154,22 @@ async function markStopped(depId: string, serviceId: string): Promise<void> {
     "warn",
     "Build stopped by user — result discarded. A build already running on the host may finish in the background; its output is not deployed.",
   );
-  await setService(serviceId, { status: "idle" });
+  // Settle ONLY if this canceled deploy is still the service's current one. A
+  // newer deploy may have superseded it while this stale job wound down (or since
+  // the cancel already settled the service) — settling then would clobber the
+  // newer build's "building"/"queued" back to idle. Scoped UPDATE → 0 rows when
+  // superseded, so the newer deploy keeps ownership of the status.
+  const settled = await getDb()
+    .update(servicesTable)
+    .set({ status: "idle", updatedAt: nowIso() })
+    .where(
+      and(
+        eq(servicesTable.id, serviceId),
+        eq(servicesTable.latestDeploymentId, depId),
+      ),
+    )
+    .returning({ id: servicesTable.id });
+  if (settled.length > 0) publishServiceChanged(serviceId);
 }
 
 /**
