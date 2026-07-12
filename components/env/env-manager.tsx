@@ -95,71 +95,74 @@ export function EnvManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
+      {/* Title on the left, the actions + Table/Editor switch on the right — one
+          justify-between row (same layout as the deployments pages). */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-sm font-medium">Environment Variables</h3>
           <p className="text-sm text-muted-foreground">
             Secret values are encrypted at rest and never shown again.
           </p>
         </div>
-        {/* The Table / Editor switch stands alone in the top-right so it keeps
-            its position when the table-mode actions below appear or vanish. */}
-        <ViewToggle mode={mode} onChange={setMode} />
-      </div>
-
-      {mode === "table" && (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {revealableIds.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setRevealedIds(
-                  allRevealed ? new Set() : new Set(revealableIds),
-                )
-              }
-            >
-              {allRevealed ? (
-                <EyeOff className="size-4" />
-              ) : (
-                <Eye className="size-4" />
+        <div className="flex flex-wrap items-center gap-2">
+          {mode === "table" && (
+            <>
+              {revealableIds.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setRevealedIds(
+                      allRevealed ? new Set() : new Set(revealableIds),
+                    )
+                  }
+                >
+                  {allRevealed ? (
+                    <EyeOff className="size-4" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
+                  {allRevealed ? "Hide all" : "Reveal all"}
+                </Button>
               )}
-              {allRevealed ? "Hide all" : "Reveal all"}
-            </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSharedOpen(true)}
+              >
+                <Share2 className="size-4" />
+                Shared groups
+                {attachedGroups.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-[10px]">
+                    {attachedGroups.length}
+                  </Badge>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImportOpen(true)}
+              >
+                <Upload className="size-4" />
+                Import .env
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditing(null);
+                  setAddOpen(true);
+                }}
+              >
+                <Plus className="size-4" />
+                Add
+              </Button>
+            </>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSharedOpen(true)}
-          >
-            <Share2 className="size-4" />
-            Shared groups
-            {attachedGroups.length > 0 && (
-              <Badge variant="secondary" className="ml-1 text-[10px]">
-                {attachedGroups.length}
-              </Badge>
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setImportOpen(true)}
-          >
-            <Upload className="size-4" />
-            Import .env
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditing(null);
-              setAddOpen(true);
-            }}
-          >
-            <Plus className="size-4" />
-            Add
-          </Button>
+          {/* Sits last so it holds the far-right slot whether or not the
+              table-mode actions are showing. */}
+          <ViewToggle mode={mode} onChange={setMode} />
         </div>
-      )}
+      </div>
 
       {mode === "editor" ? (
         <EnvEditor
