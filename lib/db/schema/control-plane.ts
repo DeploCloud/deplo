@@ -115,7 +115,7 @@ export const users = pgTable(
 
 /**
  * [Team](../../types.ts). `UNIQUE(slug)`. `project_order`/`folder_order` are NO
- * LONGER columns — they moved to the `team_service_order`/`team_folder_order`
+ * LONGER columns — they moved to the `team_app_order`/`team_folder_order`
  * ordering junctions so the stale-id self-healing becomes a DB invariant (PLAN
  * §1 "Ordering junctions").
  */
@@ -193,11 +193,11 @@ export const folders = pgTable(
  * ADR-0008 (folder-like, but it owns Environments). Modeled on `folders`: an
  * owner + per-container `project_grants` + `color` + team-wide ordering
  * (`team_project_order`). It has NO `parent_id` — a Project never nests in a
- * Project. Folders and Services point INTO it via their nullable `project_id`.
+ * Project. Folders and Apps point INTO it via their nullable `project_id`.
  * `slug` is UNIQUE PER TEAM (kept for the legacy `/projects/<slug>` redirect;
  * the UI opens containers on the Overview via `/?project=<id>`). id prefix `prc_`.
  * The table name `projects` is reclaimed after the 0015 rename freed it (the old
- * deployable-app `projects` is now `services`).
+ * deployable-app `projects` is now `apps`).
  */
 export const projects = pgTable(
   "projects",
@@ -249,7 +249,7 @@ export const projectGrants = pgTable(
  * create; renamable and extensible. `kind` is the well-known-role discriminant
  * (`development|preview|production|custom`) that keeps legacy `EnvTarget`
  * resolution and global-env targeting working; `slug` is the host-identity
- * component (a non-Production env's stack becomes `deplo-<serviceSlug>__<envSlug>`
+ * component (a non-Production env's stack becomes `deplo-<appSlug>__<envSlug>`
  * in the pipeline phase — Production keeps the bare slug for zero churn).
  * `git_branch` is this environment's own branch. Plain-text `kind` (no CHECK) per
  * the schema's un-validated-value convention. UNIQUE per project on name and slug.
@@ -278,21 +278,21 @@ export const environments = pgTable(
 );
 
 /**
- * Per-(Service, Environment) RUNTIME state (ADR-0008 Phase 3b) — the join that
+ * Per-(App, Environment) RUNTIME state (ADR-0008 Phase 3b) — the join that
  * lets a service's status / URL / latest deployment fan out along the environment
- * axis without duplicating the whole Service row. A row exists once a service is
+ * axis without duplicating the whole App row. A row exists once a service is
  * deployed to an environment (the deploy pipeline, wired in a later step, writes
  * it). The stack's deploy KEY is DERIVED, not stored (see
  * [env-deploy-key.ts](../../deploy/env-deploy-key.ts) — the default environment
  * keeps the bare `<slug>`, others get `<slug>__<envSlug>`). Both FKs CASCADE;
- * `latest_deployment_id` `SET NULL`. PK `(service_id, environment_id)`.
+ * `latest_deployment_id` `SET NULL`. PK `(app_id, environment_id)`.
  */
-export const serviceEnvironments = pgTable(
-  "service_environments",
+export const appEnvironments = pgTable(
+  "app_environments",
   {
-    serviceId: text("service_id")
+    appId: text("app_id")
       .notNull()
-      .references(() => services.id, { onDelete: "cascade" }),
+      .references(() => apps.id, { onDelete: "cascade" }),
     environmentId: text("environment_id")
       .notNull()
       .references(() => environments.id, { onDelete: "cascade" }),
@@ -306,8 +306,8 @@ export const serviceEnvironments = pgTable(
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.serviceId, t.environmentId] }),
-    index("service_environments_environment_idx").on(t.environmentId),
+    primaryKey({ columns: [t.appId, t.environmentId] }),
+    index("app_environments_environment_idx").on(t.environmentId),
   ],
 );
 
@@ -547,7 +547,7 @@ export const servers = pgTable(
 /**
  * Server → team access junction. Rows here matter ONLY when the server's
  * `all_teams` is `false`: each row grants ONE team the right to target the
- * server for its services/databases. `all_teams = true` ignores this table
+ * server for its apps/databases. `all_teams = true` ignores this table
  * entirely (every team has access). Both FKs cascade — dropping a server or a
  * team prunes its grants. PK on both columns closes the double-grant race.
  */
@@ -569,15 +569,15 @@ export const serverTeams = pgTable(
 /* ================================================================== */
 
 /**
- * [Service](../../types.ts) — flat scalar columns only. `slug` UNIQUE *globally*.
+ * [App](../../types.ts) — flat scalar columns only. `slug` UNIQUE *globally*.
  * `folder_id` `ON DELETE SET NULL` (orphan tolerated). `server_id` `RESTRICT`.
  * `latest_deployment_id` `SET NULL`. `repo`/`upload` flattened to columns (small
  * fixed shapes). `expose` is **NOT stored** — derived as `exposes[0]` in the
- * row-assembler (PLAN §2 `services`, Decision 14). Legacy `source="dockerfile"`
+ * row-assembler (PLAN §2 `apps`, Decision 14). Legacy `source="dockerfile"`
  * is rewritten on backfill by the shared normalizer.
  */
-export const services = pgTable(
-  "services",
+export const apps = pgTable(
+  "apps",
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
@@ -590,17 +590,17 @@ export const services = pgTable(
     }),
     // The Project this service belongs to, or NULL at the team top level
     // (additive — ADR-0008). `ON DELETE SET NULL`: deleting a project orphans
-    // its services to the top level.
+    // its apps to the top level.
     projectId: text("project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
     // The Environment (of `project_id`'s Project) this service LIVES in — the
     // membership axis of the advanced-folder model (ADR-0009): each environment
-    // of a project holds its OWN services, like a sub-folder. NULL outside a
+    // of a project holds its OWN apps, like a sub-folder. NULL outside a
     // project. The data layer keeps the pair consistent (environment_id set ⇒
     // project_id is that environment's project; entering a project defaults to
     // its default environment). `SET NULL` is only the FK backstop — deleting an
-    // environment re-parents its services to the project default first.
+    // environment re-parents its apps to the project default first.
     environmentId: text("environment_id").references(() => environments.id, {
       onDelete: "set null",
     }),
@@ -661,25 +661,25 @@ export const services = pgTable(
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
   (t) => [
-    uniqueIndex("services_slug_uq").on(t.slug),
-    index("services_team_idx").on(t.teamId),
-    index("services_folder_idx").on(t.folderId),
-    index("services_project_idx").on(t.projectId),
-    index("services_environment_idx").on(t.environmentId),
+    uniqueIndex("apps_slug_uq").on(t.slug),
+    index("apps_team_idx").on(t.teamId),
+    index("apps_folder_idx").on(t.folderId),
+    index("apps_project_idx").on(t.projectId),
+    index("apps_environment_idx").on(t.environmentId),
   ],
 );
 
 /**
- * [BuildConfig](../../types.ts) → 1-to-1 child (was `services.build`).
+ * [BuildConfig](../../types.ts) → 1-to-1 child (was `apps.build`).
  * `project_id` PK + FK CASCADE. `build_method` plain text, NO CHECK (legacy
  * values are coerced, never rejected). `runtime_version` (legacy `nodeVersion`
  * remapped by `normalizeBuildConfig` at backfill). The backfill MUST run the
  * read-time normalizer first so the NOT NULL columns hold (PLAN §2).
  */
-export const serviceBuild = pgTable("service_build", {
-  serviceId: text("service_id")
+export const appBuild = pgTable("app_build", {
+  appId: text("app_id")
     .primaryKey()
-    .references(() => services.id, { onDelete: "cascade" }),
+    .references(() => apps.id, { onDelete: "cascade" }),
   buildMethod: text("build_method").notNull(),
   rootDirectory: text("root_directory").notNull(),
   // Include files outside the root directory in the build context (default on);
@@ -703,15 +703,15 @@ export const serviceBuild = pgTable("service_build", {
  * [BuildMethodSettings](../../types.ts) → 1-to-1 child (was nested
  * `methodSettings`). `project_id` PK + FK. Every field is a column; an
  * `updateProjectBuild` with a provided `methodSettings` object FULLY REPLACES
- * this row while the parent `service_build` columns merge field-by-field (PLAN §2
+ * this row while the parent `app_build` columns merge field-by-field (PLAN §2
  * Decision 15). All columns nullable — every settings field is optional.
  */
-export const serviceBuildMethodSettings = pgTable(
-  "service_build_method_settings",
+export const appBuildMethodSettings = pgTable(
+  "app_build_method_settings",
   {
-    serviceId: text("service_id")
+    appId: text("app_id")
       .primaryKey()
-      .references(() => services.id, { onDelete: "cascade" }),
+      .references(() => apps.id, { onDelete: "cascade" }),
     dockerfilePath: text("dockerfile_path"),
     dockerContextPath: text("docker_context_path"),
     dockerBuildStage: text("docker_build_stage"),
@@ -722,15 +722,15 @@ export const serviceBuildMethodSettings = pgTable(
 );
 
 /**
- * [DevConfig](../../types.ts) → 1-to-1 child (was `services.dev`). `project_id`
+ * [DevConfig](../../types.ts) → 1-to-1 child (was `apps.dev`). `project_id`
  * PK + FK. **Row ABSENT = dev never enabled** — do NOT seed a default row (the
  * tri-state sentinel, PLAN §1 "Tri-states"). `dev_status` pgEnum, legacy unknown
  * → 'off'. `image_kind` is closed ('preset'|'custom') but coerced at backfill.
  */
-export const serviceDev = pgTable("service_dev", {
-  serviceId: text("service_id")
+export const appDev = pgTable("app_dev", {
+  appId: text("app_id")
     .primaryKey()
-    .references(() => services.id, { onDelete: "cascade" }),
+    .references(() => apps.id, { onDelete: "cascade" }),
   enabled: boolean("enabled").notNull(),
   status: devStatus("status").notNull(),
   imageKind: text("image_kind").notNull(),
@@ -748,14 +748,14 @@ export const serviceDev = pgTable("service_dev", {
  * [VolumeMount](../../types.ts) → ordered child. `type` NULLABLE (the
  * named/`host`/`service` discriminant; absent ⇒ "named"). Backfill runs
  * `normalizeVolumes` first (drops mountless entries) so the NOT NULL child
- * columns hold (PLAN §2 `service_volumes`).
+ * columns hold (PLAN §2 `app_volumes`).
  */
-export const serviceVolumes = pgTable(
-  "service_volumes",
+export const appVolumes = pgTable(
+  "app_volumes",
   {
-    serviceId: text("service_id")
+    appId: text("app_id")
       .notNull()
-      .references(() => services.id, { onDelete: "cascade" }),
+      .references(() => apps.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
     volumeId: text("volume_id").notNull(),
     type: text("type"),
@@ -765,25 +765,25 @@ export const serviceVolumes = pgTable(
     mountPath: text("mount_path").notNull(),
     readOnly: boolean("read_only").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.serviceId, t.position] })],
+  (t) => [primaryKey({ columns: [t.appId, t.position] })],
 );
 
 /**
- * [Service.mounts](../../types.ts) → ordered child of `{filePath, content}`
+ * [App.mounts](../../types.ts) → ordered child of `{filePath, content}`
  * template config files. `content` is byte-preserved (reconciliation asserts
- * byte-equality, PLAN §2 `service_mounts` / Decision 14).
+ * byte-equality, PLAN §2 `app_mounts` / Decision 14).
  */
-export const serviceMounts = pgTable(
-  "service_mounts",
+export const appMounts = pgTable(
+  "app_mounts",
   {
-    serviceId: text("service_id")
+    appId: text("app_id")
       .notNull()
-      .references(() => services.id, { onDelete: "cascade" }),
+      .references(() => apps.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
     filePath: text("file_path").notNull(),
     content: text("content").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.serviceId, t.position] })],
+  (t) => [primaryKey({ columns: [t.appId, t.position] })],
 );
 
 /**
@@ -797,15 +797,15 @@ export const deployments = pgTable(
   {
     id: text("id").primaryKey(),
     seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
-    serviceId: text("service_id")
+    appId: text("app_id")
       .notNull()
-      .references(() => services.id, { onDelete: "cascade" }),
-    // Denormalized owning server (mirrors services.server_id at insert time). The
+      .references(() => apps.id, { onDelete: "cascade" }),
+    // Denormalized owning server (mirrors apps.server_id at insert time). The
     // deploy queue drains per server, so it needs the owning host on the row
-    // without a services join on every finish/boot scan. Nullable: backfilled for
+    // without a apps join on every finish/boot scan. Nullable: backfilled for
     // rows that predate the queue; every new deploy sets it. NOT a FK — a
     // deployment is a historical record that must survive its server's deletion
-    // (services.server_id is RESTRICT, so a live service can't lose its server).
+    // (apps.server_id is RESTRICT, so a live service can't lose its server).
     serverId: text("server_id"),
     status: text("status").notNull(),
     environment: text("environment").notNull(),
@@ -821,8 +821,8 @@ export const deployments = pgTable(
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
-    index("deployments_service_created_idx").on(
-      t.serviceId,
+    index("deployments_app_created_idx").on(
+      t.appId,
       t.createdAt.desc(),
       t.seq.desc(),
     ),
@@ -841,7 +841,7 @@ export const deployments = pgTable(
  * `deployment_logs`). Map key → `deployment_id` FK; each `LogLine` → one row.
  * `id bigint identity` PK reproduces `Array.push` order; `(deployment_id, id)`
  * index. `level` is the `deployment_log_level` pgEnum. Written via a batched
- * buffer at the service-graph cut-set, NOT per-line (PLAN §6 Decision 18).
+ * buffer at the app-graph cut-set, NOT per-line (PLAN §6 Decision 18).
  */
 export const deploymentLogs = pgTable(
   "deployment_logs",
@@ -867,16 +867,16 @@ export const envVars = pgTable(
   "env_vars",
   {
     id: text("id").primaryKey(),
-    serviceId: text("service_id")
+    appId: text("app_id")
       .notNull()
-      .references(() => services.id, { onDelete: "cascade" }),
+      .references(() => apps.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     valueEnc: text("value_enc").notNull(),
     type: text("type").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
-  (t) => [uniqueIndex("env_vars_service_key_uq").on(t.serviceId, t.key)],
+  (t) => [uniqueIndex("env_vars_app_key_uq").on(t.appId, t.key)],
 );
 
 /** [EnvVar.targets](../../types.ts) → junction. `target` ∈ production/preview/development. */
@@ -891,39 +891,9 @@ export const envVarTargets = pgTable(
   (t) => [primaryKey({ columns: [t.envVarId, t.target] })],
 );
 
-/**
- * [GlobalEnvVar](../../types.ts) (team scope) — a variable injected into EVERY
- * service of a team (a team-wide default). Same shape as `env_vars` but keyed on
- * the team instead of a single service. `UNIQUE(team_id, key)`; `targets` →
- * junction. Lower deploy precedence than a service's own var (a service can
- * override it) — see lib/deploy/env-resolve.ts.
- */
-export const teamGlobalEnvVars = pgTable(
-  "team_global_env_vars",
-  {
-    id: text("id").primaryKey(),
-    teamId: text("team_id")
-      .notNull()
-      .references(() => teams.id, { onDelete: "cascade" }),
-    key: text("key").notNull(),
-    valueEnc: text("value_enc").notNull(),
-    type: text("type").notNull(),
-    createdAt: isoTimestamptz("created_at").notNull(),
-    updatedAt: isoTimestamptz("updated_at").notNull(),
-  },
-  (t) => [uniqueIndex("team_global_env_vars_team_key_uq").on(t.teamId, t.key)],
-);
-
-export const teamGlobalEnvVarTargets = pgTable(
-  "team_global_env_var_targets",
-  {
-    envVarId: text("env_var_id")
-      .notNull()
-      .references(() => teamGlobalEnvVars.id, { onDelete: "cascade" }),
-    target: text("target").notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.envVarId, t.target] })],
-);
+// NOTE: `team_global_env_vars` (+ targets) was absorbed into the unified
+// `shared_env_vars` model as team-wide-mode shared vars (ADR-0010); migration
+// 0027 converts the rows and 0028 drops the tables.
 
 /**
  * [GlobalEnvVar](../../types.ts) (instance scope) — a variable injected into
@@ -956,38 +926,9 @@ export const instanceEnvVarTargets = pgTable(
   (t) => [primaryKey({ columns: [t.envVarId, t.target] })],
 );
 
-/**
- * [EnvironmentEnvVar](../../types.ts) — a variable SHARED by every service of an
- * [Environment](#environments)'s Project, in that environment's context
- * (ADR-0008 Phase 3). Same shape as `env_vars` but keyed on the environment and
- * with NO targets junction: the environment IS the scope — its `kind` bridges to
- * the runtime (`production` kind → production deploys, `development` → the dev
- * container, …) until the pipeline is fully environment-parameterized. Deploy
- * precedence sits between team-globals and a service's own vars — see
- * lib/deploy/env-resolve.ts. `UNIQUE(environment_id, key)`; FK CASCADE (deleting
- * an environment takes its variables with it).
- */
-export const environmentEnvVars = pgTable(
-  "environment_env_vars",
-  {
-    id: text("id").primaryKey(),
-    environmentId: text("environment_id")
-      .notNull()
-      .references(() => environments.id, { onDelete: "cascade" }),
-    key: text("key").notNull(),
-    valueEnc: text("value_enc").notNull(),
-    type: text("type").notNull(),
-    createdAt: isoTimestamptz("created_at").notNull(),
-    updatedAt: isoTimestamptz("updated_at").notNull(),
-  },
-  (t) => [
-    uniqueIndex("environment_env_vars_environment_key_uq").on(
-      t.environmentId,
-      t.key,
-    ),
-    index("environment_env_vars_environment_idx").on(t.environmentId),
-  ],
-);
+// NOTE: `environment_env_vars` was absorbed into the unified `shared_env_vars`
+// model as environment-mode shared vars (ADR-0010); migration 0027 converts the
+// rows (targets = all three, reproducing membership) and 0028 drops the table.
 
 /**
  * [Domain](../../types.ts). `primary` is a SQL reserved word → mapped to
@@ -1000,9 +941,9 @@ export const domains = pgTable(
   "domains",
   {
     id: text("id").primaryKey(),
-    serviceId: text("service_id")
+    appId: text("app_id")
       .notNull()
-      .references(() => services.id, { onDelete: "cascade" }),
+      .references(() => apps.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     status: text("status").notNull(),
     isPrimary: boolean("is_primary").notNull(),
@@ -1019,13 +960,13 @@ export const domains = pgTable(
   },
   (t) => [
     uniqueIndex("domains_one_primary_uq")
-      .on(t.serviceId)
+      .on(t.appId)
       .where(sql`${t.isPrimary}`),
     uniqueIndex("domains_name_pathprefix_uq").on(
       t.name,
       sql`coalesce(${t.pathPrefix}, '')`,
     ),
-    index("domains_service_idx").on(t.serviceId),
+    index("domains_app_idx").on(t.appId),
   ],
 );
 
@@ -1052,24 +993,24 @@ export const domainMiddlewares = pgTable(
  * line can be re-derived on every stack render; it is write-only over the API
  * (never returned). `UNIQUE(project_id, username)` — one credential per name.
  */
-export const serviceBasicAuthUsers = pgTable(
-  "service_basic_auth_users",
+export const appBasicAuthUsers = pgTable(
+  "app_basic_auth_users",
   {
     id: text("id").primaryKey(),
-    serviceId: text("service_id")
+    appId: text("app_id")
       .notNull()
-      .references(() => services.id, { onDelete: "cascade" }),
+      .references(() => apps.id, { onDelete: "cascade" }),
     username: text("username").notNull(),
     passwordEnc: text("password_enc").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
   (t) => [
-    uniqueIndex("service_basic_auth_users_service_username_uq").on(
-      t.serviceId,
+    uniqueIndex("app_basic_auth_users_app_username_uq").on(
+      t.appId,
       t.username,
     ),
-    index("service_basic_auth_users_service_idx").on(t.serviceId),
+    index("app_basic_auth_users_app_idx").on(t.appId),
   ],
 );
 
@@ -1082,9 +1023,9 @@ export const devSshUser = pgTable(
   "dev_ssh_user",
   {
     id: text("id").primaryKey(),
-    serviceId: text("service_id")
+    appId: text("app_id")
       .notNull()
-      .references(() => services.id, { onDelete: "cascade" }),
+      .references(() => apps.id, { onDelete: "cascade" }),
     username: text("username").notNull(),
     publicKey: text("public_key"),
     passwordEnc: text("password_enc"),
@@ -1100,27 +1041,27 @@ export const devSshUser = pgTable(
 );
 
 /* ================================================================== */
-/* Ordering junctions (after services/folders exist)                  */
+/* Ordering junctions (after apps/folders exist)                  */
 /* ================================================================== */
 
 /**
  * Team-wide service display order (was `teams.project_order` jsonb ID[]). PK
  * `(team_id, project_id)`; `ON DELETE CASCADE` on both FKs makes the stale-id
  * self-healing a DB invariant — a dead id can no longer sit in the order (PLAN §1
- * "Ordering junctions", §2 `team_service_order`).
+ * "Ordering junctions", §2 `team_app_order`).
  */
-export const teamServiceOrder = pgTable(
-  "team_service_order",
+export const teamAppOrder = pgTable(
+  "team_app_order",
   {
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
-    serviceId: text("service_id")
+    appId: text("app_id")
       .notNull()
-      .references(() => services.id, { onDelete: "cascade" }),
+      .references(() => apps.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.serviceId] })],
+  (t) => [primaryKey({ columns: [t.teamId, t.appId] })],
 );
 
 /** Team-wide folder display order (was `teams.folder_order` jsonb ID[]). */
@@ -1140,10 +1081,10 @@ export const teamFolderOrder = pgTable(
 
 /**
  * Team-wide Project-CONTAINER display order (ADR-0008) — the direct analogue of
- * `team_folder_order`/`team_service_order` for the new top-level container. PK
+ * `team_folder_order`/`team_app_order` for the new top-level container. PK
  * `(team_id, project_id)`, both FKs CASCADE so a dead id can't sit in the order.
  * The name `team_project_order` is reclaimed after 0015 renamed the old
- * service-order junction to `team_service_order`.
+ * service-order junction to `team_app_order`.
  */
 export const teamProjectOrder = pgTable(
   "team_project_order",
@@ -1256,7 +1197,7 @@ export const backups = pgTable(
     databaseId: text("database_id").references(() => databases.id, {
       onDelete: "cascade",
     }),
-    serviceId: text("service_id").references(() => services.id, {
+    appId: text("app_id").references(() => apps.id, {
       onDelete: "cascade",
     }),
     destinationId: text("destination_id")
@@ -1272,8 +1213,8 @@ export const backups = pgTable(
   (t) => [
     check(
       "backups_target_kind_xor",
-      sql`(${t.targetKind} = 'database' and ${t.databaseId} is not null and ${t.serviceId} is null)
-          or (${t.targetKind} = 'service' and ${t.serviceId} is not null and ${t.databaseId} is null)`,
+      sql`(${t.targetKind} = 'database' and ${t.databaseId} is not null and ${t.appId} is null)
+          or (${t.targetKind} = 'app' and ${t.appId} is not null and ${t.databaseId} is null)`,
     ),
   ],
 );
@@ -1303,7 +1244,7 @@ export const backupRuns = pgTable(
     databaseId: text("database_id").references(() => databases.id, {
       onDelete: "set null",
     }),
-    serviceId: text("service_id").references(() => services.id, {
+    appId: text("app_id").references(() => apps.id, {
       onDelete: "set null",
     }),
     destinationId: text("destination_id")
@@ -1373,7 +1314,7 @@ export const activities = pgTable(
     type: text("type").notNull(),
     message: text("message").notNull(),
     actor: text("actor").notNull(),
-    serviceId: text("service_id").references(() => services.id, {
+    appId: text("app_id").references(() => apps.id, {
       onDelete: "set null",
     }),
     createdAt: isoTimestamptz("created_at").notNull(),
@@ -1436,13 +1377,13 @@ export const registries = pgTable(
 );
 
 /**
- * [InstalledApp](../../types.ts). `UNIQUE(team_id, catalog_id)` + `UNIQUE(slug)`.
+ * [InstalledPlugin](../../types.ts). `UNIQUE(team_id, catalog_id)` + `UNIQUE(slug)`.
  * `(team_id, created_at DESC)` index. `status`/`url` deliberately NOT stored
  * (computed). Backfill derives the `slug` for legacy empty-slug rows. A LEAF
  * collection (cut-set (a)) (PLAN §2).
  */
-export const installedApps = pgTable(
-  "installed_apps",
+export const installedPlugins = pgTable(
+  "installed_plugins",
   {
     id: text("id").primaryKey(),
     teamId: text("team_id")
@@ -1454,9 +1395,9 @@ export const installedApps = pgTable(
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
-    uniqueIndex("installed_apps_team_catalog_uq").on(t.teamId, t.catalogId),
-    uniqueIndex("installed_apps_slug_uq").on(t.slug),
-    index("installed_apps_team_created_idx").on(t.teamId, t.createdAt.desc()),
+    uniqueIndex("installed_plugins_team_catalog_uq").on(t.teamId, t.catalogId),
+    uniqueIndex("installed_plugins_slug_uq").on(t.slug),
+    index("installed_plugins_team_created_idx").on(t.teamId, t.createdAt.desc()),
   ],
 );
 
@@ -1464,69 +1405,115 @@ export const installedApps = pgTable(
 /* Integrations aggregate                                             */
 /* ================================================================== */
 
-/**
- * [SharedEnvGroup](../../types.ts) (+3 children). The parent holds scalars;
- * `variables` → `shared_env_group_vars`, `projectIds` → `shared_env_group_services`
- * (true junction), `targets` → `shared_env_group_targets` (was `targets` jsonb on
- * the parent) (PLAN §2 `shared_env_groups`).
- */
-export const sharedEnvGroups = pgTable("shared_env_groups", {
-  id: text("id").primaryKey(),
-  teamId: text("team_id")
-    .notNull()
-    .references(() => teams.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  description: text("description").notNull(),
-  createdAt: isoTimestamptz("created_at").notNull(),
-  updatedAt: isoTimestamptz("updated_at").notNull(),
-});
+/* ================================================================== */
+/* Unified shared variables (ADR-0010)                                */
+/* ================================================================== */
 
-/** [SharedEnvVar](../../types.ts) → child. `value_enc` secret. PK `(group_id, key)`, whole-set replace. */
-export const sharedEnvGroupVars = pgTable(
-  "shared_env_group_vars",
+// NOTE: the shared-env GROUP model (`shared_env_groups` + `shared_env_group_vars`
+// / `_apps` / `_targets`) was flattened into the individual `shared_env_vars`
+// model below. Migration 0027 explodes each group var-key into a per-app-link
+// shared var (preserving the attached-app set and precedence) and 0028 drops the
+// group tables.
+
+/**
+ * [SharedVar](../../types.ts) — ONE individual shared variable owned by a team,
+ * the unified replacement for shared-env groups, environment-scoped vars, and
+ * team-global vars (ADR-0010). It reaches an app through any of three sharing
+ * MODES plus a per-app link:
+ *  - `team_wide = true` — every app in the team.
+ *  - `shared_env_var_environments` — apps whose `apps.environment_id` ∈ the set.
+ *  - `shared_env_var_projects` — apps whose `apps.project_id` ∈ the set (whitelist).
+ *  - `shared_env_var_apps` — an explicit per-app link attached from the app UI.
+ * `shared_env_var_targets` is the orthogonal runtime axis (production/preview/
+ * development), defaulting to all three.
+ *
+ * There is deliberately **NO** unique on `(team_id, key)`: a key legitimately
+ * repeats with different values across scopes (e.g. `DATABASE_URL` scoped to two
+ * environments = two rows). Same-key collisions resolve by deploy precedence, not
+ * a constraint — see lib/deploy/env-resolve.ts. The "≥1 mode" rule is enforced in
+ * the data layer (a CHECK cannot span junction existence).
+ */
+export const sharedEnvVars = pgTable(
+  "shared_env_vars",
   {
-    groupId: text("group_id")
+    id: text("id").primaryKey(),
+    teamId: text("team_id")
       .notNull()
-      .references(() => sharedEnvGroups.id, { onDelete: "cascade" }),
+      .references(() => teams.id, { onDelete: "cascade" }),
     key: text("key").notNull(),
     valueEnc: text("value_enc").notNull(),
     type: text("type").notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.groupId, t.key] })],
-);
-
-/**
- * [SharedEnvGroup.projectIds](../../types.ts) → true junction. PK `(group_id,
- * project_id)`, index `project_id`. `project_id` CASCADE so a deleted service's
- * attachment rows vanish (this is the orphan the live `deleteProject` bug leaks —
- * a DB invariant now, PLAN §7).
- */
-export const sharedEnvGroupServices = pgTable(
-  "shared_env_group_services",
-  {
-    groupId: text("group_id")
-      .notNull()
-      .references(() => sharedEnvGroups.id, { onDelete: "cascade" }),
-    serviceId: text("service_id")
-      .notNull()
-      .references(() => services.id, { onDelete: "cascade" }),
+    teamWide: boolean("team_wide").notNull().default(false),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.groupId, t.serviceId] }),
-    index("shared_env_group_services_service_idx").on(t.serviceId),
+    index("shared_env_vars_team_idx").on(t.teamId),
+    index("shared_env_vars_team_key_idx").on(t.teamId, t.key),
   ],
 );
 
-/** [SharedEnvGroup.targets](../../types.ts) → junction. */
-export const sharedEnvGroupTargets = pgTable(
-  "shared_env_group_targets",
+/** [SharedVar.targets](../../types.ts) → junction. `target` ∈ production/preview/development. */
+export const sharedEnvVarTargets = pgTable(
+  "shared_env_var_targets",
   {
-    groupId: text("group_id")
+    varId: text("var_id")
       .notNull()
-      .references(() => sharedEnvGroups.id, { onDelete: "cascade" }),
+      .references(() => sharedEnvVars.id, { onDelete: "cascade" }),
     target: text("target").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.groupId, t.target] })],
+  (t) => [primaryKey({ columns: [t.varId, t.target] })],
+);
+
+/** Sharing mode 1 (environment[]) → junction. FK CASCADE to the environment. */
+export const sharedEnvVarEnvironments = pgTable(
+  "shared_env_var_environments",
+  {
+    varId: text("var_id")
+      .notNull()
+      .references(() => sharedEnvVars.id, { onDelete: "cascade" }),
+    environmentId: text("environment_id")
+      .notNull()
+      .references(() => environments.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.varId, t.environmentId] }),
+    index("shared_env_var_environments_env_idx").on(t.environmentId),
+  ],
+);
+
+/** Sharing mode 2 (projects[] whitelist) → junction. FK CASCADE to the project. */
+export const sharedEnvVarProjects = pgTable(
+  "shared_env_var_projects",
+  {
+    varId: text("var_id")
+      .notNull()
+      .references(() => sharedEnvVars.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.varId, t.projectId] }),
+    index("shared_env_var_projects_project_idx").on(t.projectId),
+  ],
+);
+
+/** The 4th mechanism — an explicit per-app link attached from the app UI. */
+export const sharedEnvVarApps = pgTable(
+  "shared_env_var_apps",
+  {
+    varId: text("var_id")
+      .notNull()
+      .references(() => sharedEnvVars.id, { onDelete: "cascade" }),
+    appId: text("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.varId, t.appId] }),
+    index("shared_env_var_apps_app_idx").on(t.appId),
+  ],
 );
 
 /**

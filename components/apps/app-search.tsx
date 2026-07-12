@@ -7,9 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export type ServiceView = "grid" | "list";
+export type AppView = "grid" | "list";
 
-export function ServiceSearch({
+export function AppSearch({
   initialQuery,
   initialView,
   initialFolder = "",
@@ -18,7 +18,7 @@ export function ServiceSearch({
   environmentSwitcher,
 }: {
   initialQuery: string;
-  initialView: ServiceView;
+  initialView: AppView;
   /** The open folder id, preserved across view toggles (dropped when searching). */
   initialFolder?: string;
   /** The open project id, same contract as `initialFolder`. */
@@ -34,14 +34,14 @@ export function ServiceSearch({
 }) {
   const router = useRouter();
   const [q, setQ] = React.useState(initialQuery);
-  const [view, setView] = React.useState<ServiceView>(initialView);
+  const [view, setView] = React.useState<AppView>(initialView);
 
   // Build the dashboard URL from query + view (+ open folder/project), omitting
   // defaults (empty query, grid view) so the address bar stays clean. A query is
   // a GLOBAL search, so it drops the folder/project scope; with no query the
   // scope is preserved so toggling the view doesn't kick you out of it.
   const buildHref = React.useCallback(
-    (nextQ: string, nextView: ServiceView) => {
+    (nextQ: string, nextView: AppView) => {
       const params = new URLSearchParams();
       if (nextQ.trim()) params.set("q", nextQ.trim());
       else if (initialFolder) params.set("folder", initialFolder);
@@ -70,7 +70,7 @@ export function ServiceSearch({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
-  function selectView(next: ServiceView) {
+  function selectView(next: AppView) {
     setView(next);
     router.replace(buildHref(q, next));
   }
@@ -82,7 +82,7 @@ export function ServiceSearch({
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search services…"
+          placeholder="Search apps…"
           className="h-9 pl-9"
         />
       </div>

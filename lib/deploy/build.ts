@@ -9,33 +9,32 @@ import { getServerById } from "../data/servers";
 import { getDb } from "../db/client";
 import {
   deployments as deploymentsTable,
-  services as servicesTable,
+  apps as appsTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
-import { loadGlobalEnvForService } from "../data/global-env";
-import { loadEnvironmentEnvForService } from "../data/environment-env";
+import { loadInstanceEnv } from "../data/global-env";
+import { loadSharedVarsForApp } from "../data/shared-vars";
 import { recordActivity } from "../data/activity";
 import {
   loadDeployment,
-  loadDomainsForService,
-  loadServiceGraph,
-  loadServiceGraphBySlug,
-  loadEnvVarsForService,
-  loadSharedEnvGroupsForService,
-} from "../data/service-graph-load";
+  loadDomainsForApp,
+  loadAppGraph,
+  loadAppGraphBySlug,
+  loadEnvVarsForApp,
+} from "../data/app-graph-load";
 import {
   appendLog,
   clearDeploymentLogs,
   finalizeDeploymentLogs,
 } from "../data/deployment-logs";
-import { deploymentToRow } from "../data/service-graph-rows";
+import { deploymentToRow } from "../data/app-graph-rows";
 import { ensureNetwork } from "../infra/docker";
 import { buildImage } from "./builders";
 import { extractArchive } from "./upload";
-import { detectTreeFavicon, detectGithubFavicon } from "../services/favicon-detect";
-import { isGithubRepo } from "../services/favicon-shared";
+import { detectTreeFavicon, detectGithubFavicon } from "../apps/favicon-detect";
+import { isGithubRepo } from "../apps/favicon-shared";
 import {
   planDeploySource,
   resolveBuildDir,
@@ -44,7 +43,7 @@ import {
 import { normalizeBuildConfig } from "../frameworks";
 import { usesComposeStack, hostVolumeName } from "../utils";
 import { certResolver, previewDomain, resolveServerIp } from "./domains";
-import { completePendingServiceMigration } from "../data/service-migration";
+import { completePendingAppMigration } from "../data/app-migration";
 import { traefikRouterLabels } from "./routing";
 import { buildComposeStack } from "./compose-stack";
 import {
@@ -55,7 +54,7 @@ import {
 } from "../data/domains";
 import { basicAuthUsersValue } from "../data/basic-auth";
 import { installationCloneUrl } from "../github/app";
-import { publishServiceChanged } from "../graphql/pubsub";
+import { publishAppChanged } from "../graphql/pubsub";
 import {
   agentCapabilityForMethod,
   runAgentDeploy,
@@ -72,7 +71,7 @@ import type { Deployment, DeploymentEnvironment, EnvTarget, LogLine } from "../t
  * included). Null for an unknown slug / a project whose server row is missing.
  */
 async function owningServerIdForSlug(slug: string): Promise<string | null> {
-  const p = await loadServiceGraphBySlug(slug);
+  const p = await loadAppGraphBySlug(slug);
   if (!p) return null;
   // Servers stay JSONB-authoritative; confirm the owning server still exists.
   const server = await getServerById(p.serverId);
@@ -93,7 +92,7 @@ function log(depId: string, level: LogLine["level"], text: string): void {
  * Patch a deployment row. Returns whether a row was written. With
  * `onlyIfNotCanceled`, the UPDATE is a compare-and-swap (`... AND status <>
  * 'canceled'`) so it never clobbers a "Stop build" that landed first — the caller
- * uses the `false` return to settle the service instead of the outcome.
+ * uses the `false` return to settle the app instead of the outcome.
  */
 async function setDep(
   depId: string,
@@ -122,54 +121,54 @@ async function setDep(
           )
         : eq(deploymentsTable.id, depId),
     )
-    .returning({ serviceId: deploymentsTable.serviceId });
+    .returning({ appId: deploymentsTable.appId });
   // A deployment's status feeds the project's `latestDeployment` view, so push
   // the owning project to live subscribers when it changes.
-  const serviceId = rows[0]?.serviceId;
-  if (serviceId && "status" in patch) publishServiceChanged(serviceId);
+  const appId = rows[0]?.appId;
+  if (appId && "status" in patch) publishAppChanged(appId);
   return rows.length > 0;
 }
 
-async function setService(
-  serviceId: string,
-  patch: Partial<typeof servicesTable.$inferInsert>,
+async function setApp(
+  appId: string,
+  patch: Partial<typeof appsTable.$inferInsert>,
 ): Promise<void> {
   await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({ ...patch, updatedAt: nowIso() })
-    .where(eq(servicesTable.id, serviceId));
-  publishServiceChanged(serviceId);
+    .where(eq(appsTable.id, appId));
+  publishAppChanged(appId);
 }
 
 /**
- * A user "Stop build" won: log it and settle the service to `idle` ("Stopped").
+ * A user "Stop build" won: log it and settle the app to `idle` ("Stopped").
  * The build job is fire-and-forget with no agent-side abort, so a build already
  * running on the host may finish in the background — its container is left as-is
  * (a later Start/Redeploy reconciles it); we only guarantee its result is never
  * deployed and never overwrites the `canceled` deployment status.
  */
-async function markStopped(depId: string, serviceId: string): Promise<void> {
+async function markStopped(depId: string, appId: string): Promise<void> {
   log(
     depId,
     "warn",
     "Build stopped by user — result discarded. A build already running on the host may finish in the background; its output is not deployed.",
   );
-  // Settle ONLY if this canceled deploy is still the service's current one. A
+  // Settle ONLY if this canceled deploy is still the app's current one. A
   // newer deploy may have superseded it while this stale job wound down (or since
-  // the cancel already settled the service) — settling then would clobber the
+  // the cancel already settled the app) — settling then would clobber the
   // newer build's "building"/"queued" back to idle. Scoped UPDATE → 0 rows when
   // superseded, so the newer deploy keeps ownership of the status.
   const settled = await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({ status: "idle", updatedAt: nowIso() })
     .where(
       and(
-        eq(servicesTable.id, serviceId),
-        eq(servicesTable.latestDeploymentId, depId),
+        eq(appsTable.id, appId),
+        eq(appsTable.latestDeploymentId, depId),
       ),
     )
-    .returning({ id: servicesTable.id });
-  if (settled.length > 0) publishServiceChanged(serviceId);
+    .returning({ id: appsTable.id });
+  if (settled.length > 0) publishAppChanged(appId);
 }
 
 /**
@@ -177,33 +176,33 @@ async function markStopped(depId: string, serviceId: string): Promise<void> {
  * claimed the row. `cancelDeployment` flips the row to `canceled` on another
  * connection while this job keeps running; the write is a compare-and-swap
  * (setDep `onlyIfNotCanceled`), so a cancel that landed at ANY point before it
- * wins — 0 rows match, the deployment stays `canceled`, and the service settles
+ * wins — 0 rows match, the deployment stays `canceled`, and the app settles
  * to `idle`. Returns true when the outcome was applied (the caller may then run
  * its success side effects — the ready log, the data-migration hook), false when
  * the cancel won and the caller must skip them.
  */
 async function commitOutcome(
   depId: string,
-  serviceId: string,
+  appId: string,
   depPatch: Partial<Deployment>,
-  servicePatch: Partial<typeof servicesTable.$inferInsert>,
+  appPatch: Partial<typeof appsTable.$inferInsert>,
 ): Promise<boolean> {
   if (!(await setDep(depId, depPatch, { onlyIfNotCanceled: true }))) {
-    await markStopped(depId, serviceId);
+    await markStopped(depId, appId);
     return false;
   }
-  await setService(serviceId, servicePatch);
+  await setApp(appId, appPatch);
   return true;
 }
 
 /**
  * Read-only cancel check for the pre-build window (the queued→building claim
- * failed): if the row is already `canceled`, settle the service; otherwise no-op.
+ * failed): if the row is already `canceled`, settle the app; otherwise no-op.
  * The terminal outcome sites use {@link commitOutcome} (an atomic CAS) instead.
  */
 async function settleIfCanceled(
   depId: string,
-  serviceId: string,
+  appId: string,
 ): Promise<boolean> {
   const rows = await getDb()
     .select({ status: deploymentsTable.status })
@@ -211,44 +210,44 @@ async function settleIfCanceled(
     .where(eq(deploymentsTable.id, depId))
     .limit(1);
   if (rows[0]?.status !== "canceled") return false;
-  await markStopped(depId, serviceId);
+  await markStopped(depId, appId);
   return true;
 }
 
 /**
- * Set an auto-detected logo ONLY when the service has none yet — a conditional
+ * Set an auto-detected logo ONLY when the app has none yet — a conditional
  * `WHERE logo IS NULL` UPDATE. The NULL guard is the guarantee that a template
  * default (a `/templates/...` value) or any logo the user set/cleared is never
  * clobbered by detection. No-op on a null/empty logo. (Inlined here rather than
- * importing data/services' applyAutoLogoIfUnset to avoid a build↔services import
+ * importing data/apps' applyAutoLogoIfUnset to avoid a build↔apps import
  * cycle.)
  */
-async function setLogoIfUnset(serviceId: string, logo: string | null): Promise<void> {
+async function setLogoIfUnset(appId: string, logo: string | null): Promise<void> {
   if (!logo) return;
   const updated = await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({ logo, updatedAt: nowIso() })
-    .where(and(eq(servicesTable.id, serviceId), sql`${servicesTable.logo} is null`))
-    .returning({ id: servicesTable.id });
-  if (updated.length > 0) publishServiceChanged(serviceId);
+    .where(and(eq(appsTable.id, appId), sql`${appsTable.logo} is null`))
+    .returning({ id: appsTable.id });
+  if (updated.length > 0) publishAppChanged(appId);
 }
 
 /**
  * Auto-detect a display logo from the source tree the deploy just extracted (an
- * upload build) and set it when the service has none yet. Scanning reuses the
+ * upload build) and set it when the app has none yet. Scanning reuses the
  * tree already on disk (no second extraction of an attacker-controlled archive)
  * and runs inside the one-deploy-at-a-time flow, so it's serialized and
  * deploy-gated. Best-effort — never fails or delays the deploy.
  */
 async function autoDetectLogoFromTree(
-  serviceId: string,
+  appId: string,
   currentLogo: string | null,
   root: string,
   rootDirectory: string | null | undefined,
 ): Promise<void> {
   if (currentLogo) return; // already has a logo (template default / user's) — leave it
   try {
-    await setLogoIfUnset(serviceId, await detectTreeFavicon(root, rootDirectory));
+    await setLogoIfUnset(appId, await detectTreeFavicon(root, rootDirectory));
   } catch {
     /* detection is a cosmetic nicety; never let it disturb a deploy */
   }
@@ -256,51 +255,43 @@ async function autoDetectLogoFromTree(
 
 /**
  * Auto-detect a display logo from a GitHub repo's own files via the API and set
- * it when the service has none yet. GitHub repos are cloned on the AGENT, so the
+ * it when the app has none yet. GitHub repos are cloned on the AGENT, so the
  * control plane can't scan a local tree — it reads the repo over the API here,
  * on every deploy (guarded by the caller's null check, so once a logo exists no
- * API call is made). This is what makes a github/git service get an icon at all,
- * and covers services created before the feature (they pick one up on redeploy).
+ * API call is made). This is what makes a github/git app get an icon at all,
+ * and covers apps created before the feature (they pick one up on redeploy).
  * FIRE-AND-FORGET: a GitHub round-trip must never delay or hang the deploy; the
  * logo lands a moment later and pushes to live subscribers.
  */
 function autoDetectRepoLogo(
-  serviceId: string,
+  appId: string,
   currentLogo: string | null,
   repo: Parameters<typeof detectGithubFavicon>[0],
   rootDirectory: string | null | undefined,
 ): void {
   if (currentLogo || !isGithubRepo(repo)) return;
   void detectGithubFavicon(repo, rootDirectory)
-    .then((logo) => setLogoIfUnset(serviceId, logo))
+    .then((logo) => setLogoIfUnset(appId, logo))
     .catch(() => {});
 }
 
 /**
- * Decrypted env for the production stack: per-project vars targeting
- * `production`, plus attached shared groups that also target `production`.
- * Selection lives in the shared `resolveEnvEntries` seam; we only decrypt here.
+ * Decrypted env for the production stack: the app's own vars targeting
+ * `production`, plus every shared var that reaches the app and also targets
+ * `production`, plus instance globals. Selection lives in the shared
+ * `resolveEnvEntries` seam; we only decrypt here.
  */
-async function serviceEnv(
-  serviceId: string,
+async function appEnv(
+  appId: string,
   target: EnvTarget = "production",
 ): Promise<Record<string, string>> {
-  const [vars, groups, globals, environmentEnvs] = await Promise.all([
-    loadEnvVarsForService(serviceId),
-    loadSharedEnvGroupsForService(serviceId),
-    loadGlobalEnvForService(serviceId),
-    loadEnvironmentEnvForService(serviceId),
+  const [vars, sharedVars, instanceGlobals] = await Promise.all([
+    loadEnvVarsForApp(appId),
+    loadSharedVarsForApp(appId),
+    loadInstanceEnv(),
   ]);
   const out: Record<string, string> = {};
-  for (const e of resolveEnvEntries(
-    target,
-    serviceId,
-    vars,
-    groups,
-    globals.teamGlobals,
-    globals.instanceGlobals,
-    environmentEnvs,
-  )) {
+  for (const e of resolveEnvEntries(target, appId, vars, sharedVars, instanceGlobals)) {
     out[e.key] = decryptSecret(e.valueEnc);
   }
   return out;
@@ -308,36 +299,28 @@ async function serviceEnv(
 
 /**
  * The NAMES of the env vars a production deploy resolves for a project — exactly
- * the keys `serviceEnv` would carry (same selection seam), but WITHOUT decrypting
+ * the keys `appEnv` would carry (same selection seam), but WITHOUT decrypting
  * any value. These are injected into a compose stack's `environment:` as bare
  * `- KEY` pass-throughs (`buildComposeStack`'s `envKeys`): a settings var reaches
  * the containers without the user hand-writing it, while the VALUE still rides
  * the `--env-file`. Deriving the keys from the same resolver guarantees we only
- * ever inject a key the env-file actually supplies (globals + shared groups
- * included), so an injected pass-through can never reference an undefined var.
+ * ever inject a key the env-file actually supplies (shared vars + instance
+ * globals included), so an injected pass-through can never reference an undefined
+ * var.
  */
-async function serviceEnvKeys(
-  serviceId: string,
+async function appEnvKeys(
+  appId: string,
   target: EnvTarget = "production",
 ): Promise<string[]> {
-  const [vars, groups, globals, environmentEnvs] = await Promise.all([
-    loadEnvVarsForService(serviceId),
-    loadSharedEnvGroupsForService(serviceId),
-    loadGlobalEnvForService(serviceId),
-    loadEnvironmentEnvForService(serviceId),
+  const [vars, sharedVars, instanceGlobals] = await Promise.all([
+    loadEnvVarsForApp(appId),
+    loadSharedVarsForApp(appId),
+    loadInstanceEnv(),
   ]);
   // De-dupe on key (the resolver emits lowest-precedence first; a later entry
   // wins on value, but for NAMES we just need the distinct set).
   const seen = new Set<string>();
-  for (const e of resolveEnvEntries(
-    target,
-    serviceId,
-    vars,
-    groups,
-    globals.teamGlobals,
-    globals.instanceGlobals,
-    environmentEnvs,
-  )) {
+  for (const e of resolveEnvEntries(target, appId, vars, sharedVars, instanceGlobals)) {
     seen.add(e.key);
   }
   return [...seen];
@@ -349,7 +332,7 @@ export function renderCompose(opts: {
   name: string;
   image: string;
   port: number;
-  serviceId: string;
+  appId: string;
   slug: string;
   /** Public hostnames + per-domain port overrides, primary first. */
   routes: RoutableDomain[];
@@ -366,7 +349,7 @@ export function renderCompose(opts: {
    * restarts the container.
    */
   volumes?: {
-    type?: "named" | "service" | "host";
+    type?: "named" | "app" | "host";
     name: string;
     projectPath?: string;
     hostPath?: string;
@@ -385,7 +368,7 @@ export function renderCompose(opts: {
    */
   injectPort?: boolean;
   /**
-   * Service-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
+   * App-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
    * single-`$`). When non-empty, a generated `basicauth` middleware is defined
    * and prepended to every router's chain so ALL hostnames are gated. Empty/
    * absent ⇒ no middleware (byte-identical to a project without basic auth). The
@@ -393,10 +376,10 @@ export function renderCompose(opts: {
    */
   basicAuthUsers?: string;
 }): string {
-  const { name, image, port, serviceId, slug, routes } = opts;
+  const { name, image, port, appId, slug, routes } = opts;
   const injectPort = opts.injectPort ?? true;
   const vols = opts.volumes ?? [];
-  const namedVols = vols.filter((v) => v.type !== "host" && v.type !== "service");
+  const namedVols = vols.filter((v) => v.type !== "host" && v.type !== "app");
   // Absolute, per-project files dir — the same sandbox the `./<x>` compose
   // convention resolves to. A "service" mount's source is rendered here so it
   // stays isolated (never resolved against the stack dir by docker).
@@ -427,7 +410,7 @@ export function renderCompose(opts: {
         : {}),
     }),
     "deplo.managed=true",
-    `deplo.project=${serviceId}`,
+    `deplo.project=${appId}`,
     `deplo.slug=${slug}`,
   ];
   const labelsYaml = labels.map((l) => `      - "${l}"`).join("\n");
@@ -446,14 +429,14 @@ export function renderCompose(opts: {
   // first up and reuses it across redeploys. A HOST bind mount's source IS the
   // host path and gets NO top-level entry (docker treats a "/"-prefixed source
   // as a bind, not a named volume).
-  const serviceVolsYaml = vols.length
+  const appVolsYaml = vols.length
     ? "    volumes:\n" +
       vols
         .map((v) => {
           const source =
             v.type === "host"
               ? v.hostPath
-              : v.type === "service"
+              : v.type === "app"
                 ? `${filesDir}/${v.projectPath}`
                 : v.name;
           return `      - ${source}:${v.mountPath}${v.readOnly ? ":ro" : ""}`;
@@ -477,7 +460,7 @@ services:
     restart: unless-stopped
     networks:
       - deplo
-${envYaml}${serviceVolsYaml}    labels:
+${envYaml}${appVolsYaml}    labels:
 ${labelsYaml}
 
 networks:
@@ -508,14 +491,14 @@ export async function reconcileInFlightDeployments(): Promise<number> {
   const db = getDb();
   // Orphaned BUILDING deploys: the fire-and-forget job died with the process and
   // there is no agent-side abort, so the row would lie "building" forever. Mark
-  // them error and settle their service off the transient build state. (Scoped to
+  // them error and settle their app off the transient build state. (Scoped to
   // `building` only now — queued rows are handled durably below.)
   const orphaned = await db
-    .select({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId })
+    .select({ id: deploymentsTable.id, appId: deploymentsTable.appId })
     .from(deploymentsTable)
     .where(eq(deploymentsTable.status, "building"));
   if (orphaned.length > 0) {
-    const affectedServices = new Set(orphaned.map((d) => d.serviceId));
+    const affectedApps = new Set(orphaned.map((d) => d.appId));
     await db
       .update(deploymentsTable)
       .set({ status: "error" })
@@ -525,21 +508,21 @@ export async function reconcileInFlightDeployments(): Promise<number> {
     }
     await Promise.all(orphaned.map((d) => finalizeDeploymentLogs(d.id)));
     await db
-      .update(servicesTable)
+      .update(appsTable)
       .set({ status: "error", updatedAt: nowIso() })
       .where(
         and(
-          inArray(servicesTable.id, [...affectedServices]),
-          eq(servicesTable.status, "building"),
+          inArray(appsTable.id, [...affectedApps]),
+          eq(appsTable.status, "building"),
         ),
       );
-    for (const serviceId of affectedServices) publishServiceChanged(serviceId);
+    for (const appId of affectedApps) publishAppChanged(appId);
     console.warn(
       `[deplo] reconciled ${orphaned.length} interrupted deployment(s) to error on startup`,
     );
   }
   // QUEUED deploys are DURABLE across a restart: no build ever started, so nothing
-  // was lost. This function deliberately leaves them `queued` (their service stays
+  // was lost. This function deliberately leaves them `queued` (their app stays
   // "queued"); boot RE-DRAINS them via the per-server queue in `instrumentation.ts`
   // (`startDeployQueue`, chained AFTER this reconcile so it never dispatches
   // alongside a not-yet-errored orphan). Kept out of here so the reconcile stays a
@@ -553,7 +536,7 @@ export async function reconcileInFlightDeployments(): Promise<number> {
  * logs as it progresses.
  */
 export async function startDeployment(
-  serviceId: string,
+  appId: string,
   opts: {
     environment?: DeploymentEnvironment;
     creator: string;
@@ -563,8 +546,8 @@ export async function startDeployment(
     buildSource?: "dev-workspace";
   },
 ): Promise<string> {
-  const project = await loadServiceGraph(serviceId);
-  if (!project) throw new Error("Service not found");
+  const project = await loadAppGraph(appId);
+  if (!project) throw new Error("App not found");
   const server = (await getServerById(project.serverId)) ?? undefined;
   const ip = resolveServerIp(server);
   const environment = opts.environment ?? "production";
@@ -576,7 +559,7 @@ export async function startDeployment(
   // are ephemeral and always get their own host.
   const domain =
     environment === "production"
-      ? await primaryDomainName(serviceId)
+      ? await primaryDomainName(appId)
       : previewDomain(project.slug, newId("").slice(1, 7), ip);
   // No production domain ⇒ no canonical URL. The deployment record's `url` is a
   // plain string (informational), so it carries "" when unrouted; the project's
@@ -586,7 +569,7 @@ export async function startDeployment(
 
   const dep: Deployment = {
     id: depId,
-    serviceId,
+    appId,
     status: "queued",
     environment,
     commitSha: "",
@@ -604,23 +587,23 @@ export async function startDeployment(
   // Insert the deployment, then point the project at it (latestDeployment +
   // queued). A fresh build starts from an empty log stream (drain-then-DELETE).
   // `serverId` is denormalized onto the row so the deploy queue can drain
-  // per-server without a services join.
+  // per-server without a apps join.
   await getDb()
     .insert(deploymentsTable)
     .values({ ...deploymentToRow(dep), serverId: project.serverId });
   await clearDeploymentLogs(depId);
   await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({
       latestDeploymentId: depId,
       status: "queued",
       updatedAt: nowIso(),
       ...(environment === "production" ? { productionUrl: domain ? url : null } : {}),
     })
-    .where(eq(servicesTable.id, serviceId));
-  await recordActivity("deployment", `Deploying ${project.name}`, opts.creator, serviceId);
+    .where(eq(appsTable.id, appId));
+  await recordActivity("deployment", `Deploying ${project.name}`, opts.creator, appId);
 
-  // Supersede: a newer trigger for this service wins, so cancel any of its
+  // Supersede: a newer trigger for this app wins, so cancel any of its
   // still-QUEUED deploys that haven't started yet (nothing was built — safe to
   // drop) EXCEPT the one just inserted. A deploy already `building` is untouched:
   // the new one simply queues behind it. This is the Coolify "skip a duplicate
@@ -631,7 +614,7 @@ export async function startDeployment(
     .set({ status: "canceled" })
     .where(
       and(
-        eq(deploymentsTable.serviceId, serviceId),
+        eq(deploymentsTable.appId, appId),
         eq(deploymentsTable.status, "queued"),
         ne(deploymentsTable.id, depId),
       ),
@@ -639,14 +622,14 @@ export async function startDeployment(
 
   // A new deployment flips the project to "queued" and sets latestDeployment —
   // push it to live subscribers so the header/tabs update without a reload.
-  publishServiceChanged(serviceId);
+  publishAppChanged(appId);
 
   // Hand the queued deploy to the per-server queue instead of firing it inline:
   // it starts once its OWNING server has a free slot (default 1) and no other
-  // deploy of this service is in flight. Deploys on OTHER servers run in parallel.
+  // deploy of this app is in flight. Deploys on OTHER servers run in parallel.
   // Returns immediately — the standalone Node server keeps the event loop alive
   // and the queue runs the build in the background (see lib/deploy/deploy-queue).
-  enqueueDeployment({ depId, serverId: project.serverId, serviceId });
+  enqueueDeployment({ depId, serverId: project.serverId, appId });
   return depId;
 }
 
@@ -706,7 +689,7 @@ async function buildImageFromTree(opts: {
     workDir,
     buildDir,
     slug,
-    serviceId: project.id,
+    appId: project.id,
     imageRef,
     log: (level, text) => log(depId, level, text),
   });
@@ -745,7 +728,7 @@ async function tryAgent(opts: {
       serverId: opts.serverId,
       deployId: opts.depId,
       slug: opts.project.slug,
-      serviceId: opts.project.id,
+      appId: opts.project.id,
       imageRef: opts.imageRef,
       composeYaml: opts.composeYaml,
       env: opts.env,
@@ -769,7 +752,7 @@ async function runDeployment(depId: string): Promise<void> {
   const started = Date.now();
   const dep = await loadDeployment(depId);
   if (!dep) return;
-  const project = await loadServiceGraph(dep.serviceId);
+  const project = await loadAppGraph(dep.appId);
   if (!project) {
     await setDep(depId, { status: "error" }, { onlyIfNotCanceled: true });
     return;
@@ -807,8 +790,8 @@ async function runDeployment(depId: string): Promise<void> {
     await finalizeDeploymentLogs(depId);
     return;
   }
-  publishServiceChanged(project.id);
-  await setService(project.id, { status: "building" });
+  publishAppChanged(project.id);
+  await setApp(project.id, { status: "building" });
 
   try {
     await mkdir(STACK_DIR, { recursive: true });
@@ -827,7 +810,7 @@ async function runDeployment(depId: string): Promise<void> {
     // interpolates its ${VARS} from an env-file we write alongside it. Selecting
     // any other source (git, docker-image, …) switches away from the stack even
     // though the compose is kept for switching back; `source` is authoritative.
-    // Legacy template services predate the `compose` source, so fall back to the
+    // Legacy template apps predate the `compose` source, so fall back to the
     // old heuristic for them (compose present, no repo/image). An "upload" source
     // is explicit and must build the archive, so the heuristic never claims it —
     // even if a stale compose lingers from a previous source. See usesComposeStack.
@@ -914,13 +897,13 @@ async function runDeployment(depId: string): Promise<void> {
     const renderStack = async (
       image: string,
     ): Promise<{ composeYaml: string; env: Record<string, string> }> => {
-      const env = await serviceEnv(project.id, dep.environment);
+      const env = await appEnv(project.id, dep.environment);
       const basicAuthUsers = await basicAuthUsersValue(project.id);
       const composeYaml = renderCompose({
         name,
         image,
         port: project.build.port,
-        serviceId: project.id,
+        appId: project.id,
         slug,
         routes: routeDomains,
         env,
@@ -987,7 +970,7 @@ async function runDeployment(depId: string): Promise<void> {
           })
         ) {
           throw new Error(
-            "Deploy from dev workspace is only available for built (git/upload) services",
+            "Deploy from dev workspace is only available for built (git/upload) apps",
           );
         }
         imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
@@ -1032,7 +1015,7 @@ async function runDeployment(depId: string): Promise<void> {
         const repo = plan.repo;
         // Auto-set the display logo from a favicon/icon in the repo (via the
         // GitHub API — the tree is cloned on the agent, not here) when the
-        // service has none yet. Fire-and-forget so a GitHub round-trip never
+        // app has none yet. Fire-and-forget so a GitHub round-trip never
         // delays the deploy.
         autoDetectRepoLogo(project.id, project.logo, repo, project.build.rootDirectory);
         // The OWNING AGENT clones the repo itself (PLAN Part B, D3), the host
@@ -1093,7 +1076,7 @@ async function runDeployment(depId: string): Promise<void> {
           );
           imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
           // Auto-set the display logo from an icon/favicon in the extracted tree
-          // when the service has none yet (reusing this tree — no re-extract).
+          // when the app has none yet (reusing this tree — no re-extract).
           await autoDetectLogoFromTree(
             project.id,
             project.logo,
@@ -1121,7 +1104,7 @@ async function runDeployment(depId: string): Promise<void> {
     const buildDurationMs = Date.now() - started;
     if (agentOutcome === "agent") {
       // commitOutcome's CAS discards this success if a "Stop build" already
-      // claimed the row (settling the service to idle); the ready log + the
+      // claimed the row (settling the app to idle); the ready log + the
       // data-migration hook then run ONLY when the outcome actually applied.
       const applied = await commitOutcome(
         depId,
@@ -1155,7 +1138,7 @@ async function runDeployment(depId: string): Promise<void> {
         // surfaced into the deploy log but never fail the (already-successful)
         // deploy.
         if (dep.environment === "production") {
-          await completePendingServiceMigration(project.id, (level, text) =>
+          await completePendingAppMigration(project.id, (level, text) =>
             log(depId, level, text),
           ).catch((e) =>
             log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
@@ -1193,7 +1176,7 @@ async function runDeployment(depId: string): Promise<void> {
  * Writes the stack and an env-file next to it, brings it up wired to Traefik on
  * the generated domain, and waits for the exposed service to come up.
  */
-interface ComposeStackService {
+interface ComposeStackApp {
   id: string;
   compose: string | null;
   mounts?: { filePath: string; content: string }[] | null;
@@ -1201,7 +1184,7 @@ interface ComposeStackService {
 
 interface ComposeStackOpts {
   depId: string;
-  project: ComposeStackService;
+  project: ComposeStackApp;
   name: string;
   slug: string;
   domain: string;
@@ -1242,7 +1225,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   const { project, name, slug, domainRoutes } = opts;
 
   // A multi-domain template's extra hostnames are registered ONCE at project
-  // creation (createService), NOT here — a deploy never creates domain rows, so
+  // creation (createApp), NOT here — a deploy never creates domain rows, so
   // an extra domain the user deletes is never resurrected on the next deploy.
   // Routing reads the stored, valid domain set (routableForDeploy), independent
   // of any row this used to create.
@@ -1252,12 +1235,12 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
   // The settings env-var NAMES injected into every service as bare `- KEY`
   // pass-throughs — the value itself rides the env-file the agent writes (see
   // deployComposeStackViaAgent), so no secret lands in the rendered YAML.
-  const envKeys = await serviceEnvKeys(project.id, opts.environment);
+  const envKeys = await appEnvKeys(project.id, opts.environment);
   const stackYaml = buildComposeStack({
     compose: project.compose ?? "",
     name,
     slug,
-    serviceId: project.id,
+    appId: project.id,
     domainRoutes,
     filesDir,
     basicAuthUsers,
@@ -1277,7 +1260,7 @@ async function finishComposeStack(
   const url = domain ? `https://${domain}` : "";
   // commitOutcome honors a "Stop build" pressed while the stack came up (covers
   // every finishComposeStack caller: success, agent-too-old, unreachable-agent):
-  // its CAS keeps the row `canceled` and settles the service to idle, and the
+  // its CAS keeps the row `canceled` and settles the app to idle, and the
   // follow-up logs run ONLY when the outcome actually applied.
   if (running) {
     const applied = await commitOutcome(
@@ -1300,7 +1283,7 @@ async function finishComposeStack(
       // Same post-success data-migration hook as the single-image path — production
       // only (a preview must not consume the marker or tear down the old host).
       if (environment === "production") {
-        await completePendingServiceMigration(project.id, (level, text) =>
+        await completePendingAppMigration(project.id, (level, text) =>
           log(depId, level, text),
         ).catch((e) =>
           log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
@@ -1364,7 +1347,7 @@ async function deployComposeStackViaAgent(
   }
 
   const { stackYaml } = await prepareComposeStack(opts);
-  const env = await serviceEnv(project.id, opts.environment);
+  const env = await appEnv(project.id, opts.environment);
 
   const { outcome } = await tryAgent({
     depId,
@@ -1396,13 +1379,13 @@ async function deployComposeStackViaAgent(
  * proceeds unrouted (`traefik.enable=false`) instead of baking an empty rule.
  */
 async function routableForDeploy(
-  serviceId: string,
+  appId: string,
   environment: DeploymentEnvironment,
   primary: string,
 ): Promise<RoutableDomain[]> {
   // A preview routes only to its ephemeral host, on the project default port.
   if (environment !== "production") return [defaultRoute(primary)];
-  const valid = await routableRoutes(serviceId);
+  const valid = await routableRoutes(appId);
   // No valid domain: route to the pending primary if there is one, else nothing.
   if (valid.length === 0) return primary ? [defaultRoute(primary)] : [];
   // Keep the canonical primary first even if it isn't flagged `valid` yet (it
@@ -1466,7 +1449,7 @@ function readStackEnvFromYaml(
  */
 /** The shape `renderCompose` accepts and `parseStackVolumes` reconstructs. */
 type StackVolume = {
-  type?: "named" | "service" | "host";
+  type?: "named" | "app" | "host";
   name: string;
   projectPath?: string;
   hostPath?: string;
@@ -1515,7 +1498,7 @@ export function parseStackVolumes(
       const slash = afterRoot.indexOf("/");
       const projectPath = slash >= 0 ? afterRoot.slice(slash + 1) : "";
       if (projectPath) {
-        return [{ type: "service" as const, name: "", projectPath, mountPath, readOnly }];
+        return [{ type: "app" as const, name: "", projectPath, mountPath, readOnly }];
       }
     }
     if (source.startsWith("/")) {
@@ -1547,10 +1530,10 @@ export function parseStackVolumes(
  * toast reflects success/failure. Never starts a stopped (idle) project and
  * never races a deploy in progress (it re-renders the file but skips docker).
  */
-export async function rerouteService(
-  serviceId: string,
+export async function rerouteApp(
+  appId: string,
 ): Promise<"rerouted" | "unchanged" | "deferred"> {
-  const project = await loadServiceGraph(serviceId);
+  const project = await loadAppGraph(appId);
   if (!project) return "deferred";
   const slug = project.slug;
   const name = `deplo-${slug}`;
@@ -1563,8 +1546,8 @@ export async function rerouteService(
   // on a Reload without a full redeploy — its row may not be `valid` yet, but the
   // deploy would still route it, so Reload must too. Empty ⇒ the project has no
   // domain at all (never resurrected): nothing to write, leave it deferred.
-  const primary = await primaryDomainName(serviceId);
-  const routes = await routableForDeploy(serviceId, "production", primary);
+  const primary = await primaryDomainName(appId);
+  const routes = await routableForDeploy(appId, "production", primary);
   if (routes.length === 0) return "deferred"; // never write an empty Host() rule
 
   const hasCompose = Boolean(project.compose && project.compose.trim());
@@ -1587,17 +1570,17 @@ export async function rerouteService(
         compose: project.compose ?? "",
         name,
         slug,
-        serviceId,
+        appId,
         // The `domains` table is the sole routing source: one router per routable
         // domain → its named compose service.
         domainRoutes: routes,
         filesDir: composeFilesDir(slug),
-        basicAuthUsers: await basicAuthUsersValue(serviceId),
+        basicAuthUsers: await basicAuthUsersValue(appId),
         // Inject the current settings env-var names so a reroute keeps the same
         // pass-throughs a deploy would render — the env-file (sent below) still
         // carries the values. The no-op guard in mergeEnvironment means a reroute
         // that adds no new key re-renders byte-identically (no needless restart).
-        envKeys: await serviceEnvKeys(serviceId),
+        envKeys: await appEnvKeys(appId),
       });
       mounts = (project.mounts ?? []).map((m) => ({
         path: m.filePath,
@@ -1609,17 +1592,17 @@ export async function rerouteService(
       // this a pure routing change — never a rebuild or a silent env/image change.
       const image = readStackImageFromYaml(current.yaml, name);
       if (!image) return "deferred"; // can't safely reroute without the running image
-      const env = readStackEnvFromYaml(current.yaml, name) ?? await serviceEnv(serviceId);
+      const env = readStackEnvFromYaml(current.yaml, name) ?? await appEnv(appId);
       // Volumes are read back from the stack (like image/env), NOT from
       // project.volumes — so a domain-only reroute keeps the running mounts and
       // never silently applies a volume edit the user hasn't redeployed.
       const volumes = readStackVolumesFromYaml(current.yaml, name);
-      const basicAuthUsers = await basicAuthUsersValue(serviceId);
+      const basicAuthUsers = await basicAuthUsersValue(appId);
       rendered = renderCompose({
         name,
         image,
         port: project.build.port,
-        serviceId,
+        appId,
         slug,
         routes,
         env,
@@ -1646,7 +1629,7 @@ export async function rerouteService(
 
     // For a single-image stack the env is baked into the YAML, so send no env-file
     // (mirrors the deploy path); compose stacks interpolate ${VAR} from the env.
-    const env = useCompose && hasCompose ? await serviceEnv(serviceId) : {};
+    const env = useCompose && hasCompose ? await appEnv(appId) : {};
     const r = await conn.reroute({ slug, composeYaml: rendered, env, mounts });
     if (!r.ok) throw new Error(r.error || "agent failed to reroute the stack");
     return "rerouted";
@@ -1664,15 +1647,15 @@ export async function rerouteService(
  *
  * Compose stacks are rendered live from the saved compose + current routable
  * domains, so the preview matches the NEXT deploy/reroute even before the
- * project is deployed. Single-image / built services keep their image ref and
+ * project is deployed. Single-image / built apps keep their image ref and
  * env only in the on-disk stack file (not on the project), so those are read
  * back from `/data/stacks/<slug>.yml`; that file exists only after a first
  * deploy. Returns `null` when there's nothing to show yet.
  */
-export async function renderServiceStack(
-  serviceId: string,
+export async function renderAppStack(
+  appId: string,
 ): Promise<string | null> {
-  const project = await loadServiceGraph(serviceId);
+  const project = await loadAppGraph(appId);
   if (!project) return null;
   const slug = project.slug;
   const name = `deplo-${slug}`;
@@ -1684,24 +1667,24 @@ export async function renderServiceStack(
     // never-deployed compose project still previews: fall back to ALL of the
     // project's domains (not just `valid` ones) so the preview isn't empty before
     // any domain is verified.
-    const routes = await routableRoutes(serviceId);
+    const routes = await routableRoutes(appId);
     const domainRoutes: RoutableDomain[] = routes.length
       ? routes
-      : (await loadDomainsForService(serviceId))
+      : (await loadDomainsForApp(appId))
           .sort((a, b) => Number(b.primary) - Number(a.primary))
           .map((d) => defaultRoute(d.name, d.service ?? null, d.port ?? null));
     return buildComposeStack({
       compose: project.compose ?? "",
       name,
       slug,
-      serviceId,
+      appId,
       domainRoutes,
       filesDir: composeFilesDir(slug),
-      basicAuthUsers: await basicAuthUsersValue(serviceId),
+      basicAuthUsers: await basicAuthUsersValue(appId),
       // Show the injected pass-throughs in the preview so "View full compose"
       // matches what the next deploy/reroute writes. Only NAMES appear — the
       // values never enter the rendered YAML (they ride the env-file).
-      envKeys: await serviceEnvKeys(serviceId),
+      envKeys: await appEnvKeys(appId),
     });
   }
 

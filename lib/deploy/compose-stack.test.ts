@@ -5,7 +5,7 @@ import yaml from "js-yaml";
 
 import {
   buildComposeStack,
-  detectDefaultService,
+  detectDefaultApp,
   type ComposeStackInput,
   type ComposeDomainRoute,
 } from "./compose-stack";
@@ -42,7 +42,7 @@ function buildDoc(compose: string, extra: Partial<ComposeStackInput> = {}): Doc 
     compose,
     name: "deplo-demo",
     slug: "demo",
-    serviceId: "p1",
+    appId: "p1",
     domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
     ...extra,
   });
@@ -235,16 +235,16 @@ test("a path-scoped route emits a PathPrefix rule + stripprefix middleware", () 
 });
 
 /* ------------------------------------------------------------------ */
-/* detectDefaultService — used at project creation to seed domain 1    */
+/* detectDefaultApp — used at project creation to seed domain 1    */
 /* ------------------------------------------------------------------ */
 
-test("detectDefaultService prefers a service that publishes a port", () => {
-  assert.deepEqual(detectDefaultService(WEB_API_COMPOSE), { service: "web", port: 80 });
+test("detectDefaultApp prefers a service that publishes a port", () => {
+  assert.deepEqual(detectDefaultApp(WEB_API_COMPOSE), { service: "web", port: 80 });
 });
 
-test("detectDefaultService falls back to the first service on port 80", () => {
+test("detectDefaultApp falls back to the first service on port 80", () => {
   assert.deepEqual(
-    detectDefaultService(`
+    detectDefaultApp(`
 services:
   only:
     image: nginx
@@ -253,14 +253,14 @@ services:
   );
 });
 
-test("detectDefaultService is null for empty / unparseable compose", () => {
-  assert.equal(detectDefaultService(null), null);
-  assert.equal(detectDefaultService(""), null);
-  assert.equal(detectDefaultService("services: [this is not valid"), null);
+test("detectDefaultApp is null for empty / unparseable compose", () => {
+  assert.equal(detectDefaultApp(null), null);
+  assert.equal(detectDefaultApp(""), null);
+  assert.equal(detectDefaultApp("services: [this is not valid"), null);
 });
 
 /* ------------------------------------------------------------------ */
-/* Service-files `./<x>` bind-mount rewrite                            */
+/* App-files `./<x>` bind-mount rewrite                            */
 /* ------------------------------------------------------------------ */
 
 /** The volume sources of a service, post-build. */
@@ -446,7 +446,7 @@ services:
 `,
     name: "deplo-demo",
     slug: "demo",
-    serviceId: "p1",
+    appId: "p1",
     domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
     envKeys: ["FOO", "BAR"],
   });

@@ -1,23 +1,23 @@
 import { builder } from "../builder";
 import {
-  getAppCatalog,
-  listInstalledApps,
-  installApp,
-  uninstallApp,
-  startApp,
-  stopApp,
-  type InstalledAppDTO,
-} from "@/lib/data/apps";
-import type { AppListing } from "@/lib/apps/manifest";
+  getPluginCatalog,
+  listInstalledPlugins,
+  installPlugin,
+  uninstallPlugin,
+  startPlugin,
+  stopPlugin,
+  type InstalledPluginDTO,
+} from "@/lib/data/plugins";
+import type { PluginListing } from "@/lib/plugins/manifest";
 
 /* ------------------------------------------------------------------ */
 /* Object types                                                        */
 /* ------------------------------------------------------------------ */
 
-/** A catalog entry — an installable app fetched from the app repository. */
-const AppListingRef = builder.objectRef<AppListing>("AppListing").implement({
+/** A catalog entry — an installable plugin fetched from the plugin repository. */
+const PluginListingRef = builder.objectRef<PluginListing>("PluginListing").implement({
   description:
-    "An installable app from the remote app repository (read-only catalog). " +
+    "An installable plugin from the remote plugin repository (read-only catalog). " +
     "Distinct from a Template, which ships inside Deplo.",
   fields: (t) => ({
     id: t.exposeString("id"),
@@ -30,18 +30,18 @@ const AppListingRef = builder.objectRef<AppListing>("AppListing").implement({
 });
 
 /**
- * An app a team installed (ADR-0005: a host-managed container, never a service).
+ * A plugin a team installed (ADR-0005: a host-managed container, never an app).
  * `status` is a resolver — read LIVE from the container at query time, never
- * stored — and `url` is computed from the slug (the app path under Deplo's own
+ * stored — and `url` is computed from the slug (the plugin path under Deplo's own
  * host). The DTO already carries both, resolved in the data layer.
  */
-const InstalledAppRef = builder
-  .objectRef<InstalledAppDTO>("InstalledApp")
+const InstalledPluginRef = builder
+  .objectRef<InstalledPluginDTO>("InstalledPlugin")
   .implement({
     description:
-      "An app a team installed from the app repository — a host-managed " +
-      "container, not a service. Status is read live from the container; the " +
-      "URL is the app path under Deplo's own host.",
+      "A plugin a team installed from the plugin repository — a host-managed " +
+      "container, not an app. Status is read live from the container; the " +
+      "URL is the plugin path under Deplo's own host.",
     fields: (t) => ({
       id: t.exposeID("id"),
       catalogId: t.exposeString("catalogId"),
@@ -59,18 +59,18 @@ const InstalledAppRef = builder
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
-  appCatalog: t.field({
-    type: [AppListingRef],
+  pluginCatalog: t.field({
+    type: [PluginListingRef],
     authScopes: { loggedIn: true },
-    description: "The remote catalog of installable apps.",
-    resolve: () => getAppCatalog(),
+    description: "The remote catalog of installable plugins.",
+    resolve: () => getPluginCatalog(),
   }),
-  installedApps: t.field({
-    type: [InstalledAppRef],
+  installedPlugins: t.field({
+    type: [InstalledPluginRef],
     authScopes: { loggedIn: true },
     description:
-      "Apps the active team has installed, newest first, with live status.",
-    resolve: () => listInstalledApps(),
+      "Plugins the active team has installed, newest first, with live status.",
+    resolve: () => listInstalledPlugins(),
   }),
 }));
 
@@ -79,45 +79,45 @@ builder.queryFields((t) => ({
 /* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
-  installApp: t.field({
-    type: InstalledAppRef,
+  installPlugin: t.field({
+    type: InstalledPluginRef,
     authScopes: { capability: "manage_infra" },
     description:
-      "Install an app from the catalog (one per app per team; recreates the " +
+      "Install a plugin from the catalog (one per plugin per team; recreates the " +
       "container in place if already installed). Mints no token — the caller " +
       "supplies their own from Settings → API Tokens.",
     args: { catalogId: t.arg.string({ required: true }) },
-    resolve: (_r, { catalogId }) => installApp(catalogId),
+    resolve: (_r, { catalogId }) => installPlugin(catalogId),
   }),
-  uninstallApp: t.field({
+  uninstallPlugin: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_infra" },
     description:
-      "Uninstall an app: destroy its container + Traefik router and drop the " +
-      "row. Revokes nothing (the app held no token). Returns true.",
+      "Uninstall a plugin: destroy its container + Traefik router and drop the " +
+      "row. Revokes nothing (the plugin held no token). Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await uninstallApp(id);
+      await uninstallPlugin(id);
       return true;
     },
   }),
-  startApp: t.field({
+  startPlugin: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_infra" },
-    description: "Start a stopped app's container. Returns true.",
+    description: "Start a stopped plugin's container. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await startApp(id);
+      await startPlugin(id);
       return true;
     },
   }),
-  stopApp: t.field({
+  stopPlugin: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_infra" },
-    description: "Stop a running app's container. Returns true.",
+    description: "Stop a running plugin's container. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await stopApp(id);
+      await stopPlugin(id);
       return true;
     },
   }),

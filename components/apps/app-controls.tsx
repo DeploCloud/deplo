@@ -7,15 +7,15 @@ import { Play, Square, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
-import { useLiveStatus } from "@/components/services/service-live-status";
-import type { ServiceStatus } from "@/lib/types";
+import { useLiveStatus } from "@/components/apps/app-live-status";
+import type { AppStatus } from "@/lib/types";
 
-export function ServiceControls({
-  serviceId,
+export function AppControls({
+  appId,
   status: serverStatus,
 }: {
-  serviceId: string;
-  status: ServiceStatus;
+  appId: string;
+  status: AppStatus;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -29,7 +29,7 @@ export function ServiceControls({
 
   function act(mutation: string, success: string) {
     startTransition(async () => {
-      const res = await gqlAction(mutation, { id: serviceId });
+      const res = await gqlAction(mutation, { id: appId });
       if (res.ok) {
         toast.success(success);
         // The subscription pushes the new status, but refresh the RSC tree too
@@ -41,15 +41,15 @@ export function ServiceControls({
     });
   }
 
-  // Reload re-applies the service's routing (domains + basic auth) to the running
+  // Reload re-applies the app's routing (domains + basic auth) to the running
   // container WITHOUT a rebuild. The mutation returns a status string we turn
   // into an honest toast — "deferred" means nothing was running to reroute.
   function reload() {
     startTransition(async () => {
-      const res = await gqlAction<{ reloadService: string | null }, string>(
-        `mutation($id: String!) { reloadService(id: $id) }`,
-        { id: serviceId },
-        (d) => d.reloadService ?? "",
+      const res = await gqlAction<{ reloadApp: string | null }, string>(
+        `mutation($id: String!) { reloadApp(id: $id) }`,
+        { id: appId },
+        (d) => d.reloadApp ?? "",
       );
       if (!res.ok) {
         toast.error(res.error);
@@ -70,13 +70,13 @@ export function ServiceControls({
   return (
     <>
       {stopped ? (
-        <SimpleTooltip content="Start this service's stopped container">
+        <SimpleTooltip content="Start this app's stopped container">
           <Button
             variant="outline"
             size="sm"
             onClick={() =>
               act(
-                `mutation($id: String!) { startService(id: $id) { id } }`,
+                `mutation($id: String!) { startApp(id: $id) { id } }`,
                 "Container started",
               )
             }
@@ -94,13 +94,13 @@ export function ServiceControls({
           Stopping
         </Button>
       ) : (
-        <SimpleTooltip content="Stop this service's running container">
+        <SimpleTooltip content="Stop this app's running container">
           <Button
             variant="outline"
             size="sm"
             onClick={() =>
               act(
-                `mutation($id: String!) { stopService(id: $id) { id } }`,
+                `mutation($id: String!) { stopApp(id: $id) { id } }`,
                 "Container stopped",
               )
             }

@@ -6,7 +6,7 @@ import * as attach from "@/lib/attach/session";
 import { connectAgent } from "@/lib/infra/agent-client";
 
 /**
- * Interactive `docker attach` to a service's running container, over plain HTTP.
+ * Interactive `docker attach` to an app's running container, over plain HTTP.
  *
  *   GET    ?container=<name>   → SSE stream of the container's live PID 1 output.
  *                                The first event is `session` with the session id.
@@ -24,15 +24,15 @@ export const runtime = "nodejs";
 
 export async function GET(
   request: NextRequest,
-  ctx: RouteContext<"/api/services/[id]/attach">,
+  ctx: RouteContext<"/api/apps/[id]/attach">,
 ) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: serviceId } = await ctx.params;
+  const { id: appId } = await ctx.params;
   const target = request.nextUrl.searchParams.get("container") ?? undefined;
 
-  const resolved = await resolveAttachTarget(serviceId, target);
+  const resolved = await resolveAttachTarget(appId, target);
   if (!resolved.ok) {
     const status =
       resolved.reason === "not-found"
@@ -50,8 +50,8 @@ export async function GET(
   let session;
   try {
     const conn = await connectAgent(resolved.server!.id);
-    const handle = conn.attach(serviceId, resolved.instance.name, tty, 80, 24);
-    session = attach.open(serviceId, resolved.instance.name, handle, () =>
+    const handle = conn.attach(appId, resolved.instance.name, tty, 80, 24);
+    session = attach.open(appId, resolved.instance.name, handle, () =>
       conn.close(),
     );
   } catch {
@@ -122,12 +122,12 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  ctx: RouteContext<"/api/services/[id]/attach">,
+  ctx: RouteContext<"/api/apps/[id]/attach">,
 ) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: serviceId } = await ctx.params;
+  const { id: appId } = await ctx.params;
   let body: { sessionId?: unknown; data?: unknown };
   try {
     body = await request.json();
@@ -138,7 +138,7 @@ export async function POST(
   const data = typeof body.data === "string" ? body.data : "";
   if (!sessionId) return Response.json({ error: "Missing sessionId" }, { status: 400 });
 
-  const session = attach.get(sessionId, serviceId);
+  const session = attach.get(sessionId, appId);
   if (!session) return Response.json({ error: "No such session" }, { status: 404 });
 
   session.handle.write(data);
@@ -147,14 +147,14 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  ctx: RouteContext<"/api/services/[id]/attach">,
+  ctx: RouteContext<"/api/apps/[id]/attach">,
 ) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: serviceId } = await ctx.params;
+  const { id: appId } = await ctx.params;
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
-  const session = sessionId ? attach.get(sessionId, serviceId) : undefined;
+  const session = sessionId ? attach.get(sessionId, appId) : undefined;
   if (session) attach.destroy(sessionId);
   return Response.json({ ok: true });
 }

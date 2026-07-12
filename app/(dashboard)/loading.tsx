@@ -44,7 +44,7 @@ export default function Loading() {
         </Card>
       </div>
 
-      {/* Services */}
+      {/* Apps */}
       <div className="order-1 space-y-5 lg:order-1">
         {/* Header row: title + Add New */}
         <div className="flex items-center justify-between gap-3">
@@ -59,7 +59,7 @@ export default function Loading() {
           <Skeleton className="hidden size-9 rounded-md sm:block" />
         </div>
 
-        {/* Services grid */}
+        {/* Apps grid */}
         <div className="grid gap-4 sm:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i} className="flex flex-col gap-4 p-5">

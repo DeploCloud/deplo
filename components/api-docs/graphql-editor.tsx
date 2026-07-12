@@ -43,7 +43,7 @@ import {
  * dependency set, so this uses a lightweight regex-free plain editor with the
  * shared neutral highlight style — good enough for the playground (the server
  * validates the document and returns precise errors). Keep the theme in sync
- * with `components/services/compose-editor.tsx`.
+ * with `components/apps/compose-editor.tsx`.
  */
 
 const deploTheme = EditorView.theme({

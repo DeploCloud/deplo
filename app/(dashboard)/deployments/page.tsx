@@ -2,7 +2,7 @@ import { Rocket } from "lucide-react";
 import { listDeployments } from "@/lib/data/deployments";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
-import { DeploymentsTable } from "@/components/services/deployments-table";
+import { DeploymentsTable } from "@/components/apps/deployments-table";
 
 export const metadata = { title: "Deployments" };
 
@@ -20,7 +20,7 @@ export default async function DeploymentsPage() {
     <div className="space-y-1">
       <h1 className="text-2xl font-semibold tracking-tight">Deployments</h1>
       <p className="text-sm text-muted-foreground">
-        Every deployment across all of your services and servers, newest first.
+        Every deployment across all of your apps and servers, newest first.
       </p>
     </div>
   );
@@ -33,19 +33,19 @@ export default async function DeploymentsPage() {
           <EmptyState
             icon={Rocket}
             title="No deployments yet"
-            description="Once you deploy a service, every build will show up here."
+            description="Once you deploy an app, every build will show up here."
           />
         </>
       ) : (
         <DeploymentsTable
           header={header}
-          showService
+          showApp
           showServer
           canManage={canManage}
           deployments={deployments.map((d) => ({
             id: d.id,
-            serviceId: d.serviceId,
-            serviceSlug: d.serviceSlug,
+            appId: d.appId,
+            appSlug: d.appSlug,
             serviceName: d.serviceName,
             serverId: d.serverId,
             serverName: d.serverName,

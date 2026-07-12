@@ -4,7 +4,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * The short commit SHA. When the service deploys from a GitHub source we know the
+ * The short commit SHA. When the app deploys from a GitHub source we know the
  * repo, so it links to that exact commit on GitHub (opened in a new tab);
  * otherwise (non-GitHub source, or no commit) it renders as plain monospace text.
  *

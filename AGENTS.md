@@ -27,7 +27,7 @@ deprecation notices. When instinct disagrees with the installed docs, the docs w
   thing that runs `docker` / shell / `fs` on any host. Reached over **gRPC + mTLS**.
 
 **THE RULE (ADR-0006): the control plane NEVER touches a Docker socket or the host directly for
-a per-service / host-coupled action.** Deploy, build, logs, console, metrics, files, stack
+a per-app / host-coupled action.** Deploy, build, logs, console, metrics, files, stack
 lifecycle, dev containers, tunnels, SSH gateway, backups, S3, volume copy and DB provisioning all
 route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 
@@ -43,8 +43,8 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 - **Fails clearly, no in-process fallback**: a mandatory `Hello` pre-flight; an unreachable agent
   is a hard error, never a silent local build. New RPCs are additive (contract stays `V1`); gate
   host features behind Hello `capabilities[]`.
-- **Don't generalize the exceptions:** installed **Apps** (ADR-0005) are host-managed containers
-  where Deplo *does* own the socket (`lib/apps/runtime.ts`) — an App is not a Service.
+- **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers
+  where Deplo *does* own the socket (`lib/plugins/runtime.ts`) — a Plugin is not an App.
   `lib/deploy/build.ts` also retains a now-dead local build path + host `ensureNetwork`/`mkdir`;
   the live path passes `skipBuild:true → runAgentDeploy`. Don't mistake the dead path for a
   violation and don't revive it.
@@ -59,7 +59,7 @@ path** (see Persistence). Deploy execution is the Go agent over gRPC/mTLS.
 ## Project layout
 
 - `app/(dashboard)/` — RSC pages. Overview `page.tsx` is the one grid (projects → folders →
-  services) with drill-ins via `?project=&env=&folder=&q=&view=`. Sections: `services/[slug]`,
+  apps) with drill-ins via `?project=&env=&folder=&q=&view=`. Sections: `apps/[slug]`,
   `deployments`, `logs`, `monitoring`, `storage`, `variables`, `members`, `activity`, `apps`,
   `templates`, `servers`, `new`, `settings/*`. `app/(auth)/` — login/setup.
 - `app/api/graphql/route.ts` — the single API endpoint. Other `app/api/*/route.ts` are the REST exceptions (below).
@@ -103,12 +103,12 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   no CI drift check).
 - Validation = **Pothos arg requiredness** + hand-rolled cleaners (`cleanName`,
   `normalizeHexColor`, `validateUsername`). Zod lives in only two files (`types/auth.ts`,
-  `lib/apps/manifest.ts`) — don't spread it.
+  `lib/plugins/manifest.ts`) — don't spread it.
 - Auth mutations (`login`/`logout`/`completeSetup`, `types/auth.ts`) are intentionally **public**
   (no `authScopes`) and keep their rate-limiting; the route owns cookie writes.
 - graphql-armor limits (depth 12 / aliases 30 / cost 5000) live only in `yoga.ts`.
 - **Stays REST** (`app/api/*/route.ts`, cookie auth via `getCurrentUser()`, no bearer token):
-  `services/[id]/upload` (raw archive), `.../logs` (SSE), `.../attach`, `github/webhook|callback|setup`,
+  `apps/[id]/upload` (raw archive), `.../logs` (SSE), `.../attach`, `github/webhook|callback|setup`,
   `auth/[...all]`, `agent/bootstrap`, `graphql/playground`, `health`, `node-versions`,
   `railpack-versions`, `registry/images`.
 
@@ -125,15 +125,15 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
 - **Keep BOTH gates (defense in depth):** the field `authScopes` (introspectable contract) AND the
   `requireCapability` / `requireInstanceAdmin` call inside the `lib/data` function (the real
   boundary — `lib/graphql/context.ts` is a convenience snapshot, not the boundary). Resources
-  under a **folder** need a second gate: `await requireFolderCapabilityForService(serviceId, cap)`.
+  under a **folder** need a second gate: `await requireFolderCapabilityForApp(appId, cap)`.
 - Auth helpers: `getCurrentUser()` (nullable), `assertUser()` (**throws** — resolvers/data),
   `requireUser()` (**redirects** — RSC/pages). `recordActivity(...)` runs **outside** any open
   transaction (own connection; deadlocks pglite otherwise) and is fire-and-forget.
 - **Capabilities (8):** `view` (always-on floor), `deploy`, `manage_domains`, `manage_env`,
   `manage_files`, `manage_infra`, `manage_members`, `manage_team`; plus instance-wide
   `instanceAdmin` and the orthogonal grants `canExposePorts` / `canMountHostVolumes`. Roles are
-  presets. **Creating** a folder/project/service is gated on `deploy`, not `manage_team`.
-- **id prefixes not to confuse:** `prc_` = Project *container*, `prj_` = **Service** (the deployable
+  presets. **Creating** a folder/project/app is gated on `deploy`, not `manage_team`.
+- **id prefixes not to confuse:** `prc_` = Project *container*, `prj_` = **App** (the deployable
   app, legacy mint); `environ_` = Environment, `env_` = env-**var** row; `deplo_` = raw bearer
   secret (sha256 at rest).
 
@@ -166,7 +166,7 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   (`toast.error(res.error)`), don't invent generic copy.
 - **Field help lives in the tooltip:** `FieldLabel info={…}` / `InfoTip` (`components/ui/info-tip.tsx`)
   — don't duplicate it as helper text below the input.
-- **Status is shown LIVE** via `ServiceStatusBadge`/`ServiceStatusDot` (a `useLiveStatus`
+- **Status is shown LIVE** via `AppStatusBadge`/`AppStatusDot` (a `useLiveStatus`
   subscription), not the raw stored `status`. `idle`/`stopped` render **grey ("Stopped")**; red is
   reserved for `error`/`failed`.
 - **Tailwind v4 is CSS-first — no `tailwind.config`.** Add tokens in `app/globals.css`
@@ -181,7 +181,7 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   the one shared cross-team resource** — never team-scope server records.
 - **A Project is an "advanced folder" with an environment dropdown — it has no page of its own.**
   It is browsed only on the Overview drill-in (`app/(dashboard)/projects/*` are redirect stubs);
-  each Environment owns its own Services and shared vars.
+  each Environment owns its own Apps and shared vars.
 - **Every mutating action is capability-gated and enforced server-side.** UI `hasCapability` checks
   are cosmetic (hide/disable); the authoritative gate is `requireCapability` in the data layer.
 - Secrets are write-only, status is live, Preview/app URLs are computed — favor derived-and-live
@@ -189,17 +189,18 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
 
 ## Vocabulary discipline
 
-Use **CONTEXT.md's exact terms**; avoid its banned synonyms. **Service** (the deployable app, never
-"project") · **Project** (the container-folder, never container/group/folder) · **Capability**
-(never permission/scope/grant) · **server agent** / "the owning server" (never bare
-agent/node/worker/daemon) · **App** (an installed catalog feature, never a Service or plugin) ·
-**active team** (never current/selected) · **Environment** (never "env target"). If a concept isn't
-in the glossary, you're probably inventing language — reconsider, or note the gap.
+Use **CONTEXT.md's exact terms**; avoid its banned synonyms. **App** (the deployable unit, never
+"service"/"project"; a bare compose "service" is a different thing) · **Project** (the
+container-folder, never container/group/folder) · **Capability** (never permission/scope/grant) ·
+**server agent** / "the owning server" (never bare agent/node/worker/daemon) · **Plugin** (an
+installed catalog feature à la MCP server, never an App) · **active team** (never current/selected) ·
+**Environment** (never "env target"). If a concept isn't in the glossary, you're probably inventing
+language — reconsider, or note the gap.
 
 ## Working rules
 
 - **Issues & PRDs = GitHub Issues in `IdraDev/deplo` via the `gh` CLI** (`docs/agents/issue-tracker.md`);
   triage with the five canonical labels (`docs/agents/triage-labels.md`).
 - Check `docs/adr/` before working an area; flag contradictions explicitly rather than overriding.
-- **Commits = Conventional Commits with a scope**, imperative summary (`feat(services): …`,
+- **Commits = Conventional Commits with a scope**, imperative summary (`feat(apps): …`,
   `fix(auth): …`). Branch off `main` before committing.

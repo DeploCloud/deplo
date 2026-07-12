@@ -3,7 +3,7 @@ import {
   listBackups,
   createBackup,
   runBackup,
-  runServiceBackup,
+  runAppBackup,
   restoreBackup,
   listBackupRuns,
   toggleBackup,
@@ -28,7 +28,7 @@ const BackupStatusEnum = builder.enumType("BackupStatus", {
 // What a schedule / run targets. Local to this domain (mirrors how
 // DatabaseStatus lives in database.ts) rather than the shared enums file.
 const BackupTargetKindEnum = builder.enumType("BackupTargetKind", {
-  values: ["database", "service"] as const,
+  values: ["database", "app"] as const,
 });
 
 // A single run's terminal/in-flight state — distinct from `BackupStatus`
@@ -54,7 +54,7 @@ export const BackupRef = builder.objectRef<BackupDTO>("Backup").implement({
     }),
     databaseId: t.exposeID("databaseId", { nullable: true }),
     databaseName: t.exposeString("databaseName", { nullable: true }),
-    serviceId: t.exposeID("serviceId", { nullable: true }),
+    appId: t.exposeID("appId", { nullable: true }),
     serviceName: t.exposeString("serviceName", { nullable: true }),
     destinationId: t.exposeID("destinationId"),
     destinationName: t.exposeString("destinationName"),
@@ -88,7 +88,7 @@ export const BackupRunRef = builder
         resolve: (r) => r.targetKind,
       }),
       databaseId: t.exposeID("databaseId", { nullable: true }),
-      serviceId: t.exposeID("serviceId", { nullable: true }),
+      appId: t.exposeID("appId", { nullable: true }),
       destinationId: t.exposeID("destinationId"),
       objectKey: t.exposeString("objectKey", {
         description: "S3 object key of the uploaded artifact.",
@@ -116,8 +116,8 @@ const CreateBackupInputType = builder.inputType("CreateBackupInput", {
     // "database" (legacy schedules could only target a database).
     targetKind: t.field({ type: BackupTargetKindEnum, required: false }),
     databaseId: t.string({ required: false }),
-    // Set when targetKind is "service"; otherwise leave null.
-    serviceId: t.string({ required: false }),
+    // Set when targetKind is "app"; otherwise leave null.
+    appId: t.string({ required: false }),
     destinationId: t.string({ required: true }),
     schedule: t.string({ required: true }),
     retentionDays: t.int({ required: true }),
@@ -151,15 +151,15 @@ builder.queryFields((t) => ({
     type: [BackupRunRef],
     authScopes: { loggedIn: true },
     description:
-      "Recorded backup runs for one target (a service OR a database), " +
-      "newest first. Pass exactly one of serviceId / databaseId.",
+      "Recorded backup runs for one target (an app OR a database), " +
+      "newest first. Pass exactly one of appId / databaseId.",
     args: {
-      serviceId: t.arg.string({ required: false }),
+      appId: t.arg.string({ required: false }),
       databaseId: t.arg.string({ required: false }),
     },
-    resolve: (_r, { serviceId, databaseId }) =>
+    resolve: (_r, { appId, databaseId }) =>
       listBackupRuns({
-        serviceId: serviceId ?? undefined,
+        appId: appId ?? undefined,
         databaseId: databaseId ?? undefined,
       }),
   }),
@@ -180,7 +180,7 @@ builder.mutationFields((t) => ({
         name: input.name,
         targetKind: input.targetKind ?? undefined,
         databaseId: input.databaseId ?? null,
-        serviceId: input.serviceId ?? null,
+        appId: input.appId ?? null,
         destinationId: input.destinationId,
         schedule: input.schedule,
         retentionDays: input.retentionDays,
@@ -198,18 +198,18 @@ builder.mutationFields((t) => ({
       return true;
     },
   }),
-  runServiceBackup: t.field({
+  runAppBackup: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_infra" },
     description:
-      "Run an ad-hoc backup of a service now (no owning schedule). Returns " +
+      "Run an ad-hoc backup of an app now (no owning schedule). Returns " +
       "true.",
     args: {
-      serviceId: t.arg.string({ required: true }),
+      appId: t.arg.string({ required: true }),
       destinationId: t.arg.string({ required: true }),
     },
-    resolve: async (_r, { serviceId, destinationId }) => {
-      await runServiceBackup(serviceId, destinationId);
+    resolve: async (_r, { appId, destinationId }) => {
+      await runAppBackup(appId, destinationId);
       return true;
     },
   }),
@@ -277,7 +277,7 @@ builder.mutationFields((t) => ({
     // `deleteAllBackupArtifacts` enforces the exact per-kind capability in the
     // data layer (the builder's documented defense-in-depth model). This avoids
     // the mismatch where a static manage_infra scope would hard-block a
-    // deploy-only member from deleting a service they're otherwise allowed to.
+    // deploy-only member from deleting an app they're otherwise allowed to.
     authScopes: { loggedIn: true },
     description:
       "Delete ALL of a target's S3 backup artifacts (across every destination " +

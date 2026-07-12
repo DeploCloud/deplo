@@ -2,16 +2,16 @@ import "server-only";
 
 import { getServerById } from "./servers";
 import { requireActiveTeamId, requireCapability } from "../membership";
-import { requireFolderCapabilityForService } from "./folder-access";
-import { loadTeamService } from "./service-graph-load";
-import { primaryDomainService } from "./domains";
+import { requireFolderCapabilityForApp } from "./folder-access";
+import { loadTeamApp } from "./app-graph-load";
+import { primaryDomainApp } from "./domains";
 import { isDockerLevelStderr } from "../infra/docker";
 import {
   connectAgent,
   AgentUnreachableError,
   type AgentConnection,
 } from "../infra/agent-client";
-import type { Service, Server } from "../types";
+import type { App, Server } from "../types";
 
 /**
  * Resolve a project's owning server. Every console/logs surface routes to the
@@ -20,7 +20,7 @@ import type { Service, Server } from "../types";
  * other. An unknown serverId resolves to undefined and the agent dial then fails
  * clearly as unreachable.
  */
-async function serverOf(p: Service): Promise<Server | undefined> {
+async function serverOf(p: App): Promise<Server | undefined> {
   return (await getServerById(p.serverId)) ?? undefined;
 }
 
@@ -73,7 +73,7 @@ export interface ConsoleInstance {
   tty: boolean;
 }
 
-export function containerName(p: Service): string {
+export function containerName(p: App): string {
   return `deplo-${p.slug}`;
 }
 
@@ -85,11 +85,11 @@ export function containerName(p: Service): string {
  * {@link AgentUnreachableError} (the caller surfaces a clear error), and a
  * reachable host with no containers truthfully returns [].
  */
-export async function listInstances(p: Service): Promise<ConsoleInstance[]> {
+export async function listInstances(p: App): Promise<ConsoleInstance[]> {
   // The "exposed" service to flag for ordering now comes from the project's
   // primary domain (the `domains` table is the routing source), not a stored
-  // `expose`. Empty for single-image services / services with no domain.
-  const exposeService = await primaryDomainService(p.id);
+  // `expose`. Empty for single-image apps / apps with no domain.
+  const exposeService = await primaryDomainApp(p.id);
   const conn = await connectAgent(p.serverId);
   try {
     return await conn.listInstances(p.id, p.slug, exposeService);
@@ -118,7 +118,7 @@ export interface LogsInfo {
  * and shows "not running / unreachable" instead of 500ing. The OPERATIONAL paths
  * (exec/attach/logs streams) still fail clearly; this is display-only.
  */
-function displayFallback(p: Service): ConsoleInstance {
+function displayFallback(p: App): ConsoleInstance {
   return {
     name: containerName(p),
     service: p.slug,
@@ -134,7 +134,7 @@ function displayFallback(p: Service): ConsoleInstance {
 
 /** listInstances for a page render: never throws, never empty — degrades to a
  *  single honest, not-running placeholder so the console/logs page always loads. */
-async function listInstancesForDisplay(p: Service): Promise<ConsoleInstance[]> {
+async function listInstancesForDisplay(p: App): Promise<ConsoleInstance[]> {
   try {
     const instances = await listInstances(p);
     return instances.length ? instances : [displayFallback(p)];
@@ -144,9 +144,9 @@ async function listInstancesForDisplay(p: Service): Promise<ConsoleInstance[]> {
   }
 }
 
-export async function getLogsInfo(serviceId: string): Promise<LogsInfo | null> {
+export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
-  const p = await loadTeamService(serviceId, teamId);
+  const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
   const instances = await listInstancesForDisplay(p);
   return { running: instances.some((i) => i.running), instances };
@@ -165,9 +165,9 @@ export interface ConsoleInfo {
   instances: ConsoleInstance[];
 }
 
-export async function getConsoleInfo(serviceId: string): Promise<ConsoleInfo | null> {
+export async function getConsoleInfo(appId: string): Promise<ConsoleInfo | null> {
   const teamId = await requireActiveTeamId();
-  const p = await loadTeamService(serviceId, teamId);
+  const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
   const instances = await listInstancesForDisplay(p);
   const def = instances[0];
@@ -187,11 +187,11 @@ export async function getConsoleInfo(serviceId: string): Promise<ConsoleInfo | n
  * pays the probe and later calls are instant.
  */
 export async function getShellLabel(
-  serviceId: string,
+  appId: string,
   target?: string,
 ): Promise<string> {
   const teamId = await requireActiveTeamId();
-  const p = await loadTeamService(serviceId, teamId);
+  const p = await loadTeamApp(appId, teamId);
   if (!p) return "raw exec (no shell)";
   // Display-grade list: an unreachable remote degrades to a not-running
   // placeholder, so we return "raw exec (no shell)" below rather than throwing.
@@ -203,9 +203,9 @@ export async function getShellLabel(
   return probeShellLabel(p, pick.name, pick.image);
 }
 
-export async function getAttachInfo(serviceId: string): Promise<AttachInfo | null> {
+export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
   const teamId = await requireActiveTeamId();
-  const p = await loadTeamService(serviceId, teamId);
+  const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
   const instances = await listInstancesForDisplay(p);
   // Default target: exposed/running first thanks to listInstances ordering.
@@ -222,7 +222,7 @@ export async function getAttachInfo(serviceId: string): Promise<AttachInfo | nul
 
 /** Shell-label probe (via the owning agent) that degrades to raw when unreachable. */
 async function probeShellLabel(
-  p: Service,
+  p: App,
   container: string,
   image: string,
 ): Promise<string> {
@@ -244,7 +244,7 @@ async function probeShellLabel(
  * target must belong to this project (same guard as execInContainer).
  */
 export async function resolveAttachTarget(
-  serviceId: string,
+  appId: string,
   target?: string,
 ): Promise<
   | { ok: true; instance: ConsoleInstance; server: Server | undefined }
@@ -253,9 +253,9 @@ export async function resolveAttachTarget(
   // Attaching to PID 1 (full-duplex, stdin to the live container) is a
   // deploy-class operation — never available to a view-only member.
   const { teamId } = await requireCapability("deploy");
-  const p = await loadTeamService(serviceId, teamId);
+  const p = await loadTeamApp(appId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  await requireFolderCapabilityForApp(appId, "deploy");
 
   let instances: ConsoleInstance[];
   try {
@@ -283,14 +283,14 @@ export async function resolveAttachTarget(
  * project; an unknown raw name from the client is rejected.
  */
 export async function resolveLogsTarget(
-  serviceId: string,
+  appId: string,
   target?: string,
 ): Promise<
   | { ok: true; instance: ConsoleInstance; server: Server | undefined }
   | { ok: false; reason: "not-found" | "no-instance" | "unreachable" }
 > {
   const teamId = await requireActiveTeamId();
-  const p = await loadTeamService(serviceId, teamId);
+  const p = await loadTeamApp(appId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
 
   let instances: ConsoleInstance[];
@@ -308,16 +308,16 @@ export async function resolveLogsTarget(
 }
 
 export async function execInContainer(
-  serviceId: string,
+  appId: string,
   rawCommand: string,
   target?: string,
 ): Promise<{ output: string; detach?: boolean }> {
   // Running arbitrary commands in the live container is RCE — gate on deploy,
   // never bare team membership (a viewer must never reach this).
   const { teamId } = await requireCapability("deploy");
-  const p = await loadTeamService(serviceId, teamId);
+  const p = await loadTeamApp(appId, teamId);
   if (!p) return { output: "Error: project not found" };
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  await requireFolderCapabilityForApp(appId, "deploy");
 
   const command = rawCommand.trim();
   if (!command) return { output: "" };
@@ -376,7 +376,7 @@ export async function execInContainer(
 
 /** Exec on the owning agent, returning the docker.ts ContainerExecResult shape. */
 async function execOnAgent(
-  p: Service,
+  p: App,
   container: string,
   command: string,
   image: string,

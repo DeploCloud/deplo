@@ -1,5 +1,12 @@
 # Apps are host-managed containers, not projects
 
+> **Terminology update (Jul 2026):** the installable feature this ADR calls an **App** is now
+> called a **Plugin**, and the deployable unit formerly called a **Service** is now called an
+> **App**. Read "App/app repository/app path" → "Plugin/plugin repository/plugin path" and
+> "Service" → "App" throughout. The decision itself is unchanged; only the words moved. The
+> runtime identity (`deplo-app-<slug>` container, `deplo.role=app`, `app_` id prefix) is kept
+> for compatibility; the public path moved to `/plugins/<slug>`.
+
 ## Context
 
 Deplo lets a team install **apps** from a remote **app repository** to extend the platform

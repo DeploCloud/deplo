@@ -15,10 +15,10 @@ import { deploymentLogs } from "../db/schema/control-plane";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
-  seedService,
+  seedApp,
   seedDeployment,
   TRUNCATE_PROJECT_GRAPH,
-} from "./service-graph-test-helpers";
+} from "./app-graph-test-helpers";
 import {
   appendLog,
   clearDeploymentLogs,
@@ -54,8 +54,8 @@ beforeEach(async () => {
     truncate table users, teams restart identity cascade;`);
   await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
   await seedServer(db);
-  await seedService(db, { id: "prj_1", status: "building" });
-  await seedDeployment(db, { id: "dpl_1", serviceId: "prj_1", status: "building" });
+  await seedApp(db, { id: "prj_1", status: "building" });
+  await seedDeployment(db, { id: "dpl_1", appId: "prj_1", status: "building" });
 });
 
 const line = (text: string): LogLine => ({ ts: "2026-01-01T00:00:00.000Z", level: "info", text });
@@ -118,7 +118,7 @@ test("clear drains-then-DELETEs and a late flush can't resurrect cleared lines",
 });
 
 test("flushes for different deployments don't interleave", async () => {
-  await seedDeployment(db, { id: "dpl_2", serviceId: "prj_1", status: "building" });
+  await seedDeployment(db, { id: "dpl_2", appId: "prj_1", status: "building" });
   appendLog("dpl_1", line("a1"));
   appendLog("dpl_2", line("b1"));
   appendLog("dpl_1", line("a2"));

@@ -269,7 +269,7 @@ async function hasGrant(
 /**
  * True if the current user may publish container ports — a compose service's
  * `ports:` (bound to the host) or `expose:` (advertised to linked containers).
- * This is orthogonal to Traefik routing: giving a service a public DOMAIN does
+ * This is orthogonal to Traefik routing: giving an app a public DOMAIN does
  * NOT require this grant; only declaring published ports in the compose does.
  */
 export async function canExposePorts(): Promise<boolean> {

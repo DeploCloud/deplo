@@ -7,7 +7,7 @@ import { environmentDeployKey, environmentStackName } from "./env-deploy-key";
  * The deploy-key scheme is the load-bearing contract of ADR-0008 Phase 3b:
  * the default environment MUST keep the bare slug (so live stacks are untouched),
  * and non-default environments MUST be collision-proof against every other
- * service's bare key.
+ * app's bare key.
  */
 
 test("the default environment keeps the bare service slug (zero churn)", () => {
@@ -41,8 +41,8 @@ test("a non-default environment gets a __-suffixed key", () => {
 
 test("__ separator makes non-default keys collision-proof across services", () => {
   // A slug is `[a-z0-9-]` and can NEVER contain `__`, so a non-default env key
-  // can never equal ANY other service's bare key — even the adversarial case of a
-  // service literally slugged `app-preview` sitting next to `app` env `preview`.
+  // can never equal ANY other app's bare key — even the adversarial case of an
+  // app literally slugged `app-preview` sitting next to `app` env `preview`.
   const envKey = environmentStackName("app", { slug: "preview", isDefault: false });
   const adversarialBare = environmentStackName("app-preview", null);
   assert.notEqual(envKey, adversarialBare);

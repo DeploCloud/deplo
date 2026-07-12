@@ -40,7 +40,7 @@ export async function listActivityByActor(
 /**
  * Internal: record an event. Caller is expected to be authorized already.
  *
- * The owning team is derived: from the project's `teamId` when a `serviceId` is
+ * The owning team is derived: from the project's `teamId` when a `appId` is
  * given, else from the explicit `teamId` argument (used by project-less member /
  * team events). When neither resolves — e.g. a background deploy with no request
  * context — it falls back to the first team so the row is never written team-less
@@ -50,7 +50,7 @@ export async function recordActivity(
   type: ActivityType,
   message: string,
   actor: string,
-  serviceId: string | null = null,
+  appId: string | null = null,
   teamId: string | null = null,
 ): Promise<void> {
   // Best-effort (PLAN §1(c): an audit-log insert must NEVER roll back the user's
@@ -61,9 +61,9 @@ export async function recordActivity(
   try {
     const db = getDb();
     let resolved = teamId;
-    if (!resolved && serviceId) {
-      const { loadServiceGraph } = await import("./service-graph-load");
-      resolved = (await loadServiceGraph(serviceId))?.teamId ?? null;
+    if (!resolved && appId) {
+      const { loadAppGraph } = await import("./app-graph-load");
+      resolved = (await loadAppGraph(appId))?.teamId ?? null;
     }
     // Last-resort fallback so a row is never written team-less (invisible to
     // every team) — the first team by creation order. A team_id is NOT NULL +
@@ -84,7 +84,7 @@ export async function recordActivity(
       type,
       message,
       actor,
-      serviceId,
+      appId,
       createdAt: nowIso(),
     };
     await db.insert(activitiesTable).values(activityToRow(activity));

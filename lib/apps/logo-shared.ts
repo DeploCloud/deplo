@@ -1,5 +1,5 @@
 /**
- * Service-logo constants + validation shared between the browser (the settings
+ * App-logo constants + validation shared between the browser (the settings
  * file picker) and the server (the updateLogo action). Kept free of any
  * Node-only / "server-only" imports so the client bundle can use it — one
  * source of truth for the size cap, the accepted image types, and what a
@@ -49,7 +49,7 @@ const DATA_URI_RE =
   /^data:image\/(png|jpeg|webp|svg\+xml|gif|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+=*$/;
 
 /** A template's bundled logo: a clean, traversal-free `/templates/<file>` path
- * served from /public. This is the shape `createService` stores from a
+ * served from /public. This is the shape `createApp` stores from a
  * template's default logo. */
 const TEMPLATE_PATH_RE = /^\/templates\/[A-Za-z0-9._-]+$/;
 

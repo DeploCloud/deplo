@@ -1,10 +1,10 @@
 /**
- * The per-(Service, Environment) DEPLOY KEY (ADR-0008 Phase 3b).
+ * The per-(App, Environment) DEPLOY KEY (ADR-0008 Phase 3b).
  *
  * Every stack artifact is keyed on a slug today: the container `deplo-<slug>`,
  * the on-disk stack file `<slug>.yml`, the files dir `files/<slug>`, and the
- * Traefik router/service `baseKey` `deplo-<slug>`. When a Service gains isolated
- * per-Environment deploy targets, each (service, environment) pair needs its OWN
+ * Traefik router/service `baseKey` `deplo-<slug>`. When an App gains isolated
+ * per-Environment deploy targets, each (app, environment) pair needs its OWN
  * globally-unique key that plays that role.
  *
  * The scheme, chosen for ZERO churn to existing stacks:
@@ -14,10 +14,10 @@
  *   - every **other** environment gets `<slug>__<envSlug>`, using the SAME `__`
  *     separator [routing.ts](./routing.ts) already relies on. Because a slug is
  *     `[a-z0-9-]` (it can never contain `__`), `deplo-<slug>__<envSlug>` can never
- *     byte-collide with another service's bare `deplo-<otherslug>` — the exact
+ *     byte-collide with another app's bare `deplo-<otherslug>` — the exact
  *     guarantee the routing layer engineers for its `__<port>` suffixes.
  *
- * A Service with NO environment (top-level / not in a container — the legacy,
+ * An App with NO environment (top-level / not in a container — the legacy,
  * additive-adoption case) passes `null` and keeps the bare slug.
  *
  * Pure on purpose (no store, no docker, no `server-only`): its interface IS its
@@ -33,21 +33,21 @@ export interface DeployKeyEnvironment {
 }
 
 /**
- * The deploy key for a service in an environment: the bare service slug for the
+ * The deploy key for an app in an environment: the bare app slug for the
  * default environment (or no environment), else `<slug>__<envSlug>`.
  */
 export function environmentDeployKey(
-  serviceSlug: string,
+  appSlug: string,
   env: DeployKeyEnvironment | null | undefined,
 ): string {
-  if (!env || env.isDefault) return serviceSlug;
-  return `${serviceSlug}__${env.slug}`;
+  if (!env || env.isDefault) return appSlug;
+  return `${appSlug}__${env.slug}`;
 }
 
-/** The Docker stack / container name (`deplo-<deployKey>`) for a (service, environment). */
+/** The Docker stack / container name (`deplo-<deployKey>`) for an (app, environment). */
 export function environmentStackName(
-  serviceSlug: string,
+  appSlug: string,
   env: DeployKeyEnvironment | null | undefined,
 ): string {
-  return `deplo-${environmentDeployKey(serviceSlug, env)}`;
+  return `deplo-${environmentDeployKey(appSlug, env)}`;
 }

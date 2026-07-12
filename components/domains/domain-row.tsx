@@ -53,9 +53,9 @@ import {
 import { gqlAction } from "@/lib/graphql-client";
 import type { Domain } from "@/lib/types";
 
-type Row = Domain & { serviceName: string; serviceSlug: string };
+type Row = Domain & { serviceName: string; appSlug: string };
 
-/** Service names declared in a compose file, parsed in the browser (js-yaml is
+/** App names declared in a compose file, parsed in the browser (js-yaml is
  * a client-safe dep). [] for a missing/malformed compose ⇒ single-image edit. */
 function composeServices(compose?: string | null): string[] {
   if (!compose || !compose.trim()) return [];
@@ -78,7 +78,7 @@ export function DomainRow({
   serverIp,
 }: {
   domain: Row;
-  /** The service's compose YAML (compose stacks only) so the Edit dialog can
+  /** The app's compose YAML (compose stacks only) so the Edit dialog can
    * offer the service selector. Absent/null ⇒ a single-image project. */
   compose?: string | null;
   /** The public IPv4 of the server THIS project is deployed on — the address a
@@ -241,9 +241,9 @@ export function DomainRow({
         )}
         {domain.status === "misconfigured" && (
           // A misconfigured domain resolves somewhere other than this
-          // service's server. Tell the user exactly where to point DNS: the
-          // A record must resolve to THIS service's server IP, which is
-          // server-specific (a service on another server needs a different
+          // app's server. Tell the user exactly where to point DNS: the
+          // A record must resolve to THIS app's server IP, which is
+          // server-specific (an app on another server needs a different
           // address) — so the concrete IP is shown, never a generic one.
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
             <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
@@ -265,7 +265,7 @@ export function DomainRow({
                 </code>
                 <CopyButton value={serverIp} className="size-6" />
                 <span>
-                  — the IP of the server this service runs on (unique to this
+                  — the IP of the server this app runs on (unique to this
                   server), then Verify.
                 </span>
               </>
@@ -273,7 +273,7 @@ export function DomainRow({
               <span>
                 This domain’s DNS doesn’t point here. Point its{" "}
                 <span className="font-medium text-foreground">A record</span>{" "}
-                at the IP of the server this service is deployed on (unique to
+                at the IP of the server this app is deployed on (unique to
                 that server), then Verify.
               </span>
             )}
@@ -303,7 +303,7 @@ export function DomainRow({
               </>
             ) : (
               <span className="font-medium text-foreground">
-                this service’s server
+                this app’s server
               </span>
             )}
             <span>
@@ -315,7 +315,7 @@ export function DomainRow({
       </TableCell>
       <TableCell>
         <Link
-          href={`/services/${domain.serviceSlug}`}
+          href={`/apps/${domain.appSlug}`}
           className="cursor-pointer text-sm text-muted-foreground hover:text-foreground"
         >
           {domain.serviceName}
@@ -410,7 +410,7 @@ export function DomainRow({
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
           title={`Remove ${domain.name}?`}
-          description="The domain will stop routing to this service. You can re-add it later."
+          description="The domain will stop routing to this app. You can re-add it later."
           confirmLabel="Remove domain"
           successMessage="Domain removed"
           onConfirm={async () => {
@@ -431,7 +431,7 @@ export function DomainRow({
               <DialogDescription>
                 Routing for{" "}
                 <span className="font-medium">{domain.serviceName}</span>.
-                Changes apply instantly when the service is running,
+                Changes apply instantly when the app is running,
                 otherwise on the next deploy.
               </DialogDescription>
             </DialogHeader>
@@ -441,7 +441,7 @@ export function DomainRow({
                   htmlFor={`edit-name-${domain.id}`}
                   info={
                     <>
-                      The fully-qualified hostname that routes to this service,
+                      The fully-qualified hostname that routes to this app,
                       e.g. <code className="font-mono">app.example.com</code>.
                       Its DNS A record must point at this server for the domain
                       to verify.

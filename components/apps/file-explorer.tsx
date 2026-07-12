@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
-import { TextEditor } from "@/components/services/text-editor";
+import { TextEditor } from "@/components/apps/text-editor";
 import {
   Dialog,
   DialogContent,
@@ -33,9 +33,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 /**
- * Browse and edit a service's on-disk files directory
+ * Browse and edit an app's on-disk files directory
  * (`/data/stacks/files/<slug>`). Everything routes through the GraphQL
- * `serviceFile*` operations — all of them sandboxed and `manage_files`-gated on
+ * `appFile*` operations — all of them sandboxed and `manage_files`-gated on
  * the server — so the client never holds a host path, only a relative one.
  *
  * State is dir-listing + an optionally-open file. Navigating folders refetches
@@ -62,37 +62,37 @@ interface OpenFile {
 }
 
 const LIST = `
-  query ServiceFiles($serviceId: String!, $path: String) {
-    serviceFiles(serviceId: $serviceId, path: $path) {
+  query AppFiles($appId: String!, $path: String) {
+    appFiles(appId: $appId, path: $path) {
       path name kind size modifiedAt
     }
   }
 `;
 const READ = `
-  query ServiceFile($serviceId: String!, $path: String!) {
-    serviceFile(serviceId: $serviceId, path: $path) { path text size reason }
+  query AppFile($appId: String!, $path: String!) {
+    appFile(appId: $appId, path: $path) { path text size reason }
   }
 `;
 const WRITE = `
-  mutation WriteServiceFile($serviceId: String!, $path: String!, $content: String!) {
-    writeServiceFile(serviceId: $serviceId, path: $path, content: $content) {
+  mutation WriteAppFile($appId: String!, $path: String!, $content: String!) {
+    writeAppFile(appId: $appId, path: $path, content: $content) {
       path name kind size modifiedAt
     }
   }
 `;
 const UPLOAD = `
-  mutation UploadServiceFile($serviceId: String!, $path: String!, $base64: String!) {
-    uploadServiceFile(serviceId: $serviceId, path: $path, base64: $base64) { path }
+  mutation UploadAppFile($appId: String!, $path: String!, $base64: String!) {
+    uploadAppFile(appId: $appId, path: $path, base64: $base64) { path }
   }
 `;
 const MKDIR = `
-  mutation CreateServiceDir($serviceId: String!, $path: String!) {
-    createServiceDir(serviceId: $serviceId, path: $path) { path }
+  mutation CreateAppDir($appId: String!, $path: String!) {
+    createAppDir(appId: $appId, path: $path) { path }
   }
 `;
 const DELETE = `
-  mutation DeleteServiceFile($serviceId: String!, $path: String!) {
-    deleteServiceFile(serviceId: $serviceId, path: $path)
+  mutation DeleteAppFile($appId: String!, $path: String!) {
+    deleteAppFile(appId: $appId, path: $path)
   }
 `;
 
@@ -111,7 +111,7 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : "Something went wrong";
 }
 
-export function FileExplorer({ serviceId }: { serviceId: string }) {
+export function FileExplorer({ appId }: { appId: string }) {
   const [dir, setDir] = React.useState("");
   const [entries, setEntries] = React.useState<FileEntry[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -129,10 +129,10 @@ export function FileExplorer({ serviceId }: { serviceId: string }) {
   // the effect body — so this stays clear of cascading-render lint.
   const loadDir = React.useCallback(
     (path: string, cancelled?: () => boolean) =>
-      gql<{ serviceFiles: FileEntry[] }>(LIST, { serviceId, path })
+      gql<{ appFiles: FileEntry[] }>(LIST, { appId, path })
         .then((data) => {
           if (cancelled?.()) return;
-          setEntries(data.serviceFiles);
+          setEntries(data.appFiles);
           setLoading(false);
         })
         .catch((e) => {
@@ -140,7 +140,7 @@ export function FileExplorer({ serviceId }: { serviceId: string }) {
           toast.error(errMessage(e));
           setLoading(false);
         }),
-    [serviceId],
+    [appId],
   );
 
   React.useEffect(() => {
@@ -153,11 +153,11 @@ export function FileExplorer({ serviceId }: { serviceId: string }) {
 
   async function openFile(entry: FileEntry) {
     try {
-      const data = await gql<{ serviceFile: OpenFile }>(READ, {
-        serviceId,
+      const data = await gql<{ appFile: OpenFile }>(READ, {
+        appId,
         path: entry.path,
       });
-      const f = data.serviceFile;
+      const f = data.appFile;
       setOpen({ ...f, saved: f.text ?? "" });
       setDraft(f.text ?? "");
     } catch (e) {
@@ -169,7 +169,7 @@ export function FileExplorer({ serviceId }: { serviceId: string }) {
     if (!open) return;
     setSaving(true);
     try {
-      await gql(WRITE, { serviceId, path: open.path, content: draft });
+      await gql(WRITE, { appId, path: open.path, content: draft });
       setOpen({ ...open, text: draft, saved: draft });
       toast.success("Saved");
       loadDir(dir);
@@ -191,7 +191,7 @@ export function FileExplorer({ serviceId }: { serviceId: string }) {
       return;
     }
     try {
-      await gql(DELETE, { serviceId, path: entry.path });
+      await gql(DELETE, { appId, path: entry.path });
       if (open?.path === entry.path) setOpen(null);
       toast.success("Deleted");
       loadDir(dir);
@@ -206,9 +206,9 @@ export function FileExplorer({ serviceId }: { serviceId: string }) {
     const path = joinPath(dir, name);
     try {
       if (creating === "folder") {
-        await gql(MKDIR, { serviceId, path });
+        await gql(MKDIR, { appId, path });
       } else {
-        await gql(WRITE, { serviceId, path, content: "" });
+        await gql(WRITE, { appId, path, content: "" });
       }
       toast.success(creating === "folder" ? "Folder created" : "File created");
       setCreating(null);
@@ -233,7 +233,7 @@ export function FileExplorer({ serviceId }: { serviceId: string }) {
       }
       const base64 = btoa(binary);
       await gql(UPLOAD, {
-        serviceId,
+        appId,
         path: joinPath(dir, file.name),
         base64,
       });

@@ -23,7 +23,7 @@ import {
   type CompletionSource,
 } from "@codemirror/autocomplete";
 import { lintCompose, type LintDiagnostic } from "@/lib/deploy/compose-lint";
-import { imageCompletionSource } from "@/components/services/compose-image-complete";
+import { imageCompletionSource } from "@/components/apps/compose-image-complete";
 
 /**
  * CodeMirror-based docker-compose editor with live, client-side linting.

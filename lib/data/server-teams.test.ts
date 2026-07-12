@@ -9,10 +9,10 @@ import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
-  seedService,
+  seedApp,
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
-} from "./service-graph-test-helpers";
+} from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
 import {
   listServersForTeam,
@@ -101,7 +101,7 @@ test("setServerTeams dedupes team ids", async () => {
 });
 
 test("restricting is BLOCKED when an excluded team has a PROJECT on the server", async () => {
-  await seedService(db, { id: "prj_b", teamId: TEAM_B, serverId: SERVER_1 });
+  await seedApp(db, { id: "prj_b", teamId: TEAM_B, serverId: SERVER_1 });
 
   await assert.rejects(
     asUser1(() =>
@@ -125,7 +125,7 @@ test("restricting is BLOCKED when an excluded team has a DATABASE on the server"
 });
 
 test("restricting SUCCEEDS when the team with workloads stays included", async () => {
-  await seedService(db, { id: "prj_b", teamId: TEAM_B, serverId: SERVER_1 });
+  await seedApp(db, { id: "prj_b", teamId: TEAM_B, serverId: SERVER_1 });
 
   await asUser1(() =>
     setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A, TEAM_B] }),

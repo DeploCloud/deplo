@@ -152,8 +152,8 @@ export function Sidebar({
               ref={searchRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search services…"
-              aria-label="Search services"
+              placeholder="Search apps…"
+              aria-label="Search apps"
               className="h-9 pl-8 pr-7"
             />
             <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-muted px-1.5 text-[10px] text-muted-foreground lg:inline">

@@ -7,7 +7,7 @@ import { getDb } from "../db/client";
 import {
   projects as projectsTable,
   folders as foldersTable,
-  services as servicesTable,
+  apps as appsTable,
   environments as environmentsTable,
   teamProjectOrder,
 } from "../db/schema/control-plane";
@@ -24,13 +24,13 @@ import {
 import { recordActivity } from "./activity";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
-import type { Project, ServiceStatus } from "../types";
+import type { Project, AppStatus } from "../types";
 
 /**
  * The Project data layer (ADR-0008, remodeled per ADR-0009). A Project is a
  * top-level, team-scoped ADVANCED FOLDER whose contents live per Environment:
- * a service inside a project belongs to exactly one of its environments
- * (`services.environment_id`; `project_id` is the derived project link).
+ * an app inside a project belongs to exactly one of its environments
+ * (`apps.environment_id`; `project_id` is the derived project link).
  * Folders never live inside projects. This module mirrors `folders.ts`:
  * team-wide ordering (`team_project_order`), a `deploy`-gated CRUD, and a
  * delete that RE-PARENTS contents to the top level rather than cascading.
@@ -46,10 +46,10 @@ export interface ProjectSummary extends Project {
    *  Legacy — the ADR-0009 model no longer files folders into projects; kept for
    *  rows written before the pivot. */
   folderCount: number;
-  /** Live count of services in this project, across all environments —
-   *  including services living anywhere inside a legacy folder-in-project
+  /** Live count of apps in this project, across all environments —
+   *  including apps living anywhere inside a legacy folder-in-project
    *  subtree (pre-ADR-0009 rows), which carry no `project_id` of their own. */
-  serviceCount: number;
+  appCount: number;
   /** Live count of this project's environments. */
   environmentCount: number;
 }
@@ -111,12 +111,12 @@ async function projectOrderRank(teamId: string): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.projectId, r.position] as const));
 }
 
-/** Live folder/service/environment counts per container, in one query each. */
+/** Live folder/app/environment counts per container, in one query each. */
 async function counts(
   teamId: string,
 ): Promise<{
   folders: Map<string, number>;
-  services: Map<string, number>;
+  apps: Map<string, number>;
   environments: Map<string, number>;
 }> {
   const folderRows = await getDb()
@@ -130,10 +130,10 @@ async function counts(
   const folders = new Map<string, number>();
   for (const r of folderRows)
     if (r.projectId) folders.set(r.projectId, (folders.get(r.projectId) ?? 0) + 1);
-  // A service counts toward a project either DIRECTLY (its own `project_id` —
+  // An app counts toward a project either DIRECTLY (its own `project_id` —
   // the ADR-0009 per-environment membership) or through a LEGACY
-  // folder-in-project row: filing into a folder clears the service's own
-  // project link, so a service anywhere inside a project-filed folder subtree
+  // folder-in-project row: filing into a folder clears the app's own
+  // project link, so an app anywhere inside a project-filed folder subtree
   // is credited by walking its folder's parent chain to the nearest
   // project-linked ancestor (cycle-safe, like the folder tree walks).
   const folderById = new Map(folderRows.map((r) => [r.id, r] as const));
@@ -147,16 +147,16 @@ async function counts(
     }
     return null;
   };
-  const services = new Map<string, number>();
+  const apps = new Map<string, number>();
   for (const r of await getDb()
     .select({
-      projectId: servicesTable.projectId,
-      folderId: servicesTable.folderId,
+      projectId: appsTable.projectId,
+      folderId: appsTable.folderId,
     })
-    .from(servicesTable)
-    .where(eq(servicesTable.teamId, teamId))) {
+    .from(appsTable)
+    .where(eq(appsTable.teamId, teamId))) {
     const pid = r.projectId ?? (r.folderId ? projectOfFolder(r.folderId) : null);
-    if (pid) services.set(pid, (services.get(pid) ?? 0) + 1);
+    if (pid) apps.set(pid, (apps.get(pid) ?? 0) + 1);
   }
   // Environments are project-scoped (no team column); count via the join.
   const environments = new Map<string, number>();
@@ -166,26 +166,26 @@ async function counts(
     .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
     .where(eq(projectsTable.teamId, teamId)))
     environments.set(r.projectId, (environments.get(r.projectId) ?? 0) + 1);
-  return { folders, services, environments };
+  return { folders, apps, environments };
 }
 
 function summarize(
   p: Project,
   folders: Map<string, number>,
-  services: Map<string, number>,
+  apps: Map<string, number>,
   environments: Map<string, number>,
 ): ProjectSummary {
   return {
     ...p,
     folderCount: folders.get(p.id) ?? 0,
-    serviceCount: services.get(p.id) ?? 0,
+    appCount: apps.get(p.id) ?? 0,
     environmentCount: environments.get(p.id) ?? 0,
   };
 }
 
 /**
  * Containers in the active team, honouring the team-wide manual order and
- * falling back to newest-first — the same contract as `listFolders`/`listServices`.
+ * falling back to newest-first — the same contract as `listFolders`/`listApps`.
  */
 export const listProjects = cache(async function listProjects(): Promise<
   ProjectSummary[]
@@ -196,10 +196,10 @@ export const listProjects = cache(async function listProjects(): Promise<
     .from(projectsTable)
     .where(eq(projectsTable.teamId, teamId));
   const rank = await projectOrderRank(teamId);
-  const { folders, services, environments } = await counts(teamId);
+  const { folders, apps, environments } = await counts(teamId);
   return rows
     .map(assembleProject)
-    .map((p) => summarize(p, folders, services, environments))
+    .map((p) => summarize(p, folders, apps, environments))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
       const rb = rank.get(b.id) ?? Infinity;
@@ -208,10 +208,10 @@ export const listProjects = cache(async function listProjects(): Promise<
     });
 });
 
-/** A container's directly-contained folders and services (for the detail page). */
+/** A container's directly-contained folders and apps (for the detail page). */
 export async function projectContents(projectId: string): Promise<{
   folders: { id: string; name: string; color: string | null }[];
-  services: { id: string; name: string; slug: string; status: ServiceStatus }[];
+  apps: { id: string; name: string; slug: string; status: AppStatus }[];
 }> {
   const teamId = await requireActiveTeamId();
   const folders = (
@@ -220,23 +220,23 @@ export async function projectContents(projectId: string): Promise<{
       .from(foldersTable)
       .where(and(eq(foldersTable.teamId, teamId), eq(foldersTable.projectId, projectId)))
   ).map((f) => ({ id: f.id, name: f.name, color: f.color ?? null }));
-  const services = (
+  const apps = (
     await getDb()
       .select({
-        id: servicesTable.id,
-        name: servicesTable.name,
-        slug: servicesTable.slug,
-        status: servicesTable.status,
+        id: appsTable.id,
+        name: appsTable.name,
+        slug: appsTable.slug,
+        status: appsTable.status,
       })
-      .from(servicesTable)
-      .where(and(eq(servicesTable.teamId, teamId), eq(servicesTable.projectId, projectId)))
+      .from(appsTable)
+      .where(and(eq(appsTable.teamId, teamId), eq(appsTable.projectId, projectId)))
   ).map((s) => ({
     id: s.id,
     name: s.name,
     slug: s.slug,
-    status: s.status as ServiceStatus,
+    status: s.status as AppStatus,
   }));
-  return { folders, services };
+  return { folders, apps };
 }
 
 /** A single container by its team-scoped slug (active team), or null. */
@@ -264,7 +264,7 @@ export async function createProject(
   name: string,
   color?: string | null,
 ): Promise<ProjectSummary> {
-  // Same gate as creating a folder or a service: `deploy`.
+  // Same gate as creating a folder or an app: `deploy`.
   const { teamId, userId } = await requireCapability("deploy");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const clean = cleanName(name);
@@ -306,8 +306,8 @@ export async function createProject(
       .values(defaultEnvironmentRows(project.id, project.createdAt));
   });
   await recordActivity("project", `Created project ${project.name}`, userName, null, teamId);
-  const { folders, services, environments } = await counts(teamId);
-  return summarize(project, folders, services, environments);
+  const { folders, apps, environments } = await counts(teamId);
+  return summarize(project, folders, apps, environments);
 }
 
 export async function renameProject(id: string, name: string): Promise<void> {
@@ -361,7 +361,7 @@ export async function setProjectColor(
 }
 
 /**
- * Delete a container. Nothing inside is deleted: its folders and services fall
+ * Delete a container. Nothing inside is deleted: its folders and apps fall
  * back to the team top level (`project_id = NULL`, the FK default). The
  * `team_project_order` row CASCADEs on the delete.
  */
@@ -381,9 +381,9 @@ export async function deleteProject(id: string): Promise<void> {
       .set({ projectId: null })
       .where(and(eq(foldersTable.teamId, teamId), eq(foldersTable.projectId, id)));
     await tx
-      .update(servicesTable)
+      .update(appsTable)
       .set({ projectId: null, environmentId: null })
-      .where(and(eq(servicesTable.teamId, teamId), eq(servicesTable.projectId, id)));
+      .where(and(eq(appsTable.teamId, teamId), eq(appsTable.projectId, id)));
     await tx.delete(projectsTable).where(eq(projectsTable.id, id));
     return p.name;
   });
@@ -438,25 +438,25 @@ async function defaultEnvironmentFor(
 }
 
 /**
- * Move a service into a project — landing in the project's DEFAULT environment
+ * Move an app into a project — landing in the project's DEFAULT environment
  * (ADR-0009: a project's contents live per environment) — or back to the top
  * level (`null`). Entering a project also leaves any folder (one home only).
  * No-op when already in that project.
  */
-export async function moveServiceToProject(
-  serviceId: string,
+export async function moveAppToProject(
+  appId: string,
   projectId: string | null,
 ): Promise<void> {
   const { teamId } = await requireCapability("deploy");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const s = (
     await getDb()
-      .select({ id: servicesTable.id, name: servicesTable.name, projectId: servicesTable.projectId })
-      .from(servicesTable)
-      .where(and(eq(servicesTable.id, serviceId), eq(servicesTable.teamId, teamId)))
+      .select({ id: appsTable.id, name: appsTable.name, projectId: appsTable.projectId })
+      .from(appsTable)
+      .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
       .limit(1)
   )[0];
-  if (!s) throw new Error("Service not found");
+  if (!s) throw new Error("App not found");
   if ((s.projectId ?? null) === projectId) return;
   let msg: string;
   let environmentId: string | null = null;
@@ -478,24 +478,24 @@ export async function moveServiceToProject(
     msg = `Moved ${s.name} out of its project`;
   }
   await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({
       projectId,
       environmentId,
       ...(projectId ? { folderId: null } : {}),
       updatedAt: nowIso(),
     })
-    .where(eq(servicesTable.id, serviceId));
-  await recordActivity("project", msg, userName, serviceId, teamId);
+    .where(eq(appsTable.id, appId));
+  await recordActivity("project", msg, userName, appId, teamId);
 }
 
 /**
- * Move a service into a SPECIFIC environment of a project (the dropdown's
- * "Move to environment" action). The service's project follows the environment;
+ * Move an app into a SPECIFIC environment of a project (the dropdown's
+ * "Move to environment" action). The app's project follows the environment;
  * entering also leaves any folder. No-op when already there.
  */
-export async function moveServiceToEnvironment(
-  serviceId: string,
+export async function moveAppToEnvironment(
+  appId: string,
   environmentId: string,
 ): Promise<void> {
   const { teamId } = await requireCapability("deploy");
@@ -503,15 +503,15 @@ export async function moveServiceToEnvironment(
   const s = (
     await getDb()
       .select({
-        id: servicesTable.id,
-        name: servicesTable.name,
-        environmentId: servicesTable.environmentId,
+        id: appsTable.id,
+        name: appsTable.name,
+        environmentId: appsTable.environmentId,
       })
-      .from(servicesTable)
-      .where(and(eq(servicesTable.id, serviceId), eq(servicesTable.teamId, teamId)))
+      .from(appsTable)
+      .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
       .limit(1)
   )[0];
-  if (!s) throw new Error("Service not found");
+  if (!s) throw new Error("App not found");
   if ((s.environmentId ?? null) === environmentId) return;
   const env = (
     await getDb()
@@ -529,19 +529,19 @@ export async function moveServiceToEnvironment(
   )[0];
   if (!env || env.teamId !== teamId) throw new Error("Environment not found");
   await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({
       projectId: env.projectId,
       environmentId: env.id,
       folderId: null,
       updatedAt: nowIso(),
     })
-    .where(eq(servicesTable.id, serviceId));
+    .where(eq(appsTable.id, appId));
   await recordActivity(
     "project",
     `Moved ${s.name} to ${env.name} in project ${env.projectName}`,
     userName,
-    serviceId,
+    appId,
     teamId,
   );
 }

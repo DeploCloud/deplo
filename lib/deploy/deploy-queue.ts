@@ -6,7 +6,7 @@ import { getDb } from "../db/client";
 import {
   deployments as deploymentsTable,
   servers as serversTable,
-  services as servicesTable,
+  apps as appsTable,
 } from "../db/schema/control-plane";
 import { runDeploymentGuarded } from "./build";
 
@@ -18,15 +18,15 @@ import { runDeploymentGuarded } from "./build";
  *  - Deploys are serialized PER OWNING SERVER: each server runs at most
  *    `servers.deploy_concurrency` deploys at once (default 1). Deploys on
  *    DIFFERENT servers run in parallel.
- *  - Two deploys of the SAME service never overlap, even when a server's
- *    concurrency is > 1 (a service's stack/container is single-writer).
+ *  - Two deploys of the SAME app never overlap, even when a server's
+ *    concurrency is > 1 (an app's stack/container is single-writer).
  *
  * HOW IT WORKS
  *  The `deployments` row with `status = 'queued'` IS the durable queue; this
  *  module is only the in-process dispatcher. A freshly-inserted queued deploy is
  *  handed here via {@link enqueueDeployment}, which wakes its server's "lane". A
  *  lane is an in-memory semaphore (Coolify's `next_queuable` count) plus a
- *  same-service exclusion set; a single coalesced pump per server claims the
+ *  same-app exclusion set; a single coalesced pump per server claims the
  *  oldest eligible queued row and runs it, re-draining after each finish
  *  (Coolify's `queue_next_deployment`). The atomic `queued -> building` hand-off
  *  is the conditional UPDATE already inside `runDeployment` — so a cancel that
@@ -45,8 +45,8 @@ import { runDeploymentGuarded } from "./build";
 interface ServerLane {
   /** depIds this process currently has running on the server (size <= concurrency). */
   running: Set<string>;
-  /** serviceIds with a running deploy — the same-service exclusion set. */
-  busyServices: Set<string>;
+  /** appIds with a running deploy — the same-app exclusion set. */
+  busyApps: Set<string>;
   /** A pump loop is currently executing for this server. */
   pumping: boolean;
   /** A wake-up arrived (enqueue / finish) — the pump makes another pass. */
@@ -60,7 +60,7 @@ const lanes: Map<string, ServerLane> = (g[REGISTRY_KEY] ??= new Map());
 function laneFor(serverId: string): ServerLane {
   let lane = lanes.get(serverId);
   if (!lane) {
-    lane = { running: new Set(), busyServices: new Set(), pumping: false, dirty: false };
+    lane = { running: new Set(), busyApps: new Set(), pumping: false, dirty: false };
     lanes.set(serverId, lane);
   }
   return lane;
@@ -91,17 +91,17 @@ async function concurrencyFor(serverId: string): Promise<number> {
 }
 
 /**
- * The next deploy to run on a server: the OLDEST queued row whose service isn't
+ * The next deploy to run on a server: the OLDEST queued row whose app isn't
  * already busy (in-memory exclusion). Scans the small queued backlog for the
  * server (index-backed, partial `deployments_queued_server_idx`) oldest-first —
  * FIFO by `(createdAt, seq)`, the same total order the deployments list uses.
  */
 async function pickNext(
   serverId: string,
-  busyServices: Set<string>,
-): Promise<{ id: string; serviceId: string } | null> {
+  busyApps: Set<string>,
+): Promise<{ id: string; appId: string } | null> {
   const rows = await getDb()
-    .select({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId })
+    .select({ id: deploymentsTable.id, appId: deploymentsTable.appId })
     .from(deploymentsTable)
     .where(
       and(
@@ -111,13 +111,13 @@ async function pickNext(
     )
     .orderBy(asc(deploymentsTable.createdAt), asc(deploymentsTable.seq));
   for (const r of rows) {
-    if (!busyServices.has(r.serviceId)) return r;
+    if (!busyApps.has(r.appId)) return r;
   }
   return null;
 }
 
 /** Run one reserved deploy, freeing its slot + re-draining the server on finish. */
-function startOne(serverId: string, depId: string, serviceId: string): void {
+function startOne(serverId: string, depId: string, appId: string): void {
   void invokeRunner(depId)
     // runDeploymentGuarded never rejects; a fake runner might. Swallow so the
     // cleanup + re-drain below always run and no slot is leaked.
@@ -127,7 +127,7 @@ function startOne(serverId: string, depId: string, serviceId: string): void {
     .finally(() => {
       const lane = laneFor(serverId);
       lane.running.delete(depId);
-      lane.busyServices.delete(serviceId);
+      lane.busyApps.delete(appId);
       // A slot freed — try to start whatever is next on this server (Coolify's
       // queue_next_deployment, called from transitionToStatus on every finish).
       scheduleServer(serverId);
@@ -162,13 +162,13 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
       lane.dirty = false;
       const concurrency = await concurrencyFor(serverId);
       while (lane.running.size < concurrency) {
-        const next = await pickNext(serverId, lane.busyServices);
+        const next = await pickNext(serverId, lane.busyApps);
         if (!next) break;
         // Reserve the slot in memory BEFORE the runner claims queued->building,
-        // so a re-drain in the same tick can't pick the same service twice.
+        // so a re-drain in the same tick can't pick the same app twice.
         lane.running.add(next.id);
-        lane.busyServices.add(next.serviceId);
-        startOne(serverId, next.id, next.serviceId);
+        lane.busyApps.add(next.appId);
+        startOne(serverId, next.id, next.appId);
       }
     }
   } finally {
@@ -183,14 +183,14 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
 /**
  * Enqueue a freshly-inserted `queued` deployment for its owning server and wake
  * that server's lane. Returns immediately — the caller ({@link ../deploy/build}'s
- * `startDeployment`) never awaits the build. The `serviceId` is unused by the
+ * `startDeployment`) never awaits the build. The `appId` is unused by the
  * dispatch (the pump re-reads eligibility from the DB) but is part of the contract
- * so the call site reads as "enqueue THIS deploy of THIS service on THAT server".
+ * so the call site reads as "enqueue THIS deploy of THIS app on THAT server".
  */
 export function enqueueDeployment(input: {
   depId: string;
   serverId: string;
-  serviceId: string;
+  appId: string;
 }): void {
   scheduleServer(input.serverId);
 }
@@ -199,23 +199,23 @@ export function enqueueDeployment(input: {
  * Boot entry (called from `reconcileInFlightDeployments` after orphaned `building`
  * rows are errored): re-drain every server that still has a `queued` backlog, so a
  * restart mid-queue never discards work. Defensively backfills any queued row
- * missing its denormalized `server_id` from the owning service, so none is
+ * missing its denormalized `server_id` from the owning app, so none is
  * stranded (the migration backfilled existing rows and every insert sets it; this
  * only catches a straggler).
  */
 export async function startDeployQueue(): Promise<void> {
   const db = getDb();
   const orphans = await db
-    .select({ id: deploymentsTable.id, serviceId: deploymentsTable.serviceId })
+    .select({ id: deploymentsTable.id, appId: deploymentsTable.appId })
     .from(deploymentsTable)
     .where(
       and(eq(deploymentsTable.status, "queued"), isNull(deploymentsTable.serverId)),
     );
   for (const o of orphans) {
     const svc = await db
-      .select({ serverId: servicesTable.serverId })
-      .from(servicesTable)
-      .where(eq(servicesTable.id, o.serviceId))
+      .select({ serverId: appsTable.serverId })
+      .from(appsTable)
+      .where(eq(appsTable.id, o.appId))
       .limit(1);
     if (svc[0]?.serverId) {
       await db
@@ -251,10 +251,10 @@ export function __resetQueueForTest(): void {
 /** Snapshot a server lane's in-flight accounting (test assertions only). */
 export function __laneSnapshotForTest(
   serverId: string,
-): { running: string[]; busyServices: string[] } {
+): { running: string[]; busyApps: string[] } {
   const lane = lanes.get(serverId);
   return {
     running: lane ? [...lane.running] : [],
-    busyServices: lane ? [...lane.busyServices] : [],
+    busyApps: lane ? [...lane.busyApps] : [],
   };
 }

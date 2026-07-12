@@ -26,7 +26,7 @@ import type {
  * Shared seeding for the infra / integrations cut-set (e) data-layer tests
  * (relational-store PLAN Step 6). `servers`, `github_apps`(+`github_installation`),
  * `dev_ssh_user`, and `activities` are RELATIONAL: the data layer reads pglite. So
- * this seeds those tables directly, the same way `service-graph-test-helpers` seeds
+ * this seeds those tables directly, the same way `app-graph-test-helpers` seeds
  * the project graph.
  *
  * Pair with `seedIdentity` (team FKs) and, for dev_ssh_user, a seeded project
@@ -124,11 +124,11 @@ export async function seedGithubInstallation(
 /** Insert a {@link DevSshUser} of a seeded project. */
 export async function seedDevSshUser(
   db: TestDb,
-  opts: Partial<DevSshUser> & { id: string; serviceId: string; username: string },
+  opts: Partial<DevSshUser> & { id: string; appId: string; username: string },
 ): Promise<DevSshUser> {
   const u: DevSshUser = {
     id: opts.id,
-    serviceId: opts.serviceId,
+    appId: opts.appId,
     username: opts.username,
     publicKey: opts.publicKey ?? "ssh-ed25519 AAAA",
     passwordEnc: opts.passwordEnc ?? null,
@@ -149,7 +149,7 @@ export async function seedActivity(
     type: (opts.type ?? "service") as ActivityType,
     message: opts.message ?? "did a thing",
     actor: opts.actor ?? "owner",
-    serviceId: opts.serviceId ?? null,
+    appId: opts.appId ?? null,
     createdAt: opts.createdAt ?? T0,
   };
   await db.insert(activitiesTable).values(activityToRow(a));

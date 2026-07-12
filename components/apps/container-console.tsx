@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ConsoleInstance } from "@/lib/data/console";
-import { ContainerAttach } from "@/components/services/container-attach";
+import { ContainerAttach } from "@/components/apps/container-attach";
 import { cn } from "@/lib/utils";
 
 interface Line {
@@ -25,12 +25,12 @@ const DISTROLESS_NOTE =
   "! No shell in this container (distroless). Commands run as raw exec: first word is the binary, the rest are literal arguments — no pipes, globbing, redirects, or shell builtins.";
 
 export function ContainerConsole({
-  serviceId,
+  appId,
   containerName,
   image,
   instances,
 }: {
-  serviceId: string;
+  appId: string;
   containerName: string;
   image: string;
   instances: ConsoleInstance[];
@@ -101,7 +101,7 @@ export function ContainerConsole({
     let live = true;
     gqlAction(
       `query($input: ShellLabelInput!){ shellLabel(input: $input) }`,
-      { input: { serviceId, containerName } },
+      { input: { appId, containerName } },
       (d: { shellLabel: string | null }) => ({ shell: d.shellLabel }),
     ).then((res) => {
       if (!live || !res.ok || !res.data?.shell) return;
@@ -119,7 +119,7 @@ export function ContainerConsole({
     return () => {
       live = false;
     };
-  }, [serviceId, containerName]);
+  }, [appId, containerName]);
   const [value, setValue] = React.useState("");
   const [pending, startTransition] = React.useTransition();
   // Whether the exec prompt is open. This console is a `docker exec`
@@ -174,7 +174,7 @@ export function ContainerConsole({
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($input: ExecConsoleInput!){ execConsole(input: $input) { output detach } }`,
-        { input: { serviceId, command, containerName: active.name } },
+        { input: { appId, command, containerName: active.name } },
         (d: { execConsole: { output: string; detach?: boolean } }) =>
           d.execConsole,
       );
@@ -284,7 +284,7 @@ export function ContainerConsole({
       {mode === "attach" ? (
         <ContainerAttach
           key={active.name}
-          serviceId={serviceId}
+          appId={appId}
           containerName={active.name}
           openStdin={active.openStdin}
           tty={active.tty}

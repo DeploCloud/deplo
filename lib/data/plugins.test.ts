@@ -5,21 +5,21 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { installedApps as installedAppsTable } from "../db/schema/control-plane";
+import { installedPlugins as installedPluginsTable } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./leaf-test-helpers";
-import { appRuntimeStatus, startApp, stopApp } from "./apps";
+import { pluginRuntimeStatus, startPlugin, stopPlugin } from "./plugins";
 
 /**
  * Data-layer tests for `installed_apps` against pglite (PLAN Step 2). These
  * exercise the async Drizzle READ + team-scoping path. The install/uninstall
- * mutations and `listInstalledApps` go through the app runtime (Docker) and
+ * mutations and `listInstalledPlugins` go through the app runtime (Docker) and
  * `headers()` (a request scope) so they aren't unit-testable here — that was true
  * of the JSONB version too. The migration-relevant change (the team-scoped
- * `findApp` query + the "App not installed" guard) is fully covered:
- *  - `appRuntimeStatus` resolves an existing row (status "error" — no Docker — is
+ * `findPlugin` query + the "App not installed" guard) is fully covered:
+ *  - `pluginRuntimeStatus` resolves an existing row (status "error" — no Docker — is
  *    the honest answer when the daemon is unreachable),
- *  - `startApp`/`stopApp` reject a row that isn't in the caller's active team
+ *  - `startPlugin`/`stopPlugin` reject a row that isn't in the caller's active team
  *    BEFORE touching the runtime (the team-scoped find returns null).
  */
 
@@ -38,7 +38,7 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(
-    `truncate table installed_apps, users, teams restart identity cascade;`,
+    `truncate table installed_plugins, users, teams restart identity cascade;`,
   );
   await seedIdentity(db, {
     users: [
@@ -52,7 +52,7 @@ const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
 async function seedApp(id: string, teamId: string, slug: string): Promise<void> {
-  await db.insert(installedAppsTable).values({
+  await db.insert(installedPluginsTable).values({
     id,
     teamId,
     catalogId: "mcp",
@@ -62,25 +62,25 @@ async function seedApp(id: string, teamId: string, slug: string): Promise<void> 
   });
 }
 
-test("appRuntimeStatus reads an existing app in the active team (error without Docker)", async () => {
+test("pluginRuntimeStatus reads an existing app in the active team (error without Docker)", async () => {
   await seedApp("app_1", TEAM_A, "mcp__alpha");
   await asUser1(async () => {
-    assert.equal(await appRuntimeStatus("app_1"), "error");
+    assert.equal(await pluginRuntimeStatus("app_1"), "error");
   });
 });
 
-test("appRuntimeStatus rejects an app the active team does not own", async () => {
+test("pluginRuntimeStatus rejects an app the active team does not own", async () => {
   await seedApp("app_b", TEAM_B, "mcp__beta");
   await asUser1(async () => {
-    await assert.rejects(() => appRuntimeStatus("app_b"), /App not installed/);
+    await assert.rejects(() => pluginRuntimeStatus("app_b"), /App not installed/);
   });
 });
 
-test("startApp / stopApp reject a cross-team app before touching the runtime", async () => {
+test("startPlugin / stopPlugin reject a cross-team app before touching the runtime", async () => {
   await seedApp("app_b", TEAM_B, "mcp__beta");
   await asUser1(async () => {
     // Team-scoped find returns null → "App not installed" before any docker call.
-    await assert.rejects(() => startApp("app_b"), /App not installed/);
-    await assert.rejects(() => stopApp("app_b"), /App not installed/);
+    await assert.rejects(() => startPlugin("app_b"), /App not installed/);
+    await assert.rejects(() => stopPlugin("app_b"), /App not installed/);
   });
 });

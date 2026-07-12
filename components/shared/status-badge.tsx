@@ -51,7 +51,7 @@ const COLORS: Record<string, string> = {
   failed: "bg-destructive",
   misconfigured: "bg-destructive",
   offline: "bg-destructive",
-  // neutral / grey — "off, but healthy". "idle" is a service the user stopped: it
+  // neutral / grey — "off, but healthy". "idle" is an app the user stopped: it
   // reads as a calm "Stopped", deliberately distinct from the red error states so
   // a stopped container is never mistaken for a crashed one.
   idle: "bg-muted-foreground",
@@ -118,8 +118,8 @@ export function StatusDot({
 }
 
 /**
- * Friendlier labels for a few raw status keys. Only the service-lifecycle states
- * are remapped — a user-stopped service reads "Stopped" (not "Idle") and a
+ * Friendlier labels for a few raw status keys. Only the app-lifecycle states
+ * are remapped — a user-stopped app reads "Stopped" (not "Idle") and a
  * running one "Running" (not "Active"); every other status falls back to its
  * capitalized key.
  */

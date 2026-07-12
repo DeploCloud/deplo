@@ -9,7 +9,7 @@ export interface SettingsServer {
 }
 
 /**
- * Heads a service-settings page (General, Deployment, Storage, Access) with the
+ * Heads an app-settings page (General, Deployment, Storage, Access) with the
  * section's icon and a hairline. Now that each settings section is its own
  * dedicated page, this reuses the exact chrome the old single-scroll page put
  * above each group so the pages keep a consistent, anchored heading.

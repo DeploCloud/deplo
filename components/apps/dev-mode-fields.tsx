@@ -173,12 +173,12 @@ function SectionField({
 }
 
 export function DevModeFields({
-  serviceId,
+  appId,
   host,
   dev,
   sshUsers,
 }: {
-  serviceId: string;
+  appId: string;
   /** The SSH host users connect to (server IP / hostname). */
   host: string;
   dev: DevInfoProps;
@@ -218,8 +218,8 @@ export function DevModeFields({
     let cancelled = false;
     (async () => {
       const res = await gqlAction(
-        `query($serviceId: String!) { tunnel(serviceId: $serviceId) { running connected loginUrl loginCode tunnelUrl } }`,
-        { serviceId },
+        `query($appId: String!) { tunnel(appId: $appId) { running connected loginUrl loginCode tunnelUrl } }`,
+        { appId },
         (d: { tunnel: VscodeTunnelInfo | null }) => d.tunnel,
       );
       if (cancelled) return;
@@ -240,8 +240,8 @@ export function DevModeFields({
     setTunnelBusy(true);
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($serviceId: String!) { startTunnel(serviceId: $serviceId) { running connected loginUrl loginCode tunnelUrl } }`,
-        { serviceId },
+        `mutation($appId: String!) { startTunnel(appId: $appId) { running connected loginUrl loginCode tunnelUrl } }`,
+        { appId },
         (d: { startTunnel: VscodeTunnelInfo | null }) => d.startTunnel,
       );
       setTunnelBusy(false);
@@ -261,8 +261,8 @@ export function DevModeFields({
     if (!tunnel?.loginUrl || tunnel?.connected) return;
     const t = setInterval(async () => {
       const res = await gqlAction(
-        `query($serviceId: String!) { tunnel(serviceId: $serviceId) { running connected loginUrl loginCode tunnelUrl } }`,
-        { serviceId },
+        `query($appId: String!) { tunnel(appId: $appId) { running connected loginUrl loginCode tunnelUrl } }`,
+        { appId },
         (d: { tunnel: VscodeTunnelInfo | null }) => d.tunnel,
       );
       if (res.ok && res.data) {
@@ -274,13 +274,13 @@ export function DevModeFields({
       }
     }, 4000);
     return () => clearInterval(t);
-  }, [tunnel?.loginUrl, tunnel?.connected, serviceId]);
+  }, [tunnel?.loginUrl, tunnel?.connected, appId]);
 
   function closeTunnel() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($serviceId: String!) { stopTunnel(serviceId: $serviceId) }`,
-        { serviceId },
+        `mutation($appId: String!) { stopTunnel(appId: $appId) }`,
+        { appId },
       );
       if (res.ok) {
         setTunnel(null);
@@ -305,7 +305,7 @@ export function DevModeFields({
           <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-6 py-10 text-center">
             <Code2 className="size-8 text-muted-foreground/60" />
             <p className="max-w-md text-sm text-muted-foreground">
-              Dev mode is available only for services with editable source
+              Dev mode is available only for apps with editable source
               (GitHub, Git, or Upload). This project deploys from a prebuilt
               image or a Compose stack, so there is no source tree to develop
               against.
@@ -321,12 +321,12 @@ export function DevModeFields({
     startTransition(async () => {
       const res = next
         ? await gqlAction(
-            `mutation($serviceId: String!) { enableDev(serviceId: $serviceId) { enabled } }`,
-            { serviceId },
+            `mutation($appId: String!) { enableDev(appId: $appId) { enabled } }`,
+            { appId },
           )
         : await gqlAction(
-            `mutation($serviceId: String!) { disableDev(serviceId: $serviceId) { enabled } }`,
-            { serviceId },
+            `mutation($appId: String!) { disableDev(appId: $appId) { enabled } }`,
+            { appId },
           );
       if (res.ok) {
         toast.success(next ? "Dev mode enabled" : "Dev mode disabled");
@@ -341,8 +341,8 @@ export function DevModeFields({
   function saveContainerConfig() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($serviceId: String!, $patch: UpdateDevInput!) { updateDev(serviceId: $serviceId, patch: $patch) { enabled } }`,
-        { serviceId, patch: { imageKind, image, port } },
+        `mutation($appId: String!, $patch: UpdateDevInput!) { updateDev(appId: $appId, patch: $patch) { enabled } }`,
+        { appId, patch: { imageKind, image, port } },
       );
       if (res.ok) {
         toast.success("Container settings saved");
@@ -354,8 +354,8 @@ export function DevModeFields({
   function savePreview() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($serviceId: String!, $patch: UpdateDevInput!) { updateDev(serviceId: $serviceId, patch: $patch) { enabled } }`,
-        { serviceId, patch: { previewEnabled } },
+        `mutation($appId: String!, $patch: UpdateDevInput!) { updateDev(appId: $appId, patch: $patch) { enabled } }`,
+        { appId, patch: { previewEnabled } },
       );
       if (res.ok) {
         toast.success("Preview settings saved");
@@ -367,8 +367,8 @@ export function DevModeFields({
   function start() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($serviceId: String!) { startDev(serviceId: $serviceId) { status } }`,
-        { serviceId },
+        `mutation($appId: String!) { startDev(appId: $appId) { status } }`,
+        { appId },
       );
       if (res.ok) {
         // A (re)start recreates the container, so any previous tunnel process is
@@ -384,8 +384,8 @@ export function DevModeFields({
   function stop() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($serviceId: String!) { stopDev(serviceId: $serviceId) { status } }`,
-        { serviceId },
+        `mutation($appId: String!) { stopDev(appId: $appId) { status } }`,
+        { appId },
       );
       if (res.ok) {
         // Stopping the container also stops the VS Code tunnel (server-side, via
@@ -400,8 +400,8 @@ export function DevModeFields({
 
   async function resetWorkspace() {
     const res = await gqlAction(
-      `mutation($serviceId: String!) { resetDevWorkspace(serviceId: $serviceId) { status } }`,
-      { serviceId },
+      `mutation($appId: String!) { resetDevWorkspace(appId: $appId) { status } }`,
+      { appId },
     );
     if (res.ok) {
       toast.success("Workspace reset from source");
@@ -412,8 +412,8 @@ export function DevModeFields({
 
   async function deployFromWorkspace() {
     const res = await gqlAction(
-      `mutation($serviceId: String!) { deployDevWorkspace(serviceId: $serviceId) }`,
-      { serviceId },
+      `mutation($appId: String!) { deployDevWorkspace(appId: $appId) }`,
+      { appId },
     );
     // Success toast only — ConfirmAction already toasts res.error on failure,
     // so we do NOT re-toast the error here (that would double it).
@@ -438,7 +438,7 @@ export function DevModeFields({
         `mutation($input: AddDevSshUserInput!) { addDevSshUser(input: $input) { id username publicKey hasPassword createdAt } }`,
         {
           input: {
-            serviceId,
+            appId,
             name: newName.trim(),
             publicKey: newKey.trim() || null,
             password: newPassword.trim() || null,
@@ -924,7 +924,7 @@ export function DevModeFields({
                 <Terminal className="size-4 text-muted-foreground" /> SSH Access
               </CardTitle>
               <CardDescription>
-                Each user reaches only this service&apos;s dev container,
+                Each user reaches only this app&apos;s dev container,
                 landing as <code className="font-mono">devuser</code> in{" "}
                 <code className="font-mono">/workspace</code>. A key is the
                 default; a password is an opt-in.

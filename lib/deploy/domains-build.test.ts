@@ -11,7 +11,7 @@ import {
 
 /**
  * The generated default-domain shape is
- * `<label>-<adjective>-<animal>-<hexip>.nip.io`: a service/slug prefix, two
+ * `<label>-<adjective>-<animal>-<hexip>.nip.io`: an app/slug prefix, two
  * human-readable random words, then the server IP in hex as the trailing label
  * (where nip.io expects the address). These tests pin the format and the
  * round-trip with nipEmbeddedIp; the random WORDS are exercised separately so

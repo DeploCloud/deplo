@@ -10,7 +10,7 @@ function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
 }
 
 export interface OverviewSelection {
-  /** Currently selected card ids (services + folders). */
+  /** Currently selected card ids (apps + folders). */
   selected: Set<string>;
   /** Attach to the marquee box element. The hook positions/sizes it imperatively
    *  during a drag (so a pointermove never re-renders the grid); it stays hidden

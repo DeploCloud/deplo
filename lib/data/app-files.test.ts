@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { normalizeRel, resolveWithinRoot } from "./service-files";
+import { normalizeRel, resolveWithinRoot } from "./app-files";
 
 /**
  * The file explorer hands user-supplied relative paths straight to the

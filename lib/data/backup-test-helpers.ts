@@ -19,13 +19,13 @@ import type {
   S3Destination,
 } from "../types";
 import { TEAM_A } from "./identity-test-helpers";
-import { SERVER_1 } from "./service-graph-test-helpers";
+import { SERVER_1 } from "./app-graph-test-helpers";
 
 /**
  * Shared seeding for the backups cut-set (d) data-layer + scheduler tests
  * (relational-store PLAN Step 5). The four collections are RELATIONAL: the data
  * layer + the scheduler read pglite. So this seeds `databases` / `s3_destination`
- * / `backups` / `backup_runs` directly, the same way `service-graph-test-helpers`
+ * / `backups` / `backup_runs` directly, the same way `app-graph-test-helpers`
  * seeds the project graph.
  *
  * Pair with `seedIdentity` (every row's `team_id` FK) + `seedServer` (a database's
@@ -117,7 +117,7 @@ export interface SeedBackupOpts {
   teamId?: string;
   destinationId: string;
   databaseId?: string | null;
-  serviceId?: string | null;
+  appId?: string | null;
   targetKind?: Backup["targetKind"];
   schedule?: string;
   enabled?: boolean;
@@ -136,7 +136,7 @@ export async function seedBackup(
     name: opts.id,
     targetKind,
     databaseId: targetKind === "database" ? (opts.databaseId ?? null) : null,
-    serviceId: targetKind === "service" ? (opts.serviceId ?? null) : null,
+    appId: targetKind === "app" ? (opts.appId ?? null) : null,
     destinationId: opts.destinationId,
     schedule: opts.schedule ?? "0 3 * * *",
     retentionDays: opts.retentionDays ?? 7,
@@ -155,7 +155,7 @@ export interface SeedRunOpts {
   backupId?: string | null;
   destinationId: string;
   databaseId?: string | null;
-  serviceId?: string | null;
+  appId?: string | null;
   targetKind?: BackupRun["targetKind"];
   status?: BackupRun["status"];
   objectKey?: string;
@@ -172,7 +172,7 @@ export async function seedRun(db: TestDb, opts: SeedRunOpts): Promise<string> {
     backupId: opts.backupId ?? null,
     targetKind,
     databaseId: targetKind === "database" ? (opts.databaseId ?? null) : null,
-    serviceId: targetKind === "service" ? (opts.serviceId ?? null) : null,
+    appId: targetKind === "app" ? (opts.appId ?? null) : null,
     destinationId: opts.destinationId,
     objectKey: opts.objectKey ?? `deplo/team_a/${targetKind}/t/${opts.id}.gz`,
     sizeBytes: 1024,

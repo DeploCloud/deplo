@@ -1,19 +1,19 @@
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
-import { getServiceBySlug } from "@/lib/data/services";
+import { getAppBySlug } from "@/lib/data/apps";
 import { hasCapability } from "@/lib/membership";
 import { listBackups, listBackupRuns } from "@/lib/data/backups";
 import { listS3 } from "@/lib/data/s3";
-import { ServiceBackups } from "@/components/services/service-backups";
+import { AppBackups } from "@/components/apps/app-backups";
 import { EmptyState } from "@/components/shared/empty-state";
 
 export const metadata = { title: "Backups" };
 
-export default async function ServiceBackupsPage(
-  props: PageProps<"/services/[slug]/backups">
+export default async function AppBackupsPage(
+  props: PageProps<"/apps/[slug]/backups">
 ) {
   const { slug } = await props.params;
-  const project = await getServiceBySlug(slug);
+  const project = await getAppBySlug(slug);
   if (!project) notFound();
 
   // Backup/restore are infra ops (overwrite-in-place); gate on manage_infra. The
@@ -23,25 +23,25 @@ export default async function ServiceBackupsPage(
       <EmptyState
         icon={Lock}
         title="No access to backups"
-        description="You don't have permission to manage this service's backups. Ask a team admin for the “Manage infrastructure” permission."
+        description="You don't have permission to manage this app's backups. Ask a team admin for the “Manage infrastructure” permission."
       />
     );
   }
 
   const [allBackups, runs, destinations] = await Promise.all([
     listBackups(),
-    listBackupRuns({ serviceId: project.id }),
+    listBackupRuns({ appId: project.id }),
     listS3(),
   ]);
 
-  // Only this service's schedules — listBackups returns the whole team's.
+  // Only this app's schedules — listBackups returns the whole team's.
   const schedules = allBackups.filter(
-    (b) => b.targetKind === "service" && b.serviceId === project.id,
+    (b) => b.targetKind === "app" && b.appId === project.id,
   );
 
   return (
-    <ServiceBackups
-      serviceId={project.id}
+    <AppBackups
+      appId={project.id}
       serviceName={project.name}
       schedules={schedules}
       runs={runs}

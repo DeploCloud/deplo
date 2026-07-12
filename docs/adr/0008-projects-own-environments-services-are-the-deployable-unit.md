@@ -1,5 +1,10 @@
 # ADR-0008: Projects own Environments; the deployable unit is a Service
 
+> **Terminology update (Jul 2026):** the deployable unit this ADR calls a **Service** is now
+> called an **App** (and the installable catalog feature formerly called an "App" is now a
+> **Plugin**). Read "Service" → "App" throughout. The decision is unchanged; only the word moved.
+> Ids keep the historical `prj_` prefix and the agent wire keeps `deplo.project=<id>`.
+
 - **Status**: Accepted — 2026-07-07. Phases 1, 2, 2b and 3a are live; of Phase 3,
   the `service_environments` join + deploy-key primitive (3b foundation) and the
   **environment env-var scoping** (`environment_env_vars` + the environment layer in

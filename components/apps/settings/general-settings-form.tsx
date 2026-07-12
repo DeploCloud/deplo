@@ -9,33 +9,33 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
-import { ServiceLogo } from "@/components/shared/project-logo";
+import { AppLogo } from "@/components/shared/project-logo";
 import {
   LOGO_ACCEPT_ATTR,
   LOGO_IMAGE_TYPES,
   MAX_LOGO_BYTES,
   isTemplateLogo,
-} from "@/lib/services/logo-shared";
-import { UnsavedChangesGuard } from "@/components/services/unsaved-changes-guard";
-import { DirtyHint } from "@/components/services/settings/settings-shared";
+} from "@/lib/apps/logo-shared";
+import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
+import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { formatBytes } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * General settings: a service's name and logo — its identity, so they share one
+ * General settings: an app's name and logo — its identity, so they share one
  * card. The logo saves as soon as a file is picked; the name saves with its
  * button (and arms the leave guard while dirty).
  */
 export function GeneralSettingsForm({
-  serviceId,
+  appId,
   name: initialName,
   logo: initialLogo,
   detectable = false,
 }: {
-  serviceId: string;
+  appId: string;
   name: string;
   logo: string | null;
-  /** Whether the service has scannable source files (a GitHub repo or an
+  /** Whether the app has scannable source files (a GitHub repo or an
    * uploaded archive) — gates the "Detect from source" button. */
   detectable?: boolean;
 }) {
@@ -54,20 +54,20 @@ export function GeneralSettingsForm({
   function saveName() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($id: String!, $name: String!) { renameService(id: $id, name: $name) { id } }`,
-        { id: serviceId, name },
+        `mutation($id: String!, $name: String!) { renameApp(id: $id, name: $name) { id } }`,
+        { id: appId, name },
       );
       if (res.ok) {
         setSavedName(name);
         router.refresh();
-        toast.success("Service renamed");
+        toast.success("App renamed");
       } else toast.error(res.error);
     });
   }
 
   // Read a picked image into a base64 data-URI and persist it as the logo. The
   // image is validated (type + size) before reading so we never inline an
-  // oversized blob into the service document.
+  // oversized blob into the app document.
   function pickLogo(file: File) {
     if (!LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])) {
       toast.error("Unsupported image — use PNG, JPEG, WebP, GIF or SVG");
@@ -87,8 +87,8 @@ export function GeneralSettingsForm({
       setLogo(dataUri);
       startTransition(async () => {
         const res = await gqlAction(
-          `mutation($id: String!, $logo: String) { updateServiceLogo(id: $id, logo: $logo) { id } }`,
-          { id: serviceId, logo: dataUri },
+          `mutation($id: String!, $logo: String) { updateAppLogo(id: $id, logo: $logo) { id } }`,
+          { id: appId, logo: dataUri },
         );
         if (res.ok) {
           router.refresh();
@@ -104,8 +104,8 @@ export function GeneralSettingsForm({
     setLogo(null);
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($id: String!, $logo: String) { updateServiceLogo(id: $id, logo: $logo) { id } }`,
-        { id: serviceId, logo: null },
+        `mutation($id: String!, $logo: String) { updateAppLogo(id: $id, logo: $logo) { id } }`,
+        { id: appId, logo: null },
       );
       if (res.ok) {
         router.refresh();
@@ -114,15 +114,15 @@ export function GeneralSettingsForm({
     });
   }
 
-  // Ask the server to scan the service's own source files (GitHub repo or the
+  // Ask the server to scan the app's own source files (GitHub repo or the
   // uploaded archive) for a favicon/icon and set it as the logo. The mutation
   // errors when none is found, which we surface as an info toast.
   function detectFromSource() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($id: String!) { detectServiceLogo(id: $id) { id logo } }`,
-        { id: serviceId },
-        (d: { detectServiceLogo: { logo: string | null } }) => d.detectServiceLogo,
+        `mutation($id: String!) { detectAppLogo(id: $id) { id logo } }`,
+        { id: appId },
+        (d: { detectAppLogo: { logo: string | null } }) => d.detectAppLogo,
       );
       if (res.ok) {
         setLogo(res.data?.logo ?? null);
@@ -141,7 +141,7 @@ export function GeneralSettingsForm({
             <FieldLabel
               info={
                 <>
-                  Shown for this service on the dashboard. It&apos;s set
+                  Shown for this app on the dashboard. It&apos;s set
                   automatically from a <code>favicon</code> in your source files
                   (or a template&apos;s logo) — replace or remove it any time.
                 </>
@@ -150,7 +150,7 @@ export function GeneralSettingsForm({
               Logo
             </FieldLabel>
             <div className="flex flex-wrap items-center gap-4">
-              <ServiceLogo logo={logo} size={48} />
+              <AppLogo logo={logo} size={48} />
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
@@ -210,7 +210,7 @@ export function GeneralSettingsForm({
 
           {/* Name — saved with the button below; the logo saves on pick. */}
           <div className="max-w-md space-y-2 border-t border-border pt-6">
-            <Label>Service name</Label>
+            <Label>App name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </div>
         </CardContent>

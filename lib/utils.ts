@@ -104,9 +104,9 @@ function githubRepoSlug(repo: {
  * stored compose with no repo/image) catches template services created before
  * the `compose` source existed. An "upload" source is always a single-image
  * build, so it is excluded even if a stale compose lingers from a former source
- * (setServiceUpload nulls repo/image but keeps compose for switching back).
+ * (setAppUpload nulls repo/image but keeps compose for switching back).
  *
- * One source of truth so the deploy pipeline (runDeployment, rerouteService)
+ * One source of truth so the deploy pipeline (runDeployment, rerouteApp)
  * and the settings UI can never disagree about whether a project is a stack.
  */
 export function usesComposeStack(project: {

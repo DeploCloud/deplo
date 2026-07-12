@@ -320,7 +320,7 @@ export async function createDatabase(input: {
   }
 
   const port = DEFAULT_PORTS[input.type];
-  // Service name == container DNS name on the shared `deplo` network == the
+  // App name == container DNS name on the shared `deplo` network == the
   // agent stack slug. Connection strings reference it, so it must stay stable.
   const service = `db-${name}`;
 

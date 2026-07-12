@@ -40,7 +40,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ServiceCard } from "./service-card";
+import { AppCard } from "./app-card";
 import { FolderCard, folderHref, type FolderCardData } from "./folder-card";
 import {
   ProjectContainerCard,
@@ -59,18 +59,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
-import type { ServiceSummary } from "@/lib/data/services";
+import type { AppSummary } from "@/lib/data/apps";
 
-const REORDER_SERVICES = `mutation($ids: [ID!]!) { reorderServices(serviceIds: $ids) }`;
+const REORDER_SERVICES = `mutation($ids: [ID!]!) { reorderApps(appIds: $ids) }`;
 const REORDER_FOLDERS = `mutation($ids: [ID!]!) { reorderFolders(folderIds: $ids) }`;
 const REORDER_PROJECT_CONTAINERS = `mutation($ids: [ID!]!) { reorderProjects(projectIds: $ids) }`;
-const MOVE_TO_FOLDER = `mutation($serviceId: ID!, $folderId: ID) { moveServiceToFolder(serviceId: $serviceId, folderId: $folderId) }`;
-const MOVE_SERVICE_TO_PROJECT = `mutation($serviceId: ID!, $projectId: ID) { moveServiceToProject(serviceId: $serviceId, projectId: $projectId) }`;
+const MOVE_TO_FOLDER = `mutation($appId: ID!, $folderId: ID) { moveAppToFolder(appId: $appId, folderId: $folderId) }`;
+const MOVE_SERVICE_TO_PROJECT = `mutation($appId: ID!, $projectId: ID) { moveAppToProject(appId: $appId, projectId: $projectId) }`;
 const DELETE_FOLDER = `mutation($id: ID!) { deleteFolder(id: $id) }`;
+const MOVE_FOLDER = `mutation($id: ID!, $parentId: ID) { moveFolder(id: $id, parentId: $parentId) }`;
 // Bulk variants: each is ONE server round-trip + ONE store write for the whole
 // selection (instead of N fanned-out per-id mutations).
-const BULK_MOVE = `mutation($ids: [ID!]!, $folderId: ID) { moveServicesToFolder(serviceIds: $ids, folderId: $folderId) }`;
-const BULK_DELETE = `mutation($ids: [ID!]!) { deleteServices(ids: $ids) }`;
+const BULK_MOVE = `mutation($ids: [ID!]!, $folderId: ID) { moveAppsToFolder(appIds: $ids, folderId: $folderId) }`;
+const BULK_DELETE = `mutation($ids: [ID!]!) { deleteApps(ids: $ids) }`;
 
 // Sentinel droppable id for the breadcrumb "drop here to leave the folder" zone.
 const UNGROUP_DROP_ID = "__ungroup__";
@@ -99,7 +100,7 @@ function gridClass(view: "grid" | "list"): string {
     : "grid gap-4 sm:grid-cols-2 3xl:grid-cols-3";
 }
 
-function allServicesHref(view: "grid" | "list"): string {
+function allAppsHref(view: "grid" | "list"): string {
   return view === "list" ? "/?view=list" : "/";
 }
 
@@ -207,19 +208,19 @@ function SelectionActionBar({
   );
 }
 
-export interface ServicesGridProps {
+export interface AppsGridProps {
   /**
-   * The services to DISPLAY: a folder's contents (when one is open), the
+   * The apps to DISPLAY: a folder's contents (when one is open), the
    * ungrouped top level, or flat search results. The card objects always come
    * from the latest server props, so per-card fields stay fresh.
    */
-  services: ServiceSummary[];
+  services: AppSummary[];
   /**
    * The FULL team project order (all folders), ids only. A within-group reorder
    * is persisted against this so the other groups' relative order is preserved.
    */
-  allServiceIds: string[];
-  /** Folder cards to show before the services (top level only; [] otherwise). */
+  allAppIds: string[];
+  /** Folder cards to show before the apps (top level only; [] otherwise). */
   folders: FolderCardData[];
   /** Project CONTAINER cards, shown above the folders (team top level only; []
    *  inside a folder/project or during a search). */
@@ -246,10 +247,10 @@ export interface ServicesGridProps {
   canManageAllFolders: boolean;
   /** The viewer may mutate project containers (holds `deploy`, or is an
    *  instance admin) — gates each project card's rename/colour/delete menu and
-   *  the service cards' "Move to environment" action. */
+   *  the app cards' "Move to environment" action. */
   canManageProjects: boolean;
   /** The open project's environments — set only in the drill-in view, where it
-   *  feeds each service card's "Move to environment" submenu (ADR-0009). */
+   *  feeds each app card's "Move to environment" submenu (ADR-0009). */
   environments?: { id: string; name: string }[];
 }
 
@@ -266,7 +267,7 @@ export interface ServicesGridProps {
  * and no lingering "edit"/jiggle mode. Cards jiggle only while a drag is in
  * flight and settle the instant the pointer is released (onDragEnd/onDragCancel).
  */
-export function ServicesGrid(props: ServicesGridProps) {
+export function AppsGrid(props: AppsGridProps) {
   if (!props.canReorder) return <StaticGrid {...props} />;
   return <SortableGrid {...props} />;
 }
@@ -287,7 +288,7 @@ function StaticGrid({
   canManageAllFolders,
   canManageProjects,
   environments,
-}: ServicesGridProps) {
+}: AppsGridProps) {
   return (
     <div className="relative min-h-[40vh] space-y-6">
       {/* px-1 py-1 mirrors the DroppableBreadcrumb padding so the trail sits
@@ -320,11 +321,11 @@ function StaticGrid({
           ))}
         </div>
       )}
-      {/* Ungrouped services always get their own separate grid, same size. */}
+      {/* Ungrouped apps always get their own separate grid, same size. */}
       {services.length > 0 && (
         <div className={gridClass(view)}>
           {services.map((p) => (
-            <ServiceCard
+            <AppCard
               key={p.id}
               project={p}
               view={view}
@@ -358,7 +359,7 @@ export function FolderTrail({
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-sm">
       <Link
-        href={allServicesHref(view)}
+        href={allAppsHref(view)}
         className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
       >
         <ChevronLeft className="size-4" />
@@ -392,7 +393,7 @@ export function FolderTrail({
 
 function SortableGrid({
   services,
-  allServiceIds,
+  allAppIds,
   folders,
   projects,
   allFolders,
@@ -404,7 +405,7 @@ function SortableGrid({
   canManageAllFolders,
   canManageProjects,
   environments,
-}: ServicesGridProps) {
+}: AppsGridProps) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
 
@@ -413,14 +414,14 @@ function SortableGrid({
   // etc. stay fresh). The parent keys this component on the *membership* of the
   // grid (the sets of project + folder ids), so a reorder/move never remounts
   // it — letting the drag survive a drop — while add/remove re-seeds.
-  const [order, setOrder] = React.useState<string[]>(() => allServiceIds);
+  const [order, setOrder] = React.useState<string[]>(() => allAppIds);
   const [folderOrder, setFolderOrder] = React.useState<string[]>(() =>
     folders.map((f) => f.id),
   );
   const [projectOrder, setProjectOrder] = React.useState<string[]>(() =>
     projects.map((p) => p.id),
   );
-  // Services AND folders optimistically hidden from the current view while a
+  // Apps AND folders optimistically hidden from the current view while a
   // move (into a folder or a project container) round-trips. Cleared whenever
   // the visible projection actually changes (the refresh landing, or navigating
   // in/out of a folder/project) — see the render-time reset below.
@@ -495,13 +496,13 @@ function SortableGrid({
     [projectItems],
   );
 
-  // The visible services, in the full local order, filtered to the displayed
+  // The visible apps, in the full local order, filtered to the displayed
   // group (everything in `byId`) minus anything optimistically moved away.
   const items = React.useMemo(() => {
     const ordered = order
       .map((id) => byId.get(id))
       .filter(
-        (p): p is ServiceSummary => p != null && !movedIds.has(p.id),
+        (p): p is AppSummary => p != null && !movedIds.has(p.id),
       );
     const known = new Set(order);
     return [
@@ -512,23 +513,23 @@ function SortableGrid({
 
   const activeIsFolder = activeId !== null && folderIdSet.has(activeId);
   const activeIsProject = activeId !== null && projectIdSet.has(activeId);
-  const activeIsService =
+  const activeIsApp =
     activeId !== null && !activeIsFolder && !activeIsProject;
   // The actual card behind the floating drag clone (the lifted card that tracks
   // the cursor).
   const activeFolder = activeId ? folderById.get(activeId) ?? null : null;
   const activeProject = activeId ? projectById.get(activeId) ?? null : null;
-  const activeService = activeIsService ? byId.get(activeId!) ?? null : null;
-  // A dragged service hovering a container it can be dropped INTO (a folder or
+  const activeApp = activeIsApp ? byId.get(activeId!) ?? null : null;
+  // A dragged app hovering a container it can be dropped INTO (a folder or
   // a project card) → it shrinks (scale-0) as a preview of being absorbed; it
   // grows back the moment it leaves.
   const draggedOverFolder =
-    activeIsService &&
+    activeIsApp &&
     overId != null &&
     (folderIdSet.has(overId) || projectIdSet.has(overId));
 
   /* ---- Multi-selection (marquee + ctrl/shift-click) + bulk actions ------- */
-  // Selectable ids in display order: folders first, then the visible services.
+  // Selectable ids in display order: folders first, then the visible apps.
   const selectableIds = React.useMemo(
     () => [...folderItems.map((f) => f.id), ...items.map((p) => p.id)],
     [folderItems, items],
@@ -559,13 +560,13 @@ function SortableGrid({
   // freshly-created folder ("New folder with selection").
   const [folderTakesSelection, setFolderTakesSelection] = React.useState(false);
 
-  const selectedServiceIds = () =>
+  const selectedAppIds = () =>
     effectiveSelected.filter((id) => !folderIdSet.has(id));
   const selectedFolderIds = () =>
     effectiveSelected.filter((id) => folderIdSet.has(id));
 
   function bulkMoveTo(folderId: string | null) {
-    const ids = selectedServiceIds();
+    const ids = selectedAppIds();
     if (ids.length === 0) return;
     startTransition(async () => {
       const res = await gqlAction(BULK_MOVE, { ids, folderId });
@@ -580,20 +581,20 @@ function SortableGrid({
   }
 
   // `onCreated` for the "New folder with selection" flow: move the selected
-  // services into the folder the dialog just created (one bulk call).
+  // apps into the folder the dialog just created (one bulk call).
   async function moveSelectionInto(folderId: string) {
-    const ids = selectedServiceIds();
+    const ids = selectedAppIds();
     if (ids.length) await gqlAction(BULK_MOVE, { ids, folderId });
     clearSelection();
   }
 
   async function bulkDelete() {
-    const serviceIds = selectedServiceIds();
+    const appIds = selectedAppIds();
     const folderIds = selectedFolderIds();
-    // Services go through ONE bulk mutation (one server write, bounded-
+    // Apps go through ONE bulk mutation (one server write, bounded-
     // concurrency teardown); folders (usually few) delete per id.
     const results = await Promise.all([
-      ...(serviceIds.length ? [gqlAction(BULK_DELETE, { ids: serviceIds })] : []),
+      ...(appIds.length ? [gqlAction(BULK_DELETE, { ids: appIds })] : []),
       ...folderIds.map((id) => gqlAction(DELETE_FOLDER, { id })),
     ]);
     router.refresh();
@@ -667,10 +668,10 @@ function SortableGrid({
     });
   }
 
-  function moveService(serviceId: string, folderId: string | null) {
-    setMovedIds((prev) => new Set(prev).add(serviceId));
+  function moveApp(appId: string, folderId: string | null) {
+    setMovedIds((prev) => new Set(prev).add(appId));
     startTransition(async () => {
-      const res = await gqlAction(MOVE_TO_FOLDER, { serviceId, folderId });
+      const res = await gqlAction(MOVE_TO_FOLDER, { appId, folderId });
       if (res.ok) {
         toast.success(folderId ? "Moved to folder" : "Moved out of folder");
         router.refresh();
@@ -678,20 +679,44 @@ function SortableGrid({
         toast.error(res.error);
         setMovedIds((prev) => {
           const next = new Set(prev);
-          next.delete(serviceId);
+          next.delete(appId);
           return next;
         });
       }
     });
   }
 
-  // Move a service into a project container (or out, when projectId is null),
-  // with the same optimistic hide + refresh contract as moveService.
-  function moveServiceToProject(serviceId: string, projectId: string | null) {
-    setMovedIds((prev) => new Set(prev).add(serviceId));
+  // Move a nested SUB-FOLDER out one level — to the open folder's own parent, or
+  // to the top level when that parent is a root. Same optimistic-hide + refresh +
+  // revert contract as moveApp; only called with a folder open (there is no level
+  // to climb out to otherwise). The server rejects cyclic moves, but "out" is
+  // always safe.
+  function moveFolderOut(folderId: string) {
+    const dest = openFolder?.parentId ?? null;
+    setMovedIds((prev) => new Set(prev).add(folderId));
+    startTransition(async () => {
+      const res = await gqlAction(MOVE_FOLDER, { id: folderId, parentId: dest });
+      if (res.ok) {
+        toast.success("Moved out of folder");
+        router.refresh();
+      } else {
+        toast.error(res.error);
+        setMovedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(folderId);
+          return next;
+        });
+      }
+    });
+  }
+
+  // Move an app into a project container (or out, when projectId is null),
+  // with the same optimistic hide + refresh contract as moveApp.
+  function moveAppToProject(appId: string, projectId: string | null) {
+    setMovedIds((prev) => new Set(prev).add(appId));
     startTransition(async () => {
       const res = await gqlAction(MOVE_SERVICE_TO_PROJECT, {
-        serviceId,
+        appId,
         projectId,
       });
       if (res.ok) {
@@ -701,16 +726,16 @@ function SortableGrid({
         toast.error(res.error);
         setMovedIds((prev) => {
           const next = new Set(prev);
-          next.delete(serviceId);
+          next.delete(appId);
           return next;
         });
       }
     });
   }
 
-  // The multi-selection variant: one mutation per service (no bulk endpoint),
+  // The multi-selection variant: one mutation per app (no bulk endpoint),
   // fired together and settled with a single refresh.
-  function moveServicesToProject(ids: string[], projectId: string | null) {
+  function moveAppsToProject(ids: string[], projectId: string | null) {
     if (ids.length === 0) return;
     setMovedIds((prev) => {
       const next = new Set(prev);
@@ -719,14 +744,14 @@ function SortableGrid({
     });
     startTransition(async () => {
       const results = await Promise.all(
-        ids.map((serviceId) =>
-          gqlAction(MOVE_SERVICE_TO_PROJECT, { serviceId, projectId }),
+        ids.map((appId) =>
+          gqlAction(MOVE_SERVICE_TO_PROJECT, { appId, projectId }),
         ),
       );
       const failed = results.find((r) => !r.ok);
       if (!failed) {
         toast.success(
-          `Moved ${ids.length} service${ids.length === 1 ? "" : "s"}`,
+          `Moved ${ids.length} app${ids.length === 1 ? "" : "s"}`,
         );
         clearSelection();
       } else {
@@ -746,7 +771,7 @@ function SortableGrid({
     });
   }
 
-  function reorderServiceList(activeId: string, overId: string) {
+  function reorderAppList(activeId: string, overId: string) {
     const oldIndex = order.indexOf(activeId);
     const newIndex = order.indexOf(overId);
     if (oldIndex < 0 || newIndex < 0) return;
@@ -759,7 +784,7 @@ function SortableGrid({
   // Reorder a whole multi-selection together: lift every selected project out of
   // the order (keeping their relative order) and re-insert the block at the drop
   // target — so a marquee/ctrl-selected group can be repositioned in one drag.
-  function reorderServiceGroup(
+  function reorderAppGroup(
     activeId: string,
     overId: string,
     selIds: string[],
@@ -807,8 +832,8 @@ function SortableGrid({
   // ignore (which makes reordering feel broken):
   //  - a project container only reorders among other projects;
   //  - a folder only reorders among other folders (folders never enter a
-  //    project — ADR-0009: a project's contents are its environments' services);
-  //  - a service keeps every droppable (siblings to reorder among, folders and
+  //    project — ADR-0009: a project's contents are its environments' apps);
+  //  - an app keeps every droppable (siblings to reorder among, folders and
   //    projects to drop into, and the breadcrumb to move out a level).
   const collisionDetection = React.useCallback<CollisionDetection>(
     (args) => {
@@ -822,10 +847,14 @@ function SortableGrid({
         });
       }
       if (folderIdSet.has(a)) {
+        // A folder reorders among other folders, and — when nested — can also be
+        // dropped on the breadcrumb "move out" zone to climb out of its parent.
         return closestCenter({
           ...args,
-          droppableContainers: args.droppableContainers.filter((c) =>
-            folderIdSet.has(String(c.id)),
+          droppableContainers: args.droppableContainers.filter(
+            (c) =>
+              folderIdSet.has(String(c.id)) ||
+              String(c.id) === UNGROUP_DROP_ID,
           ),
         });
       }
@@ -852,28 +881,34 @@ function SortableGrid({
     const aIsFolder = folderIdSet.has(a);
     const aIsProject = projectIdSet.has(a);
 
-    // The dragged card belongs to a multi-selection of ≥2 services → the whole
+    // The dragged card belongs to a multi-selection of ≥2 apps → the whole
     // group moves together (reorder, into a folder/project, or out of one).
-    const selServices = order.filter(
+    const selApps = order.filter(
       (id) => selected.has(id) && !folderIdSet.has(id),
     );
     const groupDrag =
-      !aIsFolder && !aIsProject && selected.has(a) && selServices.length >= 2;
+      !aIsFolder && !aIsProject && selected.has(a) && selApps.length >= 2;
 
     // Drop onto the breadcrumb zone → move OUT one level: to the open folder's
     // own parent, or out of the open project, back to the top level.
     if (o === UNGROUP_DROP_ID) {
-      if (aIsProject || aIsFolder) return;
+      if (aIsProject) return; // projects live only at the top level
+      if (aIsFolder) {
+        // A nested folder climbs out to its parent's level (top level when the
+        // open folder is itself a root). Only meaningful with a folder open.
+        if (openFolder) moveFolderOut(a);
+        return;
+      }
       if (openFolder) {
         const dest = openFolder.parentId ?? null;
         if (groupDrag) bulkMoveTo(dest);
-        else moveService(a, dest);
+        else moveApp(a, dest);
       } else if (openProject) {
-        // selectedServiceIds() (not the raw selection) so a stale off-screen id
+        // selectedAppIds() (not the raw selection) so a stale off-screen id
         // left in `selected` by a concurrent move is never dragged along — the
         // same visibility guard every other bulk action routes through.
-        if (groupDrag) moveServicesToProject(selectedServiceIds(), null);
-        else moveServiceToProject(a, null);
+        if (groupDrag) moveAppsToProject(selectedAppIds(), null);
+        else moveAppToProject(a, null);
       }
       return;
     }
@@ -887,26 +922,26 @@ function SortableGrid({
       if (oIsProject) reorderProjectList(a, o);
     } else if (aIsFolder) {
       if (oIsFolder) reorderFolderList(a, o); // reorder among folders
-      // (folder onto a service/project: ignored — folders don't nest there)
+      // (folder onto an app/project: ignored — folders don't nest there)
     } else if (oIsProject) {
-      // Service(s) dropped onto a project container card. The group path uses
-      // selectedServiceIds() — the visibility-guarded selection — not the raw
-      // `selServices` (see the breadcrumb branch above).
-      if (groupDrag) moveServicesToProject(selectedServiceIds(), o);
-      else moveServiceToProject(a, o);
+      // App(s) dropped onto a project container card. The group path uses
+      // selectedAppIds() — the visibility-guarded selection — not the raw
+      // `selApps` (see the breadcrumb branch above).
+      if (groupDrag) moveAppsToProject(selectedAppIds(), o);
+      else moveAppToProject(a, o);
     } else if (oIsFolder) {
-      // Service(s) dropped onto a folder → move the whole selection (or just the
+      // App(s) dropped onto a folder → move the whole selection (or just the
       // one) into it.
       if (groupDrag) bulkMoveTo(o);
-      else moveService(a, o);
+      else moveApp(a, o);
     } else {
-      // Reorder among services — the whole selected group when multi-selecting.
-      if (groupDrag) reorderServiceGroup(a, o, selServices);
-      else reorderServiceList(a, o);
+      // Reorder among apps — the whole selected group when multi-selecting.
+      if (groupDrag) reorderAppGroup(a, o, selApps);
+      else reorderAppList(a, o);
     }
   }
 
-  const serviceStrategy =
+  const appStrategy =
     view === "list" ? verticalListSortingStrategy : rectSortingStrategy;
 
   // The selection-aware bulk actions, fed to the floating SelectionActionBar
@@ -920,17 +955,17 @@ function SortableGrid({
     moveTargets: allFolders,
     onMoveTo: bulkMoveTo,
   };
-  // The selected services in the team-wide `order`, so a group drag keeps their
-  // relative order. A multi-selection drag (≥2 selected services, the dragged
+  // The selected apps in the team-wide `order`, so a group drag keeps their
+  // relative order. A multi-selection drag (≥2 selected apps, the dragged
   // one among them) reorders / moves the whole group together.
-  const selectedServiceOrder = order.filter(
+  const selectedAppOrder = order.filter(
     (id) => selected.has(id) && !folderIdSet.has(id),
   );
   const activeIsSelectedMulti =
     activeId != null &&
     !folderIdSet.has(activeId) &&
     selected.has(activeId) &&
-    selectedServiceOrder.length >= 2;
+    selectedAppOrder.length >= 2;
   return (
     <DndContext
       sensors={sensors}
@@ -963,7 +998,9 @@ function SortableGrid({
             <DroppableBreadcrumb
               path={folderPath}
               view={view}
-              dragging={dragging && activeIsService}
+              // Apps move out of a folder or a project; a nested folder moves out
+              // of its parent folder. Both light up the "move out" zone.
+              dragging={dragging && (activeIsApp || activeIsFolder)}
             />
           )}
           {/* Projects and folders share one grid — projects first, then folders,
@@ -990,7 +1027,7 @@ function SortableGrid({
                           canManage={canManageProjects}
                           dragHandle={handle}
                           dragActive={dragActive}
-                          dropActive={isOver && activeIsService}
+                          dropActive={isOver && activeIsApp}
                         />
                       )}
                     </SortableItem>
@@ -1019,7 +1056,7 @@ function SortableGrid({
                           folders={allFolders}
                           dragHandle={handle}
                           dragActive={dragActive}
-                          dropActive={isOver && activeIsService}
+                          dropActive={isOver && activeIsApp}
                         />
                       )}
                     </SortableItem>
@@ -1028,10 +1065,10 @@ function SortableGrid({
               )}
             </div>
           )}
-          {/* Ungrouped services always get their own separate grid, same size. */}
+          {/* Ungrouped apps always get their own separate grid, same size. */}
           <SortableContext
             items={items.map((p) => p.id)}
-            strategy={serviceStrategy}
+            strategy={appStrategy}
           >
             <div className={gridClass(view)}>
               {items.map((p) => (
@@ -1048,7 +1085,7 @@ function SortableGrid({
                   onSelect={(e) => onItemClick(p.id, e)}
                 >
                   {({ handle, dragActive }) => (
-                    <ServiceCard
+                    <AppCard
                       project={p}
                       view={view}
                       dragHandle={handle}
@@ -1093,7 +1130,7 @@ function SortableGrid({
               folders={allFolders}
             />
           </div>
-        ) : activeService ? (
+        ) : activeApp ? (
           <div
             className={cn(
               "pointer-events-none relative rotate-[1.5deg] cursor-grabbing rounded-xl shadow-2xl ring-1 ring-border/60 transition-transform duration-200 ease-out",
@@ -1102,8 +1139,8 @@ function SortableGrid({
               draggedOverFolder && "scale-50 opacity-80",
             )}
           >
-            <ServiceCard
-              project={activeService}
+            <AppCard
+              project={activeApp}
               view={view}
               folders={allFolders}
               canManageFolders={canManageAllFolders}
@@ -1128,7 +1165,7 @@ function SortableGrid({
         onCreated={folderTakesSelection ? moveSelectionInto : undefined}
         description={
           folderTakesSelection
-            ? `Create a folder and move the ${selectedServiceIds().length} selected project(s) into it.`
+            ? `Create a folder and move the ${selectedAppIds().length} selected project(s) into it.`
             : undefined
         }
       />
@@ -1136,7 +1173,7 @@ function SortableGrid({
         open={bulkDeleteOpen}
         onOpenChange={setBulkDeleteOpen}
         title={`Delete ${selectionCount} item${selectionCount === 1 ? "" : "s"}?`}
-        description="Selected services are permanently deleted (with their deployments, domains and env vars). Selected folders are removed — their services move back to the top level. This can't be undone."
+        description="Selected apps are permanently deleted (with their deployments, domains and env vars). Selected folders are removed — their apps move back to the top level. This can't be undone."
         confirmLabel="Delete selection"
         successMessage="Selection deleted"
         onConfirm={bulkDelete}
@@ -1195,7 +1232,7 @@ function SortableItem({
   id: string;
   dragging: boolean;
   /** When this item is the one being dragged, shrink it to nothing (smoothly) —
-   *  used to preview a service being absorbed into the folder it hovers. */
+   *  used to preview an app being absorbed into the folder it hovers. */
   scaleOut?: boolean;
   /** Whether this card is part of the current multi-selection (shows a ring). */
   selected?: boolean;

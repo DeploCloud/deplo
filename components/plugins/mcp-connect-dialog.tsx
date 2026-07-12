@@ -16,7 +16,7 @@ import { CopyButton } from "@/components/shared/copy-button";
 
 /**
  * The MCP connect dialog, shown after installing (or from the card menu of) the
- * MCP app. It reveals the app-path endpoint and a copyable client-config
+ * MCP plugin. It reveals the plugin-path endpoint and a copyable client-config
  * snippet, and points the user to Settings → API Tokens to mint their OWN
  * caller token — Deplo generates and reveals NOTHING here (the only credential
  * is the user's own `deplo_` token, forwarded verbatim by the stateless relay).
@@ -28,7 +28,7 @@ export function McpConnectDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  /** The app-path MCP endpoint, e.g. `https://<deplo>/apps/mcp-acme/mcp`. */
+  /** The plugin-path MCP endpoint, e.g. `https://<deplo>/plugins/mcp-acme/mcp`. */
   endpoint: string;
 }) {
   // A Streamable-HTTP MCP client config (Claude Desktop / Cursor style). The
@@ -53,9 +53,9 @@ export function McpConnectDialog({
         <DialogHeader>
           <DialogTitle>Connect your AI assistant</DialogTitle>
           <DialogDescription>
-            The MCP app is a stateless relay — it holds no credential of its own.
+            The MCP plugin is a stateless relay — it holds no credential of its own.
             Mint a <span className="font-medium">caller token</span> and paste it
-            into your MCP client as the bearer; the app forwards it verbatim to
+            into your MCP client as the bearer; the plugin forwards it verbatim to
             Deplo&apos;s API, so it can only do what your token allows.
           </DialogDescription>
         </DialogHeader>

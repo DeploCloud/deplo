@@ -5,17 +5,17 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { devSshUser as devSshUserTable } from "../db/schema/control-plane";
 import { assembleDevSshUser, devSshUserToRow } from "./infra-rows";
-import { requireFolderCapabilityForService } from "./folder-access";
+import { requireFolderCapabilityForApp } from "./folder-access";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import {
-  loadServiceGraph,
-  loadTeamService,
-  serviceInTeam,
-} from "./service-graph-load";
+  loadAppGraph,
+  loadTeamApp,
+  appInTeam,
+} from "./app-graph-load";
 import { provisionUser, deprovisionUser } from "../infra/ssh-gateway";
 import type { DevSshUser, DevSshUserDTO } from "../types";
 
@@ -58,45 +58,45 @@ function toDTO(u: DevSshUser): DevSshUserDTO {
 }
 
 /** A project's SSH users (relational), oldest-first (insertion order). */
-async function serviceDevSshUsers(serviceId: string): Promise<DevSshUser[]> {
+async function appDevSshUsers(appId: string): Promise<DevSshUser[]> {
   const rows = await getDb()
     .select()
     .from(devSshUserTable)
-    .where(eq(devSshUserTable.serviceId, serviceId))
+    .where(eq(devSshUserTable.appId, appId))
     .orderBy(devSshUserTable.createdAt);
   return rows.map(assembleDevSshUser);
 }
 
 /** List a project's SSH users (passwords never leave the server). */
 export async function listDevSshUsers(
-  serviceId: string,
+  appId: string,
 ): Promise<DevSshUserDTO[]> {
   const teamId = await requireActiveTeamId();
-  if (!(await serviceInTeam(serviceId, teamId))) return [];
-  return (await serviceDevSshUsers(serviceId)).map(toDTO);
+  if (!(await appInTeam(appId, teamId))) return [];
+  return (await appDevSshUsers(appId)).map(toDTO);
 }
 
 /** Whether a project has at least one SSH user (drift-repair gate, relational). */
-export async function serviceHasDevSshUsers(serviceId: string): Promise<boolean> {
+export async function appHasDevSshUsers(appId: string): Promise<boolean> {
   const rows = await getDb()
     .select({ id: devSshUserTable.id })
     .from(devSshUserTable)
-    .where(eq(devSshUserTable.serviceId, serviceId))
+    .where(eq(devSshUserTable.appId, appId))
     .limit(1);
   return rows.length > 0;
 }
 
 /** Every stored DevSshUser whose project lives on a server (gateway reconcile). */
-export async function listDevSshUsersForServices(
-  serviceIds: string[],
+export async function listDevSshUsersForApps(
+  appIds: string[],
 ): Promise<DevSshUser[]> {
-  if (serviceIds.length === 0) return [];
+  if (appIds.length === 0) return [];
   const rows = await getDb()
     .select()
     .from(devSshUserTable)
     .orderBy(devSshUserTable.createdAt);
-  const wanted = new Set(serviceIds);
-  return rows.map(assembleDevSshUser).filter((u) => wanted.has(u.serviceId));
+  const wanted = new Set(appIds);
+  return rows.map(assembleDevSshUser).filter((u) => wanted.has(u.appId));
 }
 
 /**
@@ -107,16 +107,16 @@ export async function listDevSshUsersForServices(
  * required (also enforced at the action layer).
  */
 export async function createDevSshUser(input: {
-  serviceId: string;
+  appId: string;
   name: string;
   publicKey?: string | null;
   password?: string | null;
 }): Promise<DevSshUserDTO> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const project = await loadTeamService(input.serviceId, membership.teamId);
-  if (!project) throw new Error("Service not found");
-  await requireFolderCapabilityForService(input.serviceId, "deploy");
+  const project = await loadTeamApp(input.appId, membership.teamId);
+  if (!project) throw new Error("App not found");
+  await requireFolderCapabilityForApp(input.appId, "deploy");
 
   const publicKey = input.publicKey?.trim() || null;
   const password = input.password?.trim() || null;
@@ -150,7 +150,7 @@ export async function createDevSshUser(input: {
 
   const record: DevSshUser = {
     id: newId("ssh"),
-    serviceId: input.serviceId,
+    appId: input.appId,
     username,
     publicKey,
     passwordEnc: password ? encryptSecret(password) : null,
@@ -164,10 +164,10 @@ export async function createDevSshUser(input: {
   await provisionUser(record);
 
   await recordActivity(
-    "service",
+    "app",
     `Added SSH user ${username}`,
     user.name,
-    input.serviceId,
+    input.appId,
   );
   return toDTO(record);
 }
@@ -186,9 +186,9 @@ export async function removeDevSshUser(id: string): Promise<void> {
     .limit(1);
   const record = rows[0] ? assembleDevSshUser(rows[0]) : null;
   if (!record) throw new Error("SSH user not found");
-  const project = await loadTeamService(record.serviceId, membership.teamId);
+  const project = await loadTeamApp(record.appId, membership.teamId);
   if (!project) throw new Error("SSH user not found");
-  await requireFolderCapabilityForService(record.serviceId, "deploy");
+  await requireFolderCapabilityForApp(record.appId, "deploy");
   // Resolve the owning server BEFORE the store mutation — deprovision routes to
   // that server's gateway agent.
   const serverId = project.serverId;
@@ -197,28 +197,28 @@ export async function removeDevSshUser(id: string): Promise<void> {
   await deprovisionUser(serverId, record.username).catch(() => {});
 
   await recordActivity(
-    "service",
+    "app",
     `Removed SSH user ${record.username}`,
     user.name,
-    record.serviceId,
+    record.appId,
   );
 }
 
 /**
  * Remove every SSH user of a project (used on project delete). Store first,
- * then evict each from the gateway. The gateway stays up for other services.
+ * then evict each from the gateway. The gateway stays up for other apps.
  */
-export async function removeServiceDevSshUsers(
-  serviceId: string,
+export async function removeAppDevSshUsers(
+  appId: string,
 ): Promise<void> {
-  const usernames = (await serviceDevSshUsers(serviceId)).map((u) => u.username);
+  const usernames = (await appDevSshUsers(appId)).map((u) => u.username);
   if (usernames.length === 0) return;
   // Every user of a project lives on the project's server (the gateway runs on
   // the dev container's host). Resolve it before the store mutation.
-  const serverId = (await loadServiceGraph(serviceId))?.serverId;
+  const serverId = (await loadAppGraph(appId))?.serverId;
   await getDb()
     .delete(devSshUserTable)
-    .where(eq(devSshUserTable.serviceId, serviceId));
+    .where(eq(devSshUserTable.appId, appId));
   if (!serverId) return;
   for (const username of usernames) {
     await deprovisionUser(serverId, username).catch(() => {});

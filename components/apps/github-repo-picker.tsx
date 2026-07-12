@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/select";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { GitHubIcon } from "@/components/shared/brand-icons";
-import { useGithubConnect } from "@/components/services/github-connect-button";
+import { useGithubConnect } from "@/components/apps/github-connect-button";
 import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { GithubInstallationDTO } from "@/lib/data/github";
@@ -113,8 +113,8 @@ function ConnectPanel({
 }
 
 /**
- * Repo source picker for the GitHub deploy source (service settings + the
- * new-service wizard): choose the connected account, search the repositories its
+ * Repo source picker for the GitHub deploy source (app settings + the
+ * new-app wizard): choose the connected account, search the repositories its
  * App installation can access, then pick a branch. Replaces pasting a raw
  * repository URL  the URL is built from the chosen repo and cloned with the
  * App's installation token.
@@ -134,7 +134,7 @@ export function GithubRepoPicker({
 }: {
   installations: GithubInstallationDTO[];
   /**
-   * Pre-select a repo/branch already attached to the service (settings flow).
+   * Pre-select a repo/branch already attached to the app (settings flow).
    * The installation is matched by id; when it isn't among the connected
    * installations (e.g. the App was reinstalled) the first one is used.
    */
@@ -162,6 +162,17 @@ export function GithubRepoPicker({
   // Apply the initial selection only against the first repo list we load for
   // the installation it belongs to; afterwards the user is in control.
   const seededRef = React.useRef(false);
+  // Mirror the latest `initial` in a ref so the one-time seed in loadRepos can
+  // read it WITHOUT making loadRepos reactive to it. If loadRepos depended on
+  // initial.fullName / initial.branch, a post-save router.refresh — which feeds
+  // the freshly-saved branch back in as `initial` — would give loadRepos a new
+  // identity, re-fire the load effect, null the current selection, and (seeding
+  // being one-time) strand the user on the repo browse list. The repo list must
+  // reload only when the installation changes.
+  const initialRef = React.useRef(initial);
+  React.useEffect(() => {
+    initialRef.current = initial;
+  });
 
   const activeInstallation =
     installations.find((i) => i.id === installationId) ?? null;
@@ -194,15 +205,17 @@ export function GithubRepoPicker({
       setLoadingRepos(false);
       if (res.ok && res.data) {
         setRepos(res.data);
-        // Seed the existing project repo once it's in the fetched list.
-        if (!seededRef.current && initial) {
-          const match = res.data.find((r) => r.fullName === initial.fullName);
+        // Seed the existing project repo once it's in the fetched list. Read the
+        // latest `initial` from the ref so this callback stays identity-stable.
+        const seed = initialRef.current;
+        if (!seededRef.current && seed) {
+          const match = res.data.find((r) => r.fullName === seed.fullName);
           if (match) {
             seededRef.current = true;
             setSelected(match);
-            setBranch(initial.branch || match.defaultBranch);
-            setBranches([initial.branch || match.defaultBranch]);
-            void hydrateBranches(instId, match, initial.branch);
+            setBranch(seed.branch || match.defaultBranch);
+            setBranches([seed.branch || match.defaultBranch]);
+            void hydrateBranches(instId, match, seed.branch);
           }
         }
       } else {
@@ -210,8 +223,10 @@ export function GithubRepoPicker({
         if (!res.ok) toast.error(res.error);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [initial?.fullName, initial?.branch],
+    // Identity-stable: the seed reads `initialRef.current`, so a changed `initial`
+    // (e.g. the just-saved branch fed back by router.refresh) must NOT recreate
+    // this callback and re-fire the load effect. Reloads are driven only by instId.
+    [],
   );
 
   async function hydrateBranches(
@@ -418,7 +433,12 @@ export function GithubRepoPicker({
             </FieldLabel>
             <Select value={branch} onValueChange={setBranch}>
               <SelectTrigger className="max-w-xs">
-                <span className="flex min-w-0 items-center gap-2">
+                {/* `flex!` is load-bearing: SelectTrigger applies
+                    `[&>span]:line-clamp-1` to its direct-child spans, whose
+                    `display:-webkit-box` outranks a plain `flex` class (the
+                    `>span` selector is more specific) and would stack the icon
+                    above the value. The important modifier keeps them on one row. */}
+                <span className="flex! min-w-0 items-center gap-2">
                   <GitBranch className="size-4 shrink-0 text-muted-foreground" />
                   <SelectValue />
                 </span>

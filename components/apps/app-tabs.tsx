@@ -4,13 +4,13 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useLiveRunning } from "@/components/services/service-live-status";
+import { useLiveRunning } from "@/components/apps/app-live-status";
 import {
   useSlidingRect,
   SlidingUnderline,
 } from "@/components/ui/sliding-underline";
 
-export function ServiceTabs({
+export function AppTabs({
   slug,
   running: serverRunning = false,
   devEligible = false,
@@ -20,11 +20,11 @@ export function ServiceTabs({
 }: {
   slug: string;
   running?: boolean;
-  /** Source-bearing services get a Dev Mode tab (live container + SSH access). */
+  /** Source-bearing apps get a Dev Mode tab (live container + SSH access). */
   devEligible?: boolean;
   /** The Environment tab is only shown to members with the manage_env capability. */
   canManageEnv?: boolean;
-  /** The Files tab is shown only when the service has an on-disk files dir and
+  /** The Files tab is shown only when the app has an on-disk files dir and
    *  the viewer holds the manage_files capability (resolved server-side). */
   showFiles?: boolean;
   /** The Backups tab is shown only to members with the manage_infra capability
@@ -32,7 +32,7 @@ export function ServiceTabs({
   canBackup?: boolean;
 }) {
   const pathname = usePathname();
-  const base = `/services/${slug}`;
+  const base = `/apps/${slug}`;
   // Live running state drives the Console/Logs tabs so they appear/disappear
   // the moment the container starts/stops — no reload — and stay in sync across
   // clients. Falls back to the server-rendered value before the subscription
@@ -69,7 +69,7 @@ export function ServiceTabs({
       active: matchSub("/domains"),
     },
     // Console (docker exec/attach) and Logs (docker logs -f) both stream from a
-    // live container, so they only appear while the service is running.
+    // live container, so they only appear while the app is running.
     ...(running
       ? [
           {
@@ -84,7 +84,7 @@ export function ServiceTabs({
           },
         ]
       : []),
-    // Dev Mode (live editable container + SSH) — only for source-bearing services.
+    // Dev Mode (live editable container + SSH) — only for source-bearing apps.
     ...(devEligible
       ? [
           {
@@ -94,7 +94,7 @@ export function ServiceTabs({
           },
         ]
       : []),
-    // Files (browse/edit the service's /data/stacks/files/<slug> tree) — only
+    // Files (browse/edit the app's /data/stacks/files/<slug> tree) — only
     // when that dir exists and the viewer holds the manage_files capability.
     ...(showFiles
       ? [
@@ -105,7 +105,7 @@ export function ServiceTabs({
           },
         ]
       : []),
-    // Backups (schedule + run + restore the service's volumes/files) — only for
+    // Backups (schedule + run + restore the app's volumes/files) — only for
     // members holding manage_infra. The page guards server-side too.
     ...(canBackup
       ? [

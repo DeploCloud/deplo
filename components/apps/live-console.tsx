@@ -4,8 +4,8 @@ import * as React from "react";
 import { TerminalSquare } from "lucide-react";
 import { gql } from "@/lib/graphql-client";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ContainerConsole } from "@/components/services/container-console";
-import { useLiveRunning } from "@/components/services/service-live-status";
+import { ContainerConsole } from "@/components/apps/container-console";
+import { useLiveRunning } from "@/components/apps/app-live-status";
 import type { ConsoleInstance } from "@/lib/data/console";
 
 type ConsoleInfo = {
@@ -15,8 +15,8 @@ type ConsoleInfo = {
 };
 
 const CONSOLE_INFO_QUERY = /* GraphQL */ `
-  query ConsoleInfo($serviceId: String!) {
-    consoleInfo(serviceId: $serviceId) {
+  query ConsoleInfo($appId: String!) {
+    consoleInfo(appId: $appId) {
       containerName
       image
       running
@@ -40,24 +40,24 @@ type ConsoleInfoResponse = {
 };
 
 /**
- * Console page body that follows the service's live running state. When the
+ * Console page body that follows the app's live running state. When the
  * container is running it shows the terminal; when it stops (live, no reload)
  * it swaps to the "not running" empty state, and back again when it restarts —
  * fetching fresh console info on the transition since a stopped project has
  * none server-rendered.
  */
 export function LiveConsole({
-  serviceId,
+  appId,
   initialInfo,
   initialRunning,
 }: {
-  serviceId: string;
+  appId: string;
   initialInfo: ConsoleInfo | null;
   initialRunning: boolean;
 }) {
   const running = useLiveRunning(initialRunning);
   // Console info for the *current* running session. Seeded from SSR; re-fetched
-  // whenever the service transitions into the running state (a stopped project
+  // whenever the app transitions into the running state (a stopped project
   // has no info, and a restart may target a fresh container). Display is gated
   // on `running`, so we never null this on stop — it's simply ignored, which
   // keeps all state writes inside async callbacks (no synchronous effect churn).
@@ -70,7 +70,7 @@ export function LiveConsole({
   React.useEffect(() => {
     if (!running) return;
     let cancelled = false;
-    gql<ConsoleInfoResponse>(CONSOLE_INFO_QUERY, { serviceId })
+    gql<ConsoleInfoResponse>(CONSOLE_INFO_QUERY, { appId })
       .then((data) => {
         if (cancelled) return;
         const ci = data.consoleInfo;
@@ -88,12 +88,12 @@ export function LiveConsole({
     return () => {
       cancelled = true;
     };
-  }, [running, serviceId]);
+  }, [running, appId]);
 
   if (running && info) {
     return (
       <ContainerConsole
-        serviceId={serviceId}
+        appId={appId}
         containerName={info.containerName}
         image={info.image}
         instances={info.instances}
@@ -110,7 +110,7 @@ export function LiveConsole({
       description={
         loading
           ? "The project just started — attaching to the console."
-          : "The console is available once the service has a running deployment. Deploy or redeploy this service, then attach."
+          : "The console is available once the app has a running deployment. Deploy or redeploy this app, then attach."
       }
     />
   );

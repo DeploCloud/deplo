@@ -26,7 +26,7 @@ const TeamPlanEnum = builder.enumType("TeamPlan", {
 /* ------------------------------------------------------------------ */
 
 export const TeamRef = builder.objectRef<Team>("Team").implement({
-  description: "A team that owns services, infra and members.",
+  description: "A team that owns apps, infra and members.",
   fields: (t) => ({
     id: t.exposeID("id"),
     name: t.exposeString("name"),
@@ -136,7 +136,7 @@ builder.mutationFields((t) => ({
     description:
       "Permanently delete a team. teamId must be the ACTIVE team (the delete " +
       "fails closed if the active team changed since the page was loaded). " +
-      "Removes every team-scoped record; the service/database stack teardown " +
+      "Removes every team-scoped record; the app/database stack teardown " +
       "continues in the background. Founder or instance admin only; the " +
       "caller's last team can't be deleted. Returns true.",
     args: { teamId: t.arg.string({ required: true }) },

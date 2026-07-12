@@ -28,22 +28,22 @@ import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
 
 export function DeploymentActions({
   id,
-  serviceId,
-  serviceSlug,
+  appId,
+  appSlug,
   url,
   status,
   environment,
   canDelete = false,
 }: {
   id: string;
-  serviceId: string;
-  /** Owning service slug — used to route to the new deployment's live logs. */
-  serviceSlug: string;
+  appId: string;
+  /** Owning app slug — used to route to the new deployment's live logs. */
+  appSlug: string;
   url: string;
   status: DeploymentStatus;
   environment: DeploymentEnvironment;
   /** Show the "Delete" item (a finished deployment only). Cosmetic — the data
-   *  layer re-checks `deploy` on the service's folder. */
+   *  layer re-checks `deploy` on the app's folder. */
   canDelete?: boolean;
 }) {
   const router = useRouter();
@@ -63,8 +63,8 @@ export function DeploymentActions({
         { redeploy: { id: string | null } | null },
         { id: string | null } | null
       >(
-        `mutation ($serviceId: String!) { redeploy(serviceId: $serviceId) { id } }`,
-        { serviceId },
+        `mutation ($appId: String!) { redeploy(appId: $appId) { id } }`,
+        { appId },
         (d) => d.redeploy,
       );
       if (res.ok) {
@@ -72,7 +72,7 @@ export function DeploymentActions({
         // Follow the new production build to its live logs; fall back to a
         // refresh if no id came back.
         if (res.data?.id) {
-          router.push(`/services/${serviceSlug}/deployments/${res.data.id}`);
+          router.push(`/apps/${appSlug}/deployments/${res.data.id}`);
         } else {
           router.refresh();
         }
@@ -127,7 +127,7 @@ export function DeploymentActions({
   // logs & details) and "Visit" (the live app) — so neither is buried in the menu;
   // the ⋯ keeps the mutating actions (Redeploy / Promote / Stop build). Visit only
   // shows when the deployment actually has a reachable URL.
-  const detailHref = `/services/${serviceSlug}/deployments/${id}`;
+  const detailHref = `/apps/${appSlug}/deployments/${id}`;
   return (
     <>
     <div className="flex items-center justify-end gap-0.5">

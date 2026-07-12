@@ -14,7 +14,7 @@ import {
 import { runWithIdentity } from "../auth/request-context";
 import { decryptSecret } from "../crypto";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
-import { seedServer } from "./service-graph-test-helpers";
+import { seedServer } from "./app-graph-test-helpers";
 import {
   seedBackup,
   seedDatabase,

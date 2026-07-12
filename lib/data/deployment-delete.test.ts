@@ -8,7 +8,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   deployments as deploymentsTable,
   deploymentLogs,
-  services as servicesTable,
+  apps as appsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import {
@@ -19,10 +19,10 @@ import {
 } from "./identity-test-helpers";
 import {
   seedServer,
-  seedService,
+  seedApp,
   seedDeployment,
   TRUNCATE_PROJECT_GRAPH,
-} from "./service-graph-test-helpers";
+} from "./app-graph-test-helpers";
 import { deleteDeployments, deleteAllDeployments } from "./deployments";
 
 /**
@@ -66,12 +66,12 @@ beforeEach(async () => {
     ],
   });
   await seedServer(db);
-  await seedService(db, { id: SVC, teamId: TEAM_A });
-  await seedDeployment(db, { id: "dep_ready", serviceId: SVC, status: "ready" });
-  await seedDeployment(db, { id: "dep_error", serviceId: SVC, status: "error" });
-  await seedDeployment(db, { id: "dep_canceled", serviceId: SVC, status: "canceled" });
-  await seedDeployment(db, { id: "dep_queued", serviceId: SVC, status: "queued" });
-  await seedDeployment(db, { id: "dep_building", serviceId: SVC, status: "building" });
+  await seedApp(db, { id: SVC, teamId: TEAM_A });
+  await seedDeployment(db, { id: "dep_ready", appId: SVC, status: "ready" });
+  await seedDeployment(db, { id: "dep_error", appId: SVC, status: "error" });
+  await seedDeployment(db, { id: "dep_canceled", appId: SVC, status: "canceled" });
+  await seedDeployment(db, { id: "dep_queued", appId: SVC, status: "queued" });
+  await seedDeployment(db, { id: "dep_building", appId: SVC, status: "building" });
 });
 
 const remaining = async (): Promise<string[]> =>
@@ -97,7 +97,7 @@ test("deleteDeployments removes finished ones and leaves in-progress builds", as
   );
 });
 
-test("deleteAllDeployments(serviceId) clears finished, keeps in-progress", async () => {
+test("deleteAllDeployments(appId) clears finished, keeps in-progress", async () => {
   const n = await as(OWNER, TEAM_A, () => deleteAllDeployments(SVC));
   assert.equal(n, 3);
   assert.deepEqual(await remaining(), ["dep_building", "dep_queued"]);
@@ -126,15 +126,15 @@ test("deleting a deployment cascades its build logs", async () => {
 
 test("deleting the service's latest deployment NULLs the pointer (set-null FK)", async () => {
   await db
-    .update(servicesTable)
+    .update(appsTable)
     .set({ latestDeploymentId: "dep_ready" })
-    .where(eq(servicesTable.id, SVC));
+    .where(eq(appsTable.id, SVC));
   await as(OWNER, TEAM_A, () => deleteDeployments(["dep_ready"]));
   const svc = (
     await db
-      .select({ latest: servicesTable.latestDeploymentId })
-      .from(servicesTable)
-      .where(eq(servicesTable.id, SVC))
+      .select({ latest: appsTable.latestDeploymentId })
+      .from(appsTable)
+      .where(eq(appsTable.id, SVC))
   )[0]!;
   assert.equal(svc.latest, null, "the stale pointer is cleared, not orphaned");
 });

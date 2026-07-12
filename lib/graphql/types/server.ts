@@ -64,7 +64,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     deployConcurrency: t.exposeInt("deployConcurrency", {
       description:
-        "How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-service deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin).",
+        "How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-app deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin).",
     }),
     teams: t.field({
       type: [TeamRef],
@@ -215,7 +215,7 @@ builder.mutationFields((t) => ({
     type: ServerRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has services or databases on the server would lose access.",
+      "Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has apps or databases on the server would lose access.",
     args: { input: t.arg({ type: SetServerTeamsInputType, required: true }) },
     resolve: (_r, { input }) =>
       setServerTeams(input.serverId, {

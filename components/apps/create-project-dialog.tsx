@@ -14,13 +14,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FolderColorPicker } from "@/components/services/folder-color-picker";
+import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
  * Create a Project CONTAINER (ADR-0008) in the active team. Controlled (no
  * trigger of its own) so it can be opened from an "Add new" menu or the
- * Overview's context menu. Folders and services are moved into it afterward;
+ * Overview's context menu. Folders and apps are moved into it afterward;
  * creation lands on the container's Overview drill-in view (`/?project=<id>`).
  */
 export function CreateProjectDialog({
@@ -70,7 +70,7 @@ export function CreateProjectDialog({
           <DialogTitle>New project</DialogTitle>
           <DialogDescription>
             A project is an advanced folder: each of its environments holds its
-            own services and its own shared variables. You can move services
+            own apps and its own shared variables. You can move apps
             into it afterward.
           </DialogDescription>
         </DialogHeader>

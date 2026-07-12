@@ -6,7 +6,7 @@ import { remapBuildInput } from "./build-input";
 /**
  * Regression coverage for the "build settings don't save" bug: the GraphQL
  * `BuildConfigInput` names three fields differently from the stored BuildConfig
- * (`settings`/`rootDir`/`outputDir`), and the shallow merge in updateServiceBuild
+ * (`settings`/`rootDir`/`outputDir`), and the shallow merge in updateAppBuild
  * keys off the BuildConfig names. If the remap misses any of them, that edit is
  * silently dropped and reverts to the stored value on reload — which is exactly
  * how Root Directory / Output Directory regressed.
@@ -67,7 +67,7 @@ test("remapBuildInput keeps an explicit empty-string edit (clearing a field)", (
 });
 
 test("remapBuildInput end-to-end: the merge persists the edited rootDirectory", () => {
-  // Mirrors the shallow merge in updateServiceBuild: { ...existing, ...remapped }.
+  // Mirrors the shallow merge in updateAppBuild: { ...existing, ...remapped }.
   const existing = {
     buildMethod: "nixpacks",
     methodSettings: {},

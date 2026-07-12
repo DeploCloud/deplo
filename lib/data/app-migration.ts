@@ -3,13 +3,13 @@ import "server-only";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import { services as servicesTable } from "../db/schema/control-plane";
-import { loadServiceGraph } from "./service-graph-load";
+import { apps as appsTable } from "../db/schema/control-plane";
+import { loadAppGraph } from "./app-graph-load";
 import { withKeyedLock } from "./keyed-mutex";
 import { connectAgent } from "../infra/agent-client";
 import {
-  serviceMoveVolumeNames,
-  serviceHasFilesDir,
+  appMoveVolumeNames,
+  appHasFilesDir,
   assertSafeVolumeNames,
 } from "./project-backup-descriptor";
 import {
@@ -21,16 +21,16 @@ import {
 import { recordActivity } from "./activity";
 
 /**
- * Complete a pending cross-host data migration for a service, called from the
- * deploy pipeline right AFTER a successful deploy on the service's NEW server.
+ * Complete a pending cross-host data migration for an app, called from the
+ * deploy pipeline right AFTER a successful deploy on the app's NEW server.
  *
- * A service server move is lazy: updateServiceSource reassigns `serverId` and, when
+ * An app server move is lazy: updateAppSource reassigns `serverId` and, when
  * the OLD host still holds a running stack, records `migrateFromServerId` (the old
- * host) and triggers a deploy on the new host. That deploy rebuilds the service from
+ * host) and triggers a deploy on the new host. That deploy rebuilds the app from
  * source and brings it up with FRESH EMPTY volumes. This function then copies the
  * real data across so it FOLLOWS the move:
  *
- *   1. enumerate the service's data volumes on the NEW host's rendered stack
+ *   1. enumerate the app's data volumes on the NEW host's rendered stack
  *      (external volumes excluded — Deplo doesn't own them);
  *   2. stop BOTH stacks (new so nothing writes its volumes under the untar, old for
  *      a consistent read);
@@ -47,26 +47,26 @@ import { recordActivity } from "./activity";
  * can recover the data manually. Returns a human message for the deploy log, or null
  * when there was nothing to migrate.
  */
-export async function completePendingServiceMigration(
-  serviceId: string,
+export async function completePendingAppMigration(
+  appId: string,
   emit: (level: "info" | "warn" | "error", text: string) => void,
 ): Promise<void> {
-  // Serialize on the service id so two concurrent production deploys can't both run
+  // Serialize on the app id so two concurrent production deploys can't both run
   // the migration: the first clears the marker under the lock, the second re-reads
   // inside the lock, sees it gone, and no-ops. Same lifecycle lock the DB moves use.
   // NB: withKeyedLock is PROCESS-LOCAL (keyed-mutex.ts) — correct for the single
   // `next start` process this app runs as; a multi-process deployment would need a
   // DB-level guard (a conditional UPDATE on the marker) instead.
-  await withKeyedLock(`service-migrate:${serviceId}`, async () => {
-    await runMigration(serviceId, emit);
+  await withKeyedLock(`service-migrate:${appId}`, async () => {
+    await runMigration(appId, emit);
   });
 }
 
 async function runMigration(
-  serviceId: string,
+  appId: string,
   emit: (level: "info" | "warn" | "error", text: string) => void,
 ): Promise<void> {
-  const service = await loadServiceGraph(serviceId);
+  const service = await loadAppGraph(appId);
   if (!service) return;
   const fromServerId = service.migrateFromServerId;
   if (!fromServerId) return; // no pending migration — the common case
@@ -76,7 +76,7 @@ async function runMigration(
   // A move onto the SAME server makes no sense, but guard anyway: clear the marker
   // and do nothing rather than copy a volume onto itself.
   if (fromServerId === toServerId) {
-    await clearMigrationMarker(serviceId);
+    await clearMigrationMarker(appId);
     return;
   }
 
@@ -100,11 +100,11 @@ async function runMigration(
     } finally {
       conn.close();
     }
-    volumeNames = serviceMoveVolumeNames(service, renderedYaml);
+    volumeNames = appMoveVolumeNames(service, renderedYaml);
     assertSafeVolumeNames(slug, volumeNames);
   } catch (e) {
     // Couldn't even enumerate — leave the old host intact, clear the marker, warn.
-    await clearMigrationMarker(serviceId);
+    await clearMigrationMarker(appId);
     emit(
       "warn",
       `Could not read the old server's stack to migrate data ` +
@@ -114,14 +114,14 @@ async function runMigration(
     return;
   }
 
-  const includeFiles = serviceHasFilesDir(service);
+  const includeFiles = appHasFilesDir(service);
   if (volumeNames.length === 0 && !includeFiles) {
     // Nothing enumerated to copy. Tear down the old host, but WITHOUT removing
     // volumes: if the enumeration somehow missed a volume that still holds data,
     // a plain `down` orphans it (recoverable by hand) rather than destroying it.
-    // A genuinely stateless service has no volumes, so nothing is orphaned.
+    // A genuinely stateless app has no volumes, so nothing is orphaned.
     await destroyStackOn(fromServerId, slug, false).catch(() => {});
-    await clearMigrationMarker(serviceId);
+    await clearMigrationMarker(appId);
     emit(
       "info",
       "No persistent data to migrate; stopped the old server's stack " +
@@ -138,7 +138,7 @@ async function runMigration(
   } catch (e) {
     // Best-effort restart the new stack (we may have stopped it), leave old intact.
     await startStackOn(toServerId, slug).catch(() => {});
-    await clearMigrationMarker(serviceId);
+    await clearMigrationMarker(appId);
     emit(
       "warn",
       `Could not stop both stacks to migrate data safely ` +
@@ -157,12 +157,12 @@ async function runMigration(
     });
   } catch (e) {
     await startStackOn(toServerId, slug).catch(() => {});
-    await clearMigrationMarker(serviceId);
+    await clearMigrationMarker(appId);
     emit(
       "error",
       `Failed to copy data to the new server ` +
         `(${e instanceof Error ? e.message : String(e)}). The old server was left ` +
-        `intact with its data — it was NOT torn down. To retry, move the service ` +
+        `intact with its data — it was NOT torn down. To retry, move the app ` +
         `back to the old server and then move it again once the issue is fixed, or ` +
         `recover the data manually.`,
     );
@@ -175,7 +175,7 @@ async function runMigration(
   } catch (e) {
     // The data is on the new host but the stack didn't restart. Don't tear down the
     // old host (belt-and-braces); clear the marker + warn so a redeploy can recover.
-    await clearMigrationMarker(serviceId);
+    await clearMigrationMarker(appId);
     emit(
       "warn",
       `Data copied, but the new stack did not restart ` +
@@ -195,23 +195,23 @@ async function runMigration(
       `(${e instanceof Error ? e.message : String(e)}) — remove it manually.`;
   });
 
-  await clearMigrationMarker(serviceId);
+  await clearMigrationMarker(appId);
   emit(
     teardownWarning ? "warn" : "info",
     `Data migrated to the new server.` + teardownWarning,
   );
   await recordActivity(
-    "service",
+    "app",
     `Migrated ${service.name}'s data to its new server`,
     "system",
-    serviceId,
+    appId,
   );
 }
 
 /** Clear the pending-migration marker (a no-op UPDATE if the row is gone). */
-async function clearMigrationMarker(serviceId: string): Promise<void> {
+async function clearMigrationMarker(appId: string): Promise<void> {
   await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({ migrateFromServerId: null })
-    .where(eq(servicesTable.id, serviceId));
+    .where(eq(appsTable.id, appId));
 }

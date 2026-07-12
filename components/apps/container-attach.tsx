@@ -11,20 +11,20 @@ type Status = "connecting" | "live" | "ended" | "error";
 /**
  * Interactive `docker attach` to a running container's PID 1.
  *
- * Output streams over an EventSource (SSE) from GET /api/services/:id/attach;
+ * Output streams over an EventSource (SSE) from GET /api/apps/:id/attach;
  * the first `session` event carries the server-side session id. Keystrokes are
  * POSTed to the same session so they reach the container's stdin — full-duplex
  * without a WebSocket. Detaching kills only our local attach client, never the
  * container (the route spawns with --sig-proxy=false).
  */
 export function ContainerAttach({
-  serviceId,
+  appId,
   containerName,
   openStdin,
   tty,
   embedded = false,
 }: {
-  serviceId: string;
+  appId: string;
   containerName: string;
   openStdin: boolean;
   tty: boolean;
@@ -40,7 +40,7 @@ export function ContainerAttach({
   // Bumped on reconnect to retrigger the effect for a fresh stream.
   const [attempt, setAttempt] = React.useState(0);
 
-  const base = `/api/services/${encodeURIComponent(serviceId)}/attach`;
+  const base = `/api/apps/${encodeURIComponent(appId)}/attach`;
 
   React.useEffect(() => {
     const url = `${base}?container=${encodeURIComponent(containerName)}`;

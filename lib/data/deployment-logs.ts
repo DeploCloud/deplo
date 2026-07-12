@@ -4,7 +4,7 @@ import { asc, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { deploymentLogs } from "../db/schema/control-plane";
-import { assembleLogLine, logLineToRow } from "./service-graph-rows";
+import { assembleLogLine, logLineToRow } from "./app-graph-rows";
 import type { LogLine } from "../types";
 
 /**

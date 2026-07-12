@@ -20,8 +20,8 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
-import { requireFolderCapabilityForService } from "./folder-access";
-import { loadServiceGraph, loadTeamService } from "./service-graph-load";
+import { requireFolderCapabilityForApp } from "./folder-access";
+import { loadAppGraph, loadTeamApp } from "./app-graph-load";
 import { decryptSecret } from "../crypto";
 import { parseConnectionPassword } from "../deploy/database-compose";
 import {
@@ -115,8 +115,8 @@ async function destinationNameFor(id: string, teamId: string): Promise<string> {
 async function toDTO(b: Backup): Promise<BackupDTO> {
   // Every related collection is relational now: the database/destination names by
   // point lookup, the project name via the project graph (cut-set c).
-  const serviceName = b.serviceId
-    ? ((await loadServiceGraph(b.serviceId))?.name ?? null)
+  const serviceName = b.appId
+    ? ((await loadAppGraph(b.appId))?.name ?? null)
     : null;
   return {
     ...b,
@@ -141,7 +141,7 @@ export async function createBackup(input: {
   name: string;
   targetKind?: BackupTargetKind;
   databaseId: string | null;
-  serviceId?: string | null;
+  appId?: string | null;
   destinationId: string;
   schedule: string;
   retentionDays: number;
@@ -153,7 +153,7 @@ export async function createBackup(input: {
   if (!input.destinationId) throw new Error("Select a destination");
 
   const targetKind: BackupTargetKind = input.targetKind ?? "database";
-  const serviceId = input.serviceId ?? null;
+  const appId = input.appId ?? null;
   const databaseId = input.databaseId ?? null;
 
   // The chosen destination + the target (database OR project) must belong to this
@@ -165,12 +165,12 @@ export async function createBackup(input: {
     if (!(await databaseNameFor(databaseId, teamId)))
       throw new Error("Database not found");
   } else {
-    if (!serviceId) throw new Error("Select a project to back up");
-    if (!(await loadTeamService(serviceId, teamId)))
-      throw new Error("Service not found");
+    if (!appId) throw new Error("Select a project to back up");
+    if (!(await loadTeamApp(appId, teamId)))
+      throw new Error("App not found");
     // Folder-scope: backing up a project inside a folder needs manage_infra on
     // that folder too, not just at the team level.
-    await requireFolderCapabilityForService(serviceId, "manage_infra");
+    await requireFolderCapabilityForApp(appId, "manage_infra");
   }
 
   const b: Backup = {
@@ -179,7 +179,7 @@ export async function createBackup(input: {
     name: input.name.trim(),
     targetKind,
     databaseId: targetKind === "database" ? databaseId : null,
-    serviceId: targetKind === "service" ? serviceId : null,
+    appId: targetKind === "app" ? appId : null,
     destinationId: input.destinationId,
     schedule: input.schedule || "0 3 * * *",
     retentionDays: Math.max(1, input.retentionDays || 7),
@@ -269,10 +269,10 @@ function toWireProjectDescriptor(d: ProjectBackupDescriptor): ProjectDescriptor 
 interface ResolvedTarget {
   serverId: string;
   kind: BackupTargetKind;
-  /** The target's own id (databaseId or serviceId) — keys the object folder. */
+  /** The target's own id (databaseId or appId) — keys the object folder. */
   targetId: string;
   databaseId: string | null;
-  serviceId: string | null;
+  appId: string | null;
   dbType: DatabaseType | null;
   database?: DatabaseDescriptor;
   project?: ProjectDescriptor;
@@ -289,7 +289,7 @@ async function resolveTarget(
   teamId: string,
   kind: BackupTargetKind,
   databaseId: string | null,
-  serviceId: string | null,
+  appId: string | null,
 ): Promise<ResolvedTarget> {
   if (kind === "database") {
     if (!databaseId) throw new Error("Backup has no database target");
@@ -305,22 +305,22 @@ async function resolveTarget(
       kind,
       targetId: db.id,
       databaseId: db.id,
-      serviceId: null,
+      appId: null,
       dbType: db.type,
       database: databaseDescriptor(db),
       label: `database ${db.name}`,
     };
   }
-  if (!serviceId) throw new Error("Backup has no project target");
-  const project = await loadTeamService(serviceId, teamId);
-  if (!project) throw new Error("Service not found");
+  if (!appId) throw new Error("Backup has no project target");
+  const project = await loadTeamApp(appId, teamId);
+  if (!project) throw new Error("App not found");
   const descriptor = await buildProjectDescriptor(project);
   return {
     serverId: project.serverId,
     kind,
     targetId: project.id,
     databaseId: null,
-    serviceId: project.id,
+    appId: project.id,
     dbType: null,
     project: toWireProjectDescriptor(descriptor),
     label: `project ${project.name}`,
@@ -329,7 +329,7 @@ async function resolveTarget(
 
 /**
  * The ONE executor every real backup goes through — a schedule's "Run now"
- * (`runBackup`), an ad-hoc project run (`runServiceBackup`), and (Step 6) the
+ * (`runBackup`), an ad-hoc project run (`runAppBackup`), and (Step 6) the
  * scheduler. It resolves the target + destination, appends a `running`
  * {@link BackupRun}, dumps+uploads via the OWNING agent (capability-preflighted),
  * records the terminal result, then prunes old artifacts. `backupId` is the
@@ -345,7 +345,7 @@ async function executeBackup(
     backupId: string | null;
     kind: BackupTargetKind;
     databaseId: string | null;
-    serviceId: string | null;
+    appId: string | null;
     destinationId: string;
     retentionDays: number;
   },
@@ -364,7 +364,7 @@ async function executeBackup(
     backupId: opts.backupId,
     targetKind: opts.kind,
     databaseId: opts.kind === "database" ? opts.databaseId : null,
-    serviceId: opts.kind === "service" ? opts.serviceId : null,
+    appId: opts.kind === "app" ? opts.appId : null,
     destinationId: opts.destinationId,
     objectKey: "", // filled once the key is built (after resolution)
     sizeBytes: 0,
@@ -389,16 +389,16 @@ async function executeBackup(
 
   // Resolve + dump under one try so EVERY failure (resolution, dial, the dump
   // itself) lands on the same `failed`-run path below.
-  let label = opts.kind === "database" ? "database" : "service";
-  let activityServiceId: string | null = opts.kind === "service" ? opts.serviceId : null;
+  let label = opts.kind === "database" ? "database" : "app";
+  let activityAppId: string | null = opts.kind === "app" ? opts.appId : null;
   let result: { ok: boolean; error: string; objectKey: string; sizeBytes: number } | null = null;
   let failure: string | null = null;
   let objectKey = "";
   try {
     const creds = await getS3WithSecretsForTeam(teamId, opts.destinationId);
-    const target = await resolveTarget(teamId, opts.kind, opts.databaseId, opts.serviceId);
+    const target = await resolveTarget(teamId, opts.kind, opts.databaseId, opts.appId);
     label = target.label;
-    activityServiceId = target.serviceId;
+    activityAppId = target.appId;
     objectKey = buildObjectKey({
       teamId,
       kind: opts.kind,
@@ -488,7 +488,7 @@ async function executeBackup(
       ? `Backup of ${label} failed: ${failure}`
       : `Backed up ${label} (${formatBytes(finished.sizeBytes)})`,
     actor,
-    activityServiceId,
+    activityAppId,
     teamId,
   );
 
@@ -528,7 +528,7 @@ async function pruneRetention(
     teamId,
     destinationId,
     target.kind,
-    target.kind === "database" ? target.databaseId : target.serviceId,
+    target.kind === "database" ? target.databaseId : target.appId,
   );
   const doomed = selectDoomedRuns(candidates, {
     retentionDays,
@@ -577,7 +577,7 @@ async function pruneRetention(
 
 /**
  * Load a target's runs in ONE destination, carrying `seq` for retention ranking.
- * Exactly one of `databaseId`/`serviceId` is set (matching `kind`); team-scoped.
+ * Exactly one of `databaseId`/`appId` is set (matching `kind`); team-scoped.
  */
 async function loadRunsForTarget(
   teamId: string,
@@ -595,7 +595,7 @@ async function loadRunsForTarget(
         eq(backupRunsTable.targetKind, kind),
         kind === "database"
           ? eq(backupRunsTable.databaseId, targetId ?? "")
-          : eq(backupRunsTable.serviceId, targetId ?? ""),
+          : eq(backupRunsTable.appId, targetId ?? ""),
       ),
     );
   return rows.map((r) => ({ ...assembleBackupRun(r), seq: r.seq }));
@@ -613,13 +613,13 @@ export async function runBackup(id: string): Promise<void> {
   const b = await loadBackup(id, teamId);
   if (!b) throw new Error("Not found");
   // A project-target schedule additionally requires folder access to its project.
-  if (b.targetKind === "service" && b.serviceId)
-    await requireFolderCapabilityForService(b.serviceId, "manage_infra");
+  if (b.targetKind === "app" && b.appId)
+    await requireFolderCapabilityForApp(b.appId, "manage_infra");
   await executeBackup(teamId, user.name, {
     backupId: b.id,
     kind: b.targetKind,
     databaseId: b.databaseId,
-    serviceId: b.serviceId,
+    appId: b.appId,
     destinationId: b.destinationId,
     retentionDays: b.retentionDays,
   });
@@ -653,7 +653,7 @@ export async function runScheduledBackup(backup: Backup): Promise<void> {
       backupId: backup.id,
       kind: backup.targetKind,
       databaseId: backup.databaseId,
-      serviceId: backup.serviceId,
+      appId: backup.appId,
       destinationId: backup.destinationId,
       retentionDays: backup.retentionDays,
     });
@@ -668,25 +668,25 @@ export async function runScheduledBackup(backup: Backup): Promise<void> {
  * executor with `backupId: null`. Used by the project Backups tab (Step 5).
  * `retentionDays` defaults to the conventional 7 (no schedule to read it from).
  */
-export async function runServiceBackup(
-  serviceId: string,
+export async function runAppBackup(
+  appId: string,
   destinationId: string,
   retentionDays = 7,
 ): Promise<BackupRun> {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
-  if (!(await loadTeamService(serviceId, teamId)))
-    throw new Error("Service not found");
+  if (!(await loadTeamApp(appId, teamId)))
+    throw new Error("App not found");
   // Folder-scope the ad-hoc project backup, matching the scheduled path.
-  await requireFolderCapabilityForService(serviceId, "manage_infra");
+  await requireFolderCapabilityForApp(appId, "manage_infra");
   if (!(await destinationExists(destinationId, teamId)))
     throw new Error("Select a destination");
   return executeBackup(teamId, user.name, {
     backupId: null,
-    kind: "service",
+    kind: "app",
     databaseId: null,
-    serviceId,
+    appId,
     destinationId,
     retentionDays,
   });
@@ -715,15 +715,15 @@ export async function restoreBackup(runId: string): Promise<void> {
     throw new Error("This backup did not complete successfully and cannot be restored");
   // Restoring INTO a project inside a folder needs manage_infra on that folder —
   // restore is destructive (stop → wipe → untar), so it's gated like the backup.
-  if (run.targetKind === "service" && run.serviceId)
-    await requireFolderCapabilityForService(run.serviceId, "manage_infra");
+  if (run.targetKind === "app" && run.appId)
+    await requireFolderCapabilityForApp(run.appId, "manage_infra");
 
   const creds = await getS3WithSecretsForTeam(teamId, run.destinationId);
   const target = await resolveTarget(
     teamId,
     run.targetKind,
     run.databaseId,
-    run.serviceId,
+    run.appId,
   );
   const s3 = s3TargetFor(creds, run.objectKey);
   const req: RestoreRequest = {
@@ -756,7 +756,7 @@ export async function restoreBackup(runId: string): Promise<void> {
       ? `Restore of ${target.label} failed: ${failure}`
       : `Restored ${target.label} from a backup`,
     user.name,
-    target.serviceId,
+    target.appId,
     teamId,
   );
   if (failure) throw new Error(failure);
@@ -764,16 +764,16 @@ export async function restoreBackup(runId: string): Promise<void> {
 
 /**
  * The runs for a target's artifact list (project Backups tab / DB restore list),
- * newest first. Exactly one of `serviceId` / `databaseId` is given; team-scoped.
+ * newest first. Exactly one of `appId` / `databaseId` is given; team-scoped.
  */
 export async function listBackupRuns(filter: {
-  serviceId?: string;
+  appId?: string;
   databaseId?: string;
 }): Promise<BackupRun[]> {
   const teamId = await requireActiveTeamId();
-  // Exactly one of serviceId/databaseId selects the target; neither ⇒ no runs.
-  const targetWhere = filter.serviceId
-    ? eq(backupRunsTable.serviceId, filter.serviceId)
+  // Exactly one of appId/databaseId selects the target; neither ⇒ no runs.
+  const targetWhere = filter.appId
+    ? eq(backupRunsTable.appId, filter.appId)
     : filter.databaseId
       ? eq(backupRunsTable.databaseId, filter.databaseId)
       : null;
@@ -796,8 +796,8 @@ export async function toggleBackup(
   // Load first so a project-target schedule can be folder-scoped before the write.
   const b = await loadBackup(id, teamId);
   if (!b) throw new Error("Not found");
-  if (b.targetKind === "service" && b.serviceId)
-    await requireFolderCapabilityForService(b.serviceId, "manage_infra");
+  if (b.targetKind === "app" && b.appId)
+    await requireFolderCapabilityForApp(b.appId, "manage_infra");
   await getDb()
     .update(backupsTable)
     .set({ enabled })
@@ -833,8 +833,8 @@ export async function updateBackup(
   // A project-target schedule may only be edited by someone with folder access.
   const cur = await loadBackup(id, teamId);
   if (!cur) throw new Error("Not found");
-  if (cur.targetKind === "service" && cur.serviceId)
-    await requireFolderCapabilityForService(cur.serviceId, "manage_infra");
+  if (cur.targetKind === "app" && cur.appId)
+    await requireFolderCapabilityForApp(cur.appId, "manage_infra");
 
   const updated = await getDb()
     .update(backupsTable)
@@ -863,8 +863,8 @@ export async function deleteBackup(id: string): Promise<void> {
   // Deleting a project-target schedule requires folder access to its project.
   const b = await loadBackup(id, teamId);
   if (!b) throw new Error("Not found");
-  if (b.targetKind === "service" && b.serviceId)
-    await requireFolderCapabilityForService(b.serviceId, "manage_infra");
+  if (b.targetKind === "app" && b.appId)
+    await requireFolderCapabilityForApp(b.appId, "manage_infra");
   await getDb()
     .delete(backupsTable)
     .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)));
@@ -923,7 +923,7 @@ function runTargetWhere(kind: BackupTargetKind, targetId: string) {
     eq(backupRunsTable.targetKind, kind),
     kind === "database"
       ? eq(backupRunsTable.databaseId, targetId)
-      : eq(backupRunsTable.serviceId, targetId),
+      : eq(backupRunsTable.appId, targetId),
   )!;
 }
 
@@ -957,7 +957,7 @@ export async function backupDestinationsForTarget(input: {
  * Capability mirrors the target's OWN delete gate so this can never become a
  * privilege escalation OR an unexpected hard block: a database's artifacts need
  * `manage_infra` (like `deleteDatabase`), a project's need `deploy` (like
- * `deleteService`). Run BEFORE the target row is deleted, so it still resolves to
+ * `deleteApp`). Run BEFORE the target row is deleted, so it still resolves to
  * its owning server.
  *
  * A partial failure is NOT swallowed: the call returns the failing destinations,
@@ -981,7 +981,7 @@ export async function deleteAllBackupArtifacts(input: {
   const serverId =
     input.kind === "database"
       ? ((await databaseServerId(input.targetId, teamId)) ?? null)
-      : ((await loadTeamService(input.targetId, teamId))?.serverId ?? null);
+      : ((await loadTeamApp(input.targetId, teamId))?.serverId ?? null);
 
   const destinations = await backupDestinationsForTarget(input);
   if (destinations.length === 0) return { deleted: 0, failedDestinations: [] };

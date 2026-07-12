@@ -60,14 +60,14 @@ import type { BackupRun } from "@/lib/types";
 
 type Destination = { id: string; name: string };
 
-export function ServiceBackups({
-  serviceId,
+export function AppBackups({
+  appId,
   serviceName,
   schedules,
   runs,
   destinations,
 }: {
-  serviceId: string;
+  appId: string;
   serviceName: string;
   schedules: BackupDTO[];
   runs: BackupRun[];
@@ -85,16 +85,16 @@ export function ServiceBackups({
       <section className="space-y-4">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-sm font-medium">Back up this service</h2>
+            <h2 className="text-sm font-medium">Back up this app</h2>
             <p className="text-xs text-muted-foreground">
-              Captures the service&apos;s persistent volumes, files and its
+              Captures the app&apos;s persistent volumes, files and its
               compose/env snapshot to an S3 destination. Linked databases are
               backed up separately, as databases.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <BackUpNow serviceId={serviceId} destinations={destinations} />
-            <ScheduleBackup serviceId={serviceId} destinations={destinations} />
+            <BackUpNow appId={appId} destinations={destinations} />
+            <ScheduleBackup appId={appId} destinations={destinations} />
           </div>
         </div>
       </section>
@@ -139,7 +139,7 @@ export function ServiceBackups({
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">No S3 destination configured</p>
             <p className="text-sm text-muted-foreground">
-              Service backups are uploaded to an S3 bucket. Add a destination to
+              App backups are uploaded to an S3 bucket. Add a destination to
               run or schedule backups — completed artifacts then appear here.
             </p>
           </div>
@@ -198,10 +198,10 @@ export function ServiceBackups({
 /* ------------------------------------------------------------------ */
 
 function BackUpNow({
-  serviceId,
+  appId,
   destinations,
 }: {
-  serviceId: string;
+  appId: string;
   destinations: Destination[];
 }) {
   const router = useRouter();
@@ -215,10 +215,10 @@ function BackUpNow({
   function submit() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($serviceId: String!, $destinationId: String!) {
-          runServiceBackup(serviceId: $serviceId, destinationId: $destinationId)
+        `mutation($appId: String!, $destinationId: String!) {
+          runAppBackup(appId: $appId, destinationId: $destinationId)
         }`,
-        { serviceId, destinationId },
+        { appId, destinationId },
       );
       if (res.ok) {
         toast.success("Backup started");
@@ -258,7 +258,7 @@ function BackUpNow({
         <DialogHeader>
           <DialogTitle>Back up now</DialogTitle>
           <DialogDescription>
-            Dump this service&apos;s volumes, files and compose/env snapshot to S3
+            Dump this app&apos;s volumes, files and compose/env snapshot to S3
             immediately — no schedule needed.
           </DialogDescription>
         </DialogHeader>
@@ -293,14 +293,14 @@ function BackUpNow({
 }
 
 /* ------------------------------------------------------------------ */
-/* Schedule a service backup                                           */
+/* Schedule an app backup                                              */
 /* ------------------------------------------------------------------ */
 
 function ScheduleBackup({
-  serviceId,
+  appId,
   destinations,
 }: {
-  serviceId: string;
+  appId: string;
   destinations: Destination[];
 }) {
   const router = useRouter();
@@ -321,8 +321,8 @@ function ScheduleBackup({
         {
           input: {
             name: fields.name,
-            targetKind: "service",
-            serviceId,
+            targetKind: "app",
+            appId,
             destinationId: fields.destinationId,
             schedule: fields.schedule,
             retentionDays: fields.retention,
@@ -368,7 +368,7 @@ function ScheduleBackup({
         <DialogHeader>
           <DialogTitle>Schedule a backup</DialogTitle>
           <DialogDescription>
-            Periodically back up this service to an S3 destination.
+            Periodically back up this app to an S3 destination.
           </DialogDescription>
         </DialogHeader>
         <ScheduleFormFields
@@ -393,7 +393,7 @@ function ScheduleBackup({
 }
 
 /* ------------------------------------------------------------------ */
-/* Edit a service backup schedule                                      */
+/* Edit an app backup schedule                                         */
 /* ------------------------------------------------------------------ */
 
 /** The editable settings of a schedule, shared by the create and edit forms. */

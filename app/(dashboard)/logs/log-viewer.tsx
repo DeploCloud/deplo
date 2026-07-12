@@ -19,7 +19,7 @@ import type { DeploymentStatus, LogLevel, LogLine } from "@/lib/types";
 export type DeploymentSummary = {
   id: string;
   serviceName: string;
-  serviceSlug: string;
+  appSlug: string;
   commitMessage: string;
   status: DeploymentStatus;
   createdAt: string;
@@ -83,7 +83,7 @@ export function LogViewer({
   );
 
   const downloadName = selected
-    ? `${selected.serviceSlug}-${selected.id}.log`
+    ? `${selected.appSlug}-${selected.id}.log`
     : "deployment.log";
 
   function toggleLevel(level: LogLevel) {

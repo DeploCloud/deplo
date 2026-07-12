@@ -68,7 +68,7 @@ export interface ComposeStackInput {
   /** Router/service name + label namespace, e.g. `deplo-<slug>`. */
   name: string;
   slug: string;
-  serviceId: string;
+  appId: string;
   /**
    * The routed domains — one Traefik router each, to the route's named compose
    * service. The SOLE routing source (from the `domains` table). Empty ⇒ the
@@ -78,12 +78,12 @@ export interface ComposeStackInput {
   domainRoutes: ComposeDomainRoute[];
   /**
    * Absolute host directory holding this project's mount files. Compose
-   * bind-mounts that reference `./<x>` (the service-files convention) are
+   * bind-mounts that reference `./<x>` (the app-files convention) are
    * rewritten to `<filesDir>/<x>` so each project's config files stay isolated.
    */
   filesDir?: string;
   /**
-   * Service-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
+   * App-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
    * single-`$`). When non-empty, a generated `basicauth` middleware is defined
    * and prepended to EVERY router's chain so all of the stack's routed hostnames
    * are gated. Empty/absent ⇒ no middleware (byte-identical to a stack without
@@ -103,16 +103,16 @@ export interface ComposeStackInput {
   envKeys?: string[];
 }
 
-type Service = Record<string, unknown>;
+type App = Record<string, unknown>;
 type ComposeDoc = {
-  services?: Record<string, Service>;
+  services?: Record<string, App>;
   networks?: Record<string, unknown>;
   version?: unknown;
   [k: string]: unknown;
 };
 
 /** First published container port of a service, if any (`"8080:80"` -> 80, `8080` -> 8080). */
-function publishedPort(svc: Service): number | null {
+function publishedPort(svc: App): number | null {
   const ports = svc.ports;
   if (!Array.isArray(ports) || ports.length === 0) return null;
   const first = ports[0];
@@ -139,7 +139,7 @@ function publishedPort(svc: Service): number | null {
  * unparseable or has no services. Used at project creation only — after that the
  * `domains` table (each row's `service`) is authoritative.
  */
-export function detectDefaultService(
+export function detectDefaultApp(
   compose: string | null,
 ): { service: string; port: number } | null {
   if (!compose || !compose.trim()) return null;
@@ -151,12 +151,12 @@ export function detectDefaultService(
   }
   const services = doc.services;
   if (!services || typeof services !== "object") return null;
-  return detectExpose(services as Record<string, Service>);
+  return detectExpose(services as Record<string, App>);
 }
 
 /** Pick the service Traefik should route to when the template did not say. */
 function detectExpose(
-  services: Record<string, Service>,
+  services: Record<string, App>,
 ): { service: string; port: number } | null {
   const names = Object.keys(services);
   if (names.length === 0) return null;
@@ -172,8 +172,8 @@ function detectExpose(
 /** Labels that mark a container as Deplo-owned. Applied to EVERY service so the
  * whole stack is discoverable by `label=deplo.project=<id>` / `deplo.slug=<slug>`
  * — container counts, the console, health waits and teardown all rely on this. */
-function deploLabels(serviceId: string, slug: string): string[] {
-  return ["deplo.managed=true", `deplo.project=${serviceId}`, `deplo.slug=${slug}`];
+function deploLabels(appId: string, slug: string): string[] {
+  return ["deplo.managed=true", `deplo.project=${appId}`, `deplo.slug=${slug}`];
 }
 
 /**
@@ -192,7 +192,7 @@ function traefikLabels(opts: {
   pathPrefix?: string;
   /** Strip the path prefix before forwarding (ignored without a path). */
   stripPrefix?: boolean;
-  /** Service-wide Basic Auth: a generated `basicauth` middleware (defined once
+  /** App-wide Basic Auth: a generated `basicauth` middleware (defined once
    * and prepended to this router's chain). Absent ⇒ no auth. */
   basicAuth?: { name: string; users: string };
 }): string[] {
@@ -220,7 +220,7 @@ function traefikLabels(opts: {
  * routing/tracking labels). Compose accepts list OR map form; we normalise the
  * map form to a list before merging.
  */
-function mergeLabels(svc: Service, add: string[]): void {
+function mergeLabels(svc: App, add: string[]): void {
   const keyOf = (l: string): string => l.split("=")[0];
   const incoming = new Set(add.map(keyOf));
   const existing: string[] = [];
@@ -252,7 +252,7 @@ function mergeLabels(svc: Service, add: string[]): void {
  * Empty `keys` ⇒ the service is left exactly as-is (no `environment:` key is
  * created on a service that had none), keeping the output byte-identical.
  */
-function mergeEnvironment(svc: Service, keys: string[]): void {
+function mergeEnvironment(svc: App, keys: string[]): void {
   if (keys.length === 0) return;
   // The bare NAME a list entry (`KEY` or `KEY=value`) or a map key declares.
   const nameOf = (entry: string): string => entry.split("=")[0].trim();
@@ -299,7 +299,7 @@ function rewriteMountSource(source: string, filesDir: string): string {
 }
 
 /** Point every `../files/...` bind mount at the per-project files directory. */
-function rewriteServiceVolumes(svc: Service, filesDir: string): void {
+function rewriteAppVolumes(svc: App, filesDir: string): void {
   const vols = svc.volumes;
   if (!Array.isArray(vols)) return;
   svc.volumes = vols.map((v) => {
@@ -320,7 +320,7 @@ function rewriteServiceVolumes(svc: Service, filesDir: string): void {
 }
 
 /** Existing networks of a service as a string list (handles array/map/absent). */
-function serviceNetworks(svc: Service): string[] {
+function appNetworks(svc: App): string[] {
   const n = svc.networks;
   if (Array.isArray(n)) return n.map(String);
   if (n && typeof n === "object") return Object.keys(n);
@@ -328,8 +328,8 @@ function serviceNetworks(svc: Service): string[] {
 }
 
 export function buildComposeStack(input: ComposeStackInput): string {
-  const { compose, name, slug, serviceId, domainRoutes } = input;
-  // Service settings env-var NAMES injected into every service as bare `- KEY`
+  const { compose, name, slug, appId, domainRoutes } = input;
+  // App settings env-var NAMES injected into every service as bare `- KEY`
   // pass-throughs below (values stay in the env-file). Empty/absent ⇒ no env
   // change at all (byte-identical to a stack without injected env).
   const envKeys = input.envKeys ?? [];
@@ -362,16 +362,16 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // EVERY service so the whole stack (not just the routed ones) is discoverable
   // by label — otherwise sidecars/databases are invisible to the container
   // count, console, health wait and teardown.
-  const tracking = deploLabels(serviceId, slug);
+  const tracking = deploLabels(appId, slug);
   for (const svc of Object.values(services)) {
     if (svc && typeof svc === "object") {
-      delete (svc as Service).container_name;
-      if (input.filesDir) rewriteServiceVolumes(svc as Service, input.filesDir);
-      mergeLabels(svc as Service, tracking);
+      delete (svc as App).container_name;
+      if (input.filesDir) rewriteAppVolumes(svc as App, input.filesDir);
+      mergeLabels(svc as App, tracking);
       // Inject the project's settings env vars as bare `- KEY` pass-throughs on
       // EVERY service (the value rides the env-file) — the env analogue of the
       // tracking/routing labels above. A key the service already declares wins.
-      mergeEnvironment(svc as Service, envKeys);
+      mergeEnvironment(svc as App, envKeys);
     }
   }
 
@@ -380,11 +380,11 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // the port source is unambiguous). A route without an explicit port falls back
   // to this.
   const portOf = (service: string): number => {
-    const p = publishedPort(services[service] as Service);
+    const p = publishedPort(services[service] as App);
     return p ?? 80; // conventional web port when the service declares none
   };
 
-  // Services we've already joined to the network, so a service routed on two
+  // Apps we've already joined to the network, so a service routed on two
   // hosts/ports is only network-wired once.
   const wired = new Set<string>();
   // Join a service to the deplo network (on top of its own networks) so Traefik
@@ -394,11 +394,11 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // user who publishes a port (a TCP game server, a database, an admin port)
   // keeps it reachable at that host port, AND still gets the HTTP router labels.
   // Idempotent per service.
-  const wireService = (service: string): void => {
+  const wireApp = (service: string): void => {
     if (wired.has(service)) return;
-    const target = services[service] as Service | undefined;
+    const target = services[service] as App | undefined;
     if (!target) return;
-    const existing = serviceNetworks(target);
+    const existing = appNetworks(target);
     const base = existing.length ? existing : ["default"];
     target.networks = Array.from(new Set([...base, NETWORK]));
     wired.add(service);
@@ -413,11 +413,11 @@ export function buildComposeStack(input: ComposeStackInput): string {
   for (const route of domainRoutes) {
     const service = route.service;
     if (!service || !services[service]) continue;
-    wireService(service);
+    wireApp(service);
     const port = route.port ?? portOf(service);
     const keySeed = `${name}-${service}-${route.name}${route.pathPrefix}`;
     mergeLabels(
-      services[service] as Service,
+      services[service] as App,
       traefikLabels({
         router: keySeed.replace(/[^a-zA-Z0-9_-]/g, "-"),
         domains: [route.name],

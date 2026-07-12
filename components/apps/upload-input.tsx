@@ -18,22 +18,22 @@ export interface CurrentUpload {
  * Drag-and-drop / file-picker upload of a code archive for an "upload"-source
  * project. Two modes:
  *
- *   - Settings mode (a `serviceId` is passed): streams the file to the service's
+ *   - Settings mode (a `appId` is passed): streams the file to the app's
  *     upload route with a live progress bar. Storing the archive does NOT deploy
  *     it — the settings form's "Save & Deploy" button does — so on success we
  *     just refresh so the new archive surfaces and Save & Deploy lights up.
- *   - Deferred mode (`onSelect` is passed, no service exists yet): the create
- *     wizard captures the picked File and uploads it itself after the service is
+ *   - Deferred mode (`onSelect` is passed, no app exists yet): the create
+ *     wizard captures the picked File and uploads it itself after the app is
  *     created. Here we only validate and hand the File up; nothing is streamed.
  */
 export function UploadInput({
-  serviceId,
+  appId,
   current,
   onSelect,
 }: {
-  /** Settings mode: the existing service to stream the archive to. */
-  serviceId?: string;
-  /** Settings mode: the archive currently stored on the service, if any. */
+  /** Settings mode: the existing app to stream the archive to. */
+  appId?: string;
+  /** Settings mode: the archive currently stored on the app, if any. */
   current?: CurrentUpload | null;
   /** Deferred mode: report the picked File (or null when cleared) to the parent. */
   onSelect?: (file: File | null) => void;
@@ -60,7 +60,7 @@ export function UploadInput({
     }
 
     // Deferred mode: just hand the File to the parent — the create wizard streams
-    // it after the service exists (there's nothing to upload to yet).
+    // it after the app exists (there's nothing to upload to yet).
     if (deferred) {
       setSelected(file);
       onSelect!(file);
@@ -68,7 +68,7 @@ export function UploadInput({
     }
 
     setProgress(0);
-    uploadArchive(serviceId!, file, setProgress)
+    uploadArchive(appId!, file, setProgress)
       .then(() => {
         setProgress(null);
         // Archive stored, not deployed — refresh so it shows as the current
@@ -91,7 +91,7 @@ export function UploadInput({
   }
 
   // What to show in the "current archive" chip: the just-picked File in deferred
-  // mode, otherwise the archive already stored on the service.
+  // mode, otherwise the archive already stored on the app.
   const shown = deferred
     ? selected
       ? { filename: selected.name, size: selected.size, uploadedAt: null }

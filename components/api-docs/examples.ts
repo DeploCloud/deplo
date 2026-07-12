@@ -88,11 +88,11 @@ export const CURATED_EXAMPLES: CuratedExample[] = [
 }`,
   },
   {
-    label: "List my services",
-    description: "Every project in the active team (read-only).",
+    label: "List my apps",
+    description: "Every app in the active team (read-only).",
     kind: "query",
-    operation: `query Services {
-  services {
+    operation: `query Apps {
+  apps {
     id
     name
     slug
@@ -119,7 +119,7 @@ export const CURATED_EXAMPLES: CuratedExample[] = [
   {
     label: "Project environments & shared vars",
     description:
-      "A Project container's environments, plus one environment's shared variables (requires “manage env vars”).",
+      "A Project container's environments, plus the team's shared variables and their sharing modes (requires “manage env vars”).",
     kind: "query",
     operation: `query ProjectEnvironments {
   environments(projectId: "prc_example") {
@@ -129,11 +129,13 @@ export const CURATED_EXAMPLES: CuratedExample[] = [
     kind
     isDefault
   }
-  environmentEnv(environmentId: "environ_example") {
+  sharedVars {
     key
     value
-    isMasked
+    masked
     type
+    teamWide
+    targets
   }
 }`,
   },
@@ -149,12 +151,12 @@ export const CURATED_EXAMPLES: CuratedExample[] = [
 }`,
   },
   {
-    label: "Rebuild a service (dry run)",
+    label: "Rebuild an app (dry run)",
     description:
       "A destructive mutation, simulated. Requires the “deploy” capability — try it whether or not you hold it.",
     kind: "mutation",
-    operation: `mutation RebuildService {
-  rebuildService(id: "prj_example") {
+    operation: `mutation RebuildApp {
+  rebuildApp(id: "prj_example") {
     id
     name
     status

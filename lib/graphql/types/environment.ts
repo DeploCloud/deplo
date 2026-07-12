@@ -83,7 +83,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: deployScope,
     description:
-      "Set the git branch an environment builds from (empty ⇒ the service's default branch).",
+      "Set the git branch an environment builds from (empty ⇒ the app's default branch).",
     args: {
       id: t.arg.id({ required: true }),
       branch: t.arg.string({ required: true }),

@@ -30,7 +30,7 @@ const base = {
   name: "deplo-demo",
   image: "deplo/demo:abc123",
   port: 3000,
-  serviceId: "p1",
+  appId: "p1",
   slug: "demo",
   routes: [route],
   env: { FOO: "bar" },
@@ -104,6 +104,16 @@ test("parseStackVolumes: empty / missing-service stacks yield []", () => {
   assert.deepEqual(parseStackVolumes("services: {}", "missing"), []);
 });
 
+test("renderCompose emits Docker Compose's `services:` top-level key, never `apps:`", () => {
+  // Docker Compose's schema only allows `services:`. A top-level `apps:` (a
+  // services→apps vocabulary over-rename) makes the agent's `docker compose up`
+  // reject the stack with "additional properties 'apps' not allowed". Pin the
+  // real wire contract so the round-trip's self-consistency can't mask a regression.
+  const yaml = renderCompose(base);
+  assert.match(yaml, /^services:$/m);
+  assert.doesNotMatch(yaml, /^apps:/m);
+});
+
 test("host bind mount: emits hostPath source and NO top-level volumes entry", () => {
   const yaml = renderCompose({
     ...base,
@@ -111,7 +121,7 @@ test("host bind mount: emits hostPath source and NO top-level volumes entry", ()
       { type: "host", name: "", hostPath: "/srv/data", mountPath: "/data", readOnly: false },
     ],
   });
-  // Service line binds the host path directly.
+  // App line binds the host path directly.
   assert.match(yaml, /\n {6}- \/srv\/data:\/data\n/);
   // A host bind is NOT a named volume, so no TOP-LEVEL (column-0) volumes: key is
   // emitted (the service-level `    volumes:` list is still present).
@@ -160,7 +170,7 @@ test("project file mount: source resolves to the project's files dir, NO top-lev
   const yaml = renderCompose({
     ...base,
     volumes: [
-      { type: "service", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+      { type: "app", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
     ],
   });
   // The source is the absolute per-project files dir (…/files/<slug>/<rel>),
@@ -174,7 +184,7 @@ test("project file mount: nested path and :ro flag render correctly", () => {
   const yaml = renderCompose({
     ...base,
     volumes: [
-      { type: "service", name: "", projectPath: "volumes/db/init.sql", mountPath: "/init.sql", readOnly: true },
+      { type: "app", name: "", projectPath: "volumes/db/init.sql", mountPath: "/init.sql", readOnly: true },
     ],
   });
   assert.match(yaml, /\n {6}- \/.*\/files\/demo\/volumes\/db\/init\.sql:\/init\.sql:ro\n/);
@@ -183,12 +193,12 @@ test("project file mount: nested path and :ro flag render correctly", () => {
 test("project file mount round-trips through parseStackVolumes as type: project", () => {
   const volumes = [
     { name: "data", mountPath: "/data", readOnly: false },
-    { type: "service" as const, name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+    { type: "app" as const, name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
   ];
   const yaml = renderCompose({ ...base, volumes });
   const parsed = parseStackVolumes(yaml, base.name);
   assert.deepEqual(parsed, [
     { name: "data", mountPath: "/data", readOnly: false },
-    { type: "service", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+    { type: "app", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
   ]);
 });

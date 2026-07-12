@@ -60,7 +60,7 @@ test("push trigger: deploys on a push to the tracked branch only", () => {
     shouldAutoDeploy(pushCfg, parsePushEvent({ ref: "refs/heads/dev" })),
     false,
   );
-  // A tag push must NOT fire a push-triggered service.
+  // A tag push must NOT fire a push-triggered app.
   assert.equal(
     shouldAutoDeploy(pushCfg, parsePushEvent({ ref: "refs/tags/v1" })),
     false,

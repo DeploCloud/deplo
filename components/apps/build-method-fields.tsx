@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RailpackVersionInput } from "@/components/services/railpack-version-input";
+import { RailpackVersionInput } from "@/components/apps/railpack-version-input";
 import { cn } from "@/lib/utils";
 import type { BuildMethod, BuildMethodSettings } from "@/lib/types";
 

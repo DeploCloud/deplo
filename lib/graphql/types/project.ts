@@ -7,8 +7,8 @@ import {
   setProjectColor,
   deleteProject,
   reorderProjects,
-  moveServiceToProject,
-  moveServiceToEnvironment,
+  moveAppToProject,
+  moveAppToEnvironment,
   type ProjectSummary,
 } from "@/lib/data/projects";
 import { listEnvironmentsForProject } from "@/lib/data/environments";
@@ -24,8 +24,8 @@ export const ProjectRef = builder
   .implement({
     description:
       "A top-level, team-scoped CONTAINER (ADR-0008): folder-like, but it owns " +
-      "Environments and holds folders/services via their `projectId`. NOT the " +
-      "deployable app — that is a `Service`. A Project never nests in a Project.",
+      "Environments and holds folders/apps via their `projectId`. NOT the " +
+      "deployable app — that is an `App`. A Project never nests in a Project.",
     fields: (t) => ({
       id: t.exposeID("id"),
       teamId: t.exposeID("teamId"),
@@ -39,8 +39,8 @@ export const ProjectRef = builder
       folderCount: t.int({
         resolve: (p) => ("folderCount" in p ? p.folderCount : 0),
       }),
-      serviceCount: t.int({
-        resolve: (p) => ("serviceCount" in p ? p.serviceCount : 0),
+      appCount: t.int({
+        resolve: (p) => ("appCount" in p ? p.appCount : 0),
       }),
       environmentCount: t.int({
         resolve: (p) => ("environmentCount" in p ? p.environmentCount : 0),
@@ -78,14 +78,14 @@ builder.queryFields((t) => ({
 /* Mutations                                                           */
 /* ------------------------------------------------------------------ */
 
-// The team-wide container order (like reorderFolders/reorderServices) stays gated
+// The team-wide container order (like reorderFolders/reorderApps) stays gated
 // on a super-user: instance admin OR manage_team.
 const reorderScope = {
   $any: { instanceAdmin: true, capability: "manage_team" },
 } as const;
 
 // Every other container mutation needs `deploy` (the same gate as creating a
-// folder or a service); the data layer re-verifies team scope. Per-container
+// folder or an app); the data layer re-verifies team scope. Per-container
 // owner+grants (cloning folder-access) is a follow-up.
 const deployScope = { capability: "deploy" } as const;
 
@@ -132,7 +132,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: deployScope,
     description:
-      "Delete a Project container; its folders and services fall back to the team top level (not deleted).",
+      "Delete a Project container; its folders and apps fall back to the team top level (not deleted).",
     args: { id: t.arg.id({ required: true }) },
     resolve: async (_r, { id }) => {
       await deleteProject(String(id));
@@ -149,34 +149,34 @@ builder.mutationFields((t) => ({
       return true;
     },
   }),
-  moveServiceToProject: t.field({
+  moveAppToProject: t.field({
     type: "Boolean",
     authScopes: deployScope,
     description:
-      "Move a service into a Project (landing in its default environment), or back to the top level when projectId is omitted/null.",
+      "Move an app into a Project (landing in its default environment), or back to the top level when projectId is omitted/null.",
     args: {
-      serviceId: t.arg.id({ required: true }),
+      appId: t.arg.id({ required: true }),
       projectId: t.arg.id({ required: false }),
     },
-    resolve: async (_r, { serviceId, projectId }) => {
-      await moveServiceToProject(
-        String(serviceId),
+    resolve: async (_r, { appId, projectId }) => {
+      await moveAppToProject(
+        String(appId),
         projectId != null ? String(projectId) : null,
       );
       return true;
     },
   }),
-  moveServiceToEnvironment: t.field({
+  moveAppToEnvironment: t.field({
     type: "Boolean",
     authScopes: deployScope,
     description:
-      "Move a service into a specific environment of a Project (ADR-0009: each environment holds its own services). The service's project follows the environment.",
+      "Move an app into a specific environment of a Project (ADR-0009: each environment holds its own apps). The app's project follows the environment.",
     args: {
-      serviceId: t.arg.id({ required: true }),
+      appId: t.arg.id({ required: true }),
       environmentId: t.arg.id({ required: true }),
     },
-    resolve: async (_r, { serviceId, environmentId }) => {
-      await moveServiceToEnvironment(String(serviceId), String(environmentId));
+    resolve: async (_r, { appId, environmentId }) => {
+      await moveAppToEnvironment(String(appId), String(environmentId));
       return true;
     },
   }),

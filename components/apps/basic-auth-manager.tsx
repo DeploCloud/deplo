@@ -42,20 +42,20 @@ export interface BasicAuthUserDTO {
 }
 
 /**
- * Service Settings → HTTP Basic Auth. Create username/password credentials that
- * gate EVERY domain of the service: when one or more exist, the deploy/reroute
+ * App Settings → HTTP Basic Auth. Create username/password credentials that
+ * gate EVERY domain of the app: when one or more exist, the deploy/reroute
  * pipeline puts a generated Traefik `basicauth` middleware in front of all the
- * service's hostnames. Passwords are write-only (never shown after saving).
+ * app's hostnames. Passwords are write-only (never shown after saving).
  *
  * Like every other domain change in Deplo, edits apply on the NEXT deploy — or
- * instantly via the service's "Reload" action (which re-renders the routing
+ * instantly via the app's "Reload" action (which re-renders the routing
  * labels without a rebuild).
  */
 export function BasicAuthManager({
-  serviceId,
+  appId,
   users,
 }: {
-  serviceId: string;
+  appId: string;
   users: BasicAuthUserDTO[];
 }) {
   const [editing, setEditing] = React.useState<BasicAuthUserDTO | null>(null);
@@ -70,7 +70,7 @@ export function BasicAuthManager({
           <div>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               HTTP Basic Auth
-              <InfoTip content="Protect every domain of this service behind a username and password. Changes apply on the next deploy, or instantly via Reload." />
+              <InfoTip content="Protect every domain of this app behind a username and password. Changes apply on the next deploy, or instantly via Reload." />
             </CardTitle>
           </div>
           <Button
@@ -90,7 +90,7 @@ export function BasicAuthManager({
           <EmptyState
             icon={Lock}
             title="No basic-auth users"
-            description="Add a user to require a login on all of this service's domains."
+            description="Add a user to require a login on all of this app's domains."
           />
         ) : (
           <div className="rounded-xl border border-border">
@@ -149,7 +149,7 @@ export function BasicAuthManager({
         key={editing?.id ?? "new"}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        serviceId={serviceId}
+        appId={appId}
         editing={editing}
       />
       <ConfirmAction
@@ -175,12 +175,12 @@ export function BasicAuthManager({
 function BasicAuthDialog({
   open,
   onOpenChange,
-  serviceId,
+  appId,
   editing,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  serviceId: string;
+  appId: string;
   editing: BasicAuthUserDTO | null;
 }) {
   const [username, setUsername] = React.useState(editing?.username ?? "");
@@ -198,10 +198,10 @@ function BasicAuthDialog({
             { id: editing.id, password },
           )
         : await gqlAction<{ addBasicAuthUser: { id: string } }>(
-            `mutation($serviceId: String!, $username: String!, $password: String!) {
-              addBasicAuthUser(serviceId: $serviceId, username: $username, password: $password) { id }
+            `mutation($appId: String!, $username: String!, $password: String!) {
+              addBasicAuthUser(appId: $appId, username: $username, password: $password) { id }
             }`,
-            { serviceId, username, password },
+            { appId, username, password },
           );
       if (res.ok) {
         toast.success(editing ? "Password updated" : "User added");
@@ -223,7 +223,7 @@ function BasicAuthDialog({
           <DialogDescription>
             {editing
               ? "Set a new password for this user. The username can't be changed."
-              : "This credential will be required on every domain of the service."}
+              : "This credential will be required on every domain of the app."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

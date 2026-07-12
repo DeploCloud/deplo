@@ -666,7 +666,7 @@ test("no routes ⇒ no router/rule labels even with dockerNetwork / alwaysServic
   assert.ok(!labels.includes("traefik.enable=true"));
 });
 
-// --- Service-wide Basic Auth: the generated middleware is DEFINED once and
+// --- App-wide Basic Auth: the generated middleware is DEFINED once and
 // PREPENDED to every router's chain; `$` in the htpasswd hash is doubled to `$$`
 // for the docker-compose label; absent basicAuth is byte-identical to before. ---
 

@@ -45,12 +45,12 @@ export interface EnvironmentOption {
 
 /**
  * The project drill-in's ENVIRONMENT dropdown (ADR-0009): each environment of a
- * project holds its own services, so picking one here switches which services
+ * project holds its own apps, so picking one here switches which apps
  * the Overview shows. The selection rides the URL (`/?project=<id>&env=<envId>`),
  * so it survives refreshes and is shareable.
  *
  * It is also the whole environment-management surface — there is no separate
- * panel any more (the project view mirrors a folder view: just its services).
+ * panel any more (the project view mirrors a folder view: just its apps).
  * With `canManage`, each row carries a `⋯` submenu (rename / make default /
  * delete) and a "New environment" action closes out the menu.
  */

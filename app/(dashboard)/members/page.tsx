@@ -24,7 +24,7 @@ export default async function MembersPage() {
             Team members
           </span>
         }
-        description="People who can access this team's services and resources."
+        description="People who can access this team's apps and resources."
       />
       <MembersManager
         members={members}

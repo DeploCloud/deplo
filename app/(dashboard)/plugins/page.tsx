@@ -1,35 +1,35 @@
 import { PageHeader } from "@/components/shared/page-header";
-import { getAppCatalog, listInstalledApps } from "@/lib/data/apps";
-import { appRepoBase } from "@/lib/apps/repository";
-import { AppsBrowser } from "@/components/apps/apps-browser";
-import type { AppListing } from "@/lib/apps/manifest";
+import { getPluginCatalog, listInstalledPlugins } from "@/lib/data/plugins";
+import { pluginRepoBase } from "@/lib/plugins/repository";
+import { PluginsBrowser } from "@/components/plugins/plugins-browser";
+import type { PluginListing } from "@/lib/plugins/manifest";
 
-export const metadata = { title: "Apps" };
+export const metadata = { title: "Plugins" };
 
-export default async function AppsPage() {
-  // Installed apps are local (store + live status); the catalog is a remote
+export default async function PluginsPage() {
+  // Installed plugins are local (store + live status); the catalog is a remote
   // fetch that can fail (repo unreachable). Degrade gracefully: render the
-  // installed apps and an inline error banner instead of crashing the page.
-  const installed = await listInstalledApps();
-  let catalog: AppListing[] = [];
+  // installed plugins and an inline error banner instead of crashing the page.
+  const installed = await listInstalledPlugins();
+  let catalog: PluginListing[] = [];
   let catalogError: string | null = null;
   try {
-    catalog = await getAppCatalog();
+    catalog = await getPluginCatalog();
   } catch (e) {
-    catalogError = e instanceof Error ? e.message : "Could not reach the app repository";
+    catalogError = e instanceof Error ? e.message : "Could not reach the plugin repository";
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Apps"
-        description="Install apps from the app repository to extend Deplo. An app runs as a host-managed container, not a service."
+        title="Plugins"
+        description="Install plugins from the plugin repository to extend Deplo. A plugin runs as a host-managed container, not a deployed App."
       />
-      <AppsBrowser
+      <PluginsBrowser
         catalog={catalog}
         installed={installed}
         catalogError={catalogError}
-        repoBase={appRepoBase()}
+        repoBase={pluginRepoBase()}
       />
     </div>
   );

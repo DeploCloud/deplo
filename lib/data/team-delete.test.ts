@@ -23,7 +23,7 @@ import {
 import { canDeleteTeam, deleteTeam } from "./team-delete";
 
 /**
- * deleteTeam gating + cascade against pglite. No services/databases are seeded,
+ * deleteTeam gating + cascade against pglite. No apps/databases are seeded,
  * so the agent-teardown loop is a no-op and the tests stay hermetic (no gRPC
  * dials). The cookie switch after the delete throws outside a request scope and
  * is best-effort by design — asserted indirectly by the delete succeeding.
@@ -208,9 +208,9 @@ test("a team with a database, an S3 destination, schedules and run history delet
       values ('db_x', '${TEAM_A}', 'd', 'postgres', '16', 'app', 'app', 'running', 'srv_1', 'db-d', 5432, 'enc', false, 0, '${T0}');
     insert into s3_destination (id, team_id, name, provider, endpoint, region, bucket, access_key_enc, secret_key_enc, status, created_at)
       values ('s3_1', '${TEAM_A}', 'dest', 'aws', 'e', 'r', 'b', 'a', 's', 'connected', '${T0}');
-    insert into backups (id, team_id, name, target_kind, database_id, service_id, destination_id, schedule, retention_days, last_status, enabled, created_at)
+    insert into backups (id, team_id, name, target_kind, database_id, app_id, destination_id, schedule, retention_days, last_status, enabled, created_at)
       values ('bak_1', '${TEAM_A}', 'nightly', 'database', 'db_x', null, 's3_1', '0 3 * * *', 7, 'never', true, '${T0}');
-    insert into backup_runs (id, team_id, backup_id, target_kind, database_id, service_id, destination_id, object_key, size_bytes, status, started_at)
+    insert into backup_runs (id, team_id, backup_id, target_kind, database_id, app_id, destination_id, object_key, size_bytes, status, started_at)
       values ('run_1', '${TEAM_A}', 'bak_1', 'database', 'db_x', null, 's3_1', 'k', 1, 'success', '${T0}');
   `);
 

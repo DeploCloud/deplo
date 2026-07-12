@@ -6,21 +6,21 @@ import { getDb } from "../db/client";
 import {
   envVars as envVarsTable,
   envVarTargets as envVarTargetsTable,
-  services as servicesTable,
+  apps as appsTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
-import { requireFolderCapabilityForService } from "./folder-access";
+import { requireFolderCapabilityForApp } from "./folder-access";
 import { encryptSecret, decryptSecret } from "../crypto";
 import {
   insertEnvVars,
   loadEnvVar,
-  loadEnvVarsForService,
-  loadEnvVarsForServices,
-  serviceInTeam,
-} from "./service-graph-load";
+  loadEnvVarsForApp,
+  loadEnvVarsForApps,
+  appInTeam,
+} from "./app-graph-load";
 import type { EnvTarget, EnvVar, EnvVarDTO } from "../types";
 
 const MASK = "••••••••••••";
@@ -46,46 +46,46 @@ function toDTO(e: EnvVar): EnvVarDTO {
  * membership. A member without it can't see the Variables / Environment UIs
  * (the data calls below return empty / throw) — matching the hidden tabs.
  */
-export async function listEnv(serviceId: string): Promise<EnvVarDTO[]> {
+export async function listEnv(appId: string): Promise<EnvVarDTO[]> {
   const { teamId } = await requireCapability("manage_env");
   // Env vars are owned through their project; an out-of-team project yields none.
-  if (!(await serviceInTeam(serviceId, teamId))) return [];
-  await requireFolderCapabilityForService(serviceId, "manage_env");
-  return (await loadEnvVarsForService(serviceId))
+  if (!(await appInTeam(appId, teamId))) return [];
+  await requireFolderCapabilityForApp(appId, "manage_env");
+  return (await loadEnvVarsForApp(appId))
     .sort((a, b) => a.key.localeCompare(b.key))
     .map(toDTO);
 }
 
-export interface ServiceEnvGroup {
-  service: { id: string; name: string; slug: string };
+export interface AppEnvGroup {
+  app: { id: string; name: string; slug: string };
   vars: EnvVarDTO[];
 }
 
 /** Every project's env vars, grouped by project (for the global Variables tab). */
-export async function listAllServiceEnv(): Promise<ServiceEnvGroup[]> {
+export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
   const { teamId } = await requireCapability("manage_env");
-  const services = await getDb()
+  const apps = await getDb()
     .select({
-      id: servicesTable.id,
-      name: servicesTable.name,
-      slug: servicesTable.slug,
+      id: appsTable.id,
+      name: appsTable.name,
+      slug: appsTable.slug,
     })
-    .from(servicesTable)
-    .where(eq(servicesTable.teamId, teamId));
-  // Batch-load every var across the team's services (one pair of queries), then
+    .from(appsTable)
+    .where(eq(appsTable.teamId, teamId));
+  // Batch-load every var across the team's apps (one pair of queries), then
   // group in memory — no per-project round-trip.
-  const all = await loadEnvVarsForServices(services.map((p) => p.id));
-  const byService = new Map<string, EnvVar[]>();
+  const all = await loadEnvVarsForApps(apps.map((p) => p.id));
+  const byApp = new Map<string, EnvVar[]>();
   for (const e of all) {
-    const list = byService.get(e.serviceId) ?? [];
+    const list = byApp.get(e.appId) ?? [];
     list.push(e);
-    byService.set(e.serviceId, list);
+    byApp.set(e.appId, list);
   }
-  return services
+  return apps
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((p) => ({
-      service: { id: p.id, name: p.name, slug: p.slug },
-      vars: (byService.get(p.id) ?? [])
+      app: { id: p.id, name: p.name, slug: p.slug },
+      vars: (byApp.get(p.id) ?? [])
         .sort((a, b) => a.key.localeCompare(b.key))
         .map(toDTO),
     }));
@@ -96,15 +96,15 @@ export async function revealEnv(id: string): Promise<string> {
   const { teamId } = await requireCapability("manage_env");
   const e = await loadEnvVar(id);
   if (!e) throw new Error("Not found");
-  if (!(await serviceInTeam(e.serviceId, teamId))) throw new Error("Not found");
-  await requireFolderCapabilityForService(e.serviceId, "manage_env");
+  if (!(await appInTeam(e.appId, teamId))) throw new Error("Not found");
+  await requireFolderCapabilityForApp(e.appId, "manage_env");
   return decryptSecret(e.valueEnc);
 }
 
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 export async function upsertEnv(input: {
-  serviceId: string;
+  appId: string;
   key: string;
   value: string;
   targets: EnvTarget[];
@@ -115,9 +115,9 @@ export async function upsertEnv(input: {
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
   if (input.targets.length === 0) throw new Error("Select at least one environment");
-  if (!(await serviceInTeam(input.serviceId, membership.teamId)))
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(input.serviceId, "manage_env");
+  if (!(await appInTeam(input.appId, membership.teamId)))
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(input.appId, "manage_env");
 
   await getDb().transaction(async (tx) => {
     const existing = await tx
@@ -125,7 +125,7 @@ export async function upsertEnv(input: {
       .from(envVarsTable)
       .where(
         and(
-          eq(envVarsTable.serviceId, input.serviceId),
+          eq(envVarsTable.appId, input.appId),
           eq(envVarsTable.key, key),
         ),
       )
@@ -149,7 +149,7 @@ export async function upsertEnv(input: {
       await insertEnvVars(tx, [
         {
           id: newId("env"),
-          serviceId: input.serviceId,
+          appId: input.appId,
           key,
           valueEnc: encryptSecret(input.value),
           targets: input.targets,
@@ -160,19 +160,19 @@ export async function upsertEnv(input: {
       ]);
     }
   });
-  await recordActivity("env", `Updated env var ${key}`, user.name, input.serviceId);
+  await recordActivity("env", `Updated env var ${key}`, user.name, input.appId);
 }
 
 /** Bulk import from a .env style blob. */
 export async function importEnv(
-  serviceId: string,
+  appId: string,
   blob: string,
   targets: EnvTarget[]
 ): Promise<number> {
   const { membership } = await requireCapability("manage_env");
-  if (!(await serviceInTeam(serviceId, membership.teamId)))
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(serviceId, "manage_env");
+  if (!(await appInTeam(appId, membership.teamId)))
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(appId, "manage_env");
   let count = 0;
   const lines = blob.split("\n");
   for (const raw of lines) {
@@ -190,7 +190,7 @@ export async function importEnv(
     if (!KEY_RE.test(key)) continue;
     // Imported vars are PLAIN by default — never silently marked secret. A user
     // can flip individual vars to secret afterwards from the table.
-    await upsertEnv({ serviceId, key, value, targets, type: "plain" });
+    await upsertEnv({ appId, key, value, targets, type: "plain" });
     count++;
   }
   return count;
@@ -208,16 +208,16 @@ export async function importEnv(
  *    couldn't see. Changing a secret's masked value to anything else updates it
  *    (and it stays secret).
  */
-export async function setServiceEnv(
-  serviceId: string,
+export async function setAppEnv(
+  appId: string,
   entries: { key: string; value: string }[],
   defaultTargets: EnvTarget[],
 ): Promise<number> {
   const { membership } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
-  if (!(await serviceInTeam(serviceId, membership.teamId)))
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(serviceId, "manage_env");
+  if (!(await appInTeam(appId, membership.teamId)))
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(appId, "manage_env");
   if (defaultTargets.length === 0) {
     throw new Error("Select at least one environment for new variables");
   }
@@ -231,7 +231,7 @@ export async function setServiceEnv(
   }
 
   await getDb().transaction(async (tx) => {
-    const existing = await loadEnvVarsForService(serviceId, tx);
+    const existing = await loadEnvVarsForApp(appId, tx);
     const byKey = new Map(existing.map((e) => [e.key, e] as const));
     const created: EnvVar[] = [];
     for (const [key, value] of wanted) {
@@ -246,7 +246,7 @@ export async function setServiceEnv(
       } else {
         created.push({
           id: newId("env"),
-          serviceId,
+          appId,
           key,
           valueEnc: encryptSecret(value),
           targets: defaultTargets,
@@ -268,7 +268,7 @@ export async function setServiceEnv(
     "env",
     `Edited environment (${wanted.size} variable${wanted.size === 1 ? "" : "s"})`,
     user.name,
-    serviceId,
+    appId,
   );
   return wanted.size;
 }
@@ -278,10 +278,10 @@ export async function deleteEnv(id: string): Promise<void> {
   const user = (await getCurrentUser())!;
   const e = await loadEnvVar(id);
   if (!e) throw new Error("Not found");
-  if (!(await serviceInTeam(e.serviceId, membership.teamId)))
+  if (!(await appInTeam(e.appId, membership.teamId)))
     throw new Error("Not found");
-  await requireFolderCapabilityForService(e.serviceId, "manage_env");
+  await requireFolderCapabilityForApp(e.appId, "manage_env");
   // The env_var_targets child rows CASCADE on the delete.
   await getDb().delete(envVarsTable).where(eq(envVarsTable.id, id));
-  await recordActivity("env", `Deleted env var ${e.key}`, user.name, e.serviceId);
+  await recordActivity("env", `Deleted env var ${e.key}`, user.name, e.appId);
 }

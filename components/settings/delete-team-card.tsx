@@ -35,14 +35,14 @@ export function DeleteTeamCard({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base text-destructive">
           Danger zone
-          <InfoTip content="Permanently delete this team, its services, databases and members." />
+          <InfoTip content="Permanently delete this team, its apps, databases and members." />
         </CardTitle>
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-4">
         <p className="text-xs text-muted-foreground">
           {onlyTeam
             ? "You can't delete your only team — create another team first."
-            : "Every service and database stack is torn down (data volumes included). This cannot be undone."}
+            : "Every app and database stack is torn down (data volumes included). This cannot be undone."}
         </p>
         <ConfirmAction
           trigger={
@@ -52,7 +52,7 @@ export function DeleteTeamCard({
             </Button>
           }
           title={`Delete ${teamName}?`}
-          description="This tears down every service and database of this team (data volumes included) and permanently removes its folders, projects, domains, environment variables, backups and members. Stack cleanup continues in the background. Backup archives already uploaded to S3 are kept. This cannot be undone."
+          description="This tears down every app and database of this team (data volumes included) and permanently removes its folders, projects, domains, environment variables, backups and members. Stack cleanup continues in the background. Backup archives already uploaded to S3 are kept. This cannot be undone."
           confirmLabel="Delete team"
           successMessage="Team deleted"
           confirmText={teamName}

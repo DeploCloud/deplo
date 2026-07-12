@@ -14,15 +14,15 @@ import "server-only";
  */
 
 import {
-  AppCatalogSchema,
-  AppManifestSchema,
-  type AppListing,
-  type AppManifest,
+  PluginCatalogSchema,
+  PluginManifestSchema,
+  type PluginListing,
+  type PluginManifest,
 } from "./manifest";
 
 /** The app repository base URL. Operator-overridable; trailing slash trimmed. */
 const REPO_BASE = (
-  process.env.DEPLO_APP_REPO_URL?.trim() || "https://devrepo.pixelfederico.com"
+  process.env.DEPLO_PLUGIN_REPO_URL?.trim() || "https://devrepo.pixelfederico.com"
 ).replace(/\/+$/, "");
 
 /** Cap on a repository response body so a hostile/buggy host can't OOM us. */
@@ -81,9 +81,9 @@ async function fetchJson(path: string, fresh = false): Promise<unknown> {
  * Fetch + validate the catalog (`catalog.json`) — the list of installable apps.
  * Throws if the document is unreachable or fails schema validation.
  */
-export async function fetchCatalog(): Promise<AppListing[]> {
+export async function fetchCatalog(): Promise<PluginListing[]> {
   const raw = await fetchJson("/catalog.json");
-  const parsed = AppCatalogSchema.safeParse(raw);
+  const parsed = PluginCatalogSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`App catalog failed validation: ${parsed.error.message}`);
   }
@@ -94,11 +94,11 @@ export async function fetchCatalog(): Promise<AppListing[]> {
  * Fetch + validate one app's manifest, addressed by its catalog listing's
  * `manifestUrl` (a repository-relative path). Throws on unreachable / invalid.
  */
-export async function fetchManifest(listing: AppListing): Promise<AppManifest> {
+export async function fetchManifest(listing: PluginListing): Promise<PluginManifest> {
   // Fresh, uncached: this manifest decides which image Deplo actually runs, so a
   // stale copy would install the wrong container.
   const raw = await fetchJson(listing.manifestUrl, true);
-  const parsed = AppManifestSchema.safeParse(raw);
+  const parsed = PluginManifestSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(
       `Manifest for "${listing.id}" failed validation: ${parsed.error.message}`,
@@ -108,6 +108,6 @@ export async function fetchManifest(listing: AppListing): Promise<AppManifest> {
 }
 
 /** The configured repository base URL — exposed for diagnostics/UI. */
-export function appRepoBase(): string {
+export function pluginRepoBase(): string {
   return REPO_BASE;
 }

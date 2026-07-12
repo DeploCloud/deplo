@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
-type TargetKind = "database" | "service";
+type TargetKind = "database" | "app";
 
 export function CreateBackup({
   databases,
@@ -57,14 +57,14 @@ export function CreateBackup({
   }, []);
   const [name, setName] = React.useState("");
   // Default to whichever target type actually has options — a team with only
-  // services (no databases) should land on "Service" rather than an empty select.
+  // apps (no databases) should land on "App" rather than an empty select.
   const [targetKind, setTargetKind] = React.useState<TargetKind>(
-    databases.length === 0 && services.length > 0 ? "service" : "database"
+    databases.length === 0 && services.length > 0 ? "app" : "database"
   );
   const [databaseId, setDatabaseId] = React.useState<string>(
     databases[0]?.id ?? ""
   );
-  const [serviceId, setServiceId] = React.useState<string>(
+  const [appId, setAppId] = React.useState<string>(
     services[0]?.id ?? ""
   );
   const [destinationId, setDestinationId] = React.useState<string>(
@@ -76,7 +76,7 @@ export function CreateBackup({
   const noDeps = destinations.length === 0;
   // The chosen target must have a concrete id selected — otherwise the schedule
   // would point at nothing.
-  const targetId = targetKind === "database" ? databaseId : serviceId;
+  const targetId = targetKind === "database" ? databaseId : appId;
 
   function submit() {
     startTransition(async () => {
@@ -87,7 +87,7 @@ export function CreateBackup({
             name,
             targetKind,
             databaseId: targetKind === "database" ? databaseId || null : null,
-            serviceId: targetKind === "service" ? serviceId || null : null,
+            appId: targetKind === "app" ? appId || null : null,
             destinationId,
             schedule,
             retentionDays: retention,
@@ -136,7 +136,7 @@ export function CreateBackup({
         <DialogHeader>
           <DialogTitle>Schedule a backup</DialogTitle>
           <DialogDescription>
-            Periodically back up a database or a service to an S3 destination.
+            Periodically back up a database or an app to an S3 destination.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -154,8 +154,8 @@ export function CreateBackup({
             <FieldLabel
               info={
                 <>
-                  Choose whether this schedule backs up a database or a service.
-                  A service backup captures its volumes, files, and compose/env
+                  Choose whether this schedule backs up a database or an app.
+                  An app backup captures its volumes, files, and compose/env
                   snapshot.
                 </>
               }
@@ -174,10 +174,10 @@ export function CreateBackup({
               <Button
                 type="button"
                 size="sm"
-                variant={targetKind === "service" ? "secondary" : "ghost"}
-                onClick={() => setTargetKind("service")}
+                variant={targetKind === "app" ? "secondary" : "ghost"}
+                onClick={() => setTargetKind("app")}
               >
-                Service
+                App
               </Button>
             </div>
           </div>
@@ -201,8 +201,8 @@ export function CreateBackup({
                 </>
               ) : (
                 <>
-                  <Label>Service</Label>
-                  <Select value={serviceId} onValueChange={setServiceId}>
+                  <Label>App</Label>
+                  <Select value={appId} onValueChange={setAppId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select…" />
                     </SelectTrigger>

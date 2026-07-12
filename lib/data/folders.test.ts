@@ -78,8 +78,8 @@ test("descendantFolderIds returns the folder plus its whole subtree", async () =
   assert.deepEqual([...descendantFolderIds("x", cyclic)].sort(), ["x", "y"]);
 });
 
-test("rollUpServiceCounts credits every ancestor with its subtree's services", async () => {
-  const { rollUpServiceCounts } = await import("./folders");
+test("rollUpAppCounts credits every ancestor with its subtree's services", async () => {
+  const { rollUpAppCounts } = await import("./folders");
   // a → b → c, a → d, and e as a separate root.
   const folders = [
     { id: "a", parentId: null },
@@ -88,7 +88,7 @@ test("rollUpServiceCounts credits every ancestor with its subtree's services", a
     { id: "d", parentId: "a" },
     { id: "e", parentId: null },
   ];
-  const totals = rollUpServiceCounts(
+  const totals = rollUpAppCounts(
     folders,
     new Map([
       ["a", 1],
@@ -103,14 +103,14 @@ test("rollUpServiceCounts credits every ancestor with its subtree's services", a
   assert.equal(totals.get("e") ?? 0, 0, "a sibling root gets nothing");
 });
 
-test("rollUpServiceCounts tolerates cycles and dangling parents", async () => {
-  const { rollUpServiceCounts } = await import("./folders");
+test("rollUpAppCounts tolerates cycles and dangling parents", async () => {
+  const { rollUpAppCounts } = await import("./folders");
   const broken = [
     { id: "x", parentId: "y" },
     { id: "y", parentId: "x" },
     { id: "z", parentId: "ghost" },
   ];
-  const totals = rollUpServiceCounts(
+  const totals = rollUpAppCounts(
     broken,
     new Map([
       ["x", 1],

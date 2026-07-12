@@ -4,7 +4,7 @@ import * as React from "react";
 import {
   VersionCombobox,
   type VersionItem,
-} from "@/components/services/version-combobox";
+} from "@/components/apps/version-combobox";
 
 /**
  * Node.js version input with an autocomplete dropdown synced to the real Node

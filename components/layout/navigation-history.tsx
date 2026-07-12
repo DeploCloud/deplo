@@ -6,8 +6,8 @@ import { usePathname } from "next/navigation";
 /**
  * "Smart back" for the sidebar sub-menu back links.
  *
- * A sub-menu back link ("Back to services", "Back to dashboard") should EXIT
- * the current section — settings, or one service — and return you to the last
+ * A sub-menu back link ("Back to apps", "Back to dashboard") should EXIT
+ * the current section — settings, or one app — and return you to the last
  * page you were on *before* you entered it, using the browser's own history.
  * Stepping one entry at a time (a plain back) would just walk between sibling
  * pages inside the section (settings/notifications → settings/account); instead
@@ -111,7 +111,7 @@ function isUnder(path: string, prefix: string): boolean {
 }
 
 /**
- * Exit the section identified by `prefix` (e.g. "/settings" or "/services/abc"):
+ * Exit the section identified by `prefix` (e.g. "/settings" or "/apps/abc"):
  * jump to the nearest earlier in-app entry whose pathname is outside that
  * prefix. Returns:
  *   "jumped" — a history.go() was fired (caller should suppress the href)

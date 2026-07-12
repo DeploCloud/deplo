@@ -57,8 +57,8 @@ const MUTATIONS: Record<
 
 /**
  * Manage one scope of GLOBAL variables (team-wide or instance-wide). A flat
- * key/value/targets table with add/edit/delete — no per-service attachment,
- * because a global applies to every service automatically. The scope only
+ * key/value/targets table with add/edit/delete — no per-app attachment,
+ * because a global applies to every app automatically. The scope only
  * selects which mutations run; the shape is identical.
  */
 export function GlobalEnvManager({
@@ -83,8 +83,8 @@ export function GlobalEnvManager({
           </h3>
           <p className="text-sm text-muted-foreground">
             {scope === "team"
-              ? "Injected into every service in this team. A service's own variable overrides one with the same key."
-              : "Injected into every service of every team. Any team or project variable with the same key overrides it."}
+              ? "Injected into every app in this team. An app's own variable overrides one with the same key."
+              : "Injected into every app of every team. Any team or project variable with the same key overrides it."}
           </p>
         </div>
         <Button
@@ -105,8 +105,8 @@ export function GlobalEnvManager({
           title="No variables yet"
           description={
             scope === "team"
-              ? "Add a variable to share it across every service in this team."
-              : "Add a variable to inject it into every service of every team."
+              ? "Add a variable to share it across every app in this team."
+              : "Add a variable to inject it into every app of every team."
           }
         />
       ) : (
@@ -260,7 +260,7 @@ function GlobalEnvDialog({
         <DialogHeader>
           <DialogTitle>{editing ? "Edit variable" : "Add variable"}</DialogTitle>
           <DialogDescription>
-            Applies to every targeted environment of the services in this scope.
+            Applies to every targeted environment of the apps in this scope.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

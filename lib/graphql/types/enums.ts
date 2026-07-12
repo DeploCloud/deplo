@@ -16,7 +16,7 @@ export const CapabilityEnum = builder.enumType("Capability", {
   values: ALL_CAPABILITIES,
 });
 
-export const ServiceStatusEnum = builder.enumType("ServiceStatus", {
+export const AppStatusEnum = builder.enumType("AppStatus", {
   values: ["active", "building", "error", "queued", "idle", "stopping"] as const,
 });
 

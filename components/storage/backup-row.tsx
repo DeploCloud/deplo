@@ -64,9 +64,9 @@ export function BackupRow({
   const [restoreOpen, setRestoreOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
 
-  const isService = backup.targetKind === "service";
-  const targetName = isService ? backup.serviceName : backup.databaseName;
-  const targetId = isService ? backup.serviceId : backup.databaseId;
+  const isApp = backup.targetKind === "app";
+  const targetName = isApp ? backup.serviceName : backup.databaseName;
+  const targetId = isApp ? backup.appId : backup.databaseId;
 
   function run() {
     startTransition(async () => {
@@ -97,7 +97,7 @@ export function BackupRow({
       <TableCell className="font-medium">{backup.name}</TableCell>
       <TableCell className="text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          {isService ? (
+          {isApp ? (
             <Boxes className="size-3.5 shrink-0" />
           ) : (
             <DatabaseIcon className="size-3.5 shrink-0" />
@@ -286,7 +286,7 @@ function EditBackupDialog({
           <DialogTitle>Edit schedule</DialogTitle>
           <DialogDescription>
             Change this schedule&apos;s name, destination, cron and retention. The{" "}
-            {backup.targetKind === "service" ? "service" : "database"} it backs up
+            {backup.targetKind === "app" ? "app" : "database"} it backs up
             can&apos;t be changed.
           </DialogDescription>
         </DialogHeader>

@@ -30,9 +30,9 @@ import { Input } from "@/components/ui/input";
 // Textarea no longer used here — the compose editor replaces it.
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
-import { ComposeEditor } from "@/components/services/compose-editor";
-import { ComposeLintSummary } from "@/components/services/compose-lint-summary";
-import { ImageInput } from "@/components/services/image-input";
+import { ComposeEditor } from "@/components/apps/compose-editor";
+import { ComposeLintSummary } from "@/components/apps/compose-lint-summary";
+import { ImageInput } from "@/components/apps/image-input";
 import { hasBlockingErrors, type LintDiagnostic } from "@/lib/deploy/compose-lint";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -43,21 +43,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { BuildConfigFields } from "@/components/services/build-config-fields";
+import { BuildConfigFields } from "@/components/apps/build-config-fields";
 import { buildConfigFor } from "@/lib/frameworks";
 import type { DeploySource } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, serverLabel } from "@/lib/utils";
-import { GithubRepoPicker, type GithubSelection } from "@/components/services/github-repo-picker";
-import { GithubConnectButton } from "@/components/services/github-connect-button";
-import { UploadInput } from "@/components/services/upload-input";
+import { GithubRepoPicker, type GithubSelection } from "@/components/apps/github-repo-picker";
+import { GithubConnectButton } from "@/components/apps/github-connect-button";
+import { UploadInput } from "@/components/apps/upload-input";
 import {
   GitDeployOptions,
   watchPathsToArray,
   DEFAULT_GIT_DEPLOY_OPTIONS,
   type GitDeployOptionsValue,
-} from "@/components/services/git-deploy-options";
+} from "@/components/apps/git-deploy-options";
 import { uploadArchive } from "@/lib/deploy/upload-client";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 
@@ -123,7 +123,7 @@ const SOURCE_TABS: {
   { id: "compose", label: "Compose", icon: FileText },
 ];
 
-export function NewServiceWizard({
+export function NewAppWizard({
   servers,
   template,
   presetRepo,
@@ -158,7 +158,7 @@ export function NewServiceWizard({
   );
   const [dockerImage, setDockerImage] = React.useState("");
   // "Upload" source: a code archive picked here and held until deploy, then
-  // streamed to the freshly-created service (there's no service to POST to yet).
+  // streamed to the freshly-created app (there's no app to POST to yet).
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [name, setName] = React.useState(presetName ?? template?.name ?? "");
   const [branch, setBranch] = React.useState("main");
@@ -204,7 +204,7 @@ export function NewServiceWizard({
 
   function deploy() {
     if (!name.trim()) {
-      toast.error("Enter a service name");
+      toast.error("Enter an app name");
       return;
     }
     if (!serverId) {
@@ -284,7 +284,7 @@ export function NewServiceWizard({
 
     // The build config only matters when Deplo builds an image. For a prebuilt
     // image or a compose stack the build section is hidden, so persisting the
-    // editor's seed would land a misleading build method on the service; send a
+    // editor's seed would land a misleading build method on the app; send a
     // dockerfile default instead so settings reflects reality.
     const payloadBuild = buildsImage
       ? build
@@ -292,8 +292,8 @@ export function NewServiceWizard({
 
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($input: CreateServiceInput!) {
-          createService(input: $input) { id slug latestDeployment { id } }
+        `mutation($input: CreateAppInput!) {
+          createApp(input: $input) { id slug latestDeployment { id } }
         }`,
         {
           input: {
@@ -304,8 +304,8 @@ export function NewServiceWizard({
             source: deploySourceEnumName(useCompose ? "compose" : source),
             serverId,
             dockerImage: image,
-            // Seed the service's display logo from the template so a deployed
-            // template carries its icon; editable later from service settings.
+            // Seed the app's display logo from the template so a deployed
+            // template carries its icon; editable later from app settings.
             logo: isTemplate ? template!.logo : null,
             compose: useCompose ? compose : null,
             env: isTemplate
@@ -343,12 +343,12 @@ export function NewServiceWizard({
           },
         },
         (d: {
-          createService: {
+          createApp: {
             id: string;
             slug: string;
             latestDeployment: { id: string } | null;
           };
-        }) => d.createService,
+        }) => d.createApp,
       );
       if (!res.ok) {
         toast.error(res.error);
@@ -359,39 +359,39 @@ export function NewServiceWizard({
 
       // Invalidate the router cache so the shared dashboard layout re-runs on the
       // destination — otherwise the topbar breadcrumb's team snapshot is stale and
-      // the brand-new service is missing from it until a hard reload.
+      // the brand-new app is missing from it until a hard reload.
       router.refresh();
 
       // Upload source with an attached archive: stream it to the freshly-created
-      // (idle) service, then deploy — so creation ends on the live build logs like
-      // every other source instead of stranding the user on an empty service.
+      // (idle) app, then deploy — so creation ends on the live build logs like
+      // every other source instead of stranding the user on an empty app.
       if (source === "upload" && uploadFile) {
         try {
           await uploadArchive(service.id, uploadFile);
         } catch (e) {
-          // The service exists but the archive didn't land — send the user to its
+          // The app exists but the archive didn't land — send the user to its
           // settings to retry rather than deploying nothing.
           toast.error(
-            `Service created, but the upload failed (${
+            `App created, but the upload failed (${
               e instanceof Error ? e.message : "unknown error"
             }). Upload the archive from Settings.`,
           );
-          router.push(`/services/${service.slug}/settings`);
+          router.push(`/apps/${service.slug}/settings`);
           return;
         }
         const dep = await gqlAction(
-          `mutation($serviceId: String!) { redeploy(serviceId: $serviceId) { id } }`,
-          { serviceId: service.id },
+          `mutation($appId: String!) { redeploy(appId: $appId) { id } }`,
+          { appId: service.id },
           (d: { redeploy: { id: string } }) => d.redeploy,
         );
         if (dep.ok && dep.data) {
           toast.success("Uploaded — deploying…");
-          router.push(`/services/${service.slug}/deployments/${dep.data.id}`);
+          router.push(`/apps/${service.slug}/deployments/${dep.data.id}`);
         } else {
           // The archive is stored; only the deploy kick-off failed. Land on
           // settings so the user can hit Save & Deploy.
           if (!dep.ok) toast.error(dep.error);
-          router.push(`/services/${service.slug}/settings`);
+          router.push(`/apps/${service.slug}/settings`);
         }
         return;
       }
@@ -400,20 +400,20 @@ export function NewServiceWizard({
       // the user uploads from Settings — don't claim it's deploying.
       toast.success(
         source === "upload"
-          ? "Service created — upload an archive from Settings to deploy"
-          : "Service created — deploying…",
+          ? "App created — upload an archive from Settings to deploy"
+          : "App created — deploying…",
       );
-      // Every non-upload source kicks off a first deployment inside createService
+      // Every non-upload source kicks off a first deployment inside createApp
       // (startDeployment sets latestDeployment synchronously before it returns), so
       // land on that deployment's live build logs — the same destination the
       // upload path above uses — instead of a still-empty overview. A fileless
-      // "upload" service is born idle with no deployment, so it falls back to its
+      // "upload" app is born idle with no deployment, so it falls back to its
       // overview.
       const firstDeploymentId = service.latestDeployment?.id;
       router.push(
         firstDeploymentId
-          ? `/services/${service.slug}/deployments/${firstDeploymentId}`
-          : `/services/${service.slug}`,
+          ? `/apps/${service.slug}/deployments/${firstDeploymentId}`
+          : `/apps/${service.slug}`,
       );
     });
   }
@@ -427,7 +427,7 @@ export function NewServiceWizard({
   const serverSummary = selectedServer ? serverLabel(selectedServer) : "—";
   const domainSummary = template?.autoDomain ?? "Auto · HTTPS";
 
-  // Card order: configure the service first, then pick the source, then choose
+  // Card order: configure the app first, then pick the source, then choose
   // which server runs it (3rd). Template-only compose/env follow afterwards.
   return (
     <div className="grid items-start gap-6 lg:grid-cols-[1fr_320px]">
@@ -436,7 +436,7 @@ export function NewServiceWizard({
         {/* 1. Configure */}
         <Card>
           <CardHeader>
-            <CardTitle>Configure Service</CardTitle>
+            <CardTitle>Configure App</CardTitle>
             <CardDescription>
               Review the settings. Override anything you need.
             </CardDescription>
@@ -444,7 +444,7 @@ export function NewServiceWizard({
           <CardContent className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="name">Service Name</Label>
+                <Label htmlFor="name">App Name</Label>
                 <Input
                   id="name"
                   value={name}
@@ -480,7 +480,7 @@ export function NewServiceWizard({
             </div>
 
             {/* Build & output settings — the same method-aware controls the
-                service settings page shows, kept inside a collapse so creation
+                app settings page shows, kept inside a collapse so creation
                 stays lean. Only relevant when Deplo builds an image (not for a
                 prebuilt docker image or a compose stack). */}
             {!locked && buildsImage && (
@@ -526,7 +526,7 @@ export function NewServiceWizard({
             )}
 
             {/* Git deploy options — trigger type, watch paths, submodules. Same
-                controls the service settings page shows. */}
+                controls the app settings page shows. */}
             {usesGit && (
               <div className="rounded-lg border border-border p-4">
                 <GitDeployOptions value={gitOptions} onChange={setGitOptions} />
@@ -729,7 +729,7 @@ export function NewServiceWizard({
               Deploy to
             </CardTitle>
             <CardDescription>
-              Choose which server runs this {isTemplate ? "template" : "service"}.
+              Choose which server runs this {isTemplate ? "template" : "app"}.
               The master is the host running Deplo; remote servers appear here
               once connected.
             </CardDescription>

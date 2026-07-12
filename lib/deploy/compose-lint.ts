@@ -49,8 +49,8 @@ function markOf(e: unknown): YamlMark | null {
  * high-level API, so for semantic rules we locate the service block textually.
  * Returns 1 when not found (so a marker still appears somewhere sane).
  */
-function lineOfServiceKey(lines: string[], service: string): number {
-  // Service keys are indented under `services:` — typically 2 spaces. Match a
+function lineOfAppKey(lines: string[], service: string): number {
+  // App keys are indented under `services:` — typically 2 spaces. Match a
   // line like `  app:` allowing any leading indentation of 1+ spaces.
   const re = new RegExp(`^\\s+${escapeRe(service)}\\s*:\\s*(?:#.*)?$`);
   for (let i = 0; i < lines.length; i++) {
@@ -62,23 +62,23 @@ function lineOfServiceKey(lines: string[], service: string): number {
 /** Find the line of a `key:` within a service block (best-effort). */
 function lineOfServiceField(
   lines: string[],
-  serviceLine: number,
+  appLine: number,
   field: string,
 ): number {
   // Scan from the service line until indentation returns to the service's level
   // or shallower (next service / top-level), looking for `field:`.
-  const startIdx = serviceLine - 1;
-  const serviceIndent = leadingSpaces(lines[startIdx] ?? "");
+  const startIdx = appLine - 1;
+  const appIndent = leadingSpaces(lines[startIdx] ?? "");
   const re = new RegExp(`^(\\s+)${escapeRe(field)}\\s*:`);
   for (let i = startIdx + 1; i < lines.length; i++) {
     const line = lines[i];
     if (line.trim() === "") continue;
     const indent = leadingSpaces(line);
-    if (indent <= serviceIndent) break; // left the service block
+    if (indent <= appIndent) break; // left the service block
     const m = line.match(re);
-    if (m && m[1].length > serviceIndent) return i + 1;
+    if (m && m[1].length > appIndent) return i + 1;
   }
-  return serviceLine;
+  return appLine;
 }
 
 function leadingSpaces(line: string): number {
@@ -183,8 +183,8 @@ export function lintCompose(source: string): LintDiagnostic[] {
     });
     return sortDiags(diags);
   }
-  const serviceEntries = Object.entries(services as Record<string, unknown>);
-  if (serviceEntries.length === 0) {
+  const appEntries = Object.entries(services as Record<string, unknown>);
+  if (appEntries.length === 0) {
     diags.push({
       severity: "error",
       rule: "empty-services",
@@ -195,14 +195,14 @@ export function lintCompose(source: string): LintDiagnostic[] {
   }
 
   // 5. Per-service checks.
-  for (const [name, raw] of serviceEntries) {
-    const svcLine = lineOfServiceKey(lines, name);
+  for (const [name, raw] of appEntries) {
+    const svcLine = lineOfAppKey(lines, name);
 
     if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
       diags.push({
         severity: "error",
         rule: "service-shape",
-        message: `Service \`${name}\` must be a mapping (image, ports, environment, …).`,
+        message: `App \`${name}\` must be a mapping (image, ports, environment, …).`,
         line: svcLine,
       });
       continue;
@@ -218,7 +218,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
       diags.push({
         severity: "error",
         rule: "no-image-or-build",
-        message: `Service \`${name}\` has neither \`image:\` nor \`build:\`. It cannot start.`,
+        message: `App \`${name}\` has neither \`image:\` nor \`build:\`. It cannot start.`,
         line: svcLine,
       });
     }
@@ -265,7 +265,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
     checkListOrMap(svc, "environment", name, svcLine, lines, diags);
     // volumes: list
     checkList(svc, "volumes", name, svcLine, lines, diags);
-    // networks: list or mapping. Load-bearing — Deplo's serviceNetworks() reads
+    // networks: list or mapping. Load-bearing — Deplo's appNetworks() reads
     // this and a malformed value silently drops the service's real networks when
     // it attaches the `deplo` network.
     checkListOrMap(svc, "networks", name, svcLine, lines, diags);
@@ -289,7 +289,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
           line: depLine,
         });
       }
-      const known = new Set(serviceEntries.map(([n]) => n));
+      const known = new Set(appEntries.map(([n]) => n));
       for (const dst of targets) {
         if (!known.has(dst)) {
           diags.push({
@@ -455,7 +455,7 @@ export function volumeSource(v: unknown): string | null {
   return null;
 }
 
-/** The service-files `./<x>` convention is rewritten to the project's isolated
+/** The app-files `./<x>` convention is rewritten to the project's isolated
  * files directory at deploy time — NOT a host bind mount the user picked a path
  * for. Matches `./x`, `./folder/`, bare `.`/`./`; explicitly NOT `../` (escape). */
 export function isFilesConventionSource(src: string): boolean {
@@ -464,7 +464,7 @@ export function isFilesConventionSource(src: string): boolean {
 
 /**
  * True if a source climbs out of the project sandbox via a `..` path segment.
- * Such a source is never the service-files convention; it is treated as a host
+ * Such a source is never the app-files convention; it is treated as a host
  * bind (gated behind `canMountHostVolumes`) so a rename can't repoint it at
  * another project's data.
  */

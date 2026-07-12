@@ -7,7 +7,7 @@ import { getDb } from "../db/client";
 import {
   domains as domainsTable,
   domainMiddlewares as domainMiddlewaresTable,
-  services as servicesTable,
+  apps as appsTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
@@ -30,13 +30,13 @@ import { portFor } from "../deploy/ports";
 import {
   insertDomain,
   loadDomain,
-  loadDomainsForService,
-  loadDomainsForServices,
-  loadServiceGraph,
-  serviceInTeam,
-} from "./service-graph-load";
-import { domainToRow, domainMiddlewaresToRows } from "./service-graph-rows";
-import { requireFolderCapabilityForService } from "./folder-access";
+  loadDomainsForApp,
+  loadDomainsForApps,
+  loadAppGraph,
+  appInTeam,
+} from "./app-graph-load";
+import { domainToRow, domainMiddlewaresToRows } from "./app-graph-rows";
+import { requireFolderCapabilityForApp } from "./folder-access";
 import { getServerById } from "./servers";
 import type { CertProvider, Domain, DomainEntrypoint } from "../types";
 
@@ -54,7 +54,7 @@ const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
  * it there rather than persist an inert value the UI would falsely report as
  * applied. */
 const SERVICE_UNSUPPORTED =
-  "Routing to a named service is only available for compose stacks — single-image services use the service port field.";
+  "Routing to a named service is only available for compose stacks — single-image apps use the service port field.";
 
 /** True if any project already owns this exact hostname (global uniqueness —
  * the `domains.name` unique index is the hard backstop; this is the friendly
@@ -99,7 +99,7 @@ export async function uniqueAutoDomainName(
  * marked primary. Idempotent: returns the existing primary if one exists.
  */
 export async function ensureAutoDomain(
-  serviceId: string,
+  appId: string,
   opts: {
     slug: string;
     ip: string;
@@ -110,10 +110,10 @@ export async function ensureAutoDomain(
     defaultPort: number;
     /** Compose default expose service (null/absent for single-image). Written so
      * a compose auto domain always names the service it routes to. */
-    defaultService?: string | null;
+    defaultApp?: string | null;
   },
 ): Promise<string> {
-  const existing = await loadDomainsForService(serviceId);
+  const existing = await loadDomainsForApp(appId);
   const primary = existing.find((d) => d.primary) ?? existing[0];
   if (primary) {
     // Self-heal an auto-generated nip.io domain that still encodes a stale or
@@ -153,7 +153,7 @@ export async function ensureAutoDomain(
       : await uniqueAutoDomainName(opts.slug, opts.ip);
   const domain: Domain = {
     id: newId("dom"),
-    serviceId,
+    appId,
     name,
     status: "valid",
     primary: true,
@@ -162,10 +162,10 @@ export async function ensureAutoDomain(
     source: "auto",
     // Always born complete: the resolved container port (and, on a compose
     // stack, the service it routes to) so no auto domain is ever portless or
-    // serviceless. These equal the project's default expose/build port, so the
+    // appless. These equal the project's default expose/build port, so the
     // compose renderer treats them as the default route (byte-identical YAML).
     port: opts.defaultPort,
-    ...(opts.defaultService ? { service: opts.defaultService } : {}),
+    ...(opts.defaultApp ? { service: opts.defaultApp } : {}),
     createdAt: nowIso(),
   };
   await insertDomain(getDb(), domain);
@@ -175,7 +175,7 @@ export async function ensureAutoDomain(
 /**
  * Ensure a secondary (non-primary) domain is registered for a project, e.g. the
  * extra hostnames a multi-domain template exposes (garage-with-ui's web UI).
- * Runs without an authenticated user (called from createService, alongside the
+ * Runs without an authenticated user (called from createApp, alongside the
  * primary auto domain). Registered ONCE at creation — never on a deploy — so a
  * deleted extra is never resurrected. Idempotent: a same-named domain on THIS
  * project is left as-is (so a creation retry won't duplicate it).
@@ -187,7 +187,7 @@ export async function ensureAutoDomain(
  * rather than silently dropping the domain.
  */
 export async function ensureExtraDomain(
-  serviceId: string,
+  appId: string,
   rawName: string,
   route: { port: number; service?: string | null; slug: string; ip: string },
 ): Promise<void> {
@@ -197,7 +197,7 @@ export async function ensureExtraDomain(
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
   if (!clean || !DOMAIN_RE.test(clean)) return;
-  const existing = await loadDomainsForService(serviceId);
+  const existing = await loadDomainsForApp(appId);
   // Already on this project (idempotent re-run) ⇒ nothing to do.
   if (existing.some((d) => d.name === clean)) return;
   // Honor the template host when globally free; otherwise regenerate a unique
@@ -210,7 +210,7 @@ export async function ensureExtraDomain(
     : clean;
   const domain: Domain = {
     id: newId("dom"),
-    serviceId,
+    appId,
     name,
     status: "valid",
     primary: false,
@@ -218,7 +218,7 @@ export async function ensureExtraDomain(
     ssl: true,
     source: "auto",
     // The extra host comes from a compose `exposes` entry that carries its own
-    // service + port; store both so the row is never serviceless/portless. They
+    // service + port; store both so the row is never appless/portless. They
     // equal that host's default expose, so the renderer keeps it byte-identical.
     port: route.port,
     ...(route.service ? { service: route.service } : {}),
@@ -234,54 +234,54 @@ export async function ensureExtraDomain(
  * domain — an empty string means "deploy unrouted". Prefers the `primary`-flagged
  * row, falling back to the first domain (mirrors syncProductionUrl's choice).
  */
-export async function primaryDomainName(serviceId: string): Promise<string> {
-  const domains = await loadDomainsForService(serviceId);
+export async function primaryDomainName(appId: string): Promise<string> {
+  const domains = await loadDomainsForApp(appId);
   const primary = domains.find((d) => d.primary) ?? domains[0];
   return primary?.name ?? "";
 }
 
 /**
  * The compose service the project's primary domain routes to, or "" when there
- * is none (single-image services, or a project with no domains). Used to flag
+ * is none (single-image apps, or a project with no domains). Used to flag
  * the "exposed" instance for console ordering — the role the dropped
  * `project.expose.service` used to fill, now read from the authoritative
  * `domains` table.
  */
-export async function primaryDomainService(serviceId: string): Promise<string> {
-  const domains = await loadDomainsForService(serviceId);
+export async function primaryDomainApp(appId: string): Promise<string> {
+  const domains = await loadDomainsForApp(appId);
   const primary = domains.find((d) => d.primary) ?? domains[0];
   return primary?.service ?? "";
 }
 
 export async function listDomains(
-  serviceId?: string,
-): Promise<(Domain & { serviceName: string; serviceSlug: string })[]> {
+  appId?: string,
+): Promise<(Domain & { serviceName: string; appSlug: string })[]> {
   const teamId = await requireActiveTeamId();
-  // Only the active team's services own routable domains; a serviceId filter
+  // Only the active team's apps own routable domains; a appId filter
   // that points outside the team resolves to no project and so yields nothing.
-  const teamServices = new Map(
+  const teamApps = new Map(
     (
       await getDb()
         .select({
-          id: servicesTable.id,
-          name: servicesTable.name,
-          slug: servicesTable.slug,
+          id: appsTable.id,
+          name: appsTable.name,
+          slug: appsTable.slug,
         })
-        .from(servicesTable)
-        .where(eq(servicesTable.teamId, teamId))
+        .from(appsTable)
+        .where(eq(appsTable.teamId, teamId))
     ).map((p) => [p.id, p] as const),
   );
-  const ids = serviceId
-    ? teamServices.has(serviceId)
-      ? [serviceId]
+  const ids = appId
+    ? teamApps.has(appId)
+      ? [appId]
       : []
-    : [...teamServices.keys()];
-  const domains = await loadDomainsForServices(ids);
+    : [...teamApps.keys()];
+  const domains = await loadDomainsForApps(ids);
   return domains
     .sort((a, b) => Number(b.primary) - Number(a.primary))
     .map((x) => {
-      const p = teamServices.get(x.serviceId);
-      return { ...x, serviceName: p?.name ?? "", serviceSlug: p?.slug ?? "" };
+      const p = teamApps.get(x.appId);
+      return { ...x, serviceName: p?.name ?? "", appSlug: p?.slug ?? "" };
     });
 }
 
@@ -302,7 +302,7 @@ export interface DomainConfig {
 }
 
 export async function addDomain(
-  serviceId: string,
+  appId: string,
   name: string,
   config: DomainConfig = {},
 ): Promise<Domain> {
@@ -314,10 +314,10 @@ export async function addDomain(
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
   if (!DOMAIN_RE.test(clean)) throw new Error("Enter a valid domain name");
-  const project = await loadServiceGraph(serviceId);
+  const project = await loadAppGraph(appId);
   if (!project || project.teamId !== membership.teamId)
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(serviceId, "manage_domains");
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(appId, "manage_domains");
   const isCompose = usesComposeStack(project);
 
   // A path lets several rows share one hostname (e.g. `app.com` for `/` and
@@ -341,20 +341,20 @@ export async function addDomain(
       pathPrefix ? "Domain + path already added" : "Domain already added",
     );
 
-  const service = resolveService(config.service, project, isCompose);
+  const service = resolveApp(config.service, project, isCompose);
   // On a compose stack the port is required (the chosen service's container
   // port); single-image keeps it optional (blank ⇒ the project's default port).
   if (isCompose && config.port == null)
-    throw new Error("Service port is required");
+    throw new Error("App port is required");
   const middlewares = normalizeMiddlewares(config.middlewares);
   // Strip is only meaningful with a path (a stripprefix middleware needs a
   // prefix to strip), so drop it otherwise — the router grammar does the same.
   const stripPrefix = Boolean(pathPrefix && config.stripPrefix);
   // First domain on the project becomes primary.
-  const isFirst = (await loadDomainsForService(serviceId)).length === 0;
+  const isFirst = (await loadDomainsForApp(appId)).length === 0;
   const domain: Domain = {
     id: newId("dom"),
-    serviceId,
+    appId,
     name: clean,
     status: "pending",
     primary: isFirst,
@@ -378,7 +378,7 @@ export async function addDomain(
     createdAt: nowIso(),
   };
   await insertDomain(getDb(), domain);
-  await recordActivity("domain", `Added domain ${clean}`, user.name, serviceId);
+  await recordActivity("domain", `Added domain ${clean}`, user.name, appId);
   return domain;
 }
 
@@ -405,7 +405,7 @@ export function normalizePath(input?: string | null): string {
 }
 
 /** The service names declared in a project's compose file, or [] when there is
- * no parseable compose (single-image services, malformed YAML). Used to validate
+ * no parseable compose (single-image apps, malformed YAML). Used to validate
  * a domain's chosen `service` against the stack it routes to. */
 export function composeServiceNames(compose?: string | null): string[] {
   if (!compose || !compose.trim()) return [];
@@ -421,9 +421,9 @@ export function composeServiceNames(compose?: string | null): string[] {
 /** Validate + normalise a domain's chosen compose `service`: REQUIRED on a
  * compose stack (a domain must name the service it routes to — there is no
  * "default service"), must name a real service in that stack, and is rejected
- * (→ error) on single-image services. Single-image returns null (no service).
+ * (→ error) on single-image apps. Single-image returns null (no service).
  * Rejecting an unknown/absent service keeps an inert value from being persisted. */
-function resolveService(
+function resolveApp(
   raw: string | undefined,
   project: { compose: string | null },
   isCompose: boolean,
@@ -436,7 +436,7 @@ function resolveService(
   if (!service) throw new Error("Select the service this domain routes to");
   const names = composeServiceNames(project.compose);
   if (!names.includes(service))
-    throw new Error(`Service "${service}" is not defined in the compose file`);
+    throw new Error(`App "${service}" is not defined in the compose file`);
   return service;
 }
 
@@ -485,7 +485,7 @@ export interface DomainPatch {
 /**
  * Apply a full edit to a domain — name, port override, entrypoint, cert
  * provider, middleware chain, path prefix (+strip), and compose service in one
- * mutation — and return the serviceId so the caller can re-apply routing (the
+ * mutation — and return the appId so the caller can re-apply routing (the
  * new Traefik labels only reach the running container once its stack file is
  * re-rendered). Renaming re-runs the same regex + normalisation as {@link
  * addDomain}; uniqueness is on (host + path) so one hostname can carry several
@@ -503,10 +503,10 @@ export async function updateDomain(
   const user = (await getCurrentUser())!;
   const current = await loadDomain(id);
   if (!current) throw new Error("Not found");
-  const project = await loadServiceGraph(current.serviceId);
+  const project = await loadAppGraph(current.appId);
   if (!project || project.teamId !== membership.teamId)
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(current.serviceId, "manage_domains");
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(current.appId, "manage_domains");
 
   const isCompose = usesComposeStack(project);
 
@@ -528,16 +528,16 @@ export async function updateDomain(
     patch.pathPrefix !== undefined
       ? normalizePath(patch.pathPrefix)
       : current.pathPrefix ?? "";
-  const nextService =
+  const nextApp =
     patch.service !== undefined
-      ? resolveService(patch.service, project, isCompose)
+      ? resolveApp(patch.service, project, isCompose)
       : current.service ?? null;
   // On a compose stack the resulting domain must name a service and a port; the
   // Edit dialog always sends both, this guards a direct/legacy call.
   const nextPort = patch.port !== undefined ? patch.port : current.port ?? null;
   if (isCompose) {
-    if (!nextService) throw new Error("Select the service this domain routes to");
-    if (nextPort == null) throw new Error("Service port is required");
+    if (!nextApp) throw new Error("Select the service this domain routes to");
+    if (nextPort == null) throw new Error("App port is required");
   }
   // Uniqueness on (host + path) against every OTHER domain (the partial-unique
   // index is the real guard; this is the friendly pre-check).
@@ -576,7 +576,7 @@ export async function updateDomain(
     const strip = Boolean(effPath) && (patch.stripPrefix ?? current.stripPrefix ?? false);
     next.stripPrefix = strip ? true : undefined;
   }
-  if (patch.service !== undefined) next.service = nextService ?? undefined;
+  if (patch.service !== undefined) next.service = nextApp ?? undefined;
   // A renamed custom domain points at a new host whose DNS we haven't checked:
   // drop it back to pending so it stops routing until re-verified. An auto
   // nip.io host always resolves, so it stays valid.
@@ -599,9 +599,9 @@ export async function updateDomain(
       ? `Updated domain ${current.name} → ${dom.name}`
       : `Updated domain ${dom.name}`,
     user.name,
-    dom.serviceId,
+    dom.appId,
   );
-  return dom.serviceId;
+  return dom.appId;
 }
 
 /**
@@ -631,13 +631,13 @@ export async function verifyDomain(id: string): Promise<Domain> {
   const { membership } = await requireCapability("manage_domains");
   const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
-  if (!(await serviceInTeam(dom.serviceId, membership.teamId)))
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(dom.serviceId, "manage_domains");
+  if (!(await appInTeam(dom.appId, membership.teamId)))
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(dom.appId, "manage_domains");
 
   // The domain must point at the server THIS project runs on — not always the
   // panel host: a project on a remote server needs its A record on that server.
-  const target = await serviceServerIp(dom.serviceId);
+  const target = await appServerIp(dom.appId);
   const status = await checkDomainDns(dom.name, target);
   // `valid` (points straight here) and `cloudflare` (proxied — DNS correctly
   // delegated to Cloudflare, origin masked) are both working, routable states;
@@ -657,8 +657,8 @@ export async function verifyDomain(id: string): Promise<Domain> {
 /** The public IPv4 a project's custom domains must resolve to: the IP of the
  * server the project is deployed on, falling back to this instance's host when
  * that server has no usable recorded IP (mirrors the deploy path's choice). */
-async function serviceServerIp(serviceId: string): Promise<string> {
-  const project = await loadServiceGraph(serviceId);
+async function appServerIp(appId: string): Promise<string> {
+  const project = await loadAppGraph(appId);
   const server = project?.serverId
     ? await getServerById(project.serverId)
     : null;
@@ -702,8 +702,8 @@ async function checkDomainDns(
  * deploy engine can call it like [[ensure-auto-domain]] does. Empty when the
  * project has no working domain.
  */
-export async function routableDomains(serviceId: string): Promise<string[]> {
-  return (await routableRoutes(serviceId)).map((d) => d.name);
+export async function routableDomains(appId: string): Promise<string[]> {
+  return (await routableRoutes(appId)).map((d) => d.name);
 }
 
 /** A routable hostname plus everything its Traefik router needs: the per-domain
@@ -761,15 +761,15 @@ export function defaultRoute(
 /**
  * Valid, routable hostnames for a project (primary first), each with its port
  * override and resolved TLS triplet. The per-domain port lets one container
- * expose different services on different hostnames; the TLS triplet lets each
+ * expose different apps on different hostnames; the TLS triplet lets each
  * host pick its entrypoint and certificate provider. A `null` port means "use
  * the project's default port". Same `valid`/`cloudflare` filtering rationale as
  * {@link routableDomains}.
  */
 export async function routableRoutes(
-  serviceId: string,
+  appId: string,
 ): Promise<RoutableDomain[]> {
-  return (await loadDomainsForService(serviceId))
+  return (await loadDomainsForApp(appId))
     // `valid` (points straight here) and `cloudflare` (proxied — Cloudflare
     // forwards to this origin) are both working, routable hosts; a
     // pending/misconfigured host has no working DNS and is left off the router.
@@ -787,7 +787,7 @@ export async function routableRoutes(
 }
 
 /**
- * Flip which domain is primary for its project. Returns the affected serviceId
+ * Flip which domain is primary for its project. Returns the affected appId
  * so the caller can re-apply routing (the running container's Traefik labels
  * are baked at deploy time, so the switch only takes effect once the stack is
  * re-rendered and `docker compose up -d` recreates it). `productionUrl` is NOT
@@ -798,9 +798,9 @@ export async function setPrimaryDomain(id: string): Promise<string> {
   const { membership } = await requireCapability("manage_domains");
   const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
-  if (!(await serviceInTeam(dom.serviceId, membership.teamId)))
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(dom.serviceId, "manage_domains");
+  if (!(await appInTeam(dom.appId, membership.teamId)))
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(dom.appId, "manage_domains");
   // A misconfigured domain has no working DNS to this server, so it can't be the
   // canonical host — block promoting it until its DNS is fixed and re-verified.
   // (A `pending` domain is allowed: the first domain added is pending+primary.)
@@ -824,7 +824,7 @@ export async function setPrimaryDomain(id: string): Promise<string> {
       .set({ isPrimary: false })
       .where(
         and(
-          eq(domainsTable.serviceId, dom.serviceId),
+          eq(domainsTable.appId, dom.appId),
           eq(domainsTable.isPrimary, true),
         ),
       );
@@ -833,7 +833,7 @@ export async function setPrimaryDomain(id: string): Promise<string> {
       .set({ isPrimary: true })
       .where(eq(domainsTable.id, id));
   });
-  return dom.serviceId;
+  return dom.appId;
 }
 
 /**
@@ -845,16 +845,16 @@ export async function setPrimaryDomain(id: string): Promise<string> {
  * remaining domain when none is flagged primary (e.g. the primary was removed),
  * and clears the URL when the last domain is gone.
  */
-export async function syncProductionUrl(serviceId: string): Promise<void> {
-  const domains = await loadDomainsForService(serviceId);
+export async function syncProductionUrl(appId: string): Promise<void> {
+  const domains = await loadDomainsForApp(appId);
   const primary = domains.find((x) => x.primary) ?? domains[0];
   await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({
       productionUrl: primary ? `https://${primary.name}` : null,
       updatedAt: nowIso(),
     })
-    .where(eq(servicesTable.id, serviceId));
+    .where(eq(appsTable.id, appId));
 }
 
 export async function removeDomain(id: string): Promise<string> {
@@ -862,17 +862,17 @@ export async function removeDomain(id: string): Promise<string> {
   const user = (await getCurrentUser())!;
   const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
-  if (!(await serviceInTeam(dom.serviceId, membership.teamId)))
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(dom.serviceId, "manage_domains");
+  if (!(await appInTeam(dom.appId, membership.teamId)))
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(dom.appId, "manage_domains");
   // The domain_middlewares child rows CASCADE on the domain delete.
   await getDb().delete(domainsTable).where(eq(domainsTable.id, id));
   await recordActivity(
     "domain",
     `Removed domain ${dom.name}`,
     user.name,
-    dom.serviceId,
+    dom.appId,
   );
   // Caller re-applies routing so the removed host stops being served.
-  return dom.serviceId;
+  return dom.appId;
 }

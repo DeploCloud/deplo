@@ -4,22 +4,22 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
-  serviceBasicAuthUsers as basicAuthTable,
+  appBasicAuthUsers as basicAuthTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
-import { serviceInTeam } from "./service-graph-load";
-import { requireFolderCapabilityForService } from "./folder-access";
+import { appInTeam } from "./app-graph-load";
+import { requireFolderCapabilityForApp } from "./folder-access";
 import type { BasicAuthUser } from "../types";
 
 /**
  * Per-project HTTP Basic Auth users.
  *
  * A project's basic-auth users gate EVERY one of its domains: the deploy/reroute
- * renderers read them via {@link basicAuthForService} and inject a generated
+ * renderers read them via {@link basicAuthForApp} and inject a generated
  * Traefik `basicauth` middleware (built from all of them) at the head of every
  * router's middleware chain. Stored passwords are AES-GCM-encrypted (reversible,
  * like env secrets) so the htpasswd credentials can be re-derived on every
@@ -53,7 +53,7 @@ function toDTO(u: BasicAuthUser): BasicAuthUserDTO {
 function assemble(row: typeof basicAuthTable.$inferSelect): BasicAuthUser {
   return {
     id: row.id,
-    serviceId: row.serviceId,
+    appId: row.appId,
     username: row.username,
     passwordEnc: row.passwordEnc,
     createdAt: row.createdAt,
@@ -66,29 +66,29 @@ function assemble(row: typeof basicAuthTable.$inferSelect): BasicAuthUser {
  * `manage_domains` — an out-of-team project yields none (matches a hidden tab).
  */
 export async function listBasicAuthUsers(
-  serviceId: string,
+  appId: string,
 ): Promise<BasicAuthUserDTO[]> {
   const { teamId } = await requireCapability("manage_domains");
-  if (!(await serviceInTeam(serviceId, teamId))) return [];
-  await requireFolderCapabilityForService(serviceId, "manage_domains");
+  if (!(await appInTeam(appId, teamId))) return [];
+  await requireFolderCapabilityForApp(appId, "manage_domains");
   const rows = await getDb()
     .select()
     .from(basicAuthTable)
-    .where(eq(basicAuthTable.serviceId, serviceId))
+    .where(eq(basicAuthTable.appId, appId))
     .orderBy(asc(basicAuthTable.username));
   return rows.map(assemble).map(toDTO);
 }
 
 export async function addBasicAuthUser(
-  serviceId: string,
+  appId: string,
   username: string,
   password: string,
 ): Promise<BasicAuthUserDTO> {
   const { membership } = await requireCapability("manage_domains");
   const user = (await getCurrentUser())!;
-  if (!(await serviceInTeam(serviceId, membership.teamId)))
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(serviceId, "manage_domains");
+  if (!(await appInTeam(appId, membership.teamId)))
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(appId, "manage_domains");
   const name = username.trim();
   if (!USERNAME_RE.test(name))
     throw new Error("Username can't contain spaces, ':' or ','");
@@ -101,7 +101,7 @@ export async function addBasicAuthUser(
     .from(basicAuthTable)
     .where(
       and(
-        eq(basicAuthTable.serviceId, serviceId),
+        eq(basicAuthTable.appId, appId),
         eq(basicAuthTable.username, name),
       ),
     )
@@ -111,7 +111,7 @@ export async function addBasicAuthUser(
   const now = nowIso();
   const row = {
     id: newId("bau"),
-    serviceId,
+    appId,
     username: name,
     passwordEnc: encryptSecret(password),
     createdAt: now,
@@ -122,7 +122,7 @@ export async function addBasicAuthUser(
     "domain",
     `Added basic-auth user ${name}`,
     user.name,
-    serviceId,
+    appId,
   );
   return toDTO(assemble(row));
 }
@@ -142,9 +142,9 @@ export async function updateBasicAuthUserPassword(
     .where(eq(basicAuthTable.id, id))
     .limit(1);
   if (!existing) throw new Error("Not found");
-  if (!(await serviceInTeam(existing.serviceId, membership.teamId)))
+  if (!(await appInTeam(existing.appId, membership.teamId)))
     throw new Error("Not found");
-  await requireFolderCapabilityForService(existing.serviceId, "manage_domains");
+  await requireFolderCapabilityForApp(existing.appId, "manage_domains");
   const updated = { ...existing, passwordEnc: encryptSecret(password), updatedAt: nowIso() };
   await getDb()
     .update(basicAuthTable)
@@ -154,7 +154,7 @@ export async function updateBasicAuthUserPassword(
     "domain",
     `Updated basic-auth user ${existing.username}`,
     user.name,
-    existing.serviceId,
+    existing.appId,
   );
   return toDTO(assemble(updated));
 }
@@ -168,17 +168,17 @@ export async function removeBasicAuthUser(id: string): Promise<string> {
     .where(eq(basicAuthTable.id, id))
     .limit(1);
   if (!existing) throw new Error("Not found");
-  if (!(await serviceInTeam(existing.serviceId, membership.teamId)))
+  if (!(await appInTeam(existing.appId, membership.teamId)))
     throw new Error("Not found");
-  await requireFolderCapabilityForService(existing.serviceId, "manage_domains");
+  await requireFolderCapabilityForApp(existing.appId, "manage_domains");
   await getDb().delete(basicAuthTable).where(eq(basicAuthTable.id, id));
   await recordActivity(
     "domain",
     `Removed basic-auth user ${existing.username}`,
     user.name,
-    existing.serviceId,
+    existing.appId,
   );
-  return existing.serviceId;
+  return existing.appId;
 }
 
 /**
@@ -194,11 +194,11 @@ export async function removeBasicAuthUser(id: string): Promise<string> {
  * treats `$` as variable interpolation); the compose renderer does the same via
  * the shared escaping. This function returns the RAW (single-`$`) form.
  */
-export async function basicAuthUsersValue(serviceId: string): Promise<string> {
+export async function basicAuthUsersValue(appId: string): Promise<string> {
   const rows = await getDb()
     .select()
     .from(basicAuthTable)
-    .where(eq(basicAuthTable.serviceId, serviceId))
+    .where(eq(basicAuthTable.appId, appId))
     .orderBy(asc(basicAuthTable.username));
   if (rows.length === 0) return "";
   return rows
@@ -208,12 +208,12 @@ export async function basicAuthUsersValue(serviceId: string): Promise<string> {
 
 /** Whether a project has any basic-auth users (a cheap existence check for the
  * renderers that don't need the hashed value, e.g. to decide the middleware
- * name). Batched form for callers with several services is not needed yet. */
-export async function serviceHasBasicAuth(serviceId: string): Promise<boolean> {
+ * name). Batched form for callers with several apps is not needed yet. */
+export async function appHasBasicAuth(appId: string): Promise<boolean> {
   const hit = await getDb()
     .select({ id: basicAuthTable.id })
     .from(basicAuthTable)
-    .where(eq(basicAuthTable.serviceId, serviceId))
+    .where(eq(basicAuthTable.appId, appId))
     .limit(1);
   return hit.length > 0;
 }

@@ -5,7 +5,7 @@ import {
   CardFooter,
   CardHeader,
 } from "@/components/ui/card";
-import { SectionLabel } from "@/components/services/settings/settings-skeletons";
+import { SectionLabel } from "@/components/apps/settings/settings-skeletons";
 
 /** Storage settings (persistent volumes). */
 export default function Loading() {

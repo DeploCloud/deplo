@@ -10,24 +10,19 @@ import {
   domainMiddlewares,
   envVars,
   envVarTargets,
-  services,
-  serviceBuild,
-  serviceBuildMethodSettings,
-  serviceDev,
-  serviceMounts,
-  serviceVolumes,
-  sharedEnvGroups,
-  sharedEnvGroupServices,
-  sharedEnvGroupTargets,
-  sharedEnvGroupVars,
+  apps,
+  appBuild,
+  appBuildMethodSettings,
+  appDev,
+  appMounts,
+  appVolumes,
 } from "../db/schema/control-plane";
-import type { Deployment, Domain, EnvVar, Service, SharedEnvGroup } from "../types";
+import type { Deployment, Domain, EnvVar, App } from "../types";
 import {
   assembleDeployment,
   assembleDomain,
   assembleEnvVar,
-  assembleService,
-  assembleSharedEnvGroup,
+  assembleApp,
   domainToRow,
   domainMiddlewaresToRows,
   envVarToRow,
@@ -36,10 +31,9 @@ import {
   type DomainRow,
   type EnvVarRow,
   type EnvVarTargetRow,
-  type ServiceChildRows,
-  type ServiceRow,
-  type SharedEnvGroupRow,
-} from "./service-graph-rows";
+  type AppChildRows,
+  type AppRow,
+} from "./app-graph-rows";
 
 /**
  * The READ seam for the project graph (relational-store PLAN §6 "Reads /
@@ -48,12 +42,12 @@ import {
  * fan-outs were free, but async they become real round-trips. So the data layer
  * NEVER loads children per-project in a loop — it goes through here:
  *
- *  - {@link loadServiceGraph} — ONE project + all its children in a bounded query
- *    set (the aggregate loader routed from runDeployment / renderServiceStack /
- *    getServiceById / the GraphQL detail resolver).
- *  - {@link loadServicesByTeam} / {@link loadServicesByIds} — N services with all
+ *  - {@link loadAppGraph} — ONE project + all its children in a bounded query
+ *    set (the aggregate loader routed from runDeployment / renderAppStack /
+ *    getAppById / the GraphQL detail resolver).
+ *  - {@link loadAppsByTeam} / {@link loadAppsByIds} — N apps with all
  *    children batch-loaded by a single `inArray` per child table (so a list of N
- *    services is a BOUNDED number of queries, not N×6).
+ *    apps is a BOUNDED number of queries, not N×6).
  *
  * A `DbReader` is `getDb()` or a `tx`, so a transaction can read through the same
  * assembler it later writes through (no second connection, consistent snapshot).
@@ -65,11 +59,11 @@ type DbReader = ReturnType<typeof getDb> | DbTx;
 /* ------------------------------------------------------------------ */
 
 /** All child rows for a set of project ids, grouped by project id. */
-async function loadChildrenByServiceIds(
+async function loadChildrenByAppIds(
   db: DbReader,
   ids: string[],
-): Promise<Map<string, ServiceChildRows>> {
-  const out = new Map<string, ServiceChildRows>();
+): Promise<Map<string, AppChildRows>> {
+  const out = new Map<string, AppChildRows>();
   for (const id of ids)
     out.set(id, {
       build: null,
@@ -82,47 +76,47 @@ async function loadChildrenByServiceIds(
 
   // One query per child table over the whole id set (NOT per project).
   const [builds, settings, devs, volumes, mounts] = await Promise.all([
-    db.select().from(serviceBuild).where(inArray(serviceBuild.serviceId, ids)),
+    db.select().from(appBuild).where(inArray(appBuild.appId, ids)),
     db
       .select()
-      .from(serviceBuildMethodSettings)
-      .where(inArray(serviceBuildMethodSettings.serviceId, ids)),
-    db.select().from(serviceDev).where(inArray(serviceDev.serviceId, ids)),
+      .from(appBuildMethodSettings)
+      .where(inArray(appBuildMethodSettings.appId, ids)),
+    db.select().from(appDev).where(inArray(appDev.appId, ids)),
     db
       .select()
-      .from(serviceVolumes)
-      .where(inArray(serviceVolumes.serviceId, ids))
-      .orderBy(asc(serviceVolumes.serviceId), asc(serviceVolumes.position)),
+      .from(appVolumes)
+      .where(inArray(appVolumes.appId, ids))
+      .orderBy(asc(appVolumes.appId), asc(appVolumes.position)),
     db
       .select()
-      .from(serviceMounts)
-      .where(inArray(serviceMounts.serviceId, ids))
-      .orderBy(asc(serviceMounts.serviceId), asc(serviceMounts.position)),
+      .from(appMounts)
+      .where(inArray(appMounts.appId, ids))
+      .orderBy(asc(appMounts.appId), asc(appMounts.position)),
   ]);
 
-  for (const b of builds) out.get(b.serviceId)!.build = b;
-  for (const s of settings) out.get(s.serviceId)!.methodSettings = s;
-  for (const dv of devs) out.get(dv.serviceId)!.dev = dv;
-  for (const v of volumes) out.get(v.serviceId)!.volumes.push(v);
-  for (const m of mounts) out.get(m.serviceId)!.mounts.push(m);
+  for (const b of builds) out.get(b.appId)!.build = b;
+  for (const s of settings) out.get(s.appId)!.methodSettings = s;
+  for (const dv of devs) out.get(dv.appId)!.dev = dv;
+  for (const v of volumes) out.get(v.appId)!.volumes.push(v);
+  for (const m of mounts) out.get(m.appId)!.mounts.push(m);
   return out;
 }
 
 /* ------------------------------------------------------------------ */
-/* Service loaders                                                     */
+/* App loaders                                                     */
 /* ------------------------------------------------------------------ */
 
-/** Assemble a list of {@link Service}s from their parent rows + batch-loaded children. */
-async function assembleServices(
+/** Assemble a list of {@link App}s from their parent rows + batch-loaded children. */
+async function assembleApps(
   db: DbReader,
-  rows: ServiceRow[],
-): Promise<Service[]> {
+  rows: AppRow[],
+): Promise<App[]> {
   if (rows.length === 0) return [];
-  const children = await loadChildrenByServiceIds(
+  const children = await loadChildrenByAppIds(
     db,
     rows.map((r) => r.id),
   );
-  return rows.map((r) => assembleService(r, children.get(r.id)!));
+  return rows.map((r) => assembleApp(r, children.get(r.id)!));
 }
 
 /**
@@ -130,61 +124,61 @@ async function assembleServices(
  * aggregate loader (PLAN §6 "One aggregate project loader"). NOT team-scoped —
  * callers that need a team check pass `teamId` or filter the result.
  */
-export async function loadServiceGraph(
+export async function loadAppGraph(
   id: string,
   db: DbReader = getDb(),
-): Promise<Service | null> {
-  const rows = await db.select().from(services).where(eq(services.id, id)).limit(1);
+): Promise<App | null> {
+  const rows = await db.select().from(apps).where(eq(apps.id, id)).limit(1);
   if (rows.length === 0) return null;
-  const [p] = await assembleServices(db, rows);
+  const [p] = await assembleApps(db, rows);
   return p ?? null;
 }
 
-/** Same as {@link loadServiceGraph} but by slug. */
-export async function loadServiceGraphBySlug(
+/** Same as {@link loadAppGraph} but by slug. */
+export async function loadAppGraphBySlug(
   slug: string,
   db: DbReader = getDb(),
-): Promise<Service | null> {
+): Promise<App | null> {
   const rows = await db
     .select()
-    .from(services)
-    .where(eq(services.slug, slug))
+    .from(apps)
+    .where(eq(apps.slug, slug))
     .limit(1);
   if (rows.length === 0) return null;
-  const [p] = await assembleServices(db, rows);
+  const [p] = await assembleApps(db, rows);
   return p ?? null;
 }
 
 /** Every project in a team, fully assembled (children batch-loaded). */
-export async function loadServicesByTeam(
+export async function loadAppsByTeam(
   teamId: string,
   db: DbReader = getDb(),
-): Promise<Service[]> {
+): Promise<App[]> {
   const rows = await db
     .select()
-    .from(services)
-    .where(eq(services.teamId, teamId));
-  return assembleServices(db, rows);
+    .from(apps)
+    .where(eq(apps.teamId, teamId));
+  return assembleApps(db, rows);
 }
 
-/** A specific set of services, fully assembled (children batch-loaded). */
-export async function loadServicesByIds(
+/** A specific set of apps, fully assembled (children batch-loaded). */
+export async function loadAppsByIds(
   ids: string[],
   db: DbReader = getDb(),
-): Promise<Service[]> {
+): Promise<App[]> {
   if (ids.length === 0) return [];
-  const rows = await db.select().from(services).where(inArray(services.id, ids));
-  return assembleServices(db, rows);
+  const rows = await db.select().from(apps).where(inArray(apps.id, ids));
+  return assembleApps(db, rows);
 }
 
 /* ------------------------------------------------------------------ */
-/* Summary preload (the N+1 killer for listServices/summarize)         */
+/* Summary preload (the N+1 killer for listApps/summarize)         */
 /* ------------------------------------------------------------------ */
 
 /**
  * The per-team data `summarize` needs as a PURE function (PLAN §6 "`summarize()`
  * is N+1"): the latest deployment per project (one query) and the domain count
- * per project (one GROUP BY) — so a list of N services costs a bounded number of
+ * per project (one GROUP BY) — so a list of N apps costs a bounded number of
  * queries instead of N×2. Keyed by project id.
  */
 export interface SummaryPreload {
@@ -192,29 +186,29 @@ export interface SummaryPreload {
   domainCounts: Map<string, number>;
 }
 
-/** Batch-load the latest deployment + domain count for a set of services. */
+/** Batch-load the latest deployment + domain count for a set of apps. */
 export async function preloadSummaries(
-  proj: Service[],
+  proj: App[],
   db: DbReader = getDb(),
 ): Promise<SummaryPreload> {
   const latestIds = proj
     .map((p) => p.latestDeploymentId)
     .filter((id): id is string => id != null);
-  const serviceIds = proj.map((p) => p.id);
+  const appIds = proj.map((p) => p.id);
 
   const [latestRows, domainRows] = await Promise.all([
     latestIds.length
       ? db.select().from(deployments).where(inArray(deployments.id, latestIds))
       : Promise.resolve([]),
-    serviceIds.length
+    appIds.length
       ? db
           .select({
-            serviceId: domains.serviceId,
+            appId: domains.appId,
             n: sql<number>`count(*)`.mapWith(Number),
           })
           .from(domains)
-          .where(inArray(domains.serviceId, serviceIds))
-          .groupBy(domains.serviceId)
+          .where(inArray(domains.appId, appIds))
+          .groupBy(domains.appId)
       : Promise.resolve([]),
   ]);
 
@@ -224,7 +218,7 @@ export async function preloadSummaries(
     latestDeployments.set(dep.id, dep);
   }
   const domainCounts = new Map<string, number>();
-  for (const row of domainRows) domainCounts.set(row.serviceId, row.n);
+  for (const row of domainRows) domainCounts.set(row.appId, row.n);
   return { latestDeployments, domainCounts };
 }
 
@@ -250,15 +244,15 @@ export async function loadDeployment(
  * (PLAN §5/§6 "Push ORDER BY created_at DESC, seq DESC + LIMIT into SQL"). The
  * optional `limit` is the list push-down — slicing happens in SQL, not memory.
  */
-export async function loadDeploymentsForService(
-  serviceId: string,
+export async function loadDeploymentsForApp(
+  appId: string,
   opts: { limit?: number } = {},
   db: DbReader = getDb(),
 ): Promise<Deployment[]> {
   const q = db
     .select()
     .from(deployments)
-    .where(eq(deployments.serviceId, serviceId))
+    .where(eq(deployments.appId, appId))
     .orderBy(desc(deployments.createdAt), desc(deployments.seq));
   const rows = await (opts.limit != null ? q.limit(opts.limit) : q);
   return rows.map(assembleDeployment);
@@ -290,14 +284,14 @@ async function assembleDomains(
 }
 
 /** All domains for a project (with middlewares), insertion order. */
-export async function loadDomainsForService(
-  serviceId: string,
+export async function loadDomainsForApp(
+  appId: string,
   db: DbReader = getDb(),
 ): Promise<Domain[]> {
   const rows = await db
     .select()
     .from(domains)
-    .where(eq(domains.serviceId, serviceId));
+    .where(eq(domains.appId, appId));
   return assembleDomains(db, rows);
 }
 
@@ -318,16 +312,16 @@ export async function insertDomain(db: DbReader, domain: Domain): Promise<void> 
   if (mw.length > 0) await db.insert(domainMiddlewares).values(mw);
 }
 
-/** Every domain across a set of services, batch-loaded (for listDomains). */
-export async function loadDomainsForServices(
-  serviceIds: string[],
+/** Every domain across a set of apps, batch-loaded (for listDomains). */
+export async function loadDomainsForApps(
+  appIds: string[],
   db: DbReader = getDb(),
 ): Promise<Domain[]> {
-  if (serviceIds.length === 0) return [];
+  if (appIds.length === 0) return [];
   const rows = await db
     .select()
     .from(domains)
-    .where(inArray(domains.serviceId, serviceIds));
+    .where(inArray(domains.appId, appIds));
   return assembleDomains(db, rows);
 }
 
@@ -356,27 +350,27 @@ async function assembleEnvVars(
 }
 
 /** All env vars for a project (with targets). */
-export async function loadEnvVarsForService(
-  serviceId: string,
+export async function loadEnvVarsForApp(
+  appId: string,
   db: DbReader = getDb(),
 ): Promise<EnvVar[]> {
   const rows = await db
     .select()
     .from(envVars)
-    .where(eq(envVars.serviceId, serviceId));
+    .where(eq(envVars.appId, appId));
   return assembleEnvVars(db, rows);
 }
 
-/** Env vars across a set of services, batch-loaded (for the global Variables tab + deploy env). */
-export async function loadEnvVarsForServices(
-  serviceIds: string[],
+/** Env vars across a set of apps, batch-loaded (for the global Variables tab + deploy env). */
+export async function loadEnvVarsForApps(
+  appIds: string[],
   db: DbReader = getDb(),
 ): Promise<EnvVar[]> {
-  if (serviceIds.length === 0) return [];
+  if (appIds.length === 0) return [];
   const rows = await db
     .select()
     .from(envVars)
-    .where(inArray(envVars.serviceId, serviceIds));
+    .where(inArray(envVars.appId, appIds));
   return assembleEnvVars(db, rows);
 }
 
@@ -392,7 +386,7 @@ export async function loadEnvVar(
 
 /**
  * Insert {@link EnvVar}s + their target junction rows (one multi-row insert each).
- * The shared write seam `createService` / `setServiceEnv` / `upsertEnv` use so the
+ * The shared write seam `createApp` / `setAppEnv` / `upsertEnv` use so the
  * env-var → row mapping (and the targets junction) lives in one place. Pass a `tx`
  * so it joins the caller's transaction.
  */
@@ -405,117 +399,33 @@ export async function insertEnvVars(db: DbReader, vars: EnvVar[]): Promise<void>
 
 /**
  * Load a project only if it belongs to `teamId` (the standard ownership gate as
- * a single call): the full assembled {@link Service} or null when absent / not
+ * a single call): the full assembled {@link App} or null when absent / not
  * owned. The relational replacement for the old
- * `read().services.find(p => p.id === id && p.teamId === teamId)`.
+ * `read().apps.find(p => p.id === id && p.teamId === teamId)`.
  */
-export async function loadTeamService(
-  serviceId: string,
+export async function loadTeamApp(
+  appId: string,
   teamId: string,
   db: DbReader = getDb(),
-): Promise<Service | null> {
-  const p = await loadServiceGraph(serviceId, db);
+): Promise<App | null> {
+  const p = await loadAppGraph(appId, db);
   return p && p.teamId === teamId ? p : null;
 }
 
 /** True if a project belongs to a team (the standard ownership gate). */
-export async function serviceInTeam(
-  serviceId: string,
+export async function appInTeam(
+  appId: string,
   teamId: string,
   db: DbReader = getDb(),
 ): Promise<boolean> {
   const rows = await db
-    .select({ id: services.id })
-    .from(services)
-    .where(and(eq(services.id, serviceId), eq(services.teamId, teamId)))
+    .select({ id: apps.id })
+    .from(apps)
+    .where(and(eq(apps.id, appId), eq(apps.teamId, teamId)))
     .limit(1);
   return rows.length > 0;
 }
 
-/* ------------------------------------------------------------------ */
-/* Shared env groups                                                   */
-/* ------------------------------------------------------------------ */
-
-/** Assemble shared env groups from parent rows, batch-loading the 3 child sets. */
-async function assembleSharedEnvGroups(
-  db: DbReader,
-  rows: SharedEnvGroupRow[],
-): Promise<SharedEnvGroup[]> {
-  if (rows.length === 0) return [];
-  const ids = rows.map((r) => r.id);
-  const [vars, projectsRows, targets] = await Promise.all([
-    db.select().from(sharedEnvGroupVars).where(inArray(sharedEnvGroupVars.groupId, ids)),
-    db
-      .select()
-      .from(sharedEnvGroupServices)
-      .where(inArray(sharedEnvGroupServices.groupId, ids)),
-    db
-      .select()
-      .from(sharedEnvGroupTargets)
-      .where(inArray(sharedEnvGroupTargets.groupId, ids)),
-  ]);
-  const varsBy = groupBy(vars, (v) => v.groupId);
-  const projBy = groupBy(projectsRows, (p) => p.groupId);
-  const tgtBy = groupBy(targets, (t) => t.groupId);
-  return rows.map((r) =>
-    assembleSharedEnvGroup(r, varsBy.get(r.id) ?? [], projBy.get(r.id) ?? [], tgtBy.get(r.id) ?? []),
-  );
-}
-
-function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
-  const out = new Map<K, T[]>();
-  for (const item of items) {
-    const k = key(item);
-    const list = out.get(k) ?? [];
-    list.push(item);
-    out.set(k, list);
-  }
-  return out;
-}
-
-/** Every shared env group in a team (with children). */
-export async function loadSharedEnvGroupsForTeam(
-  teamId: string,
-  db: DbReader = getDb(),
-): Promise<SharedEnvGroup[]> {
-  const rows = await db
-    .select()
-    .from(sharedEnvGroups)
-    .where(eq(sharedEnvGroups.teamId, teamId));
-  return assembleSharedEnvGroups(db, rows);
-}
-
-/** A single shared env group by id (with children), null if absent. */
-export async function loadSharedEnvGroup(
-  id: string,
-  db: DbReader = getDb(),
-): Promise<SharedEnvGroup | null> {
-  const rows = await db
-    .select()
-    .from(sharedEnvGroups)
-    .where(eq(sharedEnvGroups.id, id))
-    .limit(1);
-  const [g] = await assembleSharedEnvGroups(db, rows);
-  return g ?? null;
-}
-
-/**
- * Shared env groups ATTACHED to a project (with children) — the bounded set the
- * deploy/dev env resolution needs, joined through the `shared_env_group_services`
- * junction (so it never loads the whole team's groups into the build).
- */
-export async function loadSharedEnvGroupsForService(
-  serviceId: string,
-  db: DbReader = getDb(),
-): Promise<SharedEnvGroup[]> {
-  const attached = await db
-    .select({ groupId: sharedEnvGroupServices.groupId })
-    .from(sharedEnvGroupServices)
-    .where(eq(sharedEnvGroupServices.serviceId, serviceId));
-  if (attached.length === 0) return [];
-  const rows = await db
-    .select()
-    .from(sharedEnvGroups)
-    .where(inArray(sharedEnvGroups.id, attached.map((a) => a.groupId)));
-  return assembleSharedEnvGroups(db, rows);
-}
+// NOTE: shared env GROUPS were replaced by the unified individual shared-var
+// model (ADR-0010). Their loaders live in lib/data/shared-vars.ts now
+// (loadSharedVarsForApp for the deploy edge, listSharedVars for the UI).

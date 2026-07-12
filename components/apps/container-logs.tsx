@@ -30,19 +30,19 @@ import { cn } from "@/lib/utils";
 type Status = "connecting" | "live" | "ended" | "error";
 
 /**
- * Live runtime logs (`docker logs -f`) for a service's container.
+ * Live runtime logs (`docker logs -f`) for an app's container.
  *
- * Output streams over an EventSource (SSE) from GET /api/services/:id/logs; the
+ * Output streams over an EventSource (SSE) from GET /api/apps/:id/logs; the
  * first `session` event carries the server-side session id, used on unload to
  * detach promptly (the same session/SSE plumbing as the attach console, minus
  * the stdin direction — logs are read-only). Closing the viewer kills only our
  * local `docker logs` client, never the container.
  */
 export function ContainerLogs({
-  serviceId,
+  appId,
   instances,
 }: {
-  serviceId: string;
+  appId: string;
   instances: ConsoleInstance[];
 }) {
   // Active instance — default to the server-preferred first entry (exposed/
@@ -65,7 +65,7 @@ export function ContainerLogs({
   // Bumped on reconnect / instance switch to retrigger the stream effect.
   const [attempt, setAttempt] = React.useState(0);
 
-  const base = `/api/services/${encodeURIComponent(serviceId)}/logs`;
+  const base = `/api/apps/${encodeURIComponent(appId)}/logs`;
 
   React.useEffect(() => {
     const url = `${base}?container=${encodeURIComponent(active.name)}`;

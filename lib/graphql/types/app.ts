@@ -4,44 +4,45 @@ import {
   DeploySourceEnum,
   DeploymentStatusEnum,
   DeploymentEnvironmentEnum,
-  ServiceStatusEnum,
+  AppStatusEnum,
 } from "./enums";
 import {
-  listServices,
-  getServiceBySlug,
-  getServiceById,
-  createService,
-  updateServiceBuild,
-  updateServiceSource,
+  listApps,
+  getAppBySlug,
+  getAppById,
+  createApp,
+  updateAppBuild,
+  updateAppSource,
   setAutoDeploy,
-  renameService,
-  updateServiceLogo,
-  redetectServiceLogo,
-  stopService,
-  startService,
-  rebuildService,
-  deleteService,
-  deleteServices,
-  reorderServices,
-  setServiceVolumes,
-  findServiceSummaryBySlugForTeam,
+  renameApp,
+  updateAppLogo,
+  redetectAppLogo,
+  stopApp,
+  startApp,
+  rebuildApp,
+  deleteApp,
+  deleteApps,
+  reorderApps,
+  setAppVolumes,
+  findAppSummaryBySlugForTeam,
   summarizeForTeam,
-  type ServiceSummary,
-} from "@/lib/data/services";
+  type AppSummary,
+} from "@/lib/data/apps";
 import { pubSub } from "../pubsub";
 import {
   listDeployments,
   getDeployment,
   getLogs,
+  getQueuePosition,
   redeploy,
-  reloadService as reapplyRouting,
+  reloadApp as reapplyRouting,
   cancelDeployment,
   cancelAllDeployments,
   deleteDeployments,
   deleteAllDeployments,
   promoteToProduction,
 } from "@/lib/data/deployments";
-import { renderServiceStack } from "@/lib/deploy/build";
+import { renderAppStack } from "@/lib/deploy/build";
 import type { Deployment, GitRepo, LogLine, VolumeMount } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -59,10 +60,10 @@ const LogLineRef = builder.objectRef<LogLine>("LogLine").implement({
 export const DeploymentRef = builder
   .objectRef<Deployment>("Deployment")
   .implement({
-    description: "A single build + release of a service.",
+    description: "A single build + release of an app.",
     fields: (t) => ({
       id: t.exposeID("id"),
-      serviceId: t.exposeID("serviceId"),
+      appId: t.exposeID("appId"),
       status: t.field({ type: DeploymentStatusEnum, resolve: (d) => d.status }),
       environment: t.field({
         type: DeploymentEnvironmentEnum,
@@ -82,16 +83,25 @@ export const DeploymentRef = builder
         description: "Build logs for this deployment.",
         resolve: (d) => getLogs(d.id),
       }),
+      queuePosition: t.field({
+        type: "Int",
+        nullable: true,
+        description:
+          "1-based position in the owning server's build queue while this " +
+          "deployment is `queued` (1 = next to build); null once it starts " +
+          "building or finishes.",
+        resolve: (d) => getQueuePosition(d.id),
+      }),
     }),
   });
 
 const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
   description:
     "A persistent volume mounted into a single-container project — a docker " +
-    "named volume, a service-files bind, or a host bind mount.",
+    "named volume, an app-files bind, or a host bind mount.",
   fields: (t) => ({
     id: t.exposeID("id"),
-    // "named" (default), "service", or "host" — the UI re-derives its source
+    // "named" (default), "app", or "host" — the UI re-derives its source
     // control from this, so it must round-trip back on read.
     type: t.string({ resolve: (v) => v.type ?? "named" }),
     name: t.exposeString("name"),
@@ -102,8 +112,8 @@ const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
   }),
 });
 
-export const ServiceRef = builder
-  .objectRef<ServiceSummary>("Service")
+export const AppRef = builder
+  .objectRef<AppSummary>("App")
   .implement({
     description: "A deployable application owned by a team.",
     fields: (t) => ({
@@ -115,7 +125,7 @@ export const ServiceRef = builder
       projectId: t.field({
         type: "ID",
         nullable: true,
-        description: "The Project container this service belongs to, if any.",
+        description: "The Project container this app belongs to, if any.",
         resolve: (p) => p.projectId ?? null,
       }),
       serverId: t.exposeID("serverId"),
@@ -126,11 +136,11 @@ export const ServiceRef = builder
       volumes: t.field({
         type: [VolumeRef],
         description:
-          "Persistent named volumes (single-container services only).",
+          "Persistent named volumes (single-container apps only).",
         resolve: (p) => p.volumes ?? [],
       }),
       productionUrl: t.exposeString("productionUrl", { nullable: true }),
-      status: t.field({ type: ServiceStatusEnum, resolve: (p) => p.status }),
+      status: t.field({ type: AppStatusEnum, resolve: (p) => p.status }),
       autoDeploy: t.exposeBoolean("autoDeploy"),
       domainCount: t.exposeInt("domainCount"),
       createdAt: t.exposeString("createdAt"),
@@ -142,8 +152,8 @@ export const ServiceRef = builder
       }),
       deployments: t.field({
         type: [DeploymentRef],
-        description: "All deployments of this service, newest first.",
-        resolve: (p) => listDeployments({ serviceId: p.id }),
+        description: "All deployments of this app, newest first.",
+        resolve: (p) => listDeployments({ appId: p.id }),
       }),
     }),
   });
@@ -224,8 +234,8 @@ const ExtraDomainInput = builder.inputType("ExtraDomainInput", {
   }),
 });
 
-const ServiceEnvInput = builder.inputType("ServiceEnvInput", {
-  description: "An initial environment variable for a new service.",
+const AppEnvInput = builder.inputType("AppEnvInput", {
+  description: "An initial environment variable for a new app.",
   fields: (t) => ({
     key: t.string({ required: true }),
     value: t.string({ required: true }),
@@ -244,11 +254,11 @@ const VolumeInput = builder.inputType("VolumeInput", {
   description: "A persistent volume for a single-container project.",
   fields: (t) => ({
     id: t.string({ required: false }),
-    /** "named" (docker-managed, default), "service" (bind inside the service's
+    /** "named" (docker-managed, default), "app" (bind inside the app's
      * files dir), or "host" (bind an absolute host path). */
     type: t.string({ required: false }),
     name: t.string({ required: false }),
-    /** Path relative to the service's files dir (project mounts only). */
+    /** Path relative to the app's files dir (project mounts only). */
     projectPath: t.string({ required: false }),
     /** Absolute host path to bind-mount (host mounts only). */
     hostPath: t.string({ required: false }),
@@ -257,7 +267,7 @@ const VolumeInput = builder.inputType("VolumeInput", {
   }),
 });
 
-const CreateServiceInputType = builder.inputType("CreateServiceInput", {
+const CreateAppInputType = builder.inputType("CreateAppInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     source: t.field({ type: DeploySourceEnum, required: true }),
@@ -271,7 +281,7 @@ const CreateServiceInputType = builder.inputType("CreateServiceInput", {
     // Template/compose deploys carry these so a one-click template keeps its
     // env, routing, baked domain and config-file mounts (audit-restored: these
     // were silently dropped in the first rewiring pass).
-    env: t.field({ type: [ServiceEnvInput], required: false }),
+    env: t.field({ type: [AppEnvInput], required: false }),
     composeService: t.string({ required: false }),
     composePort: t.int({ required: false }),
     extraDomains: t.field({ type: [ExtraDomainInput], required: false }),
@@ -297,30 +307,30 @@ const UpdateSourceInputType = builder.inputType("UpdateSourceInput", {
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
-  services: t.field({
-    type: [ServiceRef],
+  apps: t.field({
+    type: [AppRef],
     authScopes: { loggedIn: true },
-    description: "All services in the active team, newest first.",
-    resolve: () => listServices(),
+    description: "All apps in the active team, newest first.",
+    resolve: () => listApps(),
   }),
-  service: t.field({
-    type: ServiceRef,
+  app: t.field({
+    type: AppRef,
     nullable: true,
     authScopes: { loggedIn: true },
     args: { slug: t.arg.string({ required: true }) },
-    resolve: (_r, { slug }) => getServiceBySlug(slug),
+    resolve: (_r, { slug }) => getAppBySlug(slug),
   }),
   deployments: t.field({
     type: [DeploymentRef],
     authScopes: { loggedIn: true },
     args: {
-      serviceId: t.arg.string({ required: false }),
+      appId: t.arg.string({ required: false }),
       environment: t.arg({ type: DeploymentEnvironmentEnum, required: false }),
       status: t.arg({ type: DeploymentStatusEnum, required: false }),
     },
     resolve: (_r, args) =>
       listDeployments({
-        serviceId: args.serviceId ?? undefined,
+        appId: args.appId ?? undefined,
         environment: args.environment ?? undefined,
         status: args.status ?? undefined,
       }),
@@ -335,16 +345,16 @@ builder.queryFields((t) => ({
 }));
 
 /* ------------------------------------------------------------------ */
-/* Mutations (every service/deployment server action)                  */
+/* Mutations (every app/deployment server action)                  */
 /* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
-  createService: t.field({
-    type: ServiceRef,
+  createApp: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
-    args: { input: t.arg({ type: CreateServiceInputType, required: true }) },
+    args: { input: t.arg({ type: CreateAppInputType, required: true }) },
     resolve: (_r, { input }) =>
-      createService({
+      createApp({
         name: input.name,
         source: input.source,
         repo: input.repo ? repoInputToGitRepo(input.repo) : null,
@@ -354,7 +364,7 @@ builder.mutationFields((t) => ({
         serverId: input.serverId ?? undefined,
         // Remap the input's `settings` to the stored `methodSettings` shape so
         // method settings chosen at create time aren't silently dropped (see
-        // updateServiceBuild). buildConfigFor reads overrides.methodSettings.
+        // updateAppBuild). buildConfigFor reads overrides.methodSettings.
         build: input.build ? (remapBuildInput(input.build) as never) : undefined,
         autoDeploy: input.autoDeploy ?? undefined,
         env: input.env?.map((e) => ({ key: e.key, value: e.value })),
@@ -373,79 +383,79 @@ builder.mutationFields((t) => ({
           : null,
       }),
   }),
-  renameService: t.field({
-    type: ServiceRef,
+  renameApp: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
     args: {
       id: t.arg.string({ required: true }),
       name: t.arg.string({ required: true }),
     },
     resolve: async (_r, { id, name }) => {
-      await renameService(id, name);
-      return reloadService(id);
+      await renameApp(id, name);
+      return reloadApp(id);
     },
   }),
-  reorderServices: t.field({
+  reorderApps: t.field({
     type: "Boolean",
     // Team-wide setting: an instance admin OR a member with manage_team. The
     // data layer re-checks the same gate (defense-in-depth).
     authScopes: { $any: { instanceAdmin: true, capability: "manage_team" } },
-    description: "Set the team-wide display order of services in Overview.",
-    args: { serviceIds: t.arg.idList({ required: true }) },
-    resolve: async (_r, { serviceIds }) => {
-      await reorderServices(serviceIds.map(String));
+    description: "Set the team-wide display order of apps in Overview.",
+    args: { appIds: t.arg.idList({ required: true }) },
+    resolve: async (_r, { appIds }) => {
+      await reorderApps(appIds.map(String));
       return true;
     },
   }),
-  updateServiceBuild: t.field({
-    type: ServiceRef,
+  updateAppBuild: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
     args: {
       id: t.arg.string({ required: true }),
       build: t.arg({ type: BuildConfigInput, required: true }),
     },
     resolve: async (_r, { id, build }) => {
-      await updateServiceBuild(id, remapBuildInput(build) as never);
-      return reloadService(id);
+      await updateAppBuild(id, remapBuildInput(build) as never);
+      return reloadApp(id);
     },
   }),
-  updateServiceSource: t.field({
-    type: ServiceRef,
+  updateAppSource: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
     args: {
       id: t.arg.string({ required: true }),
       input: t.arg({ type: UpdateSourceInputType, required: true }),
     },
     resolve: async (_r, { id, input }) => {
-      await updateServiceSource(id, {
+      await updateAppSource(id, {
         source: input.source,
         repo: input.repo ? repoInputToGitRepo(input.repo) : null,
         dockerImage: input.dockerImage ?? null,
         serverId: input.serverId ?? undefined,
         compose: input.compose ?? undefined,
       });
-      return reloadService(id);
+      return reloadApp(id);
     },
   }),
-  setServiceVolumes: t.field({
-    type: ServiceRef,
+  setAppVolumes: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
     description:
-      "Replace a single-container service's volumes (named, service-files, and host bind mounts).",
+      "Replace a single-container app's volumes (named, app-files, and host bind mounts).",
     args: {
       id: t.arg.string({ required: true }),
       volumes: t.arg({ type: [VolumeInput], required: true }),
     },
     resolve: async (_r, { id, volumes }) => {
-      await setServiceVolumes(
+      await setAppVolumes(
         id,
         volumes.map((v) => ({
           id: v.id ?? "",
           type:
             v.type === "host"
               ? ("host" as const)
-              : v.type === "service"
-                ? ("service" as const)
+              : v.type === "app"
+                ? ("app" as const)
                 : ("named" as const),
           name: v.name ?? "",
           projectPath: v.projectPath ?? undefined,
@@ -454,11 +464,11 @@ builder.mutationFields((t) => ({
           readOnly: v.readOnly ?? false,
         })),
       );
-      return reloadService(id);
+      return reloadApp(id);
     },
   }),
-  setServiceAutoDeploy: t.field({
-    type: ServiceRef,
+  setAppAutoDeploy: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
     args: {
       id: t.arg.string({ required: true }),
@@ -466,103 +476,103 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, value }) => {
       await setAutoDeploy(id, value);
-      return reloadService(id);
+      return reloadApp(id);
     },
   }),
-  updateServiceLogo: t.field({
-    type: ServiceRef,
+  updateAppLogo: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
     args: {
       id: t.arg.string({ required: true }),
       logo: t.arg.string({ required: false }),
     },
     resolve: async (_r, { id, logo }) => {
-      await updateServiceLogo(id, logo ?? null);
-      return reloadService(id);
+      await updateAppLogo(id, logo ?? null);
+      return reloadApp(id);
     },
   }),
-  detectServiceLogo: t.field({
-    type: ServiceRef,
+  detectAppLogo: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
     description:
-      "Auto-detect a favicon (SVG/PNG) from the service's GitHub repo or uploaded files and set it as the logo. Errors if none is found.",
+      "Auto-detect a favicon (SVG/PNG) from the app's GitHub repo or uploaded files and set it as the logo. Errors if none is found.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await redetectServiceLogo(id);
-      return reloadService(id);
+      await redetectAppLogo(id);
+      return reloadApp(id);
     },
   }),
-  stopService: t.field({
-    type: ServiceRef,
+  stopApp: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await stopService(id);
-      return reloadService(id);
+      await stopApp(id);
+      return reloadApp(id);
     },
   }),
-  startService: t.field({
-    type: ServiceRef,
+  startApp: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await startService(id);
-      return reloadService(id);
+      await startApp(id);
+      return reloadApp(id);
     },
   }),
-  rebuildService: t.field({
-    type: ServiceRef,
+  rebuildApp: t.field({
+    type: AppRef,
     authScopes: { capability: "deploy" },
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await rebuildService(id);
-      return reloadService(id);
+      await rebuildApp(id);
+      return reloadApp(id);
     },
   }),
-  reloadService: t.field({
+  reloadApp: t.field({
     type: "String",
     authScopes: { capability: "deploy" },
     description:
-      "Re-apply the service's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.",
+      "Re-apply the app's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => reapplyRouting(id),
   }),
-  deleteService: t.field({
+  deleteApp: t.field({
     type: "Boolean",
     authScopes: { capability: "deploy" },
-    description: "Delete the service and tear down its stack. Returns true.",
+    description: "Delete the app and tear down its stack. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await deleteService(id);
+      await deleteApp(id);
       return true;
     },
   }),
-  deleteServices: t.field({
+  deleteApps: t.field({
     type: "Int",
     authScopes: { capability: "deploy" },
     description:
-      "Bulk-delete several services (bounded-concurrency teardown + one write). Returns how many were deleted.",
+      "Bulk-delete several apps (bounded-concurrency teardown + one write). Returns how many were deleted.",
     args: { ids: t.arg.idList({ required: true }) },
-    resolve: (_r, { ids }) => deleteServices(ids.map(String)),
+    resolve: (_r, { ids }) => deleteApps(ids.map(String)),
   }),
   renderComposeStack: t.field({
     type: "String",
     nullable: true,
     authScopes: { loggedIn: true },
-    description: "Render the docker-compose stack a service would deploy.",
-    args: { serviceId: t.arg.string({ required: true }) },
-    resolve: async (_r, { serviceId }) => {
+    description: "Render the docker-compose stack an app would deploy.",
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: async (_r, { appId }) => {
       // Team-scope the request before rendering (the render fn is unscoped).
-      const project = await getServiceById(serviceId);
-      if (!project) throw new Error("Service not found");
-      return renderServiceStack(project.id);
+      const project = await getAppById(appId);
+      if (!project) throw new Error("App not found");
+      return renderAppStack(project.id);
     },
   }),
   redeploy: t.field({
     type: DeploymentRef,
     authScopes: { capability: "deploy" },
-    args: { serviceId: t.arg.string({ required: true }) },
-    resolve: (_r, { serviceId }) => redeploy(serviceId),
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: (_r, { appId }) => redeploy(appId),
   }),
   cancelDeployment: t.field({
     type: "Boolean",
@@ -575,15 +585,19 @@ builder.mutationFields((t) => ({
     type: "Int",
     authScopes: { capability: "deploy" },
     description:
-      "Cancel every in-progress deployment (queued/building) for one service (serviceId given) or across the whole active team (serviceId omitted), optionally narrowed to one owning server (serverId). Terminal deployments are left. Returns how many builds were stopped.",
+      "Cancel every in-progress deployment (queued/building) for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. Terminal deployments are left. Returns how many builds were stopped.",
     args: {
-      serviceId: t.arg.id({ required: false }),
+      appId: t.arg.id({ required: false }),
       serverId: t.arg.id({ required: false }),
+      environment: t.arg.string({ required: false }),
+      status: t.arg.string({ required: false }),
     },
-    resolve: (_r, { serviceId, serverId }) =>
+    resolve: (_r, { appId, serverId, environment, status }) =>
       cancelAllDeployments(
-        serviceId != null ? String(serviceId) : null,
+        appId != null ? String(appId) : null,
         serverId != null ? String(serverId) : null,
+        environment != null ? String(environment) : null,
+        status != null ? String(status) : null,
       ),
   }),
   promoteDeployment: t.field({
@@ -608,24 +622,28 @@ builder.mutationFields((t) => ({
     type: "Int",
     authScopes: { capability: "deploy" },
     description:
-      "Delete every finished deployment for one service (serviceId given) or across the whole active team (serviceId omitted), optionally narrowed to one owning server (serverId). In-progress deployments are left. Returns how many were deleted.",
+      "Delete every finished deployment for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. In-progress deployments are left. Returns how many were deleted.",
     args: {
-      serviceId: t.arg.id({ required: false }),
+      appId: t.arg.id({ required: false }),
       serverId: t.arg.id({ required: false }),
+      environment: t.arg.string({ required: false }),
+      status: t.arg.string({ required: false }),
     },
-    resolve: (_r, { serviceId, serverId }) =>
+    resolve: (_r, { appId, serverId, environment, status }) =>
       deleteAllDeployments(
-        serviceId != null ? String(serviceId) : null,
+        appId != null ? String(appId) : null,
         serverId != null ? String(serverId) : null,
+        environment != null ? String(environment) : null,
+        status != null ? String(status) : null,
       ),
   }),
 }));
 
-/** Reload a service by id after a void mutation so we can return the entity. */
-async function reloadService(id: string): Promise<ServiceSummary> {
-  const all = await listServices();
+/** Reload an app by id after a void mutation so we can return the entity. */
+async function reloadApp(id: string): Promise<AppSummary> {
+  const all = await listApps();
   const found = all.find((p) => p.id === id);
-  if (!found) throw new Error("Service not found");
+  if (!found) throw new Error("App not found");
   return found;
 }
 
@@ -636,12 +654,12 @@ async function reloadService(id: string): Promise<ServiceSummary> {
 /**
  * Live project status, served over SSE on the same `/api/graphql` endpoint
  * (Yoga negotiates `text/event-stream` for subscriptions — no separate
- * WebSocket server). Pushes a fresh project snapshot whenever the service's
+ * WebSocket server). Pushes a fresh project snapshot whenever the app's
  * power/deploy state changes, so the dashboard reflects start/stop/deploy
  * without a reload and stays in sync across every connected client.
  *
- * Lives here (not a separate module) so the only edge to `ServiceRef` and the
- * data layer stays within this file — a cross-module import of `ServiceRef`
+ * Lives here (not a separate module) so the only edge to `AppRef` and the
+ * data layer stays within this file — a cross-module import of `AppRef`
  * created a second evaluation path to this module under Turbopack and tripped a
  * duplicate-type registration.
  *
@@ -654,16 +672,16 @@ async function reloadService(id: string): Promise<ServiceSummary> {
 builder.subscriptionType({});
 
 builder.subscriptionFields((t) => ({
-  serviceStatus: t.field({
-    type: ServiceRef,
+  appStatus: t.field({
+    type: AppRef,
     description:
-      "Emits the service whenever its status (power / deployment) changes. " +
+      "Emits the app whenever its status (power / deployment) changes. " +
       "Fires once immediately with the current snapshot, then on every change.",
     // `loggedIn` (synchronous `!!ctx.viewer` — no cookie call) gates opening the
-    // stream; the generator enforces team ownership of the service below.
+    // stream; the generator enforces team ownership of the app below.
     authScopes: { loggedIn: true },
     args: { slug: t.arg.string({ required: true }) },
-    subscribe: (_root, { slug }, ctx) => serviceStatusStream(slug, ctx.teamId),
+    subscribe: (_root, { slug }, ctx) => appStatusStream(slug, ctx.teamId),
     // The generator yields fully-resolved, team-scoped snapshots already.
     resolve: (project) => project,
   }),
@@ -671,25 +689,25 @@ builder.subscriptionFields((t) => ({
 
 // Exported for the cut-set (c) SSE test (PLAN §6 "Add a test that drives the
 // generator across >1 ping"): it must stay cookie-free across iteration ticks.
-export async function* serviceStatusStream(
+export async function* appStatusStream(
   slug: string,
   teamId: string | null,
-): AsyncGenerator<ServiceSummary> {
-  if (!teamId) throw new Error("Service not found");
+): AsyncGenerator<AppSummary> {
+  if (!teamId) throw new Error("App not found");
   // Cookie-free (PLAN §6): both lookups take the explicit `teamId` and query
   // Postgres directly — they never call a cookie-reading helper, so they remain
   // callable across the async-iteration ticks of this long-lived SSE response.
-  const project = await findServiceSummaryBySlugForTeam(slug, teamId);
-  if (!project) throw new Error("Service not found");
-  const serviceId = project.id;
+  const project = await findAppSummaryBySlugForTeam(slug, teamId);
+  if (!project) throw new Error("App not found");
+  const appId = project.id;
 
   // Initial snapshot — a fresh subscriber paints current state immediately.
   yield project;
 
   // Forward each change ping as a freshly-reloaded snapshot. The payload is the
-  // changed service's id (always this service's, given the keyed channel). If
-  // the service was deleted mid-stream, summarizeForTeam returns null → end.
-  for await (const changedId of pubSub.subscribe("serviceChanged", serviceId)) {
+  // changed app's id (always this app's, given the keyed channel). If
+  // the app was deleted mid-stream, summarizeForTeam returns null → end.
+  for await (const changedId of pubSub.subscribe("appChanged", appId)) {
     const next = await summarizeForTeam(changedId, teamId);
     if (!next) return;
     yield next;

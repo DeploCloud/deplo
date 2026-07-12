@@ -32,16 +32,16 @@ const DomainEntrypointEnum = builder.enumType("DomainEntrypoint", {
 /* Object types                                                        */
 /* ------------------------------------------------------------------ */
 
-// listDomains() decorates each row with its owning service's name/slug; addDomain
+// listDomains() decorates each row with its owning app's name/slug; addDomain
 // and verifyDomain return a bare Domain. The ref is typed on the bare Domain and
 // the decoration fields are nullable so both shapes satisfy it.
-type DomainRow = Domain & { serviceName?: string; serviceSlug?: string };
+type DomainRow = Domain & { serviceName?: string; appSlug?: string };
 
 export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
-  description: "A routable hostname attached to a service (Traefik router).",
+  description: "A routable hostname attached to an app (Traefik router).",
   fields: (t) => ({
     id: t.exposeID("id"),
-    serviceId: t.exposeID("serviceId"),
+    appId: t.exposeID("appId"),
     name: t.exposeString("name"),
     status: t.field({ type: DomainStatusEnum, resolve: (d) => d.status }),
     primary: t.exposeBoolean("primary"),
@@ -67,7 +67,7 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
     // Present only on rows from listDomains (decorated with the owning project);
     // null on a freshly-added/verified domain returned bare by the data layer.
     serviceName: t.exposeString("serviceName", { nullable: true }),
-    serviceSlug: t.exposeString("serviceSlug", { nullable: true }),
+    appSlug: t.exposeString("appSlug", { nullable: true }),
   }),
 });
 
@@ -119,8 +119,8 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     description:
       "Domains in the active team, primary first. Optionally filtered to one project.",
-    args: { serviceId: t.arg.string({ required: false }) },
-    resolve: (_r, { serviceId }) => listDomains(serviceId ?? undefined),
+    args: { appId: t.arg.string({ required: false }) },
+    resolve: (_r, { appId }) => listDomains(appId ?? undefined),
   }),
 }));
 
@@ -133,11 +133,11 @@ builder.mutationFields((t) => ({
     type: DomainRef,
     authScopes: { capability: "manage_domains" },
     args: {
-      serviceId: t.arg.string({ required: true }),
+      appId: t.arg.string({ required: true }),
       name: t.arg.string({ required: true }),
       config: t.arg({ type: DomainConfigInput, required: false }),
     },
-    resolve: (_r, { serviceId, name, config }) => {
+    resolve: (_r, { appId, name, config }) => {
       const cfg: DomainConfig = {
         port: config?.port ?? null,
         // Enum args arrive as the runtime string union; pass through as-is.
@@ -148,7 +148,7 @@ builder.mutationFields((t) => ({
         stripPrefix: config?.stripPrefix ?? undefined,
         service: config?.service ?? undefined,
       };
-      return addDomain(serviceId, name, cfg);
+      return addDomain(appId, name, cfg);
     },
   }),
   updateDomain: t.field({
@@ -173,8 +173,8 @@ builder.mutationFields((t) => ({
         stripPrefix: patch.stripPrefix ?? undefined,
         service: patch.service ?? undefined,
       };
-      const serviceId = await updateDomain(id, next);
-      return reloadDomain(id, serviceId);
+      const appId = await updateDomain(id, next);
+      return reloadDomain(id, appId);
     },
   }),
   verifyDomain: t.field({
@@ -187,7 +187,7 @@ builder.mutationFields((t) => ({
   setPrimaryDomain: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_domains" },
-    description: "Make this domain its service's primary (canonical) host. Returns true.",
+    description: "Make this domain its app's primary (canonical) host. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await setPrimaryDomain(id);
@@ -206,11 +206,11 @@ builder.mutationFields((t) => ({
   }),
 }));
 
-/** Reload a domain by id after updateDomain (which returns only the serviceId)
+/** Reload a domain by id after updateDomain (which returns only the appId)
  * so the mutation can return the updated entity. Scopes the lookup to the
- * affected project, matching project.ts's reloadService helper. */
-async function reloadDomain(id: string, serviceId: string): Promise<DomainRow> {
-  const all = await listDomains(serviceId);
+ * affected project, matching project.ts's reloadApp helper. */
+async function reloadDomain(id: string, appId: string): Promise<DomainRow> {
+  const all = await listDomains(appId);
   const found = all.find((d) => d.id === id);
   if (!found) throw new Error("Domain not found");
   return found;

@@ -22,7 +22,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
     ref={ref}
     className={cn(
       // gap-2 mirrors DropdownMenuItem so an icon + label sub-trigger (e.g.
-      // "New service") spaces its icon the same as sibling menu items.
+      // "New app") spaces its icon the same as sibling menu items.
       "flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent",
       inset && "pl-8",
       className

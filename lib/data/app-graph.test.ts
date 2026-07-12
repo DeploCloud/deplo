@@ -17,26 +17,26 @@ import {
   domains as domainsTable,
   envVars as envVarsTable,
   envVarTargets as envVarTargetsTable,
-  services as servicesTable,
-  sharedEnvGroupServices,
-  teamServiceOrder,
+  apps as appsTable,
+  sharedEnvVarApps,
+  teamAppOrder,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
-  seedService,
+  seedApp,
   seedDeployment,
   TRUNCATE_PROJECT_GRAPH,
-} from "./service-graph-test-helpers";
+} from "./app-graph-test-helpers";
 import { __resetDeploymentLogBuffers } from "./deployment-logs";
 import {
-  listServices,
-  reorderServices,
-  deleteService,
-  createService,
+  listApps,
+  reorderApps,
+  deleteApp,
+  createApp,
   summarizeForTeam,
-} from "./services";
+} from "./apps";
 import {
   addDomain,
   setPrimaryDomain,
@@ -45,14 +45,14 @@ import {
   ensureExtraDomain,
   uniqueAutoDomainName,
 } from "./domains";
-import { loadDomainsForService } from "./service-graph-load";
+import { loadDomainsForApp } from "./app-graph-load";
 import { nipEmbeddedIp } from "../deploy/domains";
 import { upsertEnv, listEnv } from "./env";
-import { saveSharedEnvGroup, setSharedEnvGroupAttachment } from "./shared-env";
+import { saveSharedVar, setSharedVarAppLink, listSharedVars } from "./shared-vars";
 
 /**
- * Step 4 service-graph data-layer tests (relational-store PLAN §3 cut-set (c) /
- * §9 Step 4): the deleteService CASCADE (no orphaned deployments/logs/env/
+ * Step 4 app-graph data-layer tests (relational-store PLAN §3 cut-set (c) /
+ * §9 Step 4): the deleteApp CASCADE (no orphaned deployments/logs/env/
  * domains/shared-group attachments), the two-concurrent primary-domain race, the
  * ordering-junction reorder, and the cookie-free summary lookups the SSE
  * generator drives. Seeded relationally via the test-seed helpers.
@@ -88,42 +88,46 @@ const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
 /* ------------------------------------------------------------------ */
-/* deleteService CASCADE — the orphan-bug fix                          */
+/* deleteApp CASCADE — the orphan-bug fix                          */
 /* ------------------------------------------------------------------ */
 
-test("deleteService cascades every child + shared-group attachment (no orphans)", async () => {
-  await seedService(db, { id: "prj_1", status: "active" });
-  await seedService(db, { id: "prj_2", status: "active" });
-  await seedDeployment(db, { id: "dpl_1", serviceId: "prj_1" });
+test("deleteApp cascades every child + shared-var link (no orphans)", async () => {
+  await seedApp(db, { id: "prj_1", status: "active" });
+  await seedApp(db, { id: "prj_2", status: "active" });
+  await seedDeployment(db, { id: "dpl_1", appId: "prj_1" });
   // A log line on prj_1's deployment.
   await db.insert(deploymentLogs).values({ deploymentId: "dpl_1", ts: "2026-01-01T00:00:00.000Z", level: "info", text: "x" });
 
   await asUser1(async () => {
     // An env var + a domain on prj_1.
-    await upsertEnv({ serviceId: "prj_1", key: "K", value: "v", targets: ["production"], type: "plain" });
+    await upsertEnv({ appId: "prj_1", key: "K", value: "v", targets: ["production"], type: "plain" });
     await addDomain("prj_1", "app.example.io", {});
-    // A shared group attached to BOTH services (the orphan the old bug leaked).
-    await saveSharedEnvGroup({
-      name: "Common",
-      description: "",
-      blob: "SHARED=1",
-      serviceIds: ["prj_1", "prj_2"],
+    // A shared var linked to BOTH apps (the orphan the old bug leaked).
+    await saveSharedVar({
+      key: "SHARED",
+      value: "1",
+      type: "plain",
       targets: ["production"],
+      teamWide: true,
+      environmentIds: [],
+      projectIds: [],
     });
-    await deleteService("prj_1");
+    const varId = (await listSharedVars())[0]!.id;
+    await setSharedVarAppLink(varId, "prj_1", true);
+    await setSharedVarAppLink(varId, "prj_2", true);
+    await deleteApp("prj_1");
   });
 
   // prj_1 and ALL its children are gone; prj_2 untouched.
-  assert.equal((await db.select({ n: count() }).from(servicesTable))[0]!.n, 1);
+  assert.equal((await db.select({ n: count() }).from(appsTable))[0]!.n, 1);
   assert.equal((await db.select({ n: count() }).from(deploymentsTable))[0]!.n, 0, "deployments cascade");
   assert.equal((await db.select({ n: count() }).from(deploymentLogs))[0]!.n, 0, "logs cascade");
   assert.equal((await db.select({ n: count() }).from(envVarsTable))[0]!.n, 0, "env vars cascade");
   assert.equal((await db.select({ n: count() }).from(envVarTargetsTable))[0]!.n, 0, "env targets cascade");
   assert.equal((await db.select({ n: count() }).from(domainsTable))[0]!.n, 0, "domains cascade");
-  // The shared-group attachment to prj_1 is GONE (the orphan the JSONB bug
-  // leaked); the prj_2 attachment survives.
-  const links = await db.select().from(sharedEnvGroupServices);
-  assert.deepEqual(links.map((l) => l.serviceId), ["prj_2"], "dead attachment cascaded, live one kept");
+  // The per-app link to prj_1 is GONE (cascaded); the prj_2 link survives.
+  const links = await db.select().from(sharedEnvVarApps);
+  assert.deepEqual(links.map((l) => l.appId), ["prj_2"], "dead link cascaded, live one kept");
 });
 
 /* ------------------------------------------------------------------ */
@@ -131,7 +135,7 @@ test("deleteService cascades every child + shared-group attachment (no orphans)"
 /* ------------------------------------------------------------------ */
 
 test("setPrimaryDomain flips exactly one primary per project", async () => {
-  await seedService(db, { id: "prj_1", status: "active" });
+  await seedApp(db, { id: "prj_1", status: "active" });
   let domBId = "";
   await asUser1(async () => {
     await addDomain("prj_1", "a.example.io", {}); // first ⇒ primary
@@ -152,7 +156,7 @@ test("setPrimaryDomain flips exactly one primary per project", async () => {
 });
 
 test("two concurrent setPrimaryDomain calls leave exactly one primary", async () => {
-  await seedService(db, { id: "prj_1", status: "active" });
+  await seedApp(db, { id: "prj_1", status: "active" });
   let aId = "";
   let bId = "";
   await asUser1(async () => {
@@ -172,28 +176,28 @@ test("two concurrent setPrimaryDomain calls leave exactly one primary", async ()
 });
 
 /* ------------------------------------------------------------------ */
-/* Ordering junction — reorderServices                                 */
+/* Ordering junction — reorderApps                                 */
 /* ------------------------------------------------------------------ */
 
-test("reorderServices writes the team_service_order junction; dead ids drop", async () => {
-  await seedService(db, { id: "prj_1", status: "active" });
-  await seedService(db, { id: "prj_2", status: "active" });
+test("reorderApps writes the team_app_order junction; dead ids drop", async () => {
+  await seedApp(db, { id: "prj_1", status: "active" });
+  await seedApp(db, { id: "prj_2", status: "active" });
   await asUser1(async () => {
     // Reorder with a dead id ("ghost") that must be dropped.
-    await reorderServices(["prj_2", "ghost", "prj_1"]);
+    await reorderApps(["prj_2", "ghost", "prj_1"]);
   });
   const rows = await db
     .select()
-    .from(teamServiceOrder)
-    .where(eq(teamServiceOrder.teamId, TEAM_A))
-    .orderBy(teamServiceOrder.position);
-  assert.deepEqual(rows.map((r) => [r.serviceId, r.position]), [
+    .from(teamAppOrder)
+    .where(eq(teamAppOrder.teamId, TEAM_A))
+    .orderBy(teamAppOrder.position);
+  assert.deepEqual(rows.map((r) => [r.appId, r.position]), [
     ["prj_2", 0],
     ["prj_1", 1],
   ]);
-  // listServices honours the manual order.
+  // listApps honours the manual order.
   await asUser1(async () => {
-    const list = await listServices();
+    const list = await listApps();
     assert.deepEqual(list.map((p) => p.id), ["prj_2", "prj_1"]);
   });
 });
@@ -203,7 +207,7 @@ test("reorderServices writes the team_service_order junction; dead ids drop", as
 /* ------------------------------------------------------------------ */
 
 test("summarizeForTeam is cookie-free and team-scoped", async () => {
-  await seedService(db, { id: "prj_1", teamId: TEAM_A, status: "active" });
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A, status: "active" });
   // No runWithIdentity wrapper — proves it never reads a cookie/active team.
   const mine = await summarizeForTeam("prj_1", TEAM_A);
   assert.ok(mine, "found for the owning team");
@@ -213,10 +217,10 @@ test("summarizeForTeam is cookie-free and team-scoped", async () => {
 });
 
 test("env vars + targets round-trip through the relational layer", async () => {
-  await seedService(db, { id: "prj_1", status: "active" });
+  await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     await upsertEnv({
-      serviceId: "prj_1",
+      appId: "prj_1",
       key: "API_KEY",
       value: "s3cret",
       targets: ["production", "preview"],
@@ -228,37 +232,37 @@ test("env vars + targets round-trip through the relational layer", async () => {
     assert.deepEqual([...list[0]!.targets].sort(), ["preview", "production"]);
   });
   // The value is stored encrypted (not plaintext).
-  const rows = await db.select().from(envVarsTable).where(eq(envVarsTable.serviceId, "prj_1"));
+  const rows = await db.select().from(envVarsTable).where(eq(envVarsTable.appId, "prj_1"));
   assert.notEqual(rows[0]!.valueEnc, "s3cret");
 });
 
-test("shared-group attach/detach toggles the junction", async () => {
-  await seedService(db, { id: "prj_1", status: "active" });
-  let groupId = "";
+test("shared-var link attach/detach toggles the junction", async () => {
+  await seedApp(db, { id: "prj_1", status: "active" });
+  let varId = "";
   await asUser1(async () => {
-    await saveSharedEnvGroup({
-      name: "G",
-      description: "",
-      blob: "X=1",
-      serviceIds: [],
+    await saveSharedVar({
+      key: "X",
+      value: "1",
+      type: "plain",
       targets: ["production"],
+      teamWide: true,
+      environmentIds: [],
+      projectIds: [],
     });
-    // The group exists; attach it to prj_1.
-    const { listSharedEnvGroups } = await import("./shared-env");
-    groupId = (await listSharedEnvGroups())[0]!.id;
-    await setSharedEnvGroupAttachment(groupId, "prj_1", true);
+    varId = (await listSharedVars())[0]!.id;
+    await setSharedVarAppLink(varId, "prj_1", true);
   });
-  assert.equal((await db.select({ n: count() }).from(sharedEnvGroupServices))[0]!.n, 1);
-  await asUser1(() => setSharedEnvGroupAttachment(groupId, "prj_1", false));
-  assert.equal((await db.select({ n: count() }).from(sharedEnvGroupServices))[0]!.n, 0);
+  assert.equal((await db.select({ n: count() }).from(sharedEnvVarApps))[0]!.n, 1);
+  await asUser1(() => setSharedVarAppLink(varId, "prj_1", false));
+  assert.equal((await db.select({ n: count() }).from(sharedEnvVarApps))[0]!.n, 0);
 });
 
 /* ------------------------------------------------------------------ */
-/* createService slug uniqueness under concurrency                     */
+/* createApp slug uniqueness under concurrency                     */
 /* ------------------------------------------------------------------ */
 
-test("two concurrent same-name createService calls both succeed with distinct slugs", async () => {
-  // createService reads the server picklist from the relational `servers` table;
+test("two concurrent same-name createApp calls both succeed with distinct slugs", async () => {
+  // createApp reads the server picklist from the relational `servers` table;
   // `beforeEach`'s `seedServer(db)` already seeded `srv_1`. "upload" source skips
   // the post-commit deploy (no agent dial), keeping the test hermetic.
   const input = {
@@ -267,12 +271,12 @@ test("two concurrent same-name createService calls both succeed with distinct sl
     repo: null,
   };
   const [a, b] = await asUser1(() =>
-    Promise.all([createService(input), createService(input)]),
+    Promise.all([createApp(input), createApp(input)]),
   );
   // Both persisted, with DISTINCT slugs (the second retried past the unique
   // violation onto the next free suffix).
   assert.notEqual(a.slug, b.slug, "concurrent same-name creates get distinct slugs");
-  const rows = await db.select({ slug: servicesTable.slug }).from(servicesTable);
+  const rows = await db.select({ slug: appsTable.slug }).from(appsTable);
   assert.equal(rows.length, 2);
   assert.equal(new Set(rows.map((r) => r.slug)).size, 2, "two unique slugs persisted");
 });
@@ -284,7 +288,7 @@ test("two concurrent same-name createService calls both succeed with distinct sl
 const IP = "1.2.3.4";
 
 test("uniqueAutoDomainName never returns a host that already exists globally", async () => {
-  await seedService(db, { id: "prj_u", slug: "uniq" });
+  await seedApp(db, { id: "prj_u", slug: "uniq" });
   // Pre-occupy 25 hosts under the same label+IP so generation must dodge them.
   const taken = new Set<string>();
   await asUser1(async () => {
@@ -297,48 +301,48 @@ test("uniqueAutoDomainName never returns a host that already exists globally", a
     }
   });
   // Every persisted domain name is distinct.
-  const rows = await loadDomainsForService("prj_u");
+  const rows = await loadDomainsForApp("prj_u");
   assert.equal(new Set(rows.map((d) => d.name)).size, rows.length);
   assert.equal(rows.length, 25);
 });
 
 test("ensureExtraDomain regenerates (not skips) when the template host collides with ANOTHER project", async () => {
-  await seedService(db, { id: "prj_a", slug: "alpha" });
-  await seedService(db, { id: "prj_b", slug: "beta" });
-  // Service A claims a host.
+  await seedApp(db, { id: "prj_a", slug: "alpha" });
+  await seedApp(db, { id: "prj_b", slug: "beta" });
+  // App A claims a host.
   const shared = `shared-charming-otter-${"01020304"}.nip.io`;
   await asUser1(() =>
     ensureExtraDomain("prj_a", shared, { port: 80, service: "web", slug: "alpha", ip: IP }),
   );
-  // Service B is handed the SAME host by its (hypothetical) template — it must
+  // App B is handed the SAME host by its (hypothetical) template — it must
   // get a fresh unique host, NOT silently skip and NOT duplicate A's host.
   await asUser1(() =>
     ensureExtraDomain("prj_b", shared, { port: 80, service: "web", slug: "beta", ip: IP }),
   );
-  const bDomains = await loadDomainsForService("prj_b");
+  const bDomains = await loadDomainsForApp("prj_b");
   assert.equal(bDomains.length, 1, "B got a domain (regenerated, not dropped)");
   assert.notEqual(bDomains[0].name, shared, "B did not reuse A's colliding host");
   assert.equal(nipEmbeddedIp(bDomains[0].name), IP, "B's host still encodes the IP");
   // A keeps the original; the two never share a name.
-  const aDomains = await loadDomainsForService("prj_a");
+  const aDomains = await loadDomainsForApp("prj_a");
   assert.equal(aDomains[0].name, shared);
 });
 
 test("ensureExtraDomain is idempotent on the SAME project (re-run does not duplicate)", async () => {
-  await seedService(db, { id: "prj_c", slug: "gamma" });
+  await seedApp(db, { id: "prj_c", slug: "gamma" });
   const host = `gamma-bold-lynx-${"01020304"}.nip.io`;
   await asUser1(async () => {
     await ensureExtraDomain("prj_c", host, { port: 80, service: "web", slug: "gamma", ip: IP });
     await ensureExtraDomain("prj_c", host, { port: 80, service: "web", slug: "gamma", ip: IP });
   });
-  const rows = await loadDomainsForService("prj_c");
+  const rows = await loadDomainsForApp("prj_c");
   assert.equal(rows.length, 1, "the same host on the same project is not duplicated");
   assert.equal(rows[0].name, host);
 });
 
 test("ensureAutoDomain regenerates when its `preferred` host belongs to another project", async () => {
-  await seedService(db, { id: "prj_x", slug: "xeno" });
-  await seedService(db, { id: "prj_y", slug: "yeti" });
+  await seedApp(db, { id: "prj_x", slug: "xeno" });
+  await seedApp(db, { id: "prj_y", slug: "yeti" });
   const preferred = `pref-keen-puma-${"01020304"}.nip.io`;
   // X claims `preferred` as its primary.
   const xName = await asUser1(() =>

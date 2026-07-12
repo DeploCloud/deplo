@@ -3,13 +3,13 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import {
   githubInstallation as githubInstallationTable,
-  services as servicesTable,
-  serviceBuild as serviceBuildTable,
+  apps as appsTable,
+  appBuild as appBuildTable,
 } from "@/lib/db/schema/control-plane";
 import { decryptSecret } from "@/lib/crypto";
 import { findAppByAppId } from "@/lib/github/app";
 import { startDeployment } from "@/lib/deploy/build";
-import { parseWatchPaths } from "@/lib/data/service-graph-rows";
+import { parseWatchPaths } from "@/lib/data/app-graph-rows";
 import { parsePushEvent, shouldAutoDeploy } from "@/lib/deploy/git-webhook";
 
 /**
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
   const fullName = payload.repository?.full_name;
   const numericInstall = payload.installation?.id;
-  // Normalise the ref/commit metadata once; per-service gating (push vs tag,
+  // Normalise the ref/commit metadata once; per-app gating (push vs tag,
   // watch paths) happens below against each candidate's stored config.
   const pushEvent = parsePushEvent(payload);
   if (!fullName || !pushEvent.refName || !numericInstall) {
@@ -83,36 +83,36 @@ export async function POST(request: Request) {
     return new Response("ok", { status: 200 });
   }
 
-  // Services are relational (cut-set c): the github-source candidates for this
+  // Apps are relational (cut-set c): the github-source candidates for this
   // installation, filtered in SQL on the flattened repo_* columns.
-  const githubServices = await getDb()
+  const githubApps = await getDb()
     .select()
-    .from(servicesTable)
+    .from(appsTable)
     .where(
       and(
-        eq(servicesTable.source, "github"),
-        eq(servicesTable.repoInstallationId, install.id),
+        eq(appsTable.source, "github"),
+        eq(appsTable.repoInstallationId, install.id),
       ),
     );
   // First cut on the row-local facts (auto-deploy + repo match). The root-dir
   // "skip unchanged" filter needs each candidate's build row (root_directory +
-  // skip_unchanged_deployments live on service_build, not the flattened services
-  // row), so load those in one query keyed by service id before the final filter.
-  const candidates = githubServices.filter(
+  // skip_unchanged_deployments live on app_build, not the flattened apps
+  // row), so load those in one query keyed by app id before the final filter.
+  const candidates = githubApps.filter(
     (p) => p.autoDeploy && p.repoRepo === fullName,
   );
   const buildRows = candidates.length
     ? await getDb()
         .select()
-        .from(serviceBuildTable)
+        .from(appBuildTable)
         .where(
           inArray(
-            serviceBuildTable.serviceId,
+            appBuildTable.appId,
             candidates.map((p) => p.id),
           ),
         )
     : [];
-  const buildById = new Map(buildRows.map((b) => [b.serviceId, b]));
+  const buildById = new Map(buildRows.map((b) => [b.appId, b]));
   const targets = candidates.filter((p) =>
     shouldAutoDeploy(
       {
@@ -129,14 +129,14 @@ export async function POST(request: Request) {
   if (targets.length === 0) {
     // The silent-failure heart of this endpoint: a delivered, verified push
     // that matches no project returns 200 with no deploy. Dump every github
-    // service's match-relevant fields so the exact mismatched clause (source /
+    // app's match-relevant fields so the exact mismatched clause (source /
     // autoDeploy / repo / installationId / branch / trigger / watch paths) is
     // obvious from one log line.
     console.warn(
       `[github-webhook] no auto-deploy target: repo=${fullName} ref=${pushEvent.refName} ` +
         `isTag=${pushEvent.isTag} install=${install.id}; candidates=` +
         JSON.stringify(
-          githubServices.map((p) => ({
+          githubApps.map((p) => ({
             id: p.id,
             autoDeploy: p.autoDeploy,
             repo: p.repoRepo,

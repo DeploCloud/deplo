@@ -146,8 +146,8 @@ export function EnvTableSkeleton({
 }
 
 /**
- * Full loading state for a service's Environment Variables tab: the header +
- * toolbar (view toggle, Shared groups, Import, Add) above the table.
+ * Full loading state for an app's Environment Variables tab: the header +
+ * toolbar (Reveal all, Add, view toggle) above the table.
  */
 export function EnvManagerSkeleton({ rows = 5 }: { rows?: number }) {
   return (
@@ -163,10 +163,9 @@ export function EnvManagerSkeleton({ rows = 5 }: { rows?: number }) {
           <Skeleton shimmer className="h-4 w-72" />
         </div>
         <div className="flex items-center gap-2">
-          <Skeleton shimmer className="h-8 w-[150px] rounded-lg" />
-          <Skeleton shimmer className="h-8 w-32 rounded-md" />
           <Skeleton shimmer className="h-8 w-28 rounded-md" />
           <Skeleton shimmer className="h-8 w-16 rounded-md" />
+          <Skeleton shimmer className="h-8 w-[150px] rounded-lg" />
         </div>
       </div>
       <EnvTableSkeleton rows={rows} />

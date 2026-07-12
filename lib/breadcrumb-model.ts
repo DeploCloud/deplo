@@ -1,15 +1,15 @@
 /**
  * Pure model behind the topbar breadcrumb. Given the current location (pathname +
  * the Overview's ?folder=/?project= drill-in params) and a lightweight snapshot of
- * the team's folders / services / projects, it produces the ordered list of
+ * the team's folders / apps / projects, it produces the ordered list of
  * breadcrumb SEGMENTS — each carrying a link (where clicking the name goes) and a
  * dropdown of sibling/child targets (where the ▾ takes you), Vercel/Windows-
  * Explorer style.
  *
- * Every services-tree location (browsing a folder/project on the Overview, or
- * anywhere inside a service) reads as one consistent path rooted at "Overview":
+ * Every apps-tree location (browsing a folder/project on the Overview, or
+ * anywhere inside an app) reads as one consistent path rooted at "Overview":
  *
- *   Overview ▾ / Folder ▾ / Subfolder ▾ / Service ▾ / Section ▾ / Subsection ▾
+ *   Overview ▾ / Folder ▾ / Subfolder ▾ / App ▾ / Section ▾ / Subsection ▾
  *
  * No React, no DB, no "server-only" — so it renders on the server, hydrates on the
  * client, AND is unit-testable in isolation (lib/breadcrumb-model.test.ts). The
@@ -24,7 +24,7 @@ export interface BreadcrumbFolder {
   parentId: string | null;
 }
 
-export interface BreadcrumbService {
+export interface BreadcrumbApp {
   id: string;
   slug: string;
   name: string;
@@ -41,7 +41,7 @@ export interface BreadcrumbProject {
 /** The team-scoped snapshot the breadcrumb navigates over (see getBreadcrumbGraph). */
 export interface BreadcrumbGraph {
   folders: BreadcrumbFolder[];
-  services: BreadcrumbService[];
+  apps: BreadcrumbApp[];
   projects: BreadcrumbProject[];
 }
 
@@ -63,10 +63,10 @@ export interface DropItem {
   label: string;
   href: string;
   /** Distinguishes the icon and grouping in the menu. */
-  kind: "folder" | "service" | "project" | "section";
+  kind: "folder" | "app" | "project" | "section";
   /** The entry that IS the current path at this level (checkmarked, non-navigating). */
   current: boolean;
-  /** Optional group heading the renderer buckets items under ("Folders" / "Services"). */
+  /** Optional group heading the renderer buckets items under ("Folders" / "Apps"). */
   group?: string;
 }
 
@@ -76,12 +76,12 @@ export interface BreadcrumbSegment {
   name: string;
   /** Where clicking the name navigates. */
   href: string;
-  kind: "overview" | "folder" | "project" | "service" | "section";
+  kind: "overview" | "folder" | "project" | "app" | "section";
   /** Sibling / child targets for the ▾ dropdown (empty ⇒ no dropdown). */
   items: DropItem[];
 }
 
-/** Per-team capabilities that gate which service sections are offered. */
+/** Per-team capabilities that gate which app sections are offered. */
 export interface BreadcrumbCaps {
   manageEnv: boolean;
   manageInfra: boolean;
@@ -89,10 +89,10 @@ export interface BreadcrumbCaps {
 }
 
 /**
- * Live per-service facts the section dropdown needs (Console only while running,
- * Dev/Files only when eligible). Sourced from the service-nav store; `slugMatches`
- * is false until it confirms the store is for the service in the URL (so a stale
- * value from the service you just left never leaks its sections in).
+ * Live per-app facts the section dropdown needs (Console only while running,
+ * Dev/Files only when eligible). Sourced from the app-nav store; `slugMatches`
+ * is false until it confirms the store is for the app in the URL (so a stale
+ * value from the app you just left never leaks its sections in).
  */
 export interface BreadcrumbFlags {
   running: boolean;
@@ -101,7 +101,7 @@ export interface BreadcrumbFlags {
   slugMatches: boolean;
 }
 
-/** A service's top-level sections, in sidebar order (see nav-config.serviceNav). */
+/** An app's top-level sections, in sidebar order (see nav-config.appNav). */
 const MAIN_SECTIONS: {
   seg: string;
   label: string;
@@ -120,7 +120,7 @@ const MAIN_SECTIONS: {
   { seg: "settings", label: "Settings" },
 ];
 
-/** A service's settings subsections, in sidebar order (see serviceSettingsNav). */
+/** An app's settings subsections, in sidebar order (see appSettingsNav). */
 const SETTINGS_SUBS: { seg: string; label: string; requires?: keyof BreadcrumbCaps }[] =
   [
     { seg: "", label: "General" },
@@ -180,16 +180,16 @@ export function folderChainFor(
 }
 
 /**
- * Build the breadcrumb segments for the current location, or null when it isn't a
- * services-tree location (a plain page like /storage, or a service/folder not in
+ * Build the breadcrumb segments for the current location, or null when it isn't an
+ * apps-tree location (a plain page like /storage, or an app/folder not in
  * the graph) — the topbar then falls back to its plain top-level label. The trail:
  *
- *   Overview  →  [folder…]  or  [project]  →  [service]  →  [section]  →  [subsection]
+ *   Overview  →  [folder…]  or  [project]  →  [app]  →  [section]  →  [subsection]
  *
- * Every folder crumb's dropdown lists that folder's subfolders + direct services
+ * Every folder crumb's dropdown lists that folder's subfolders + direct apps
  * (pivot across the tree); the Overview crumb's dropdown lists the top level
- * (root folders, projects, ungrouped services); the service crumb's dropdown lists
- * its sibling services; the section crumbs list the service's other sections. The
+ * (root folders, projects, ungrouped apps); the app crumb's dropdown lists
+ * its sibling apps; the section crumbs list the app's other sections. The
  * entry matching the current path at each level is flagged `current`.
  */
 export function buildBreadcrumb(
@@ -199,23 +199,23 @@ export function buildBreadcrumb(
   flags: BreadcrumbFlags,
 ): BreadcrumbSegment[] | null {
   const { pathname, openFolderId, openProjectId, view } = ctx;
-  const { folders, services, projects } = graph;
+  const { folders, apps, projects } = graph;
 
-  // Resolve the location into: a folder chain, a project, a service, section tail.
+  // Resolve the location into: a folder chain, a project, an app, section tail.
   let chain: BreadcrumbFolder[] = [];
   let project: BreadcrumbProject | null = null;
-  let service: BreadcrumbService | null = null;
+  let service: BreadcrumbApp | null = null;
   let rest: string[] = [];
 
-  const serviceMatch = pathname.match(/^\/services\/([^/]+)(\/.*)?$/);
-  if (serviceMatch) {
-    service = services.find((s) => s.slug === serviceMatch[1]) ?? null;
+  const appMatch = pathname.match(/^\/apps\/([^/]+)(\/.*)?$/);
+  if (appMatch) {
+    service = apps.find((s) => s.slug === appMatch[1]) ?? null;
     if (!service) return null;
     chain = folderChainFor(service.folderId ?? null, folders);
     if (chain.length === 0 && service.projectId) {
       project = projects.find((p) => p.id === service!.projectId) ?? null;
     }
-    rest = (serviceMatch[2] ?? "").split("/").filter(Boolean);
+    rest = (appMatch[2] ?? "").split("/").filter(Boolean);
   } else if (pathname === "/") {
     // Overview drill-in. A folder param wins over a project param (same precedence
     // as the Overview page); an unknown/invisible id falls back to the plain label.
@@ -231,8 +231,8 @@ export function buildBreadcrumb(
     return null;
   }
 
-  // Section preservation for sibling service links (Vercel-style: switch service,
-  // keep your tab). Console/Dev/Files hinge on per-service runtime facts a sibling
+  // Section preservation for sibling app links (Vercel-style: switch app,
+  // keep your tab). Console/Dev/Files hinge on per-app runtime facts a sibling
   // may not share, so those never carry over; deeper detail (a deployment id) is
   // dropped — only the section (+ settings subsection) is kept.
   const UNSAFE_SECTIONS = new Set(["console", "dev", "files"]);
@@ -242,18 +242,18 @@ export function buildBreadcrumb(
         ? `/settings/${rest[1]}`
         : `/${rest[0]}`
       : "";
-  const svcHref = (s: BreadcrumbService) => `/services/${s.slug}${siblingSuffix}`;
+  const svcHref = (s: BreadcrumbApp) => `/apps/${s.slug}${siblingSuffix}`;
 
   const segments: BreadcrumbSegment[] = [];
 
   // What comes right after Overview — used to checkmark it in the root dropdown.
   const rootFolderId = chain[0]?.id ?? null;
   const rootProjectId = chain.length === 0 && project ? project.id : null;
-  const rootServiceId =
+  const rootAppId =
     chain.length === 0 && !project && service ? service.id : null;
 
   // Overview root crumb: dropdown is the top level — root folders, projects, and
-  // ungrouped services — so you can jump anywhere from the root.
+  // ungrouped apps — so you can jump anywhere from the root.
   const rootItems: DropItem[] = [
     ...folders
       .filter((f) => (f.parentId ?? null) === null)
@@ -276,15 +276,15 @@ export function buildBreadcrumb(
         group: "Projects",
       }))
       .sort(byNameThenId),
-    ...services
+    ...apps
       .filter((s) => !s.folderId && !s.projectId)
       .map((s) => ({
         id: s.id,
         label: s.name,
         href: svcHref(s),
-        kind: "service" as const,
-        current: s.id === rootServiceId,
-        group: "Services",
+        kind: "app" as const,
+        current: s.id === rootAppId,
+        group: "Apps",
       }))
       .sort(byNameThenId),
   ];
@@ -297,7 +297,7 @@ export function buildBreadcrumb(
   });
 
   // A crumb per ancestor folder. Its dropdown is that folder's children — the NEXT
-  // folder in the chain (or, at the leaf folder, the open service) is marked
+  // folder in the chain (or, at the leaf folder, the open app) is marked
   // current so you can see where you are and pivot to a sibling.
   chain.forEach((folder, idx) => {
     const nextFolderId = idx < chain.length - 1 ? chain[idx + 1].id : null;
@@ -313,17 +313,17 @@ export function buildBreadcrumb(
         group: "Folders",
       }))
       .sort(byNameThenId);
-    const childServices: DropItem[] = services
+    const childApps: DropItem[] = apps
       .filter((s) => (s.folderId ?? null) === folder.id)
       .map((s) => ({
         id: s.id,
         label: s.name,
         href: svcHref(s),
-        kind: "service" as const,
-        // Only the LEAF folder's open service is "current"; a deeper service sits
+        kind: "app" as const,
+        // Only the LEAF folder's open app is "current"; a deeper app sits
         // below the next folder, not this crumb.
         current: isLeaf && service != null && s.id === service.id,
-        group: "Services",
+        group: "Apps",
       }))
       .sort(byNameThenId);
     segments.push({
@@ -331,15 +331,15 @@ export function buildBreadcrumb(
       name: folder.name,
       href: folderUrl(folder.id, view),
       kind: "folder",
-      items: [...subfolders, ...childServices],
+      items: [...subfolders, ...childApps],
     });
   });
 
-  // A project crumb whose dropdown lists its services. Inside a service the list is
-  // scoped to that service's environment (the slice the project view shows); when
-  // just browsing the project, list all of its services.
+  // A project crumb whose dropdown lists its apps. Inside an app the list is
+  // scoped to that app's environment (the slice the project view shows); when
+  // just browsing the project, list all of its apps.
   if (project) {
-    const projServices = services.filter(
+    const projApps = apps.filter(
       (s) =>
         s.projectId === project!.id &&
         (service == null ||
@@ -350,12 +350,12 @@ export function buildBreadcrumb(
       name: project.name,
       href: projectUrl(project.id, view),
       kind: "project",
-      items: projServices
+      items: projApps
         .map((s) => ({
           id: s.id,
           label: s.name,
           href: svcHref(s),
-          kind: "service" as const,
+          kind: "app" as const,
           current: service != null && s.id === service.id,
         }))
         .sort(byNameThenId),
@@ -363,39 +363,39 @@ export function buildBreadcrumb(
   }
 
   if (service) {
-    // The service crumb. Its siblings share its home: the same folder, the same
+    // The app crumb. Its siblings share its home: the same folder, the same
     // project+environment, or the ungrouped top level.
     const siblings = service.folderId
-      ? services.filter((s) => s.folderId === service!.folderId)
+      ? apps.filter((s) => s.folderId === service!.folderId)
       : service.projectId
-        ? services.filter(
+        ? apps.filter(
             (s) =>
               s.projectId === service!.projectId &&
               (s.environmentId ?? null) === (service!.environmentId ?? null),
           )
-        : services.filter((s) => !s.folderId && !s.projectId);
+        : apps.filter((s) => !s.folderId && !s.projectId);
     segments.push({
       key: `service-${service.id}`,
       name: service.name,
-      href: `/services/${service.slug}`,
-      kind: "service",
+      href: `/apps/${service.slug}`,
+      kind: "app",
       items: siblings
         .map((s) => ({
           id: s.id,
           label: s.name,
           href: svcHref(s),
-          kind: "service" as const,
+          kind: "app" as const,
           current: s.id === service!.id,
         }))
         .sort(byNameThenId),
     });
   }
 
-  // Section crumbs, from the path tail after /services/<slug> (parsed above).
+  // Section crumbs, from the path tail after /apps/<slug> (parsed above).
   if (service && rest.length > 0) {
     const slug = service.slug;
     const mainSeg = rest[0];
-    const base = `/services/${slug}`;
+    const base = `/apps/${slug}`;
     const sectionAvailable = (sec: (typeof MAIN_SECTIONS)[number]) =>
       (!sec.requires || caps[sec.requires]) &&
       (!sec.flag ||

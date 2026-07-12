@@ -8,10 +8,10 @@ import {
 
 /**
  * Cross-host data migration for a server MOVE — the shared relay that both the
- * database move (a single data volume) and the service move (N data volumes + the
+ * database move (a single data volume) and the app move (N data volumes + the
  * files dir) build on.
  *
- * Docker named volumes and a service's files dir are host-local, and the agent
+ * Docker named volumes and an app's files dir are host-local, and the agent
  * trust model is strictly star (an agent can neither dial nor trust a peer), so the
  * bytes RELAY through the control plane: the SOURCE agent streams a gzipped tar out
  * (exportVolume / exportFiles), and those chunks feed straight into the DESTINATION
@@ -104,8 +104,8 @@ export async function copyVolumeBetween(
 }
 
 /**
- * Copy a service's files dir (a host directory, not a Docker volume) from `source`
- * to `dest`, overwriting the destination. Throws on failure. A service with no files
+ * Copy an app's files dir (a host directory, not a Docker volume) from `source`
+ * to `dest`, overwriting the destination. Throws on failure. An app with no files
  * dir on the source streams an empty archive, which just clears the destination dir
  * — a harmless no-op for a move.
  */
@@ -127,12 +127,12 @@ export async function copyFilesBetween(
 /**
  * Migrate a workload's full on-host state from one server to another: every named
  * volume (in order) and, optionally, the files dir. Opens ONE connection to each
- * host and reuses it for the whole set (a service can have several volumes). Throws
+ * host and reuses it for the whole set (an app can have several volumes). Throws
  * on the first failure so the caller can roll back — nothing here mutates control-
  * plane state, only agent-side data.
  *
  * `volumeNames` are the FULL host-side Docker volume names (already resolved by the
- * caller — dbVolumeHostName for a DB, buildProjectDescriptor for a service). The
+ * caller — dbVolumeHostName for a DB, buildProjectDescriptor for an app). The
  * caller must have STOPPED both stacks first (see the module comment).
  */
 export async function migrateWorkloadData(

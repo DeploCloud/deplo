@@ -203,7 +203,7 @@ export async function createTeam(input: { name: string }): Promise<Team> {
       );
     return t;
   });
-  // Team ordering moved to the team_service_order/team_folder_order junctions
+  // Team ordering moved to the team_app_order/team_folder_order junctions
   // (cut-set c); a new team starts with no order rows. The JSONB stub is retired.
   // Switch the active team to the freshly created one.
   await setActiveTeam(team.id);

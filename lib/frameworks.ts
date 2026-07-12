@@ -11,7 +11,7 @@ import type { BuildConfig, DevImagePreset } from "./types";
 /**
  * Official base image each dev image preset resolves to (ADR-0004). Used
  * directly — Deplo builds no per-language dev images. `node` is the safe
- * fallback (the JS toolchain covers most source-bearing services).
+ * fallback (the JS toolchain covers most source-bearing apps).
  */
 export const DEV_PRESET_IMAGE: Record<DevImagePreset, string> = {
   node: "node:22",
@@ -74,14 +74,14 @@ export function buildConfigFor(overrides: Partial<BuildConfig> = {}): BuildConfi
 }
 
 /**
- * Backfill build-method fields on a BuildConfig read from the store. Services
+ * Backfill build-method fields on a BuildConfig read from the store. Apps
  * created before build methods existed have no `buildMethod`/`methodSettings`;
- * seed sane defaults so old services keep deploying and the settings form
+ * seed sane defaults so old apps keep deploying and the settings form
  * renders. Pure and idempotent — safe to call on every read.
  */
 export function normalizeBuildConfig(build: BuildConfig): BuildConfig {
   // Migrate the legacy `nodeVersion` field to the language-neutral
-  // `runtimeVersion` (older services stored only `nodeVersion`).
+  // `runtimeVersion` (older apps stored only `nodeVersion`).
   const legacyVersion = (build as { nodeVersion?: string }).nodeVersion;
   let normalized: BuildConfig =
     build.runtimeVersion == null && legacyVersion != null
@@ -90,7 +90,7 @@ export function normalizeBuildConfig(build: BuildConfig): BuildConfig {
 
   // The Heroku/Paketo buildpack methods were removed; remap legacy rows to
   // Nixpacks (the surviving auto-detecting builder — the closest equivalent) so
-  // those services keep deploying and the settings UI shows a selected method.
+  // those apps keep deploying and the settings UI shows a selected method.
   const legacyMethod = normalized.buildMethod as string;
   if (legacyMethod === "heroku" || legacyMethod === "paketo") {
     normalized = { ...normalized, buildMethod: "nixpacks" };

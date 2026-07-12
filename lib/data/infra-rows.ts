@@ -24,7 +24,7 @@ import type {
  * the data layer (`lib/data/{servers,github,dev-ssh,activity}.ts`,
  * `lib/github/app.ts`) goes through here, so reads and writes can't drift on how a
  * row folds into a domain object — the same anti-drift seam `backup-rows.ts` is
- * for the backups tables, `service-graph-rows.ts` for the project graph, and
+ * for the backups tables, `app-graph-rows.ts` for the project graph, and
  * `notification-row.ts` for `notification_settings`.
  *
  * Pure — no `server-only`, no store, no db handle — so a `server-only` module can
@@ -252,7 +252,7 @@ export function assembleGithubInstallation(
 export function devSshUserToRow(u: DevSshUser): DevSshUserInsert {
   return {
     id: u.id,
-    serviceId: u.serviceId,
+    appId: u.appId,
     username: u.username,
     publicKey: u.publicKey,
     passwordEnc: u.passwordEnc,
@@ -264,7 +264,7 @@ export function devSshUserToRow(u: DevSshUser): DevSshUserInsert {
 export function assembleDevSshUser(row: DevSshUserRow): DevSshUser {
   return {
     id: row.id,
-    serviceId: row.serviceId,
+    appId: row.appId,
     username: row.username,
     publicKey: row.publicKey,
     passwordEnc: row.passwordEnc,
@@ -288,7 +288,7 @@ export function activityToRow(a: Activity): ActivityInsert {
     type: a.type,
     message: a.message,
     actor: a.actor,
-    serviceId: a.serviceId,
+    appId: a.appId,
     createdAt: a.createdAt,
   } satisfies Record<keyof Activity, unknown> as ActivityInsert;
 }
@@ -305,7 +305,7 @@ export function assembleActivity(row: ActivityRow): Activity {
     type: row.type as ActivityType,
     message: row.message,
     actor: row.actor,
-    serviceId: row.serviceId,
+    appId: row.appId,
     createdAt: row.createdAt,
   };
 }

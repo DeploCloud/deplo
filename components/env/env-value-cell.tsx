@@ -17,7 +17,7 @@ const MASK = "••••••••••••";
  *                 disabled, non-interactive indicator with no reveal path.
  *
  * Reveal state is uncontrolled by default (each cell owns it). Pass `revealed` +
- * `onRevealedChange` to control it from a parent — e.g. the service table's
+ * `onRevealedChange` to control it from a parent — e.g. the app table's
  * "Reveal all" toggle drives every plain row at once.
  */
 export function EnvValueCell({

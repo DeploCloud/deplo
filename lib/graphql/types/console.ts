@@ -11,7 +11,7 @@ import {
 
 /**
  * GraphQL surface for the real container console: read the attachable instances
- * for a service, probe the default container's shell label, and exec a command
+ * for an app, probe the default container's shell label, and exec a command
  * inside the live container. All resolvers are thin wrappers over the data layer,
  * which enforces team-scoping (reads) and the `deploy` capability (exec).
  */
@@ -23,7 +23,7 @@ import {
 const ConsoleInstanceRef = builder
   .objectRef<ConsoleInstance>("ConsoleInstance")
   .implement({
-    description: "A single attachable container in a service's stack.",
+    description: "A single attachable container in an app's stack.",
     fields: (t) => ({
       name: t.exposeString("name"),
       service: t.exposeString("service"),
@@ -39,7 +39,7 @@ const ConsoleInstanceRef = builder
 
 const ConsoleInfoRef = builder.objectRef<ConsoleInfo>("ConsoleInfo").implement({
   description:
-    "Console attach info for a service (no shell probe — fetch the shell " +
+    "Console attach info for an app (no shell probe — fetch the shell " +
     "label separately via shellLabel).",
   fields: (t) => ({
     containerName: t.exposeString("containerName"),
@@ -83,7 +83,7 @@ const ExecResultRef = builder.objectRef<ExecResult>("ExecResult").implement({
 
 const ShellLabelInputType = builder.inputType("ShellLabelInput", {
   fields: (t) => ({
-    serviceId: t.string({ required: true }),
+    appId: t.string({ required: true }),
     // Optional explicit instance to probe; default = the running/default target.
     containerName: t.string({ required: false }),
   }),
@@ -91,7 +91,7 @@ const ShellLabelInputType = builder.inputType("ShellLabelInput", {
 
 const ExecConsoleInputType = builder.inputType("ExecConsoleInput", {
   fields: (t) => ({
-    serviceId: t.string({ required: true }),
+    appId: t.string({ required: true }),
     command: t.string({ required: true }),
     // Optional explicit instance to exec into; default = the default target.
     containerName: t.string({ required: false }),
@@ -107,17 +107,17 @@ builder.queryFields((t) => ({
     type: ConsoleInfoRef,
     nullable: true,
     authScopes: { loggedIn: true },
-    description: "Attachable instances + default target for a service's console.",
-    args: { serviceId: t.arg.string({ required: true }) },
-    resolve: (_r, { serviceId }) => getConsoleInfo(serviceId),
+    description: "Attachable instances + default target for an app's console.",
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: (_r, { appId }) => getConsoleInfo(appId),
   }),
   logsInfo: t.field({
     type: LogsInfoRef,
     nullable: true,
     authScopes: { loggedIn: true },
     description: "Lighter instance list for the logs viewer.",
-    args: { serviceId: t.arg.string({ required: true }) },
-    resolve: (_r, { serviceId }) => getLogsInfo(serviceId),
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: (_r, { appId }) => getLogsInfo(appId),
   }),
   shellLabel: t.field({
     type: "String",
@@ -127,7 +127,7 @@ builder.queryFields((t) => ({
       '"raw exec (no shell)".',
     args: { input: t.arg({ type: ShellLabelInputType, required: true }) },
     resolve: (_r, { input }) =>
-      getShellLabel(input.serviceId, input.containerName ?? undefined),
+      getShellLabel(input.appId, input.containerName ?? undefined),
   }),
 }));
 
@@ -140,12 +140,12 @@ builder.mutationFields((t) => ({
     type: ExecResultRef,
     authScopes: { capability: "deploy" },
     description:
-      "Run a command in the service's live container (docker exec). Gated on " +
+      "Run a command in the app's live container (docker exec). Gated on " +
       "the deploy capability — this is arbitrary code execution.",
     args: { input: t.arg({ type: ExecConsoleInputType, required: true }) },
     resolve: (_r, { input }) =>
       execInContainer(
-        input.serviceId,
+        input.appId,
         input.command,
         input.containerName ?? undefined,
       ),

@@ -6,7 +6,7 @@ import { getDb } from "../db/client";
 import {
   environments as environmentsTable,
   projects as projectsTable,
-  services as servicesTable,
+  apps as appsTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
@@ -97,6 +97,47 @@ export async function listEnvironmentsForProject(
   return rows.map(assembleEnvironment);
 }
 
+/** An environment labelled with its owning Project (for shared-var scope pickers). */
+export interface TeamEnvironment {
+  id: string;
+  name: string;
+  slug: string;
+  kind: EnvironmentKind;
+  projectId: string;
+  projectName: string;
+}
+
+/**
+ * Every environment across the active team's projects, ordered by project then
+ * position — the source for the "share to environments" multi-select on the
+ * unified Shared-variables tab. No env values are read, so the view floor
+ * (`requireActiveTeamId`) suffices, matching `listProjects`.
+ */
+export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
+  const teamId = await requireActiveTeamId();
+  const rows = await getDb()
+    .select({
+      id: environmentsTable.id,
+      name: environmentsTable.name,
+      slug: environmentsTable.slug,
+      kind: environmentsTable.kind,
+      projectId: environmentsTable.projectId,
+      projectName: projectsTable.name,
+    })
+    .from(environmentsTable)
+    .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
+    .where(eq(projectsTable.teamId, teamId))
+    .orderBy(asc(projectsTable.name), asc(environmentsTable.position));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    slug: r.slug,
+    kind: r.kind as EnvironmentKind,
+    projectId: r.projectId,
+    projectName: r.projectName,
+  }));
+}
+
 /** A URL-safe slug from a name, unique within the project. */
 async function uniqueEnvSlug(projectId: string, name: string): Promise<string> {
   const base =
@@ -165,7 +206,7 @@ export async function renameEnvironment(id: string, name: string): Promise<void>
     .where(eq(environmentsTable.id, id));
 }
 
-/** Set the git branch this environment builds from ("" ⇒ the service default). */
+/** Set the git branch this environment builds from ("" ⇒ the app default). */
 export async function setEnvironmentBranch(id: string, branch: string): Promise<void> {
   await requireCapability("deploy");
   const env = (
@@ -207,8 +248,8 @@ export async function setDefaultEnvironment(id: string): Promise<void> {
 
 /**
  * Delete a non-default environment; never the default or the last one. The
- * environment's services are NOT deleted: they re-parent to the project's
- * default environment (ADR-0009 — an environment is a sub-folder of services,
+ * environment's apps are NOT deleted: they re-parent to the project's
+ * default environment (ADR-0009 — an environment is a sub-folder of apps,
  * so removing the sub-folder keeps its contents in the project).
  */
 export async function deleteEnvironment(id: string): Promise<void> {
@@ -229,9 +270,9 @@ export async function deleteEnvironment(id: string): Promise<void> {
   const fallback = siblings.find((e) => e.isDefault && e.id !== id) ?? null;
   await getDb().transaction(async (tx) => {
     await tx
-      .update(servicesTable)
+      .update(appsTable)
       .set({ environmentId: fallback?.id ?? null, updatedAt: nowIso() })
-      .where(eq(servicesTable.environmentId, id));
+      .where(eq(appsTable.environmentId, id));
     await tx.delete(environmentsTable).where(eq(environmentsTable.id, id));
   });
 }

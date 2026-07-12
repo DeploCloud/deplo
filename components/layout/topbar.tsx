@@ -26,7 +26,7 @@ export function Topbar({
   user: PublicUser;
   team: Team;
   teams: TeamSummary[];
-  /** Team snapshot the breadcrumb navigates over (folders/services/projects). */
+  /** Team snapshot the breadcrumb navigates over (folders/apps/projects). */
   breadcrumb: BreadcrumbGraph;
   capabilities?: string[];
   isAdmin?: boolean;
@@ -70,7 +70,7 @@ export function Topbar({
         <TeamSwitcher team={team} teams={teams} />
       )}
 
-      {/* Rich trail on the services tree (Overview ▾ / Folder ▾ / Service ▾ /
+      {/* Rich trail on the apps tree (Overview ▾ / Folder ▾ / App ▾ /
           Section ▾ with sibling menus), a plain "/ Label" everywhere else. Wrapped
           in Suspense because Breadcrumbs reads the URL's search params
           (?folder=/?project=) via useSearchParams. */}

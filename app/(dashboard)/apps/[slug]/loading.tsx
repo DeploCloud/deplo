@@ -7,7 +7,7 @@ export default function Loading() {
       className="space-y-6"
       role="status"
       aria-busy
-      aria-label="Loading service overview"
+      aria-label="Loading app overview"
     >
       {/* Production hero */}
       <Card>

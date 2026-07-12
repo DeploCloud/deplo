@@ -1,18 +1,18 @@
 import { notFound } from "next/navigation";
 import { Rocket } from "lucide-react";
-import { getServiceBySlug } from "@/lib/data/services";
+import { getAppBySlug } from "@/lib/data/apps";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
-import { SettingsSection } from "@/components/services/settings/settings-shared";
-import { DeploymentSettingsForm } from "@/components/services/settings/deployment-settings-form";
+import { SettingsSection } from "@/components/apps/settings/settings-shared";
+import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
 
 export const metadata = { title: "Deployment" };
 
-export default async function ServiceDeploymentSettingsPage(
-  props: PageProps<"/services/[slug]/settings/deployments">,
+export default async function AppDeploymentSettingsPage(
+  props: PageProps<"/apps/[slug]/settings/deployments">,
 ) {
   const { slug } = await props.params;
-  const project = await getServiceBySlug(slug);
+  const project = await getAppBySlug(slug);
   if (!project) notFound();
 
   const servers = (await listServersForCurrentTeam()).map((s) => ({
@@ -26,7 +26,7 @@ export default async function ServiceDeploymentSettingsPage(
     <section className="space-y-4">
       <SettingsSection icon={Rocket} title="Deployment" />
       <DeploymentSettingsForm
-        serviceId={project.id}
+        appId={project.id}
         slug={project.slug}
         build={project.build}
         autoDeploy={project.autoDeploy}

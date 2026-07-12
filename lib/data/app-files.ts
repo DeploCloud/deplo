@@ -5,13 +5,13 @@ import { join, sep } from "node:path";
 import { requireCapability, hasCapability, getActiveTeamId } from "../membership";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
-import { loadTeamService } from "./service-graph-load";
-import { requireFolderCapabilityForService } from "./folder-access";
+import { loadTeamApp } from "./app-graph-load";
+import { requireFolderCapabilityForApp } from "./folder-access";
 import { connectAgent, type AgentConnection } from "../infra/agent-client";
 
 /**
  * Browse and edit a single-container project's files directory — the on-disk
- * `<stacks>/files/<slug>` tree that backs the `./` service-files volume
+ * `<stacks>/files/<slug>` tree that backs the `./` app-files volume
  * convention (see `lib/deploy/compose-stack.ts`). Every op is gated by the
  * `manage_files` capability and sandboxed inside that one directory: a path is
  * rejected unless its real location (symlinks resolved) is the root itself or a
@@ -26,7 +26,7 @@ import { connectAgent, type AgentConnection } from "../infra/agent-client";
  * trust boundaries).
  *
  * The directory only exists once a project has materialised config files or a
- * project-type volume there, so callers first check {@link serviceFilesExist}
+ * project-type volume there, so callers first check {@link appFilesExist}
  * to decide whether to surface the Files tab at all.
  */
 
@@ -99,15 +99,15 @@ export function normalizeRel(relPath: string): string {
 
 /** Confirm the project is in the caller's team; throws if not. Resolves the
  * owning server id so each op can route to that host's agent. */
-async function requireServiceInTeam(
-  serviceId: string,
+async function requireAppInTeam(
+  appId: string,
 ): Promise<{ slug: string; teamId: string; serverId: string }> {
   const { teamId } = await requireCapability("manage_files");
-  const project = await loadTeamService(serviceId, teamId);
+  const project = await loadTeamApp(appId, teamId);
   if (!project) {
-    throw new Error("Service not found");
+    throw new Error("App not found");
   }
-  await requireFolderCapabilityForService(serviceId, "manage_files");
+  await requireFolderCapabilityForApp(appId, "manage_files");
   return { slug: project.slug, teamId, serverId: project.serverId };
 }
 
@@ -140,11 +140,11 @@ function toEntry(e: {
  * would 500 the whole page); a member without `manage_files`, or a project with
  * no files dir, simply yields false and the tab is hidden.
  */
-export async function serviceFilesExist(serviceId: string): Promise<boolean> {
+export async function appFilesExist(appId: string): Promise<boolean> {
   if (!(await hasCapability("manage_files"))) return false;
   const teamId = await getActiveTeamId();
   if (!teamId) return false;
-  const project = await loadTeamService(serviceId, teamId);
+  const project = await loadTeamApp(appId, teamId);
   if (!project) return false;
   // Ask the owning agent — the files dir is on its host's disk (PLAN Part C, D9),
   // the host running Deplo included. An unreachable agent yields false so the tab
@@ -165,11 +165,11 @@ export async function serviceFilesExist(serviceId: string): Promise<boolean> {
  * first then files, each alphabetical. Symlinks and special files are skipped
  * — only real dirs/files inside the sandbox are returned.
  */
-export async function listServiceFiles(
-  serviceId: string,
+export async function listAppFiles(
+  appId: string,
   path = "",
 ): Promise<FileEntry[]> {
-  const { slug, serverId } = await requireServiceInTeam(serviceId);
+  const { slug, serverId } = await requireAppInTeam(appId);
   if (path) normalizeRel(path); // fast-fail guard (agent re-checks)
   const conn = await agentFor(serverId);
   try {
@@ -180,11 +180,11 @@ export async function listServiceFiles(
 }
 
 /** Read a file's text body, refusing binary or oversized files. */
-export async function readServiceFile(
-  serviceId: string,
+export async function readAppFile(
+  appId: string,
   path: string,
 ): Promise<FileContent> {
-  const { slug, serverId } = await requireServiceInTeam(serviceId);
+  const { slug, serverId } = await requireAppInTeam(appId);
   normalizeRel(path);
   const conn = await agentFor(serverId);
   try {
@@ -200,12 +200,12 @@ export async function readServiceFile(
  * needed. The body is capped so the editor stays a config editor, not an upload
  * channel. Returns the entry's fresh metadata.
  */
-export async function writeServiceFile(
-  serviceId: string,
+export async function writeAppFile(
+  appId: string,
   path: string,
   content: string,
 ): Promise<FileEntry> {
-  const { slug, serverId } = await requireServiceInTeam(serviceId);
+  const { slug, serverId } = await requireAppInTeam(appId);
   if (Buffer.byteLength(content, "utf8") > MAX_WRITE_BYTES) {
     throw new Error("File is too large to save (1 MiB max)");
   }
@@ -213,7 +213,7 @@ export async function writeServiceFile(
   const conn = await agentFor(serverId);
   try {
     const entry = toEntry(await conn.writeFile(slug, path, content));
-    await note(serviceId, `Edited file ${entry.path}`);
+    await note(appId, `Edited file ${entry.path}`);
     return entry;
   } finally {
     conn.close();
@@ -225,12 +225,12 @@ export async function writeServiceFile(
  * text editor can't represent. Same sandboxing and size cap as a text write.
  * Returns the entry's fresh metadata.
  */
-export async function uploadServiceFile(
-  serviceId: string,
+export async function uploadAppFile(
+  appId: string,
   path: string,
   base64: string,
 ): Promise<FileEntry> {
-  const { slug, serverId } = await requireServiceInTeam(serviceId);
+  const { slug, serverId } = await requireAppInTeam(appId);
   let buf: Buffer;
   try {
     buf = Buffer.from(base64, "base64");
@@ -244,7 +244,7 @@ export async function uploadServiceFile(
   const conn = await agentFor(serverId);
   try {
     const entry = toEntry(await conn.uploadFile(slug, path, buf));
-    await note(serviceId, `Uploaded file ${entry.path}`);
+    await note(appId, `Uploaded file ${entry.path}`);
     return entry;
   } finally {
     conn.close();
@@ -252,16 +252,16 @@ export async function uploadServiceFile(
 }
 
 /** Create an empty directory at `path` (recursive). Returns its entry. */
-export async function createServiceDir(
-  serviceId: string,
+export async function createAppDir(
+  appId: string,
   path: string,
 ): Promise<FileEntry> {
-  const { slug, serverId } = await requireServiceInTeam(serviceId);
+  const { slug, serverId } = await requireAppInTeam(appId);
   normalizeRel(path);
   const conn = await agentFor(serverId);
   try {
     const entry = toEntry(await conn.createDir(slug, path));
-    await note(serviceId, `Created folder ${entry.path}`);
+    await note(appId, `Created folder ${entry.path}`);
     return entry;
   } finally {
     conn.close();
@@ -272,16 +272,16 @@ export async function createServiceDir(
  * Delete a file or directory (recursively) at `path`. The root itself can't be
  * deleted — only entries strictly inside it.
  */
-export async function deleteServiceFile(
-  serviceId: string,
+export async function deleteAppFile(
+  appId: string,
   path: string,
 ): Promise<boolean> {
-  const { slug, serverId } = await requireServiceInTeam(serviceId);
+  const { slug, serverId } = await requireAppInTeam(appId);
   normalizeRel(path);
   const conn = await agentFor(serverId);
   try {
     const ok = await conn.deleteFile(slug, path);
-    await note(serviceId, `Deleted ${normalizeRel(path)}`);
+    await note(appId, `Deleted ${normalizeRel(path)}`);
     return ok;
   } finally {
     conn.close();
@@ -289,18 +289,18 @@ export async function deleteServiceFile(
 }
 
 /** Rename / move an entry within the sandbox. Both ends are contained-checked. */
-export async function renameServiceFile(
-  serviceId: string,
+export async function renameAppFile(
+  appId: string,
   path: string,
   newPath: string,
 ): Promise<FileEntry> {
-  const { slug, serverId } = await requireServiceInTeam(serviceId);
+  const { slug, serverId } = await requireAppInTeam(appId);
   normalizeRel(path);
   normalizeRel(newPath);
   const conn = await agentFor(serverId);
   try {
     const entry = toEntry(await conn.renameFile(slug, path, newPath));
-    await note(serviceId, `Moved ${normalizeRel(path)} → ${entry.path}`);
+    await note(appId, `Moved ${normalizeRel(path)} → ${entry.path}`);
     return entry;
   } finally {
     conn.close();
@@ -308,7 +308,7 @@ export async function renameServiceFile(
 }
 
 /** Record a project-scoped activity line for a files change. */
-async function note(serviceId: string, message: string): Promise<void> {
+async function note(appId: string, message: string): Promise<void> {
   const user = await getCurrentUser();
-  await recordActivity("service", message, user?.email ?? "system", serviceId);
+  await recordActivity("app", message, user?.email ?? "system", appId);
 }

@@ -13,15 +13,15 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
-  seedService,
+  seedApp,
   TRUNCATE_PROJECT_GRAPH,
-} from "./service-graph-test-helpers";
-import { publishServiceChanged } from "../graphql/pubsub";
-import { serviceStatusStream } from "../graphql/types/service";
+} from "./app-graph-test-helpers";
+import { publishAppChanged } from "../graphql/pubsub";
+import { appStatusStream } from "../graphql/types/app";
 
 /**
  * Step 4 SSE generator test (relational-store PLAN §6 "SSE generators must stay
- * cookie-free"): the serviceStatus subscription generator must paint the initial
+ * cookie-free"): the appStatus subscription generator must paint the initial
  * snapshot AND forward >1 change ping WITHOUT ever calling a cookie-reading
  * helper — `cookies()` is not callable across the async-iteration ticks of a
  * long-lived SSE response, so a cookie read would crash the stream after the
@@ -49,12 +49,12 @@ beforeEach(async () => {
   await seedServer(db);
 });
 
-test("serviceStatusStream yields the initial snapshot + multiple change pings (cookie-free)", async () => {
-  await seedService(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+test("appStatusStream yields the initial snapshot + multiple change pings (cookie-free)", async () => {
+  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
 
   // NO runWithIdentity — there is no request scope. If the generator read a
   // cookie it would throw here.
-  const gen = serviceStatusStream("alpha", TEAM_A);
+  const gen = appStatusStream("alpha", TEAM_A);
 
   // Initial snapshot.
   const first = await gen.next();
@@ -64,7 +64,7 @@ test("serviceStatusStream yields the initial snapshot + multiple change pings (c
 
   // Ping 1: a change → the generator reloads + yields a fresh snapshot.
   const p1 = gen.next();
-  publishServiceChanged("prj_1");
+  publishAppChanged("prj_1");
   const second = await p1;
   assert.equal(second.done, false);
   assert.equal(second.value.id, "prj_1");
@@ -72,7 +72,7 @@ test("serviceStatusStream yields the initial snapshot + multiple change pings (c
   // Ping 2: a SECOND change across another iteration tick — this is the case the
   // cookie-free guarantee protects (the old crash point).
   const p2 = gen.next();
-  publishServiceChanged("prj_1");
+  publishAppChanged("prj_1");
   const third = await p2;
   assert.equal(third.done, false);
   assert.equal(third.value.id, "prj_1");
@@ -80,21 +80,21 @@ test("serviceStatusStream yields the initial snapshot + multiple change pings (c
   await gen.return(undefined as never);
 });
 
-test("serviceStatusStream rejects an unknown slug / wrong team", async () => {
-  await seedService(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
-  await assert.rejects(() => serviceStatusStream("nope", TEAM_A).next(), /Service not found/);
-  await assert.rejects(() => serviceStatusStream("alpha", "team_other").next(), /Service not found/);
-  await assert.rejects(() => serviceStatusStream("alpha", null).next(), /Service not found/);
+test("appStatusStream rejects an unknown slug / wrong team", async () => {
+  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  await assert.rejects(() => appStatusStream("nope", TEAM_A).next(), /App not found/);
+  await assert.rejects(() => appStatusStream("alpha", "team_other").next(), /App not found/);
+  await assert.rejects(() => appStatusStream("alpha", null).next(), /App not found/);
 });
 
-test("serviceStatusStream ends when the project is deleted mid-stream", async () => {
-  await seedService(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
-  const gen = serviceStatusStream("alpha", TEAM_A);
+test("appStatusStream ends when the project is deleted mid-stream", async () => {
+  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  const gen = appStatusStream("alpha", TEAM_A);
   await gen.next(); // initial
   // Delete the project, then ping — the reload returns null → the generator ends.
   const p = gen.next();
-  await pg.exec(`delete from services where id = 'prj_1';`);
-  publishServiceChanged("prj_1");
+  await pg.exec(`delete from apps where id = 'prj_1';`);
+  publishAppChanged("prj_1");
   const next = await p;
   assert.equal(next.done, true, "generator ends when the project vanishes");
 });

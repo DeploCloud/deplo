@@ -32,7 +32,7 @@ securely. Send it as a bearer token:
 curl https://your-host/api/graphql \
   -H "Authorization: Bearer deplo_xxxxxxxxxxxxxxxxxxxxxxxx" \
   -H "Content-Type: application/json" \
-  -d '{"query":"{ me { username } services { name status } }"}'
+  -d '{"query":"{ me { username } apps { name status } }"}'
 ```
 
 A token is scoped to the team it was created in and acts with its creator's
@@ -48,9 +48,9 @@ Fields are gated by the same capability model as the dashboard:
 
 | Capability        | Covers                                                       |
 | ----------------- | ----------------------------------------------------------- |
-| `deploy`          | create/redeploy/stop/start/delete services, dev, deployments, projects & environments |
+| `deploy`          | create/redeploy/stop/start/delete apps, dev, deployments, projects & environments |
 | `manage_domains`  | add/verify/route/remove custom domains                      |
-| `manage_env`      | service, environment-scoped, team & shared variables        |
+| `manage_env`      | app, environment-scoped, team & shared variables        |
 | `manage_infra`    | servers, databases, S3, registries, backups, GitHub, tokens |
 | `manage_members`  | add/remove members, change roles                            |
 | `manage_team`     | rename/edit/delete the team                                 |
@@ -60,13 +60,13 @@ minting registration links, the per-user admin editor.
 
 ## Shape of the API
 
-- **Queries** mirror the read layer: `services`, `service(slug)`, `projects`
-  (the containers), `environments(projectId)`, `environmentEnv(environmentId)`,
+- **Queries** mirror the read layer: `apps`, `app(slug)`, `projects`
+  (the containers), `environments(projectId)`, `sharedVars`, `sharedVarsForApp(appId)`,
   `deployments`, `databases`, `domains`, `servers`, `serverMetrics`, `members`,
   `apiTokens`, `activity`, `me`, `viewerTeam`, … (79 in total). Object types are
-  navigable — e.g. `Service.deployments`, `Service.latestDeployment`.
-- **Mutations** mirror every former server action: `createService`, `redeploy`,
-  `stopService`, `createProject`, `createEnvironment`, `upsertEnvironmentEnv`,
+  navigable — e.g. `App.deployments`, `App.latestDeployment`.
+- **Mutations** mirror every former server action: `createApp`, `redeploy`,
+  `stopApp`, `createProject`, `createEnvironment`, `upsertEnvironmentEnv`,
   `addDomain`, `createDatabase`, `createToken`, `updateTeam`, `login`,
   `logout`, … (179 in total).
 
@@ -82,20 +82,20 @@ stack traces are never leaked.
 
 ## Examples
 
-Redeploy a service:
+Redeploy an app:
 
 ```graphql
 mutation {
-  redeploy(serviceId: "prj_123") { id status }
+  redeploy(appId: "prj_123") { id status }
 }
 ```
 
-Create a service environment variable:
+Create an app environment variable:
 
 ```graphql
 mutation {
   upsertEnv(input: {
-    serviceId: "prj_123"
+    appId: "prj_123"
     key: "DATABASE_URL"
     value: "postgres://…"
     targets: [production, preview]
@@ -104,7 +104,7 @@ mutation {
 }
 ```
 
-Share a variable with every service of a Project, in one environment's context
+Share a variable with every app of a Project, in one environment's context
 (no `targets` — the environment IS the scope):
 
 ```graphql
@@ -118,11 +118,11 @@ mutation {
 }
 ```
 
-List services with their latest deployment:
+List apps with their latest deployment:
 
 ```graphql
 query {
-  services {
+  apps {
     name
     status
     latestDeployment { status createdAt commitMessage }
@@ -137,8 +137,8 @@ A few endpoints stay REST because GraphQL is the wrong transport for them
 
 | Endpoint                          | Why                              |
 | --------------------------------- | -------------------------------- |
-| `POST /api/services/[id]/upload`  | multipart archive upload         |
-| `GET /api/services/[id]/logs`     | Server-Sent-Events log stream    |
-| `GET /api/services/[id]/attach`   | interactive console session      |
+| `POST /api/apps/[id]/upload`  | multipart archive upload         |
+| `GET /api/apps/[id]/logs`     | Server-Sent-Events log stream    |
+| `GET /api/apps/[id]/attach`   | interactive console session      |
 | `GET /api/github/callback`        | GitHub App OAuth callback        |
 | `POST /api/github/webhook`        | GitHub webhook receiver          |

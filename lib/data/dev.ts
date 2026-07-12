@@ -3,19 +3,19 @@ import "server-only";
 import { eq } from "drizzle-orm";
 
 import { getServerById } from "./servers";
-import { serviceHasDevSshUsers } from "./dev-ssh";
-import { requireFolderCapabilityForService } from "./folder-access";
+import { appHasDevSshUsers } from "./dev-ssh";
+import { requireFolderCapabilityForApp } from "./folder-access";
 import { getDb } from "../db/client";
-import { serviceDev as serviceDevTable } from "../db/schema/control-plane";
+import { appDev as appDevTable } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import {
-  loadServiceGraph,
+  loadAppGraph,
   loadDeployment,
-} from "./service-graph-load";
-import { devToRow } from "./service-graph-rows";
+} from "./app-graph-load";
+import { devToRow } from "./app-graph-rows";
 import {
   defaultDevConfig,
   devImage,
@@ -40,7 +40,7 @@ import type {
   DevConfig,
   DevStatus,
   DeploySource,
-  Service,
+  App,
   Deployment,
 } from "../types";
 
@@ -52,16 +52,16 @@ export function isDevEligible(source: DeploySource): boolean {
   return SOURCE_BEARING.includes(source);
 }
 
-async function requireService(id: string): Promise<Service> {
-  const p = await loadServiceGraph(id);
-  if (!p) throw new Error("Service not found");
+async function requireApp(id: string): Promise<App> {
+  const p = await loadAppGraph(id);
+  if (!p) throw new Error("App not found");
   return p;
 }
 
-/** Like {@link requireService} but also asserts the project is in `teamId`. */
-async function requireTeamService(id: string, teamId: string): Promise<Service> {
-  const p = await loadServiceGraph(id);
-  if (!p || p.teamId !== teamId) throw new Error("Service not found");
+/** Like {@link requireApp} but also asserts the project is in `teamId`. */
+async function requireTeamApp(id: string, teamId: string): Promise<App> {
+  const p = await loadAppGraph(id);
+  if (!p || p.teamId !== teamId) throw new Error("App not found");
   return p;
 }
 
@@ -81,9 +81,9 @@ export interface DevInfo {
   eligible: boolean;
 }
 
-export async function getDevInfo(serviceId: string): Promise<DevInfo | null> {
+export async function getDevInfo(appId: string): Promise<DevInfo | null> {
   const teamId = await requireActiveTeamId();
-  const p = await loadServiceGraph(serviceId);
+  const p = await loadAppGraph(appId);
   if (!p || p.teamId !== teamId) return null;
   // Row ABSENT = dev never enabled (the tri-state). Fall back to a derived
   // default config for display, but report enabled/status from the real row.
@@ -104,46 +104,46 @@ export async function getDevInfo(serviceId: string): Promise<DevInfo | null> {
 }
 
 /**
- * Set the push-only dev status (mirrors setService in build.ts). No-op when the
- * project has no `service_dev` row yet (dev never enabled — matches the old
+ * Set the push-only dev status (mirrors setApp in build.ts). No-op when the
+ * project has no `app_dev` row yet (dev never enabled — matches the old
  * `!p.dev` guard); enableDev/startDevContainer create the row first.
  */
 export async function setDevStatus(
-  serviceId: string,
+  appId: string,
   status: DevStatus,
 ): Promise<void> {
   await getDb()
-    .update(serviceDevTable)
+    .update(appDevTable)
     .set({
       status,
       ...(status === "starting" ? { latestStartAt: nowIso() } : {}),
     })
-    .where(eq(serviceDevTable.serviceId, serviceId));
+    .where(eq(appDevTable.appId, appId));
 }
 
-/** Upsert the `service_dev` row for a project (the 1-to-1 child). */
-async function writeDevRow(serviceId: string, dev: DevConfig): Promise<void> {
-  const row = devToRow(serviceId, dev);
+/** Upsert the `app_dev` row for a project (the 1-to-1 child). */
+async function writeDevRow(appId: string, dev: DevConfig): Promise<void> {
+  const row = devToRow(appId, dev);
   await getDb()
-    .insert(serviceDevTable)
+    .insert(appDevTable)
     .values(row)
-    .onConflictDoUpdate({ target: serviceDevTable.serviceId, set: row });
+    .onConflictDoUpdate({ target: appDevTable.appId, set: row });
 }
 
 /**
  * Enable dev mode for a source-bearing project. Seeds a default DevConfig
  * (node base image, no dev command, port = build.port, preview on) into the
- * `service_dev` row, materializing it if dev was
- * never enabled. Refuses non-source-bearing services. Does NOT start the
+ * `app_dev` row, materializing it if dev was
+ * never enabled. Refuses non-source-bearing apps. Does NOT start the
  * container — that is startDevContainer().
  */
-export async function enableDev(serviceId: string): Promise<void> {
+export async function enableDev(appId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = await requireTeamService(serviceId, membership.teamId);
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  const p = await requireTeamApp(appId, membership.teamId);
+  await requireFolderCapabilityForApp(appId, "deploy");
   if (!isDevEligible(p.source)) {
-    throw new Error("Dev mode is only available for git or upload services");
+    throw new Error("Dev mode is only available for git or upload apps");
   }
   const base: DevConfig = p.dev
     ? { ...p.dev, enabled: true }
@@ -161,13 +161,13 @@ export async function enableDev(serviceId: string): Promise<void> {
           resolveServerIp(await getServerById(p.serverId) ?? undefined),
         ),
       };
-  await writeDevRow(serviceId, next);
-  await recordActivity("service", "Enabled dev mode", user.name, serviceId);
+  await writeDevRow(appId, next);
+  await recordActivity("app", "Enabled dev mode", user.name, appId);
 }
 
 /** Patch a project's dev config (image/command/port/preview). */
 export async function updateDev(
-  serviceId: string,
+  appId: string,
   patch: Partial<
     Pick<
       DevConfig,
@@ -177,16 +177,16 @@ export async function updateDev(
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const proj = await requireTeamService(serviceId, membership.teamId);
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  const proj = await requireTeamApp(appId, membership.teamId);
+  await requireFolderCapabilityForApp(appId, "deploy");
   // Enforce eligibility at the data layer, not just the UI — updateDevAction is
   // a directly-callable server action.
   if (!isDevEligible(proj.source)) {
-    throw new Error("Dev mode is only available for git or upload services");
+    throw new Error("Dev mode is only available for git or upload apps");
   }
   const base = proj.dev ?? defaultDevConfig(proj);
-  await writeDevRow(serviceId, { ...base, ...patch });
-  await recordActivity("service", "Updated dev settings", user.name, serviceId);
+  await writeDevRow(appId, { ...base, ...patch });
+  await recordActivity("app", "Updated dev settings", user.name, appId);
 }
 
 /**
@@ -194,38 +194,38 @@ export async function updateDev(
  * reversible — re-enabling resumes the edited tree). The gateway and the
  * project's SSH users are untouched.
  */
-export async function disableDev(serviceId: string): Promise<void> {
+export async function disableDev(appId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = await requireTeamService(serviceId, membership.teamId);
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  const p = await requireTeamApp(appId, membership.teamId);
+  await requireFolderCapabilityForApp(appId, "deploy");
   await agentStopDev(p).catch(() => {});
   // Only when a row exists (dev was enabled at some point) — keep the tri-state.
   if (p.dev) {
     await getDb()
-      .update(serviceDevTable)
+      .update(appDevTable)
       .set({ enabled: false, status: "off" })
-      .where(eq(serviceDevTable.serviceId, serviceId));
+      .where(eq(appDevTable.appId, appId));
   }
-  await recordActivity("service", "Disabled dev mode", user.name, serviceId);
+  await recordActivity("app", "Disabled dev mode", user.name, appId);
 }
 
 /** Start (or restart) the dev container. Sets status push-only. */
-export async function startDevContainer(serviceId: string): Promise<void> {
+export async function startDevContainer(appId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = await requireTeamService(serviceId, membership.teamId);
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  const p = await requireTeamApp(appId, membership.teamId);
+  await requireFolderCapabilityForApp(appId, "deploy");
   if (!isDevEligible(p.source)) {
-    throw new Error("Dev mode is only available for git or upload services");
+    throw new Error("Dev mode is only available for git or upload apps");
   }
-  if (!p.dev?.enabled) await enableDev(serviceId);
+  if (!p.dev?.enabled) await enableDev(appId);
   // Heal a legacy enabled row that predates the stored preview host: bake one
   // now so the render (env var + Traefik label) uses a single persisted value
   // instead of re-deriving a different random host on every restart. (A freshly
   // enabled row already got one in enableDev above.)
   else if (p.dev && !p.dev.previewHost) {
-    await writeDevRow(serviceId, {
+    await writeDevRow(appId, {
       ...p.dev,
       previewHost: newDevPreviewHost(
         p.slug,
@@ -233,13 +233,13 @@ export async function startDevContainer(serviceId: string): Promise<void> {
       ),
     });
   }
-  await setDevStatus(serviceId, "starting");
+  await setDevStatus(appId, "starting");
   try {
-    const fresh = await requireService(serviceId);
+    const fresh = await requireApp(appId);
     await agentStartDev(fresh);
-    await setDevStatus(serviceId, "running");
+    await setDevStatus(appId, "running");
   } catch (e) {
-    await setDevStatus(serviceId, "error");
+    await setDevStatus(appId, "error");
     throw e;
   }
   // If this project has SSH users, (re)establish the gateway on its server so a
@@ -247,21 +247,21 @@ export async function startDevContainer(serviceId: string): Promise<void> {
   // so only when users actually exist, never opening port 2222 otherwise). The
   // gateway is a separate singleton that survives dev-container restarts; this is
   // best-effort drift repair, not a hard dependency of the start.
-  if (await serviceHasDevSshUsers(serviceId)) {
+  if (await appHasDevSshUsers(appId)) {
     await ensureGateway(p.serverId).catch(() => {});
   }
-  await recordActivity("service", "Started dev container", user.name, serviceId);
+  await recordActivity("app", "Started dev container", user.name, appId);
 }
 
 /** Stop the dev container (reversible; workspace kept). */
-export async function stopDevContainer(serviceId: string): Promise<void> {
+export async function stopDevContainer(appId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = await requireTeamService(serviceId, membership.teamId);
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  const p = await requireTeamApp(appId, membership.teamId);
+  await requireFolderCapabilityForApp(appId, "deploy");
   await agentStopDev(p);
-  await setDevStatus(serviceId, "stopped");
-  await recordActivity("service", "Stopped dev container", user.name, serviceId);
+  await setDevStatus(appId, "stopped");
+  await recordActivity("app", "Stopped dev container", user.name, appId);
 }
 
 /**
@@ -269,30 +269,30 @@ export async function stopDevContainer(serviceId: string): Promise<void> {
  * source (used after changing the source, or to discard the working tree).
  * Wipes all files — including uncommitted edits — then reseeds and restarts.
  */
-export async function resetDevWorkspace(serviceId: string): Promise<void> {
+export async function resetDevWorkspace(appId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = await requireTeamService(serviceId, membership.teamId);
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  const p = await requireTeamApp(appId, membership.teamId);
+  await requireFolderCapabilityForApp(appId, "deploy");
   if (!isDevEligible(p.source)) {
-    throw new Error("Dev mode is only available for git or upload services");
+    throw new Error("Dev mode is only available for git or upload apps");
   }
   if (!p.dev?.enabled) {
     throw new Error("Enable dev mode before resetting the workspace");
   }
-  await setDevStatus(serviceId, "starting");
+  await setDevStatus(appId, "starting");
   try {
     await agentResetDevWorkspace(p);
-    await setDevStatus(serviceId, "running");
+    await setDevStatus(appId, "running");
   } catch (e) {
-    await setDevStatus(serviceId, "error");
+    await setDevStatus(appId, "error");
     throw e;
   }
   await recordActivity(
-    "service",
+    "app",
     "Reset dev workspace from source",
     user.name,
-    serviceId,
+    appId,
   );
 }
 
@@ -308,14 +308,14 @@ export async function resetDevWorkspace(serviceId: string): Promise<void> {
  * labelled "Deploy from dev workspace" so it's distinguishable in history.
  */
 export async function deployDevWorkspace(
-  serviceId: string,
+  appId: string,
 ): Promise<Deployment> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = await requireTeamService(serviceId, membership.teamId);
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  const p = await requireTeamApp(appId, membership.teamId);
+  await requireFolderCapabilityForApp(appId, "deploy");
   if (!isDevEligible(p.source)) {
-    throw new Error("Dev mode is only available for git or upload services");
+    throw new Error("Dev mode is only available for git or upload apps");
   }
   // A dev-eligible source is never a compose/docker-image stack, so a workspace
   // deploy is always a single-image build. Guard anyway so a future source
@@ -336,7 +336,7 @@ export async function deployDevWorkspace(
     );
   }
 
-  const depId = await startDeployment(serviceId, {
+  const depId = await startDeployment(appId, {
     environment: "production",
     creator: user.name,
     commitMessage: "Deploy from dev workspace",
@@ -350,7 +350,7 @@ export async function deployDevWorkspace(
     "deployment",
     "Deploying from dev workspace",
     user.name,
-    serviceId,
+    appId,
   );
 
   const dep = await loadDeployment(depId);
@@ -366,35 +366,35 @@ export type { VscodeTunnelInfo } from "../deploy/dev";
  * Start the VS Code tunnel inside the project's dev container and return the
  * device-login link the user must authorize. Requires a running dev container.
  */
-export async function startTunnel(serviceId: string): Promise<VscodeTunnelInfo> {
+export async function startTunnel(appId: string): Promise<VscodeTunnelInfo> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = await requireTeamService(serviceId, membership.teamId);
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  const p = await requireTeamApp(appId, membership.teamId);
+  await requireFolderCapabilityForApp(appId, "deploy");
   if (!isDevEligible(p.source)) {
-    throw new Error("Dev mode is only available for git or upload services");
+    throw new Error("Dev mode is only available for git or upload apps");
   }
   if (p.dev?.status !== "running") {
     throw new Error("Start the dev container before opening it in VS Code");
   }
   const info = await agentStartTunnel(p);
-  await recordActivity("service", "Opened dev container in VS Code", user.name, serviceId);
+  await recordActivity("app", "Opened dev container in VS Code", user.name, appId);
   return info;
 }
 
 /** Current tunnel status (device link / connected URL / running). */
-export async function getTunnel(serviceId: string): Promise<VscodeTunnelInfo> {
+export async function getTunnel(appId: string): Promise<VscodeTunnelInfo> {
   const teamId = await requireActiveTeamId();
-  const p = await requireTeamService(serviceId, teamId);
+  const p = await requireTeamApp(appId, teamId);
   return agentGetTunnel(p);
 }
 
 /** Stop the VS Code tunnel (the dev container keeps running). */
-export async function stopTunnel(serviceId: string): Promise<void> {
+export async function stopTunnel(appId: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const p = await requireTeamService(serviceId, membership.teamId);
-  await requireFolderCapabilityForService(serviceId, "deploy");
+  const p = await requireTeamApp(appId, membership.teamId);
+  await requireFolderCapabilityForApp(appId, "deploy");
   await agentStopTunnel(p);
-  await recordActivity("service", "Closed VS Code tunnel", user.name, serviceId);
+  await recordActivity("app", "Closed VS Code tunnel", user.name, appId);
 }

@@ -183,6 +183,27 @@
       "when": 1783600406000,
       "tag": "0025_add_deploy_queue",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783600407000,
+      "tag": "0026_rename_service_to_app_plugin",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1783600408000,
+      "tag": "0027_add_shared_env_vars",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1783600409000,
+      "tag": "0028_drop_legacy_shared_env",
+      "breakpoints": true
     }
   ]
 }

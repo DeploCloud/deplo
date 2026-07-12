@@ -3,7 +3,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import { services as servicesTable } from "../db/schema/control-plane";
+import { apps as appsTable } from "../db/schema/control-plane";
 import { requireActiveTeamId } from "../membership";
 import { listFolders } from "./folders";
 import { listProjects } from "./projects";
@@ -11,31 +11,31 @@ import type { BreadcrumbGraph } from "../breadcrumb-model";
 
 /**
  * The lightweight team snapshot the topbar breadcrumb navigates over: every
- * VISIBLE folder (id/name/parentId), every team service reduced to its grouping
+ * VISIBLE folder (id/name/parentId), every team app reduced to its grouping
  * links (slug/name/folder/project/environment), and the project containers by
  * name. Deliberately minimal — this runs in the dashboard layout on every page,
- * so it skips the deployment/domain preload `listServices` does (the breadcrumb
- * only needs where each service LIVES, not its status).
+ * so it skips the deployment/domain preload `listApps` does (the breadcrumb
+ * only needs where each app LIVES, not its status).
  *
  * Folder visibility is inherited from {@link listFolders} (owner/grant scoped);
  * an ancestor the caller can't see just ends the trail early client-side.
  */
 export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
   const teamId = await requireActiveTeamId();
-  const [folders, projects, serviceRows] = await Promise.all([
+  const [folders, projects, appRows] = await Promise.all([
     listFolders(),
     listProjects(),
     getDb()
       .select({
-        id: servicesTable.id,
-        slug: servicesTable.slug,
-        name: servicesTable.name,
-        folderId: servicesTable.folderId,
-        projectId: servicesTable.projectId,
-        environmentId: servicesTable.environmentId,
+        id: appsTable.id,
+        slug: appsTable.slug,
+        name: appsTable.name,
+        folderId: appsTable.folderId,
+        projectId: appsTable.projectId,
+        environmentId: appsTable.environmentId,
       })
-      .from(servicesTable)
-      .where(eq(servicesTable.teamId, teamId)),
+      .from(appsTable)
+      .where(eq(appsTable.teamId, teamId)),
   ]);
   return {
     folders: folders.map((f) => ({
@@ -43,7 +43,7 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
       name: f.name,
       parentId: f.parentId ?? null,
     })),
-    services: serviceRows.map((s) => ({
+    apps: appRows.map((s) => ({
       id: s.id,
       slug: s.slug,
       name: s.name,

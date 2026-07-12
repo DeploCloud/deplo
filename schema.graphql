@@ -1,15 +1,16 @@
 """A single audit-log event in the active team's timeline."""
 type Activity {
   actor: String
+  appId: ID
   createdAt: String
   id: ID
   message: String
-  serviceId: ID
   teamId: ID
   type: ActivityType
 }
 
 enum ActivityType {
+  app
   backup
   database
   deployment
@@ -18,14 +19,13 @@ enum ActivityType {
   member
   project
   s3
-  service
 }
 
 input AddDevSshUserInput {
+  appId: String!
   name: String!
   password: String
   publicKey: String
-  serviceId: String!
 }
 
 input AddMemberInput {
@@ -72,16 +72,76 @@ type ApiToken {
   prefix: String
 }
 
-"""
-An installable app from the remote app repository (read-only catalog). Distinct from a Template, which ships inside Deplo.
-"""
-type AppListing {
-  description: String
-  id: String
+"""A deployable application owned by a team."""
+type App {
+  autoDeploy: Boolean
+  compose: String
+  createdAt: String
+
+  """All deployments of this app, newest first."""
+  deployments: [Deployment!]
+  dockerImage: String
+  domainCount: Int
+  folderId: ID
+  id: ID
+  latestDeployment: Deployment
   logo: String
   name: String
-  tags: [String!]
-  version: String
+  productionUrl: String
+
+  """The Project container this app belongs to, if any."""
+  projectId: ID
+  serverId: ID
+  slug: String
+  source: DeploySource
+  status: AppStatus
+  teamId: ID
+  updatedAt: String
+
+  """Persistent named volumes (single-container apps only)."""
+  volumes: [Volume!]
+}
+
+"""One app together with all of its env vars."""
+type AppEnvGroup {
+  app: AppEnvGroupApp
+  vars: [EnvVar!]
+}
+
+type AppEnvGroupApp {
+  id: ID
+  name: String
+  slug: String
+}
+
+"""An initial environment variable for a new app."""
+input AppEnvInput {
+  key: String!
+  value: String!
+}
+
+"""A shared variable as seen from one app, with its per-app link state."""
+type AppSharedVar {
+  applied: Boolean
+  id: ID
+  inherited: Boolean
+  key: String
+  linked: Boolean
+  masked: Boolean
+  targets: [EnvTarget!]
+  type: EnvVarType
+
+  """How it reaches this app: teamWide | environment | project | link."""
+  via: String
+}
+
+enum AppStatus {
+  active
+  building
+  error
+  idle
+  queued
+  stopping
 }
 
 type AuthPayload {
@@ -90,6 +150,7 @@ type AuthPayload {
 
 """A scheduled backup of a database or project to an S3 destination."""
 type Backup {
+  appId: ID
   createdAt: String
   databaseId: ID
   databaseName: String
@@ -104,7 +165,6 @@ type Backup {
 
   """Cron expression."""
   schedule: String
-  serviceId: ID
   serviceName: String
   targetKind: BackupTargetKind
   teamId: ID
@@ -114,6 +174,8 @@ type Backup {
 One executed backup — a single dump+upload artifact, and the source for an in-place restore.
 """
 type BackupRun {
+  appId: ID
+
   """The owning schedule, or null for an ad-hoc run."""
   backupId: ID
   databaseId: ID
@@ -124,7 +186,6 @@ type BackupRun {
 
   """S3 object key of the uploaded artifact."""
   objectKey: String
-  serviceId: ID
   sizeBytes: Float
   startedAt: String
   status: BackupRunStatus
@@ -146,12 +207,12 @@ enum BackupStatus {
 }
 
 enum BackupTargetKind {
+  app
   database
-  service
 }
 
 """
-An HTTP Basic Auth credential that gates every domain of a service. The password is write-only and never returned.
+An HTTP Basic Auth credential that gates every domain of an app. The password is write-only and never returned.
 """
 type BasicAuthUser {
   createdAt: String
@@ -193,7 +254,7 @@ enum CertProvider {
 }
 
 """
-Console attach info for a service (no shell probe — fetch the shell label separately via shellLabel).
+Console attach info for an app (no shell probe — fetch the shell label separately via shellLabel).
 """
 type ConsoleInfo {
   containerName: String
@@ -202,7 +263,7 @@ type ConsoleInfo {
   running: Boolean
 }
 
-"""A single attachable container in a service's stack."""
+"""A single attachable container in an app's stack."""
 type ConsoleInstance {
   exposed: Boolean
   image: String
@@ -215,13 +276,31 @@ type ConsoleInstance {
   workdir: String
 }
 
+input CreateAppInput {
+  autoDeploy: Boolean
+  autoDomain: String
+  build: BuildConfigInput
+  compose: String
+  composePort: Int
+  composeService: String
+  dockerImage: String
+  env: [AppEnvInput!]
+  extraDomains: [ExtraDomainInput!]
+  logo: String
+  mounts: [MountInput!]
+  name: String!
+  repo: GitRepoInput
+  serverId: String
+  source: DeploySource!
+}
+
 input CreateBackupInput {
+  appId: String
   databaseId: String
   destinationId: String!
   name: String!
   retentionDays: Int!
   schedule: String!
-  serviceId: String
   targetKind: BackupTargetKind
 }
 
@@ -245,24 +324,6 @@ input CreateS3Input {
   provider: S3Provider!
   region: String
   secretKey: String!
-}
-
-input CreateServiceInput {
-  autoDeploy: Boolean
-  autoDomain: String
-  build: BuildConfigInput
-  compose: String
-  composePort: Int
-  composeService: String
-  dockerImage: String
-  env: [ServiceEnvInput!]
-  extraDomains: [ExtraDomainInput!]
-  logo: String
-  mounts: [MountInput!]
-  name: String!
-  repo: GitRepoInput
-  serverId: String
-  source: DeploySource!
 }
 
 """
@@ -325,8 +386,9 @@ enum DeploySource {
   UPLOAD
 }
 
-"""A single build + release of a service."""
+"""A single build + release of an app."""
 type Deployment {
+  appId: ID
   branch: String
   buildDurationMs: Int
   commitAuthor: String
@@ -339,8 +401,12 @@ type Deployment {
 
   """Build logs for this deployment."""
   logs: [LogLine!]
+
+  """
+  1-based position in the owning server's build queue while this deployment is `queued` (1 = next to build); null once it starts building or finishes.
+  """
+  queuePosition: Int
   readyAt: String
-  serviceId: ID
   status: DeploymentStatus
   url: String
 }
@@ -363,7 +429,7 @@ enum DevImageKind {
   preset
 }
 
-"""A client-safe view of a service's dev config + preview URL."""
+"""A client-safe view of an app's dev config + preview URL."""
 type DevInfo {
   devCommand: String
   eligible: Boolean
@@ -378,7 +444,7 @@ type DevInfo {
   status: DevStatus
 }
 
-"""An SSH credential for a service's dev container."""
+"""An SSH credential for an app's dev container."""
 type DevSshUser {
   createdAt: String
   hasPassword: Boolean
@@ -395,8 +461,10 @@ enum DevStatus {
   stopped
 }
 
-"""A routable hostname attached to a service (Traefik router)."""
+"""A routable hostname attached to an app (Traefik router)."""
 type Domain {
+  appId: ID
+  appSlug: String
   certProvider: CertProvider
   createdAt: String
   entrypoint: DomainEntrypoint
@@ -408,9 +476,7 @@ type Domain {
   primary: Boolean
   redirectTo: String
   service: String
-  serviceId: ID
   serviceName: String
-  serviceSlug: String
   source: String
   ssl: Boolean
   status: DomainStatus
@@ -502,23 +568,10 @@ type Environment {
   updatedAt: String
 }
 
-"""
-An environment-scoped shared variable (ADR-0008) — stored on one of a Project's environments and injected into every service of that Project in that environment's context. No targets axis: the environment IS the scope. Secret values are masked unless revealed.
-"""
-type EnvironmentEnvVar {
-  environmentId: ID
-  id: ID
-  isMasked: Boolean
-  key: String
-  type: EnvVarType
-  updatedAt: String
-  value: String
-}
-
 input ExecConsoleInput {
+  appId: String!
   command: String!
   containerName: String
-  serviceId: String!
 }
 
 """Output of an exec'd console command."""
@@ -545,7 +598,7 @@ type FileContent {
 }
 
 """
-One entry in a service's files directory (the on-disk /data/stacks/files/<slug> tree).
+One entry in an app's files directory (the on-disk /data/stacks/files/<slug> tree).
 """
 type FileEntry {
   kind: String
@@ -556,9 +609,11 @@ type FileEntry {
 }
 
 """
-A team-wide grouping of services on the Overview. Services reference their folder via `Service.folderId`; folders nest via `parentId` (a tree).
+A team-wide grouping of apps on the Overview. Apps reference their folder via `App.folderId`; folders nest via `parentId` (a tree).
 """
 type Folder {
+  appCount: Int
+
   """
   The current caller's effective capabilities on this folder (bounded by their team caps).
   """
@@ -574,7 +629,6 @@ type Folder {
   name: String
   ownerUserId: ID
   parentId: ID
-  serviceCount: Int
   subfolderCount: Int
   teamId: ID
   updatedAt: String
@@ -658,7 +712,7 @@ type GithubRepo {
 }
 
 """
-A global environment variable (team-wide or instance-wide). Secret values are masked unless revealed.
+An instance-wide global environment variable. Secret values are masked unless revealed.
 """
 type GlobalEnvVar {
   id: ID
@@ -685,9 +739,9 @@ type GlobalUser {
 }
 
 """
-An app a team installed from the app repository — a host-managed container, not a service. Status is read live from the container; the URL is the app path under Deplo's own host.
+A plugin a team installed from the plugin repository — a host-managed container, not an app. Status is read live from the container; the URL is the plugin path under Deplo's own host.
 """
-type InstalledApp {
+type InstalledPlugin {
   catalogId: String
   createdAt: String
   id: ID
@@ -740,11 +794,11 @@ input MountInput {
 
 type Mutation {
   """
-  Add a basic-auth user to a service. Applies to all its domains on the next deploy or Reload.
+  Add a basic-auth user to an app. Applies to all its domains on the next deploy or Reload.
   """
-  addBasicAuthUser(password: String!, serviceId: String!, username: String!): BasicAuthUser
+  addBasicAuthUser(appId: String!, password: String!, username: String!): BasicAuthUser
   addDevSshUser(input: AddDevSshUserInput!): DevSshUser
-  addDomain(config: DomainConfigInput, name: String!, serviceId: String!): Domain
+  addDomain(appId: String!, config: DomainConfigInput, name: String!): Domain
 
   """Add an already-registered user to the active team."""
   addExistingMember(input: AddMemberInput!): Member
@@ -754,9 +808,9 @@ type Mutation {
   addServer(input: AddServerInput!): AddServerPayload
 
   """
-  Cancel every in-progress deployment (queued/building) for one service (serviceId given) or across the whole active team (serviceId omitted), optionally narrowed to one owning server (serverId). Terminal deployments are left. Returns how many builds were stopped.
+  Cancel every in-progress deployment (queued/building) for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. Terminal deployments are left. Returns how many builds were stopped.
   """
-  cancelAllDeployments(serverId: ID, serviceId: ID): Int
+  cancelAllDeployments(appId: ID, environment: String, serverId: ID, status: String): Int
   cancelDeployment(id: String!): Boolean
 
   """
@@ -774,6 +828,10 @@ type Mutation {
 
   """First-run setup: create the first account + team. Signs in."""
   completeSetup(email: String!, name: String!, password: String!, teamName: String!, username: String!): AuthPayload
+  createApp(input: CreateAppInput!): App
+
+  """Create a new (empty) folder in the app files tree."""
+  createAppDir(appId: String!, path: String!): FileEntry
 
   """Create a backup schedule. Returns true."""
   createBackup(input: CreateBackupInput!): Boolean
@@ -792,10 +850,6 @@ type Mutation {
   """
   createProject(color: String, name: String!): Project
   createS3(input: CreateS3Input!): S3Destination
-  createService(input: CreateServiceInput!): Service
-
-  """Create a new (empty) folder in the service files tree."""
-  createServiceDir(path: String!, serviceId: String!): FileEntry
 
   """Create a new team; the viewer becomes its owner and it is made active."""
   createTeam(name: String!): Team
@@ -806,9 +860,20 @@ type Mutation {
   createToken(name: String!): CreateTokenPayload
 
   """
-  Delete every finished deployment for one service (serviceId given) or across the whole active team (serviceId omitted), optionally narrowed to one owning server (serverId). In-progress deployments are left. Returns how many were deleted.
+  Delete every finished deployment for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. In-progress deployments are left. Returns how many were deleted.
   """
-  deleteAllDeployments(serverId: ID, serviceId: ID): Int
+  deleteAllDeployments(appId: ID, environment: String, serverId: ID, status: String): Int
+
+  """Delete the app and tear down its stack. Returns true."""
+  deleteApp(id: String!): Boolean
+
+  """Delete a file or folder (recursively). Returns true."""
+  deleteAppFile(appId: String!, path: String!): Boolean
+
+  """
+  Bulk-delete several apps (bounded-concurrency teardown + one write). Returns how many were deleted.
+  """
+  deleteApps(ids: [ID!]!): Int
 
   """Delete a backup schedule. Returns true."""
   deleteBackup(id: String!): Boolean
@@ -834,17 +899,14 @@ type Mutation {
   """
   deleteEnvironment(id: ID!): Boolean
 
-  """Delete an environment-scoped shared variable. Returns true."""
-  deleteEnvironmentEnv(id: String!): Boolean
-
-  """Delete a folder; its services fall back to the top level."""
+  """Delete a folder; its apps fall back to the top level."""
   deleteFolder(id: ID!): Boolean
 
   """Delete an instance-wide variable. Returns true."""
   deleteInstanceEnv(id: String!): Boolean
 
   """
-  Delete a Project container; its folders and services fall back to the team top level (not deleted).
+  Delete a Project container; its folders and apps fall back to the team top level (not deleted).
   """
   deleteProject(id: ID!): Boolean
 
@@ -854,42 +916,28 @@ type Mutation {
   """Delete the S3 destination and its backups. Returns true."""
   deleteS3(id: String!): Boolean
 
-  """Delete the service and tear down its stack. Returns true."""
-  deleteService(id: String!): Boolean
-
-  """Delete a file or folder (recursively). Returns true."""
-  deleteServiceFile(path: String!, serviceId: String!): Boolean
+  """Delete a shared variable. Returns true."""
+  deleteSharedVar(id: String!): Boolean
 
   """
-  Bulk-delete several services (bounded-concurrency teardown + one write). Returns how many were deleted.
-  """
-  deleteServices(ids: [ID!]!): Int
-
-  """Delete a shared env group. Returns true."""
-  deleteSharedEnvGroup(id: String!): Boolean
-
-  """
-  Permanently delete a team. teamId must be the ACTIVE team (the delete fails closed if the active team changed since the page was loaded). Removes every team-scoped record; the service/database stack teardown continues in the background. Founder or instance admin only; the caller's last team can't be deleted. Returns true.
+  Permanently delete a team. teamId must be the ACTIVE team (the delete fails closed if the active team changed since the page was loaded). Removes every team-scoped record; the app/database stack teardown continues in the background. Founder or instance admin only; the caller's last team can't be deleted. Returns true.
   """
   deleteTeam(teamId: String!): Boolean
-
-  """Delete a team-global variable. Returns true."""
-  deleteTeamGlobalEnv(id: String!): Boolean
 
   """
   Deploy the current dev workspace files to production. Returns the deployment id.
   """
-  deployDevWorkspace(serviceId: String!): String
+  deployDevWorkspace(appId: String!): String
 
   """
-  Auto-detect a favicon (SVG/PNG) from the service's GitHub repo or uploaded files and set it as the logo. Errors if none is found.
+  Auto-detect a favicon (SVG/PNG) from the app's GitHub repo or uploaded files and set it as the logo. Errors if none is found.
   """
-  detectServiceLogo(id: String!): Service
-  disableDev(serviceId: String!): DevInfo
-  enableDev(serviceId: String!): DevInfo
+  detectAppLogo(id: String!): App
+  disableDev(appId: String!): DevInfo
+  enableDev(appId: String!): DevInfo
 
   """
-  Run a command in the service's live container (docker exec). Gated on the deploy capability — this is arbitrary code execution.
+  Run a command in the app's live container (docker exec). Gated on the deploy capability — this is arbitrary code execution.
   """
   execConsole(input: ExecConsoleInput!): ExecResult
 
@@ -899,12 +947,12 @@ type Mutation {
   generateAvailableDbPort(serverId: ID): Int
 
   """Bulk-import a .env-style blob; returns the number of vars imported."""
-  importEnv(blob: String!, serviceId: String!, targets: [EnvTarget!]!): Int
+  importEnv(appId: String!, blob: String!, targets: [EnvTarget!]!): Int
 
   """
-  Install an app from the catalog (one per app per team; recreates the container in place if already installed). Mints no token — the caller supplies their own from Settings → API Tokens.
+  Install a plugin from the catalog (one per plugin per team; recreates the container in place if already installed). Mints no token — the caller supplies their own from Settings → API Tokens.
   """
-  installApp(catalogId: String!): InstalledApp
+  installPlugin(catalogId: String!): InstalledPlugin
 
   """Sign in with email + password. Sets the session cookie."""
   login(email: String!, password: String!): AuthPayload
@@ -918,34 +966,34 @@ type Mutation {
   mintRegistrationLink(input: MintRegistrationLinkInput!): String
 
   """
+  Move an app into a specific environment of a Project (ADR-0009: each environment holds its own apps). The app's project follows the environment.
+  """
+  moveAppToEnvironment(appId: ID!, environmentId: ID!): Boolean
+
+  """
+  Move an app into a folder, or back to the top level when folderId is omitted/null.
+  """
+  moveAppToFolder(appId: ID!, folderId: ID): Boolean
+
+  """
+  Move an app into a Project (landing in its default environment), or back to the top level when projectId is omitted/null.
+  """
+  moveAppToProject(appId: ID!, projectId: ID): Boolean
+
+  """
+  Bulk-move several apps into a folder (or to the top level when folderId is omitted/null) in one write. Returns how many moved.
+  """
+  moveAppsToFolder(appIds: [ID!]!, folderId: ID): Int
+
+  """
   Move a folder under a new parent folder, or to the top level when parentId is omitted/null. Rejects moving a folder into itself or a descendant.
   """
   moveFolder(id: ID!, parentId: ID): Boolean
 
-  """
-  Move a service into a specific environment of a Project (ADR-0009: each environment holds its own services). The service's project follows the environment.
-  """
-  moveServiceToEnvironment(environmentId: ID!, serviceId: ID!): Boolean
-
-  """
-  Move a service into a folder, or back to the top level when folderId is omitted/null.
-  """
-  moveServiceToFolder(folderId: ID, serviceId: ID!): Boolean
-
-  """
-  Move a service into a Project (landing in its default environment), or back to the top level when projectId is omitted/null.
-  """
-  moveServiceToProject(projectId: ID, serviceId: ID!): Boolean
-
-  """
-  Bulk-move several services into a folder (or to the top level when folderId is omitted/null) in one write. Returns how many moved.
-  """
-  moveServicesToFolder(folderId: ID, serviceIds: [ID!]!): Int
-
   """Promote a preview deployment to production."""
   promoteDeployment(id: String!): Boolean
-  rebuildService(id: String!): Service
-  redeploy(serviceId: String!): Deployment
+  rebuildApp(id: String!): App
+  redeploy(appId: String!): Deployment
 
   """
   Create a new account + team via a single-use registration link. Signs in.
@@ -958,9 +1006,9 @@ type Mutation {
   reissueServerBootstrap(id: String!): AddServerPayload
 
   """
-  Re-apply the service's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.
+  Re-apply the app's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.
   """
-  reloadService(id: String!): String
+  reloadApp(id: String!): String
 
   """Remove a basic-auth user. Returns true."""
   removeBasicAuthUser(id: String!): Boolean
@@ -986,6 +1034,10 @@ type Mutation {
   Disconnect and remove a remote server (revokes trust, best-effort teardown). Returns a warning string if the agent was unreachable, else null.
   """
   removeServer(id: String!): String
+  renameApp(id: String!, name: String!): App
+
+  """Rename or move a file/folder within the app files tree."""
+  renameAppFile(appId: String!, newPath: String!, path: String!): FileEntry
 
   """Rename an environment."""
   renameEnvironment(id: ID!, name: String!): Boolean
@@ -995,13 +1047,12 @@ type Mutation {
 
   """Rename a Project container."""
   renameProject(id: ID!, name: String!): Boolean
-  renameService(id: String!, name: String!): Service
 
-  """Rename or move a file/folder within the service files tree."""
-  renameServiceFile(newPath: String!, path: String!, serviceId: String!): FileEntry
+  """Render the docker-compose stack an app would deploy."""
+  renderComposeStack(appId: String!): String
 
-  """Render the docker-compose stack a service would deploy."""
-  renderComposeStack(serviceId: String!): String
+  """Set the team-wide display order of apps in Overview."""
+  reorderApps(appIds: [ID!]!): Boolean
 
   """Set the team-wide display order of folders in Overview."""
   reorderFolders(folderIds: [ID!]!): Boolean
@@ -1009,11 +1060,8 @@ type Mutation {
   """Set the team-wide display order of Project containers."""
   reorderProjects(projectIds: [ID!]!): Boolean
 
-  """Set the team-wide display order of services in Overview."""
-  reorderServices(serviceIds: [ID!]!): Boolean
-
   """DESTRUCTIVE: replace the workspace with a fresh copy of the source."""
-  resetDevWorkspace(serviceId: String!): DevInfo
+  resetDevWorkspace(appId: String!): DevInfo
 
   """
   Restore a backup run in place (overwrites the live target). Returns true.
@@ -1026,19 +1074,11 @@ type Mutation {
   """Reveal a single secret's plaintext value."""
   revealEnv(id: String!): String
 
-  """Reveal an environment-scoped secret's plaintext value."""
-  revealEnvironmentEnv(id: String!): String
-
   """Reveal an instance-wide secret's plaintext value."""
   revealInstanceEnv(id: String!): String
 
-  """
-  Reveal the decrypted `.env` text for one shared group (prefills edits).
-  """
-  revealSharedEnvBlob(id: String!): String
-
-  """Reveal a team-global secret's plaintext value."""
-  revealTeamGlobalEnv(id: String!): String
+  """Reveal a shared variable's decrypted value (prefills edits)."""
+  revealSharedVar(id: String!): String
 
   """Revoke a pending registration link. Returns true."""
   revokeRegistrationLink(id: String!): Boolean
@@ -1046,26 +1086,35 @@ type Mutation {
   """Revoke (delete) an API token. Returns true."""
   revokeToken(id: String!): Boolean
 
+  """Run an ad-hoc backup of an app now (no owning schedule). Returns true."""
+  runAppBackup(appId: String!, destinationId: String!): Boolean
+
   """Run a backup schedule manually now. Returns true."""
   runBackup(id: String!): Boolean
-
-  """
-  Run an ad-hoc backup of a service now (no owning schedule). Returns true.
-  """
-  runServiceBackup(destinationId: String!, serviceId: String!): Boolean
 
   """Replace the active team's notification settings."""
   saveNotificationSettings(input: JSON!): NotificationSettings
 
-  """Create or update a shared env group; returns the saved group."""
-  saveSharedEnvGroup(input: SaveSharedEnvGroupInput!): SharedEnvGroup
+  """Create or update a shared variable; returns the saved entity."""
+  saveSharedVar(input: SaveSharedVarInput!): SharedVar
+  setAppAutoDeploy(id: String!, value: Boolean!): App
+
+  """
+  Replace an app's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.
+  """
+  setAppEnv(appId: String!, defaultTargets: [EnvTarget!]!, entries: [EnvEntryInput!]!): Int
+
+  """
+  Replace a single-container app's volumes (named, app-files, and host bind mounts).
+  """
+  setAppVolumes(id: String!, volumes: [VolumeInput!]!): App
   setDatabaseRunning(id: String!, running: Boolean!): Database
 
   """Make an environment the project's default (unsets the previous one)."""
   setDefaultEnvironment(id: ID!): Boolean
 
   """
-  Set the git branch an environment builds from (empty ⇒ the service's default branch).
+  Set the git branch an environment builds from (empty ⇒ the app's default branch).
   """
   setEnvironmentBranch(branch: String!, id: ID!): Boolean
 
@@ -1079,7 +1128,7 @@ type Mutation {
   """
   setFolderGrant(capabilities: [String!]!, folderId: ID!, userId: ID!): [FolderGrant!]
 
-  """Make this domain its service's primary (canonical) host. Returns true."""
+  """Make this domain its app's primary (canonical) host. Returns true."""
   setPrimaryDomain(id: String!): Boolean
 
   """
@@ -1093,44 +1142,33 @@ type Mutation {
   setServerDeployConcurrency(concurrency: Int!, id: String!): Server
 
   """
-  Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has services or databases on the server would lose access.
+  Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has apps or databases on the server would lose access.
   """
   setServerTeams(input: SetServerTeamsInput!): Server
-  setServiceAutoDeploy(id: String!, value: Boolean!): Service
 
-  """
-  Replace a service's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.
-  """
-  setServiceEnv(defaultTargets: [EnvTarget!]!, entries: [EnvEntryInput!]!, serviceId: String!): Int
-
-  """
-  Replace a single-container service's volumes (named, service-files, and host bind mounts).
-  """
-  setServiceVolumes(id: String!, volumes: [VolumeInput!]!): Service
-
-  """Attach or detach a shared group to one project. Returns true."""
-  setSharedEnvGroupAttachment(attached: Boolean!, groupId: String!, serviceId: String!): Boolean
-
-  """Start a stopped app's container. Returns true."""
-  startApp(id: String!): Boolean
-  startDev(serviceId: String!): DevInfo
+  """Link or unlink a shared variable to one app. Returns true."""
+  setSharedVarAppLink(appId: String!, linked: Boolean!, varId: String!): Boolean
+  startApp(id: String!): App
+  startDev(appId: String!): DevInfo
 
   """
   Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.
   """
   startGithubConnect(org: String): GithubConnectStart
-  startService(id: String!): Service
+
+  """Start a stopped plugin's container. Returns true."""
+  startPlugin(id: String!): Boolean
 
   """Start the VS Code tunnel and return the device-login link."""
-  startTunnel(serviceId: String!): VscodeTunnelInfo
+  startTunnel(appId: String!): VscodeTunnelInfo
+  stopApp(id: String!): App
+  stopDev(appId: String!): DevInfo
 
-  """Stop a running app's container. Returns true."""
-  stopApp(id: String!): Boolean
-  stopDev(serviceId: String!): DevInfo
-  stopService(id: String!): Service
+  """Stop a running plugin's container. Returns true."""
+  stopPlugin(id: String!): Boolean
 
   """Stop the VS Code tunnel (dev container keeps running). Returns true."""
-  stopTunnel(serviceId: String!): Boolean
+  stopTunnel(appId: String!): Boolean
 
   """Switch the active team (sets a cookie server-side). Returns true."""
   switchTeam(teamId: String!): Boolean
@@ -1145,9 +1183,12 @@ type Mutation {
   toggleBackup(enabled: Boolean!, id: String!): Boolean
 
   """
-  Uninstall an app: destroy its container + Traefik router and drop the row. Revokes nothing (the app held no token). Returns true.
+  Uninstall a plugin: destroy its container + Traefik router and drop the row. Revokes nothing (the plugin held no token). Returns true.
   """
-  uninstallApp(id: String!): Boolean
+  uninstallPlugin(id: String!): Boolean
+  updateAppBuild(build: BuildConfigInput!, id: String!): App
+  updateAppLogo(id: String!, logo: String): App
+  updateAppSource(id: String!, input: UpdateSourceInput!): App
 
   """
   Edit a backup schedule's name, destination, cron and retention. The target it backs up is fixed at creation and cannot be changed. Returns true.
@@ -1161,7 +1202,7 @@ type Mutation {
   Edit a database's public exposure (publish/unpublish + host port) and, optionally, the server it runs on. An in-place edit re-renders the compose and reroutes the container on its current host (data volume preserved). A server change recreates the container on the new host, COPIES its data volume there host-to-host (relayed through the control plane, not via S3) so the data follows the move, then tears down the old host's stack. The copy runs with both stacks stopped and rolls back on failure (the DB stays put). The connection string is re-derived. Everything else is create-only. The publish-ports grant is enforced in the data layer when exposure is on.
   """
   updateDatabase(id: String!, input: UpdateDatabaseInput!): Database
-  updateDev(patch: UpdateDevInput!, serviceId: String!): DevInfo
+  updateDev(appId: String!, patch: UpdateDevInput!): DevInfo
 
   """
   Apply a full edit to a domain and return the updated domain (reloaded).
@@ -1183,38 +1224,27 @@ type Mutation {
   Update this server's agent binary in place to the latest released version WITHOUT reissuing its certificates — the agent self-updates over its existing pinned-mTLS channel and re-execs keeping the same on-disk trust materials, so the server stays online with the same identity. Returns the version the agent is now running. Errors clearly when the server is unreachable/unprovisioned, or — until the agent ships the self-update RPC — when its agent is too old to update itself remotely (re-run the installer to upgrade it for now).
   """
   updateServerAgent(id: String!): String
-  updateServiceBuild(build: BuildConfigInput!, id: String!): Service
-  updateServiceLogo(id: String!, logo: String): Service
-  updateServiceSource(id: String!, input: UpdateSourceInput!): Service
   updateTeam(input: UpdateTeamInput!): Team
 
   """Edit a user's instance-admin flag, suspended state, and password."""
   updateUserAdmin(input: UpdateUserAdminInput!): UserDetail
 
   """Upload a file from a base64 body (used for binary files)."""
-  uploadServiceFile(base64: String!, path: String!, serviceId: String!): FileEntry
+  uploadAppFile(appId: String!, base64: String!, path: String!): FileEntry
 
   """Create or update an env var, then return the stored entity."""
   upsertEnv(input: UpsertEnvInput!): EnvVar
-
-  """
-  Create or update an environment-scoped shared variable; returns the entity.
-  """
-  upsertEnvironmentEnv(input: UpsertEnvironmentEnvInput!): EnvironmentEnvVar
 
   """
   Create or update an instance-wide variable (every team). Instance admin only.
   """
   upsertInstanceEnv(input: UpsertGlobalEnvInput!): GlobalEnvVar
 
-  """Create or update a team-global variable; returns the entity."""
-  upsertTeamGlobalEnv(input: UpsertGlobalEnvInput!): GlobalEnvVar
-
   """Re-check the domain's DNS and (re)issue its certificate."""
   verifyDomain(id: String!): Domain
 
-  """Create or overwrite a text file in the service files tree."""
-  writeServiceFile(content: String!, path: String!, serviceId: String!): FileEntry
+  """Create or overwrite a text file in the app files tree."""
+  writeAppFile(appId: String!, content: String!, path: String!): FileEntry
 }
 
 """Per-team notification channels + per-event delivery toggles."""
@@ -1231,9 +1261,22 @@ type NotificationSettings {
 }
 
 """
-A top-level, team-scoped CONTAINER (ADR-0008): folder-like, but it owns Environments and holds folders/services via their `projectId`. NOT the deployable app — that is a `Service`. A Project never nests in a Project.
+An installable plugin from the remote plugin repository (read-only catalog). Distinct from a Template, which ships inside Deplo.
+"""
+type PluginListing {
+  description: String
+  id: String
+  logo: String
+  name: String
+  tags: [String!]
+  version: String
+}
+
+"""
+A top-level, team-scoped CONTAINER (ADR-0008): folder-like, but it owns Environments and holds folders/apps via their `projectId`. NOT the deployable app — that is an `App`. A Project never nests in a Project.
 """
 type Project {
+  appCount: Int
   color: String
   createdAt: String
   environmentCount: Int
@@ -1242,7 +1285,6 @@ type Project {
   id: ID
   name: String
   ownerUserId: ID
-  serviceCount: Int
   slug: String
   teamId: ID
   updatedAt: String
@@ -1252,11 +1294,11 @@ type Query {
   """Recent activity in the active team, newest first."""
   activity(limit: Int): [Activity!]
 
+  """Every app's env vars in the active team, grouped by project."""
+  allAppEnv: [AppEnvGroup!]
+
   """Fresh live metrics snapshots for every server."""
   allServerMetrics: [ServerMetrics!]
-
-  """Every service's env vars in the active team, grouped by project."""
-  allServiceEnv: [ServiceEnvGroup!]
 
   """
   Every team in the instance, for the instance-admin registration-link team picker.
@@ -1273,9 +1315,21 @@ type Query {
 
   """All API tokens in the active team."""
   apiTokens: [ApiToken!]
+  app(slug: String!): App
 
-  """The remote catalog of installable apps."""
-  appCatalog: [AppListing!]
+  """Read a single project file's text body."""
+  appFile(appId: String!, path: String!): FileContent
+
+  """
+  List the immediate children of a directory in the app files tree (the root when path is omitted), directories first.
+  """
+  appFiles(appId: String!, path: String): [FileEntry!]
+
+  """Whether the app has an on-disk files directory (drives the Files tab)."""
+  appFilesExist(appId: String!): Boolean
+
+  """All apps in the active team, newest first."""
+  apps: [App!]
 
   """
   Every team in the instance, for the server team-access picker. Requires manage_infra.
@@ -1283,48 +1337,43 @@ type Query {
   assignableTeams: [Team!]
 
   """
-  Recorded backup runs for one target (a service OR a database), newest first. Pass exactly one of serviceId / databaseId.
+  Recorded backup runs for one target (an app OR a database), newest first. Pass exactly one of appId / databaseId.
   """
-  backupRuns(databaseId: String, serviceId: String): [BackupRun!]
+  backupRuns(appId: String, databaseId: String): [BackupRun!]
 
   """All backup schedules in the active team, newest first."""
   backups: [Backup!]
 
   """
-  Basic-auth users of a service, alphabetical by username (requires manage_domains).
+  Basic-auth users of an app, alphabetical by username (requires manage_domains).
   """
-  basicAuthUsers(serviceId: String!): [BasicAuthUser!]
+  basicAuthUsers(appId: String!): [BasicAuthUser!]
 
-  """Attachable instances + default target for a service's console."""
-  consoleInfo(serviceId: String!): ConsoleInfo
+  """Attachable instances + default target for an app's console."""
+  consoleInfo(appId: String!): ConsoleInfo
   database(id: String!): Database
 
   """All databases in the active team, newest first."""
   databases: [Database!]
   deployment(id: String!): Deployment
-  deployments(environment: DeploymentEnvironment, serviceId: String, status: DeploymentStatus): [Deployment!]
+  deployments(appId: String, environment: DeploymentEnvironment, status: DeploymentStatus): [Deployment!]
 
   """Whether dev mode is available for a given deploy source."""
   devEligible(source: DeploySource!): Boolean
 
-  """Dev config + computed preview URL for a service."""
-  devInfo(serviceId: String!): DevInfo
+  """Dev config + computed preview URL for an app."""
+  devInfo(appId: String!): DevInfo
 
-  """SSH credentials for a service's dev container."""
-  devSshUsers(serviceId: String!): [DevSshUser!]
+  """SSH credentials for an app's dev container."""
+  devSshUsers(appId: String!): [DevSshUser!]
 
   """
   Domains in the active team, primary first. Optionally filtered to one project.
   """
-  domains(serviceId: String): [Domain!]
+  domains(appId: String): [Domain!]
 
   """Env vars of a single project (requires manage_env)."""
-  env(serviceId: String!): [EnvVar!]
-
-  """
-  One environment's shared variables — injected into every service of the owning Project, in that environment's context.
-  """
-  environmentEnv(environmentId: ID!): [EnvironmentEnvVar!]
+  env(appId: String!): [EnvVar!]
 
   """The environments of a Project container, in display order."""
   environments(projectId: ID!): [Environment!]
@@ -1359,16 +1408,16 @@ type Query {
   """
   grantableFolderCapabilities(folderId: ID!): [String!]
 
-  """Apps the active team has installed, newest first, with live status."""
-  installedApps: [InstalledApp!]
+  """Plugins the active team has installed, newest first, with live status."""
+  installedPlugins: [InstalledPlugin!]
 
   """
-  Instance-wide env vars — injected into every service of every team. Instance admin only.
+  Instance-wide env vars — injected into every app of every team. Instance admin only.
   """
   instanceEnv: [GlobalEnvVar!]
 
   """Lighter instance list for the logs viewer."""
-  logsInfo(serviceId: String!): LogsInfo
+  logsInfo(appId: String!): LogsInfo
 
   """
   The authenticated viewer, or null when unauthenticated. Works with a session cookie or an API token.
@@ -1383,6 +1432,9 @@ type Query {
 
   """The active team's notification settings (defaults if unset)."""
   notificationSettings: NotificationSettings
+
+  """The remote catalog of installable plugins."""
+  pluginCatalog: [PluginListing!]
 
   """
   The first server available, or null when none has been added/provisioned yet.
@@ -1413,40 +1465,22 @@ type Query {
 
   """All servers, by creation order."""
   servers: [Server!]
-  service(slug: String!): Service
 
-  """Read a single project file's text body."""
-  serviceFile(path: String!, serviceId: String!): FileContent
-
-  """
-  List the immediate children of a directory in the service files tree (the root when path is omitted), directories first.
-  """
-  serviceFiles(path: String, serviceId: String!): [FileEntry!]
+  """All shared variables in the active team, A→Z."""
+  sharedVars: [SharedVar!]
 
   """
-  Whether the service has an on-disk files directory (drives the Files tab).
+  Shared variables relevant to one app, with per-app link + applied state.
   """
-  serviceFilesExist(serviceId: String!): Boolean
-
-  """All services in the active team, newest first."""
-  services: [Service!]
-
-  """All shared env groups in the active team, A→Z."""
-  sharedEnvGroups: [SharedEnvGroup!]
-
-  """Shared env groups annotated with whether they attach to one project."""
-  sharedEnvGroupsForService(serviceId: String!): [ServiceSharedEnvGroup!]
+  sharedVarsForApp(appId: String!): [AppSharedVar!]
 
   """
   The default (or chosen) container's shell label, e.g. "/bin/sh" or "raw exec (no shell)".
   """
   shellLabel(input: ShellLabelInput!): String
 
-  """Team-global env vars — injected into every service in the active team."""
-  teamGlobalEnv: [GlobalEnvVar!]
-
-  """Current VS Code tunnel status for a service."""
-  tunnel(serviceId: String!): VscodeTunnelInfo
+  """Current VS Code tunnel status for an app."""
+  tunnel(appId: String!): VscodeTunnelInfo
 
   """
   Check the upstream repository for a newer Deplo release; cached for an hour.
@@ -1545,15 +1579,17 @@ enum S3Status {
 }
 
 """
-Create (omit id) or update (provide id) a shared env group. The blob is raw `.env` text; secret-looking keys are masked automatically.
+Create (omit id) or update (provide id) one shared variable. At least one sharing mode is required: teamWide, ≥1 environment, or ≥1 project.
 """
-input SaveSharedEnvGroupInput {
-  blob: String!
-  description: String!
+input SaveSharedVarInput {
+  environmentIds: [ID!]!
   id: String
-  name: String!
-  serviceIds: [ID!]!
+  key: String!
+  projectIds: [ID!]!
   targets: [EnvTarget!]!
+  teamWide: Boolean!
+  type: EnvVarType!
+  value: String!
 }
 
 """A connected host running deployments (reached via its agent)."""
@@ -1578,7 +1614,7 @@ type Server {
   createdAt: String
 
   """
-  How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-service deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin).
+  How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-app deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin).
   """
   deployConcurrency: Int
   diskGb: Int
@@ -1650,73 +1686,6 @@ enum ServerType {
   remote
 }
 
-"""A deployable application owned by a team."""
-type Service {
-  autoDeploy: Boolean
-  compose: String
-  createdAt: String
-
-  """All deployments of this service, newest first."""
-  deployments: [Deployment!]
-  dockerImage: String
-  domainCount: Int
-  folderId: ID
-  id: ID
-  latestDeployment: Deployment
-  logo: String
-  name: String
-  productionUrl: String
-
-  """The Project container this service belongs to, if any."""
-  projectId: ID
-  serverId: ID
-  slug: String
-  source: DeploySource
-  status: ServiceStatus
-  teamId: ID
-  updatedAt: String
-
-  """Persistent named volumes (single-container services only)."""
-  volumes: [Volume!]
-}
-
-"""One service together with all of its env vars."""
-type ServiceEnvGroup {
-  service: ServiceEnvGroupService
-  vars: [EnvVar!]
-}
-
-type ServiceEnvGroupService {
-  id: ID
-  name: String
-  slug: String
-}
-
-"""An initial environment variable for a new service."""
-input ServiceEnvInput {
-  key: String!
-  value: String!
-}
-
-"""A shared env group as seen from one project, with attachment state."""
-type ServiceSharedEnvGroup {
-  attached: Boolean
-  description: String
-  id: ID
-  keys: [String!]
-  name: String
-  targets: [EnvTarget!]
-}
-
-enum ServiceStatus {
-  active
-  building
-  error
-  idle
-  queued
-  stopping
-}
-
 """
 Set which teams may target a server. allTeams: true opens it to every team (clearing specific grants); false restricts it to teamIds.
 """
@@ -1726,49 +1695,59 @@ input SetServerTeamsInput {
   teamIds: [String!]
 }
 
-"""A reusable group of environment variables shared across services."""
-type SharedEnvGroup {
-  description: String
+"""
+A shared environment variable (ADR-0010). Secret values are masked. It reaches apps via team-wide / environment / project modes plus per-app links.
+"""
+type SharedVar {
+  appIds: [ID!]
+  apps: [SharedVarApp!]
+  environmentIds: [ID!]
+  environments: [SharedVarEnvironment!]
   id: ID
-  name: String
-  serviceIds: [ID!]
+  key: String
+  masked: Boolean
+  projectIds: [ID!]
+  projects: [SharedVarProject!]
 
-  """Services this group is attached to."""
-  services: [SharedEnvGroupService!]
-
-  """Deploy environments this group applies to."""
+  """Deploy runtimes this variable applies to."""
   targets: [EnvTarget!]
+  teamWide: Boolean
+  type: EnvVarType
   updatedAt: String
-  variables: [SharedEnvVar!]
+  value: String
 }
 
-type SharedEnvGroupService {
+type SharedVarApp {
   id: ID
   name: String
   slug: String
 }
 
-"""A single shared environment variable; secret values are masked."""
-type SharedEnvVar {
-  key: String
-  masked: Boolean
-  type: String
-  value: String
+type SharedVarEnvironment {
+  id: ID
+  name: String
+  projectName: String
+}
+
+type SharedVarProject {
+  id: ID
+  name: String
+  slug: String
 }
 
 input ShellLabelInput {
+  appId: String!
   containerName: String
-  serviceId: String!
 }
 
 type Subscription {
   """
-  Emits the service whenever its status (power / deployment) changes. Fires once immediately with the current snapshot, then on every change.
+  Emits the app whenever its status (power / deployment) changes. Fires once immediately with the current snapshot, then on every change.
   """
-  serviceStatus(slug: String!): Service
+  appStatus(slug: String!): App
 }
 
-"""A team that owns services, infra and members."""
+"""A team that owns apps, infra and members."""
 type Team {
   createdAt: String
   id: ID
@@ -1864,16 +1843,9 @@ input UpdateUserAdminInput {
 }
 
 input UpsertEnvInput {
+  appId: String!
   key: String!
-  serviceId: String!
   targets: [EnvTarget!]!
-  type: EnvVarType!
-  value: String!
-}
-
-input UpsertEnvironmentEnvInput {
-  environmentId: ID!
-  key: String!
   type: EnvVarType!
   value: String!
 }
@@ -1937,7 +1909,7 @@ type Viewer {
 }
 
 """
-A persistent volume mounted into a single-container project — a docker named volume, a service-files bind, or a host bind mount.
+A persistent volume mounted into a single-container project — a docker named volume, an app-files bind, or a host bind mount.
 """
 type Volume {
   hostPath: String
@@ -1960,7 +1932,7 @@ input VolumeInput {
   type: String
 }
 
-"""VS Code Remote Tunnel status for a service's dev container."""
+"""VS Code Remote Tunnel status for an app's dev container."""
 type VscodeTunnelInfo {
   connected: Boolean
   log: String

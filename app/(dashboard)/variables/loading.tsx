@@ -13,32 +13,29 @@ export default function Loading() {
         </div>
       </div>
 
-      {/* UnderlineTabsList: Service / Environments / Shared / Team globals (admin-only tab omitted) */}
+      {/* UnderlineTabsList: App / Shared (admin-only "All teams" tab omitted) */}
       <div className="flex h-12 items-center gap-1 border-b border-border">
         <div className="px-3">
           <Skeleton className="h-4 w-14" />
         </div>
         <div className="px-3">
-          <Skeleton className="h-4 w-24" />
-        </div>
-        <div className="px-3">
-          <Skeleton className="h-4 w-14" />
-        </div>
-        <div className="px-3">
-          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-16" />
         </div>
       </div>
 
-      {/* Service tab body: per-service cards, each with a read-only env table */}
+      {/* App tab body: per-app cards, each with an editable env table */}
       <div className="space-y-4">
         {Array.from({ length: 2 }).map((_, card) => (
           <Card key={card}>
             <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
               <Skeleton className="h-5 w-40" />
-              <Skeleton className="h-8 w-24 rounded-md" />
+              <div className="flex gap-2">
+                <Skeleton className="h-8 w-16 rounded-md" />
+                <Skeleton className="h-8 w-16 rounded-md" />
+              </div>
             </CardHeader>
             <CardContent>
-              <EnvTableSkeleton rows={3} actions={false} className="rounded-lg" />
+              <EnvTableSkeleton rows={3} className="rounded-lg" />
             </CardContent>
           </Card>
         ))}

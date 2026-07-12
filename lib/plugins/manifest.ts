@@ -32,7 +32,7 @@ function randomToken(bytes: number): string {
 /* ------------------------------------------------------------------ */
 
 /** A single entry in the repository's `catalog.json`. */
-export const AppListingSchema = z.object({
+export const PluginListingSchema = z.object({
   id: z
     .string()
     .min(1)
@@ -48,12 +48,12 @@ export const AppListingSchema = z.object({
   manifestUrl: z.string().min(1).max(512),
 });
 
-export type AppListing = z.infer<typeof AppListingSchema>;
+export type PluginListing = z.infer<typeof PluginListingSchema>;
 
-export const AppCatalogSchema = z.array(AppListingSchema).max(256);
+export const PluginCatalogSchema = z.array(PluginListingSchema).max(256);
 
 /** One env var the app's container receives. `value` may carry placeholders. */
-export const AppEnvVarSchema = z.object({
+export const PluginEnvVarSchema = z.object({
   key: z
     .string()
     .min(1)
@@ -62,17 +62,17 @@ export const AppEnvVarSchema = z.object({
   value: z.string().max(4096),
 });
 
-export type AppEnvVar = z.infer<typeof AppEnvVarSchema>;
+export type PluginEnvVar = z.infer<typeof PluginEnvVarSchema>;
 
 /** The container port the app path forwards to. NOT a domain/Traefik Host. */
-export const AppExposeSchema = z.object({
+export const PluginExposeSchema = z.object({
   port: z.number().int().min(1).max(65535),
 });
 
-export type AppExpose = z.infer<typeof AppExposeSchema>;
+export type PluginExpose = z.infer<typeof PluginExposeSchema>;
 
 /** `apps/<id>/manifest.json` — the install spec for one app. */
-export const AppManifestSchema = z.object({
+export const PluginManifestSchema = z.object({
   id: z
     .string()
     .min(1)
@@ -83,11 +83,11 @@ export const AppManifestSchema = z.object({
   /** The runnable image ref. Opaque — handed to docker, never parsed/eval'd. */
   image: z.string().min(1).max(512),
   /** The container port the app path forwards to. */
-  expose: AppExposeSchema,
-  env: z.array(AppEnvVarSchema).max(64).default([]),
+  expose: PluginExposeSchema,
+  env: z.array(PluginEnvVarSchema).max(64).default([]),
 });
 
-export type AppManifest = z.infer<typeof AppManifestSchema>;
+export type PluginManifest = z.infer<typeof PluginManifestSchema>;
 
 /* ------------------------------------------------------------------ */
 /* Placeholder resolution                                              */
@@ -120,8 +120,8 @@ export class PlaceholderError extends Error {}
  * Throws `PlaceholderError` on an unknown or malformed placeholder so install
  * fails loudly rather than shipping a literal `${…}` into the container.
  */
-export function resolveAppEnv(
-  env: AppEnvVar[],
+export function resolvePluginEnv(
+  env: PluginEnvVar[],
   ctx: PlaceholderContext,
 ): Record<string, string> {
   const out: Record<string, string> = {};

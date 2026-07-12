@@ -2,26 +2,26 @@
 
 import * as React from "react";
 import { gqlSubscribe } from "@/lib/graphql-client";
-import type { ServiceStatus, DeploymentStatus } from "@/lib/types";
+import type { AppStatus, DeploymentStatus } from "@/lib/types";
 
 /**
- * The live, client-tracked slice of a service's state. Seeded from the server
- * render and then kept current by a GraphQL subscription so the service header,
+ * The live, client-tracked slice of an app's state. Seeded from the server
+ * render and then kept current by a GraphQL subscription so the app header,
  * controls, tabs and gated pages (Console/Logs) react to start/stop/deploy
  * across every connected client without a reload.
  */
-export type LiveService = {
+export type LiveApp = {
   id: string;
   slug: string;
-  status: ServiceStatus;
+  status: AppStatus;
   productionUrl: string | null;
   latestDeploymentId: string | null;
   latestDeploymentStatus: DeploymentStatus | null;
 };
 
 const PROJECT_STATUS_SUBSCRIPTION = /* GraphQL */ `
-  subscription ServiceStatus($slug: String!) {
-    serviceStatus(slug: $slug) {
+  subscription AppStatus($slug: String!) {
+    appStatus(slug: $slug) {
       id
       slug
       status
@@ -35,39 +35,39 @@ const PROJECT_STATUS_SUBSCRIPTION = /* GraphQL */ `
 `;
 
 type SubResult = {
-  serviceStatus: {
+  appStatus: {
     id: string;
     slug: string;
-    status: ServiceStatus;
+    status: AppStatus;
     productionUrl: string | null;
     latestDeployment: { id: string; status: DeploymentStatus } | null;
   };
 };
 
-const LiveServiceContext = React.createContext<LiveService | null>(null);
+const LiveAppContext = React.createContext<LiveApp | null>(null);
 
 /**
- * Provides the live project state to the service layout subtree. `initial` is
+ * Provides the live project state to the app layout subtree. `initial` is
  * the server-rendered snapshot (so the first paint is correct and SSR-stable);
  * the subscription then pushes every change.
  */
-export function ServiceLiveStatusProvider({
+export function AppLiveStatusProvider({
   initial,
   children,
 }: {
-  initial: LiveService;
+  initial: LiveApp;
   children: React.ReactNode;
 }) {
   // The provider is keyed by slug in the layout, so it remounts (and re-seeds
   // from `initial`) on slug navigation — no re-seed effect needed.
-  const [live, setLive] = React.useState<LiveService>(initial);
+  const [live, setLive] = React.useState<LiveApp>(initial);
 
   React.useEffect(() => {
     const unsubscribe = gqlSubscribe<SubResult>(
       PROJECT_STATUS_SUBSCRIPTION,
       { slug: initial.slug },
       (data) => {
-        const p = data.serviceStatus;
+        const p = data.appStatus;
         if (!p) return;
         setLive({
           id: p.id,
@@ -83,9 +83,9 @@ export function ServiceLiveStatusProvider({
   }, [initial.slug]);
 
   return (
-    <LiveServiceContext.Provider value={live}>
+    <LiveAppContext.Provider value={live}>
       {children}
-    </LiveServiceContext.Provider>
+    </LiveAppContext.Provider>
   );
 }
 
@@ -94,20 +94,20 @@ export function ServiceLiveStatusProvider({
  * fall back to their server-rendered props (e.g. a page rendered without the
  * provider in its tree).
  */
-export function useLiveService(): LiveService | null {
-  return React.useContext(LiveServiceContext);
+export function useLiveApp(): LiveApp | null {
+  return React.useContext(LiveAppContext);
 }
 
 /**
- * The service's live status, falling back to a server-rendered value when no
+ * The app's live status, falling back to a server-rendered value when no
  * provider is mounted above the caller.
  */
-export function useLiveStatus(fallback: ServiceStatus): ServiceStatus {
-  return useLiveService()?.status ?? fallback;
+export function useLiveStatus(fallback: AppStatus): AppStatus {
+  return useLiveApp()?.status ?? fallback;
 }
 
-/** True when the service's container is running (status === "active"). */
+/** True when the app's container is running (status === "active"). */
 export function useLiveRunning(fallback: boolean): boolean {
-  const live = useLiveService();
+  const live = useLiveApp();
   return live ? live.status === "active" : fallback;
 }

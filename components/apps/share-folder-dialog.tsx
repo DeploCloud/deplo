@@ -277,7 +277,7 @@ export function ShareFolderDialog({
         <DialogHeader>
           <DialogTitle>Share “{folderName}”</DialogTitle>
           <DialogDescription>
-            Give other members access to this folder and the services inside it.
+            Give other members access to this folder and the apps inside it.
           </DialogDescription>
         </DialogHeader>
 

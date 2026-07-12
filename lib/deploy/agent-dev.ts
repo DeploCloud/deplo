@@ -21,7 +21,7 @@ import {
   type VscodeTunnelInfo,
   parseTunnelLog,
 } from "./dev";
-import type { Service } from "../types";
+import type { App } from "../types";
 
 /**
  * The agent-dev seam (PLAN Part D). Dev containers + the VS Code tunnel are
@@ -37,7 +37,7 @@ import type { Service } from "../types";
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 
 /** The owning server id for a project (every project carries one). */
-function serverIdOf(project: Service): string {
+function serverIdOf(project: App): string {
   return project.serverId;
 }
 
@@ -49,7 +49,7 @@ function serverIdOf(project: Service): string {
  * workspace path for the agent's pre-chown.
  */
 export async function buildStartDevPayload(
-  project: Service,
+  project: App,
 ): Promise<AgentStartDev> {
   const slug = project.slug;
   const [composeYaml, cloneSecretUrl, uploadTar, workspaceHostPath] =
@@ -61,7 +61,7 @@ export async function buildStartDevPayload(
     ]);
   return {
     slug,
-    serviceId: project.id,
+    appId: project.id,
     composeYaml,
     entryScript: devEntryScript(),
     cloneSecretUrl,
@@ -77,7 +77,7 @@ export async function buildStartDevPayload(
  * URL string crosses the wire (over mTLS). A minting failure degrades to the plain
  * URL (a public clone still works; a private one becomes an empty git workspace).
  */
-async function resolveCloneSecretUrl(project: Service): Promise<string> {
+async function resolveCloneSecretUrl(project: App): Promise<string> {
   if (
     (project.source === "github" || project.source === "git") &&
     project.repo
@@ -102,7 +102,7 @@ async function resolveCloneSecretUrl(project: Service): Promise<string> {
  * the SAME anti-escape guard. Empty for any other source. The agent only seeds an
  * EMPTY workspace (clone-once), so re-sending the tar on every start is harmless.
  */
-async function buildUploadTar(project: Service): Promise<Buffer> {
+async function buildUploadTar(project: App): Promise<Buffer> {
   if (project.source !== "upload" || !project.upload) return Buffer.alloc(0);
   const tmp = await mkdtemp(join(tmpdir(), `deplo-devseed-${project.slug}-`));
   try {
@@ -151,7 +151,7 @@ async function consumeDevStream(
  * than hanging. Streams progress into `sink`.
  */
 export async function agentStartDev(
-  project: Service,
+  project: App,
   sink: DevSink = {},
 ): Promise<void> {
   const serverId = serverIdOf(project);
@@ -170,7 +170,7 @@ export async function agentStartDev(
 
 /** DESTRUCTIVE reset: wipe + reseed the workspace through the owning agent. */
 export async function agentResetDevWorkspace(
-  project: Service,
+  project: App,
   sink: DevSink = {},
 ): Promise<void> {
   const serverId = serverIdOf(project);
@@ -188,7 +188,7 @@ export async function agentResetDevWorkspace(
 }
 
 /** Stop a project's dev container (reversible) through its owning agent. */
-export async function agentStopDev(project: Service): Promise<void> {
+export async function agentStopDev(project: App): Promise<void> {
   const conn = await connectAgent(serverIdOf(project));
   try {
     await conn.stopDev(project.slug);
@@ -198,7 +198,7 @@ export async function agentStopDev(project: Service): Promise<void> {
 }
 
 /** Fully tear a dev container down on project delete (wipes the workspace). */
-export async function agentTeardownDev(project: Service): Promise<void> {
+export async function agentTeardownDev(project: App): Promise<void> {
   const conn = await connectAgent(serverIdOf(project));
   try {
     await conn.teardownDev(project.slug);
@@ -222,7 +222,7 @@ function toTunnelInfo(s: AgentTunnelStatus): VscodeTunnelInfo {
 /** Start the tunnel through the owning agent, then poll briefly for the device-
  *  login link (the control plane drives the poll; the agent has no UI deadline). */
 export async function agentStartTunnel(
-  project: Service,
+  project: App,
 ): Promise<VscodeTunnelInfo> {
   const serverId = serverIdOf(project);
   const conn = await connectAgent(serverId);
@@ -243,7 +243,7 @@ export async function agentStartTunnel(
 
 /** Read the current tunnel status through the owning agent. */
 export async function agentGetTunnel(
-  project: Service,
+  project: App,
 ): Promise<VscodeTunnelInfo> {
   const conn = await connectAgent(serverIdOf(project));
   try {
@@ -254,7 +254,7 @@ export async function agentGetTunnel(
 }
 
 /** Stop the tunnel through the owning agent (the container keeps running). */
-export async function agentStopTunnel(project: Service): Promise<void> {
+export async function agentStopTunnel(project: App): Promise<void> {
   const conn = await connectAgent(serverIdOf(project));
   try {
     await conn.stopTunnel(project.slug);

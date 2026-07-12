@@ -21,7 +21,7 @@ export interface BuildContext {
   /** Resolved build directory (clone root or its rootDirectory subdir). */
   buildDir: string;
   slug: string;
-  serviceId: string;
+  appId: string;
   /** Target image tag the method must produce, e.g. deplo/<slug>:<sha12>. */
   imageRef: string;
   log: Logger;
@@ -87,7 +87,7 @@ function labelArgs(ctx: BuildContext): string[] {
     "--label",
     "deplo.managed=true",
     "--label",
-    `deplo.project=${ctx.serviceId}`,
+    `deplo.project=${ctx.appId}`,
     "--label",
     `deplo.slug=${ctx.slug}`,
   ];
@@ -556,7 +556,7 @@ export async function dataVolumeHostMountpoint(): Promise<string> {
  * don't apply our labels themselves.
  */
 async function relabel(ctx: BuildContext): Promise<void> {
-  const dockerfile = `FROM ${ctx.imageRef}\nLABEL deplo.managed=true deplo.project=${ctx.serviceId} deplo.slug=${ctx.slug}\n`;
+  const dockerfile = `FROM ${ctx.imageRef}\nLABEL deplo.managed=true deplo.project=${ctx.appId} deplo.slug=${ctx.slug}\n`;
   ctx.log("command", `docker build (relabel ${ctx.imageRef})`);
   // A `FROM`+`LABEL` Dockerfile needs no context files, so feed it as the whole
   // build context via stdin (`docker build -`). Two pitfalls this avoids:

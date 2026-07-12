@@ -22,7 +22,7 @@ export const metadata = { title: "Activity" };
 
 const ICON_BY_TYPE: Record<ActivityType, LucideIcon> = {
   deployment: Rocket,
-  service: Box,
+  app: Box,
   project: Boxes,
   database: Database,
   domain: Globe,
@@ -94,7 +94,7 @@ export default async function ActivityPage() {
         <EmptyState
           icon={ActivityIcon}
           title="No activity yet"
-          description="As you deploy services, manage databases and invite members, everything will show up here."
+          description="As you deploy apps, manage databases and invite members, everything will show up here."
         />
       ) : (
         <Card>

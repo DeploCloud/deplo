@@ -5,12 +5,12 @@ import { Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * A service's display avatar: its custom logo when one is set (defaulted from a
+ * An app's display avatar: its custom logo when one is set (defaulted from a
  * template on deploy, editable in settings), otherwise a generic glyph. A logo
  * that fails to load falls back to the glyph at runtime rather than showing a
  * broken image.
  */
-export function ServiceLogo({
+export function AppLogo({
   logo,
   size = 36,
   className,

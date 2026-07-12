@@ -6,24 +6,14 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Plus,
-  Upload,
   Trash2,
   Pencil,
   Rows3,
   FileText,
   Share2,
-  ArrowUpRight,
   Eye,
   EyeOff,
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -33,10 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -44,36 +31,42 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EnvValueCell } from "@/components/env/env-value-cell";
+import { EnvVarDialog } from "@/components/env/env-var-dialog";
+import { parseEnv, serializeEnv } from "@/components/env/env-parse";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { EnvTarget, EnvVarDTO } from "@/lib/types";
-import type { ServiceSharedEnvGroupDTO } from "@/lib/data/shared-env";
+import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
 
 const ALL_TARGETS: EnvTarget[] = ["production", "preview", "development"];
 
+/** How a shared var reaches this app, for the read-only badge. */
+const VIA_LABEL: Record<string, string> = {
+  teamWide: "Team-wide",
+  environment: "Environment",
+  project: "Project",
+  link: "Linked",
+};
+
 export function EnvManager({
-  serviceId,
+  appId,
   vars,
-  sharedGroups,
+  sharedVars,
 }: {
-  serviceId: string;
+  appId: string;
   vars: EnvVarDTO[];
-  sharedGroups: ServiceSharedEnvGroupDTO[];
+  sharedVars: AppSharedVarDTO[];
 }) {
   const [editing, setEditing] = React.useState<EnvVarDTO | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
-  const [importOpen, setImportOpen] = React.useState(false);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
-  const [sharedOpen, setSharedOpen] = React.useState(false);
   // "table" → the per-row UI; "editor" → a raw .env text editor over all vars.
   const [mode, setMode] = React.useState<"table" | "editor">("table");
   const router = useRouter();
 
-  const attachedGroups = sharedGroups.filter((g) => g.attached);
-  // One read-only row per key contributed by an attached shared group.
-  const sharedRows = attachedGroups.flatMap((g) =>
-    g.keys.map((key) => ({ group: g, key })),
-  );
+  // Shared vars that currently inject into this app — shown read-only (values
+  // are managed centrally on the Variables page and never reach the client).
+  const appliedShared = sharedVars.filter((v) => v.applied);
 
   // Which plain rows are currently revealed. Secrets are never in this set —
   // they have no reveal path. "Reveal all" fills/clears it in one shot.
@@ -126,27 +119,6 @@ export function EnvManager({
                 </Button>
               )}
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSharedOpen(true)}
-              >
-                <Share2 className="size-4" />
-                Shared groups
-                {attachedGroups.length > 0 && (
-                  <Badge variant="secondary" className="ml-1 text-[10px]">
-                    {attachedGroups.length}
-                  </Badge>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setImportOpen(true)}
-              >
-                <Upload className="size-4" />
-                Import .env
-              </Button>
-              <Button
                 size="sm"
                 onClick={() => {
                   setEditing(null);
@@ -165,12 +137,8 @@ export function EnvManager({
       </div>
 
       {mode === "editor" ? (
-        <EnvEditor
-          serviceId={serviceId}
-          vars={vars}
-          onDone={() => setMode("table")}
-        />
-      ) : vars.length === 0 && sharedRows.length === 0 ? (
+        <EnvEditor appId={appId} vars={vars} onDone={() => setMode("table")} />
+      ) : vars.length === 0 && appliedShared.length === 0 ? (
         <EmptyState
           icon={Plus}
           title="No environment variables"
@@ -233,29 +201,29 @@ export function EnvManager({
                   </TableCell>
                 </TableRow>
               ))}
-              {sharedRows.map(({ group, key }) => (
-                <TableRow key={`${group.id}:${key}`}>
+              {appliedShared.map((v) => (
+                <TableRow key={v.id}>
                   <TableCell className="font-mono text-xs font-medium">
                     <div className="flex items-center gap-2">
-                      {key}
+                      {v.key}
                       <Badge
                         variant="muted"
                         className="gap-1 text-[10px] font-normal"
                       >
                         <Share2 className="size-3" />
-                        Shared · {group.name}
+                        Shared · {VIA_LABEL[v.via] ?? "Shared"}
                       </Badge>
                     </div>
                   </TableCell>
                   <TableCell>
                     {/* Shared values are never exposed to the client. */}
                     <span className="text-xs text-muted-foreground">
-                      managed in group
+                      managed centrally
                     </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {group.targets.map((t) => (
+                      {v.targets.map((t) => (
                         <Badge key={t} variant="muted" className="text-[10px] capitalize">
                           {t}
                         </Badge>
@@ -279,23 +247,13 @@ export function EnvManager({
         </div>
       )}
 
-      <EnvDialog
+      <EnvVarDialog
         key={editing?.id ?? "new"}
         open={addOpen}
         onOpenChange={setAddOpen}
-        serviceId={serviceId}
+        appId={appId}
         editing={editing}
-      />
-      <ImportDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        serviceId={serviceId}
-      />
-      <SharedGroupsDialog
-        open={sharedOpen}
-        onOpenChange={setSharedOpen}
-        serviceId={serviceId}
-        groups={sharedGroups}
+        sharedVars={sharedVars}
       />
       <ConfirmAction
         open={deleteId !== null}
@@ -312,345 +270,6 @@ export function EnvManager({
           if (res.ok) router.refresh();
           return res;
         }}
-      />
-    </div>
-  );
-}
-
-function EnvDialog({
-  open,
-  onOpenChange,
-  serviceId,
-  editing,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  serviceId: string;
-  editing: EnvVarDTO | null;
-}) {
-  const [key, setKey] = React.useState(editing?.key ?? "");
-  const [value, setValue] = React.useState("");
-  // New variables are PLAIN by default; editing preserves the existing type.
-  const [secret, setSecret] = React.useState(editing?.type === "secret");
-  const [targets, setTargets] = React.useState<EnvTarget[]>(
-    editing?.targets ?? ["production", "preview", "development"]
-  );
-  const [pending, startTransition] = React.useTransition();
-  const router = useRouter();
-
-  function toggleTarget(t: EnvTarget) {
-    setTargets((cur) =>
-      cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]
-    );
-  }
-
-  function submit() {
-    startTransition(async () => {
-      const res = await gqlAction<{ upsertEnv: { id: string } }>(
-        `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
-        {
-          input: {
-            serviceId,
-            key,
-            value,
-            targets,
-            type: secret ? "secret" : "plain",
-          },
-        },
-      );
-      if (res.ok) {
-        toast.success(editing ? "Variable updated" : "Variable added");
-        onOpenChange(false);
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{editing ? "Edit variable" : "Add variable"}</DialogTitle>
-          <DialogDescription>
-            {editing
-              ? "Update the value or environments for this variable."
-              : "Add a new environment variable to this service."}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <FieldLabel info="The environment variable's name, exposed to your app at runtime. It can't be renamed once the variable is created.">
-              Key
-            </FieldLabel>
-            <Input
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder="API_KEY"
-              className="font-mono text-sm"
-              disabled={!!editing}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Value</Label>
-            <Textarea
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder={editing ? "Enter a new value" : "value"}
-              rows={3}
-            />
-          </div>
-          <div className="space-y-2">
-            <FieldLabel info="The environments this variable is injected into. A deployment only receives variables enabled for its environment.">
-              Environments
-            </FieldLabel>
-            <div className="flex flex-wrap gap-4">
-              {ALL_TARGETS.map((t) => (
-                <label key={t} className="flex cursor-pointer items-center gap-2 text-sm capitalize">
-                  <Checkbox
-                    checked={targets.includes(t)}
-                    onCheckedChange={() => toggleTarget(t)}
-                  />
-                  {t}
-                </label>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center justify-between rounded-lg border border-border p-3">
-            <div>
-              <p className="text-sm font-medium">Secret</p>
-              <p className="text-xs text-muted-foreground">
-                Hide the value in the UI after saving.
-              </p>
-            </div>
-            <Switch checked={secret} onCheckedChange={setSecret} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending || !key.trim()}>
-            {pending ? "Saving…" : "Save"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ImportDialog({
-  open,
-  onOpenChange,
-  serviceId,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  serviceId: string;
-}) {
-  const [blob, setBlob] = React.useState("");
-  const [targets, setTargets] = React.useState<EnvTarget[]>([
-    "production",
-    "preview",
-    "development",
-  ]);
-  const [pending, startTransition] = React.useTransition();
-  const router = useRouter();
-
-  function toggleTarget(t: EnvTarget) {
-    setTargets((cur) =>
-      cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]
-    );
-  }
-
-  function submit() {
-    startTransition(async () => {
-      const res = await gqlAction<{ importEnv: number }, number>(
-        `mutation($serviceId: String!, $blob: String!, $targets: [EnvTarget!]!) {
-          importEnv(serviceId: $serviceId, blob: $blob, targets: $targets)
-        }`,
-        { serviceId, blob, targets },
-        (d) => d.importEnv,
-      );
-      if (res.ok && res.data != null) {
-        toast.success(`Imported ${res.data} variable(s)`);
-        onOpenChange(false);
-        setBlob("");
-        router.refresh();
-      } else if (!res.ok) {
-        toast.error(res.error);
-      }
-    });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Import .env</DialogTitle>
-          <DialogDescription>
-            Paste the contents of a .env file. Each line is added as a plain
-            variable — flip individual ones to secret afterwards.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <Textarea
-            value={blob}
-            onChange={(e) => setBlob(e.target.value)}
-            placeholder={"DATABASE_URL=postgres://...\nAPI_KEY=sk_live_..."}
-            rows={8}
-          />
-          <div className="space-y-2">
-            <FieldLabel info="The environments every imported variable is added to. Each parsed line is applied to all the environments you select here.">
-              Environments
-            </FieldLabel>
-            <div className="flex flex-wrap gap-4">
-              {ALL_TARGETS.map((t) => (
-                <label key={t} className="flex cursor-pointer items-center gap-2 text-sm capitalize">
-                  <Checkbox
-                    checked={targets.includes(t)}
-                    onCheckedChange={() => toggleTarget(t)}
-                  />
-                  {t}
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending || !blob.trim()}>
-            {pending ? "Importing…" : "Import"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/**
- * Compact attach/detach control for shared env groups. Replaces the old
- * standalone "Shared groups" section: every group gets a switch, and toggling
- * runs the same `setSharedEnvGroupAttachment` mutation (optimistically).
- */
-function SharedGroupsDialog({
-  open,
-  onOpenChange,
-  serviceId,
-  groups,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  serviceId: string;
-  groups: ServiceSharedEnvGroupDTO[];
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Shared groups</DialogTitle>
-          <DialogDescription>
-            Attach a reusable group to inject its variables alongside this
-            project&apos;s own. They reach the runtimes the group targets.
-          </DialogDescription>
-        </DialogHeader>
-        {groups.length === 0 ? (
-          <EmptyState
-            icon={Share2}
-            title="No shared groups yet"
-            description="Create a shared group from the Variables page to reuse the same variables across services."
-          />
-        ) : (
-          <div className="space-y-2">
-            {groups.map((g) => (
-              <SharedGroupToggle key={g.id} serviceId={serviceId} group={g} />
-            ))}
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/variables?tab=shared">
-              Manage groups
-              <ArrowUpRight className="size-4" />
-            </Link>
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function SharedGroupToggle({
-  serviceId,
-  group,
-}: {
-  serviceId: string;
-  group: ServiceSharedEnvGroupDTO;
-}) {
-  // Optimistic so the switch tracks instantly; refreshing the route
-  // reconciles this to the durable value on the next render.
-  const router = useRouter();
-  const [attached, setAttached] = React.useState(group.attached);
-  const [pending, startTransition] = React.useTransition();
-
-  function toggle(next: boolean) {
-    setAttached(next);
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($groupId: String!, $serviceId: String!, $attached: Boolean!) {
-          setSharedEnvGroupAttachment(groupId: $groupId, serviceId: $serviceId, attached: $attached)
-        }`,
-        { groupId: group.id, serviceId, attached: next },
-      );
-      if (res.ok) {
-        toast.success(next ? "Group attached" : "Group detached");
-        router.refresh();
-      } else {
-        setAttached(!next);
-        toast.error(res.error);
-      }
-    });
-  }
-
-  return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
-      <div className="min-w-0 space-y-1.5">
-        <p className="flex items-center gap-2 text-sm font-medium">
-          <Share2 className="size-4 text-muted-foreground" />
-          {group.name}
-        </p>
-        {group.description && (
-          <p className="text-xs text-muted-foreground">{group.description}</p>
-        )}
-        <div className="flex flex-wrap gap-1.5">
-          {group.keys.map((k) => (
-            <Badge key={k} variant="muted" className="font-mono text-[10px]">
-              {k}
-            </Badge>
-          ))}
-          {group.keys.length === 0 && (
-            <span className="text-xs text-muted-foreground">No variables</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>Targets:</span>
-          <div className="flex flex-wrap gap-1">
-            {group.targets.map((t) => (
-              <Badge key={t} variant="muted" className="text-[10px] capitalize">
-                {t}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      </div>
-      <Switch
-        checked={attached}
-        onCheckedChange={toggle}
-        disabled={pending}
-        aria-label={attached ? "Detach group" : "Attach group"}
       />
     </div>
   );
@@ -690,47 +309,19 @@ function ViewToggle({
   );
 }
 
-/** Serialise the vars to `.env` text. Plain values are shown verbatim; secret
- *  values come through as the mask (they are never revealed). */
-function serializeEnv(vars: EnvVarDTO[]): string {
-  return vars.map((v) => `${v.key}=${v.value}`).join("\n");
-}
-
-/** Parse `.env` text into KEY=VALUE pairs (skips blanks/comments; strips one
- *  layer of surrounding quotes). Validation of the key is done server-side. */
-function parseEnv(text: string): { key: string; value: string }[] {
-  const out: { key: string; value: string }[] = [];
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    )
-      value = value.slice(1, -1);
-    if (!key) continue;
-    out.push({ key, value });
-  }
-  return out;
-}
-
 /**
- * The ".env editor": one textarea over ALL of a service's variables. Plain
+ * The ".env editor": one textarea over ALL of an app's variables. Plain
  * values are editable in place; secret values show as a mask and are preserved
  * unless changed (you can't read a secret you didn't set). Saving upserts every
  * line and deletes the ones removed — new vars are PLAIN and land in the chosen
  * default environments. Existing vars keep their own type + environments.
  */
 function EnvEditor({
-  serviceId,
+  appId,
   vars,
   onDone,
 }: {
-  serviceId: string;
+  appId: string;
   vars: EnvVarDTO[];
   onDone: () => void;
 }) {
@@ -752,12 +343,12 @@ function EnvEditor({
   function save() {
     startTransition(async () => {
       const entries = parseEnv(text);
-      const res = await gqlAction<{ setServiceEnv: number }, number>(
-        `mutation($serviceId: String!, $entries: [EnvEntryInput!]!, $defaultTargets: [EnvTarget!]!) {
-          setServiceEnv(serviceId: $serviceId, entries: $entries, defaultTargets: $defaultTargets)
+      const res = await gqlAction<{ setAppEnv: number }, number>(
+        `mutation($appId: String!, $entries: [EnvEntryInput!]!, $defaultTargets: [EnvTarget!]!) {
+          setAppEnv(appId: $appId, entries: $entries, defaultTargets: $defaultTargets)
         }`,
-        { serviceId, entries, defaultTargets: targets },
-        (d) => d.setServiceEnv,
+        { appId, entries, defaultTargets: targets },
+        (d) => d.setAppEnv,
       );
       if (res.ok) {
         toast.success("Environment saved");

@@ -37,15 +37,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleTooltip, MenuSubTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { FolderColorPicker } from "@/components/services/folder-color-picker";
-import { ShareFolderDialog } from "@/components/services/share-folder-dialog";
+import { FolderColorPicker } from "@/components/apps/folder-color-picker";
+import { ShareFolderDialog } from "@/components/apps/share-folder-dialog";
 import { cn, readableTextColor } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 
 export interface FolderCardData {
   id: string;
   name: string;
-  serviceCount: number;
+  appCount: number;
   /** Number of immediate child folders (nesting), for the count label. */
   subfolderCount?: number;
   /** Accent colour (`#rrggbb`), or null/undefined for the default tile. */
@@ -73,7 +73,7 @@ export function folderHref(id: string, view: "grid" | "list"): string {
 }
 
 /** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
- *  right-click context menu (see the note in service-card.tsx). */
+ *  right-click context menu (see the note in app-card.tsx). */
 type MenuKit = {
   Item: React.ElementType;
   Separator: React.ElementType;
@@ -145,11 +145,11 @@ export function FolderCard({
   );
 
   const href = folderHref(folder.id, view);
-  const count = folder.serviceCount;
+  const count = folder.appCount;
   const subCount = folder.subfolderCount ?? 0;
-  // "3 services · 2 folders" — the subfolder part only shows when nested.
+  // "3 apps · 2 folders" — the subfolder part only shows when nested.
   const countLabel =
-    `${count} ${count === 1 ? "service" : "services"}` +
+    `${count} ${count === 1 ? "app" : "apps"}` +
     (subCount > 0 ? ` · ${subCount} ${subCount === 1 ? "folder" : "folders"}` : "");
 
   // The folder's icon tile: its chosen colour with an auto-contrast icon, or the
@@ -309,7 +309,7 @@ export function FolderCard({
             )}
           <K.Separator />
           <SimpleTooltip
-            content="Delete the folder — its services move back to the top level"
+            content="Delete the folder — its apps move back to the top level"
             side="left"
           >
             <K.Item
@@ -459,7 +459,7 @@ export function FolderCard({
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title={`Delete ${folder.name}?`}
-        description="The folder is removed, but its services are kept — they move back to the top level. This cannot be undone."
+        description="The folder is removed, but its apps are kept — they move back to the top level. This cannot be undone."
         confirmLabel="Delete folder"
         successMessage="Folder deleted"
         onConfirm={async () => {

@@ -8,14 +8,14 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   folders as foldersTable,
   folderGrants as folderGrantsTable,
-  services as servicesTable,
+  apps as appsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
-import { seedService, seedServer } from "./service-graph-test-helpers";
+import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedS3 } from "./backup-test-helpers";
-import { renameService } from "./services";
-import { createBackup, runServiceBackup, deleteBackup } from "./backups";
+import { renameApp } from "./apps";
+import { createBackup, runAppBackup, deleteBackup } from "./backups";
 import {
   folderCapabilities,
   setFolderGrant,
@@ -28,7 +28,7 @@ import { listFolders } from "./folders";
  * — the DB-backed twin of the pure-math unit tests in folder-access.test.ts.
  * These prove the load-bearing rule the whole feature exists for: holding a TEAM
  * capability is NOT enough to act on a project inside a folder — you also need
- * that capability ON THE FOLDER (owner, grant, or super-user). Top-level services
+ * that capability ON THE FOLDER (owner, grant, or super-user). Top-level apps
  * stay team-only.
  *
  * Cast of users (all in TEAM_A):
@@ -67,7 +67,7 @@ const as = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
 beforeEach(async () => {
   await pg.exec(`truncate table
     folder_grants, backup_runs, backups, s3_destination,
-    service_build_method_settings, service_build, services, folders, servers,
+    app_build_method_settings, app_build, apps, folders, servers,
     membership_capabilities, memberships, users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
@@ -110,42 +110,42 @@ beforeEach(async () => {
     createdAt: T0,
     updatedAt: T0,
   });
-  await seedService(db, { id: PRJ_IN, teamId: TEAM_A });
-  await seedService(db, { id: PRJ_TOP, teamId: TEAM_A });
-  // Move PRJ_IN into the folder (seedService seeds folderId=null).
+  await seedApp(db, { id: PRJ_IN, teamId: TEAM_A });
+  await seedApp(db, { id: PRJ_TOP, teamId: TEAM_A });
+  // Move PRJ_IN into the folder (seedApp seeds folderId=null).
   await db
-    .update(servicesTable)
+    .update(appsTable)
     .set({ folderId: FLD })
-    .where(eq(servicesTable.id, PRJ_IN));
+    .where(eq(appsTable.id, PRJ_IN));
 });
 
 test("a team member without folder access can't act on a project inside the folder", async () => {
   // MEMBER holds team `deploy` but no access to FLD → renaming PRJ_IN is blocked.
   await as(MEMBER, async () => {
     await assert.rejects(
-      () => renameService(PRJ_IN, "hijacked"),
+      () => renameApp(PRJ_IN, "hijacked"),
       /not found|permission/i,
       "team deploy alone must NOT let a non-folder-member rename a project in the folder",
     );
   });
   // The rename never happened.
-  const row = (await db.select().from(servicesTable).where(eq(servicesTable.id, PRJ_IN)))[0]!;
+  const row = (await db.select().from(appsTable).where(eq(appsTable.id, PRJ_IN)))[0]!;
   assert.equal(row.name, PRJ_IN, "project name unchanged after the blocked rename");
 });
 
 test("the same member CAN act on a TOP-LEVEL project (team caps govern)", async () => {
   await as(MEMBER, async () => {
-    await renameService(PRJ_TOP, "renamed-top");
+    await renameApp(PRJ_TOP, "renamed-top");
   });
-  const row = (await db.select().from(servicesTable).where(eq(servicesTable.id, PRJ_TOP)))[0]!;
+  const row = (await db.select().from(appsTable).where(eq(appsTable.id, PRJ_TOP)))[0]!;
   assert.equal(row.name, "renamed-top", "a top-level project is team-scoped only");
 });
 
 test("the folder owner can act on a project inside their folder", async () => {
   await as(OWNER, async () => {
-    await renameService(PRJ_IN, "owner-renamed");
+    await renameApp(PRJ_IN, "owner-renamed");
   });
-  const row = (await db.select().from(servicesTable).where(eq(servicesTable.id, PRJ_IN)))[0]!;
+  const row = (await db.select().from(appsTable).where(eq(appsTable.id, PRJ_IN)))[0]!;
   assert.equal(row.name, "owner-renamed");
 });
 
@@ -153,10 +153,10 @@ test("a grantee with folder `deploy` can act; without it they can't", async () =
   // Owner shares the folder with GRANTEE, granting deploy.
   await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy"]));
   await as(GRANTEE, async () => {
-    await renameService(PRJ_IN, "grantee-renamed");
+    await renameApp(PRJ_IN, "grantee-renamed");
   });
   assert.equal(
-    (await db.select().from(servicesTable).where(eq(servicesTable.id, PRJ_IN)))[0]!.name,
+    (await db.select().from(appsTable).where(eq(appsTable.id, PRJ_IN)))[0]!.name,
     "grantee-renamed",
   );
 
@@ -164,7 +164,7 @@ test("a grantee with folder `deploy` can act; without it they can't", async () =
   await as(OWNER, () => setFolderGrant(FLD, GRANTEE, []));
   await as(GRANTEE, async () => {
     await assert.rejects(
-      () => renameService(PRJ_IN, "grantee-again"),
+      () => renameApp(PRJ_IN, "grantee-again"),
       /not found|permission/i,
     );
   });
@@ -190,9 +190,9 @@ test("manage_infra: a member without folder access can't back up a project in th
       () =>
         createBackup({
           name: "sneaky",
-          targetKind: "service",
+          targetKind: "app",
           databaseId: null,
-          serviceId: PRJ_IN,
+          appId: PRJ_IN,
           destinationId: "s3_1",
           schedule: "0 3 * * *",
           retentionDays: 7,
@@ -201,7 +201,7 @@ test("manage_infra: a member without folder access can't back up a project in th
       "team manage_infra alone must not let a non-folder-member schedule a project backup",
     );
     await assert.rejects(
-      () => runServiceBackup(PRJ_IN, "s3_1"),
+      () => runAppBackup(PRJ_IN, "s3_1"),
       /not found|permission/i,
       "ad-hoc project backup is folder-scoped too",
     );
@@ -219,15 +219,15 @@ test("manage_infra: the folder owner CAN back up a project inside their folder",
   const dto = await as(OWNER, () =>
     createBackup({
       name: "nightly",
-      targetKind: "service",
+      targetKind: "app",
       databaseId: null,
-      serviceId: PRJ_IN,
+      appId: PRJ_IN,
       destinationId: "s3_1",
       schedule: "0 3 * * *",
       retentionDays: 7,
     }),
   );
-  assert.equal(dto.targetKind, "service");
+  assert.equal(dto.targetKind, "app");
   // And deleting it is likewise allowed for the owner.
   await as(OWNER, () => deleteBackup(dto.id));
 });

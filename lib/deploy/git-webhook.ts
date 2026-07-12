@@ -2,7 +2,7 @@ import type { GitTriggerType } from "@/lib/types";
 
 /**
  * Pure, side-effect-free helpers the GitHub push webhook uses to decide whether a
- * verified delivery should auto-deploy a given service. Extracted from the route
+ * verified delivery should auto-deploy a given app. Extracted from the route
  * handler so the trigger-type + watch-path logic is unit-testable without HTTP,
  * signatures, or a database.
  */
@@ -23,7 +23,7 @@ export interface GitPushEvent {
   changedPaths: string[];
 }
 
-/** A service's git deploy-trigger configuration (from the flattened repo_* row). */
+/** An app's git deploy-trigger configuration (from the flattened repo_* row). */
 export interface RepoTriggerConfig {
   /** The tracked branch (repo_branch || "main"). */
   branch: string;
@@ -31,11 +31,11 @@ export interface RepoTriggerConfig {
   triggerType: GitTriggerType;
   /** Parsed watch-path globs (repo_watch_paths). Empty ⇒ deploy on any change. */
   watchPaths: string[];
-  /** The build root directory (service_build.root_directory). Only consulted when
+  /** The build root directory (app_build.root_directory). Only consulted when
    *  {@link skipUnchanged} is on. Empty/"."/unset ⇒ the whole repo is the root. */
   rootDirectory?: string | null;
   /** When true, an auto-deploy is skipped unless the push touched a file inside
-   *  the root directory (service_build.skip_unchanged_deployments). */
+   *  the root directory (app_build.skip_unchanged_deployments). */
   skipUnchanged?: boolean;
 }
 
@@ -90,7 +90,7 @@ export function parsePushEvent(payload: RawPushPayload): GitPushEvent {
 }
 
 /**
- * Whether a verified push should trigger an automatic deployment for a service
+ * Whether a verified push should trigger an automatic deployment for an app
  * whose auto-deploy is already on. Encapsulates trigger-type gating (push vs new
  * tag) and the optional watch-path filter.
  */

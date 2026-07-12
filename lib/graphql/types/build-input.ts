@@ -1,7 +1,7 @@
 /**
  * Translate a `BuildConfigInput` (GraphQL) into the stored {@link BuildConfig}
  * shape. Three input fields are named differently from the persisted config and
- * MUST be re-keyed, or the shallow merge in `updateServiceBuild` / `createService`
+ * MUST be re-keyed, or the shallow merge in `updateAppBuild` / `createApp`
  * (which keys off the BuildConfig names) never sees them and silently keeps the
  * old value:
  *   - `settings`  → `methodSettings` (the JSON method-settings blob)

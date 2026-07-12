@@ -20,7 +20,7 @@ import type { VolumeMount } from "@/lib/types";
 type VolumeType = NonNullable<VolumeMount["type"]>;
 
 /**
- * Presentational editor for a single-container service's persistent volumes (the
+ * Presentational editor for a single-container app's persistent volumes (the
  * renderCompose path). Fetch-free — the parent form owns the save.
  *
  * Three kinds per row, picked from the "Type" selector:
@@ -28,7 +28,7 @@ type VolumeType = NonNullable<VolumeMount["type"]>;
  *    host-side volume name is namespaced per project (deplo-<slug>-<name>); we
  *    preview it here, but the server is the only thing that derives/trusts it. A
  *    blank name is fine in a draft row — the server derives one on save.
- *  - PROJECT FILE: a path RELATIVE to the service's isolated files dir
+ *  - PROJECT FILE: a path RELATIVE to the app's isolated files dir
  *    (e.g. "config.toml" or "uploads"). Stays inside the sandbox — no grant
  *    needed. The same place the `./<x>` compose convention targets.
  *  - HOST: an absolute HOST path bound into the container. Only privileged users
@@ -74,21 +74,21 @@ export function VolumeFields({
           {volumes.map((v) => {
             const type: VolumeType = v.type ?? "named";
             const isHost = type === "host";
-            const isService = type === "service";
+            const isApp = type === "app";
             const previewName = (v.name || "").trim();
             const sourceLabel = isHost
               ? "Host path"
-              : isService
-                ? "Service path (in files dir)"
+              : isApp
+                ? "App path (in files dir)"
                 : "Name";
             const sourceValue = isHost
               ? (v.hostPath ?? "")
-              : isService
+              : isApp
                 ? (v.projectPath ?? "")
                 : v.name;
             const sourcePlaceholder = isHost
               ? "/srv/data"
-              : isService
+              : isApp
                 ? "config.toml"
                 : "data";
             return (
@@ -103,8 +103,8 @@ export function VolumeFields({
                       info={
                         <>
                           Named volume is a persistent Docker volume that
-                          survives deploys. Service file mounts a path inside
-                          this service&apos;s isolated files directory. Host path
+                          survives deploys. App file mounts a path inside
+                          this app&apos;s isolated files directory. Host path
                           binds an absolute path on the deploy host and requires
                           the host-volume permission.
                         </>
@@ -123,7 +123,7 @@ export function VolumeFields({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="named">Named volume</SelectItem>
-                        <SelectItem value="service">Service file</SelectItem>
+                        <SelectItem value="service">App file</SelectItem>
                         <SelectItem value="host">Host path</SelectItem>
                       </SelectContent>
                     </Select>
@@ -137,7 +137,7 @@ export function VolumeFields({
                           v.id,
                           isHost
                             ? { hostPath: e.target.value }
-                            : isService
+                            : isApp
                               ? { projectPath: e.target.value }
                               : { name: e.target.value },
                         )
@@ -173,8 +173,8 @@ export function VolumeFields({
                   <p className="truncate text-xs text-muted-foreground">
                     {isHost ? (
                       "Binds a path on the deploy host — needs the host-volume permission."
-                    ) : isService ? (
-                      "Binds a path inside this service's isolated files directory."
+                    ) : isApp ? (
+                      "Binds a path inside this app's isolated files directory."
                     ) : previewName ? (
                       <>
                         Host volume:{" "}

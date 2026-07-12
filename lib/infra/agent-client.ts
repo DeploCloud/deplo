@@ -118,7 +118,7 @@ export interface AgentExecResult {
  *  control plane renders all of it (D2); the agent writes files + drives Docker. */
 export interface AgentStartDev {
   slug: string;
-  serviceId: string;
+  appId: string;
   /** Rendered dev compose YAML (renderDevCompose) — opaque to the agent. */
   composeYaml: string;
   /** The dev entrypoint script (DEV_ENTRY_SCRIPT), bind-mounted into the container. */
@@ -199,12 +199,12 @@ export interface AgentConnection {
     wipeFirst: boolean,
     chunks: AsyncIterable<Buffer>,
   ): Promise<{ ok: boolean; error: string }>;
-  /** Stream a service's host-side FILES DIR (a plain host directory, not a Docker
+  /** Stream an app's host-side FILES DIR (a plain host directory, not a Docker
    *  volume) OUT of this host as a gzipped tar — the files-dir sibling of
-   *  {@link exportVolume} for a service move. A missing dir yields an empty stream.
+   *  {@link exportVolume} for an app move. A missing dir yields an empty stream.
    *  Rejects with UNIMPLEMENTED on a too-old agent (mapped by the caller). */
   exportFiles(slug: string): AsyncGenerator<Buffer, void, unknown>;
-  /** Untar a stream of gzipped-tar chunks INTO a service's files dir on this host —
+  /** Untar a stream of gzipped-tar chunks INTO an app's files dir on this host —
    *  the receiving half. `wipeFirst` empties the dir first (overwrite, not merge).
    *  Resolves with the terminal StackResult. Rejects with UNIMPLEMENTED on a too-old
    *  agent (mapped by the caller). */
@@ -256,11 +256,11 @@ export interface AgentConnection {
   // ---- Part C: console observability ----
   /** Live `docker logs -f` as an output-only AttachHandle (reuses the SSE session
    *  plumbing). `write` is a no-op; `close()` cancels the stream + the grpc client. */
-  followLogs(serviceId: string, container: string, tail: number): AttachHandle;
+  followLogs(appId: string, container: string, tail: number): AttachHandle;
   /** Interactive attach as a full-duplex AttachHandle (write = stdin, onData =
    *  output). `tty` selects the pty backing agent-side. */
   attach(
-    serviceId: string,
+    appId: string,
     container: string,
     tty: boolean,
     cols: number,
@@ -268,19 +268,19 @@ export interface AgentConnection {
   ): AttachHandle;
   /** Every attachable container in a project's stack (no synthetic fallback). */
   listInstances(
-    serviceId: string,
+    appId: string,
     slug: string,
     exposeService: string,
   ): Promise<AgentConsoleInstance[]>;
   /** Run a command in a container (docker exec); guest exit code, never throws on it. */
   exec(
-    serviceId: string,
+    appId: string,
     container: string,
     command: string,
     image: string,
   ): Promise<AgentExecResult>;
   /** The container's shell label for the console banner. */
-  shellLabel(serviceId: string, container: string, image: string): Promise<string>;
+  shellLabel(appId: string, container: string, image: string): Promise<string>;
 
   // ---- Part C: project config files ----
   listFiles(slug: string, path: string): Promise<AgentFileEntry[]>;
@@ -407,7 +407,7 @@ export function mapCheckPortUnsupported(e: unknown): Error {
  * {@link AgentConnection.importVolume}, capability `"volume-copy"`) and/or the
  * files-dir pair ({@link AgentConnection.exportFiles} /
  * {@link AgentConnection.importFiles}, capability `"files-copy"`) — or it answers
- * with gRPC UNIMPLEMENTED. Moving a database or service to another server copies its
+ * with gRPC UNIMPLEMENTED. Moving a database or app to another server copies its
  * data host-to-host through these RPCs, so until BOTH the source and destination
  * servers run an agent new enough to answer, the data layer surfaces THIS error —
  * distinct from {@link AgentUnreachableError} (the agent IS up, it just can't copy
@@ -713,7 +713,7 @@ function dial(target: DialTarget): AgentConnection {
   const gatewayDeadline = () => ({ deadline: new Date(Date.now() + GATEWAY_TIMEOUT_MS) });
   const toStartDevPb = (r: AgentStartDev): StartDevRequest => ({
     slug: r.slug,
-    projectId: r.serviceId,
+    projectId: r.appId,
     composeYaml: r.composeYaml,
     entryScript: r.entryScript,
     cloneSecretUrl: r.cloneSecretUrl,
@@ -1045,16 +1045,16 @@ function dial(target: DialTarget): AgentConnection {
     },
 
     // ---- Part C: console observability ----
-    followLogs(serviceId: string, container: string, tail: number) {
+    followLogs(appId: string, container: string, tail: number) {
       return logsHandle(
         client.followLogs(
-          { projectId: serviceId, container, tail },
+          { projectId: appId, container, tail },
           { deadline: new Date(Date.now() + STREAM_DEADLINE_MS) },
         ),
       );
     },
     attach(
-      serviceId: string,
+      appId: string,
       container: string,
       tty: boolean,
       cols: number,
@@ -1064,13 +1064,13 @@ function dial(target: DialTarget): AgentConnection {
         deadline: new Date(Date.now() + STREAM_DEADLINE_MS),
       });
       // The agent requires AttachOpen as the FIRST frame.
-      stream.write({ open: { projectId: serviceId, container, tty, cols, rows } });
+      stream.write({ open: { projectId: appId, container, tty, cols, rows } });
       return attachHandle(stream);
     },
-    listInstances(serviceId: string, slug: string, exposeService: string) {
+    listInstances(appId: string, slug: string, exposeService: string) {
       return new Promise<AgentConsoleInstance[]>((resolve, reject) => {
         client.listInstances(
-          { projectId: serviceId, slug, exposeService },
+          { projectId: appId, slug, exposeService },
           new Metadata(),
           consoleDeadline(),
           (err, resp) =>
@@ -1078,10 +1078,10 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
-    exec(serviceId: string, container: string, command: string, image: string) {
+    exec(appId: string, container: string, command: string, image: string) {
       return new Promise<AgentExecResult>((resolve, reject) => {
         client.exec(
-          { projectId: serviceId, container, command, image },
+          { projectId: appId, container, command, image },
           new Metadata(),
           consoleDeadline(),
           (err, resp) =>
@@ -1096,10 +1096,10 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
-    shellLabel(serviceId: string, container: string, image: string) {
+    shellLabel(appId: string, container: string, image: string) {
       return new Promise<string>((resolve, reject) => {
         client.shellLabel(
-          { projectId: serviceId, container, image },
+          { projectId: appId, container, image },
           new Metadata(),
           consoleDeadline(),
           (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.label)),

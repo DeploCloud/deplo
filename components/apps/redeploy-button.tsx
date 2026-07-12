@@ -9,13 +9,13 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
 export function RedeployButton({
-  serviceId,
+  appId,
   slug,
   variant = "outline",
   size = "sm",
 }: {
-  serviceId: string;
-  /** Owning service slug — used to route to the new deployment's live logs. */
+  appId: string;
+  /** Owning app slug — used to route to the new deployment's live logs. */
   slug: string;
   variant?: "outline" | "default" | "secondary";
   size?: "sm" | "default";
@@ -29,8 +29,8 @@ export function RedeployButton({
         { redeploy: { id: string | null } | null },
         { id: string | null } | null
       >(
-        `mutation($serviceId: String!) { redeploy(serviceId: $serviceId) { id } }`,
-        { serviceId },
+        `mutation($appId: String!) { redeploy(appId: $appId) { id } }`,
+        { appId },
         (d) => d.redeploy,
       );
       if (res.ok) {
@@ -39,7 +39,7 @@ export function RedeployButton({
         // create + Save & Deploy flows); fall back to a refresh if the redeploy
         // returned no id.
         if (res.data?.id) {
-          router.push(`/services/${slug}/deployments/${res.data.id}`);
+          router.push(`/apps/${slug}/deployments/${res.data.id}`);
         } else {
           router.refresh();
         }

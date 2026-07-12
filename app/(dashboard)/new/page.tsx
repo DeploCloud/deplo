@@ -2,16 +2,16 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
-import { NewServiceWizard } from "@/components/services/new-service-wizard";
+import { NewAppWizard } from "@/components/apps/new-app-wizard";
 import { getTemplate } from "@/lib/templates";
 import { getTemplateBlueprint } from "@/lib/templates-blueprint";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
 import { instanceHost, productionDomain } from "@/lib/deploy/domains";
 
-export const metadata = { title: "New Service" };
+export const metadata = { title: "New App" };
 
-export default async function NewServicePage(props: PageProps<"/new">) {
+export default async function NewAppPage(props: PageProps<"/new">) {
   const sp = await props.searchParams;
   const templateId = Array.isArray(sp.template) ? sp.template[0] : sp.template;
   const repoParam = Array.isArray(sp.repo) ? sp.repo[0] : sp.repo;
@@ -22,8 +22,8 @@ export default async function NewServicePage(props: PageProps<"/new">) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   // Generate the template's public hostname (with its random words baked in) up
-  // front and thread it into the blueprint env. createService passes this same
-  // string through as the service's `preferred` auto domain, so the value the
+  // front and thread it into the blueprint env. createApp passes this same
+  // string through as the app's `preferred` auto domain, so the value the
   // app sees matches the domain Traefik routes and the one shown in the Domains
   // section — the words generated here are the words that get persisted.
   const autoDomain = template
@@ -54,7 +54,7 @@ export default async function NewServicePage(props: PageProps<"/new">) {
           </Link>
         </Button>
         <PageHeader
-          title={template ? `Deploy ${template.name}` : "Create a new Service"}
+          title={template ? `Deploy ${template.name}` : "Create a new App"}
           description={
             template
               ? "Choose a server, edit the docker-compose and environment variables, then deploy. Deplo configures Docker + Traefik automatically."
@@ -63,7 +63,7 @@ export default async function NewServicePage(props: PageProps<"/new">) {
         />
       </div>
 
-      <NewServiceWizard
+      <NewAppWizard
         servers={servers}
         installations={installations}
         template={

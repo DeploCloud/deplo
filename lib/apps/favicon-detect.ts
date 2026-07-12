@@ -19,7 +19,7 @@ import { isValidLogoValue, MAX_LOGO_BYTES } from "./logo-shared";
 import type { GitRepo, UploadArchive } from "../types";
 
 /**
- * Auto-detect a service's display logo from an icon/favicon shipped in its OWN
+ * Auto-detect an app's display logo from an icon/favicon shipped in its OWN
  * source files, returning a storable base64 data-URI (or null when none is
  * found). The pick + ranking is the pure {@link file://./favicon-shared.ts}
  * logic; this module is the server-only I/O around it — reading the file list
@@ -171,7 +171,7 @@ async function collectTreeCandidates(root: string): Promise<FaviconFile[]> {
 /**
  * Detect an icon inside an already-extracted source tree on local disk.
  * `rootDirectory` (the build sub-path) biases the pick toward the sub-app the
- * service actually builds from — same disambiguation the GitHub arm applies.
+ * app actually builds from — same disambiguation the GitHub arm applies.
  */
 export async function detectTreeFavicon(
   root: string,
@@ -213,9 +213,9 @@ export async function detectUploadFavicon(
   }
 }
 
-/** The minimal service shape favicon detection reads. A loaded service graph
+/** The minimal app shape favicon detection reads. A loaded app graph
  * satisfies it structurally. */
-export interface FaviconDetectService {
+export interface FaviconDetectApp {
   source: string;
   repo?: GitRepo | null;
   upload?: UploadArchive | null;
@@ -223,13 +223,13 @@ export interface FaviconDetectService {
 }
 
 /**
- * Detect a logo from whichever source a service builds from — the single entry
+ * Detect a logo from whichever source an app builds from — the single entry
  * point the create hook, the upload route, and the manual "Detect from source"
  * action all share. Null when the source has no scannable files (a prebuilt
  * docker image, a non-GitHub git URL, or an upload with no archive yet).
  */
-export async function detectServiceFavicon(
-  project: FaviconDetectService,
+export async function detectAppFavicon(
+  project: FaviconDetectApp,
 ): Promise<string | null> {
   // A repo source is keyed on the repo itself (provider/URL), NOT the `source`
   // string — a GitHub App import is `source: "github"`, a bare git URL is

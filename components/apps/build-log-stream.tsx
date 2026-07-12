@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Ban } from "lucide-react";
+import { Ban, Clock } from "lucide-react";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
@@ -46,6 +46,7 @@ const DEPLOYMENT_LOGS_QUERY = /* GraphQL */ `
   query DeploymentLogs($id: String!) {
     deployment(id: $id) {
       status
+      queuePosition
       logs {
         ts
         level
@@ -58,6 +59,7 @@ const DEPLOYMENT_LOGS_QUERY = /* GraphQL */ `
 type LogsResponse = {
   deployment: {
     status: DeploymentStatus;
+    queuePosition: number | null;
     logs: LogLine[];
   } | null;
 };
@@ -66,10 +68,19 @@ export function BuildLogStream({
   deploymentId,
   initialLogs,
   initialStatus,
+  initialQueuePosition = null,
+  showQueueBanner = false,
 }: {
   deploymentId: string;
   initialLogs: LogLine[];
   initialStatus: DeploymentStatus;
+  /** Seed for the queued banner's position (detail page only); the poll keeps it
+   *  fresh. Omitted where the banner isn't shown. */
+  initialQueuePosition?: number | null;
+  /** Render the "in queue — position N" banner above the console while the
+   *  deployment is `queued` with no logs yet. The deployment-detail view opts in;
+   *  the app Logs view already shows its own queued/stopped notice, so it doesn't. */
+  showQueueBanner?: boolean;
 }) {
   // The log list is NOT seeded from `initialLogs` and is NOT server-rendered.
   // Logs are volatile (a build appends lines, a redeploy rewrites them), so any
@@ -85,6 +96,11 @@ export function BuildLogStream({
   // in the SSR output, because state is only read after hydration.
   const [logs, setLogs] = React.useState<LogLine[]>([]);
   const [status, setStatus] = React.useState<DeploymentStatus>(initialStatus);
+  // Live slot in the owning server's build queue while `queued`; null otherwise.
+  // Seeded from the RSC payload so the banner shows a position without waiting on
+  // the first poll, then refreshed by the poll below as the builds ahead finish.
+  const [queuePosition, setQueuePosition] =
+    React.useState<number | null>(initialQueuePosition);
   const [follow, setFollow] = React.useState(true);
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -158,6 +174,7 @@ export function BuildLogStream({
         if (cancelled || !data.deployment) return;
         setLogs(data.deployment.logs);
         setStatus(data.deployment.status);
+        setQueuePosition(data.deployment.queuePosition ?? null);
         // Sync the server-rendered status badge / build time on each transition
         // (queued→building→ready/error/canceled) so they update live, not just on
         // reload. Guarded by a ref so it fires once per change, not every poll.
@@ -213,69 +230,102 @@ export function BuildLogStream({
   );
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-[#0a0a0a]">
-      <div className="flex items-center justify-between border-b border-border px-4 py-2">
-        <span className="flex items-center gap-2 text-xs text-muted-foreground">
-          {logs.length} lines
-          {live && (
-            <span className="flex items-center gap-1.5 text-[var(--warning)]">
-              <span className="relative flex size-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--warning)] opacity-60" />
-                <span className="relative inline-flex size-2 rounded-full bg-[var(--warning)]" />
+    <div className="space-y-2">
+      {showQueueBanner && status === "queued" && logs.length === 0 && (
+        <QueuedBanner position={queuePosition} />
+      )}
+      <div className="overflow-hidden rounded-xl border border-border bg-[#0a0a0a]">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2">
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            {logs.length} lines
+            {live && (
+              <span className="flex items-center gap-1.5 text-[var(--warning)]">
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--warning)] opacity-60" />
+                  <span className="relative inline-flex size-2 rounded-full bg-[var(--warning)]" />
+                </span>
+                Live
               </span>
-              Live
-            </span>
-          )}
-        </span>
-        <div className="flex items-center gap-2">
-          {live && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={stopBuild}
-              disabled={stopping}
-              className="h-7 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Ban className="size-3.5" />
-              {stopping ? "Stopping…" : "Stop build"}
-            </Button>
-          )}
-          <CopyButton value={logText} label="Copy logs" />
-          <DownloadButton
-            value={logText}
-            filename={`build-${deploymentId}.log`}
-            label="Download"
-          />
+            )}
+          </span>
+          <div className="flex items-center gap-2">
+            {live && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={stopBuild}
+                disabled={stopping}
+                className="h-7 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Ban className="size-3.5" />
+                {stopping ? "Stopping…" : "Stop build"}
+              </Button>
+            )}
+            <CopyButton value={logText} label="Copy logs" />
+            <DownloadButton
+              value={logText}
+              filename={`build-${deploymentId}.log`}
+              label="Download"
+            />
+          </div>
+        </div>
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="max-h-120 overflow-y-auto p-4 font-mono text-xs leading-relaxed"
+        >
+          {logs.map((l, i) => (
+            <div key={i} className="flex gap-3">
+              <span className="shrink-0 select-none text-zinc-600">
+                {formatLogTime(l.ts)}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 select-none rounded px-1.5 text-[10px] font-semibold uppercase leading-5 tracking-wide",
+                  LEVEL_BADGE_CLASS[l.level] ?? "bg-zinc-700/30 text-zinc-300",
+                )}
+              >
+                {LEVEL_LABEL[l.level] ?? l.level}
+              </span>
+              <span
+                className={cn(
+                  "min-w-0 flex-1",
+                  LEVEL_TEXT_CLASS[l.level] ?? "text-zinc-300",
+                )}
+              >
+                {l.text}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className="max-h-120 overflow-y-auto p-4 font-mono text-xs leading-relaxed"
-      >
-        {logs.map((l, i) => (
-          <div key={i} className="flex gap-3">
-            <span className="shrink-0 select-none text-zinc-600">
-              {formatLogTime(l.ts)}
-            </span>
-            <span
-              className={cn(
-                "shrink-0 select-none rounded px-1.5 text-[10px] font-semibold uppercase leading-5 tracking-wide",
-                LEVEL_BADGE_CLASS[l.level] ?? "bg-zinc-700/30 text-zinc-300",
-              )}
-            >
-              {LEVEL_LABEL[l.level] ?? l.level}
-            </span>
-            <span
-              className={cn(
-                "min-w-0 flex-1",
-                LEVEL_TEXT_CLASS[l.level] ?? "text-zinc-300",
-              )}
-            >
-              {l.text}
-            </span>
-          </div>
-        ))}
+    </div>
+  );
+}
+
+/**
+ * The "waiting in the build queue" banner shown above the console while a
+ * deployment is `queued` with no logs yet — it hasn't been claimed off its owning
+ * server's queue. `position` is its 1-based slot in that queue (1 = next to
+ * build); null when the position can't be resolved, so the banner still explains
+ * the wait without inventing a number.
+ */
+function QueuedBanner({ position }: { position: number | null }) {
+  const ahead = position == null ? 0 : position - 1;
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-4 py-3">
+      <Clock className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
+      <div className="min-w-0 text-sm">
+        <p className="font-medium text-foreground">This deployment is queued</p>
+        <p className="text-muted-foreground">
+          {position == null
+            ? "Waiting for a free build slot on the owning server."
+            : ahead === 0
+              ? "It's next in line — the build starts as soon as a slot frees up on the owning server."
+              : ahead === 1
+                ? "Position 2 in the build queue — it starts once the build ahead of it finishes on the owning server."
+                : `Position ${position} in the build queue — it starts once the ${ahead} builds ahead of it finish on the owning server.`}
+        </p>
       </div>
     </div>
   );

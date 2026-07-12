@@ -1,8 +1,8 @@
 import {
   deployments as deploymentsTable,
-  services as servicesTable,
-  serviceBuild as serviceBuildTable,
-  serviceBuildMethodSettings as serviceBuildMethodSettingsTable,
+  apps as appsTable,
+  appBuild as appBuildTable,
+  appBuildMethodSettings as appBuildMethodSettingsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { buildConfigFor } from "../frameworks";
@@ -10,14 +10,14 @@ import {
   buildToRow,
   deploymentToRow,
   methodSettingsToRow,
-  serviceToRow,
-} from "./service-graph-rows";
+  appToRow,
+} from "./app-graph-rows";
 import type { TestDb } from "../db/test-harness";
-import type { Deployment, Service } from "../types";
+import type { Deployment, App } from "../types";
 import { TEAM_A, USER_1 } from "./identity-test-helpers";
 
 /**
- * Shared seeding for the service-graph cut-set (c) data-layer tests
+ * Shared seeding for the app-graph cut-set (c) data-layer tests
  * (relational-store PLAN Step 4). The project graph is RELATIONAL: the data layer
  * + the deploy engine read pglite. So this seeds a server + project (with its
  * 1-to-1 build / method-settings rows) and any deployments directly into the
@@ -32,14 +32,15 @@ import { TEAM_A, USER_1 } from "./identity-test-helpers";
 export const SERVER_1 = "srv_1";
 const T0 = "2026-01-01T00:00:00.000Z";
 
-/** Truncate every service-graph table (call in `beforeEach` before seeding). */
+/** Truncate every app-graph table (call in `beforeEach` before seeding). */
 export const TRUNCATE_PROJECT_GRAPH = `truncate table
-  team_service_order, team_folder_order,
-  shared_env_group_targets, shared_env_group_services, shared_env_group_vars, shared_env_groups,
+  team_app_order, team_folder_order,
+  shared_env_var_apps, shared_env_var_projects, shared_env_var_environments,
+  shared_env_var_targets, shared_env_vars,
   deployment_logs, deployments, env_var_targets, env_vars,
   domain_middlewares, domains,
-  service_mounts, service_volumes, service_dev,
-  service_build_method_settings, service_build, services,
+  app_mounts, app_volumes, app_dev,
+  app_build_method_settings, app_build, apps,
   folders, servers
   restart identity cascade;`;
 
@@ -67,24 +68,24 @@ export async function seedServer(db: TestDb, id: string = SERVER_1): Promise<voi
     .onConflictDoNothing();
 }
 
-export interface SeedServiceOpts {
+export interface SeedAppOpts {
   id: string;
   teamId?: string;
   serverId?: string;
   slug?: string;
-  status?: Service["status"];
-  source?: Service["source"];
+  status?: App["status"];
+  source?: App["source"];
 }
 
 /** Seed one project + its 1-to-1 build / method-settings rows. Returns the id. */
-export async function seedService(
+export async function seedApp(
   db: TestDb,
-  opts: SeedServiceOpts,
+  opts: SeedAppOpts,
 ): Promise<string> {
   const teamId = opts.teamId ?? TEAM_A;
   const serverId = opts.serverId ?? SERVER_1;
   const build = buildConfigFor({});
-  const project: Service = {
+  const project: App = {
     id: opts.id,
     name: opts.id,
     slug: opts.slug ?? opts.id,
@@ -108,10 +109,10 @@ export async function seedService(
     createdAt: T0,
     updatedAt: T0,
   };
-  await db.insert(servicesTable).values(serviceToRow(project));
-  await db.insert(serviceBuildTable).values(buildToRow(project.id, build));
+  await db.insert(appsTable).values(appToRow(project));
+  await db.insert(appBuildTable).values(buildToRow(project.id, build));
   await db
-    .insert(serviceBuildMethodSettingsTable)
+    .insert(appBuildMethodSettingsTable)
     .values(methodSettingsToRow(project.id, build.methodSettings));
   return project.id;
 }
@@ -122,7 +123,7 @@ export async function seedDeployment(
   db: TestDb,
   opts: {
     id: string;
-    serviceId: string;
+    appId: string;
     status?: Deployment["status"];
     createdAt?: string;
     serverId?: string;
@@ -130,7 +131,7 @@ export async function seedDeployment(
 ): Promise<void> {
   const dep: Deployment = {
     id: opts.id,
-    serviceId: opts.serviceId,
+    appId: opts.appId,
     status: opts.status ?? "ready",
     environment: "production",
     commitSha: "",

@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { Loader2, RefreshCw, Wifi, WifiOff } from "lucide-react";
-import { DeploLogo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import {
   checkServerConnection,
@@ -15,12 +15,14 @@ import {
 const HEARTBEAT_INTERVAL_MS = 10_000;
 
 /**
- * Full-screen guard mounted once in the root layout. Heartbeats the web
- * server hosting the panel and, when it becomes unreachable, locks the entire
- * UI behind a blocking overlay: nothing can be done until the server is back.
- * While locked, the overlay auto-reconnects — it probes for the server on a
- * backoff and reloads the page the instant it answers — and offers a single
- * "Retry now" button to probe on demand instead of waiting out the timer.
+ * Connection watchdog mounted once in the root layout. Heartbeats the web
+ * server hosting the panel and, when it becomes unreachable, raises a persistent
+ * corner NOTIFICATION (not a full-screen lock): the page you're on stays fully
+ * usable, but navigating to any OTHER page is paused — a broken connection can't
+ * load a new route, so we block the attempt and say so instead of letting it
+ * fail. The notification auto-reconnects — it probes for the server on a backoff
+ * and reloads the page the instant it answers — and offers a single "Retry now"
+ * button to probe on demand instead of waiting out the timer.
  */
 export function ServerConnectionGuard() {
   const state = React.useSyncExternalStore(
@@ -52,22 +54,8 @@ export function ServerConnectionGuard() {
   }, [disconnected]);
 
   if (!disconnected) return null;
-  return <DisconnectedOverlay />;
+  return <DisconnectedNotification />;
 }
-
-// Keys allowed to reach the app while locked — exactly what's needed to focus
-// and press the one action button, plus lone modifiers. Everything else (the
-// app's window-level hotkeys: '[' sidebar toggle, Ctrl/Cmd+A select-all, and
-// crucially Delete/Backspace which opens a bulk-delete dialog) is stopped.
-const OPERABLE_KEYS = new Set([
-  "Tab",
-  "Enter",
-  " ",
-  "Shift",
-  "Control",
-  "Alt",
-  "Meta",
-]);
 
 // Auto-reconnect cadence. The first probe fires quickly (outages are often a
 // blip), then backs off geometrically up to a ceiling so a long outage doesn't
@@ -82,7 +70,7 @@ const RESTORED_RELOAD_DELAY_MS = 900;
 type ReconnectPhase = "reconnecting" | "restored";
 
 /**
- * Drives the auto-reconnect loop that runs the whole time the overlay is up.
+ * Drives the auto-reconnect loop that runs the whole time the notification is up.
  *
  * It probes `/api/health` on a backoff and, the instant a probe answers, flips
  * to "restored" and reloads the page. The reload — not an in-place un-latch —
@@ -184,233 +172,224 @@ function useAutoReconnect(): {
   return { phase, checking, cycleKey: cycle.key, cycleMs: cycle.ms, retryNow };
 }
 
+// How long to swallow repeat "navigation is paused" toasts, so mashing a nav
+// link updates one toast instead of stacking a tower of them.
+const NAV_BLOCK_TOAST_ID = "deplo-nav-paused";
+
 /**
- * The lock screen itself. Portaled to <body> so it is a direct body child:
- * that lets the effect below mark every OTHER body child `inert`, which blocks
- * pointer input and focus into the app — open Radix dialogs' focus traps
- * included. But `inert` does NOT silence window-level key listeners (a keydown
- * still bubbles from the focused action button to window, where the app's
- * hotkeys live) and does NOT cover body children portaled in AFTER the sweep
- * (a dialog a surviving hotkey could open). So the effect also (a) swallows
- * every non-operable key at capture phase and (b) inerts late-added body
- * children via a MutationObserver. The huge z-index is the visual half:
- * sonner's toaster hardcodes z-index 999999999, so anything lower would leave
- * toasts floating above the blocker (max int32 wins over it).
+ * Pauses navigation to any OTHER page while the notification is up, WITHOUT
+ * locking the current page. Two vectors are covered:
+ *
+ *  - **Link / anchor clicks** — capture-phase `click` + `auxclick` listeners on
+ *    `document` fire before React dispatches, so they beat both Next's `<Link>`
+ *    handler and the app's own onClicks. For an in-app anchor it calls
+ *    `preventDefault()` (App Router's Link bails on `defaultPrevented`; the
+ *    browser's native anchor nav is cancelled too) AND `stopImmediatePropagation()`
+ *    (so the sidebar's "back" links can't fire their `history.go()` jump). Both
+ *    the primary and middle mouse buttons are paused — a middle-click would
+ *    otherwise open the dead route in a background tab. External links, downloads,
+ *    `mailto:`/`tel:`, in-page `#` anchors and right-clicks (the context menu)
+ *    fall through untouched.
+ *  - **Back / forward** — an extra history entry is pinned on mount and re-pinned
+ *    on every `popstate`, so the browser's back/forward buttons can't walk off
+ *    the current route. Best-effort: a rapid/held back gesture that coalesces
+ *    several traversals before the handler runs can still slip past the pin.
+ *
+ * Programmatic `router.push` from a button isn't intercepted here: those almost
+ * always sit behind a server round-trip that fails while disconnected, so they
+ * never reach the navigation. The listeners live only while this hook is
+ * mounted (i.e. only while disconnected) and unwind cleanly on the reload.
  */
-function DisconnectedOverlay() {
-  const overlayRef = React.useRef<HTMLDivElement>(null);
-  const actionRef = React.useRef<HTMLButtonElement>(null);
+function useBlockNavigationWhileDisconnected(active: boolean): void {
+  React.useEffect(() => {
+    if (!active) return;
+
+    const notePaused = () =>
+      toast("Navigation is paused until the connection is restored.", {
+        id: NAV_BLOCK_TOAST_ID,
+        description: "You can stay on this page — it'll reload itself once the server is back.",
+      });
+
+    // Is this click headed for an in-app route change we should hold back?
+    const isInternalNavClick = (e: MouseEvent): boolean => {
+      // Primary (0) and middle (1) buttons navigate — a middle-click opens a new
+      // tab on the dead route. Right-click (2, context menu) and already-handled
+      // clicks are left alone.
+      if ((e.button !== 0 && e.button !== 1) || e.defaultPrevented) return false;
+      const target = e.target as Element | null;
+      const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!anchor) return false;
+      if (anchor.hasAttribute("download")) return false;
+
+      const href = anchor.getAttribute("href") ?? "";
+      // In-page anchors and non-http schemes aren't route changes.
+      if (href.startsWith("#") || /^(mailto:|tel:|blob:|data:)/i.test(href)) return false;
+
+      let url: URL;
+      try {
+        url = new URL(anchor.href, window.location.href);
+      } catch {
+        return false;
+      }
+      // Different origin → leaving the app entirely; let it go.
+      if (url.origin !== window.location.origin) return false;
+      // Same URL (pure hash change to the current page) → not a route change.
+      if (url.href === window.location.href) return false;
+      return true;
+    };
+
+    const onClickCapture = (e: MouseEvent) => {
+      if (!isInternalNavClick(e)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      notePaused();
+    };
+
+    // Pin an extra entry so the FIRST back press pops back onto the current URL
+    // instead of leaving; re-pin on every popstate so forward/back stay trapped.
+    const pin = () => {
+      try {
+        window.history.pushState(null, "", window.location.href);
+      } catch {
+        /* pushState can throw in rare sandboxed contexts — degrade gracefully */
+      }
+    };
+    const onPopState = () => {
+      pin();
+      notePaused();
+    };
+
+    // 'click' fires for the primary button; the middle button comes through as
+    // 'auxclick' (and would otherwise open the dead route in a background tab).
+    document.addEventListener("click", onClickCapture, true);
+    document.addEventListener("auxclick", onClickCapture, true);
+    window.addEventListener("popstate", onPopState);
+    pin();
+
+    return () => {
+      document.removeEventListener("click", onClickCapture, true);
+      document.removeEventListener("auxclick", onClickCapture, true);
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, [active]);
+}
+
+/**
+ * The persistent connection notification. Portaled to <body> and pinned to the
+ * bottom-center of the viewport as a compact card — it deliberately does NOT
+ * cover or inert the page, so the current view stays fully interactive; only
+ * cross-page navigation is paused (see `useBlockNavigationWhileDisconnected`).
+ * The huge z-index keeps it above sonner's toaster (hardcoded z-index 999999999,
+ * where the "navigation paused" toasts land): max int32 wins over it.
+ */
+function DisconnectedNotification() {
   const { phase, checking, cycleKey, cycleMs, retryNow } = useAutoReconnect();
   const restored = phase === "restored";
 
-  React.useEffect(() => {
-    const overlay = overlayRef.current;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const inerted: HTMLElement[] = [];
-    const inert = (el: Element): void => {
-      if (el === overlay) return;
-      if (el instanceof HTMLElement && !el.inert) {
-        el.inert = true;
-        inerted.push(el);
-      }
-    };
-    for (const child of Array.from(document.body.children)) inert(child);
-
-    // Focus AFTER inerting the rest of the page: an open Radix dialog's focus
-    // trap can no longer steal it back once its subtree is inert. Prefer the
-    // action button, but read it LIVE (it can briefly swap contents across
-    // phases) and fall back to the focusable overlay itself, so focus can never
-    // slip out to <body> — where a stray app hotkey could catch it.
-    const focusTarget = (): HTMLElement | null => actionRef.current ?? overlay;
-    focusTarget()?.focus();
-    const reclaimFocus = (): void => {
-      if (overlay && !overlay.contains(document.activeElement)) focusTarget()?.focus();
-    };
-
-    // A body child added after the sweep (e.g. a Radix dialog portaled from a
-    // still-pending callback) would otherwise be live and focus-stealing —
-    // inert it the instant it appears and take focus back.
-    const observer = new MutationObserver((records) => {
-      for (const record of records) {
-        for (const node of record.addedNodes) inert(node as Element);
-      }
-      reclaimFocus();
-    });
-    observer.observe(document.body, { childList: true });
-
-    // stopImmediatePropagation (NOT preventDefault) kills the app's hotkey
-    // listeners while leaving native browser shortcuts — F5/Ctrl+R reload,
-    // devtools — untouched, so the user's own reload keys still work.
-    const guardKey = (e: KeyboardEvent): void => {
-      if (OPERABLE_KEYS.has(e.key)) return;
-      e.stopImmediatePropagation();
-    };
-    window.addEventListener("keydown", guardKey, true);
-    window.addEventListener("keyup", guardKey, true);
-    window.addEventListener("keypress", guardKey, true);
-
-    // In practice this never runs (the latch only clears via a full reload),
-    // but restore cleanly anyway — e.g. for HMR in dev.
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      observer.disconnect();
-      window.removeEventListener("keydown", guardKey, true);
-      window.removeEventListener("keyup", guardKey, true);
-      window.removeEventListener("keypress", guardKey, true);
-      for (const el of inerted) el.inert = false;
-    };
-  }, []);
+  useBlockNavigationWhileDisconnected(!restored);
 
   // Accent tracks the phase: destructive while the server is gone, emerald the
   // moment a probe brings it back. These must be complete literal class strings
   // — Tailwind can't see interpolated (`bg-${x}`) ones, so it never emits them.
   const tone = restored
     ? {
-        halo: "bg-emerald-500/[0.07]",
-        ring: "bg-emerald-500/10",
         core: "border-emerald-500/30 bg-emerald-500/15 text-emerald-500",
         glow: "#10b981",
       }
     : {
-        halo: "bg-destructive/[0.07]",
-        ring: "bg-destructive/10",
         core: "border-destructive/30 bg-destructive/15 text-destructive",
         glow: "var(--destructive)",
       };
 
   return createPortal(
     <div
-      ref={overlayRef}
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="server-connection-lost-title"
-      aria-describedby="server-connection-lost-description"
-      tabIndex={-1}
-      className="pointer-events-auto fixed inset-0 z-[2147483647] flex items-center justify-center overflow-y-auto bg-black/80 p-4 outline-none backdrop-blur-md animate-in fade-in-0 duration-200"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-[2147483647] flex justify-center p-4"
     >
-      {/* Radial vignette: darkens the corners so attention falls on the card. */}
       <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0"
-        style={{
-          background:
-            "radial-gradient(115% 85% at 50% 42%, transparent 38%, rgba(0,0,0,0.6) 100%)",
-        }}
-      />
-
-      <div className="relative isolate w-full max-w-md animate-in fade-in-0 zoom-in-95 duration-300">
-        {/* Soft glow bleeding out from behind the card top — tracks the accent. */}
+        role="status"
+        aria-live="polite"
+        aria-labelledby="server-connection-lost-title"
+        aria-describedby="server-connection-lost-description"
+        className="pointer-events-auto relative isolate w-full max-w-sm animate-in fade-in-0 slide-in-from-bottom-4 duration-300"
+      >
+        {/* Red glow radiating from the centre outward behind the card. Its core
+            sits behind the opaque card, so what shows is a soft halo bleeding out
+            past every edge — a glow "behind the modal". Tracks the accent, so it
+            is red while disconnected and turns emerald the moment it recovers. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -inset-x-8 -top-10 -z-10 h-40 opacity-70 blur-3xl transition-colors duration-500"
+          className="pointer-events-none absolute -inset-10 -z-10 opacity-80 blur-3xl transition-colors duration-500"
           style={{
-            background: `radial-gradient(50% 60% at 50% 0%, color-mix(in srgb, ${tone.glow} 24%, transparent), transparent 72%)`,
+            background: `radial-gradient(60% 60% at 50% 50%, color-mix(in srgb, ${tone.glow} 40%, transparent), transparent 72%)`,
           }}
         />
 
-        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-          {/* Header: just the brand. */}
-          <div className="flex items-center border-b border-border/70 px-5 py-3.5">
-            <DeploLogo className="h-4 text-foreground/75" />
-          </div>
-
-          <div className="flex flex-col items-center px-6 pb-6 pt-8 text-center">
-            {/* Concentric "signal" badge. It now animates — the panel really is
-                probing while locked, so the motion is honest. The expanding
-                ring is suppressed under prefers-reduced-motion. */}
-            <div className="relative mb-5 flex size-16 items-center justify-center">
-              <span
-                aria-hidden
-                className={`absolute inset-0 rounded-full ${tone.halo}`}
-              />
-              <span
-                aria-hidden
-                className={`absolute inset-[7px] rounded-full ${tone.ring}`}
-              />
-              {!restored && (
-                <span
-                  aria-hidden
-                  className="absolute inset-0 rounded-full border border-destructive/30 animate-ping [animation-duration:2.4s] motion-reduce:hidden"
-                />
+        <div className="overflow-hidden rounded-xl border border-border bg-card p-3.5 shadow-2xl">
+          {/* Icon rides INLINE with the title on one row, so it owns no tall
+              empty column — a compact chip whose accent tracks the phase
+              (destructive → emerald on recovery). */}
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`flex size-7 shrink-0 items-center justify-center rounded-lg border shadow-sm transition-colors duration-500 ${tone.core}`}
+            >
+              {restored ? (
+                <Wifi className="size-4 animate-in zoom-in-50 duration-300" />
+              ) : (
+                <WifiOff className="size-4" />
               )}
-              <span
-                className={`relative flex size-11 items-center justify-center rounded-full border shadow-sm transition-colors duration-500 ${tone.core}`}
-              >
-                {restored ? (
-                  <Wifi className="size-5 animate-in zoom-in-50 duration-300" />
-                ) : (
-                  <WifiOff className="size-5" />
-                )}
-              </span>
-            </div>
-
+            </span>
             <h2
               id="server-connection-lost-title"
-              className="text-lg font-semibold tracking-tight text-foreground"
+              className="text-sm font-semibold tracking-tight text-foreground"
             >
               {restored ? "Back online" : "Connection lost"}
             </h2>
-            <p
-              id="server-connection-lost-description"
-              aria-live="polite"
-              className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground"
-            >
+          </div>
+
+          <p
+            id="server-connection-lost-description"
+            className="mt-2 text-xs leading-relaxed text-muted-foreground"
+          >
+            {restored
+              ? "Reconnected — reloading to pick up right where you left off…"
+              : "Can’t reach the server. This page stays usable — navigation is paused until it’s back."}
+          </p>
+
+          {/* One button. Its own fill IS the timer: a bar sweeps left-to-right
+              over the current wait, and when it reaches the end a probe fires
+              on its own. Press it to probe immediately instead of waiting. */}
+          <Button
+            size="sm"
+            className="relative mt-3 w-full overflow-hidden"
+            onClick={() => (restored ? window.location.reload() : retryNow())}
+          >
+            {!restored && !checking && (
+              <span
+                key={cycleKey}
+                aria-hidden
+                className="absolute inset-0 origin-left bg-primary-foreground/20 motion-reduce:hidden"
+                style={{ animation: `reconnect-progress ${cycleMs}ms linear forwards` }}
+              />
+            )}
+            <span className="relative z-10 inline-flex items-center gap-2">
               {restored ? (
                 <>
-                  The server is responding again. Reloading the panel to pick up
-                  right where you left off…
+                  <Loader2 className="animate-spin" />
+                  Reloading…
+                </>
+              ) : checking ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  Checking…
                 </>
               ) : (
                 <>
-                  The web server hosting this Deplo panel is unreachable.
-                  Everything is paused until the connection is restored — no
-                  changes can be made right now.
+                  <RefreshCw />
+                  Retry now
                 </>
               )}
-            </p>
-
-            {/* One button, and only one. Its own fill IS the timer: a bar
-                sweeps left-to-right over the current wait, and when it reaches
-                the end a probe fires on its own. Press it to probe immediately
-                instead of waiting; it stays mounted (and clickable) in every
-                phase so a declined auto-reload still has an escape hatch and
-                focus never slips out of the dialog. */}
-            <Button
-              ref={actionRef}
-              size="lg"
-              className="relative mt-6 w-full overflow-hidden"
-              onClick={() => (restored ? window.location.reload() : retryNow())}
-            >
-              {!restored && !checking && (
-                <span
-                  key={cycleKey}
-                  aria-hidden
-                  className="absolute inset-0 origin-left bg-primary-foreground/20 motion-reduce:hidden"
-                  style={{ animation: `reconnect-progress ${cycleMs}ms linear forwards` }}
-                />
-              )}
-              <span className="relative z-10 inline-flex items-center gap-2">
-                {restored ? (
-                  <>
-                    <Loader2 className="animate-spin" />
-                    Reloading…
-                  </>
-                ) : checking ? (
-                  <>
-                    <Loader2 className="animate-spin" />
-                    Checking…
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw />
-                    Retry now
-                  </>
-                )}
-              </span>
-            </Button>
-          </div>
+            </span>
+          </Button>
         </div>
       </div>
     </div>,

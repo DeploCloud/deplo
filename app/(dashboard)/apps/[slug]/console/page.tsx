@@ -1,16 +1,16 @@
 import { notFound } from "next/navigation";
-import { getServiceBySlug } from "@/lib/data/services";
+import { getAppBySlug } from "@/lib/data/apps";
 import { getConsoleInfo } from "@/lib/data/console";
 import { PageHeader } from "@/components/shared/page-header";
-import { LiveConsole } from "@/components/services/live-console";
+import { LiveConsole } from "@/components/apps/live-console";
 
 export const metadata = { title: "Console" };
 
-export default async function ServiceConsolePage(
-  props: PageProps<"/services/[slug]/console">
+export default async function AppConsolePage(
+  props: PageProps<"/apps/[slug]/console">
 ) {
   const { slug } = await props.params;
-  const project = await getServiceBySlug(slug);
+  const project = await getAppBySlug(slug);
   if (!project) notFound();
 
   // No shell probe here — getConsoleInfo skips it so the console renders
@@ -25,10 +25,10 @@ export default async function ServiceConsolePage(
         description="Run commands in the running container (docker exec)."
       />
 
-      {/* Follows the service's live running state: the terminal appears/
+      {/* Follows the app's live running state: the terminal appears/
           disappears as the container starts/stops, no reload. */}
       <LiveConsole
-        serviceId={project.id}
+        appId={project.id}
         initialInfo={
           info?.running
             ? {

@@ -20,10 +20,10 @@ import {
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import {
   seedServer,
-  seedService,
+  seedApp,
   seedDeployment,
   TRUNCATE_PROJECT_GRAPH,
-} from "../data/service-graph-test-helpers";
+} from "../data/app-graph-test-helpers";
 import {
   enqueueDeployment,
   startDeployQueue,
@@ -132,13 +132,13 @@ test("concurrency 1: one deploy at a time per server, FIFO", async () => {
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
-  await seedService(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
-  await seedService(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  await seedDeployment(db, { id: "d_x", serviceId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
-  await seedDeployment(db, { id: "d_y", serviceId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
+  await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
+  await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
+  await seedDeployment(db, { id: "d_x", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
+  await seedDeployment(db, { id: "d_y", appId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
 
-  enqueueDeployment({ depId: "d_x", serverId: SRV_A, serviceId: "svc_x" });
-  enqueueDeployment({ depId: "d_y", serverId: SRV_A, serviceId: "svc_y" });
+  enqueueDeployment({ depId: "d_x", serverId: SRV_A, appId: "svc_x" });
+  enqueueDeployment({ depId: "d_y", serverId: SRV_A, appId: "svc_y" });
 
   await waitFor(() => started.length === 1, "first deploy started");
   await settle();
@@ -155,13 +155,13 @@ test("deploys on different servers run in parallel", async () => {
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
   await seedServer(db, SRV_B);
-  await seedService(db, { id: "svc_a", serverId: SRV_A, status: "queued" });
-  await seedService(db, { id: "svc_b", serverId: SRV_B, status: "queued" });
-  await seedDeployment(db, { id: "d_a", serviceId: "svc_a", serverId: SRV_A, status: "queued" });
-  await seedDeployment(db, { id: "d_b", serviceId: "svc_b", serverId: SRV_B, status: "queued" });
+  await seedApp(db, { id: "svc_a", serverId: SRV_A, status: "queued" });
+  await seedApp(db, { id: "svc_b", serverId: SRV_B, status: "queued" });
+  await seedDeployment(db, { id: "d_a", appId: "svc_a", serverId: SRV_A, status: "queued" });
+  await seedDeployment(db, { id: "d_b", appId: "svc_b", serverId: SRV_B, status: "queued" });
 
-  enqueueDeployment({ depId: "d_a", serverId: SRV_A, serviceId: "svc_a" });
-  enqueueDeployment({ depId: "d_b", serverId: SRV_B, serviceId: "svc_b" });
+  enqueueDeployment({ depId: "d_a", serverId: SRV_A, appId: "svc_a" });
+  enqueueDeployment({ depId: "d_b", serverId: SRV_B, appId: "svc_b" });
 
   await waitFor(() => started.length === 2, "both deploys started");
   assert.deepEqual([...started].sort(), ["d_a", "d_b"], "one on each server, concurrently");
@@ -174,17 +174,17 @@ test("concurrency 2: two distinct services run, but never two of the same servic
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
   await setConcurrency(SRV_A, 2);
-  await seedService(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
-  await seedService(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  // Two queued deploys for the SAME service x, plus one for y. (Seeded directly —
+  await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
+  await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
+  // Two queued deploys for the SAME app x, plus one for y. (Seeded directly —
   // the enqueue-time collapse lives in startDeployment, not the queue.)
-  await seedDeployment(db, { id: "x1", serviceId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
-  await seedDeployment(db, { id: "x2", serviceId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
-  await seedDeployment(db, { id: "y1", serviceId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:03.000Z" });
+  await seedDeployment(db, { id: "x1", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
+  await seedDeployment(db, { id: "x2", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
+  await seedDeployment(db, { id: "y1", appId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:03.000Z" });
 
-  enqueueDeployment({ depId: "x1", serverId: SRV_A, serviceId: "svc_x" });
-  enqueueDeployment({ depId: "x2", serverId: SRV_A, serviceId: "svc_x" });
-  enqueueDeployment({ depId: "y1", serverId: SRV_A, serviceId: "svc_y" });
+  enqueueDeployment({ depId: "x1", serverId: SRV_A, appId: "svc_x" });
+  enqueueDeployment({ depId: "x2", serverId: SRV_A, appId: "svc_x" });
+  enqueueDeployment({ depId: "y1", serverId: SRV_A, appId: "svc_y" });
 
   await waitFor(() => started.length === 2, "two slots filled");
   await settle();
@@ -202,13 +202,13 @@ test("a canceled queued deploy is skipped by the drain", async () => {
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
-  await seedService(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
-  await seedService(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  await seedDeployment(db, { id: "d1", serviceId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
-  await seedDeployment(db, { id: "d2", serviceId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
+  await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
+  await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
+  await seedDeployment(db, { id: "d1", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
+  await seedDeployment(db, { id: "d2", appId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
 
-  enqueueDeployment({ depId: "d1", serverId: SRV_A, serviceId: "svc_x" });
-  enqueueDeployment({ depId: "d2", serverId: SRV_A, serviceId: "svc_y" });
+  enqueueDeployment({ depId: "d1", serverId: SRV_A, appId: "svc_x" });
+  enqueueDeployment({ depId: "d2", serverId: SRV_A, appId: "svc_y" });
   await waitFor(() => started.length === 1, "d1 started");
 
   // Cancel d2 while it waits (mimics cancelDeployment's conditional flip).
@@ -224,11 +224,11 @@ test("startDeployQueue re-drains an existing queued backlog on boot", async () =
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
-  await seedService(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
-  await seedService(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
+  await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
+  await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
   // Rows exist as `queued` (a restart mid-backlog) — nothing enqueued this run.
-  await seedDeployment(db, { id: "b1", serviceId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
-  await seedDeployment(db, { id: "b2", serviceId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
+  await seedDeployment(db, { id: "b1", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
+  await seedDeployment(db, { id: "b2", appId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
 
   await startDeployQueue();
   await waitFor(() => started.length === 1, "boot drain started the oldest");
@@ -243,9 +243,9 @@ test("startDeployQueue backfills a queued row missing its serverId", async () =>
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
-  await seedService(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
+  await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   // A pre-migration straggler: queued but no denormalized server_id.
-  await seedDeployment(db, { id: "old", serviceId: "svc_x", status: "queued" });
+  await seedDeployment(db, { id: "old", appId: "svc_x", status: "queued" });
   assert.equal(
     (await db.select({ s: deploymentsTable.serverId }).from(deploymentsTable).where(eq(deploymentsTable.id, "old")))[0]?.s,
     null,
@@ -263,9 +263,9 @@ test("startDeployment supersedes an older still-queued deploy of the same servic
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
-  await seedService(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
+  await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   // An older deploy is already sitting queued (its slot never came free).
-  await seedDeployment(db, { id: "old", serviceId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
+  await seedDeployment(db, { id: "old", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
 
   // A new trigger arrives: it must cancel the older queued deploy (supersede) and
   // enqueue the fresh one so the same tree isn't rebuilt twice.
@@ -283,13 +283,13 @@ test("deploy_concurrency is clamped to at least 1", async () => {
   __setRunnerForTest(runner);
   await seedServer(db, SRV_A);
   await setConcurrency(SRV_A, 0); // nonsensical — must clamp to 1, not stall
-  await seedService(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
-  await seedService(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  await seedDeployment(db, { id: "c1", serviceId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
-  await seedDeployment(db, { id: "c2", serviceId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
+  await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
+  await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
+  await seedDeployment(db, { id: "c1", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
+  await seedDeployment(db, { id: "c2", appId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
 
-  enqueueDeployment({ depId: "c1", serverId: SRV_A, serviceId: "svc_x" });
-  enqueueDeployment({ depId: "c2", serverId: SRV_A, serviceId: "svc_y" });
+  enqueueDeployment({ depId: "c1", serverId: SRV_A, appId: "svc_x" });
+  enqueueDeployment({ depId: "c2", serverId: SRV_A, appId: "svc_y" });
   await waitFor(() => started.length === 1, "clamp to 1 still dispatches");
   await settle();
   assert.deepEqual(started, ["c1"], "0 clamped to 1 — serialized, not stalled");

@@ -1,28 +1,35 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, GitBranch, Clock, ExternalLink } from "lucide-react";
-import { getServiceBySlug } from "@/lib/data/services";
-import { getDeployment, getLogs } from "@/lib/data/deployments";
+import { getAppBySlug } from "@/lib/data/apps";
+import {
+  getDeployment,
+  getLogs,
+  getQueuePosition,
+} from "@/lib/data/deployments";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { CommitLink } from "@/components/services/commit-link";
+import { CommitLink } from "@/components/apps/commit-link";
 import { githubCommitUrl, timeAgo } from "@/lib/utils";
-import { BuildLogStream } from "@/components/services/build-log-stream";
+import { BuildLogStream } from "@/components/apps/build-log-stream";
 
 export const metadata = { title: "Deployment" };
 
 export default async function DeploymentDetailPage(
-  props: PageProps<"/services/[slug]/deployments/[id]">,
+  props: PageProps<"/apps/[slug]/deployments/[id]">,
 ) {
   const { slug, id } = await props.params;
-  const project = await getServiceBySlug(slug);
+  const project = await getAppBySlug(slug);
   if (!project) notFound();
   const deployment = await getDeployment(id);
-  if (!deployment || deployment.serviceId !== project.id) notFound();
+  if (!deployment || deployment.appId !== project.id) notFound();
 
   const logs = await getLogs(id);
+  // Its live slot in the owning server's build queue (null unless still queued),
+  // so the "in queue" banner paints its position without waiting on the first poll.
+  const queuePosition = await getQueuePosition(id);
 
   return (
     <div className="space-y-6">
@@ -32,7 +39,7 @@ export default async function DeploymentDetailPage(
         asChild
         className="-ml-2 text-muted-foreground"
       >
-        <Link href={`/services/${slug}`}>
+        <Link href={`/apps/${slug}`}>
           <ArrowLeft className="size-4" />
           Back to project
         </Link>
@@ -103,6 +110,8 @@ export default async function DeploymentDetailPage(
           deploymentId={id}
           initialLogs={logs}
           initialStatus={deployment.status}
+          initialQueuePosition={queuePosition}
+          showQueueBanner
         />
       </div>
     </div>

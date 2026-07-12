@@ -12,12 +12,12 @@ import {
 import { getDb } from "../db/client";
 import {
   domains as domainsTable,
-  services as servicesTable,
-  serviceBuild as serviceBuildTable,
-  serviceBuildMethodSettings as serviceBuildMethodSettingsTable,
-  serviceMounts as serviceMountsTable,
-  serviceVolumes as serviceVolumesTable,
-  teamServiceOrder,
+  apps as appsTable,
+  appBuild as appBuildTable,
+  appBuildMethodSettings as appBuildMethodSettingsTable,
+  appMounts as appMountsTable,
+  appVolumes as appVolumesTable,
+  teamAppOrder,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
@@ -42,8 +42,8 @@ import type {
   EnvTarget,
   EnvVar,
   GitRepo,
-  Service,
-  ServiceStatus,
+  App,
+  AppStatus,
   UploadArchive,
   VolumeMount,
 } from "../types";
@@ -61,33 +61,33 @@ import {
   rehostBlueprintHosts,
   nipEmbeddedIp,
 } from "../deploy/domains";
-import { teardownService } from "./deployments";
+import { teardownApp } from "./deployments";
 import { agentTeardownDev } from "../deploy/agent-dev";
 import { removeUploads } from "../deploy/upload";
-import { removeServiceDevSshUsers } from "./dev-ssh";
-import { isValidLogoValue, isTemplateLogo } from "../services/logo-shared";
-import { detectServiceFavicon } from "../services/favicon-detect";
-import { publishServiceChanged } from "../graphql/pubsub";
+import { removeAppDevSshUsers } from "./dev-ssh";
+import { isValidLogoValue, isTemplateLogo } from "../apps/logo-shared";
+import { detectAppFavicon } from "../apps/favicon-detect";
+import { publishAppChanged } from "../graphql/pubsub";
 import {
   insertEnvVars,
-  loadDomainsForService,
-  loadServiceGraph,
-  loadServiceGraphBySlug,
-  loadServicesByIds,
-  loadServicesByTeam,
+  loadDomainsForApp,
+  loadAppGraph,
+  loadAppGraphBySlug,
+  loadAppsByIds,
+  loadAppsByTeam,
   preloadSummaries,
-  serviceInTeam,
+  appInTeam,
   type SummaryPreload,
-} from "./service-graph-load";
+} from "./app-graph-load";
 import {
   buildToRow,
   methodSettingsToRow,
   mountsToRows,
-  serviceToRow,
+  appToRow,
   volumesToRows,
-} from "./service-graph-rows";
-import { detectDefaultService } from "../deploy/compose-stack";
-import { requireFolderCapabilityForService } from "./folder-access";
+} from "./app-graph-rows";
+import { detectDefaultApp } from "../deploy/compose-stack";
+import { requireFolderCapabilityForApp } from "./folder-access";
 
 /** Heuristic: treat secret-looking keys as masked secrets. */
 function isSecretKey(key: string): boolean {
@@ -114,23 +114,23 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export interface ServiceSummary extends Service {
+export interface AppSummary extends App {
   latestDeployment: Deployment | null;
   domainCount: number;
 }
 
-// The pure read-time normalizers moved to `./normalize-service` so the
-// service-graph backfill can apply the IDENTICAL normalization before exploding a
+// The pure read-time normalizers moved to `./normalize-app` so the
+// app-graph backfill can apply the IDENTICAL normalization before exploding a
 // legacy row into the strict child tables (relational-store PLAN §7). The live
 // READ path no longer normalizes (relational rows are already in the current
 // model — the backfill/live writes store normalized rows). `deriveVolumeName` is
 // still used by `validateVolumes` here and re-exported for the volume tests.
-import { deriveVolumeName } from "./normalize-service";
+import { deriveVolumeName } from "./normalize-app";
 
 export { deriveVolumeName };
 
 /**
- * "stopping" is a transient state held only while `stopService` awaits the
+ * "stopping" is a transient state held only while `stopApp` awaits the
  * container teardown (≤60s). If the server is killed mid-stop, a project can be
  * left wedged in "stopping" forever. Self-heal on read: a "stopping" project
  * whose last update is older than the stop timeout is reported as "idle" (the
@@ -144,28 +144,28 @@ const STOPPING_STALE_MS = 90_000;
  * healing a wedged "stopping". Exported for unit tests; pure (no store/docker).
  */
 export function reconcileStatus(
-  status: ServiceStatus,
+  status: AppStatus,
   updatedAt: string,
   now: number = Date.now(),
-): ServiceStatus {
+): AppStatus {
   if (status !== "stopping") return status;
   const age = now - new Date(updatedAt).getTime();
   return age > STOPPING_STALE_MS ? "idle" : "stopping";
 }
 
 /**
- * Fold a (relational, already-normalized) project into a {@link ServiceSummary}
+ * Fold a (relational, already-normalized) project into a {@link AppSummary}
  * — a PURE function over preloaded latest-deployment + domain-count maps (PLAN §6
  * "`summarize` becomes a pure function over preloaded data"). No DB access, so a
- * list of N services costs the bounded batch-load below, not N×(deployment +
+ * list of N apps costs the bounded batch-load below, not N×(deployment +
  * domain) round-trips. `reconcileStatus` still self-heals a wedged "stopping".
  */
-function summarize(p: Service, pre: SummaryPreload): ServiceSummary {
+function summarize(p: App, pre: SummaryPreload): AppSummary {
   const status = reconcileStatus(p.status, p.updatedAt);
   return {
     ...p,
     status,
-    // Services created before the logo field have it absent; surface an explicit
+    // Apps created before the logo field have it absent; surface an explicit
     // null so every consumer reads a defined `string | null`.
     logo: p.logo ?? null,
     // Same for the folder grouping: absent (pre-folders) ⇒ ungrouped (null).
@@ -178,41 +178,41 @@ function summarize(p: Service, pre: SummaryPreload): ServiceSummary {
 }
 
 /**
- * Update a team-owned project's flat columns, throwing "Service not found" when
+ * Update a team-owned project's flat columns, throwing "App not found" when
  * the id doesn't belong to the team (the standard ownership gate, now a single
  * team-scoped UPDATE … RETURNING instead of a find-then-mutate).
  */
-async function updateServiceOwned(
+async function updateAppOwned(
   id: string,
   teamId: string,
-  set: Partial<typeof servicesTable.$inferInsert>,
+  set: Partial<typeof appsTable.$inferInsert>,
 ): Promise<void> {
   const updated = await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set(set)
-    .where(and(eq(servicesTable.id, id), eq(servicesTable.teamId, teamId)))
-    .returning({ id: servicesTable.id });
-  if (updated.length === 0) throw new Error("Service not found");
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, teamId)))
+    .returning({ id: appsTable.id });
+  if (updated.length === 0) throw new Error("App not found");
 }
 
-/** Team-wide manual project order (the `team_service_order` junction), id→rank. */
-async function serviceOrderRank(teamId: string): Promise<Map<string, number>> {
+/** Team-wide manual project order (the `team_app_order` junction), id→rank. */
+async function appOrderRank(teamId: string): Promise<Map<string, number>> {
   const rows = await getDb()
-    .select({ serviceId: teamServiceOrder.serviceId, position: teamServiceOrder.position })
-    .from(teamServiceOrder)
-    .where(eq(teamServiceOrder.teamId, teamId));
-  return new Map(rows.map((r) => [r.serviceId, r.position] as const));
+    .select({ appId: teamAppOrder.appId, position: teamAppOrder.position })
+    .from(teamAppOrder)
+    .where(eq(teamAppOrder.teamId, teamId));
+  return new Map(rows.map((r) => [r.appId, r.position] as const));
 }
 
-export async function listServices(): Promise<ServiceSummary[]> {
+export async function listApps(): Promise<AppSummary[]> {
   const teamId = await requireActiveTeamId();
   const [proj, rank] = await Promise.all([
-    loadServicesByTeam(teamId),
-    serviceOrderRank(teamId),
+    loadAppsByTeam(teamId),
+    appOrderRank(teamId),
   ]);
   const pre = await preloadSummaries(proj);
   // Honour the team's manual order (Overview drag-and-drop) when present:
-  // explicitly-ordered services come first in that order, anything not listed
+  // explicitly-ordered apps come first in that order, anything not listed
   // (a brand-new project, or before any reorder) falls back to newest-first.
   return proj
     .map((p) => summarize(p, pre))
@@ -225,29 +225,29 @@ export async function listServices(): Promise<ServiceSummary[]> {
 }
 
 /**
- * Persist the team-wide order of services shown in the Overview grid. Team-wide
+ * Persist the team-wide order of apps shown in the Overview grid. Team-wide
  * by design — every member sees the same arrangement — so it is gated like a
  * team setting: an instance admin (who bypasses team capabilities) or a member
  * holding `manage_team`. The incoming ids are sanitised to the caller's own team
- * services (dropping unknown/duplicate ids); the `team_service_order` junction is
+ * apps (dropping unknown/duplicate ids); the `team_app_order` junction is
  * rewritten over the survivors. Any team project the client omitted is appended,
  * so the stored order stays total — and a dead id can no longer be stored at all
  * (the FK CASCADE makes the self-healing a DB invariant, PLAN §1).
  */
-export async function reorderServices(orderedIds: string[]): Promise<void> {
+export async function reorderApps(orderedIds: string[]): Promise<void> {
   const teamId = await requireActiveTeamId();
   // Instance admins bypass team capabilities; everyone else needs manage_team.
   if (!(await isInstanceAdmin())) {
     await requireCapability("manage_team");
   }
   await getDb().transaction(async (tx) => {
-    const teamServiceIds = (
+    const teamAppIds = (
       await tx
-        .select({ id: servicesTable.id })
-        .from(servicesTable)
-        .where(eq(servicesTable.teamId, teamId))
+        .select({ id: appsTable.id })
+        .from(appsTable)
+        .where(eq(appsTable.teamId, teamId))
     ).map((r) => r.id);
-    const valid = new Set(teamServiceIds);
+    const valid = new Set(teamAppIds);
     const seen = new Set<string>();
     const next: string[] = [];
     for (const id of orderedIds) {
@@ -256,42 +256,42 @@ export async function reorderServices(orderedIds: string[]): Promise<void> {
         next.push(id);
       }
     }
-    for (const id of teamServiceIds) if (!seen.has(id)) next.push(id);
+    for (const id of teamAppIds) if (!seen.has(id)) next.push(id);
     // Whole-set replace: drop the team's order rows, re-insert in the new order.
-    await tx.delete(teamServiceOrder).where(eq(teamServiceOrder.teamId, teamId));
+    await tx.delete(teamAppOrder).where(eq(teamAppOrder.teamId, teamId));
     if (next.length > 0) {
-      await tx.insert(teamServiceOrder).values(
-        next.map((serviceId, position) => ({ teamId, serviceId, position })),
+      await tx.insert(teamAppOrder).values(
+        next.map((appId, position) => ({ teamId, appId, position })),
       );
     }
   });
 }
 
 /** Summarize a single already-loaded project (its own bounded preload). */
-async function summarizeOne(p: Service): Promise<ServiceSummary> {
+async function summarizeOne(p: App): Promise<AppSummary> {
   const pre = await preloadSummaries([p]);
   return summarize(p, pre);
 }
 
 // React-cached so a request that reads the same project twice — e.g. the project
 // layout's generateMetadata AND its render — only hits the DB once per request.
-export const getServiceBySlug = cache(async function getServiceBySlug(
+export const getAppBySlug = cache(async function getAppBySlug(
   slug: string
-): Promise<ServiceSummary | null> {
+): Promise<AppSummary | null> {
   const teamId = await requireActiveTeamId();
-  const p = await loadServiceGraphBySlug(slug);
+  const p = await loadAppGraphBySlug(slug);
   return p && p.teamId === teamId ? summarizeOne(p) : null;
 });
 
-export async function getServiceById(id: string): Promise<Service | null> {
+export async function getAppById(id: string): Promise<App | null> {
   const teamId = await requireActiveTeamId();
-  const p = await loadServiceGraph(id);
+  const p = await loadAppGraph(id);
   return p && p.teamId === teamId ? p : null;
 }
 
 /**
- * Service summary by id for an already-resolved team, WITHOUT reading the
- * request's cookies. The live `serviceStatus` subscription resolves the caller's
+ * App summary by id for an already-resolved team, WITHOUT reading the
+ * request's cookies. The live `appStatus` subscription resolves the caller's
  * team once from the GraphQL context (`ctx.teamId`, established in request
  * scope) and then reloads snapshots through this seam on each change — Next's
  * `cookies()` is NOT callable across the async-iteration ticks of a long-lived
@@ -304,21 +304,21 @@ export async function getServiceById(id: string): Promise<Service | null> {
 export async function summarizeForTeam(
   id: string,
   teamId: string,
-): Promise<ServiceSummary | null> {
-  const p = await loadServiceGraph(id);
+): Promise<AppSummary | null> {
+  const p = await loadAppGraph(id);
   return p && p.teamId === teamId ? summarizeOne(p) : null;
 }
 
 /** Cookie-free slug → summary lookup scoped to an explicit team (see above). */
-export async function findServiceSummaryBySlugForTeam(
+export async function findAppSummaryBySlugForTeam(
   slug: string,
   teamId: string,
-): Promise<ServiceSummary | null> {
-  const p = await loadServiceGraphBySlug(slug);
+): Promise<AppSummary | null> {
+  const p = await loadAppGraphBySlug(slug);
   return p && p.teamId === teamId ? summarizeOne(p) : null;
 }
 
-export interface CreateServiceInput {
+export interface CreateAppInput {
   name: string;
   source: DeploySource;
   repo: GitRepo | null;
@@ -331,7 +331,7 @@ export interface CreateServiceInput {
   build?: Partial<BuildConfig>;
   autoDeploy?: boolean;
   /** Compose/template deploys: which service + port the PRIMARY domain routes
-   * to. When absent for a compose project, detectDefaultService picks one. */
+   * to. When absent for a compose project, detectDefaultApp picks one. */
   composeService?: string | null;
   composePort?: number | null;
   /** A multi-domain template's EXTRA (non-primary) routed hosts — each becomes
@@ -344,9 +344,9 @@ export interface CreateServiceInput {
   mounts?: { filePath: string; content: string }[] | null;
 }
 
-export async function createService(
-  input: CreateServiceInput
-): Promise<ServiceSummary> {
+export async function createApp(
+  input: CreateAppInput
+): Promise<AppSummary> {
   const { membership } = await requireCapability("deploy");
   // Publishing container ports — a service's `ports:` (bound to the host) or
   // `expose:` (advertised to linked containers) — needs the expose-ports grant.
@@ -368,10 +368,10 @@ export async function createService(
   // slug is globally UNIQUE in the relational table; pick the first free suffix
   // optimistically. The pick races a concurrent same-name create (both read the
   // same snapshot, pick the same suffix) — so the INSERT is retried below on a
-  // `services_slug_uq` violation, advancing the suffix each time. `nextSlug`
+  // `apps_slug_uq` violation, advancing the suffix each time. `nextSlug`
   // continues the suffix sequence past whatever the pre-check already considered.
   const existing = new Set(
-    (await getDb().select({ slug: servicesTable.slug }).from(servicesTable)).map(
+    (await getDb().select({ slug: appsTable.slug }).from(appsTable)).map(
       (r) => r.slug,
     ),
   );
@@ -429,12 +429,12 @@ export async function createService(
   // of queued; everything else starts queued and deploys below.
   const isUpload = input.source === "upload";
 
-  const project: Service = {
+  const project: App = {
     id: newId("prj"),
     name: input.name.trim(),
     slug,
     teamId: membership.teamId,
-    // New services start ungrouped (top level); a folder is assigned later from
+    // New apps start ungrouped (top level); a folder is assigned later from
     // the Overview (drag-into-folder or the card's "Move to folder" menu).
     folderId: null,
     serverId: server.id,
@@ -459,11 +459,11 @@ export async function createService(
 
   // Initial environment variables (e.g. a template's defaults), encrypted at rest.
   const now = nowIso();
-  const serviceEnvVars: EnvVar[] = (input.env ?? [])
+  const appEnvVars: EnvVar[] = (input.env ?? [])
     .filter((e) => e.key.trim())
     .map((e) => ({
       id: newId("env"),
-      serviceId: project.id,
+      appId: project.id,
       key: e.key.trim(),
       valueEnc: encryptSecret(e.value),
       targets: ["production", "preview", "development"] as EnvTarget[],
@@ -478,7 +478,7 @@ export async function createService(
   // auto-domain and no deploy job for a project that didn't persist.
   //
   // The optimistic slug pick races a concurrent same-name create, so the whole tx
-  // is retried (bounded) on a `services_slug_uq` violation, advancing to the next
+  // is retried (bounded) on a `apps_slug_uq` violation, advancing to the next
   // free suffix — the `UNIQUE(slug)` constraint is the real arbiter, the in-app
   // pick is just a friendly first guess.
   for (let attempt = 0; ; attempt++) {
@@ -488,25 +488,25 @@ export async function createService(
         // concurrent setServerTeams restrict can't land this project on a server
         // the team just lost access to. One side of the race loses cleanly.
         await assertServerAccessibleTx(tx, server.id, membership.teamId);
-        await tx.insert(servicesTable).values(serviceToRow(project));
-        await tx.insert(serviceBuildTable).values(buildToRow(project.id, project.build));
+        await tx.insert(appsTable).values(appToRow(project));
+        await tx.insert(appBuildTable).values(buildToRow(project.id, project.build));
         await tx
-          .insert(serviceBuildMethodSettingsTable)
+          .insert(appBuildMethodSettingsTable)
           .values(methodSettingsToRow(project.id, project.build.methodSettings));
         const mountRows = mountsToRows(project.id, project.mounts);
-        if (mountRows.length > 0) await tx.insert(serviceMountsTable).values(mountRows);
-        if (serviceEnvVars.length > 0) await insertEnvVars(tx, serviceEnvVars);
+        if (mountRows.length > 0) await tx.insert(appMountsTable).values(mountRows);
+        if (appEnvVars.length > 0) await insertEnvVars(tx, appEnvVars);
       });
       break;
     } catch (e) {
-      if (attempt < 5 && isUniqueViolation(e, "services_slug_uq")) {
+      if (attempt < 5 && isUniqueViolation(e, "apps_slug_uq")) {
         project.slug = slug = nextSlug();
         continue;
       }
       throw e;
     }
   }
-  await recordActivity("service", `Created project ${project.name}`, user.name, project.id);
+  await recordActivity("app", `Created project ${project.name}`, user.name, project.id);
 
   // POST-COMMIT (PLAN cut-set (c) "post-commit deploy"): register the generated
   // nip.io domain so it shows up in the Domains section immediately and the
@@ -516,21 +516,21 @@ export async function createService(
   const ip = resolveServerIp(server);
   // The PRIMARY domain's default route: an explicit composeService/composePort
   // (the wizard's single picker), else — for a compose project — the service
-  // detectDefaultService picks from the stack, else build.port (single-image,
-  // serviceless). After creation the `domains` table (each row's service) is the
+  // detectDefaultApp picks from the stack, else build.port (single-image,
+  // appless). After creation the `domains` table (each row's service) is the
   // sole routing source.
   const detected =
     input.composeService && input.composePort
       ? { service: input.composeService, port: input.composePort }
       : input.compose
-        ? detectDefaultService(input.compose)
+        ? detectDefaultApp(input.compose)
         : null;
   const primaryName = await ensureAutoDomain(project.id, {
     slug,
     ip,
     preferred: input.autoDomain ?? undefined,
     defaultPort: detected?.port ?? project.build.port,
-    defaultService: detected?.service ?? null,
+    defaultApp: detected?.service ?? null,
   });
 
   // Register every EXTRA hostname a multi-domain template declares (e.g. a web
@@ -550,10 +550,10 @@ export async function createService(
       });
   }
 
-  // The display logo is auto-detected from the service's own files at DEPLOY
+  // The display logo is auto-detected from the app's own files at DEPLOY
   // time (the deploy engine reads a git repo's tree via the GitHub API and scans
   // an upload's extracted tree), guarded so it only ever fills a still-empty
-  // logo. A git/github service deploys immediately below, so its icon lands on
+  // logo. A git/github app deploys immediately below, so its icon lands on
   // that first deploy; nothing to kick off here.
   if (!isUpload) {
     // Kick off the first real build + deploy. Runs in the background and flips
@@ -565,10 +565,10 @@ export async function createService(
     });
   }
 
-  return summarizeOne((await loadServiceGraph(project.id))!);
+  return summarizeOne((await loadAppGraph(project.id))!);
 }
 
-export async function updateServiceBuild(
+export async function updateAppBuild(
   id: string,
   build: Partial<BuildConfig>
 ): Promise<void> {
@@ -577,14 +577,14 @@ export async function updateServiceBuild(
   // published host port, so changing it isn't gated behind the expose-ports
   // grant — any member who can deploy may edit build settings.
   const user = (await getCurrentUser())!;
-  // One tx (PLAN cut-set (c) Decision 15): the parent `service_build` columns
+  // One tx (PLAN cut-set (c) Decision 15): the parent `app_build` columns
   // MERGE field-by-field, while a provided `methodSettings` object FULLY REPLACES
   // the 1-to-1 method-settings row.
   await getDb().transaction(async (tx) => {
-    const existing = await loadServiceGraph(id, tx);
+    const existing = await loadAppGraph(id, tx);
     if (!existing || existing.teamId !== membership.teamId)
-      throw new Error("Service not found");
-    await requireFolderCapabilityForService(id, "deploy");
+      throw new Error("App not found");
+    await requireFolderCapabilityForApp(id, "deploy");
     const merged: BuildConfig = {
       ...existing.build,
       ...build,
@@ -592,22 +592,22 @@ export async function updateServiceBuild(
       methodSettings: build.methodSettings ?? existing.build.methodSettings,
     };
     await tx
-      .update(servicesTable)
+      .update(appsTable)
       .set({ updatedAt: nowIso() })
-      .where(eq(servicesTable.id, id));
+      .where(eq(appsTable.id, id));
     await tx
-      .update(serviceBuildTable)
+      .update(appBuildTable)
       .set(buildToRow(id, merged))
-      .where(eq(serviceBuildTable.serviceId, id));
+      .where(eq(appBuildTable.appId, id));
     if (build.methodSettings) {
       // Whole-row replace of the method settings.
       await tx
-        .update(serviceBuildMethodSettingsTable)
+        .update(appBuildMethodSettingsTable)
         .set(methodSettingsToRow(id, merged.methodSettings))
-        .where(eq(serviceBuildMethodSettingsTable.serviceId, id));
+        .where(eq(appBuildMethodSettingsTable.appId, id));
     }
   });
-  await recordActivity("service", `Updated build settings`, user.name, id);
+  await recordActivity("app", `Updated build settings`, user.name, id);
 }
 
 export interface UpdateSourceInput {
@@ -619,7 +619,7 @@ export interface UpdateSourceInput {
   compose?: string | null;
 }
 
-export async function updateServiceSource(
+export async function updateAppSource(
   id: string,
   input: UpdateSourceInput
 ): Promise<void> {
@@ -644,9 +644,9 @@ export async function updateServiceSource(
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;
   await getDb().transaction(async (tx) => {
-    const p = await loadServiceGraph(id, tx);
-    if (!p || p.teamId !== membership.teamId) throw new Error("Service not found");
-    await requireFolderCapabilityForService(id, "deploy");
+    const p = await loadAppGraph(id, tx);
+    if (!p || p.teamId !== membership.teamId) throw new Error("App not found");
+    await requireFolderCapabilityForApp(id, "deploy");
     // Capture the OLD server IP before serverId is reassigned, so a move can
     // re-host the project's auto nip.io domains onto the new server's IP below.
     const oldIp = resolveServerIp(serversById.get(p.serverId));
@@ -657,10 +657,10 @@ export async function updateServiceSource(
       serverId = input.serverId;
     }
     const isMove = serverId !== oldServerId;
-    // On a MOVE, if the service was ever deployed (it may hold data on the old
+    // On a MOVE, if the app was ever deployed (it may hold data on the old
     // host), mark the OLD server as the migration source: the deploy we trigger on
     // the new host below will copy the data volumes + files dir across once its
-    // fresh stack is up (completePendingServiceMigration). A never-deployed service
+    // fresh stack is up (completePendingAppMigration). A never-deployed app
     // has no data, so it just moves cheaply with no marker. `latestDeploymentId`
     // being set is the "was deployed" signal.
     migrateFromServerId = isMove && p.latestDeploymentId ? oldServerId : null;
@@ -675,8 +675,8 @@ export async function updateServiceSource(
     // isn't nip.io.
     const newIp = resolveServerIp(serversById.get(serverId));
     if (newIp !== oldIp) {
-      const serviceDomains = await loadDomainsForService(p.id, tx);
-      for (const dom of serviceDomains) {
+      const appDomains = await loadDomainsForApp(p.id, tx);
+      for (const dom of appDomains) {
         if (dom.source === "auto" && nipEmbeddedIp(dom.name) === oldIp) {
           await tx
             .update(domainsTable)
@@ -687,7 +687,7 @@ export async function updateServiceSource(
     }
 
     await tx
-      .update(servicesTable)
+      .update(appsTable)
       .set({
         serverId,
         // Record the migration source on a move (null clears any stale marker on a
@@ -710,9 +710,9 @@ export async function updateServiceSource(
         ...(input.compose != null ? { compose: input.compose } : {}),
         updatedAt: nowIso(),
       })
-      .where(eq(servicesTable.id, id));
+      .where(eq(appsTable.id, id));
   });
-  await recordActivity("service", `Updated deploy source`, user.name, id);
+  await recordActivity("app", `Updated deploy source`, user.name, id);
   // A MOVE takes effect on a deploy (the container physically relocates to the new
   // host on the next build). Trigger it here so the move actually happens — and so
   // the data migration runs when that deploy succeeds (it consumes the marker set
@@ -777,7 +777,7 @@ const RESERVED_MOUNT_PREFIXES = [
  * fields) — but it is intentionally NOT subject to RESERVED_MOUNT_PREFIXES (those
  * guard the in-container target; a privileged user picks the host source on
  * purpose). The grant check that authorizes host mounts lives in the CALLER
- * (setServiceVolumes), not here, so this stays a pure validator usable in tests.
+ * (setAppVolumes), not here, so this stays a pure validator usable in tests.
  * Empty result ⇒ null so renderCompose stays byte-identical. Exported for tests.
  */
 export function validateVolumes(
@@ -829,7 +829,7 @@ export function validateVolumes(
 
     const name = ((v.name ?? "").trim() || deriveVolumeName(mountPath)).toLowerCase();
 
-    if (v.type === "service") {
+    if (v.type === "app") {
       // Bind a path INSIDE the project's isolated files dir. The source is
       // relative (no leading "/") and must stay in the sandbox — a ".." segment
       // would climb out, which is exactly what we forbid (a rename could then
@@ -844,20 +844,20 @@ export function validateVolumes(
         .replace(/\/+$/, "");
       if (projectPath === "" || projectPath.startsWith("/")) {
         throw new Error(
-          `Service path must be relative to the project's files dir, e.g. "config.toml": "${v.projectPath}"`,
+          `App path must be relative to the project's files dir, e.g. "config.toml": "${v.projectPath}"`,
         );
       }
       if (/[\s:]/.test(projectPath)) {
         throw new Error(
-          `Service path must not contain spaces or ":": "${v.projectPath}"`,
+          `App path must not contain spaces or ":": "${v.projectPath}"`,
         );
       }
       if (projectPath.split("/").includes("..")) {
-        throw new Error(`Service path must not contain "..": "${v.projectPath}"`);
+        throw new Error(`App path must not contain "..": "${v.projectPath}"`);
       }
       out.push({
         id: v.id || newId("vol"),
-        type: "service",
+        type: "app",
         name,
         projectPath,
         mountPath,
@@ -909,12 +909,12 @@ export function validateVolumes(
 /**
  * Replace a single-container project's volumes (full set) — docker-managed named
  * volumes and (for privileged users) host bind mounts. Rejected for compose-stack
- * services — they declare volumes inside their own YAML. An empty set is stored
+ * apps — they declare volumes inside their own YAML. An empty set is stored
  * as null so renderCompose stays byte-identical. Persists only; the new mounts
  * take effect on the next production deploy (consistent with the other per-card
  * settings mutations).
  */
-export async function setServiceVolumes(
+export async function setAppVolumes(
   id: string,
   volumes: VolumeMount[],
 ): Promise<void> {
@@ -926,26 +926,26 @@ export async function setServiceVolumes(
   }
   const user = (await getCurrentUser())!;
   await getDb().transaction(async (tx) => {
-    const p = await loadServiceGraph(id, tx);
-    if (!p || p.teamId !== membership.teamId) throw new Error("Service not found");
-    await requireFolderCapabilityForService(id, "deploy");
+    const p = await loadAppGraph(id, tx);
+    if (!p || p.teamId !== membership.teamId) throw new Error("App not found");
+    await requireFolderCapabilityForApp(id, "deploy");
     if (usesComposeStack(p)) {
       throw new Error(
         "Volumes are managed inside the compose file for this project.",
       );
     }
     // Validate against the project's mounts (the conflict check), then whole-set
-    // replace the `service_volumes` ordered child rows.
+    // replace the `app_volumes` ordered child rows.
     const validated = validateVolumes(volumes, p.mounts);
-    await tx.delete(serviceVolumesTable).where(eq(serviceVolumesTable.serviceId, id));
+    await tx.delete(appVolumesTable).where(eq(appVolumesTable.appId, id));
     const rows = volumesToRows(id, validated);
-    if (rows.length > 0) await tx.insert(serviceVolumesTable).values(rows);
+    if (rows.length > 0) await tx.insert(appVolumesTable).values(rows);
     await tx
-      .update(servicesTable)
+      .update(appsTable)
       .set({ updatedAt: nowIso() })
-      .where(eq(servicesTable.id, id));
+      .where(eq(appsTable.id, id));
   });
-  await recordActivity("service", `Updated volumes`, user.name, id);
+  await recordActivity("app", `Updated volumes`, user.name, id);
 }
 
 /**
@@ -954,14 +954,14 @@ export async function setServiceVolumes(
  * route then triggers a deploy that extracts and builds it. Forgets any repo /
  * docker image so the deploy pipeline takes the upload branch unambiguously.
  */
-export async function setServiceUpload(
+export async function setAppUpload(
   id: string,
   upload: UploadArchive,
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForService(id, "deploy");
+  await requireFolderCapabilityForApp(id, "deploy");
   const user = (await getCurrentUser())!;
-  await updateServiceOwned(id, membership.teamId, {
+  await updateAppOwned(id, membership.teamId, {
     source: "upload",
     uploadId: upload.id,
     uploadFilename: upload.filename,
@@ -969,9 +969,9 @@ export async function setServiceUpload(
     uploadSize: upload.size,
     uploadUploadedAt: upload.uploadedAt,
     // Forget any repo / docker image so the deploy takes the upload branch.
-    // Clear ALL eight flattened repo_* columns as one unit (matching serviceToRow
-    // and updateServiceSource) so no stale git deploy option is left orphaned on a
-    // now-repoless service.
+    // Clear ALL eight flattened repo_* columns as one unit (matching appToRow
+    // and updateAppSource) so no stale git deploy option is left orphaned on a
+    // now-repoless app.
     repoProvider: null,
     repoUrl: null,
     repoRepo: null,
@@ -983,27 +983,27 @@ export async function setServiceUpload(
     dockerImage: null,
     updatedAt: nowIso(),
   });
-  await recordActivity("service", `Uploaded ${upload.filename}`, user.name, id);
+  await recordActivity("app", `Uploaded ${upload.filename}`, user.name, id);
 }
 
 export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForService(id, "deploy");
-  await updateServiceOwned(id, membership.teamId, {
+  await requireFolderCapabilityForApp(id, "deploy");
+  await updateAppOwned(id, membership.teamId, {
     autoDeploy: value,
     updatedAt: nowIso(),
   });
 }
 
-export async function renameService(id: string, name: string): Promise<void> {
+export async function renameApp(id: string, name: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForService(id, "deploy");
+  await requireFolderCapabilityForApp(id, "deploy");
   const user = (await getCurrentUser())!;
-  await updateServiceOwned(id, membership.teamId, {
+  await updateAppOwned(id, membership.teamId, {
     name: name.trim(),
     updatedAt: nowIso(),
   });
-  await recordActivity("service", `Renamed project to ${name}`, user.name, id);
+  await recordActivity("app", `Renamed project to ${name}`, user.name, id);
 }
 
 /**
@@ -1017,12 +1017,12 @@ export async function renameService(id: string, name: string): Promise<void> {
  * No-op (no updatedAt bump, no activity record) when the value is unchanged, so
  * an idle Save doesn't reorder the dashboard or write a spurious log line.
  */
-export async function updateServiceLogo(
+export async function updateAppLogo(
   id: string,
   logo: string | null,
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForService(id, "deploy");
+  await requireFolderCapabilityForApp(id, "deploy");
   const user = (await getCurrentUser())!;
   const next = logo?.trim() ? logo.trim() : null;
   if (next && !isValidLogoValue(next)) {
@@ -1031,92 +1031,92 @@ export async function updateServiceLogo(
   // No-op (no updatedAt bump, no activity) when unchanged: only update rows whose
   // logo actually differs (a team-scoped conditional UPDATE … RETURNING).
   const updated = await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({ logo: next, updatedAt: nowIso() })
     .where(
       and(
-        eq(servicesTable.id, id),
-        eq(servicesTable.teamId, membership.teamId),
+        eq(appsTable.id, id),
+        eq(appsTable.teamId, membership.teamId),
         next === null
-          ? sql`${servicesTable.logo} is not null`
-          : sql`${servicesTable.logo} is distinct from ${next}`,
+          ? sql`${appsTable.logo} is not null`
+          : sql`${appsTable.logo} is distinct from ${next}`,
       ),
     )
-    .returning({ id: servicesTable.id });
+    .returning({ id: appsTable.id });
   // Distinguish "not found / not owned" from "unchanged": a found-but-unchanged
   // row simply skips the activity below. Verify existence only when nothing changed.
   if (updated.length === 0) {
-    const exists = await serviceInTeam(id, membership.teamId);
-    if (!exists) throw new Error("Service not found");
+    const exists = await appInTeam(id, membership.teamId);
+    if (!exists) throw new Error("App not found");
     return;
   }
-  await recordActivity("service", `Updated project logo`, user.name, id);
+  await recordActivity("app", `Updated project logo`, user.name, id);
 }
 
 /**
- * Re-run favicon auto-detection for a service on demand (the settings "Detect
+ * Re-run favicon auto-detection for an app on demand (the settings "Detect
  * from source" button) and, when one is found, set it as the logo — overwriting
  * any current inline value, since the user explicitly asked to detect. Throws a
  * friendly message when the source has no detectable icon so the caller can
  * surface it. Returns the detected logo data-URI.
  *
  * EXCEPTION: a template's default icon ALWAYS takes priority — detection never
- * replaces it. A template-sourced service keeps its bundled `/templates/...`
+ * replaces it. A template-sourced app keeps its bundled `/templates/...`
  * logo unless the user removes it first (then it's a normal empty logo and
  * detection may fill it). This mirrors the automatic hooks, which only ever fill
  * a NULL logo.
  */
-export async function redetectServiceLogo(id: string): Promise<string> {
+export async function redetectAppLogo(id: string): Promise<string> {
   const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForService(id, "deploy");
+  await requireFolderCapabilityForApp(id, "deploy");
   const user = (await getCurrentUser())!;
-  const project = await loadServiceGraph(id);
+  const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId) {
-    throw new Error("Service not found");
+    throw new Error("App not found");
   }
   if (isTemplateLogo(project.logo)) {
     throw new Error(
-      "This service keeps its template's default icon, which takes priority. Remove it first to detect one from your source files.",
+      "This app keeps its template's default icon, which takes priority. Remove it first to detect one from your source files.",
     );
   }
-  const logo = await detectServiceFavicon(project);
+  const logo = await detectAppFavicon(project);
   if (!logo || !isValidLogoValue(logo)) {
-    throw new Error("No favicon (SVG or PNG) found in the service files");
+    throw new Error("No favicon (SVG or PNG) found in the app files");
   }
   await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({ logo, updatedAt: nowIso() })
     .where(
-      and(eq(servicesTable.id, id), eq(servicesTable.teamId, membership.teamId)),
+      and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)),
     );
-  await recordActivity("service", `Detected project logo from source`, user.name, id);
-  publishServiceChanged(id);
+  await recordActivity("app", `Detected project logo from source`, user.name, id);
+  publishAppChanged(id);
   return logo;
 }
 
 /** Set a project's status and notify every live subscriber. */
-async function setServiceStatus(id: string, status: ServiceStatus): Promise<void> {
+async function setAppStatus(id: string, status: AppStatus): Promise<void> {
   await getDb()
-    .update(servicesTable)
+    .update(appsTable)
     .set({ status, updatedAt: nowIso() })
-    .where(eq(servicesTable.id, id));
-  publishServiceChanged(id);
+    .where(eq(appsTable.id, id));
+  publishAppChanged(id);
 }
 
 /** Stop the project's running container. */
-export async function stopService(id: string): Promise<void> {
+export async function stopApp(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const project = await loadServiceGraph(id);
+  const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(id, "deploy");
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(id, "deploy");
   // Persist "stopping" BEFORE the (up to 60s) container stop so the transition
   // is visible to every client immediately and survives a reload — not just a
   // local label on the clicking user's button. We settle to "idle" once the
   // stop returns (success or failure: the intent was to stop).
-  await setServiceStatus(id, "stopping");
-  await recordActivity("service", `Stopping ${project.name}`, user.name, id);
+  await setAppStatus(id, "stopping");
+  await recordActivity("app", `Stopping ${project.name}`, user.name, id);
   try {
     await stopContainer(project.slug);
   } catch (e) {
@@ -1124,22 +1124,22 @@ export async function stopService(id: string): Promise<void> {
     // running on the host, so settling to "idle" would lie. This covers BOTH an
     // unreachable agent (AgentUnreachableError) AND a reachable agent that
     // reported the stop failed (build.ts throws a plain Error on ok:false).
-    await setServiceStatus(id, "active");
+    await setAppStatus(id, "active");
     throw new Error(
       `The stack on ${project.name}'s server was not stopped: ${errMsg(e)}`,
     );
   }
-  await setServiceStatus(id, "idle");
+  await setAppStatus(id, "idle");
 }
 
 /** Start a previously stopped project's container. */
-export async function startService(id: string): Promise<void> {
+export async function startApp(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const project = await loadServiceGraph(id);
+  const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(id, "deploy");
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(id, "deploy");
   try {
     await startContainer(project.slug);
   } catch (e) {
@@ -1149,17 +1149,17 @@ export async function startService(id: string): Promise<void> {
       `The stack on ${project.name}'s server was not started: ${errMsg(e)}`,
     );
   }
-  await setServiceStatus(id, "active");
-  await recordActivity("service", `Started ${project.name}`, user.name, id);
+  await setAppStatus(id, "active");
+  await recordActivity("app", `Started ${project.name}`, user.name, id);
 }
 
 /** Rebuild the image from the current source and redeploy (real build). */
-export async function rebuildService(id: string): Promise<void> {
+export async function rebuildApp(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  if (!(await serviceInTeam(id, membership.teamId)))
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(id, "deploy");
+  if (!(await appInTeam(id, membership.teamId)))
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(id, "deploy");
   await startDeployment(id, {
     environment: "production",
     creator: user.name,
@@ -1167,23 +1167,23 @@ export async function rebuildService(id: string): Promise<void> {
   });
 }
 
-export async function deleteService(id: string): Promise<void> {
+export async function deleteApp(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
-  const project = await loadServiceGraph(id);
+  const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
-    throw new Error("Service not found");
-  await requireFolderCapabilityForService(id, "deploy");
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(id, "deploy");
   // Tear down the running container/stack before dropping the records. A REMOTE
   // whose agent is unreachable can't be torn down now — proceed with the delete
   // anyway (P6 spirit: never leave records pinned to a dead box) and warn so the
   // operator cleans up the leftover containers by hand. The agent calls run
   // OUTSIDE any DB transaction (PLAN §1 rule (a): never wrap a gRPC dial in a tx).
-  const tornDown = await teardownService(project.slug);
+  const tornDown = await teardownApp(project.slug);
   const server = await getServerById(project.serverId);
   if (!tornDown && server) {
     await recordActivity(
-      "service",
+      "app",
       `Deleted ${project.name} but its server (${server.name}) was unreachable — ` +
         `leftover containers on that host must be removed manually.`,
       user.name,
@@ -1194,76 +1194,76 @@ export async function deleteService(id: string): Promise<void> {
   // (the project is gone), and remove this project's SSH users from the gateway
   // (which stays up — it is a platform singleton).
   await agentTeardownDev(project).catch(() => {});
-  await removeServiceDevSshUsers(id).catch(() => {});
+  await removeAppDevSshUsers(id).catch(() => {});
   // Drop any uploaded archive backing an "upload" source.
   await removeUploads(id).catch(() => {});
   // One DELETE — the FK CASCADEs do the rest: deployments (+ logs), env_vars
   // (+ targets), domains (+ middlewares), the 6 project child tables, the
-  // team_service_order rows, AND shared_env_group_services (the orphan the old
-  // JSONB deleteService leaked is now impossible — PLAN §7 "the live cascade is
-  // fixed in cut-set (c)"). backups.project_id is SET NULL (history outlives the
+  // team_app_order rows, AND shared_env_var_apps (the per-app shared-variable
+  // links — the orphan the old JSONB deleteApp leaked is now impossible — PLAN §7
+  // "the live cascade is fixed in cut-set (c)"). backups.project_id is SET NULL (history outlives the
   // project), so no project-target backup is orphaned either.
-  await getDb().delete(servicesTable).where(eq(servicesTable.id, id));
-  await recordActivity("service", `Deleted project ${project.name}`, user.name, null);
+  await getDb().delete(appsTable).where(eq(appsTable.id, id));
+  await recordActivity("app", `Deleted project ${project.name}`, user.name, null);
 }
 
 /**
- * Bulk-delete several services. Tears down each project's stack with BOUNDED
+ * Bulk-delete several apps. Tears down each project's stack with BOUNDED
  * concurrency (so a large multi-select can't flood one server's agent with
  * simultaneous teardowns), then removes ALL their records in a SINGLE store write
  * — one document persist + one activity row, instead of N independent
- * `deleteService` round-trips. Team-scoped; unknown/foreign ids are ignored.
+ * `deleteApp` round-trips. Team-scoped; unknown/foreign ids are ignored.
  * Returns the number actually deleted.
  */
-export async function deleteServices(ids: string[]): Promise<number> {
+export async function deleteApps(ids: string[]): Promise<number> {
   const { membership } = await requireCapability("deploy");
   const user = (await getCurrentUser())!;
   const idSet = [...new Set(ids)];
-  // Team-scoped: only the caller's own services, fully loaded for teardown.
-  const services = (await loadServicesByIds(idSet)).filter(
+  // Team-scoped: only the caller's own apps, fully loaded for teardown.
+  const apps = (await loadAppsByIds(idSet)).filter(
     (p) => p.teamId === membership.teamId,
   );
-  if (services.length === 0) return 0;
+  if (apps.length === 0) return 0;
 
   // Folder-scope EACH project: a project inside a folder the caller can't access
   // may not be bulk-deleted through this path either.
-  for (const p of services) {
-    await requireFolderCapabilityForService(p.id, "deploy");
+  for (const p of apps) {
+    await requireFolderCapabilityForApp(p.id, "deploy");
   }
 
   const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));
   // Tear down stacks ≤4 at a time (agent calls OUTSIDE any tx). A throw/
   // unreachable for one project must not abort the others or the record removal.
   const unreachable: string[] = [];
-  await mapLimit(services, 4, async (project) => {
-    const tornDown = await teardownService(project.slug).catch(() => false);
+  await mapLimit(apps, 4, async (project) => {
+    const tornDown = await teardownApp(project.slug).catch(() => false);
     if (!tornDown) {
       const server = serversById.get(project.serverId);
       if (server) unreachable.push(`${project.name} (${server.name})`);
     }
     await agentTeardownDev(project).catch(() => {});
-    await removeServiceDevSshUsers(project.id).catch(() => {});
+    await removeAppDevSshUsers(project.id).catch(() => {});
     await removeUploads(project.id).catch(() => {});
   });
 
   // One DELETE — FK CASCADEs remove every child + the shared-group attachments
   // (no orphan); backups.project_id SET NULL keeps history.
-  const gone = services.map((p) => p.id);
-  await getDb().delete(servicesTable).where(inArray(servicesTable.id, gone));
+  const gone = apps.map((p) => p.id);
+  await getDb().delete(appsTable).where(inArray(appsTable.id, gone));
   await recordActivity(
-    "service",
-    `Deleted ${services.length} project${services.length === 1 ? "" : "s"}`,
+    "app",
+    `Deleted ${apps.length} project${apps.length === 1 ? "" : "s"}`,
     user.name,
     null,
   );
   if (unreachable.length) {
     await recordActivity(
-      "service",
+      "app",
       `Some servers were unreachable during bulk delete — leftover containers may ` +
         `remain and must be removed manually: ${unreachable.join(", ")}`,
       user.name,
       null,
     );
   }
-  return services.length;
+  return apps.length;
 }

@@ -31,7 +31,7 @@ export function artifactExt(
   kind: BackupTargetKind,
   dbType?: DatabaseType | null,
 ): string {
-  if (kind === "service") return "tar.gz";
+  if (kind === "app") return "tar.gz";
   switch (dbType) {
     case "postgres":
       return "dump.gz";

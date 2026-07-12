@@ -9,10 +9,12 @@
  * reload is what guarantees a clean slate: dropped SSE subscriptions
  * resubscribe and any stale in-memory data is re-read from the server.
  *
- * That reload is no longer purely manual, though. While locked, the
- * ServerConnectionGuard overlay both probes for the server's return
+ * That reload is no longer purely manual, though. While disconnected, the
+ * ServerConnectionGuard notification both probes for the server's return
  * (`probeServerReachable`, the auto-reconnect loop) and reloads the moment it
- * answers, on top of still offering a manual "Reload page" button.
+ * answers, on top of still offering a manual "Retry now" button. The
+ * notification doesn't lock the page — it only pauses navigation to other
+ * routes, since a dead connection can't load one anyway.
  *
  * Detection has two feeds:
  *  - a periodic heartbeat (driven by ServerConnectionGuard) calling

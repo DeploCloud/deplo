@@ -49,7 +49,7 @@ export function RestoreRunsDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  targetKind: "database" | "service";
+  targetKind: "database" | "app";
   targetId: string;
   targetName: string;
 }) {
@@ -64,7 +64,7 @@ export function RestoreRunsDialog({
   React.useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
-    const arg = targetKind === "service" ? "serviceId" : "databaseId";
+    const arg = targetKind === "app" ? "appId" : "databaseId";
     gql<{ backupRuns: BackupRunLite[] }>(
       `query($id: String) {
         backupRuns(${arg}: $id) {
@@ -157,7 +157,7 @@ function RestoreRunRow({
   onRestored,
 }: {
   run: BackupRunLite;
-  targetKind: "database" | "service";
+  targetKind: "database" | "app";
   targetName: string;
   onRestored: () => void;
 }) {

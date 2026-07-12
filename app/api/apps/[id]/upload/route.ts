@@ -3,7 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/auth";
 import { getDb } from "@/lib/db/client";
 import { deployments as deploymentsTable } from "@/lib/db/schema/control-plane";
-import { getServiceById, setServiceUpload } from "@/lib/data/services";
+import { getAppById, setAppUpload } from "@/lib/data/apps";
 import {
   storeUpload,
   pruneUploads,
@@ -16,10 +16,10 @@ import {
  * Upload a code archive for an "upload"-source project.
  *
  *   POST  body = raw archive bytes, `X-Upload-Filename: <name>` header
- *         → streams the archive to disk and points the service at it.
+ *         → streams the archive to disk and points the app at it.
  *
- * Storing the archive does NOT deploy it: the caller (the service settings
- * "Save & Deploy" button, or the create-service wizard) triggers the production
+ * Storing the archive does NOT deploy it: the caller (the app settings
+ * "Save & Deploy" button, or the create-app wizard) triggers the production
  * build separately, so the user can pick/change the target server before the
  * first deploy runs instead of it firing the instant the file lands.
  *
@@ -32,10 +32,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Service ids with an upload streaming right now. The deployment-based 409
+ * App ids with an upload streaming right now. The deployment-based 409
  * guard below can't catch a *concurrent upload* — the deployment isn't created
  * until after the (potentially minute-long) stream finishes, so two uploads
- * would both pass it and then race pruneUploads, leaving the service pointing
+ * would both pass it and then race pruneUploads, leaving the app pointing
  * at a deleted archive. This sentinel serialises uploads per project. Sufficient
  * because the app runs as a single Node process (see next.config standalone);
  * a multi-process deploy would need to move this into the store.
@@ -44,14 +44,14 @@ const uploadsInFlight = new Set<string>();
 
 export async function POST(
   request: NextRequest,
-  ctx: RouteContext<"/api/services/[id]/upload">,
+  ctx: RouteContext<"/api/apps/[id]/upload">,
 ) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: serviceId } = await ctx.params;
-  const project = await getServiceById(serviceId);
-  if (!project) return Response.json({ error: "Service not found" }, { status: 404 });
+  const { id: appId } = await ctx.params;
+  const project = await getAppById(appId);
+  if (!project) return Response.json({ error: "App not found" }, { status: 404 });
 
   // Refuse to clobber an archive a build is still extracting: one deploy at a
   // time per project. The client surfaces this 409 message. Deployments are
@@ -61,7 +61,7 @@ export async function POST(
     .from(deploymentsTable)
     .where(
       and(
-        eq(deploymentsTable.serviceId, serviceId),
+        eq(deploymentsTable.appId, appId),
         inArray(deploymentsTable.status, ["queued", "building"]),
       ),
     )
@@ -75,13 +75,13 @@ export async function POST(
 
   // Serialise concurrent uploads to the same project (the deploy guard above
   // can't see an upload that hasn't created its deployment yet).
-  if (uploadsInFlight.has(serviceId)) {
+  if (uploadsInFlight.has(appId)) {
     return Response.json(
       { error: "An upload is already in progress — wait for it to finish" },
       { status: 409 },
     );
   }
-  uploadsInFlight.add(serviceId);
+  uploadsInFlight.add(appId);
   try {
     const filename =
       request.headers.get("x-upload-filename")?.trim() || "archive.tar.gz";
@@ -103,7 +103,7 @@ export async function POST(
 
     let upload;
     try {
-      upload = await storeUpload({ serviceId, filename, ext, body: request.body });
+      upload = await storeUpload({ appId, filename, ext, body: request.body });
     } catch (err) {
       if (err instanceof Error && err.message === ARCHIVE_TOO_LARGE) {
         return Response.json({ error: "Archive too large" }, { status: 413 });
@@ -112,17 +112,17 @@ export async function POST(
     }
 
     if (upload.size === 0) {
-      await pruneUploads(serviceId, project.upload?.id ?? "").catch(() => {});
+      await pruneUploads(appId, project.upload?.id ?? "").catch(() => {});
       return Response.json({ error: "Empty archive" }, { status: 400 });
     }
 
-    // Commit the new pointer FIRST, then prune older upload dirs — the service
+    // Commit the new pointer FIRST, then prune older upload dirs — the app
     // never points at a deleted archive, and a rejected upload above leaves the
     // previous one intact (its subdir was pruned only on success here).
-    await setServiceUpload(serviceId, upload);
-    await pruneUploads(serviceId, upload.id).catch(() => {});
+    await setAppUpload(appId, upload);
+    await pruneUploads(appId, upload.id).catch(() => {});
 
-    // No deploy here — the archive is stored and the service points at it. The
+    // No deploy here — the archive is stored and the app points at it. The
     // caller deploys on demand (Save & Deploy), which is what lets the server be
     // chosen before the first build runs. A logo is auto-detected from the
     // archive during that deploy (the engine reuses the tree it extracts to
@@ -136,6 +136,6 @@ export async function POST(
       },
     });
   } finally {
-    uploadsInFlight.delete(serviceId);
+    uploadsInFlight.delete(appId);
   }
 }

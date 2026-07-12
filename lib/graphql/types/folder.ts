@@ -6,8 +6,8 @@ import {
   setFolderColor,
   deleteFolder,
   moveFolder,
-  moveServiceToFolder,
-  moveServicesToFolder,
+  moveAppToFolder,
+  moveAppsToFolder,
   reorderFolders,
   type FolderSummary,
 } from "@/lib/data/folders";
@@ -29,8 +29,8 @@ import type { Capability } from "@/lib/types";
 
 export const FolderRef = builder.objectRef<FolderSummary>("Folder").implement({
   description:
-    "A team-wide grouping of services on the Overview. Services reference their " +
-    "folder via `Service.folderId`; folders nest via `parentId` (a tree).",
+    "A team-wide grouping of apps on the Overview. Apps reference their " +
+    "folder via `App.folderId`; folders nest via `parentId` (a tree).",
   fields: (t) => ({
     id: t.exposeID("id"),
     teamId: t.exposeID("teamId"),
@@ -38,7 +38,7 @@ export const FolderRef = builder.objectRef<FolderSummary>("Folder").implement({
     parentId: t.exposeID("parentId", { nullable: true }),
     color: t.exposeString("color", { nullable: true }),
     ownerUserId: t.exposeID("ownerUserId", { nullable: true }),
-    serviceCount: t.exposeInt("serviceCount"),
+    appCount: t.exposeInt("appCount"),
     subfolderCount: t.exposeInt("subfolderCount"),
     createdAt: t.exposeString("createdAt"),
     updatedAt: t.exposeString("updatedAt"),
@@ -147,7 +147,7 @@ builder.queryFields((t) => ({
 /* Mutations                                                           */
 /* ------------------------------------------------------------------ */
 
-// `reorderFolders` writes the team-wide folder order (like reorderServices), so
+// `reorderFolders` writes the team-wide folder order (like reorderApps), so
 // it stays gated on a super-user: an instance admin OR a member with manage_team.
 const folderScopes = {
   $any: { instanceAdmin: true, capability: "manage_team" },
@@ -157,13 +157,13 @@ const folderScopes = {
 // user) that can't be expressed as a static team scope, so the GraphQL layer only
 // requires a logged-in caller and the data layer performs the authoritative
 // per-folder check (requireFolderCapability / requireFolderOwnerOrAdmin) — the
-// same defense-in-depth pattern the service mutations use.
+// same defense-in-depth pattern the app mutations use.
 const perFolder = { loggedIn: true } as const;
 
 builder.mutationFields((t) => ({
   createFolder: t.field({
     type: FolderRef,
-    // Creating a folder requires `deploy` — the same gate as creating a service.
+    // Creating a folder requires `deploy` — the same gate as creating an app.
     authScopes: { capability: "deploy" },
     description:
       "Create a folder in the active team; nest it by passing a parent folder id. Requires the deploy capability; the creator becomes the folder's owner.",
@@ -205,25 +205,25 @@ builder.mutationFields((t) => ({
   deleteFolder: t.field({
     type: "Boolean",
     authScopes: perFolder,
-    description: "Delete a folder; its services fall back to the top level.",
+    description: "Delete a folder; its apps fall back to the top level.",
     args: { id: t.arg.id({ required: true }) },
     resolve: async (_r, { id }) => {
       await deleteFolder(String(id));
       return true;
     },
   }),
-  moveServiceToFolder: t.field({
+  moveAppToFolder: t.field({
     type: "Boolean",
     authScopes: perFolder,
     description:
-      "Move a service into a folder, or back to the top level when folderId is omitted/null.",
+      "Move an app into a folder, or back to the top level when folderId is omitted/null.",
     args: {
-      serviceId: t.arg.id({ required: true }),
+      appId: t.arg.id({ required: true }),
       folderId: t.arg.id({ required: false }),
     },
-    resolve: async (_r, { serviceId, folderId }) => {
-      await moveServiceToFolder(
-        String(serviceId),
+    resolve: async (_r, { appId, folderId }) => {
+      await moveAppToFolder(
+        String(appId),
         folderId != null ? String(folderId) : null,
       );
       return true;
@@ -243,18 +243,18 @@ builder.mutationFields((t) => ({
       return true;
     },
   }),
-  moveServicesToFolder: t.field({
+  moveAppsToFolder: t.field({
     type: "Int",
     authScopes: perFolder,
     description:
-      "Bulk-move several services into a folder (or to the top level when folderId is omitted/null) in one write. Returns how many moved.",
+      "Bulk-move several apps into a folder (or to the top level when folderId is omitted/null) in one write. Returns how many moved.",
     args: {
-      serviceIds: t.arg.idList({ required: true }),
+      appIds: t.arg.idList({ required: true }),
       folderId: t.arg.id({ required: false }),
     },
-    resolve: async (_r, { serviceIds, folderId }) =>
-      moveServicesToFolder(
-        serviceIds.map(String),
+    resolve: async (_r, { appIds, folderId }) =>
+      moveAppsToFolder(
+        appIds.map(String),
         folderId != null ? String(folderId) : null,
       ),
   }),

@@ -5,7 +5,7 @@ import { getDb } from "../db/client";
 import {
   databases as databasesTable,
   devSshUser as devSshUserTable,
-  installedApps as installedAppsTable,
+  installedPlugins as installedPluginsTable,
   teams as teamsTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
@@ -17,13 +17,13 @@ import {
 } from "../membership";
 import { connectAgent } from "../infra/agent-client";
 import { deprovisionUser } from "../infra/ssh-gateway";
-import { appSlug, destroyAppContainer } from "../apps/runtime";
+import { pluginSlug, destroyPluginContainer } from "../plugins/runtime";
 import { mapLimit } from "../utils";
 import { withKeyedLock } from "./keyed-mutex";
-import { loadServicesByTeam } from "./service-graph-load";
+import { loadAppsByTeam } from "./app-graph-load";
 import { agentTeardownDev } from "../deploy/agent-dev";
 import { removeUploads } from "../deploy/upload";
-import type { Service } from "../types";
+import type { App } from "../types";
 
 /**
  * Deleting a team is the one action that outranks `manage_team`: it implicitly
@@ -36,7 +36,7 @@ import type { Service } from "../types";
  * account is gone — any owner.
  *
  * Lives in its own module (not teams.ts) because the teardown pulls in the
- * service-graph loader and the agent client; teams.ts stays a light identity
+ * app-graph loader and the agent client; teams.ts stays a light identity
  * module that the layout imports on every request.
  */
 
@@ -95,11 +95,11 @@ export async function canDeleteTeam(): Promise<{
 
 /** Everything the post-delete stack teardown needs, captured BEFORE the rows go. */
 interface TeardownPlan {
-  services: Service[];
-  /** Dev SSH gateway users to evict, resolved to their service's server. */
+  services: App[];
+  /** Dev SSH gateway users to evict, resolved to their app's server. */
   sshUsers: { serverId: string; username: string }[];
   databases: { id: string; host: string; serverId: string }[];
-  /** Frozen slugs of the team's installed apps (containers on the Deplo host). */
+  /** Frozen slugs of the team's installed plugins (containers on the Deplo host). */
   appSlugs: string[];
 }
 
@@ -111,9 +111,9 @@ interface TeardownPlan {
  * failure for a delete that succeeded). Everything here works from the
  * pre-delete snapshot and never reads the cascaded tables; an unreachable host
  * leaves leftover containers to sweep by hand (warned, mirroring
- * deleteService/deleteDatabase — there is no team activity feed left to record
+ * deleteApp/deleteDatabase — there is no team activity feed left to record
  * on). Stacks are dialed directly by the snapshot's `serverId` because
- * `teardownService()` re-resolves the owning server from rows that no longer
+ * `teardownApp()` re-resolves the owning server from rows that no longer
  * exist.
  */
 function teardownTeamResources(plan: TeardownPlan): void {
@@ -167,7 +167,7 @@ function teardownTeamResources(plan: TeardownPlan): void {
       });
     });
     for (const slug of plan.appSlugs) {
-      await destroyAppContainer(slug).catch(() => {});
+      await destroyPluginContainer(slug).catch(() => {});
     }
   })().catch((e) =>
     console.warn(
@@ -186,10 +186,10 @@ function teardownTeamResources(plan: TeardownPlan): void {
  *
  * Removes the team row in ONE delete — the FK CASCADEs drop everything
  * team-scoped: memberships, invites, folders, projects (+ environments),
- * services (+ deployments, env vars, domains…), databases, backup schedules
- * AND run history, S3 destinations, installed apps, tokens, activities. The
- * stack teardown (services, databases including data volumes, dev containers,
- * SSH users, installed apps) continues in the background from a pre-delete
+ * apps (+ deployments, env vars, domains…), databases, backup schedules
+ * AND run history, S3 destinations, installed plugins, tokens, activities. The
+ * stack teardown (apps, databases including data volumes, dev containers,
+ * SSH users, installed plugins) continues in the background from a pre-delete
  * snapshot. Backup ARCHIVES already uploaded to S3 buckets are kept — only the
  * records go.
  */
@@ -226,21 +226,21 @@ export async function deleteTeam(teamId: string): Promise<void> {
         );
 
       // Snapshot the teardown targets IMMEDIATELY before the delete, so
-      // services/databases created while this request was in flight are still
+      // apps/databases created while this request was in flight are still
       // caught (rows born after this point are lost to the cascade, but the
       // window is now milliseconds, not the length of the agent fan-out).
-      const services = await loadServicesByTeam(ctx.teamId);
-      const byServiceId = new Map(services.map((s) => [s.id, s]));
+      const services = await loadAppsByTeam(ctx.teamId);
+      const byAppId = new Map(services.map((s) => [s.id, s]));
       const sshRows =
         services.length === 0
           ? []
           : await db
               .select({
-                serviceId: devSshUserTable.serviceId,
+                appId: devSshUserTable.appId,
                 username: devSshUserTable.username,
               })
               .from(devSshUserTable)
-              .where(inArray(devSshUserTable.serviceId, [...byServiceId.keys()]));
+              .where(inArray(devSshUserTable.appId, [...byAppId.keys()]));
       const databases = await db
         .select({
           id: databasesTable.id,
@@ -258,11 +258,11 @@ export async function deleteTeam(teamId: string): Promise<void> {
       )[0];
       const apps = await db
         .select({
-          slug: installedAppsTable.slug,
-          catalogId: installedAppsTable.catalogId,
+          slug: installedPluginsTable.slug,
+          catalogId: installedPluginsTable.catalogId,
         })
-        .from(installedAppsTable)
-        .where(eq(installedAppsTable.teamId, ctx.teamId));
+        .from(installedPluginsTable)
+        .where(eq(installedPluginsTable.teamId, ctx.teamId));
 
       // One DELETE — the FK CASCADEs remove every team-scoped row.
       await db.delete(teamsTable).where(eq(teamsTable.id, ctx.teamId));
@@ -270,14 +270,14 @@ export async function deleteTeam(teamId: string): Promise<void> {
       return {
         services,
         sshUsers: sshRows.flatMap((r) => {
-          const s = byServiceId.get(r.serviceId);
+          const s = byAppId.get(r.appId);
           return s ? [{ serverId: s.serverId, username: r.username }] : [];
         }),
         databases,
         // Prefer the slug frozen at install; legacy rows derive it (the team
         // row was just read, before the delete).
         appSlugs: apps.map(
-          (a) => a.slug || appSlug(a.catalogId, team?.slug ?? ""),
+          (a) => a.slug || pluginSlug(a.catalogId, team?.slug ?? ""),
         ),
       };
     },

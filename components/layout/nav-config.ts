@@ -66,14 +66,14 @@ export const NAV: NavSection[] = [
         label: "Overview",
         href: "/",
         icon: LayoutGrid,
-        tooltip: "Projects, folders & services overview",
+        tooltip: "Projects, folders & apps overview",
         exact: true,
       },
       {
         label: "Deployments",
         href: "/deployments",
         icon: Rocket,
-        tooltip: "All deployments across services",
+        tooltip: "All deployments across apps",
       },
       {
         label: "Logs",
@@ -96,7 +96,7 @@ export const NAV: NavSection[] = [
         label: "Variables",
         href: "/variables",
         icon: Braces,
-        tooltip: "Service, shared & global environment variables",
+        tooltip: "App, shared & global environment variables",
         requires: "manage_env",
       },
       {
@@ -106,10 +106,10 @@ export const NAV: NavSection[] = [
         tooltip: "One-click deploy templates",
       },
       {
-        label: "Apps",
-        href: "/apps",
+        label: "Plugins",
+        href: "/plugins",
         icon: Blocks,
-        tooltip: "Install apps to extend Deplo",
+        tooltip: "Install plugins to extend Deplo",
         requires: "manage_infra",
       },
     ],
@@ -240,14 +240,14 @@ export const SETTINGS_NAV: NavSection[] = [
   },
 ];
 
-/** Per-service facts the sidebar can't derive itself (the URL gives the slug and
+/** Per-app facts the sidebar can't derive itself (the URL gives the slug and
  *  the viewer's capabilities gate Environment/Backups, but whether the container
- *  is running and whether the service is dev-eligible / has a files dir are known
- *  only to the service layout, which publishes them via the service-nav store). */
-export interface ServiceNavFlags {
+ *  is running and whether the app is dev-eligible / has a files dir are known
+ *  only to the app layout, which publishes them via the app-nav store). */
+export interface AppNavFlags {
   /** Full current pathname — lets a section stay listed while it's the open page
    *  even before the store has confirmed its flag (avoids a missing active item
-   *  on a hard load of e.g. /services/x/console). */
+   *  on a hard load of e.g. /apps/x/console). */
   pathname: string;
   canManageEnv: boolean;
   canBackup: boolean;
@@ -257,15 +257,15 @@ export interface ServiceNavFlags {
 }
 
 /**
- * A service's navigation. When the viewer is anywhere under `/services/<slug>`
+ * An app's navigation. When the viewer is anywhere under `/apps/<slug>`
  * the sidebar swaps {@link NAV} for this set — the same sidebar UI, a different
- * left-hand nav — so each service section (Overview, Deployments, Domains, …) is
+ * left-hand nav — so each app section (Overview, Deployments, Domains, …) is
  * its own icon-led entry instead of a horizontal tab. Mirrors {@link SETTINGS_NAV}:
  * a "back" escape hatch on top, then the sections. The conditional entries match
  * the visibility rules the old horizontal tabs used.
  */
-export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
-  const base = `/services/${slug}`;
+export function appNav(slug: string, f: AppNavFlags): NavSection[] {
+  const base = `/apps/${slug}`;
   // True while the given sub-route is the page currently open.
   const on = (seg: string) =>
     f.pathname === base + seg || f.pathname.startsWith(base + seg + "/");
@@ -275,8 +275,8 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
       label: "Overview",
       href: base,
       icon: LayoutDashboard,
-      tooltip: "Service overview",
-      // Every service route starts with `base`, so Overview must match exactly
+      tooltip: "App overview",
+      // Every app route starts with `base`, so Overview must match exactly
       // or it would light up on every sub-page.
       exact: true,
     },
@@ -303,7 +303,7 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
       icon: Globe,
       tooltip: "Custom domains & routing",
     },
-    // Console streams from a live container, so it shows only while the service
+    // Console streams from a live container, so it shows only while the app
     // is running (or when that page is itself the one open).
     ...(f.running || on("/console")
       ? [
@@ -315,7 +315,7 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
           } as NavItem,
         ]
       : []),
-    // Logs stays visible even when the service is stopped: it falls back to the
+    // Logs stays visible even when the app is stopped: it falls back to the
     // most recent build's logs (flagged as not live) rather than a dead end.
     {
       label: "Logs",
@@ -323,7 +323,7 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
       icon: ScrollText,
       tooltip: "Runtime & build logs",
     },
-    // Dev Mode — source-bearing services only.
+    // Dev Mode — source-bearing apps only.
     ...(f.devEligible || on("/dev")
       ? [
           {
@@ -341,7 +341,7 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
             label: "Files",
             href: `${base}/files`,
             icon: FolderTree,
-            tooltip: "Service files",
+            tooltip: "App files",
           } as NavItem,
         ]
       : []),
@@ -360,7 +360,7 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
       label: "Settings",
       href: `${base}/settings`,
       icon: Settings,
-      tooltip: "Service settings",
+      tooltip: "App settings",
     },
   ];
 
@@ -368,10 +368,10 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
     {
       items: [
         {
-          label: "Back to services",
+          label: "Back to apps",
           href: "/",
           icon: ArrowLeft,
-          tooltip: "Return to all services",
+          tooltip: "Return to all apps",
           exact: true,
           back: true,
         },
@@ -382,24 +382,24 @@ export function serviceNav(slug: string, f: ServiceNavFlags): NavSection[] {
 }
 
 /**
- * A service's SETTINGS sub-menu — one level deeper than {@link serviceNav}. When
- * the viewer is under `/services/<slug>/settings` the sidebar swaps the service
+ * An app's SETTINGS sub-menu — one level deeper than {@link appNav}. When
+ * the viewer is under `/apps/<slug>/settings` the sidebar swaps the app
  * nav for this set, so each settings section (General, Deployments, Storage,
  * Access, Danger) is its own dedicated page. The "back" escape hatch here goes UP
- * one level to the service overview — unlike {@link serviceNav}'s "Back to
- * services", which leaves the service entirely — so it is a plain link (not a
- * history `back`, which would exit the whole `/services/<slug>` section).
+ * one level to the app overview — unlike {@link appNav}'s "Back to
+ * apps", which leaves the app entirely — so it is a plain link (not a
+ * history `back`, which would exit the whole `/apps/<slug>` section).
  */
-export function serviceSettingsNav(slug: string): NavSection[] {
-  const base = `/services/${slug}/settings`;
+export function appSettingsNav(slug: string): NavSection[] {
+  const base = `/apps/${slug}/settings`;
   return [
     {
       items: [
         {
-          label: "Back to service",
-          href: `/services/${slug}`,
+          label: "Back to app",
+          href: `/apps/${slug}`,
           icon: ArrowLeft,
-          tooltip: "Return to the service overview",
+          tooltip: "Return to the app overview",
           exact: true,
         },
       ],
@@ -442,7 +442,7 @@ export function serviceSettingsNav(slug: string): NavSection[] {
           label: "Danger",
           href: `${base}/danger`,
           icon: TriangleAlert,
-          tooltip: "Delete this service",
+          tooltip: "Delete this app",
         },
       ],
     },

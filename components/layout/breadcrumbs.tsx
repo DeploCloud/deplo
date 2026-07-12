@@ -18,7 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useServiceNav } from "@/components/services/service-nav-store";
+import { useAppNav } from "@/components/apps/app-nav-store";
 import {
   buildBreadcrumb,
   type BreadcrumbGraph,
@@ -33,10 +33,10 @@ import { cn } from "@/lib/utils";
 const MAX_FOLDER_CRUMBS = 3;
 
 /**
- * The topbar breadcrumb. On a services-tree location — browsing a folder/project
- * on the Overview, or anywhere inside a service — it renders
- * "Overview ▾ / Folder ▾ / Service ▾ / Section ▾", where clicking a name navigates
- * and the ▾ opens a menu of sibling targets (hop between services in the same
+ * The topbar breadcrumb. On an apps-tree location — browsing a folder/project
+ * on the Overview, or anywhere inside an app — it renders
+ * "Overview ▾ / Folder ▾ / App ▾ / Section ▾", where clicking a name navigates
+ * and the ▾ opens a menu of sibling targets (hop between apps in the same
  * folder, pivot into a sibling subfolder, jump to another section). On any other
  * route it renders the caller's `fallback` label unchanged.
  */
@@ -62,11 +62,11 @@ export function Breadcrumbs({
   const openProjectId = searching ? null : params.get("project");
   const view = params.get("view") === "list" ? "list" : "grid";
 
-  // Live per-service facts (Console/Dev/Files visibility) — null until the service
+  // Live per-app facts (Console/Dev/Files visibility) — null until the app
   // layout publishes them, so the section menus fill in after first paint. The
   // sibling/folder menus need none of this and are complete from SSR.
-  const service = useServiceNav();
-  const slug = pathname.match(/^\/services\/([^/]+)/)?.[1] ?? null;
+  const service = useAppNav();
+  const slug = pathname.match(/^\/apps\/([^/]+)/)?.[1] ?? null;
 
   const caps = React.useMemo(() => {
     const set = new Set(capabilities);
@@ -241,7 +241,7 @@ function MenuRow({ item }: { item: DropItem }) {
       ? FolderIcon
       : item.kind === "project"
         ? Boxes
-        : item.kind === "service"
+        : item.kind === "app"
           ? Box
           : null;
   if (item.current) {

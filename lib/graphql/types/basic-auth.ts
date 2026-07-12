@@ -17,7 +17,7 @@ const BasicAuthUserRef = builder
   .objectRef<BasicAuthUserDTO>("BasicAuthUser")
   .implement({
     description:
-      "An HTTP Basic Auth credential that gates every domain of a service. The password is write-only and never returned.",
+      "An HTTP Basic Auth credential that gates every domain of an app. The password is write-only and never returned.",
     fields: (t) => ({
       id: t.exposeID("id"),
       username: t.exposeString("username"),
@@ -35,9 +35,9 @@ builder.queryFields((t) => ({
     type: [BasicAuthUserRef],
     authScopes: { loggedIn: true },
     description:
-      "Basic-auth users of a service, alphabetical by username (requires manage_domains).",
-    args: { serviceId: t.arg.string({ required: true }) },
-    resolve: (_r, { serviceId }) => listBasicAuthUsers(serviceId),
+      "Basic-auth users of an app, alphabetical by username (requires manage_domains).",
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: (_r, { appId }) => listBasicAuthUsers(appId),
   }),
 }));
 
@@ -50,14 +50,14 @@ builder.mutationFields((t) => ({
     type: BasicAuthUserRef,
     authScopes: { capability: "manage_domains" },
     description:
-      "Add a basic-auth user to a service. Applies to all its domains on the next deploy or Reload.",
+      "Add a basic-auth user to an app. Applies to all its domains on the next deploy or Reload.",
     args: {
-      serviceId: t.arg.string({ required: true }),
+      appId: t.arg.string({ required: true }),
       username: t.arg.string({ required: true }),
       password: t.arg.string({ required: true }),
     },
-    resolve: (_r, { serviceId, username, password }) =>
-      addBasicAuthUser(serviceId, username, password),
+    resolve: (_r, { appId, username, password }) =>
+      addBasicAuthUser(appId, username, password),
   }),
   updateBasicAuthUserPassword: t.field({
     type: BasicAuthUserRef,

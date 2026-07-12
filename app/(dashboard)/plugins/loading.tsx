@@ -16,7 +16,7 @@ export default function Loading() {
         </div>
       </div>
 
-      {/* AppsBrowser — two stacked sections (Installed, Catalog) */}
+      {/* PluginsBrowser — two stacked sections (Installed, Catalog) */}
       <div className="space-y-8">
         {/* Installed */}
         <section className="space-y-4">

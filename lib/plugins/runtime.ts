@@ -11,7 +11,7 @@ import "server-only";
  * Deplo's own host (a Traefik `PathPrefix` router + `stripprefix`), reusing
  * Deplo's TLS — never a per-app domain/nip.io/cert.
  *
- * Router priority: the app's `Host(deplo) && PathPrefix(/apps/<slug>)` router
+ * Router priority: the plugin's `Host(deplo) && PathPrefix(/plugins/<slug>)` router
  * wins over the dashboard's bare `Host(deplo)` router because the dashboard
  * router is pinned to `priority=1` (docker-compose.yml / install.sh) — Traefik
  * otherwise defaults an un-pinned router's priority to its rule-string length,
@@ -31,7 +31,7 @@ import { docker, ensureNetwork } from "../infra/docker";
 import { certResolver } from "../deploy/domains";
 import { traefikRouterLabels } from "../deploy/routing";
 import { resolvePublicBaseUrl } from "../public-url";
-import type { AppManifest } from "./manifest";
+import type { PluginManifest } from "./manifest";
 
 /** The shared external network every routed runtime joins. */
 const NETWORK = "deplo";
@@ -55,27 +55,27 @@ const APPS_DIR = join(DATA_DIR, "apps");
  * routing.ts`, which uses it for exactly this reason. `__` is a valid char in
  * a docker container/compose name and a URL path, so every consumer is safe.
  */
-export function appSlug(catalogId: string, teamSlug: string): string {
+export function pluginSlug(catalogId: string, teamSlug: string): string {
   return `${catalogId}__${teamSlug}`;
 }
 
 /** The container name for an app slug — deterministic, so status is a lookup. */
-export function appContainerName(slug: string): string {
+export function pluginContainerName(slug: string): string {
   return `deplo-app-${slug}`;
 }
 
 /** The compose project name (mirrors `deplo-<slug>` for project stacks). */
-function appService(slug: string): string {
+function pluginService(slug: string): string {
   return `deplo-app-${slug}`;
 }
 
-/** The app path under Deplo's own host, e.g. `/apps/mcp-acme`. */
-export function appPathPrefix(slug: string): string {
-  return `/apps/${slug}`;
+/** The plugin path under Deplo's own host, e.g. `/plugins/mcp-acme`. */
+export function pluginPathPrefix(slug: string): string {
+  return `/plugins/${slug}`;
 }
 
 /** Absolute path of an app's rendered compose file. */
-function appStackFile(slug: string): string {
+function pluginStackFile(slug: string): string {
   return join(APPS_DIR, `${slug}.yml`);
 }
 
@@ -91,16 +91,16 @@ function appStackFile(slug: string): string {
  *   - labelled `deplo.managed=true` + `deplo.role=app` (the first containers to
  *     carry `deplo.role=app`; production stacks carry no role)
  *   - Traefik path labels (built by `traefikRouterLabels`) for
- *     `Host(<deplo>) && PathPrefix(/apps/<slug>)` + `stripprefix`, forwarding to
+ *     `Host(<deplo>) && PathPrefix(/plugins/<slug>)` + `stripprefix`, forwarding to
  *     the manifest's `expose.port`. This router outranks the dashboard's bare
  *     `Host(DEPLO_DOMAIN)` router because that one is pinned to `priority=1`
  *     (see the module header), so the app path is never shadowed.
  *
  * `resolvedEnv` is the manifest env with placeholders already substituted
- * (`resolveAppEnv` in `./manifest`) — for the MCP app, just `DEPLO_GRAPHQL_URL`.
+ * (`resolvePluginEnv` in `./manifest`) — for the MCP app, just `DEPLO_GRAPHQL_URL`.
  * `deploHost` is Deplo's own hostname (no scheme) for the Traefik `Host()` rule.
  */
-export function renderAppCompose(args: {
+export function renderPluginCompose(args: {
   slug: string;
   image: string;
   port: number;
@@ -109,9 +109,9 @@ export function renderAppCompose(args: {
 }): string {
   const { slug, image, port, deploHost, resolvedEnv } = args;
   const labels = traefikRouterLabels({
-    baseKey: appService(slug),
+    baseKey: pluginService(slug),
     routes: [
-      { name: deploHost, port, pathPrefix: appPathPrefix(slug), stripPrefix: true },
+      { name: deploHost, port, pathPrefix: pluginPathPrefix(slug), stripPrefix: true },
     ],
     defaultPort: port,
     certResolver: certResolver(),
@@ -129,7 +129,7 @@ export function renderAppCompose(args: {
 services:
   app:
     image: ${JSON.stringify(image)}
-    container_name: ${appContainerName(slug)}
+    container_name: ${pluginContainerName(slug)}
     restart: unless-stopped
 ${envLines ? `    environment:\n${envLines}\n` : ""}    networks:
       - ${NETWORK}
@@ -169,9 +169,9 @@ function deploHost(base: string): string {
  * `<slug>.yml`, no half-created container/router). On a reinstall the existing
  * container must survive a failed pull, so the file is left in place.
  */
-export async function startAppStack(args: {
+export async function startPluginStack(args: {
   slug: string;
-  manifest: AppManifest;
+  manifest: PluginManifest;
   resolvedEnv: Record<string, string>;
   publicBaseUrl: string;
   /** True when recreating an already-installed app (keep residue on failure). */
@@ -180,10 +180,10 @@ export async function startAppStack(args: {
   const { slug, manifest, resolvedEnv, publicBaseUrl, isReinstall } = args;
   await ensureNetwork(NETWORK);
   await mkdir(APPS_DIR, { recursive: true });
-  const stackFile = appStackFile(slug);
+  const stackFile = pluginStackFile(slug);
   await writeFile(
     stackFile,
-    renderAppCompose({
+    renderPluginCompose({
       slug,
       image: manifest.image,
       port: manifest.expose.port,
@@ -193,14 +193,14 @@ export async function startAppStack(args: {
   );
   try {
     await docker(
-      ["compose", "-p", appService(slug), "-f", stackFile, "up", "-d", "--remove-orphans"],
+      ["compose", "-p", pluginService(slug), "-f", stackFile, "up", "-d", "--remove-orphans"],
       { timeout: 180_000 },
     );
   } catch (err) {
     if (!isReinstall) {
       // Roll back a fresh install so a failed pull/up leaves nothing behind.
       await docker(
-        ["compose", "-p", appService(slug), "-f", stackFile, "down", "--remove-orphans"],
+        ["compose", "-p", pluginService(slug), "-f", stackFile, "down", "--remove-orphans"],
         { timeout: 60_000, noThrow: true },
       ).catch(() => {});
       await rm(stackFile, { force: true }).catch(() => {});
@@ -210,26 +210,26 @@ export async function startAppStack(args: {
 }
 
 /** Start a stopped app container (compose start, falling back to the container). */
-export async function startAppContainer(slug: string): Promise<void> {
-  const stackFile = appStackFile(slug);
+export async function startPluginContainer(slug: string): Promise<void> {
+  const stackFile = pluginStackFile(slug);
   if (await fileExists(stackFile)) {
-    await docker(["compose", "-p", appService(slug), "-f", stackFile, "start"], {
+    await docker(["compose", "-p", pluginService(slug), "-f", stackFile, "start"], {
       timeout: 60_000,
     });
   } else {
-    await docker(["start", appContainerName(slug)], { timeout: 30_000 });
+    await docker(["start", pluginContainerName(slug)], { timeout: 30_000 });
   }
 }
 
 /** Stop a running app container (compose stop, falling back to the container). */
-export async function stopAppContainer(slug: string): Promise<void> {
-  const stackFile = appStackFile(slug);
+export async function stopPluginContainer(slug: string): Promise<void> {
+  const stackFile = pluginStackFile(slug);
   if (await fileExists(stackFile)) {
-    await docker(["compose", "-p", appService(slug), "-f", stackFile, "stop"], {
+    await docker(["compose", "-p", pluginService(slug), "-f", stackFile, "stop"], {
       timeout: 60_000,
     });
   } else {
-    await docker(["stop", appContainerName(slug)], { timeout: 30_000 });
+    await docker(["stop", pluginContainerName(slug)], { timeout: 30_000 });
   }
 }
 
@@ -240,12 +240,12 @@ export async function stopAppContainer(slug: string): Promise<void> {
  *   - "stopped"  — the container exists but is not running
  *   - "error"    — no container / daemon unreachable (the truth, not a guess)
  */
-export async function appStatus(
+export async function pluginStatus(
   slug: string,
 ): Promise<"running" | "stopped" | "error"> {
   try {
     const { stdout, code } = await docker(
-      ["inspect", "-f", "{{.State.Running}}", appContainerName(slug)],
+      ["inspect", "-f", "{{.State.Running}}", pluginContainerName(slug)],
       { timeout: 10_000, noThrow: true },
     );
     if (code !== 0) return "error"; // no such container
@@ -262,15 +262,15 @@ export async function appStatus(
  * then deletes the rendered compose. Best-effort — a missing container/file is
  * not an error (uninstall must always succeed in dropping the row).
  */
-export async function destroyAppContainer(slug: string): Promise<void> {
-  const stackFile = appStackFile(slug);
+export async function destroyPluginContainer(slug: string): Promise<void> {
+  const stackFile = pluginStackFile(slug);
   if (await fileExists(stackFile)) {
     await docker(
-      ["compose", "-p", appService(slug), "-f", stackFile, "down", "--remove-orphans"],
+      ["compose", "-p", pluginService(slug), "-f", stackFile, "down", "--remove-orphans"],
       { timeout: 120_000, noThrow: true },
     ).catch(() => {});
   } else {
-    await docker(["rm", "-f", appContainerName(slug)], {
+    await docker(["rm", "-f", pluginContainerName(slug)], {
       timeout: 30_000,
       noThrow: true,
     }).catch(() => {});
@@ -279,8 +279,8 @@ export async function destroyAppContainer(slug: string): Promise<void> {
 }
 
 /** Compute an app's full app-path URL from the public base URL + slug. */
-export function appUrl(publicBaseUrl: string, slug: string): string {
-  return `${publicBaseUrl.replace(/\/+$/, "")}${appPathPrefix(slug)}`;
+export function pluginUrl(publicBaseUrl: string, slug: string): string {
+  return `${publicBaseUrl.replace(/\/+$/, "")}${pluginPathPrefix(slug)}`;
 }
 
 /* ------------------------------------------------------------------ */

@@ -6,13 +6,13 @@ import { usePathname } from "next/navigation";
 import {
   NAV,
   SETTINGS_NAV,
-  serviceNav,
-  serviceSettingsNav,
+  appNav,
+  appSettingsNav,
   type NavItem,
   type NavSection,
 } from "./nav-config";
 import { backOutOf } from "./navigation-history";
-import { useServiceNav } from "@/components/services/service-nav-store";
+import { useAppNav } from "@/components/apps/app-nav-store";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -39,12 +39,12 @@ export function SidebarNav({
 }) {
   const pathname = usePathname();
   const caps = new Set(capabilities);
-  const service = useServiceNav();
+  const service = useAppNav();
 
   // A "back" escape hatch leaves the whole current section via the browser's
   // history — jumping to the last page you were on *outside* it — so it lands
   // where you came from instead of stepping between sibling pages. Its href
-  // (Back to services / dashboard) is the fallback when there's no such page
+  // (Back to apps / dashboard) is the fallback when there's no such page
   // (a fresh load, a reload). Modified clicks (⌘/ctrl/shift/alt → new tab) fall
   // through to the href untouched.
   function handleNavClick(item: NavItem, e: React.MouseEvent<HTMLAnchorElement>) {
@@ -56,9 +56,9 @@ export function SidebarNav({
       !e.shiftKey &&
       !e.altKey
     ) {
-      const slug = pathname.match(/^\/services\/([^/]+)/)?.[1];
+      const slug = pathname.match(/^\/apps\/([^/]+)/)?.[1];
       const prefix = slug
-        ? `/services/${slug}`
+        ? `/apps/${slug}`
         : pathname.startsWith("/settings")
           ? "/settings"
           : null;
@@ -70,18 +70,18 @@ export function SidebarNav({
   }
 
   // The same sidebar shows one of four navigations depending on where you are:
-  // inside a service it becomes that service's sub-menu; one level deeper, under
-  // that service's /settings, its settings sub-menu; under the top-level /settings
+  // inside an app it becomes that app's sub-menu; one level deeper, under
+  // that app's /settings, its settings sub-menu; under the top-level /settings
   // the settings sub-menu; otherwise the main dashboard nav. One sidebar system,
   // four left-hand navigations.
-  const serviceSlug = pathname.match(/^\/services\/([^/]+)/)?.[1] ?? null;
-  // A service's own settings live one level deeper than its main nav, so the
-  // sidebar swaps again once you're under /services/<slug>/settings.
-  const inServiceSettings =
-    serviceSlug != null && /^\/services\/[^/]+\/settings(?:\/|$)/.test(pathname);
+  const appSlug = pathname.match(/^\/apps\/([^/]+)/)?.[1] ?? null;
+  // An app's own settings live one level deeper than its main nav, so the
+  // sidebar swaps again once you're under /apps/<slug>/settings.
+  const inAppSettings =
+    appSlug != null && /^\/apps\/[^/]+\/settings(?:\/|$)/.test(pathname);
   const inSettings = pathname.startsWith("/settings");
-  const menu: "service-settings" | "service" | "settings" | "main" = serviceSlug
-    ? inServiceSettings
+  const menu: "service-settings" | "service" | "settings" | "main" = appSlug
+    ? inAppSettings
       ? "service-settings"
       : "service"
     : inSettings
@@ -89,15 +89,15 @@ export function SidebarNav({
       : "main";
 
   let sections: NavSection[];
-  if (serviceSlug && inServiceSettings) {
-    sections = serviceSettingsNav(serviceSlug);
-  } else if (serviceSlug) {
+  if (appSlug && inAppSettings) {
+    sections = appSettingsNav(appSlug);
+  } else if (appSlug) {
     // Capability-gated entries come from the sidebar's own capability list; the
-    // live/per-service flags come from the store — but only when it matches the
-    // slug in the URL, so a stale value from the service you just left can't
+    // live/per-app flags come from the store — but only when it matches the
+    // slug in the URL, so a stale value from the app you just left can't
     // leak its Console/Logs/Dev/Files into the next one.
-    const matches = service?.slug === serviceSlug;
-    sections = serviceNav(serviceSlug, {
+    const matches = service?.slug === appSlug;
+    sections = appNav(appSlug, {
       pathname,
       canManageEnv: caps.has("manage_env"),
       canBackup: caps.has("manage_infra"),
@@ -112,7 +112,7 @@ export function SidebarNav({
   }
 
   // Filter by capability/admin up front so the sliding-pill signature and the
-  // render use the exact same item set (service entries are pre-filtered by the
+  // render use the exact same item set (app entries are pre-filtered by the
   // builder, so this is a no-op for them).
   const rendered = sections
     .map((section) => ({
@@ -150,7 +150,7 @@ export function SidebarNav({
 
   // Single background "pill" that slides to the active item — only its
   // background moves between entries. Re-measured on navigation and whenever the
-  // rendered item set changes (a service's Console/Logs entries appear and
+  // rendered item set changes (an app's Console/Logs entries appear and
   // disappear as its container starts/stops).
   const navRef = React.useRef<HTMLElement | null>(null);
   const signature = rendered

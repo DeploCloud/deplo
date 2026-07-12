@@ -1,17 +1,17 @@
 import { notFound } from "next/navigation";
-import { getServiceBySlug } from "@/lib/data/services";
+import { getAppBySlug } from "@/lib/data/apps";
 import { getLogsInfo } from "@/lib/data/console";
 import { getLogs } from "@/lib/data/deployments";
 import { PageHeader } from "@/components/shared/page-header";
-import { LiveLogs } from "@/components/services/live-logs";
+import { LiveLogs } from "@/components/apps/live-logs";
 
 export const metadata = { title: "Logs" };
 
-export default async function ServiceLogsPage(
-  props: PageProps<"/services/[slug]/logs">,
+export default async function AppLogsPage(
+  props: PageProps<"/apps/[slug]/logs">,
 ) {
   const { slug } = await props.params;
-  const project = await getServiceBySlug(slug);
+  const project = await getAppBySlug(slug);
   if (!project) notFound();
 
   const latest = project.latestDeployment;
@@ -33,11 +33,11 @@ export default async function ServiceLogsPage(
         description="Live runtime output while the container runs, or the most recent build's logs when it isn't."
       />
 
-      {/* Follows the service's live running state: the runtime stream shows while
+      {/* Follows the app's live running state: the runtime stream shows while
           the container runs, and falls back to the most recent build's logs the
           moment it stops — all without a reload. */}
       <LiveLogs
-        serviceId={project.id}
+        appId={project.id}
         initialInstances={info?.running ? info.instances : null}
         initialRunning={!!info?.running}
         latestDeployment={latest ? { id: latest.id, status: latest.status } : null}

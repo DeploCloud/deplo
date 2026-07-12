@@ -3,8 +3,8 @@
 import * as React from "react";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
-import { BuildMethodFields } from "@/components/services/build-method-fields";
-import { NodeVersionInput } from "@/components/services/node-version-input";
+import { BuildMethodFields } from "@/components/apps/build-method-fields";
+import { NodeVersionInput } from "@/components/apps/node-version-input";
 import { DEFAULT_NODE_MAJOR, usesDefaultNodeMajor } from "@/lib/frameworks";
 import type {
   BuildConfig,
@@ -14,7 +14,7 @@ import type {
 
 /**
  * The build-method-aware "Build & Output" section shared by the new-project
- * wizard and the service settings form, so the two stay in sync.
+ * wizard and the app settings form, so the two stay in sync.
  *
  * Owns no persistence: the parent holds the BuildConfig and decides how/when to
  * save it. It surfaces the method picker + the per-method fields, optional

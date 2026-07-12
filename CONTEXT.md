@@ -9,11 +9,11 @@ and docs use; it is not a spec.
 ### Tenancy
 
 **Team**:
-An isolated workspace owning services, domains, env vars, databases, S3 destinations,
+An isolated workspace owning apps, domains, env vars, databases, S3 destinations,
 registries, GitHub apps, API tokens, activity, members and notification settings. The
 unit of multi-tenancy. A user may belong to **many** teams and switches the **active
 team** from the topbar; everything in the dashboard is scoped to it. **Servers are the
-one shared resource** — instance-wide infrastructure any team's services can target
+one shared resource** — instance-wide infrastructure any team's apps can target
 (one host, many teams). A team has a `plan` (`pro` | `enterprise`; the old `hobby` plan
 was removed). Created at first-run setup and via the topbar "Create team".
 _Avoid_: organization, workspace (that is the dev-mode source tree), tenant, account.
@@ -51,17 +51,17 @@ Adding an **existing** user to a team is a separate flow: the team-members page 
 registered users by username and attaches a `Membership` directly.
 _Avoid_: invite (reserved for adding an existing user to a team), email invite (removed).
 
-### Apps
+### Plugins
 
-**App**:
-An optional, self-contained feature a team **installs** from the **app repository** to
-extend the platform. An installed app is a **host-managed container** (Deplo owns the Docker
-socket → real start/stop/restart + true status) — but it is
-**not a "service"**: it never appears on the Overview, in the service count, or the
-`services` API. It is platform infrastructure that happens to run a container, like the
-**SSH gateway**. It is **not** deployed through the service pipeline and gets **no per-app
-domain, sslip.io, or TLS cert**; when an app needs to be reached it is served on the **app
-path** under Deplo's own public URL. The first app is the **MCP app** — a **stateless relay**
+**Plugin**:
+An optional, self-contained feature a team **installs** from the **plugin repository** to
+extend the platform (like an MCP server). An installed plugin is a **host-managed container**
+(Deplo owns the Docker socket → real start/stop/restart + true status) — but it is
+**not an "App"**: it never appears on the Overview, in the app count, or the
+`apps` API. It is platform infrastructure that happens to run a container, like the
+**SSH gateway**. It is **not** deployed through the deploy pipeline and gets **no per-plugin
+domain, sslip.io, or TLS cert**; when a plugin needs to be reached it is served on the **plugin
+path** under Deplo's own public URL. The first plugin is the **MCP plugin** — a **stateless relay**
 that serves MCP over that path and **holds no credential of its own**: it forwards the
 caller's `deplo_` token verbatim to Deplo's GraphQL API, so a caller can only ever do what
 *their own* token's team capabilities allow. Its **status is never stored** — it is read
@@ -69,72 +69,74 @@ caller's `deplo_` token verbatim to Deplo's GraphQL API, so a caller can only ev
 at query time and exposed through the GraphQL API, like the Preview route's URL is "computed,
 not managed." The UI never touches Docker: status and start/stop flow **UI → GraphQL → data
 layer → socket**, never UI → socket.
-_Avoid_: service (an app runs on host container machinery but is never a Service, nor a
-Project container), plugin (implies in-process code in Deplo itself — an app is its own
-container), extension, add-on.
+_Avoid_: App (a plugin runs on host container machinery but is never an App, nor a
+Project container), extension, add-on. (The container/label identity `deplo-app-<slug>` and
+the `app_` id prefix persist for compatibility, but the concept is a **Plugin**.)
 
-**App repository**:
-The remote, online catalog of installable apps (`catalog.json` + per-app manifests),
+**Plugin repository**:
+The remote, online catalog of installable plugins (`catalog.json` + per-plugin manifests),
 served over HTTP at `devrepo.pixelfederico.com`. Deplo fetches it read-only and treats a
 manifest's compose as **opaque text** handed to the deploy pipeline — never evaluated. The
-source of every app's image and manifest. Distinct from **Templates**, which ship inside
-Deplo; apps are fetched from outside.
+source of every plugin's image and manifest. Distinct from **Templates**, which ship inside
+Deplo; plugins are fetched from outside.
 _Avoid_: app store, marketplace, registry (that is a container-image credential).
 
 **Caller token**:
 The plain team-scoped `deplo_` API token a **user** mints from Settings → API Tokens and
 pastes into their own MCP client. It is the **only** credential in the MCP flow: the client
-sends it to the **app path**, the app forwards it **verbatim** to Deplo's GraphQL API, and
-Deplo authenticates it on every call. There is **no separate app-held secret and no
-`MCP_BEARER`** — *reaching* the app and *doing* something through it collapse into one
+sends it to the **plugin path**, the plugin forwards it **verbatim** to Deplo's GraphQL API, and
+Deplo authenticates it on every call. There is **no separate plugin-held secret and no
+`MCP_BEARER`** — *reaching* the plugin and *doing* something through it collapse into one
 capability check on this token. Per-user, per-client: revoking one user's token cuts off only
-that user; the same app container serves many callers, each as their own principal.
-_Avoid_: secret key / app token (the app holds no token of its own), MCP_BEARER (removed —
+that user; the same plugin container serves many callers, each as their own principal.
+_Avoid_: secret key / plugin token (the plugin holds no token of its own), MCP_BEARER (removed —
 there is no separate door key), API key (reserve for third-party provider keys in env).
 
-**App path**:
-The route under Deplo's **own public URL** at which a reachable app is served (e.g.
-`https://<deplo>/apps/mcp-<slug>/…`), reusing Deplo's existing TLS. Deliberately **not** a
-per-app domain, sslip.io name, or `Domain` row — an app never gets its own cert. The app
+**Plugin path**:
+The route under Deplo's **own public URL** at which a reachable plugin is served (e.g.
+`https://<deplo>/plugins/mcp-<slug>/…`), reusing Deplo's existing TLS. Deliberately **not** a
+per-plugin domain, sslip.io name, or `Domain` row — a plugin never gets its own cert. The plugin
 authenticates **nothing** at this path itself; it relays the **caller token** through to
 Deplo's API, which performs the real auth.
-_Avoid_: app domain, app URL (it is a path on Deplo's domain, not a domain of its own),
+_Avoid_: plugin domain, plugin URL (it is a path on Deplo's domain, not a domain of its own),
 route (reserved for Traefik service routes).
 
 **Event**:
 Something that happened at a known Deplo lifecycle point (e.g. a deployment succeeded or
-failed), emitted by the control plane and delivered **observe-only** to subscriber apps —
-fire-and-forget with retries, never blocking. An app reacts by calling the capability-scoped
+failed), emitted by the control plane and delivered **observe-only** to subscriber plugins —
+fire-and-forget with retries, never blocking. A plugin reacts by calling the capability-scoped
 API back; it can *observe and then act*, but it can **never veto or pause** a pipeline. This
-is how an app "does things when something happens." Blocking gates (a true pre-deploy veto)
+is how a plugin "does things when something happens." Blocking gates (a true pre-deploy veto)
 are deliberately **out of scope** and reserved for a future ADR. *(Phase 2 — not yet built.)*
 _Avoid_: hook (implies blocking/in-process), webhook (that is the delivery mechanism, not
 the event), trigger.
 
 ### Structure
 
-**Service**:
-The **deployable app** (formerly *Project* — renamed in [ADR-0008](../docs/adr/0008-projects-own-environments-services-are-the-deployable-unit.md)):
+**App**:
+The **deployable unit** (formerly *Project*, then *Service*, now **App** — the Project→Service step is [ADR-0008](../docs/adr/0008-projects-own-environments-services-are-the-deployable-unit.md)):
 a repository or template turned into a Docker stack `deplo-<slug>` fronted by Traefik.
 Owns its build/dev config, source, domains, env vars, deployments, and an optional dev
 container. It may sit at the team top level, inside a **Folder**, and/or belong to a
 **Project** container (at most one). Its id keeps the historical `prj_` prefix (opaque;
-not migrated).
-_Avoid_: project (that is now the **container**), app (reserved for an installed **App**),
+not migrated). The agent wire (`deplo.project=<id>` label, `deplo-<slug>` stack naming) also
+keeps the legacy token — it carries the App id.
+_Avoid_: service (that is now a **compose service** inside a stack, or a Traefik route),
+project (that is now the **container**), plugin (reserved for an installed **Plugin**),
 component (a compose service inside one stack).
 
 **Project**:
 A top-level, team-scoped **advanced folder** (ADR-0008, remodeled by ADR-0009) whose
 contents are scoped per **Environment**: each environment (picked from a dropdown in the
-Overview drill-in) holds its **own Services** — like sub-folders — and its own shared
+Overview drill-in) holds its **own Apps** — like sub-folders — and its own shared
 variables. Folder-like (owner, colour, team-wide order) but it **never nests** in another
 Project and **Folders never live inside it**. No page of its own: browsed on the Overview
 via the `/?project=<id>&env=<envId>` drill-in (old `/projects/<slug>` URLs redirect there);
-id prefix `prc_`. Adoption is **additive**: top-level folders and services that belong to
+id prefix `prc_`. Adoption is **additive**: top-level folders and apps that belong to
 no Project keep working.
 _Avoid_: container (it is not a passive grouping — the environment axis is the point),
 folder (a Project owns environments; a folder does not), workspace, group, the old sense of
-"project" (the deployable app, now a **Service**).
+"project" (the deployable app, now a **App**).
 
 **Environment**:
 A per-**Project**, first-class **isolated deploy target** (ADR-0008): its own containers,
@@ -143,13 +145,10 @@ create; renamable and extensible. Carries a well-known `kind`
 (`development|preview|production|custom`) — the bridge that keeps legacy **env target**
 resolution and global-env targeting working. The default environment (seeded: Production)
 keeps the bare `deplo-<slug>` deploy key so live stacks are untouched; others get
-`deplo-<slug>__<envSlug>`. id prefix `environ_`. An Environment **owns shared env vars**
-(`environment_env_vars`): a variable stored on it reaches EVERY service of the Project in
-that environment's context, with **no target axis** — the environment IS the scope, its
-`kind` bridging to the runtime until the pipeline is environment-parameterized (a `custom`
-kind's vars are inert until then). Deploy precedence: above team/instance globals, below a
-service's own vars. Managed from the Project detail page and the Variables page's
-**Environments** tab; gated `manage_env` like every other var surface.
+`deplo-<slug>__<envSlug>`. id prefix `environ_`. An Environment is one of the three
+**sharing modes** of a **Shared variable** (ADR-0010): a variable shared to an
+environment reaches every app that LIVES in it. (It no longer owns its own var table —
+`environment_env_vars` was folded into the unified `shared_env_vars` model.)
 _Avoid_: env target (the legacy fixed enum, now `Environment.kind`), stage, deployment
 environment (the two-valued build axis).
 
@@ -158,9 +157,9 @@ environment (the two-valued build axis).
 **Server agent**:
 The single-purpose **Go binary** (`deplo-agent`) that runs on a **server** and owns that
 host's Docker socket, build pipeline, log/console streaming, host metrics, and the
-bind-mounted service config files under `/data/stacks/files/<slug>/` — the host-coupled half
+bind-mounted app config files under `/data/stacks/files/<slug>/` — the host-coupled half
 of the platform, on its own machine. Platform infrastructure, the moral
-sibling of the local Docker socket — **not a service and not a frontend**. The control plane
+sibling of the local Docker socket — **not an app and not a frontend**. The control plane
 (GraphQL/data/auth, which stays TypeScript) never reaches a remote Docker socket directly; it
 drives each agent over a **versioned gRPC contract** (`proto/agent.proto`) on **mTLS**, the
 *second system boundary* alongside the GraphQL UI contract. **The host running Deplo is an agent
@@ -225,22 +224,22 @@ _Avoid_: agent token (the agent's lasting credential is its mTLS cert, not this)
 enrollment key, API token (that is the caller token).
 
 **Production stack**:
-The immutable, image-baked runtime for a service (`deplo-<slug>`). Built by
+The immutable, image-baked runtime for an app (`deplo-<slug>`). Built by
 cloning the repo to a temp dir, building an image, then discarding the clone — the
 source is not editable at runtime.
 _Avoid_: deployment (that is the build event, not the runtime), production container.
 
 **Dev container**:
-A service's mutable, long-lived development runtime (`deplo-dev-<slug>`), a sibling
+A app's mutable, long-lived development runtime (`deplo-dev-<slug>`), a sibling
 of the production stack — not a kind of deployment. Runs the app in development with
-hot reload over a bind-mounted source tree. A service may have a production stack and
-a dev container at once, with independent lifecycles. Its state lives on `service.dev`,
+hot reload over a bind-mounted source tree. A app may have a production stack and
+a dev container at once, with independent lifecycles. Its state lives on `app.dev`,
 never in a `Deployment` row. `dev.status` is **push-only** (set by the dev lifecycle
-actions, never reconciled against live docker) — exactly like `service.status`, with the
+actions, never reconciled against live docker) — exactly like `app.status`, with the
 same known consequence that a manually-stopped container can show a stale status. All
-SSH users of a service **share one** dev container and one workspace — there is no
-per-user isolation *within* a service; the isolation guarantee is strictly **between**
-services.
+SSH users of an app **share one** dev container and one workspace — there is no
+per-user isolation *within* an app; the isolation guarantee is strictly **between**
+apps.
 _Avoid_: dev deployment, dev mode (the feature is "dev mode"; the running thing is a
 "dev container"), dev server (that is the process inside it).
 
@@ -252,14 +251,14 @@ restart/redeploy; user edits land here. The unit of persistence for dev mode. `g
 installed regardless of source, so an `upload` workspace can be `git init`'d and
 committed locally even with no upstream. **Never auto-pulled** — a production redeploy
 is orthogonal and never touches it; the tree is the developer's. Preserved when dev mode
-is **disabled** (re-enabling resumes the edited tree); wiped only on full **service
+is **disabled** (re-enabling resumes the edited tree); wiped only on full **app
 delete**. Disable is reversible; delete is not.
 _Avoid_: clone, source dir, working tree.
 
 **Dev image preset**:
 The coarse base-language image a dev container runs on — `node | python | go | rust |
 php | java` — or a free-text custom image string. A *different, coarser* axis than
-`framework` (app type) and `runtimeVersion` (language version): a Next.js service's
+`framework` (app type) and `runtimeVersion` (language version): a Next.js app's
 preset is `node`. **Derived by default from `framework`** so the user rarely picks it,
 overridable only for the custom-image case. Resolves to an **official base image**
 (`node:22`, `python:3.12`, …) used directly — Deplo builds no per-language dev images.
@@ -291,7 +290,7 @@ production sslip.io domain).
 **Database**:
 A managed datastore container (`postgres`/`mysql`/`mariadb`/`mongodb`/`redis`/`clickhouse`)
 keyed by slug `db-<name>` on the `deplo` network, so apps reach it by a stable DNS name and
-the connection string never changes. **Agent-provisioned like a service** — it has a chosen
+the connection string never changes. **Agent-provisioned like an app** — it has a chosen
 `serverId` and is materialised on the owning agent via `Reroute` (`up -d`), started/stopped
 via `StartStack`/`StopStack`, and **deleted via `DestroyStack(removeVolumes: true)`** so its
 data volume is reclaimed (a plain `DestroyStack` would orphan it). The control plane never
@@ -302,7 +301,7 @@ DB lives on an agent, the Deplo host included).
 
 **Backup**:
 A **schedule**: a cron expression + S3 destination + retention, targeting **one** thing via
-`targetKind` — a `Database` or a `Service` (never a service's linked databases; those are
+`targetKind` — a `Database` or an `App` (never an app's linked databases; those are
 backed up as databases). Stored metadata only; running it produces a **backup run**. A
 backup never holds artifacts itself.
 _Avoid_: backup job (that is a run), snapshot (reserve for a point-in-time artifact, which is
@@ -314,7 +313,7 @@ One **executed** backup — the artifact record you restore *from*. A `BackupRun
 archive itself lives **only** in S3 (the agent streams it there via multipart PUT, never
 through the control plane). The run history is the source of truth for the UI's artifact
 list (`ListBackupArtifacts` on the agent is deferred). Restore is **in-place and
-destructive** — DB drop-and-recreate per engine, service wipe-and-untar (stop → wipe → untar
+destructive** — DB drop-and-recreate per engine, app wipe-and-untar (stop → wipe → untar
 → `Reroute` snapshot, a full data+config restore) — and so requires a typed confirmation. See
 [ADR-0007](../docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md).
 _Avoid_: backup (that is the schedule), artifact (use for the S3 object specifically),
@@ -324,22 +323,22 @@ restore point.
 
 **SSH gateway**:
 A single platform-wide container (`deplo-ssh-gateway`) that publishes the one SSH port
-(`2222`) and fans every dev SSH user into *their own* service's dev container via an
+(`2222`) and fans every dev SSH user into *their own* app's dev container via an
 un-bypassable `ForceCommand`. Platform infrastructure, like Traefik or the `deplo`
-network — not a service, not a database. Created lazily on the first SSH user (never at
+network — not an app, not a database. Created lazily on the first SSH user (never at
 install), and a disposable **projection** of the store: its Linux accounts, keys, and
 maps are rebuilt from `DevSshUser[]`, which is the sole source of truth.
 _Avoid_: SSH server, bastion, jump host, per-service sshd.
 
 **Dev SSH user**:
-A Linux account on the SSH gateway, scoped to exactly **one** service. Namespaced
+A Linux account on the SSH gateway, scoped to exactly **one** app. Namespaced
 gateway-globally as `<slug>-<name>`. Authenticates by key and/or password — **at least
 one is required** (the "neither" state is rejected at both action and data layers; key
 is the default, password an opt-in). The password is stored **reversibly** (encrypted,
 not scrypt-hashed like `User.passwordHash`) only because `chpasswd` needs the cleartext;
 it is **write-only from the dashboard** — masked in the DTO with no reveal path, so a
-service owner who forgets it must reset it, not retrieve it. Always lands inside that
-service's dev container as `devuser` (the gateway always `docker exec -u devuser`) — the
+app owner who forgets it must reset it, not retrieve it. Always lands inside that
+app's dev container as `devuser` (the gateway always `docker exec -u devuser`) — the
 exec target is fixed, never user-configurable.
 _Avoid_: dev user (that is the in-container account this resolves to), SSH account.
 
@@ -356,25 +355,28 @@ _Avoid_: target user (removed), non-root user (be specific: it is `devuser`/UID 
 
 **Env target**:
 The axis (`production` | `preview` | `development`) that decides which runtime an env
-var reaches. It applies to per-service vars, global vars, and shared env groups — but
-**not** to an Environment's own shared vars, which carry no target (the Environment IS
-the scope; its `kind` plays this axis's role). A dev container
-inherits **only** entries that target `development` — its own `development`-tagged vars
-plus any attached shared group that targets `development` — never production/preview-only
-entries. Nothing is inherited implicitly: a fresh service's dev container is empty until
-a `development` var or group is added.
+var reaches. It applies to per-app vars, instance globals, and **Shared variables** (the
+orthogonal runtime axis, alongside their sharing modes). A dev container inherits **only**
+entries that target `development` — its own `development`-tagged vars plus any shared
+variable that reaches it and targets `development` — never production/preview-only entries.
+Nothing is inherited implicitly: a fresh app's dev container is empty until a `development`
+var is added.
 _Avoid_: environment (that is the per-Project entity); scope.
 
-**Shared env group**:
-A reusable set of env vars attached to many services, injected into each attached
-service's stack for the runtimes the group **targets** (same `production`/`preview`/
-`development` axis as a per-service var). A group reaches a service's dev container only
-when it targets `development`. Legacy groups stored before the target axis default to all
-three targets. Attachment is editable from both the global Variables page and a service's
-Environment tab. Distinct from an **Environment**'s shared vars: a group is attached
-service-by-service across the team; an Environment's vars reach every service of one
-Project automatically, in that environment's context only.
-_Avoid_: shared variables (Coolify's term), env group.
+**Shared variable** (ADR-0010):
+ONE variable owned by a team, the unified replacement for shared-env groups,
+environment-scoped vars, and team-global vars. It reaches an app through any of three
+non-exclusive **sharing modes** — **team-wide** (every app in the team), **environment**
+(apps living in one of the selected **Environments**), **project** (apps in one of the
+selected **Projects**, a whitelist) — plus an explicit **per-app link** attached from the
+app UI. At least one mode is required. An orthogonal **env target** axis gates the runtime
+(defaults to all three). In-scope vars auto-apply — a new app in a shared environment/
+project/team inherits them with no extra step. Deploy precedence (low→high): instance
+globals < team-wide < environment < an app's own var < project < per-app link. Managed on
+the Variables page's **Shared** tab (create / edit / assign the modes); linked to a single
+app from that app's Add-variable modal. Stored in `shared_env_vars` (+ target / environment
+/ project / app junctions). id prefix `svar_`.
+_Avoid_: shared env group (the old model), shared variables as Coolify's whole-set concept.
 
 **Port target**:
 The runtime a port belongs to: `production` or `development` (a two-valued narrowing
@@ -382,23 +384,23 @@ of env target — preview reuses the production port). Each target has exactly o
 this is a per-target *map*, not a list, so two ports can never claim the same target.
 Realized as `build.port` (production, image-baked) + `dev.port` (development), read
 through a single `portFor(service, target)` accessor in `lib/deploy/ports.ts`. A
-hostname's *effective port* — its per-domain override (single-image services only)
+hostname's *effective port* — its per-domain override (single-image apps only)
 folded onto the target default — comes from `effectivePortFor` in the same module.
 _Avoid_: container port (ambiguous about which runtime), exposed port.
 
 **Volume**:
 A persistent **docker-managed named volume** a user mounts into a **single-container**
-service's one service (the `renderCompose` path — github/git/docker-image/upload), edited
-from service settings and gated by `usesComposeStack` (a **compose** service declares its
-own volumes inside its YAML, so the settings card hides there). Stored on the service as
-`{ name, mountPath, readOnly }`; the **on-host** name is namespaced per service at render
+app's one app (the `renderCompose` path — github/git/docker-image/upload), edited
+from app settings and gated by `usesComposeStack` (a **compose** service declares its
+own volumes inside its YAML, so the settings card hides there). Stored on the app as
+`{ name, mountPath, readOnly }`; the **on-host** name is namespaced per app at render
 time (`deplo-<slug>-<name>`, via `hostVolumeName`) so it can never collide with or leak
-into another team's service on the shared daemon — the same isolation reason compose
+into another team's app on the shared daemon — the same isolation reason compose
 strips `container_name`. **Named only** (no user-typed bind mounts: a host path handed to
 the shared docker socket is a cross-tenant footgun). Data survives redeploys and is never
 auto-deleted; removing a row just stops mounting it. A reroute reads volumes back from the
 on-disk stack (like image/env), so a domain-only change never silently applies a pending
 volume edit.
-_Avoid_: **mount** (reserve for a template's bind-mounted **config files**, `service.mounts`
+_Avoid_: **mount** (reserve for a template's bind-mounted **config files**, `app.mounts`
 — content-bearing, written next to the stack at deploy; a Volume carries no content);
 bind mount (deliberately unsupported); the `deplo-data` volume (Deplo's own data store).

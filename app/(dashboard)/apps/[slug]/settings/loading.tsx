@@ -1,6 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { SectionLabel } from "@/components/services/settings/settings-skeletons";
+import { SectionLabel } from "@/components/apps/settings/settings-skeletons";
 
 /** General settings (name + logo) — the settings index page skeleton. */
 export default function Loading() {

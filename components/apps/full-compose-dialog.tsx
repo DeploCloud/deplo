@@ -20,7 +20,7 @@ import { gqlAction } from "@/lib/graphql-client";
  * network, absolute mount paths), as opposed to the clean source the user
  * authors in the editor. Rendered live on the server when the dialog opens.
  */
-export function FullComposeDialog({ serviceId }: { serviceId: string }) {
+export function FullComposeDialog({ appId }: { appId: string }) {
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [yaml, setYaml] = React.useState<string | null>(null);
@@ -33,8 +33,8 @@ export function FullComposeDialog({ serviceId }: { serviceId: string }) {
     setLoading(true);
     setError(null);
     gqlAction(
-      `mutation($serviceId: String!) { renderComposeStack(serviceId: $serviceId) }`,
-      { serviceId },
+      `mutation($appId: String!) { renderComposeStack(appId: $appId) }`,
+      { appId },
       (d: { renderComposeStack: string | null }) => d.renderComposeStack,
     )
       .then((res) => {
@@ -80,7 +80,7 @@ export function FullComposeDialog({ serviceId }: { serviceId: string }) {
           </div>
         ) : (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Nothing to show yet — deploy this service once to generate its stack.
+            Nothing to show yet — deploy this app once to generate its stack.
           </p>
         )}
       </DialogContent>

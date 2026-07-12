@@ -14,15 +14,15 @@ import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Danger zone: permanently delete this service and everything it owns. Its own
+ * Danger zone: permanently delete this app and everything it owns. Its own
  * self-describing red card, on its own settings page. On success the browser
- * returns to the dashboard (the service no longer exists).
+ * returns to the dashboard (the app no longer exists).
  */
 export function DangerSettings({
-  serviceId,
+  appId,
   name,
 }: {
-  serviceId: string;
+  appId: string;
   name: string;
 }) {
   const router = useRouter();
@@ -31,7 +31,7 @@ export function DangerSettings({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base text-destructive">
           Danger Zone
-          <InfoTip content="Permanently delete this service and all of its data." />
+          <InfoTip content="Permanently delete this app and all of its data." />
         </CardTitle>
       </CardHeader>
       <CardFooter className="justify-end">
@@ -39,19 +39,19 @@ export function DangerSettings({
           trigger={
             <Button variant="destructive" size="sm">
               <Trash2 className="size-4" />
-              Delete Service
+              Delete App
             </Button>
           }
           targetKind="service"
-          targetId={serviceId}
+          targetId={appId}
           targetName={name}
           title={`Delete ${name}?`}
-          description="This permanently removes the service, deployments, domains and environment variables. This cannot be undone."
-          confirmLabel="Delete service"
-          successMessage="Service deleted"
+          description="This permanently removes the app, deployments, domains and environment variables. This cannot be undone."
+          confirmLabel="Delete app"
+          successMessage="App deleted"
           deleteMutation={() =>
-            gqlAction(`mutation($id: String!) { deleteService(id: $id) }`, {
-              id: serviceId,
+            gqlAction(`mutation($id: String!) { deleteApp(id: $id) }`, {
+              id: appId,
             })
           }
           onDeleted={() => router.push("/")}

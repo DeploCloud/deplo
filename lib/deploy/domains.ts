@@ -16,7 +16,7 @@ import type { CertProvider, DomainEntrypoint } from "../types";
  * required, routed by Traefik on the host's IP.
  *
  * The generated shape is `<label>-<adjective>-<animal>-<hexip>.nip.io`: a
- * service/slug prefix, two human-readable random words (so two services on one
+ * app/slug prefix, two human-readable random words (so two apps on one
  * server never collide on a bare slug), then the hex IP that does the routing.
  * nip.io's hex form requires the hex octet-quad to be the label IMMEDIATELY
  * before `.nip.io`, which is exactly where it sits here.
@@ -253,7 +253,7 @@ export function rehostEmbeddedNip(
   );
 }
 
-/** The subset of a template's CreateServiceInput whose nip.io hosts are baked
+/** The subset of a template's CreateAppInput whose nip.io hosts are baked
  * against the master IP and must follow the project to its target server. */
 export interface BlueprintHosts {
   autoDomain?: string | null;
@@ -293,7 +293,7 @@ export function rehostBlueprintHosts<T extends BlueprintHosts>(
 }
 
 /** A random `adjective-animal` pair (e.g. `charming-otter`), the two
- * human-readable words baked between a domain's service prefix and its hex IP.
+ * human-readable words baked between a domain's app prefix and its hex IP.
  * Fresh on every call (no seed): each generated domain gets its own words, and
  * the result IS the stored hostname, so nothing is ever recomputed. */
 export function randomWords(): string {

@@ -8,7 +8,7 @@ import type { BuildConfig } from "@/lib/types";
 /**
  * The "Root Directory" section: which sub-path of the repo the build runs from.
  * Owns no persistence — the parent holds the {@link BuildConfig} and saves it via
- * `updateServiceBuild` (root directory is stored on `service_build`, same as the
+ * `updateAppBuild` (root directory is stored on `app_build`, same as the
  * other build fields). Mirrors {@link BuildConfigFields}' props shape.
  *
  * Only surfaced for source-bearing repo builds (git / GitHub); a compose stack or

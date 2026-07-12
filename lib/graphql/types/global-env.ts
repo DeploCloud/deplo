@@ -2,10 +2,6 @@ import { builder } from "../builder";
 import { EnvTargetEnum } from "./enums";
 import { EnvVarTypeEnum } from "./env";
 import {
-  listTeamGlobalEnv,
-  upsertTeamGlobalEnv,
-  deleteTeamGlobalEnv,
-  revealTeamGlobalEnv,
   listInstanceEnv,
   upsertInstanceEnv,
   deleteInstanceEnv,
@@ -21,7 +17,7 @@ const GlobalEnvVarRef = builder
   .objectRef<GlobalEnvVarDTO>("GlobalEnvVar")
   .implement({
     description:
-      "A global environment variable (team-wide or instance-wide). Secret values are masked unless revealed.",
+      "An instance-wide global environment variable. Secret values are masked unless revealed.",
     fields: (t) => ({
       id: t.exposeID("id"),
       key: t.exposeString("key"),
@@ -47,18 +43,11 @@ const UpsertGlobalEnvInputType = builder.inputType("UpsertGlobalEnvInput", {
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
-  teamGlobalEnv: t.field({
-    type: [GlobalEnvVarRef],
-    authScopes: { capability: "manage_env" },
-    description:
-      "Team-global env vars — injected into every service in the active team.",
-    resolve: () => listTeamGlobalEnv(),
-  }),
   instanceEnv: t.field({
     type: [GlobalEnvVarRef],
     authScopes: { instanceAdmin: true },
     description:
-      "Instance-wide env vars — injected into every service of every team. Instance admin only.",
+      "Instance-wide env vars — injected into every app of every team. Instance admin only.",
     resolve: () => listInstanceEnv(),
   }),
 }));
@@ -68,38 +57,6 @@ builder.queryFields((t) => ({
 /* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
-  upsertTeamGlobalEnv: t.field({
-    type: GlobalEnvVarRef,
-    authScopes: { capability: "manage_env" },
-    description: "Create or update a team-global variable; returns the entity.",
-    args: { input: t.arg({ type: UpsertGlobalEnvInputType, required: true }) },
-    resolve: async (_r, { input }) => {
-      await upsertTeamGlobalEnv({
-        key: input.key,
-        value: input.value,
-        targets: input.targets,
-        type: input.type,
-      });
-      return reload(listTeamGlobalEnv, input.key);
-    },
-  }),
-  deleteTeamGlobalEnv: t.field({
-    type: "Boolean",
-    authScopes: { capability: "manage_env" },
-    description: "Delete a team-global variable. Returns true.",
-    args: { id: t.arg.string({ required: true }) },
-    resolve: async (_r, { id }) => {
-      await deleteTeamGlobalEnv(id);
-      return true;
-    },
-  }),
-  revealTeamGlobalEnv: t.field({
-    type: "String",
-    authScopes: { capability: "manage_env" },
-    description: "Reveal a team-global secret's plaintext value.",
-    args: { id: t.arg.string({ required: true }) },
-    resolve: (_r, { id }) => revealTeamGlobalEnv(id),
-  }),
   upsertInstanceEnv: t.field({
     type: GlobalEnvVarRef,
     authScopes: { instanceAdmin: true },

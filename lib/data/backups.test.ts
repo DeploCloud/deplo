@@ -12,7 +12,7 @@ import {
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
-import { seedService, seedServer } from "./service-graph-test-helpers";
+import { seedApp, seedServer } from "./app-graph-test-helpers";
 import {
   seedBackup,
   seedDatabase,
@@ -56,12 +56,12 @@ const T0 = "2026-01-01T00:00:00.000Z";
 
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_BACKUPS}
-    truncate table service_build_method_settings, service_build, services, servers,
+    truncate table app_build_method_settings, app_build, apps, servers,
       users, teams restart identity cascade;`);
   await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
   await seedServer(db);
   await seedDatabase(db, { id: "db_1", name: "main" });
-  await seedService(db, { id: "prj_1", teamId: TEAM_A });
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await seedS3(db, { id: "s3_1" });
 });
 
@@ -91,16 +91,16 @@ test("createBackup (database) inserts a schedule and resolves names in the DTO",
   const rows = await db.select().from(backupsTable);
   assert.equal(rows.length, 1);
   assert.equal(rows[0]!.databaseId, "db_1");
-  assert.equal(rows[0]!.serviceId, null);
+  assert.equal(rows[0]!.appId, null);
 });
 
 test("createBackup (project) sets only the project target", async () => {
   await asUser1(async () => {
     const dto = await createBackup({
       name: "prj-nightly",
-      targetKind: "service",
+      targetKind: "app",
       databaseId: null,
-      serviceId: "prj_1",
+      appId: "prj_1",
       destinationId: "s3_1",
       schedule: "0 4 * * *",
       retentionDays: 14,
@@ -109,7 +109,7 @@ test("createBackup (project) sets only the project target", async () => {
     assert.equal(dto.databaseName, null);
   });
   const rows = await db.select().from(backupsTable);
-  assert.equal(rows[0]!.serviceId, "prj_1");
+  assert.equal(rows[0]!.appId, "prj_1");
   assert.equal(rows[0]!.databaseId, null);
 });
 

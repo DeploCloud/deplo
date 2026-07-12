@@ -24,27 +24,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ComposeEditor } from "@/components/services/compose-editor";
-import { ComposeLintSummary } from "@/components/services/compose-lint-summary";
-import { FullComposeDialog } from "@/components/services/full-compose-dialog";
-import { ImageInput } from "@/components/services/image-input";
+import { ComposeEditor } from "@/components/apps/compose-editor";
+import { ComposeLintSummary } from "@/components/apps/compose-lint-summary";
+import { FullComposeDialog } from "@/components/apps/full-compose-dialog";
+import { ImageInput } from "@/components/apps/image-input";
 import {
   GithubRepoPicker,
   type GithubSelection,
-} from "@/components/services/github-repo-picker";
-import { UploadInput, type CurrentUpload } from "@/components/services/upload-input";
-import { UnsavedChangesGuard } from "@/components/services/unsaved-changes-guard";
-import { BuildConfigFields } from "@/components/services/build-config-fields";
-import { RootDirectoryFields } from "@/components/services/settings/root-directory-fields";
+} from "@/components/apps/github-repo-picker";
+import { UploadInput, type CurrentUpload } from "@/components/apps/upload-input";
+import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
+import { BuildConfigFields } from "@/components/apps/build-config-fields";
+import { RootDirectoryFields } from "@/components/apps/settings/root-directory-fields";
 import {
   GitDeployOptions,
   watchPathsToArray,
   type GitDeployOptionsValue,
-} from "@/components/services/git-deploy-options";
+} from "@/components/apps/git-deploy-options";
 import {
   DirtyHint,
   type SettingsServer,
-} from "@/components/services/settings/settings-shared";
+} from "@/components/apps/settings/settings-shared";
 import { hasBlockingErrors, type LintDiagnostic } from "@/lib/deploy/compose-lint";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 import type { BuildConfig, DeploySource, GitRepo } from "@/lib/types";
@@ -114,13 +114,13 @@ function computeSourceKey(s: SourceKeyInput): string {
 }
 
 /**
- * Deployment settings: how the service is built, where it runs, and whether
+ * Deployment settings: how the app is built, where it runs, and whether
  * pushes redeploy it. Bundles the Deploy Source, Build & Output and Automatic
  * deployments cards — they share the live `source` state (a compose stack or a
  * prebuilt image hides the build card), so they must live on one page.
  */
 export function DeploymentSettingsForm({
-  serviceId,
+  appId,
   slug,
   build: initialBuild,
   autoDeploy: initialAutoDeploy,
@@ -133,7 +133,7 @@ export function DeploymentSettingsForm({
   servers,
   installations,
 }: {
-  serviceId: string;
+  appId: string;
   slug: string;
   build: BuildConfig;
   autoDeploy: boolean;
@@ -162,7 +162,7 @@ export function DeploymentSettingsForm({
   const [compose, setCompose] = React.useState(initialCompose ?? "");
   const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>([]);
 
-  // Source state. Legacy template services were stored as `docker-image` with a
+  // Source state. Legacy template apps were stored as `docker-image` with a
   // compose attached; surface those on the Compose tab by default too. An upload
   // project keeps its own tab even if a stale compose lingers (usesComposeStack).
   const [source, setSource] = React.useState<DeploySource>(
@@ -181,7 +181,7 @@ export function DeploymentSettingsForm({
   const [dockerImage, setDockerImage] = React.useState(initialDockerImage ?? "");
 
   // Git deploy options (trigger type, watch paths, submodules) — persisted with
-  // the repo via updateServiceSource, so they share the Deploy Source card's Save.
+  // the repo via updateAppSource, so they share the Deploy Source card's Save.
   const [gitOptions, setGitOptions] = React.useState<GitDeployOptionsValue>({
     triggerType: initialRepo?.triggerType ?? "push",
     watchPaths: (initialRepo?.watchPaths ?? []).join("\n"),
@@ -284,7 +284,7 @@ export function DeploymentSettingsForm({
 
   // The build config drives TWO cards (Build & Output, Root Directory), so its
   // dirty tracking is split by facet: each card's Unsaved-changes cue reflects
-  // only its own fields. Both cards persist the WHOLE build via updateServiceBuild,
+  // only its own fields. Both cards persist the WHOLE build via updateAppBuild,
   // so a save from either advances BOTH snapshots (see saveBuild).
   const currentBuildKey = React.useMemo(
     () =>
@@ -333,7 +333,7 @@ export function DeploymentSettingsForm({
     }
     // The Upload source is committed by the upload control (its own route),
     // not by this form — and saving source=upload with no archive would break
-    // the next deploy. Block it here so the button can't strand the service.
+    // the next deploy. Block it here so the button can't strand the app.
     if (source === "upload") {
       if (!initialUpload) {
         toast.error("Upload an archive above before saving");
@@ -407,9 +407,9 @@ export function DeploymentSettingsForm({
     const committedRootKey = currentRootKey;
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($id: String!, $input: UpdateSourceInput!) { updateServiceSource(id: $id, input: $input) { id } }`,
+        `mutation($id: String!, $input: UpdateSourceInput!) { updateAppSource(id: $id, input: $input) { id } }`,
         {
-          id: serviceId,
+          id: appId,
           input: {
             source: deploySourceEnumName(source),
             serverId,
@@ -428,8 +428,8 @@ export function DeploymentSettingsForm({
       // it lives in this card now, so the single Save commits both facets.
       if (rootCardVisible && rootDirty) {
         const rootRes = await gqlAction(
-          `mutation($id: String!, $build: BuildConfigInput!) { updateServiceBuild(id: $id, build: $build) { id } }`,
-          { id: serviceId, build: { rootDir: build.rootDirectory } },
+          `mutation($id: String!, $build: BuildConfigInput!) { updateAppBuild(id: $id, build: $build) { id } }`,
+          { id: appId, build: { rootDir: build.rootDirectory } },
         );
         if (!rootRes.ok) {
           toast.error(rootRes.error);
@@ -451,15 +451,15 @@ export function DeploymentSettingsForm({
       return;
     }
     startTransition(async () => {
-      // Commit a server change first — this moves the service and, for a
-      // previously-deployed one, marks its data for migration. updateServiceSource
+      // Commit a server change first — this moves the app and, for a
+      // previously-deployed one, marks its data for migration. updateAppSource
       // intentionally does NOT auto-deploy for the upload source, so the redeploy
       // below is the single deploy that runs and it consumes that migration marker.
       if (serverId !== initialServerId) {
         const moved = await gqlAction(
-          `mutation($id: String!, $input: UpdateSourceInput!) { updateServiceSource(id: $id, input: $input) { id } }`,
+          `mutation($id: String!, $input: UpdateSourceInput!) { updateAppSource(id: $id, input: $input) { id } }`,
           {
-            id: serviceId,
+            id: appId,
             input: { source: deploySourceEnumName("upload"), serverId },
           },
         );
@@ -469,20 +469,20 @@ export function DeploymentSettingsForm({
         }
       }
       const res = await gqlAction(
-        `mutation($serviceId: String!) { redeploy(serviceId: $serviceId) { id } }`,
-        { serviceId },
+        `mutation($appId: String!) { redeploy(appId: $appId) { id } }`,
+        { appId },
         (d: { redeploy: { id: string } }) => d.redeploy,
       );
       if (res.ok && res.data) {
         toast.success("Deploying…");
-        router.push(`/services/${slug}/deployments/${res.data.id}`);
+        router.push(`/apps/${slug}/deployments/${res.data.id}`);
       } else if (!res.ok) {
         toast.error(res.error);
       }
     });
   }
 
-  // Persist a PARTIAL build config. updateServiceBuild merges field-by-field, so
+  // Persist a PARTIAL build config. updateAppBuild merges field-by-field, so
   // each card sends ONLY its own fields — saving one card never commits the
   // other's pending edits (its dirty cue stays put). `onSaved` advances just that
   // card's snapshot. NOTE: `settings` (methodSettings) fully REPLACES its row when
@@ -494,8 +494,8 @@ export function DeploymentSettingsForm({
   ) {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($id: String!, $build: BuildConfigInput!) { updateServiceBuild(id: $id, build: $build) { id } }`,
-        { id: serviceId, build: input },
+        `mutation($id: String!, $build: BuildConfigInput!) { updateAppBuild(id: $id, build: $build) { id } }`,
+        { id: appId, build: input },
       );
       if (res.ok) {
         onSaved();
@@ -536,8 +536,8 @@ export function DeploymentSettingsForm({
     setAutoDeploy(v);
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($id: String!, $value: Boolean!) { setServiceAutoDeploy(id: $id, value: $value) { id } }`,
-        { id: serviceId, value: v },
+        `mutation($id: String!, $value: Boolean!) { setAppAutoDeploy(id: $id, value: $value) { id } }`,
+        { id: appId, value: v },
       );
       if (res.ok) router.refresh();
       else toast.error(res.error);
@@ -552,7 +552,7 @@ export function DeploymentSettingsForm({
           <CardHeader>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               Deploy Source
-              <InfoTip content="Change how this service is deployed and which server runs it." />
+              <InfoTip content="Change how this app is deployed and which server runs it." />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -737,7 +737,7 @@ export function DeploymentSettingsForm({
             )}
 
             {source === "upload" && (
-              <UploadInput serviceId={serviceId} current={initialUpload} />
+              <UploadInput appId={appId} current={initialUpload} />
             )}
 
             {source === "compose" && (
@@ -750,7 +750,7 @@ export function DeploymentSettingsForm({
                     <FileText className="size-3.5" />
                     docker-compose.yml
                   </FieldLabel>
-                  <FullComposeDialog serviceId={serviceId} />
+                  <FullComposeDialog appId={appId} />
                 </div>
                 <ComposeEditor
                   value={compose}
@@ -765,7 +765,7 @@ export function DeploymentSettingsForm({
             <div className="max-w-md space-y-2">
               <FieldLabel
                 className="flex items-center gap-1.5"
-                info="The server (host machine) that builds and runs this service."
+                info="The server (host machine) that builds and runs this app."
               >
                 <ServerIcon className="size-3.5" />
                 Server
@@ -787,7 +787,7 @@ export function DeploymentSettingsForm({
               </Select>
               {serverId !== initialServerId && !(usesGithubApp && !ghSelection) && (
                 <p className="text-xs text-muted-foreground">
-                  Saving redeploys this service on the new server and copies its data
+                  Saving redeploys this app on the new server and copies its data
                   (volumes and files) across. It&apos;s briefly offline during the
                   copy; if the copy fails the old server is left intact.
                 </p>

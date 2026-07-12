@@ -15,8 +15,8 @@ import {
 import type { GitTriggerType } from "@/lib/types";
 
 /**
- * The editable git deploy options shared by the service settings page and the
- * new-service wizard (so both surfaces stay identical): the auto-deploy trigger
+ * The editable git deploy options shared by the app settings page and the
+ * new-app wizard (so both surfaces stay identical): the auto-deploy trigger
  * (push vs new tag), the optional watch-path filter, and the submodules toggle.
  * `watchPaths` is held as raw multiline text; {@link watchPathsToArray} turns it
  * into the list the GraphQL `GitRepoInput.watchPaths` expects.
@@ -36,7 +36,7 @@ export function watchPathsToArray(raw: string): string[] {
     .filter(Boolean);
 }
 
-/** The seed value for a service that has no repo yet (wizard default). */
+/** The seed value for an app that has no repo yet (wizard default). */
 export const DEFAULT_GIT_DEPLOY_OPTIONS: GitDeployOptionsValue = {
   triggerType: "push",
   watchPaths: "",

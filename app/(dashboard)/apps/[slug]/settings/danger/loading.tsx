@@ -1,7 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardFooter, CardHeader } from "@/components/ui/card";
 
-/** Danger zone (delete service) — self-describing red card, no section label. */
+/** Danger zone (delete app) — self-describing red card, no section label. */
 export default function Loading() {
   return (
     <div role="status" aria-busy aria-label="Loading danger zone">

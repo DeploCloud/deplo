@@ -19,8 +19,8 @@ const UPLOAD_DIR = join(DATA_DIR, "uploads");
 /** Thrown by storeUpload when the stream exceeds MAX_UPLOAD_BYTES mid-write. */
 export const ARCHIVE_TOO_LARGE = "ARCHIVE_TOO_LARGE";
 
-function serviceUploadDir(serviceId: string): string {
-  return join(UPLOAD_DIR, serviceId);
+function appUploadDir(appId: string): string {
+  return join(UPLOAD_DIR, appId);
 }
 
 /** A Transform that fails the pipeline the instant the byte cap is exceeded. */
@@ -41,7 +41,7 @@ function capBytes(maxBytes: number): Transform {
 /**
  * Stream an uploaded archive's body to disk and return the pointer to persist
  * on the project. Each upload lands in its OWN subdirectory keyed by its id
- * (`<serviceId>/<uploadId>/`) and the project dir is never wiped here — so a
+ * (`<appId>/<uploadId>/`) and the project dir is never wiped here — so a
  * fresh upload never deletes a file an in-flight deploy is still extracting,
  * and a rejected upload leaves the previous (working) archive untouched. Call
  * {@link pruneUploads} after the new pointer is committed to drop stale ones.
@@ -53,14 +53,14 @@ function capBytes(maxBytes: number): Transform {
  * {@link archiveExt} first.
  */
 export async function storeUpload(opts: {
-  serviceId: string;
+  appId: string;
   filename: string;
   ext: string;
   body: ReadableStream<Uint8Array> | null;
 }): Promise<UploadArchive> {
-  const { serviceId, filename, ext, body } = opts;
+  const { appId, filename, ext, body } = opts;
   const id = newId("upl");
-  const dir = join(serviceUploadDir(serviceId), id);
+  const dir = join(appUploadDir(appId), id);
   await mkdir(dir, { recursive: true });
   const path = join(dir, `archive${ext}`);
 
@@ -100,10 +100,10 @@ export async function storeUpload(opts: {
  * reading its own archive until it (and its subdir) is pruned on the next run.
  */
 export async function pruneUploads(
-  serviceId: string,
+  appId: string,
   keepId: string,
 ): Promise<void> {
-  const root = serviceUploadDir(serviceId);
+  const root = appUploadDir(appId);
   let entries: string[];
   try {
     entries = await readdir(root);
@@ -118,8 +118,8 @@ export async function pruneUploads(
 }
 
 /** Delete a project's stored uploads (used when the project is deleted). */
-export async function removeUploads(serviceId: string): Promise<void> {
-  await rm(serviceUploadDir(serviceId), { recursive: true, force: true }).catch(
+export async function removeUploads(appId: string): Promise<void> {
+  await rm(appUploadDir(appId), { recursive: true, force: true }).catch(
     () => {},
   );
 }

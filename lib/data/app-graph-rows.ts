@@ -10,9 +10,7 @@ import type {
   EnvVar,
   Folder,
   LogLine,
-  Service,
-  SharedEnvGroup,
-  SharedEnvVar,
+  App,
   VolumeMount,
 } from "../types";
 import type {
@@ -23,21 +21,17 @@ import type {
   envVars,
   envVarTargets,
   folders,
-  services,
-  serviceBuild,
-  serviceBuildMethodSettings,
-  serviceDev,
-  serviceMounts,
-  serviceVolumes,
-  sharedEnvGroups,
-  sharedEnvGroupServices,
-  sharedEnvGroupTargets,
-  sharedEnvGroupVars,
+  apps,
+  appBuild,
+  appBuildMethodSettings,
+  appDev,
+  appMounts,
+  appVolumes,
 } from "../db/schema/control-plane";
 
 /**
- * The ONE place that maps the service-graph relational rows ↔ the domain objects
- * (`Service`, `Domain`, `EnvVar`, `Deployment`, `SharedEnvGroup`, `Folder`)
+ * The ONE place that maps the app-graph relational rows ↔ the domain objects
+ * (`App`, `Domain`, `EnvVar`, `Deployment`, `Folder`)
  * (relational-store PLAN cut-set (c), §1 "No JSONB anywhere — total
  * normalization"). Every reader (the read path) and writer (insert / update) in
  * the data layer goes through here, so reads and writes can never drift on how a
@@ -55,13 +49,13 @@ import type {
 /* Drizzle row aliases (inferred from the schema, single source of truth) */
 /* ------------------------------------------------------------------ */
 
-export type ServiceRow = typeof services.$inferSelect;
-export type ServiceBuildRow = typeof serviceBuild.$inferSelect;
-export type ServiceBuildMethodSettingsRow =
-  typeof serviceBuildMethodSettings.$inferSelect;
-export type ServiceDevRow = typeof serviceDev.$inferSelect;
-export type ServiceVolumeRow = typeof serviceVolumes.$inferSelect;
-export type ServiceMountRow = typeof serviceMounts.$inferSelect;
+export type AppRow = typeof apps.$inferSelect;
+export type AppBuildRow = typeof appBuild.$inferSelect;
+export type AppBuildMethodSettingsRow =
+  typeof appBuildMethodSettings.$inferSelect;
+export type AppDevRow = typeof appDev.$inferSelect;
+export type AppVolumeRow = typeof appVolumes.$inferSelect;
+export type AppMountRow = typeof appMounts.$inferSelect;
 export type DeploymentRow = typeof deployments.$inferSelect;
 export type DeploymentLogRow = typeof deploymentLogs.$inferSelect;
 export type EnvVarRow = typeof envVars.$inferSelect;
@@ -69,19 +63,14 @@ export type EnvVarTargetRow = typeof envVarTargets.$inferSelect;
 export type DomainRow = typeof domains.$inferSelect;
 export type DomainMiddlewareRow = typeof domainMiddlewares.$inferSelect;
 export type FolderRow = typeof folders.$inferSelect;
-export type SharedEnvGroupRow = typeof sharedEnvGroups.$inferSelect;
-export type SharedEnvGroupVarRow = typeof sharedEnvGroupVars.$inferSelect;
-export type SharedEnvGroupServiceRow =
-  typeof sharedEnvGroupServices.$inferSelect;
-export type SharedEnvGroupTargetRow = typeof sharedEnvGroupTargets.$inferSelect;
 
-type ServiceInsert = typeof services.$inferInsert;
-type ServiceBuildInsert = typeof serviceBuild.$inferInsert;
-type ServiceBuildMethodSettingsInsert =
-  typeof serviceBuildMethodSettings.$inferInsert;
-type ServiceDevInsert = typeof serviceDev.$inferInsert;
-type ServiceVolumeInsert = typeof serviceVolumes.$inferInsert;
-type ServiceMountInsert = typeof serviceMounts.$inferInsert;
+type AppInsert = typeof apps.$inferInsert;
+type AppBuildInsert = typeof appBuild.$inferInsert;
+type AppBuildMethodSettingsInsert =
+  typeof appBuildMethodSettings.$inferInsert;
+type AppDevInsert = typeof appDev.$inferInsert;
+type AppVolumeInsert = typeof appVolumes.$inferInsert;
+type AppMountInsert = typeof appMounts.$inferInsert;
 type DomainInsert = typeof domains.$inferInsert;
 type DomainMiddlewareInsert = typeof domainMiddlewares.$inferInsert;
 type EnvVarInsert = typeof envVars.$inferInsert;
@@ -93,25 +82,25 @@ type EnvVarTargetInsert = typeof envVarTargets.$inferInsert;
 
 /**
  * Every child row of a single project, as the row-batch-loader hands them to
- * {@link assembleService}. `build`/`dev` are 1-to-1 (absent ⇒ null, the
+ * {@link assembleApp}. `build`/`dev` are 1-to-1 (absent ⇒ null, the
  * tri-state for `dev`); the lists arrive pre-sorted by `position`.
  */
-export interface ServiceChildRows {
-  build: ServiceBuildRow | null;
-  methodSettings: ServiceBuildMethodSettingsRow | null;
-  dev: ServiceDevRow | null;
-  volumes: ServiceVolumeRow[];
-  mounts: ServiceMountRow[];
+export interface AppChildRows {
+  build: AppBuildRow | null;
+  methodSettings: AppBuildMethodSettingsRow | null;
+  dev: AppDevRow | null;
+  volumes: AppVolumeRow[];
+  mounts: AppMountRow[];
 }
 
 /* ------------------------------------------------------------------ */
-/* Service: rows → object                                              */
+/* App: rows → object                                              */
 /* ------------------------------------------------------------------ */
 
-/** Reassemble a {@link BuildConfig} from the `service_build` (+ method-settings) rows. */
+/** Reassemble a {@link BuildConfig} from the `app_build` (+ method-settings) rows. */
 export function assembleBuild(
-  build: ServiceBuildRow,
-  ms: ServiceBuildMethodSettingsRow | null,
+  build: AppBuildRow,
+  ms: AppBuildMethodSettingsRow | null,
 ): BuildConfig {
   // Legacy rows may still hold the removed "heroku"/"paketo" build methods.
   // Surface them as "nixpacks" — the same remap normalizeBuildConfig applies on
@@ -142,7 +131,7 @@ export function assembleBuild(
  * exhaustive `satisfies` guard below catches a forgotten field.
  */
 export function assembleMethodSettings(
-  ms: ServiceBuildMethodSettingsRow | null,
+  ms: AppBuildMethodSettingsRow | null,
 ): BuildMethodSettings {
   const out: BuildMethodSettings = {};
   if (!ms) return out;
@@ -158,8 +147,8 @@ export function assembleMethodSettings(
   return out;
 }
 
-/** Reassemble a {@link DevConfig} from the `service_dev` row (null ⇒ absent). */
-export function assembleDev(dev: ServiceDevRow): DevConfig {
+/** Reassemble a {@link DevConfig} from the `app_dev` row (null ⇒ absent). */
+export function assembleDev(dev: AppDevRow): DevConfig {
   return {
     enabled: dev.enabled,
     status: dev.status,
@@ -174,20 +163,20 @@ export function assembleDev(dev: ServiceDevRow): DevConfig {
 }
 
 /**
- * Fold a project's flat row + its child rows into a {@link Service}. A
+ * Fold a project's flat row + its child rows into a {@link App}. A
  * NULL/absent optional column becomes the long-standing null/absent shape. The
  * caller has already applied the read-time normalizers (this is the post-
  * normalize shape), so no further migration runs here.
  */
-export function assembleService(
-  row: ServiceRow,
-  children: ServiceChildRows,
-): Service {
+export function assembleApp(
+  row: AppRow,
+  children: AppChildRows,
+): App {
   if (!children.build)
     // Every project has a 1-to-1 build row (NOT NULL FK), so a missing one is a
     // data-integrity bug, not a tri-state — surface it loudly rather than emit a
     // half-built object the renderer would choke on.
-    throw new Error(`project ${row.id} is missing its service_build row`);
+    throw new Error(`project ${row.id} is missing its app_build row`);
 
   const volumes = [...children.volumes]
     .sort((a, b) => a.position - b.position)
@@ -208,7 +197,7 @@ export function assembleService(
     serverId: row.serverId,
     migrateFromServerId: row.migrateFromServerId ?? null,
     logo: row.logo,
-    source: row.source as Service["source"],
+    source: row.source as App["source"],
     repo: assembleRepo(row),
     dockerImage: row.dockerImage,
     upload: assembleUpload(row),
@@ -219,7 +208,7 @@ export function assembleService(
     // Row ABSENT = dev mode never enabled (the tri-state sentinel) ⇒ null.
     dev: children.dev ? assembleDev(children.dev) : null,
     productionUrl: row.productionUrl,
-    status: row.status as Service["status"],
+    status: row.status as App["status"],
     autoDeploy: row.autoDeploy,
     latestDeploymentId: row.latestDeploymentId,
     createdAt: row.createdAt,
@@ -227,14 +216,14 @@ export function assembleService(
   };
 }
 
-function assembleRepo(row: ServiceRow): Service["repo"] {
+function assembleRepo(row: AppRow): App["repo"] {
   if (row.repoProvider == null) return null;
   const watchPaths = parseWatchPaths(row.repoWatchPaths);
   // Conditional spread (like installationId): a repo with default deploy options
   // assembles to exactly {provider,url,repo,branch}, so it round-trips unchanged
   // and never looks "dirty". The UIs apply their own display defaults.
   return {
-    provider: row.repoProvider as NonNullable<Service["repo"]>["provider"],
+    provider: row.repoProvider as NonNullable<App["repo"]>["provider"],
     url: row.repoUrl ?? "",
     repo: row.repoRepo ?? "",
     branch: row.repoBranch ?? "",
@@ -256,7 +245,7 @@ export function parseWatchPaths(raw: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-function assembleUpload(row: ServiceRow): Service["upload"] {
+function assembleUpload(row: AppRow): App["upload"] {
   if (row.uploadId == null) return null;
   return {
     id: row.uploadId,
@@ -267,7 +256,7 @@ function assembleUpload(row: ServiceRow): Service["upload"] {
   };
 }
 
-function volumeRowToMount(v: ServiceVolumeRow): VolumeMount {
+function volumeRowToMount(v: AppVolumeRow): VolumeMount {
   if (v.type === "host") {
     return {
       id: v.volumeId,
@@ -278,10 +267,10 @@ function volumeRowToMount(v: ServiceVolumeRow): VolumeMount {
       readOnly: v.readOnly,
     };
   }
-  if (v.type === "service") {
+  if (v.type === "app") {
     return {
       id: v.volumeId,
-      type: "service",
+      type: "app",
       name: v.name,
       projectPath: v.projectPath ?? "",
       mountPath: v.mountPath,
@@ -294,25 +283,25 @@ function volumeRowToMount(v: ServiceVolumeRow): VolumeMount {
 }
 
 /* ------------------------------------------------------------------ */
-/* Service: object → rows (for insert)                                 */
+/* App: object → rows (for insert)                                 */
 /* ------------------------------------------------------------------ */
 
 /**
  * The full row-set for ONE project, FK-ordered for insertion: the flat parent
- * first, then the 1-to-1 children, then the ordered lists. `createService` builds
+ * first, then the 1-to-1 children, then the ordered lists. `createApp` builds
  * this and inserts each non-empty array.
  */
-export interface ServiceRowSet {
-  project: ServiceInsert;
-  build: ServiceBuildInsert;
-  methodSettings: ServiceBuildMethodSettingsInsert | null;
-  dev: ServiceDevInsert | null;
-  volumes: ServiceVolumeInsert[];
-  mounts: ServiceMountInsert[];
+export interface AppRowSet {
+  project: AppInsert;
+  build: AppBuildInsert;
+  methodSettings: AppBuildMethodSettingsInsert | null;
+  dev: AppDevInsert | null;
+  volumes: AppVolumeInsert[];
+  mounts: AppMountInsert[];
 }
 
-/** The flat `services` row for a {@link Service} (children handled separately). */
-export function serviceToRow(p: Service): ServiceInsert {
+/** The flat `apps` row for a {@link App} (children handled separately). */
+export function appToRow(p: App): AppInsert {
   return {
     id: p.id,
     name: p.name,
@@ -344,7 +333,7 @@ export function serviceToRow(p: Service): ServiceInsert {
     status: p.status,
     autoDeploy: p.autoDeploy,
     // `latest_deployment_id` is a forward FK to a deployment that may not exist
-    // yet at project-insert time; the caller (createService) sets it in a second
+    // yet at project-insert time; the caller (createApp) sets it in a second
     // pass after deployments land, or leaves it null.
     latestDeploymentId: null,
     createdAt: p.createdAt,
@@ -352,9 +341,9 @@ export function serviceToRow(p: Service): ServiceInsert {
   };
 }
 
-export function buildToRow(serviceId: string, b: BuildConfig): ServiceBuildInsert {
+export function buildToRow(appId: string, b: BuildConfig): AppBuildInsert {
   return {
-    serviceId,
+    appId,
     buildMethod: b.buildMethod,
     rootDirectory: b.rootDirectory,
     includeFilesOutsideRoot: b.includeFilesOutsideRoot,
@@ -369,15 +358,15 @@ export function buildToRow(serviceId: string, b: BuildConfig): ServiceBuildInser
 }
 
 /**
- * The 1-to-1 `service_build_method_settings` row. Each {@link BuildMethodSettings}
+ * The 1-to-1 `app_build_method_settings` row. Each {@link BuildMethodSettings}
  * field maps to one nullable column; the `satisfies` guard makes a newly-added
  * settings field a COMPILE error here (so it can't be silently dropped — the
  * element-granular reconcile counts on exhaustive coverage, PLAN §7).
  */
 export function methodSettingsToRow(
-  serviceId: string,
+  appId: string,
   ms: BuildMethodSettings,
-): ServiceBuildMethodSettingsInsert {
+): AppBuildMethodSettingsInsert {
   const cols = {
     dockerfilePath: ms.dockerfilePath ?? null,
     dockerContextPath: ms.dockerContextPath ?? null,
@@ -386,12 +375,12 @@ export function methodSettingsToRow(
     nixpacksPublishDirectory: ms.nixpacksPublishDirectory ?? null,
     staticSinglePageApp: ms.staticSinglePageApp ?? null,
   } satisfies Record<keyof BuildMethodSettings, unknown>;
-  return { serviceId, ...cols };
+  return { appId, ...cols };
 }
 
-export function devToRow(serviceId: string, dev: DevConfig): ServiceDevInsert {
+export function devToRow(appId: string, dev: DevConfig): AppDevInsert {
   return {
-    serviceId,
+    appId,
     enabled: dev.enabled,
     status: dev.status,
     imageKind: dev.imageKind,
@@ -405,18 +394,18 @@ export function devToRow(serviceId: string, dev: DevConfig): ServiceDevInsert {
 }
 
 export function volumesToRows(
-  serviceId: string,
-  volumes: Service["volumes"],
-): ServiceVolumeInsert[] {
+  appId: string,
+  volumes: App["volumes"],
+): AppVolumeInsert[] {
   return (volumes ?? []).map((v, position) => ({
-    serviceId,
+    appId,
     position,
     volumeId: v.id,
     // Store the discriminant only when explicit ("named" stays NULL so it
     // round-trips to the absent-key default).
-    type: v.type === "host" || v.type === "service" ? v.type : null,
+    type: v.type === "host" || v.type === "app" ? v.type : null,
     name: v.name,
-    projectPath: v.type === "service" ? v.projectPath : null,
+    projectPath: v.type === "app" ? v.projectPath : null,
     hostPath: v.type === "host" ? v.hostPath : null,
     mountPath: v.mountPath,
     readOnly: Boolean(v.readOnly),
@@ -424,22 +413,22 @@ export function volumesToRows(
 }
 
 export function mountsToRows(
-  serviceId: string,
-  mounts: Service["mounts"],
-): ServiceMountInsert[] {
+  appId: string,
+  mounts: App["mounts"],
+): AppMountInsert[] {
   return (mounts ?? []).map((m, position) => ({
-    serviceId,
+    appId,
     position,
     filePath: m.filePath,
     content: m.content,
   }));
 }
 
-/** The full FK-ordered row-set for a normalized {@link Service}. */
-export function serviceToRowSet(p: Service): ServiceRowSet {
+/** The full FK-ordered row-set for a normalized {@link App}. */
+export function appToRowSet(p: App): AppRowSet {
   const ms = methodSettingsToRow(p.id, p.build.methodSettings);
   return {
-    project: serviceToRow(p),
+    project: appToRow(p),
     build: buildToRow(p.id, p.build),
     methodSettings: ms,
     dev: p.dev ? devToRow(p.id, p.dev) : null,
@@ -460,7 +449,7 @@ export function assembleDomain(
   const mw = [...middlewares].sort((a, b) => a.position - b.position).map((m) => m.name);
   return {
     id: row.id,
-    serviceId: row.serviceId,
+    appId: row.appId,
     name: row.name,
     status: row.status as Domain["status"],
     primary: row.isPrimary,
@@ -486,7 +475,7 @@ export function assembleDomain(
 export function domainToRow(d: Domain): DomainInsert {
   return {
     id: d.id,
-    serviceId: d.serviceId,
+    appId: d.appId,
     name: d.name,
     status: d.status,
     isPrimary: d.primary,
@@ -524,7 +513,7 @@ export function assembleEnvVar(
 ): EnvVar {
   return {
     id: row.id,
-    serviceId: row.serviceId,
+    appId: row.appId,
     key: row.key,
     valueEnc: row.valueEnc,
     targets: targets.map((t) => t.target as EnvTarget),
@@ -537,7 +526,7 @@ export function assembleEnvVar(
 export function envVarToRow(e: EnvVar): EnvVarInsert {
   return {
     id: e.id,
-    serviceId: e.serviceId,
+    appId: e.appId,
     key: e.key,
     valueEnc: e.valueEnc,
     type: e.type,
@@ -558,7 +547,7 @@ export function envVarTargetsToRows(e: EnvVar): EnvVarTargetInsert[] {
 export function assembleDeployment(row: DeploymentRow): Deployment {
   return {
     id: row.id,
-    serviceId: row.serviceId,
+    appId: row.appId,
     status: row.status as Deployment["status"],
     environment: row.environment as Deployment["environment"],
     commitSha: row.commitSha,
@@ -580,7 +569,7 @@ export function assembleDeployment(row: DeploymentRow): Deployment {
 export function deploymentToRow(d: Deployment): typeof deployments.$inferInsert {
   return {
     id: d.id,
-    serviceId: d.serviceId,
+    appId: d.appId,
     status: d.status,
     environment: d.environment,
     commitSha: d.commitSha,
@@ -618,59 +607,9 @@ export function logLineToRow(
   };
 }
 
-/* ------------------------------------------------------------------ */
-/* Shared env groups                                                   */
-/* ------------------------------------------------------------------ */
-
-/** Reassemble a {@link SharedEnvGroup} from its parent + child rows. */
-export function assembleSharedEnvGroup(
-  row: SharedEnvGroupRow,
-  vars: SharedEnvGroupVarRow[],
-  serviceIds: SharedEnvGroupServiceRow[],
-  targets: SharedEnvGroupTargetRow[],
-): SharedEnvGroup {
-  return {
-    id: row.id,
-    teamId: row.teamId,
-    name: row.name,
-    description: row.description,
-    variables: vars.map(
-      (v): SharedEnvVar => ({
-        key: v.key,
-        valueEnc: v.valueEnc,
-        type: v.type as SharedEnvVar["type"],
-      }),
-    ),
-    serviceIds: serviceIds.map((p) => p.serviceId),
-    targets: targets.map((t) => t.target as EnvTarget),
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
-export function sharedEnvGroupToRow(
-  g: SharedEnvGroup,
-): typeof sharedEnvGroups.$inferInsert {
-  return {
-    id: g.id,
-    teamId: g.teamId,
-    name: g.name,
-    description: g.description,
-    createdAt: g.createdAt,
-    updatedAt: g.updatedAt,
-  };
-}
-
-export function sharedEnvVarsToRows(
-  g: SharedEnvGroup,
-): (typeof sharedEnvGroupVars.$inferInsert)[] {
-  return g.variables.map((v) => ({
-    groupId: g.id,
-    key: v.key,
-    valueEnc: v.valueEnc,
-    type: v.type,
-  }));
-}
+// NOTE: shared env GROUP row mappers were removed with the unified shared-var
+// model (ADR-0010); the flat `shared_env_vars` parent + junctions are read/written
+// directly in lib/data/shared-vars.ts.
 
 /* ------------------------------------------------------------------ */
 /* Folder                                                              */

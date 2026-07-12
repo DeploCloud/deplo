@@ -4,12 +4,9 @@ import { readdir, cp } from "node:fs/promises";
 import { join } from "node:path";
 import { decryptSecret } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
-import { loadGlobalEnvForService } from "../data/global-env";
-import { loadEnvironmentEnvForService } from "../data/environment-env";
-import {
-  loadEnvVarsForService,
-  loadSharedEnvGroupsForService,
-} from "../data/service-graph-load";
+import { loadInstanceEnv } from "../data/global-env";
+import { loadSharedVarsForApp } from "../data/shared-vars";
+import { loadEnvVarsForApp } from "../data/app-graph-load";
 import { dataVolumeHostMountpoint } from "./builders";
 import { devPresetImage } from "../frameworks";
 import { rejectSymlinks } from "./upload";
@@ -21,7 +18,7 @@ import {
 } from "./domains";
 import { portFor } from "./ports";
 import { traefikRouterLabels } from "./routing";
-import type { DevConfig, Service } from "../types";
+import type { DevConfig, App } from "../types";
 
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 const STACK_DIR = join(DATA_DIR, "stacks");
@@ -79,7 +76,7 @@ export { portFor } from "./ports";
  * the persisted value is written by the dev-start path, not here.
  */
 export function devPreviewUrl(
-  project: Pick<Service, "slug" | "dev">,
+  project: Pick<App, "slug" | "dev">,
   ip = instanceHost(),
 ): string {
   const host = project.dev?.previewHost || newDevPreviewHost(project.slug, ip);
@@ -91,7 +88,7 @@ export function devPreviewUrl(
  * (ADR-0004). A custom image is used verbatim; a preset resolves through the
  * preset→base table.
  */
-export function devImage(project: Service): string {
+export function devImage(project: App): string {
   const dev = project.dev;
   if (dev?.imageKind === "custom" && dev.image.trim()) return dev.image.trim();
   if (dev?.imageKind === "preset" && dev.image.trim()) {
@@ -105,7 +102,7 @@ export function devImage(project: Service): string {
  * image and no dev command (the user picks their base image and runs their own
  * dev server); the dev port defaults to the production port; preview is ON.
  */
-export function defaultDevConfig(project: Service): DevConfig {
+export function defaultDevConfig(project: App): DevConfig {
   return {
     enabled: true,
     status: "off",
@@ -129,30 +126,20 @@ export function newDevPreviewHost(slug: string, ip = instanceHost()): string {
 }
 
 /**
- * Decrypted env for a dev container: per-project vars tagged `development`,
- * plus attached shared groups that target `development`. Shares the exact
- * `resolveEnvEntries` seam with the production stack — only the target differs —
- * so the two runtimes can never drift on what `development` inherits.
+ * Decrypted env for a dev container: the app's own vars tagged `development`,
+ * plus every shared var that reaches the app and targets `development`, plus
+ * instance globals. Shares the exact `resolveEnvEntries` seam with the production
+ * stack — only the target differs — so the two runtimes can never drift on what
+ * `development` inherits.
  */
-async function devEnv(serviceId: string): Promise<Record<string, string>> {
-  // env vars + attached shared groups are relational (cut-set c); load the
-  // bounded set and decrypt at this edge (the `development` target).
-  const [vars, groups, globals, environmentEnvs] = await Promise.all([
-    loadEnvVarsForService(serviceId),
-    loadSharedEnvGroupsForService(serviceId),
-    loadGlobalEnvForService(serviceId),
-    loadEnvironmentEnvForService(serviceId),
+async function devEnv(appId: string): Promise<Record<string, string>> {
+  const [vars, sharedVars, instanceGlobals] = await Promise.all([
+    loadEnvVarsForApp(appId),
+    loadSharedVarsForApp(appId),
+    loadInstanceEnv(),
   ]);
   const out: Record<string, string> = {};
-  for (const e of resolveEnvEntries(
-    "development",
-    serviceId,
-    vars,
-    groups,
-    globals.teamGlobals,
-    globals.instanceGlobals,
-    environmentEnvs,
-  )) {
+  for (const e of resolveEnvEntries("development", appId, vars, sharedVars, instanceGlobals)) {
     out[e.key] = decryptSecret(e.valueEnc);
   }
   return out;
@@ -170,7 +157,7 @@ function cloneSecretPath(slug: string): string {
  * stack file. The URL is staged to a root-owned 0600 file the entrypoint reads
  * (see writeCloneSecret); only the branch + source kind travel as env.
  */
-function seedEnv(project: Service): Record<string, string> {
+function seedEnv(project: App): Record<string, string> {
   if (project.source === "github" || project.source === "git") {
     if (project.repo) {
       return {
@@ -274,7 +261,7 @@ function yamlValue(v: string): string {
  * route to the stored `dev-<slug>-<words>-<hexip>.nip.io` preview host (never a
  * Domain row). Ports are NOT published: Traefik fronts HTTP, SSH via the gateway.
  */
-export async function renderDevCompose(project: Service): Promise<string> {
+export async function renderDevCompose(project: App): Promise<string> {
   const slug = project.slug;
   const name = devServiceName(slug);
   const port = portFor(project, "development");

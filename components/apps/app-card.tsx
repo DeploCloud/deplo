@@ -19,7 +19,7 @@ import {
   Boxes,
 } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
-import { describeServiceSource } from "@/components/services/service-source";
+import { describeAppSource } from "@/components/apps/app-source";
 import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -33,12 +33,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
-import { ServiceLogo } from "@/components/shared/project-logo";
+import { AppLogo } from "@/components/shared/project-logo";
 import { StatusDot } from "@/components/shared/status-badge";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
-import type { ServiceSummary } from "@/lib/data/services";
+import type { AppSummary } from "@/lib/data/apps";
 
 /**
  * The menu-primitive set used to render the card's action list once and reuse it
@@ -62,7 +62,7 @@ const DROPDOWN_KIT: MenuKit = {
   Separator: DropdownMenuSeparator,
 };
 
-export function ServiceCard({
+export function AppCard({
   project,
   view = "grid",
   dragHandle,
@@ -71,7 +71,7 @@ export function ServiceCard({
   canManageFolders = false,
   environments,
 }: {
-  project: ServiceSummary;
+  project: AppSummary;
   view?: "grid" | "list";
   /** Optional drag-to-reorder handle, rendered with the card's controls. */
   dragHandle?: React.ReactNode;
@@ -84,7 +84,7 @@ export function ServiceCard({
   dragActive?: boolean;
   /** Team folders, for the "Move to folder" menu (omitted ⇒ no folders). */
   folders?: { id: string; name: string }[];
-  /** Whether the viewer may move this service between folders. */
+  /** Whether the viewer may move this app between folders. */
   canManageFolders?: boolean;
   /** The surrounding project's environments, for the "Move to environment"
    *  menu (ADR-0009). Only passed inside a project drill-in view; omitted ⇒
@@ -95,12 +95,12 @@ export function ServiceCard({
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const dep = project.latestDeployment;
-  // A repo ⇒ a git deploy (real branch + repo). Otherwise the service has no
+  // A repo ⇒ a git deploy (real branch + repo). Otherwise the app has no
   // git, so we describe its source instead of inventing a branch. Shared with
-  // the service overview page so the two never disagree (see service-source.tsx).
-  const nonGit = project.repo ? null : describeServiceSource(project);
+  // the app overview page so the two never disagree (see app-source.tsx).
+  const nonGit = project.repo ? null : describeAppSource(project);
 
-  // The card mirrors the service header's lifecycle controls in a minimized
+  // The card mirrors the app header's lifecycle controls in a minimized
   // form: Start/Stop track the persisted status (no live subscription on the
   // overview, so a refresh after each action keeps the menu in sync).
   const stopped = project.status === "idle";
@@ -114,9 +114,9 @@ export function ServiceCard({
         ? "Running"
         : project.status.charAt(0).toUpperCase() + project.status.slice(1);
 
-  // Clicking anywhere on the card opens the service overview. The latest commit
+  // Clicking anywhere on the card opens the app overview. The latest commit
   // is shown on the card itself (compact) rather than deep-linking to it.
-  const href = `/services/${project.slug}`;
+  const href = `/apps/${project.slug}`;
 
   function redeploy() {
     startTransition(async () => {
@@ -124,8 +124,8 @@ export function ServiceCard({
         { redeploy: { id: string | null } | null },
         { id: string | null } | null
       >(
-        `mutation($serviceId: String!) { redeploy(serviceId: $serviceId) { id } }`,
-        { serviceId: project.id },
+        `mutation($appId: String!) { redeploy(appId: $appId) { id } }`,
+        { appId: project.id },
         (d) => d.redeploy,
       );
       if (res.ok) {
@@ -133,7 +133,7 @@ export function ServiceCard({
         // Follow the new build straight to its live logs; fall back to a refresh
         // if no id came back.
         if (res.data?.id) {
-          router.push(`/services/${project.slug}/deployments/${res.data.id}`);
+          router.push(`/apps/${project.slug}/deployments/${res.data.id}`);
         } else {
           router.refresh();
         }
@@ -157,10 +157,10 @@ export function ServiceCard({
   // with no rebuild; the mutation returns a status string we turn into a toast.
   function reload() {
     startTransition(async () => {
-      const res = await gqlAction<{ reloadService: string | null }, string>(
-        `mutation($id: String!) { reloadService(id: $id) }`,
+      const res = await gqlAction<{ reloadApp: string | null }, string>(
+        `mutation($id: String!) { reloadApp(id: $id) }`,
         { id: project.id },
-        (d) => d.reloadService ?? "",
+        (d) => d.reloadApp ?? "",
       );
       if (!res.ok) {
         toast.error(res.error);
@@ -177,14 +177,14 @@ export function ServiceCard({
     });
   }
 
-  // Move this service into a folder, or back to the top level (folderId null).
+  // Move this app into a folder, or back to the top level (folderId null).
   // The grid also supports dragging a card onto a folder; this menu is the
   // keyboard-friendly, always-available counterpart.
   function moveTo(folderId: string | null) {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($serviceId: ID!, $folderId: ID) { moveServiceToFolder(serviceId: $serviceId, folderId: $folderId) }`,
-        { serviceId: project.id, folderId },
+        `mutation($appId: ID!, $folderId: ID) { moveAppToFolder(appId: $appId, folderId: $folderId) }`,
+        { appId: project.id, folderId },
       );
       if (res.ok) {
         toast.success(folderId ? "Moved to folder" : "Moved out of folder");
@@ -193,18 +193,18 @@ export function ServiceCard({
     });
   }
 
-  // Move this service to another environment of its project (ADR-0009: each
-  // environment holds its own services), or out of the project entirely.
+  // Move this app to another environment of its project (ADR-0009: each
+  // environment holds its own apps), or out of the project entirely.
   function moveToEnvironment(environmentId: string | null) {
     startTransition(async () => {
       const res = environmentId
         ? await gqlAction(
-            `mutation($serviceId: ID!, $environmentId: ID!) { moveServiceToEnvironment(serviceId: $serviceId, environmentId: $environmentId) }`,
-            { serviceId: project.id, environmentId },
+            `mutation($appId: ID!, $environmentId: ID!) { moveAppToEnvironment(appId: $appId, environmentId: $environmentId) }`,
+            { appId: project.id, environmentId },
           )
         : await gqlAction(
-            `mutation($serviceId: ID!) { moveServiceToProject(serviceId: $serviceId) }`,
-            { serviceId: project.id },
+            `mutation($appId: ID!) { moveAppToProject(appId: $appId) }`,
+            { appId: project.id },
           );
       if (res.ok) {
         toast.success(
@@ -232,13 +232,13 @@ export function ServiceCard({
         </SimpleTooltip>
       ) : stopped ? (
         <SimpleTooltip
-          content="Start this service's stopped container"
+          content="Start this app's stopped container"
           side="left"
         >
           <K.Item
             onSelect={() =>
               act(
-                `mutation($id: String!) { startService(id: $id) { id } }`,
+                `mutation($id: String!) { startApp(id: $id) { id } }`,
                 "Container started",
               )
             }
@@ -250,13 +250,13 @@ export function ServiceCard({
         </SimpleTooltip>
       ) : (
         <SimpleTooltip
-          content="Stop this service's running container"
+          content="Stop this app's running container"
           side="left"
         >
           <K.Item
             onSelect={() =>
               act(
-                `mutation($id: String!) { stopService(id: $id) { id } }`,
+                `mutation($id: String!) { stopApp(id: $id) { id } }`,
                 "Container stopped",
               )
             }
@@ -287,7 +287,7 @@ export function ServiceCard({
       </SimpleTooltip>
       <K.Separator />
       <SimpleTooltip
-        content="Open this service's overview and deployments"
+        content="Open this app's overview and deployments"
         side="left"
       >
         <K.Item asChild>
@@ -297,7 +297,7 @@ export function ServiceCard({
           </Link>
         </K.Item>
       </SimpleTooltip>
-      <SimpleTooltip content="Open this service's settings" side="left">
+      <SimpleTooltip content="Open this app's settings" side="left">
         <K.Item asChild>
           <Link href={`${href}/settings`} className="cursor-pointer">
             <Settings className="size-4" />
@@ -310,7 +310,7 @@ export function ServiceCard({
           Sub={K.Sub}
           SubTrigger={K.SubTrigger}
           SubContent={K.SubContent}
-          content="Move this service into a folder"
+          content="Move this app into a folder"
           subContentClassName="max-h-72 overflow-y-auto"
           trigger={
             <>
@@ -353,7 +353,7 @@ export function ServiceCard({
           Sub={K.Sub}
           SubTrigger={K.SubTrigger}
           SubContent={K.SubContent}
-          content="Move this service to another environment of this project"
+          content="Move this app to another environment of this project"
           subContentClassName="max-h-72 overflow-y-auto"
           trigger={
             <>
@@ -396,7 +396,7 @@ export function ServiceCard({
       )}
       <K.Separator />
       <SimpleTooltip
-        content="Permanently delete this service and its deployments"
+        content="Permanently delete this app and its deployments"
         side="left"
       >
         <K.Item
@@ -418,7 +418,7 @@ export function ServiceCard({
   // handle is zero-width until hover, when it expands and slides the dot left.
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
-      {/* Service status as a bare dot (green / amber / red / grey), no label —
+      {/* App status as a bare dot (green / amber / red / grey), no label —
           the dot's colour is the status; hovering it shows the word. */}
       <span title={statusLabel} className="inline-flex items-center">
         <StatusDot status={project.status} />
@@ -439,7 +439,7 @@ export function ServiceCard({
       >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Service menu">
+            <Button variant="ghost" size="icon-sm" aria-label="App menu">
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -459,11 +459,11 @@ export function ServiceCard({
       targetId={project.id}
       targetName={project.name}
       title={`Delete ${project.name}?`}
-      description="This permanently removes the service, its deployments, domains and environment variables. This action cannot be undone."
-      confirmLabel="Delete service"
-      successMessage="Service deleted"
+      description="This permanently removes the app, its deployments, domains and environment variables. This action cannot be undone."
+      confirmLabel="Delete app"
+      successMessage="App deleted"
       deleteMutation={() =>
-        gqlAction(`mutation($id: String!) { deleteService(id: $id) }`, {
+        gqlAction(`mutation($id: String!) { deleteApp(id: $id) }`, {
           id: project.id,
         })
       }
@@ -487,7 +487,7 @@ export function ServiceCard({
     />
   );
 
-  // The service's source identity (repo or "Compose"/image/upload), shown in the
+  // The app's source identity (repo or "Compose"/image/upload), shown in the
   // deployment box when there's no deployment yet. Mirrors the list view so a
   // freshly imported git project still shows its repo before its first deploy.
   const identity = project.repo ? (
@@ -509,7 +509,7 @@ export function ServiceCard({
       >
         {overlayLink}
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
-          <ServiceLogo logo={project.logo} size={36} />
+          <AppLogo logo={project.logo} size={36} />
           <div className="min-w-0 flex-1">
             <span className="block truncate font-medium">{project.name}</span>
             {project.productionUrl ? (
@@ -562,7 +562,7 @@ export function ServiceCard({
         <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <ServiceLogo logo={project.logo} size={36} />
+              <AppLogo logo={project.logo} size={36} />
               <div className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{project.name}</span>
                 {project.productionUrl ? (

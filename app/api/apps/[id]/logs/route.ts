@@ -6,7 +6,7 @@ import * as logs from "@/lib/logs/session";
 import { connectAgent } from "@/lib/infra/agent-client";
 
 /**
- * Live runtime logs (`docker logs -f`) for a service's container, over plain HTTP.
+ * Live runtime logs (`docker logs -f`) for an app's container, over plain HTTP.
  *
  *   GET    ?container=<name>&tail=<n> → SSE stream of the container's live output.
  *                                       The first event is `session` with the id.
@@ -23,12 +23,12 @@ export const runtime = "nodejs";
 
 export async function GET(
   request: NextRequest,
-  ctx: RouteContext<"/api/services/[id]/logs">,
+  ctx: RouteContext<"/api/apps/[id]/logs">,
 ) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: serviceId } = await ctx.params;
+  const { id: appId } = await ctx.params;
   const target = request.nextUrl.searchParams.get("container") ?? undefined;
   // Default to the last 500 lines. A missing param must fall back, NOT seed 0 —
   // Number(null) is 0 (finite), which would request `--tail 0` (follow-only, no
@@ -40,7 +40,7 @@ export async function GET(
     ? Math.min(Math.max(Math.trunc(parsedTail), 0), 5000)
     : 500;
 
-  const resolved = await resolveLogsTarget(serviceId, target);
+  const resolved = await resolveLogsTarget(appId, target);
   if (!resolved.ok) {
     const status =
       resolved.reason === "not-found"
@@ -51,14 +51,14 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
-  // Build the backing handle against the service's OWNING server's agent: it
+  // Build the backing handle against the app's OWNING server's agent: it
   // streams the agent's FollowLogs (cleanup closes the gRPC client when the
   // session exits). On a dial failure, fail clearly with 503.
   let session;
   try {
     const conn = await connectAgent(resolved.server!.id);
-    const handle = conn.followLogs(serviceId, resolved.instance.name, tail);
-    session = logs.open(serviceId, resolved.instance.name, handle, () =>
+    const handle = conn.followLogs(appId, resolved.instance.name, tail);
+    session = logs.open(appId, resolved.instance.name, handle, () =>
       conn.close(),
     );
   } catch {
@@ -126,14 +126,14 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  ctx: RouteContext<"/api/services/[id]/logs">,
+  ctx: RouteContext<"/api/apps/[id]/logs">,
 ) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id: serviceId } = await ctx.params;
+  const { id: appId } = await ctx.params;
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
-  const session = sessionId ? logs.get(sessionId, serviceId) : undefined;
+  const session = sessionId ? logs.get(sessionId, appId) : undefined;
   if (session) logs.destroy(sessionId);
   return Response.json({ ok: true });
 }

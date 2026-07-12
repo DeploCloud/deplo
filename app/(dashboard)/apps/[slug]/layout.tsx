@@ -1,23 +1,23 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
-import { getServiceBySlug } from "@/lib/data/services";
+import { getAppBySlug } from "@/lib/data/apps";
 import { truncate } from "@/lib/utils";
 import { isDevEligible } from "@/lib/data/dev";
-import { serviceFilesExist } from "@/lib/data/service-files";
+import { appFilesExist } from "@/lib/data/app-files";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { ServiceLogo } from "@/components/shared/project-logo";
-import { RedeployButton } from "@/components/services/redeploy-button";
-import { ServiceControls } from "@/components/services/service-controls";
-import { ServiceStatusBadge } from "@/components/services/service-status-dot";
-import { ServiceNavSync } from "@/components/services/service-nav-sync";
+import { AppLogo } from "@/components/shared/project-logo";
+import { RedeployButton } from "@/components/apps/redeploy-button";
+import { AppControls } from "@/components/apps/app-controls";
+import { AppStatusBadge } from "@/components/apps/app-status-dot";
+import { AppNavSync } from "@/components/apps/app-nav-sync";
 import {
-  ServiceLiveStatusProvider,
-  type LiveService,
-} from "@/components/services/service-live-status";
+  AppLiveStatusProvider,
+  type LiveApp,
+} from "@/components/apps/app-live-status";
 
-// Cap the service-name portion of the browser-tab title so the trailing
+// Cap the app-name portion of the browser-tab title so the trailing
 // "– <Section> – Deplo" stays legible instead of a long name crowding it out.
 const PROJECT_TITLE_MAX = 24;
 
@@ -26,11 +26,11 @@ const PROJECT_TITLE_MAX = 24;
 // Overview page sits in this same segment and has no title, so it inherits the
 // `default` below. `title.template` here overrides the root "%s – Deplo".
 export async function generateMetadata(
-  props: LayoutProps<"/services/[slug]">,
+  props: LayoutProps<"/apps/[slug]">,
 ): Promise<Metadata> {
   const { slug } = await props.params;
-  const project = await getServiceBySlug(slug);
-  if (!project) return { title: "Service" };
+  const project = await getAppBySlug(slug);
+  if (!project) return { title: "App" };
   const name = truncate(project.name, PROJECT_TITLE_MAX);
   return {
     title: {
@@ -40,18 +40,18 @@ export async function generateMetadata(
   };
 }
 
-export default async function ServiceLayout(props: LayoutProps<"/services/[slug]">) {
+export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
   const { slug } = await props.params;
-  const project = await getServiceBySlug(slug);
+  const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // The Files entry only appears when the caller can manage files AND the service
-  // actually has an on-disk files dir (serviceFilesExist returns false for both
+  // The Files entry only appears when the caller can manage files AND the app
+  // actually has an on-disk files dir (appFilesExist returns false for both
   // a missing capability and a missing directory, so this one call covers both).
   // Environment/Backups visibility is capability-gated in the sidebar itself.
-  const showFiles = await serviceFilesExist(project.id);
+  const showFiles = await appFilesExist(project.id);
 
   // Seed for the live-status subscription (kept current client-side thereafter).
-  const initialLive: LiveService = {
+  const initialLive: LiveApp = {
     id: project.id,
     slug: project.slug,
     status: project.status,
@@ -61,12 +61,12 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
   };
 
   return (
-    <ServiceLiveStatusProvider key={initialLive.slug} initial={initialLive}>
+    <AppLiveStatusProvider key={initialLive.slug} initial={initialLive}>
     <div className="space-y-6">
       <div>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <ServiceLogo logo={project.logo} size={44} />
+            <AppLogo logo={project.logo} size={44} />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-semibold tracking-tight">
@@ -75,7 +75,7 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
                 {/* The live container lifecycle (Running / Stopped / Building /
                     Error) — the header's headline status, distinct from any
                     deployment status shown further down the page. */}
-                <ServiceStatusBadge status={project.status} />
+                <AppStatusBadge status={project.status} />
               </div>
               {project.productionUrl && (
                 <a
@@ -104,9 +104,9 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
                 </Button>
               </SimpleTooltip>
             )}
-            <ServiceControls serviceId={project.id} status={project.status} />
+            <AppControls appId={project.id} status={project.status} />
             <RedeployButton
-              serviceId={project.id}
+              appId={project.id}
               slug={project.slug}
               variant="default"
             />
@@ -114,9 +114,9 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
         </div>
       </div>
 
-      {/* Publishes this service's live/per-service facts to the sidebar, which
-          renders the service sub-menu in place of the main nav. Renders nothing. */}
-      <ServiceNavSync
+      {/* Publishes this app's live/per-app facts to the sidebar, which
+          renders the app sub-menu in place of the main nav. Renders nothing. */}
+      <AppNavSync
         slug={slug}
         running={project.status === "active"}
         devEligible={isDevEligible(project.source)}
@@ -125,6 +125,6 @@ export default async function ServiceLayout(props: LayoutProps<"/services/[slug]
 
       {props.children}
     </div>
-    </ServiceLiveStatusProvider>
+    </AppLiveStatusProvider>
   );
 }

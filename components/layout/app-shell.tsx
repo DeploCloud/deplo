@@ -17,7 +17,7 @@ export function AppShell({
   user: PublicUser;
   team: Team;
   teams: TeamSummary[];
-  /** Team snapshot for the topbar breadcrumb (folders/services/projects). */
+  /** Team snapshot for the topbar breadcrumb (folders/apps/projects). */
   breadcrumb: BreadcrumbGraph;
   /** Current member's capabilities — drives capability-gated nav visibility. */
   capabilities: string[];

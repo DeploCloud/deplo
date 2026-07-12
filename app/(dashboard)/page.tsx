@@ -8,7 +8,7 @@ import {
   Eye,
   ArrowUpRight,
 } from "lucide-react";
-import { listServices } from "@/lib/data/services";
+import { listApps } from "@/lib/data/apps";
 import { listFolders } from "@/lib/data/folders";
 import { listProjects } from "@/lib/data/projects";
 import { listEnvironmentsForProject } from "@/lib/data/environments";
@@ -21,9 +21,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ServicesGrid, FolderTrail } from "@/components/services/services-grid";
-import { ServiceSearch } from "@/components/services/service-search";
-import { EnvironmentSwitcher } from "@/components/services/environment-switcher";
+import { AppsGrid, FolderTrail } from "@/components/apps/apps-grid";
+import { AppSearch } from "@/components/apps/app-search";
+import { EnvironmentSwitcher } from "@/components/apps/environment-switcher";
 import { projectHref } from "@/lib/overview-links";
 import { AddNewMenu } from "@/components/shared/add-new-menu";
 import { timeAgo } from "@/lib/utils";
@@ -55,7 +55,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     canManageMembers,
     canDeploy,
   ] = await Promise.all([
-    listServices(),
+    listApps(),
     listFolders(),
     listProjects(),
     listActivity(6),
@@ -65,8 +65,8 @@ export default async function OverviewPage(props: PageProps<"/">) {
     hasCapability("deploy"),
   ]);
   const canManageOrder = isAdmin || canManageTeam;
-  // Creating a folder or a project container is gated the same as creating a
-  // service: any `deploy` holder (or an instance admin) may do it — NOT the
+  // Creating a folder or a project container is gated the same as creating an
+  // app: any `deploy` holder (or an instance admin) may do it — NOT the
   // manage_team super-user gate.
   const canCreateFolder = isAdmin || canDeploy;
   // Team-wide bulk/reorder actions (and the manage menu on folders one doesn't
@@ -74,13 +74,13 @@ export default async function OverviewPage(props: PageProps<"/">) {
   const canManageAllFolders = canManageOrder;
 
   // What the grid shows:
-  //  - searching: every matching service, flat, across all folders and projects
+  //  - searching: every matching app, flat, across all folders and projects
   //    (folders/projects hidden) so anything nested is still findable;
-  //  - a folder open: that folder's direct services + its child folders;
-  //  - a project open: the services of the SELECTED ENVIRONMENT (ADR-0009 —
-  //    each environment is a sub-folder of services, picked via the dropdown in
-  //    the toolbar). The view mirrors a folder view — just its services;
-  //  - otherwise (top level): projects, top-level folders, ungrouped services.
+  //  - a folder open: that folder's direct apps + its child folders;
+  //  - a project open: the apps of the SELECTED ENVIRONMENT (ADR-0009 —
+  //    each environment is a sub-folder of apps, picked via the dropdown in
+  //    the toolbar). The view mirrors a folder view — just its apps;
+  //  - otherwise (top level): projects, top-level folders, ungrouped apps.
   const openFolder =
     !query && folderId ? folders.find((f) => f.id === folderId) ?? null : null;
   const openProject =
@@ -103,7 +103,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     Boolean(p.repo?.repo.toLowerCase().includes(query)) ||
     Boolean(p.productionUrl?.toLowerCase().includes(query));
 
-  const visibleServices = query
+  const visibleApps = query
     ? services.filter(matches)
     : openFolder
       ? services.filter((p) => p.folderId === openFolder.id)
@@ -167,7 +167,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     : folderPath;
 
   const allFolders = folders.map((f) => ({ id: f.id, name: f.name }));
-  const allServiceIds = services.map((p) => p.id);
+  const allAppIds = services.map((p) => p.id);
 
   // Drag-to-reorder writes a team-wide order, so it is gated on permission; it is
   // also disabled mid-search (reordering a filtered list would persist a partial
@@ -175,19 +175,19 @@ export default async function OverviewPage(props: PageProps<"/">) {
   const canReorder = canManageOrder && !query;
 
   const nothingToShow =
-    visibleServices.length === 0 &&
+    visibleApps.length === 0 &&
     visibleFolders.length === 0 &&
     visibleProjects.length === 0;
   // Re-seed the grid's optimistic state only on a structural change (navigation,
-  // search, add/remove of a service, folder or project) — never on a pure
-  // reorder/move, so a drag survives its own drop. See ServicesGrid.
+  // search, add/remove of an app, folder or project) — never on a pure
+  // reorder/move, so a drag survives its own drop. See AppsGrid.
   const gridKey = [
     view,
     query,
     openFolder?.id ?? "",
     openProject?.id ?? "",
     selectedEnv?.id ?? "",
-    [...allServiceIds].sort().join(","),
+    [...allAppIds].sort().join(","),
     folders
       .map((f) => f.id)
       .sort()
@@ -246,7 +246,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
         </Card>
       </div>
 
-      {/* Overview: projects, folders and services */}
+      {/* Overview: projects, folders and apps */}
       <div className="order-1 space-y-5 lg:order-1">
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
@@ -268,7 +268,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
             the toolbar, at the end just before the grid/list toggle. It is also
             the whole environment-management surface (rename / default / delete /
             create), so no separate panel is needed below the grid. */}
-        <ServiceSearch
+        <AppSearch
           initialQuery={query}
           initialView={view}
           initialFolder={openFolder?.id ?? ""}
@@ -295,7 +295,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
           query ? (
             <EmptyState
               icon={Rocket}
-              title="No services match your search"
+              title="No apps match your search"
               description={`Nothing found for “${query}”.`}
             />
           ) : openFolder ? (
@@ -311,7 +311,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
               <EmptyState
                 icon={Folder}
                 title={`${openFolder.name} is empty`}
-                description="Drag services onto this folder from the Overview, or use a service’s “Move to folder” menu."
+                description="Drag apps onto this folder from the Overview, or use an app’s “Move to folder” menu."
                 action={
                   <Button asChild variant="outline">
                     <Link href={view === "list" ? "/?view=list" : "/"}>
@@ -330,10 +330,10 @@ export default async function OverviewPage(props: PageProps<"/">) {
                 icon={Boxes}
                 title={
                   selectedEnv
-                    ? `No services in ${selectedEnv.name}`
+                    ? `No apps in ${selectedEnv.name}`
                     : `${openProject.name} is empty`
                 }
-                description="Drag services onto this project from the Overview, or use a service’s “Move to folder” menu."
+                description="Drag apps onto this project from the Overview, or use an app’s “Move to folder” menu."
                 action={
                   <Button asChild variant="outline">
                     <Link href={view === "list" ? "/?view=list" : "/"}>
@@ -346,14 +346,14 @@ export default async function OverviewPage(props: PageProps<"/">) {
           ) : (
             <EmptyState
               icon={Rocket}
-              title="No services yet"
+              title="No apps yet"
               description="Import a Git repository or start from a template to deploy your first app."
               action={
                 <div className="flex gap-2">
                   <Button asChild>
                     <Link href="/new">
                       <Plus className="size-4" />
-                      Import Service
+                      Import App
                     </Link>
                   </Button>
                   <Button asChild variant="outline">
@@ -367,10 +367,10 @@ export default async function OverviewPage(props: PageProps<"/">) {
             />
           )
         ) : (
-          <ServicesGrid
+          <AppsGrid
             key={gridKey}
-            services={visibleServices}
-            allServiceIds={allServiceIds}
+            services={visibleApps}
+            allAppIds={allAppIds}
             folders={enrichedFolders}
             projects={visibleProjects}
             allFolders={allFolders}

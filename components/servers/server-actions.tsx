@@ -168,7 +168,7 @@ export function ServerActions({
         },
       );
       if (!res.ok) {
-        // Surfaces the "these teams still have services/databases…" block message.
+        // Surfaces the "these teams still have apps/databases…" block message.
         toast.error(res.error);
         return;
       }
@@ -387,7 +387,7 @@ export function ServerActions({
               Team access for {serverName}
             </DialogTitle>
             <DialogDescription>
-              Choose which teams can deploy services and databases to this server.
+              Choose which teams can deploy apps and databases to this server.
               You can&rsquo;t remove a team that still has workloads here — move or
               delete those first.
             </DialogDescription>
@@ -430,7 +430,7 @@ export function ServerActions({
           <div className="space-y-2">
             <FieldLabel
               htmlFor="deploy-concurrency"
-              info="1 means one deploy at a time on this server (the safe default). Two deploys of the same service never run at once regardless of this value."
+              info="1 means one deploy at a time on this server (the safe default). Two deploys of the same app never run at once regardless of this value."
             >
               Concurrent deployments
             </FieldLabel>
@@ -499,7 +499,7 @@ export function ServerActions({
             <DialogTitle>Remove {serverName}?</DialogTitle>
             <DialogDescription>
               This revokes the agent&rsquo;s trust and tells it to tear down its
-              containers. You can&rsquo;t remove a server while services are still
+              containers. You can&rsquo;t remove a server while apps are still
               assigned to it — reassign or delete them first. If the agent is
               unreachable, removal proceeds anyway and you&rsquo;ll need to clean
               up leftover containers on the host by hand.

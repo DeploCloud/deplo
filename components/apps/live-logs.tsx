@@ -4,19 +4,19 @@ import * as React from "react";
 import { ScrollText, CircleAlert, Hammer, Loader2, XCircle } from "lucide-react";
 import { gql } from "@/lib/graphql-client";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ContainerLogs } from "@/components/services/container-logs";
-import { BuildLogStream } from "@/components/services/build-log-stream";
+import { ContainerLogs } from "@/components/apps/container-logs";
+import { BuildLogStream } from "@/components/apps/build-log-stream";
 import {
   useLiveRunning,
-  useLiveService,
-} from "@/components/services/service-live-status";
+  useLiveApp,
+} from "@/components/apps/app-live-status";
 import { cn } from "@/lib/utils";
 import type { ConsoleInstance } from "@/lib/data/console";
 import type { DeploymentStatus, LogLine } from "@/lib/types";
 
 const LOGS_INFO_QUERY = /* GraphQL */ `
-  query LogsInfo($serviceId: String!) {
-    logsInfo(serviceId: $serviceId) {
+  query LogsInfo($appId: String!) {
+    logsInfo(appId: $appId) {
       running
       instances {
         name
@@ -37,12 +37,12 @@ type LogsInfoResponse = {
   logsInfo: { running: boolean; instances: ConsoleInstance[] } | null;
 };
 
-/** The most recent build for a service — the source of the build logs the page
+/** The most recent build for an app — the source of the build logs the page
  *  falls back to whenever there's no running container to stream from. */
 type LatestDeployment = { id: string; status: DeploymentStatus };
 
 /**
- * Logs page body that follows the service's live running state. While the
+ * Logs page body that follows the app's live running state. While the
  * container is running it streams live runtime logs; the moment it stops (or
  * before it has ever started) it falls back — without a reload — to the most
  * recent build's logs, clearly flagged as not live. This keeps the Logs page
@@ -51,20 +51,20 @@ type LatestDeployment = { id: string; status: DeploymentStatus };
  * none server-rendered) so the log viewer can attach.
  */
 export function LiveLogs({
-  serviceId,
+  appId,
   initialInstances,
   initialRunning,
   latestDeployment,
   initialBuildLogs,
 }: {
-  serviceId: string;
+  appId: string;
   initialInstances: ConsoleInstance[] | null;
   initialRunning: boolean;
   latestDeployment: LatestDeployment | null;
   initialBuildLogs: LogLine[];
 }) {
   const running = useLiveRunning(initialRunning);
-  const live = useLiveService();
+  const live = useLiveApp();
   // Instance list for the current running session. Seeded from SSR, re-fetched
   // on each transition into running. Display is gated on `running`, so it is
   // never nulled on stop (just ignored) — all writes stay in async callbacks.
@@ -75,7 +75,7 @@ export function LiveLogs({
   React.useEffect(() => {
     if (!running) return;
     let cancelled = false;
-    gql<LogsInfoResponse>(LOGS_INFO_QUERY, { serviceId })
+    gql<LogsInfoResponse>(LOGS_INFO_QUERY, { appId })
       .then((data) => {
         if (cancelled) return;
         const li = data.logsInfo;
@@ -85,7 +85,7 @@ export function LiveLogs({
     return () => {
       cancelled = true;
     };
-  }, [running, serviceId]);
+  }, [running, appId]);
 
   // Container running (control-plane truth) → live runtime logs. We never show
   // the "not live / stopped" build-logs fallback while running: until the
@@ -93,7 +93,7 @@ export function LiveLogs({
   // banner can't momentarily contradict a green/running header.
   if (running) {
     return instances ? (
-      <ContainerLogs serviceId={serviceId} instances={instances} />
+      <ContainerLogs appId={appId} instances={instances} />
     ) : (
       <EmptyState
         icon={Loader2}

@@ -6,32 +6,33 @@ import {
   ScrollText,
   ExternalLink,
   Rocket,
+  ArrowRight,
 } from "lucide-react";
-import { getServiceBySlug } from "@/lib/data/services";
+import { getAppBySlug } from "@/lib/data/apps";
 import { listDeployments } from "@/lib/data/deployments";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
-import { describeServiceSource } from "@/components/services/service-source";
-import { CommitLink } from "@/components/services/commit-link";
+import { describeAppSource } from "@/components/apps/app-source";
+import { CommitLink } from "@/components/apps/commit-link";
 import { githubCommitUrl, timeAgo } from "@/lib/utils";
 
-export default async function ServiceOverview(
-  props: PageProps<"/services/[slug]">,
+export default async function AppOverview(
+  props: PageProps<"/apps/[slug]">,
 ) {
   const { slug } = await props.params;
-  const project = await getServiceBySlug(slug);
+  const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  const deployments = await listDeployments({ serviceId: project.id });
+  const deployments = await listDeployments({ appId: project.id });
   const prod = project.latestDeployment;
-  // What backs this service — a git repo (real branch/commit) or a compose
+  // What backs this app — a git repo (real branch/commit) or a compose
   // stack / docker image / upload (no git, so no branch). Same source of truth
   // as the Overview card, so the page never invents a "main" branch for a
-  // compose project. See components/services/service-source.tsx.
-  const src = describeServiceSource(project);
+  // compose project. See components/apps/app-source.tsx.
+  const src = describeAppSource(project);
 
   return (
     <div className="space-y-6">
@@ -91,7 +92,7 @@ export default async function ServiceOverview(
                       </p>
                     </>
                   ) : (
-                    // No git (compose / image / upload): show what the service
+                    // No git (compose / image / upload): show what the app
                     // actually IS instead of a fabricated branch.
                     <p className="flex items-center gap-1.5 text-sm">
                       <src.Icon className="size-3.5 shrink-0" />
@@ -108,7 +109,7 @@ export default async function ServiceOverview(
                 </div>
                 <div className="flex gap-2 pt-1">
                   <Button size="sm" variant="outline" asChild>
-                    <Link href={`/services/${slug}/deployments/${prod.id}`}>
+                    <Link href={`/apps/${slug}/deployments/${prod.id}`}>
                       <ScrollText className="size-4" />
                       Build Logs
                     </Link>
@@ -133,7 +134,7 @@ export default async function ServiceOverview(
               <p className="text-sm text-muted-foreground">
                 No production deployment yet.
               </p>
-              {/* Even before the first deploy, show where this service comes
+              {/* Even before the first deploy, show where this app comes
                   from (its git repo, a compose stack, an image or an upload). */}
               <div>
                 <p className="text-xs text-muted-foreground">Source</p>
@@ -149,15 +150,30 @@ export default async function ServiceOverview(
 
       {/* Deployments */}
       <div id="deployments" className="space-y-3">
-        <h2 className="text-lg font-semibold tracking-tight">Deployments</h2>
+        <div className="flex flex-row items-center justify-between">
+          <h2 className="text-lg font-semibold tracking-tight">Deployments</h2>
+          {deployments.length > 4 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              asChild
+              className="-mr-2 text-muted-foreground hover:text-foreground"
+            >
+              <Link href={`/apps/${slug}/deployments`}>
+                See all
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          )}
+        </div>
         {deployments.length === 0 ? (
           <EmptyState icon={Rocket} title="No deployments yet" />
         ) : (
           <div className="overflow-hidden rounded-xl border border-border">
-            {deployments.map((d) => (
+            {deployments.slice(0, 4).map((d) => (
               <Link
                 key={d.id}
-                href={`/services/${slug}/deployments/${d.id}`}
+                href={`/apps/${slug}/deployments/${d.id}`}
                 className="flex cursor-pointer items-center gap-4 border-b border-border px-4 py-3 last:border-0 hover:bg-accent/40"
               >
                 <StatusDot status={d.status} />

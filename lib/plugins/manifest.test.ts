@@ -2,11 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  AppCatalogSchema,
-  AppManifestSchema,
-  resolveAppEnv,
+  PluginCatalogSchema,
+  PluginManifestSchema,
+  resolvePluginEnv,
   PlaceholderError,
-  type AppEnvVar,
+  type PluginEnvVar,
 } from "./manifest";
 
 /* ------------------------------------------------------------------ */
@@ -14,7 +14,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 test("catalog: a valid MCP listing parses and defaults tags/description", () => {
-  const parsed = AppCatalogSchema.safeParse([
+  const parsed = PluginCatalogSchema.safeParse([
     {
       id: "mcp",
       name: "AI MCP Server",
@@ -29,14 +29,14 @@ test("catalog: a valid MCP listing parses and defaults tags/description", () => 
 });
 
 test("catalog: a non-slug app id is rejected", () => {
-  const parsed = AppCatalogSchema.safeParse([
+  const parsed = PluginCatalogSchema.safeParse([
     { id: "Bad Id!", name: "x", version: "1", manifestUrl: "/m.json" },
   ]);
   assert.equal(parsed.success, false);
 });
 
 test("manifest: a valid MCP manifest parses with one env placeholder", () => {
-  const parsed = AppManifestSchema.safeParse({
+  const parsed = PluginManifestSchema.safeParse({
     id: "mcp",
     name: "AI MCP Server",
     version: "1.0.0",
@@ -50,7 +50,7 @@ test("manifest: a valid MCP manifest parses with one env placeholder", () => {
 });
 
 test("manifest: env with no env array defaults to []", () => {
-  const parsed = AppManifestSchema.safeParse({
+  const parsed = PluginManifestSchema.safeParse({
     id: "mcp",
     name: "x",
     version: "1",
@@ -62,7 +62,7 @@ test("manifest: env with no env array defaults to []", () => {
 });
 
 test("manifest: an out-of-range port is rejected", () => {
-  const parsed = AppManifestSchema.safeParse({
+  const parsed = PluginManifestSchema.safeParse({
     id: "mcp",
     name: "x",
     version: "1",
@@ -73,7 +73,7 @@ test("manifest: an out-of-range port is rejected", () => {
 });
 
 test("manifest: a bad env key (not a shell identifier) is rejected", () => {
-  const parsed = AppManifestSchema.safeParse({
+  const parsed = PluginManifestSchema.safeParse({
     id: "mcp",
     name: "x",
     version: "1",
@@ -90,45 +90,45 @@ test("manifest: a bad env key (not a shell identifier) is rejected", () => {
 
 const CTX = { deploGraphqlUrl: "https://deplo.example.com/api/graphql" };
 
-test("resolveAppEnv: substitutes ${deplo_graphql_url}", () => {
-  const env: AppEnvVar[] = [{ key: "DEPLO_GRAPHQL_URL", value: "${deplo_graphql_url}" }];
-  assert.deepEqual(resolveAppEnv(env, CTX), {
+test("resolvePluginEnv: substitutes ${deplo_graphql_url}", () => {
+  const env: PluginEnvVar[] = [{ key: "DEPLO_GRAPHQL_URL", value: "${deplo_graphql_url}" }];
+  assert.deepEqual(resolvePluginEnv(env, CTX), {
     DEPLO_GRAPHQL_URL: "https://deplo.example.com/api/graphql",
   });
 });
 
-test("resolveAppEnv: a value with no placeholder passes through verbatim", () => {
-  const env: AppEnvVar[] = [{ key: "LOG_LEVEL", value: "info" }];
-  assert.deepEqual(resolveAppEnv(env, CTX), { LOG_LEVEL: "info" });
+test("resolvePluginEnv: a value with no placeholder passes through verbatim", () => {
+  const env: PluginEnvVar[] = [{ key: "LOG_LEVEL", value: "info" }];
+  assert.deepEqual(resolvePluginEnv(env, CTX), { LOG_LEVEL: "info" });
 });
 
-test("resolveAppEnv: substitutes inside a larger string", () => {
-  const env: AppEnvVar[] = [{ key: "URL", value: "prefix-${deplo_graphql_url}-suffix" }];
+test("resolvePluginEnv: substitutes inside a larger string", () => {
+  const env: PluginEnvVar[] = [{ key: "URL", value: "prefix-${deplo_graphql_url}-suffix" }];
   assert.equal(
-    resolveAppEnv(env, CTX).URL,
+    resolvePluginEnv(env, CTX).URL,
     "prefix-https://deplo.example.com/api/graphql-suffix",
   );
 });
 
-test("resolveAppEnv: ${secret:N} yields a fresh token of the right rough length", () => {
-  const env: AppEnvVar[] = [{ key: "A", value: "${secret:16}" }];
-  const a = resolveAppEnv(env, CTX).A;
-  const b = resolveAppEnv(env, CTX).A;
+test("resolvePluginEnv: ${secret:N} yields a fresh token of the right rough length", () => {
+  const env: PluginEnvVar[] = [{ key: "A", value: "${secret:16}" }];
+  const a = resolvePluginEnv(env, CTX).A;
+  const b = resolvePluginEnv(env, CTX).A;
   assert.notEqual(a, b); // fresh each call
   assert.ok(a.length >= 16); // base64url of 16 bytes is ~22 chars
   assert.ok(/^[A-Za-z0-9_-]+$/.test(a)); // url-safe
 });
 
-test("resolveAppEnv: an unknown placeholder throws PlaceholderError", () => {
-  const env: AppEnvVar[] = [{ key: "X", value: "${not_a_thing}" }];
-  assert.throws(() => resolveAppEnv(env, CTX), PlaceholderError);
+test("resolvePluginEnv: an unknown placeholder throws PlaceholderError", () => {
+  const env: PluginEnvVar[] = [{ key: "X", value: "${not_a_thing}" }];
+  assert.throws(() => resolvePluginEnv(env, CTX), PlaceholderError);
 });
 
-test("resolveAppEnv: a malformed secret length throws PlaceholderError", () => {
-  const env: AppEnvVar[] = [{ key: "X", value: "${secret:0}" }];
-  assert.throws(() => resolveAppEnv(env, CTX), PlaceholderError);
+test("resolvePluginEnv: a malformed secret length throws PlaceholderError", () => {
+  const env: PluginEnvVar[] = [{ key: "X", value: "${secret:0}" }];
+  assert.throws(() => resolvePluginEnv(env, CTX), PlaceholderError);
   assert.throws(
-    () => resolveAppEnv([{ key: "X", value: "${secret:9999}" }], CTX),
+    () => resolvePluginEnv([{ key: "X", value: "${secret:9999}" }], CTX),
     PlaceholderError,
   );
 });

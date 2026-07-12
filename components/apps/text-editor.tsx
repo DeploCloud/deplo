@@ -25,7 +25,7 @@ import { tags as t } from "@lezer/highlight";
 
 /**
  * A plain-text CodeMirror editor sharing the dashboard's neutral theme — used by
- * the service file explorer to edit arbitrary config files. Deliberately
+ * the app file explorer to edit arbitrary config files. Deliberately
  * language-agnostic (no compose linting / YAML grammar): the file tree holds
  * TOML, JSON, .env, shell, etc., so it ships generic editing affordances
  * (history, bracket matching, line numbers) and leaves syntax validation to the

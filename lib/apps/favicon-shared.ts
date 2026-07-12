@@ -1,5 +1,5 @@
 /**
- * Pure logic for auto-detecting a service's display logo from a favicon/icon
+ * Pure logic for auto-detecting an app's display logo from a favicon/icon
  * shipped in its own source files (a GitHub repo or an uploaded archive). Kept
  * free of any `server-only` / Node-only import so it is unit-testable in
  * isolation — the file-listing and the byte-fetching live in the server-only
@@ -43,7 +43,7 @@ const EXCLUDED_DIR_RE =
   /^(node_modules|bower_components|vendor|\.git|\.github|\.next|\.nuxt|\.svelte-kit|\.cache|\.turbo|dist|build|out|coverage|tmp|temp|__tests__|__mocks__|tests?|e2e|examples?|samples?|fixtures?|docs?|storybook|\.storybook)$/i;
 
 /**
- * Whether a service's repo is GitHub-hosted — the ONLY provider the control
+ * Whether an app's repo is GitHub-hosted — the ONLY provider the control
  * plane can read files from over the API for favicon auto-detection (a git repo
  * is otherwise cloned only on the deploy agent). True for the GitHub App
  * provider, or any repo whose URL is on github.com (a plain-git import of a

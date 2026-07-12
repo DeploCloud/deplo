@@ -1,24 +1,24 @@
 import { notFound } from "next/navigation";
 import { Loader2, Rocket } from "lucide-react";
-import { getServiceBySlug } from "@/lib/data/services";
+import { getAppBySlug } from "@/lib/data/apps";
 import { listDeployments } from "@/lib/data/deployments";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
-import { DeploymentsTable } from "@/components/services/deployments-table";
+import { DeploymentsTable } from "@/components/apps/deployments-table";
 
 export const metadata = { title: "Deployments" };
 
 const IN_PROGRESS = new Set(["building", "queued"]);
 
-export default async function ServiceDeploymentsPage(
-  props: PageProps<"/services/[slug]/deployments">,
+export default async function AppDeploymentsPage(
+  props: PageProps<"/apps/[slug]/deployments">,
 ) {
   const { slug } = await props.params;
-  const project = await getServiceBySlug(slug);
+  const project = await getAppBySlug(slug);
   if (!project) notFound();
 
   const [deployments, canDeploy, isAdmin] = await Promise.all([
-    listDeployments({ serviceId: project.id }),
+    listDeployments({ appId: project.id }),
     hasCapability("deploy"),
     isInstanceAdmin(),
   ]);
@@ -56,11 +56,11 @@ export default async function ServiceDeploymentsPage(
         <DeploymentsTable
           header={header}
           canManage={canManage}
-          scopeServiceId={project.id}
+          scopeAppId={project.id}
           deployments={deployments.map((d) => ({
             id: d.id,
-            serviceId: project.id,
-            serviceSlug: slug,
+            appId: project.id,
+            appSlug: slug,
             serviceName: d.serviceName,
             commitMessage: d.commitMessage,
             commitSha: d.commitSha,

@@ -24,7 +24,7 @@ test("artifactExt maps each engine to its dump format", () => {
   assert.equal(artifactExt("database", "clickhouse"), "sql.gz");
   assert.equal(artifactExt("database", "mongodb"), "archive.gz");
   assert.equal(artifactExt("database", "redis"), "rdb.gz");
-  assert.equal(artifactExt("service"), "tar.gz");
+  assert.equal(artifactExt("app"), "tar.gz");
 });
 
 test("artifactExt falls back to .gz for an unknown engine", () => {
@@ -46,7 +46,7 @@ test("targetPrefix is the per-target folder and ends in a slash", () => {
     "deplo/team_1/database/db_9/",
   );
   assert.equal(
-    targetPrefix("team_1", "service", "prj_2"),
+    targetPrefix("team_1", "app", "prj_2"),
     "deplo/team_1/service/prj_2/",
   );
 });
@@ -69,7 +69,7 @@ test("two runs of one target in the same second get distinct keys", () => {
   const at = new Date("2026-06-23T17:45:11.000Z");
   const base = {
     teamId: "t",
-    kind: "service" as const,
+    kind: "app" as const,
     targetId: "prj_1",
     ext: "tar.gz",
     at,
@@ -93,7 +93,7 @@ const run = (id: string, daysAgo: number, over: Partial<BackupRun> = {}): Backup
   backupId: null,
   targetKind: "database",
   databaseId: "db_1",
-  serviceId: null,
+  appId: null,
   destinationId: "s3_1",
   objectKey: `deplo/t/database/db_1/${id}.dump.gz`,
   sizeBytes: 100,

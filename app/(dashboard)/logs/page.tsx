@@ -20,7 +20,7 @@ export default async function LogsPage() {
   const summaries: DeploymentSummary[] = recent.map((d) => ({
     id: d.id,
     serviceName: d.serviceName,
-    serviceSlug: d.serviceSlug,
+    appSlug: d.appSlug,
     commitMessage: d.commitMessage,
     status: d.status,
     createdAt: d.createdAt,
@@ -38,7 +38,7 @@ export default async function LogsPage() {
         <EmptyState
           icon={ScrollText}
           title="No logs yet"
-          description="Deploy a service to start streaming build and runtime logs here."
+          description="Deploy an app to start streaming build and runtime logs here."
         />
       ) : (
         <LogViewer deployments={summaries} logsById={logsById} />

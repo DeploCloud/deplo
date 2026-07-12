@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   namedVolumeHostNames,
   composeStackVolumeHostNames,
-  serviceMoveVolumeNames,
+  appMoveVolumeNames,
   assertSafeVolumeNames,
 } from "./project-backup-descriptor";
 import type { VolumeMount } from "../types";
@@ -36,7 +36,7 @@ test("named volumes → deplo-<slug>-<name>, host + project mounts excluded", ()
     vol({ name: "pgdata", type: "named" }),
     vol({ name: "cache" }), // type absent ⇒ named (back-compat)
     vol({ type: "host", name: "ignored", hostPath: "/srv/shared" }),
-    vol({ type: "service", name: "cfg", projectPath: "config" }),
+    vol({ type: "app", name: "cfg", projectPath: "config" }),
   ];
   assert.deepEqual(namedVolumeHostNames("my-app", volumes), [
     "deplo-my-app-pgdata",
@@ -107,10 +107,10 @@ services:
 });
 
 /* ------------------------------------------------------------------ */
-/* Service MOVE volume enumeration (excludes external volumes)         */
+/* App MOVE volume enumeration (excludes external volumes)         */
 /* ------------------------------------------------------------------ */
 
-// A minimal Service shaped just enough for serviceMoveVolumeNames (usesComposeStack
+// A minimal App shaped just enough for appMoveVolumeNames (usesComposeStack
 // + slug + volumes). Cast keeps the test focused on the enumeration logic.
 const composeService = (slug: string) =>
   ({
@@ -120,9 +120,9 @@ const composeService = (slug: string) =>
     repo: null,
     dockerImage: null,
     volumes: [],
-  }) as unknown as Parameters<typeof serviceMoveVolumeNames>[0];
+  }) as unknown as Parameters<typeof appMoveVolumeNames>[0];
 
-const singleImageService = (slug: string, volumes: VolumeMount[]) =>
+const singleImageApp = (slug: string, volumes: VolumeMount[]) =>
   ({
     slug,
     source: "docker-image",
@@ -130,9 +130,9 @@ const singleImageService = (slug: string, volumes: VolumeMount[]) =>
     repo: null,
     dockerImage: "nginx",
     volumes,
-  }) as unknown as Parameters<typeof serviceMoveVolumeNames>[0];
+  }) as unknown as Parameters<typeof appMoveVolumeNames>[0];
 
-test("serviceMoveVolumeNames (compose): owns volumes are copied, external EXCLUDED", () => {
+test("appMoveVolumeNames (compose): owns volumes are copied, external EXCLUDED", () => {
   const yaml = `
 volumes:
   dbdata: {}
@@ -147,28 +147,28 @@ volumes:
 `;
   // Contrast with backup (composeStackVolumeHostNames) which INCLUDES externals: a
   // move must NOT relocate a volume Deplo doesn't own.
-  assert.deepEqual(serviceMoveVolumeNames(composeService("shop"), yaml), [
+  assert.deepEqual(appMoveVolumeNames(composeService("shop"), yaml), [
     "deplo-shop_dbdata",
     "deplo-shop_cache",
     "my-pinned-volume",
   ]);
 });
 
-test("serviceMoveVolumeNames (single-container): named volumes, host mounts excluded", () => {
+test("appMoveVolumeNames (single-container): named volumes, host mounts excluded", () => {
   const volumes: VolumeMount[] = [
     vol({ name: "pgdata", type: "named" }),
     vol({ name: "hostbind", type: "host", hostPath: "/srv/x" }),
   ];
   // The rendered YAML is irrelevant for a single-container service (no compose
   // volumes:), so pass "".
-  assert.deepEqual(serviceMoveVolumeNames(singleImageService("api", volumes), ""), [
+  assert.deepEqual(appMoveVolumeNames(singleImageApp("api", volumes), ""), [
     "deplo-api-pgdata",
   ]);
 });
 
-test("serviceMoveVolumeNames (compose): no volumes → empty", () => {
+test("appMoveVolumeNames (compose): no volumes → empty", () => {
   assert.deepEqual(
-    serviceMoveVolumeNames(composeService("shop"), "services:\n  web:\n    image: nginx\n"),
+    appMoveVolumeNames(composeService("shop"), "services:\n  web:\n    image: nginx\n"),
     [],
   );
 });

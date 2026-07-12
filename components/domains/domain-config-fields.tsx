@@ -105,7 +105,7 @@ export function parseMiddlewares(text: string): string[] {
  * error string. On a compose stack (`isCompose`) the service and the service
  * port are BOTH required — a domain must name the compose service it routes to
  * and that service's container port. On a single-image project the port stays
- * optional (blank ⇒ the service's default port).
+ * optional (blank ⇒ the app's default port).
  *
  * `entrypoint` resolves to a tri-state the action layer understands:
  *   - a concrete value → manual mode
@@ -134,7 +134,7 @@ export function resolveDomainConfig(
   }
   const rawPort = state.port.trim();
   if (isCompose && !rawPort) {
-    return { ok: false, error: "Service port is required" };
+    return { ok: false, error: "App port is required" };
   }
   const port = rawPort ? Number(rawPort) : null;
   if (rawPort && (!Number.isInteger(port) || port! < 1 || port! > 65535)) {
@@ -200,7 +200,7 @@ export function DomainConfigFields({
             htmlFor={`${idPrefix}-service`}
             info="Which compose service this domain routes to."
           >
-            Service
+            App
           </FieldLabel>
           <Select
             value={state.service}
@@ -226,10 +226,10 @@ export function DomainConfigFields({
           info={
             isCompose
               ? "The container port of the selected service to route to."
-              : "The container port this domain routes to. Defaults to the service's port."
+              : "The container port this domain routes to. Defaults to the app's port."
           }
         >
-          Service port
+          App port
         </FieldLabel>
         <Input
           id={`${idPrefix}-port`}

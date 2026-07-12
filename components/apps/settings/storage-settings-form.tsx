@@ -13,9 +13,9 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
-import { VolumeFields } from "@/components/services/volume-fields";
-import { UnsavedChangesGuard } from "@/components/services/unsaved-changes-guard";
-import { DirtyHint } from "@/components/services/settings/settings-shared";
+import { VolumeFields } from "@/components/apps/volume-fields";
+import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
+import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import type { VolumeMount } from "@/lib/types";
 import { gqlAction } from "@/lib/graphql-client";
 
@@ -41,16 +41,16 @@ function volumesKey(vs: VolumeMount[]): string {
  * Storage settings: persistent named volumes mounted into the container. A
  * single-container feature — a compose stack declares its own volumes in its
  * YAML, so for those we show a note instead of the editor. `isComposeStack` is
- * derived from the service's SAVED source (the deploy source is edited on its own
+ * derived from the app's SAVED source (the deploy source is edited on its own
  * page now), so it reflects what will actually deploy.
  */
 export function StorageSettingsForm({
-  serviceId,
+  appId,
   slug,
   volumes: initialVolumes,
   isComposeStack,
 }: {
-  serviceId: string;
+  appId: string;
   slug: string;
   volumes: VolumeMount[];
   isComposeStack: boolean;
@@ -91,16 +91,16 @@ export function StorageSettingsForm({
         }
         continue; // host mounts have no docker name to validate
       }
-      if (v.type === "service") {
+      if (v.type === "app") {
         const projectPath = (v.projectPath ?? "").trim().replace(/^\.\/+/, "");
         if (projectPath === "" || projectPath.startsWith("/") || /[\s:]/.test(projectPath)) {
           toast.error(
-            `Service path must be relative to the files dir, e.g. "config.toml"`,
+            `App path must be relative to the files dir, e.g. "config.toml"`,
           );
           return;
         }
         if (projectPath.split("/").includes("..")) {
-          toast.error(`Service path must not contain ".."`);
+          toast.error(`App path must not contain ".."`);
           return;
         }
         continue; // project mounts have no docker name to validate
@@ -121,20 +121,20 @@ export function StorageSettingsForm({
     const committedVolumesKey = volumesKey(volumes);
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($id: String!, $volumes: [VolumeInput!]!) { setServiceVolumes(id: $id, volumes: $volumes) { id } }`,
+        `mutation($id: String!, $volumes: [VolumeInput!]!) { setAppVolumes(id: $id, volumes: $volumes) { id } }`,
         {
-          id: serviceId,
+          id: appId,
           volumes: volumes.map((v) => ({
             id: v.id,
             type:
               v.type === "host"
                 ? "host"
-                : v.type === "service"
+                : v.type === "app"
                   ? "service"
                   : "named",
             name: v.name.trim(),
             projectPath:
-              v.type === "service"
+              v.type === "app"
                 ? (v.projectPath ?? "").trim().replace(/^\.\/+/, "")
                 : undefined,
             hostPath: v.type === "host" ? (v.hostPath ?? "").trim() : undefined,

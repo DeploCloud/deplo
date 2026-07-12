@@ -1,19 +1,19 @@
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
-import { getServiceBySlug } from "@/lib/data/services";
+import { getAppBySlug } from "@/lib/data/apps";
 import { hasCapability } from "@/lib/membership";
 import { listEnv } from "@/lib/data/env";
-import { listSharedEnvGroupsForService } from "@/lib/data/shared-env";
+import { listSharedVarsForApp } from "@/lib/data/shared-vars";
 import { EnvManager } from "@/components/env/env-manager";
 import { EmptyState } from "@/components/shared/empty-state";
 
 export const metadata = { title: "Environment Variables" };
 
-export default async function ServiceEnvPage(
-  props: PageProps<"/services/[slug]/environment">
+export default async function AppEnvPage(
+  props: PageProps<"/apps/[slug]/environment">
 ) {
   const { slug } = await props.params;
-  const project = await getServiceBySlug(slug);
+  const project = await getAppBySlug(slug);
   if (!project) notFound();
 
   // Viewing env values requires manage_env. Without it the tab is hidden, but
@@ -23,21 +23,15 @@ export default async function ServiceEnvPage(
       <EmptyState
         icon={Lock}
         title="No access to environment variables"
-        description="You don't have permission to view this service's environment variables. Ask a team admin for the “Manage env vars” permission."
+        description="You don't have permission to view this app's environment variables. Ask a team admin for the “Manage env vars” permission."
       />
     );
   }
 
-  const [vars, sharedGroups] = await Promise.all([
+  const [vars, sharedVars] = await Promise.all([
     listEnv(project.id),
-    listSharedEnvGroupsForService(project.id),
+    listSharedVarsForApp(project.id),
   ]);
 
-  return (
-    <EnvManager
-      serviceId={project.id}
-      vars={vars}
-      sharedGroups={sharedGroups}
-    />
-  );
+  return <EnvManager appId={project.id} vars={vars} sharedVars={sharedVars} />;
 }

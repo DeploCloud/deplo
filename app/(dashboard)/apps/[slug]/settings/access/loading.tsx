@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SectionLabel } from "@/components/services/settings/settings-skeletons";
+import { SectionLabel } from "@/components/apps/settings/settings-skeletons";
 
 /** Access settings (HTTP Basic Auth). */
 export default function Loading() {

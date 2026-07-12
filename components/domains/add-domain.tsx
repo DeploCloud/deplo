@@ -29,11 +29,11 @@ import { gqlAction } from "@/lib/graphql-client";
  * compose stack) so the service selector can be populated client-side, and its
  * default container port so a new single-image domain's port field is pre-filled
  * (every domain now carries an explicit port). */
-export interface AddDomainService {
+export interface AddDomainApp {
   id: string;
   name: string;
   compose?: string | null;
-  /** The service's default container port (build.port) — seeds the port field. */
+  /** The app's default container port (build.port) — seeds the port field. */
   defaultPort?: number;
 }
 
@@ -41,11 +41,11 @@ export interface AddDomainService {
  * nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`) resolved
  * server-side; the dialog offers a one-click button to drop it into the field. */
 export interface AddDomainProps {
-  project: AddDomainService;
+  project: AddDomainApp;
   suggestedDomain?: string;
 }
 
-/** Service names declared in a compose file, parsed in the browser (js-yaml is
+/** App names declared in a compose file, parsed in the browser (js-yaml is
  * a client-safe dep, also used by the compose linter). Returns [] for a missing
  * or malformed compose — the dialog then shows no service selector. */
 function composeServices(compose?: string | null): string[] {
@@ -68,7 +68,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
     initialDomainConfig(undefined, project.defaultPort),
   );
 
-  // The service's compose services (empty ⇒ single-image). A compose stack
+  // The app's compose services (empty ⇒ single-image). A compose stack
   // offers a service selector; the per-domain port is always available.
   const services = React.useMemo(
     () => composeServices(project.compose),
@@ -88,11 +88,11 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
     }
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation AddDomain($serviceId: String!, $name: String!, $config: DomainConfigInput) {
-          addDomain(serviceId: $serviceId, name: $name, config: $config) { id }
+        `mutation AddDomain($appId: String!, $name: String!, $config: DomainConfigInput) {
+          addDomain(appId: $appId, name: $name, config: $config) { id }
         }`,
         {
-          serviceId: project.id,
+          appId: project.id,
           name,
           config: {
             port: resolved.port,
@@ -147,7 +147,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
                       works with zero DNS setup.
                     </>
                   ) : (
-                    "The custom hostname to route to this service, e.g. app.example.com. Add its DNS record afterward to verify."
+                    "The custom hostname to route to this app, e.g. app.example.com. Add its DNS record afterward to verify."
                   )
                 }
               >

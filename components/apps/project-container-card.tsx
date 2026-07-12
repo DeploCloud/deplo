@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { FolderColorPicker } from "@/components/services/folder-color-picker";
+import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { cn, readableTextColor } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 // Shared with the Overview SERVER component — must stay in a plain module (an
@@ -36,7 +36,7 @@ export interface ProjectCardData {
   name: string;
   slug: string;
   color?: string | null;
-  serviceCount: number;
+  appCount: number;
   environmentCount: number;
 }
 
@@ -48,10 +48,10 @@ type MenuKit = {
 
 /**
  * A Project tile on the Overview — an "advanced folder" (ADR-0009) whose
- * environments each hold their own services. The whole card links to the
+ * environments each hold their own apps. The whole card links to the
  * drill-in view on the Overview itself (`/?project=<id>`, environment dropdown
  * inside); a ⋯ menu (open / rename / colour / delete) sits above the link.
- * Delete re-parents the project's services back to the top
+ * Delete re-parents the project's apps back to the top
  * level — it never deletes them. While a reorder drag is active the link is
  * made inert, and `dropActive` highlights the card as a drop target.
  */
@@ -83,9 +83,9 @@ export function ProjectContainerCard({
 
   const href = projectHref(project.id, view);
   const e = project.environmentCount;
-  const s = project.serviceCount;
+  const s = project.appCount;
   const countLabel =
-    `${s} ${s === 1 ? "service" : "services"} · ${e} ${e === 1 ? "environment" : "environments"}`;
+    `${s} ${s === 1 ? "app" : "apps"} · ${e} ${e === 1 ? "environment" : "environments"}`;
 
   const tileStyle = project.color
     ? { backgroundColor: project.color, color: readableTextColor(project.color) }
@@ -290,7 +290,7 @@ export function ProjectContainerCard({
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title={`Delete ${project.name}?`}
-        description="The project is removed, but its services are kept — they move back to the Overview top level. This cannot be undone."
+        description="The project is removed, but its apps are kept — they move back to the Overview top level. This cannot be undone."
         confirmLabel="Delete project"
         successMessage="Project deleted"
         onConfirm={async () => {

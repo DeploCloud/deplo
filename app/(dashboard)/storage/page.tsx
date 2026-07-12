@@ -3,7 +3,7 @@ import { listDatabases } from "@/lib/data/databases";
 import { listS3 } from "@/lib/data/s3";
 import { listBackups } from "@/lib/data/backups";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
-import { listServices } from "@/lib/data/services";
+import { listApps } from "@/lib/data/apps";
 import { canExposePorts } from "@/lib/membership";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -48,9 +48,9 @@ export default async function StoragePage(props: PageProps<"/storage">) {
       listS3(),
       listBackups(),
       listServersForCurrentTeam(),
-      listServices(),
+      listApps(),
       // Gates the "Expose publicly" toggle: only a user with the publish-ports
-      // grant may open a database to the internet (same grant as a service's
+      // grant may open a database to the internet (same grant as an app's
       // compose `ports:`). Server-enforced too — this only hides the affordance.
       canExposePorts(),
     ]);
