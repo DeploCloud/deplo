@@ -271,6 +271,11 @@ export interface AgentConnection {
   ): Promise<{ ok: boolean; error: string; deleted: number }>;
 
   // ---- Part C: console observability ----
+  /** The RAW docker state of an app's single-image container (`deplo-<slug>`):
+   *  "running" | "restarting" | "exited" | … . The one place the agent already
+   *  tells the truth about a crash loop; ListInstances only carries a boolean.
+   *  A compose stack's containers are not addressable by slug — `exists:false`. */
+  inspect(slug: string): Promise<{ exists: boolean; running: boolean; state: string }>;
   /** Live `docker logs -f` as an output-only AttachHandle (reuses the SSE session
    *  plumbing). `write` is a no-op; `close()` cancels the stream + the grpc client. */
   followLogs(appId: string, container: string, tail: number): AttachHandle;
@@ -508,6 +513,23 @@ function toAgentError(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
+/** Why a log stream died, in the only vocabulary the browser is allowed to see. */
+export type LogsFailure = "unreachable" | "not-found" | "denied" | "failed";
+
+/**
+ * Curate a FollowLogs stream failure into a stable, client-safe reason. A raw
+ * gRPC transport error embeds the dial address and the pinned cert fingerprint
+ * (see AppSummary.statusMessage: those never leave the server), so the wire
+ * carries one of these four words and nothing else.
+ */
+function logsFailureReason(err: unknown): LogsFailure {
+  if (toAgentError(err) instanceof AgentUnreachableError) return "unreachable";
+  const code = (err as Partial<ServiceError> | null)?.code;
+  if (code === GrpcStatus.NOT_FOUND) return "not-found";
+  if (code === GrpcStatus.PERMISSION_DENIED) return "denied";
+  return "failed";
+}
+
 /**
  * Resolve a server to a dial target: its declared host/port + the control plane's
  * client cert, pinning the agent cert recorded at bootstrap. Applies uniformly to
@@ -652,7 +674,7 @@ function dial(target: DialTarget): AgentConnection {
   function logsHandle(stream: ClientReadableStream<LogChunk>): AttachHandle {
     const subs = new Set<(c: Buffer) => void>();
     let pending: Buffer[] | null = [];
-    let exitCb: (() => void) | null = null;
+    let exitCb: ((error?: string) => void) | null = null;
     let closed = false;
     const fanout = (buf: Buffer) => {
       if (subs.size === 0 && pending) {
@@ -662,12 +684,17 @@ function dial(target: DialTarget): AgentConnection {
       for (const s of subs) s(buf);
     };
     stream.on("data", (c: LogChunk) => fanout(Buffer.from(c.data)));
-    const end = () => {
+    const end = (error?: string) => {
       if (closed) return;
-      exitCb?.();
+      exitCb?.(error);
     };
-    stream.on("end", end);
-    stream.on("error", end);
+    stream.on("end", () => end());
+    // A stream FAILURE is not a clean end: the agent can refuse the container
+    // (no such container / not this app's), or the host can drop mid-follow.
+    // Reporting it as a plain exit is what left the viewer sitting empty with
+    // nothing to say — carry the reason out so the UI can show it. A cancel we
+    // asked for (close()) is filtered by the `closed` guard above.
+    stream.on("error", (e: Error) => end(logsFailureReason(e)));
     return {
       onData(cb) {
         subs.add(cb);
@@ -1116,6 +1143,25 @@ function dial(target: DialTarget): AgentConnection {
     },
 
     // ---- Part C: console observability ----
+    inspect(slug: string) {
+      return new Promise<{ exists: boolean; running: boolean; state: string }>(
+        (resolve, reject) => {
+          client.inspect(
+            { slug },
+            new Metadata(),
+            consoleDeadline(),
+            (err, resp) =>
+              err
+                ? reject(toAgentError(err))
+                : resolve({
+                    exists: resp.exists,
+                    running: resp.running,
+                    state: resp.state,
+                  }),
+          );
+        },
+      );
+    },
     followLogs(appId: string, container: string, tail: number) {
       return logsHandle(
         client.followLogs(

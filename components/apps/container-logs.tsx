@@ -21,36 +21,65 @@ import {
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
+import type { AppRuntimeView } from "@/components/apps/use-app-runtime";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { stripAnsi } from "@/lib/ansi";
+import { mergeLogBurst } from "@/lib/logs/merge";
 import { detectLogLevel } from "@/lib/log-level-detect";
 import { LEVEL_BADGE_CLASS, LEVEL_LABEL } from "@/lib/log-levels";
 import { cn } from "@/lib/utils";
 
-type Status = "connecting" | "live" | "ended" | "error";
+type Status = "connecting" | "live" | "reattaching" | "ended" | "error";
+
+/** The curated reasons the log route can refuse a stream (lib/infra/agent-client.ts). */
+const FAILURE_TEXT: Record<string, string> = {
+  unreachable: "The server agent is unreachable — the host may be down.",
+  "not-found": "That container no longer exists on the host.",
+  denied: "That container does not belong to this app.",
+  failed: "The log stream failed.",
+};
+
+/** Reattach backoff after the container dies, capped so a crash loop settles into
+ *  a steady poll rather than hammering the agent. */
+const REATTACH_MS = [1_000, 2_000, 4_000, 8_000, 10_000];
+/** Give up auto-reattaching eventually — a tab left open for days on a container
+ *  that will never come back should not keep dialling forever. */
+const MAX_REATTACHES = 60;
+/** After a reattach, `docker logs --tail` replays lines we already show. Treat
+ *  output arriving in this window as that replay and merge it; later output is
+ *  live and appended straight. */
+const REPLAY_WINDOW_MS = 3_000;
 
 /**
  * Live runtime logs (`docker logs -f`) for an app's container.
  *
- * Output streams over an EventSource (SSE) from GET /api/apps/:id/logs; the
- * first `session` event carries the server-side session id, used on unload to
- * detach promptly (the same session/SSE plumbing as the attach console, minus
- * the stdin direction — logs are read-only). Closing the viewer kills only our
- * local `docker logs` client, never the container.
+ * Output streams over an EventSource (SSE) from GET /api/apps/:id/logs; the first
+ * `session` event carries the server-side session id, used on unload to detach
+ * promptly. Closing the viewer kills only our local `docker logs` client, never
+ * the container.
+ *
+ * The container does NOT have to be running. `docker logs` reads the container's
+ * log file, which outlives the process, so a stopped container still shows its
+ * final words — and a crash-looping one is followed ACROSS its restarts: docker
+ * ends the follow every time the process dies, so we reattach, and merge the
+ * replayed tail into what is already on screen instead of duplicating it.
  */
 export function ContainerLogs({
   appId,
   instances,
+  runtime,
 }: {
   appId: string;
   instances: ConsoleInstance[];
+  runtime?: AppRuntimeView | null;
 }) {
-  // Active instance — default to the server-preferred first entry (exposed/
-  // running). Switching reopens the stream against another container in the stack.
+  // Active instance — default to the server-preferred first entry (the app's own
+  // container, even when a sidecar is the only healthy one in the stack).
   const [active, setActive] = React.useState<ConsoleInstance>(
     () => instances[0],
   );
   const [status, setStatus] = React.useState<Status>("connecting");
+  const [failure, setFailure] = React.useState<string | null>(null);
   const [output, setOutput] = React.useState("");
   // Auto-follow keeps the view pinned to the newest line. Turned off when the
   // user scrolls up, back on when they scroll to the bottom (or hit Resume).
@@ -65,31 +94,118 @@ export function ContainerLogs({
   // Bumped on reconnect / instance switch to retrigger the stream effect.
   const [attempt, setAttempt] = React.useState(0);
 
+  // Text already shown, plus the replay-merge state for a reattach.
+  const outputRef = React.useRef("");
+  const replayBaseRef = React.useRef<string | null>(null);
+  const replayBurstRef = React.useRef("");
+  const replayUntilRef = React.useRef(0);
+  // Consecutive auto-reattaches; reset by any manual action or new output.
+  const reattachCount = React.useRef(0);
+
+  // The container we are streaming, as the host has it right now — so the stream
+  // knows whether an ended follow means "it crashed and will be back" or "it is
+  // gone". Read from the runtime poll, which is the only live source of that.
+  const liveState = runtime?.containers.find((c) => c.name === active.name);
+  const comingBack =
+    !!runtime &&
+    !runtime.unreachable &&
+    (liveState?.state === "restarting" ||
+      runtime.restarting > 0 ||
+      !!liveState?.running);
+  // Mirrored into a ref so the stream effect can read the CURRENT answer when a
+  // follow ends, without listing it as a dependency — re-running the effect on
+  // every runtime poll would tear the stream down and rebuild it every 5s.
+  const comingBackRef = React.useRef(comingBack);
+  React.useEffect(() => {
+    comingBackRef.current = comingBack;
+  }, [comingBack]);
+
   const base = `/api/apps/${encodeURIComponent(appId)}/logs`;
 
   React.useEffect(() => {
     const url = `${base}?container=${encodeURIComponent(active.name)}`;
     const es = new EventSource(url);
+    let reattachTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // Everything already on screen is the baseline the replayed tail is merged
+    // against. On a first attach there is nothing to merge, so skip it.
+    if (outputRef.current) {
+      replayBaseRef.current = outputRef.current;
+      replayBurstRef.current = "";
+      replayUntilRef.current = Date.now() + REPLAY_WINDOW_MS;
+    }
+
+    const appendChunk = (text: string) => {
+      const replaying =
+        replayBaseRef.current !== null && Date.now() < replayUntilRef.current;
+      if (replaying) {
+        // Re-merge from the baseline on every chunk: idempotent, so a tail that
+        // arrives split across chunks converges on the same result as one burst.
+        replayBurstRef.current += text;
+        outputRef.current = mergeLogBurst(
+          replayBaseRef.current!,
+          replayBurstRef.current,
+        );
+      } else {
+        replayBaseRef.current = null;
+        replayBurstRef.current = "";
+        outputRef.current += text;
+      }
+      setOutput(outputRef.current);
+    };
 
     es.addEventListener("session", (e) => {
       sessionId.current = JSON.parse((e as MessageEvent).data);
       setStatus("live");
+      setFailure(null);
     });
     es.addEventListener("data", (e) => {
-      setOutput((prev) => prev + JSON.parse((e as MessageEvent).data));
+      appendChunk(JSON.parse((e as MessageEvent).data) as string);
     });
-    es.addEventListener("exit", () => {
-      setStatus("ended");
+
+    // The stream refused to open, or died on a real failure — say so instead of
+    // leaving an empty pane. A permanent refusal (no such container, not ours)
+    // must not be retried; an unreachable host may recover, but the user asks.
+    es.addEventListener("failure", (e) => {
+      const reason = JSON.parse((e as MessageEvent).data) as string;
+      setFailure(FAILURE_TEXT[reason] ?? FAILURE_TEXT.failed);
+      setStatus("error");
       es.close();
     });
+
+    // `docker logs -f` ends every time the container dies. For a container docker
+    // is restarting, that is not the end of the story — it is one turn of the
+    // loop, so reattach (with backoff) and keep the output flowing across it.
+    es.addEventListener("exit", () => {
+      es.close();
+      if (comingBackRef.current && reattachCount.current < MAX_REATTACHES) {
+        const wait =
+          REATTACH_MS[Math.min(reattachCount.current, REATTACH_MS.length - 1)];
+        reattachCount.current += 1;
+        setStatus("reattaching");
+        reattachTimer = setTimeout(() => setAttempt((n) => n + 1), wait);
+        return;
+      }
+      setStatus("ended");
+    });
+
     es.onerror = () => {
-      // No `session` frame yet ⇒ the stream failed to open (404/409). Once live,
-      // an error means the stream ended — treat it as such rather than retrying.
-      setStatus((s) => (s === "live" ? "ended" : "error"));
+      // No `session` frame yet ⇒ the stream failed to open. Once live, an error
+      // is the connection dropping — reattach if the container is still there.
+      setStatus((s) => {
+        if (s !== "live") return "error";
+        if (comingBackRef.current && reattachCount.current < MAX_REATTACHES) {
+          reattachCount.current += 1;
+          reattachTimer = setTimeout(() => setAttempt((n) => n + 1), 2_000);
+          return "reattaching";
+        }
+        return "ended";
+      });
       es.close();
     };
 
     return () => {
+      clearTimeout(reattachTimer);
       es.close();
       // Best-effort detach so the server reaps the `docker logs` child promptly
       // instead of waiting for the idle timeout. sendBeacon survives unload.
@@ -144,22 +260,28 @@ export function ContainerLogs({
     setFollow(atBottom);
   }
 
+  function resetStream() {
+    setOutput("");
+    outputRef.current = "";
+    replayBaseRef.current = null;
+    replayBurstRef.current = "";
+    reattachCount.current = 0;
+    sessionId.current = null;
+    setFailure(null);
+    setStatus("connecting");
+    setFollow(true);
+  }
+
   function switchInstance(name: string) {
     const next = instances.find((i) => i.name === name);
     if (!next || next.name === active.name) return;
-    setOutput("");
-    sessionId.current = null;
-    setStatus("connecting");
-    setFollow(true);
+    resetStream();
     setActive(next);
     setAttempt((n) => n + 1);
   }
 
   function reconnect() {
-    setOutput("");
-    sessionId.current = null;
-    setStatus("connecting");
-    setFollow(true);
+    resetStream();
     setAttempt((n) => n + 1);
   }
 
@@ -175,9 +297,11 @@ export function ContainerLogs({
   const statusLabel: Record<Status, string> = {
     connecting: "connecting…",
     live: "streaming",
+    reattaching: "container restarted — reattaching…",
     ended: "ended",
     error: "failed",
   };
+  const busy = status === "connecting" || status === "reattaching";
 
   return (
     <div className="overflow-hidden rounded-xl border border-border">
@@ -190,30 +314,39 @@ export function ContainerLogs({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {instances.map((inst) => (
-                <SelectItem
-                  key={inst.name}
-                  value={inst.name}
-                  className="font-mono text-xs"
-                >
-                  <span className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "size-1.5 rounded-full",
-                        inst.running
-                          ? "bg-[var(--success)]"
-                          : "bg-muted-foreground/50",
-                      )}
-                    />
-                    {inst.service}
-                    {inst.exposed ? (
-                      <span className="text-[10px] text-muted-foreground">
-                        app
-                      </span>
-                    ) : null}
-                  </span>
-                </SelectItem>
-              ))}
+              {instances.map((inst) => {
+                const state = runtime?.containers.find(
+                  (c) => c.name === inst.name,
+                );
+                const restarting = state?.state === "restarting";
+                const up = state ? state.running : inst.running;
+                return (
+                  <SelectItem
+                    key={inst.name}
+                    value={inst.name}
+                    className="font-mono text-xs"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "size-1.5 rounded-full",
+                          restarting
+                            ? "animate-pulse bg-[var(--warning)]"
+                            : up
+                              ? "bg-[var(--success)]"
+                              : "bg-destructive",
+                        )}
+                      />
+                      {inst.service}
+                      {inst.exposed ? (
+                        <span className="text-[10px] text-muted-foreground">
+                          app
+                        </span>
+                      ) : null}
+                    </span>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         ) : (
@@ -226,7 +359,9 @@ export function ContainerLogs({
               ? "text-[var(--success)]"
               : status === "error"
                 ? "text-destructive"
-                : "text-muted-foreground",
+                : status === "reattaching"
+                  ? "text-[var(--warning)]"
+                  : "text-muted-foreground",
           )}
         >
           <span
@@ -236,7 +371,9 @@ export function ContainerLogs({
                 ? "animate-pulse bg-[var(--success)]"
                 : status === "error"
                   ? "bg-destructive"
-                  : "bg-muted-foreground/50",
+                  : status === "reattaching"
+                    ? "animate-pulse bg-[var(--warning)]"
+                    : "bg-muted-foreground/50",
             )}
           />
           {statusLabel[status]}
@@ -266,7 +403,10 @@ export function ContainerLogs({
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => setOutput("")}
+              onClick={() => {
+                setOutput("");
+                outputRef.current = "";
+              }}
               className="h-7 gap-1.5 px-2 text-xs"
             >
               <Trash2 className="size-3.5" />
@@ -307,11 +447,22 @@ export function ContainerLogs({
           <p className="text-[11px] text-zinc-500">Connecting to log stream…</p>
         ) : null}
 
-        {(status === "live" || status === "connecting") && output === "" ? (
+        {status === "reattaching" ? (
+          <p className="mt-1 text-[11px] text-[var(--warning)]">
+            The container exited — waiting for docker to restart it, then
+            picking the stream back up.
+          </p>
+        ) : null}
+
+        {(status === "live" || busy) && output === "" && !failure ? (
           <p className="mt-1 text-[11px] text-zinc-500">
             No output yet — new log lines will appear here as the container emits
             them.
           </p>
+        ) : null}
+
+        {failure ? (
+          <p className="mt-1 text-[11px] text-destructive">{failure}</p>
         ) : null}
 
         {status === "ended" || status === "error" ? (

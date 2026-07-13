@@ -426,8 +426,14 @@ export async function inspectStdio(
 export interface AttachHandle {
   /** Subscribe to merged container output; returns an unsubscribe fn. */
   onData(cb: (chunk: Buffer) => void): () => void;
-  /** Run `cb` once when the attach client exits (container stop / detach). */
-  onExit(cb: () => void): void;
+  /**
+   * Run `cb` once when the attach client exits (container stop / detach).
+   * `error` is set only when the stream died on a FAILURE (the agent refused the
+   * container, the host went away) rather than ending cleanly — the difference
+   * between "the container stopped, that's all it had to say" and "we never got
+   * to read anything", which the viewer must not present as the same thing.
+   */
+  onExit(cb: (error?: string) => void): void;
   /** Send raw bytes to the container's stdin (best-effort; no-op once closed). */
   write(data: string): void;
   /** Detach: tear down our local attach client only, never the container. */

@@ -154,6 +154,28 @@ export function detectDefaultApp(
   return detectExpose(services as Record<string, App>);
 }
 
+/**
+ * The service names a compose app is SUPPOSED to have containers for. The runtime
+ * probe compares them against what the host actually has: a service with no
+ * container at all (a `compose up` that never brought it back, a container that
+ * was removed) is invisible to `docker ps`, so without this the app looks
+ * perfectly healthy — every container that exists is running, because the broken
+ * one is not there to count. Empty when the compose is unparseable or has none.
+ */
+export function composeServiceNames(compose: string | null): string[] {
+  if (!compose || !compose.trim()) return [];
+  let doc: ComposeDoc;
+  try {
+    doc = (yaml.load(compose) as ComposeDoc) ?? {};
+  } catch {
+    return [];
+  }
+  const services = doc.services;
+  if (!services || typeof services !== "object" || Array.isArray(services))
+    return [];
+  return Object.keys(services as Record<string, unknown>);
+}
+
 /** Pick the service Traefik should route to when the template did not say. */
 function detectExpose(
   services: Record<string, App>,

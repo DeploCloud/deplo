@@ -3,10 +3,13 @@ import {
   getConsoleInfo,
   getLogsInfo,
   getShellLabel,
+  getAppRuntime,
   execInContainer,
   type ConsoleInfo,
   type LogsInfo,
   type ConsoleInstance,
+  type AppRuntime,
+  type RuntimeContainer,
 } from "@/lib/data/console";
 
 /**
@@ -56,9 +59,61 @@ const LogsInfoRef = builder.objectRef<LogsInfo>("LogsInfo").implement({
   description: "Lighter container list for the logs viewer (no shell probe).",
   fields: (t) => ({
     running: t.exposeBoolean("running"),
+    streamable: t.exposeBoolean("streamable", {
+      description:
+        "A real container exists on the host, so its logs can be streamed — " +
+        "whether it is running, restarting or exited. Attach on this, not on " +
+        "`running`: a crash-looping container is the one whose logs you need.",
+    }),
+    unreachable: t.exposeBoolean("unreachable", {
+      description: "The owning server's agent could not be reached.",
+    }),
     instances: t.field({
       type: [ConsoleInstanceRef],
       resolve: (l) => l.instances,
+    }),
+  }),
+});
+
+const RuntimeContainerRef = builder
+  .objectRef<RuntimeContainer>("RuntimeContainer")
+  .implement({
+    description: "One container of an app, as the host actually has it now.",
+    fields: (t) => ({
+      name: t.exposeString("name"),
+      service: t.exposeString("service"),
+      state: t.exposeString("state", {
+        description:
+          'Raw docker state ("running" | "restarting" | "exited" | …), or "" ' +
+          "when the owning agent is too old to report it.",
+      }),
+      running: t.exposeBoolean("running"),
+      exposed: t.exposeBoolean("exposed"),
+    }),
+  });
+
+const AppRuntimeRef = builder.objectRef<AppRuntime>("AppRuntime").implement({
+  description:
+    "What an app's containers are ACTUALLY doing on the host, read live from " +
+    "the owning agent. `App.status` only records the last thing the control " +
+    "plane asked for (deploy / start / stop), so it keeps saying 'active' for " +
+    "an app that has been crash-looping since its deploy succeeded.",
+  fields: (t) => ({
+    total: t.exposeInt("total"),
+    running: t.exposeInt("running"),
+    restarting: t.exposeInt("restarting"),
+    missing: t.exposeStringList("missing", {
+      description:
+        "Declared services with NO container on the host — the failure the " +
+        "running/total counts cannot see, because a container that was never " +
+        "created is not there to be counted as stopped.",
+    }),
+    unreachable: t.exposeBoolean("unreachable", {
+      description: "The agent did not answer: the counts are unknown, not zero.",
+    }),
+    containers: t.field({
+      type: [RuntimeContainerRef],
+      resolve: (r) => r.containers,
     }),
   }),
 });
@@ -118,6 +173,16 @@ builder.queryFields((t) => ({
     description: "Lighter instance list for the logs viewer.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => getLogsInfo(appId),
+  }),
+  appRuntime: t.field({
+    type: AppRuntimeRef,
+    nullable: true,
+    authScopes: { loggedIn: true },
+    description:
+      "Live container state for an app, straight from the owning agent — the " +
+      "truth behind the stored status. Polled by the app's status badge.",
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: (_r, { appId }) => getAppRuntime(appId),
   }),
   shellLabel: t.field({
     type: "String",

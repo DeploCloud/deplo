@@ -15,12 +15,11 @@ export default async function AppLogsPage(
   if (!project) notFound();
 
   const latest = project.latestDeployment;
-  // Reuse the console's instance discovery: the same containers, default
-  // (exposed/running) first, so the logs picker matches the console's. Logs
-  // doesn't use the shell label, so skip that probe (getLogsInfo, not
-  // getAttachInfo) to keep this render path off the ≤4 extra docker exec calls.
-  // Also seed the most recent build's logs so a stopped project (no running
-  // container to stream from) still shows something instead of a dead end.
+  // Reuse the console's instance discovery: the same containers, the app's own
+  // one first, so the logs picker matches the console's. Logs doesn't use the
+  // shell label, so skip that probe (getLogsInfo, not getAttachInfo) to keep this
+  // render path off the ≤4 extra docker exec calls. Also seed the most recent
+  // build's logs, for an app that has no container at all to read from.
   const [info, buildLogs] = await Promise.all([
     getLogsInfo(project.id),
     latest ? getLogs(latest.id) : Promise.resolve([]),
@@ -30,16 +29,16 @@ export default async function AppLogsPage(
     <div className="space-y-5">
       <PageHeader
         title="Logs"
-        description="Live runtime output while the container runs, or the most recent build's logs when it isn't."
+        description="Live output from the app's container — including while it is crash-looping — or the most recent build's logs when there is no container at all."
       />
 
-      {/* Follows the app's live running state: the runtime stream shows while
-          the container runs, and falls back to the most recent build's logs the
-          moment it stops — all without a reload. */}
+      {/* Seeded with whatever containers the host has, running or not:
+          `docker logs` outlives the process, so a dead or restarting container
+          still streams. Only an app with NO container falls back to build logs. */}
       <LiveLogs
         appId={project.id}
-        initialInstances={info?.running ? info.instances : null}
-        initialRunning={!!info?.running}
+        initialInstances={info?.instances ?? []}
+        initialStreamable={!!info?.streamable}
         latestDeployment={latest ? { id: latest.id, status: latest.status } : null}
         initialBuildLogs={buildLogs}
       />

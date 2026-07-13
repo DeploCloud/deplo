@@ -90,8 +90,17 @@ export async function GET(
         }
       });
 
-      session.onExit = () => {
+      // A stream that FAILED (agent unreachable, container refused) is not the
+      // same as a container that simply stopped talking, and the viewer must not
+      // render both as a silent empty pane: send the curated reason first, then
+      // close. One of unreachable | not-found | denied | failed.
+      //
+      // NOT named "error" — like "open", EventSource dispatches its own transport
+      // errors under that name, so a server-sent `event: error` would arrive
+      // indistinguishable from a dropped connection.
+      session.onExit = (error) => {
         try {
+          if (error) send("failure", error);
           send("exit", "");
           controller.close();
         } catch {

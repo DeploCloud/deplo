@@ -121,6 +121,24 @@ input AppEnvInput {
   value: String!
 }
 
+"""
+What an app's containers are ACTUALLY doing on the host, read live from the owning agent. `App.status` only records the last thing the control plane asked for (deploy / start / stop), so it keeps saying 'active' for an app that has been crash-looping since its deploy succeeded.
+"""
+type AppRuntime {
+  containers: [RuntimeContainer!]
+
+  """
+  Declared services with NO container on the host — the failure the running/total counts cannot see, because a container that was never created is not there to be counted as stopped.
+  """
+  missing: [String!]
+  restarting: Int
+  running: Int
+  total: Int
+
+  """The agent did not answer: the counts are unknown, not zero."""
+  unreachable: Boolean
+}
+
 """A shared variable as seen from one app, with its per-app link state."""
 type AppSharedVar {
   applied: Boolean
@@ -774,6 +792,14 @@ type LogLine {
 type LogsInfo {
   instances: [ConsoleInstance!]
   running: Boolean
+
+  """
+  A real container exists on the host, so its logs can be streamed — whether it is running, restarting or exited. Attach on this, not on `running`: a crash-looping container is the one whose logs you need.
+  """
+  streamable: Boolean
+
+  """The owning server's agent could not be reached."""
+  unreachable: Boolean
 }
 
 """A user's membership in the active team (no email exposed)."""
@@ -1363,6 +1389,11 @@ type Query {
   """Whether the app has an on-disk files directory (drives the Files tab)."""
   appFilesExist(appId: String!): Boolean
 
+  """
+  Live container state for an app, straight from the owning agent — the truth behind the stored status. Polled by the app's status badge.
+  """
+  appRuntime(appId: String!): AppRuntime
+
   """All apps in the active team, newest first."""
   apps: [App!]
 
@@ -1581,6 +1612,19 @@ enum Role {
   member
   owner
   viewer
+}
+
+"""One container of an app, as the host actually has it now."""
+type RuntimeContainer {
+  exposed: Boolean
+  name: String
+  running: Boolean
+  service: String
+
+  """
+  Raw docker state ("running" | "restarting" | "exited" | …), or "" when the owning agent is too old to report it.
+  """
+  state: String
 }
 
 """An S3-compatible storage destination owned by a team (secrets masked)."""

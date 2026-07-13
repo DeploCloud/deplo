@@ -42,8 +42,13 @@ export interface LogsSession {
    * null so live chunks pass straight through.
    */
   backlog: Buffer[] | null;
-  /** Called when the `docker logs` child exits so the stream can close cleanly. */
-  onExit?: () => void;
+  /**
+   * Called when the `docker logs` child exits so the stream can close cleanly.
+   * `error` is set only when the backing FAILED (agent unreachable, container
+   * refused) — the route turns it into an SSE `error` frame so the viewer can
+   * say why it has nothing, instead of showing an empty pane.
+   */
+  onExit?: (error?: string) => void;
   idleTimer?: NodeJS.Timeout;
   exited: boolean;
 }
@@ -98,11 +103,11 @@ export function open(
     for (const sub of session.subscribers) sub(chunk);
   });
 
-  handle.onExit(() => {
+  handle.onExit((error) => {
     if (session.exited) return;
     session.exited = true;
     cleanup?.();
-    session.onExit?.();
+    session.onExit?.(error);
     clearTimeout(session.idleTimer);
     sessions.delete(id);
   });

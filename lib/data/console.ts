@@ -5,6 +5,7 @@ import { requireActiveTeamId, requireCapability } from "../membership";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { loadTeamApp } from "./app-graph-load";
 import { primaryDomainApp } from "./domains";
+import { composeServiceNames } from "../deploy/compose-stack";
 import { isDockerLevelStderr } from "../infra/docker";
 import {
   connectAgent,
@@ -92,10 +93,30 @@ export async function listInstances(p: App): Promise<ConsoleInstance[]> {
   const exposeService = await primaryDomainApp(p.id);
   const conn = await connectAgent(p.serverId);
   try {
-    return await conn.listInstances(p.id, p.slug, exposeService);
+    return orderInstances(p, await conn.listInstances(p.id, p.slug, exposeService));
   } finally {
     conn.close();
   }
+}
+
+/**
+ * Default-target order for a stack: the app's OWN service first, then the
+ * Traefik-exposed one, then whatever is running, then alphabetically.
+ *
+ * Running is deliberately the LAST tiebreak, not the first. The agent orders
+ * running containers ahead of stopped ones, which picks the wrong default in the
+ * exact case that matters most: a crash-looping app whose Postgres sidecar is
+ * healthy would default the console and the log viewer to Postgres, hiding the
+ * one container whose output explains the crash.
+ */
+function orderInstances(p: App, instances: ConsoleInstance[]): ConsoleInstance[] {
+  const own = (i: ConsoleInstance) => i.service === p.slug;
+  return [...instances].sort((a, b) => {
+    if (own(a) !== own(b)) return own(a) ? -1 : 1;
+    if (a.exposed !== b.exposed) return a.exposed ? -1 : 1;
+    if (a.running !== b.running) return a.running ? -1 : 1;
+    return a.service.localeCompare(b.service);
+  });
 }
 
 /**
@@ -106,7 +127,17 @@ export async function listInstances(p: App): Promise<ConsoleInstance[]> {
  * those exec probes on its render path.
  */
 export interface LogsInfo {
+  /** At least one container of the app is in docker state "running". */
   running: boolean;
+  /**
+   * A real container exists on the host, so `docker logs` has output to stream —
+   * whether it is running, restarting or long dead. The viewer attaches on THIS,
+   * never on `running`: a crash-looping container is precisely the one whose logs
+   * you need, and gating the stream on "running" is what hid them.
+   */
+  streamable: boolean;
+  /** The agent could not be reached: the list below is a placeholder, not truth. */
+  unreachable: boolean;
   instances: ConsoleInstance[];
 }
 
@@ -132,14 +163,23 @@ function displayFallback(p: App): ConsoleInstance {
   };
 }
 
-/** listInstances for a page render: never throws, never empty — degrades to a
- *  single honest, not-running placeholder so the console/logs page always loads. */
-async function listInstancesForDisplay(p: App): Promise<ConsoleInstance[]> {
+/**
+ * listInstances for a page render: never throws, never empty — degrades to a
+ * single honest, not-running placeholder so the console/logs page always loads.
+ * `real` says whether the containers are the host's truth or that placeholder, so
+ * callers can tell "nothing to stream from" apart from "a container is down".
+ */
+async function listInstancesForDisplay(
+  p: App,
+): Promise<{ instances: ConsoleInstance[]; real: boolean; unreachable: boolean }> {
   try {
     const instances = await listInstances(p);
-    return instances.length ? instances : [displayFallback(p)];
+    return instances.length
+      ? { instances, real: true, unreachable: false }
+      : { instances: [displayFallback(p)], real: false, unreachable: false };
   } catch (e) {
-    if (e instanceof AgentUnreachableError) return [displayFallback(p)];
+    if (e instanceof AgentUnreachableError)
+      return { instances: [displayFallback(p)], real: false, unreachable: true };
     throw e;
   }
 }
@@ -148,8 +188,154 @@ export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
-  const instances = await listInstancesForDisplay(p);
-  return { running: instances.some((i) => i.running), instances };
+  const found = await listInstancesForDisplay(p);
+  return {
+    running: found.instances.some((i) => i.running),
+    streamable: found.real,
+    unreachable: found.unreachable,
+    instances: found.instances,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Runtime truth                                                       */
+/* ------------------------------------------------------------------ */
+
+/** One container of an app, as the host actually has it right now. */
+export interface RuntimeContainer {
+  name: string;
+  service: string;
+  /**
+   * The raw docker state — "running" | "restarting" | "exited" | "created" |
+   * "paused" | "dead", or "" when the owning agent is too old to report it (it
+   * only answers a running/not-running boolean). Never guess it: "" means
+   * unknown, and the UI must say "not running", not invent a reason.
+   */
+  state: string;
+  running: boolean;
+  exposed: boolean;
+}
+
+/**
+ * What an app's containers are ACTUALLY doing on the host, read live from the
+ * owning agent — as opposed to `apps.status`, which only records the last thing
+ * the control plane asked for (deploy / start / stop) and therefore keeps
+ * reporting "active" for an app that has been crash-looping since the deploy.
+ */
+export interface AppRuntime {
+  /** Containers that exist for this app, in any state. 0 = the stack is gone. */
+  total: number;
+  /** How many are in docker state "running". */
+  running: number;
+  /** How many docker is restarting right now — i.e. a crash loop. */
+  restarting: number;
+  /**
+   * Services the app declares that have NO container on the host at all.
+   *
+   * The counts above can only see containers that exist, so a service whose
+   * container was never created (or was removed) is invisible to them: an app
+   * whose only broken container is gone reads as "everything that exists is
+   * running", which is how a stack missing its main service still showed Online.
+   */
+  missing: string[];
+  containers: RuntimeContainer[];
+  /** The agent could not be reached: the counts are UNKNOWN, not zero. */
+  unreachable: boolean;
+}
+
+/**
+ * The live runtime probe is polled (the app header, the logs page) and several
+ * clients can watch the same app at once, so hold each answer briefly to keep a
+ * burst of pollers down to one round trip per app. Short enough that a container
+ * dying still surfaces within a poll tick.
+ */
+const RUNTIME_TTL_MS = 3_000;
+const runtimeCache = new Map<string, { at: number; value: AppRuntime }>();
+
+export async function getAppRuntime(appId: string): Promise<AppRuntime | null> {
+  const teamId = await requireActiveTeamId();
+  const p = await loadTeamApp(appId, teamId);
+  if (!p) return null;
+
+  const hit = runtimeCache.get(p.id);
+  if (hit && Date.now() - hit.at < RUNTIME_TTL_MS) return hit.value;
+
+  const value = await probeRuntime(p);
+  runtimeCache.set(p.id, { at: Date.now(), value });
+  return value;
+}
+
+async function probeRuntime(p: App): Promise<AppRuntime> {
+  const exposeService = await primaryDomainApp(p.id);
+  let conn: AgentConnection;
+  try {
+    conn = await connectAgent(p.serverId);
+  } catch {
+    return unknownRuntime();
+  }
+  try {
+    const instances = orderInstances(
+      p,
+      await conn.listInstances(p.id, p.slug, exposeService),
+    );
+
+    // ListInstances only carries a running/not-running boolean, so a restarting
+    // container and a dead one look identical there. For a single-image app the
+    // container is `deplo-<slug>`, which the Inspect RPC resolves by name and
+    // answers with the raw docker state — enough to tell a crash loop from a
+    // container that simply exited. A compose stack's containers are
+    // `deplo-<slug>-<service>-N`, which Inspect cannot address, so they stay
+    // unknown ("") until the agent reports per-instance state.
+    let soloState = "";
+    if (instances.length === 1 && instances[0].name === containerName(p)) {
+      try {
+        const seen = await conn.inspect(p.slug);
+        if (seen.exists) soloState = seen.state;
+      } catch {
+        /* best-effort: an Inspect failure just leaves the state unknown */
+      }
+    }
+
+    const containers: RuntimeContainer[] = instances.map((i, idx) => ({
+      name: i.name,
+      service: i.service,
+      state: idx === 0 ? soloState : "",
+      running: i.running,
+      exposed: i.exposed,
+    }));
+
+    // A compose app declares its services; a single-image one has exactly one,
+    // named after the slug. Anything declared with no container on the host is
+    // missing — the failure `docker ps` cannot show you.
+    const declared = p.compose ? composeServiceNames(p.compose) : [p.slug];
+    const present = new Set(containers.map((c) => c.service));
+    const missing = declared.filter((s) => !present.has(s));
+
+    return {
+      total: containers.length,
+      running: containers.filter((c) => c.running).length,
+      restarting: containers.filter((c) => c.state === "restarting").length,
+      missing,
+      containers,
+      unreachable: false,
+    };
+  } catch (e) {
+    if (e instanceof AgentUnreachableError) return unknownRuntime();
+    throw e;
+  } finally {
+    conn.close();
+  }
+}
+
+function unknownRuntime(): AppRuntime {
+  return {
+    total: 0,
+    running: 0,
+    restarting: 0,
+    missing: [],
+    containers: [],
+    unreachable: true,
+  };
 }
 
 /**
@@ -169,7 +355,7 @@ export async function getConsoleInfo(appId: string): Promise<ConsoleInfo | null>
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
-  const instances = await listInstancesForDisplay(p);
+  const { instances } = await listInstancesForDisplay(p);
   const def = instances[0];
   return {
     containerName: def.name,
@@ -195,7 +381,9 @@ export async function getShellLabel(
   if (!p) return "raw exec (no shell)";
   // Display-grade list: an unreachable remote degrades to a not-running
   // placeholder, so we return "raw exec (no shell)" below rather than throwing.
-  const instances = await listInstancesForDisplay(p);
+  const { instances } = await listInstancesForDisplay(p);
+  // A shell can only be probed inside a RUNNING container, so unlike the logs
+  // target this one does prefer a running instance over the app's own.
   const pick = target
     ? instances.find((i) => i.name === target)
     : instances.find((i) => i.running) ?? instances[0];
@@ -207,8 +395,8 @@ export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
-  const instances = await listInstancesForDisplay(p);
-  // Default target: exposed/running first thanks to listInstances ordering.
+  const { instances } = await listInstancesForDisplay(p);
+  // Default target: the app's own container first, thanks to orderInstances.
   const def = instances[0];
   const running = instances.some((i) => i.running);
   // Probe the default instance's real shell (or lack of one). Only meaningful
@@ -300,9 +488,13 @@ export async function resolveLogsTarget(
     if (e instanceof AgentUnreachableError) return { ok: false, reason: "unreachable" };
     throw e;
   }
-  const pick = target
-    ? instances.find((i) => i.name === target)
-    : instances.find((i) => i.running) ?? instances[0];
+  // Default to the app's own container (orderInstances puts it first), NOT to
+  // "the first one that happens to be running": when the app is crash-looping,
+  // the only running container in the stack is a sidecar, and defaulting to it
+  // streams Postgres' logs to someone trying to read their app's stack trace.
+  // A stopped / restarting container still has logs — `docker logs` reads the
+  // json file, which outlives the process.
+  const pick = target ? instances.find((i) => i.name === target) : instances[0];
   if (!pick) return { ok: false, reason: "no-instance" };
   return { ok: true, instance: pick, server: await serverOf(p) };
 }
