@@ -108,10 +108,7 @@ export function AddNewMenu({
           {canCreateFolder && (
             <DropdownMenuItem
               className="cursor-pointer"
-              onSelect={(e) => {
-                e.preventDefault();
-                setFolderOpen(true);
-              }}
+              onSelect={() => setFolderOpen(true)}
             >
               <FolderPlus className="size-4" />
               {parentFolder ? "New subfolder" : "New folder"}
@@ -120,10 +117,7 @@ export function AddNewMenu({
           {canCreateFolder && (
             <DropdownMenuItem
               className="cursor-pointer"
-              onSelect={(e) => {
-                e.preventDefault();
-                setProjectOpen(true);
-              }}
+              onSelect={() => setProjectOpen(true)}
             >
               <Boxes className="size-4" />
               New project
@@ -134,10 +128,7 @@ export function AddNewMenu({
           <DropdownMenuLabel>Team</DropdownMenuLabel>
           <DropdownMenuItem
             className="cursor-pointer"
-            onSelect={(e) => {
-              e.preventDefault();
-              setTeamOpen(true);
-            }}
+            onSelect={() => setTeamOpen(true)}
           >
             <Users className="size-4" />
             New team
@@ -145,10 +136,7 @@ export function AddNewMenu({
           {canManageMembers && (
             <DropdownMenuItem
               className="cursor-pointer"
-              onSelect={(e) => {
-                e.preventDefault();
-                setMemberOpen(true);
-              }}
+              onSelect={() => setMemberOpen(true)}
             >
               <UserPlus className="size-4" />
               New team member
@@ -161,10 +149,7 @@ export function AddNewMenu({
               <DropdownMenuLabel>Instance</DropdownMenuLabel>
               <DropdownMenuItem
                 className="cursor-pointer"
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setUserOpen(true);
-                }}
+                onSelect={() => setUserOpen(true)}
               >
                 <UserCog className="size-4" />
                 New user

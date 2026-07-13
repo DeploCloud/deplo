@@ -55,7 +55,7 @@ const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
 >(({ side = "left", className, children, onInteractOutside, ...props }, ref) => {
-  const nestedLayerWasOpenRef = useNestedLayerDismissGuard();
+  const nestedLayerJustDismissed = useNestedLayerDismissGuard();
   return (
   <SheetPortal>
     <SheetOverlay />
@@ -65,7 +65,7 @@ const SheetContent = React.forwardRef<
       onInteractOutside={(event) => {
         // Don't let the gesture that closed a nested popper (Select/menu/
         // popover) also close the Sheet. See use-nested-layer-dismiss-guard.
-        if (nestedLayerWasOpenRef.current) {
+        if (nestedLayerJustDismissed()) {
           event.preventDefault();
           return;
         }

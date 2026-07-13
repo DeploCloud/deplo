@@ -399,13 +399,7 @@ export function AppCard({
         content="Permanently delete this app and its deployments"
         side="left"
       >
-        <K.Item
-          variant="destructive"
-          onSelect={(e: Event) => {
-            e.preventDefault();
-            setConfirmOpen(true);
-          }}
-        >
+        <K.Item variant="destructive" onSelect={() => setConfirmOpen(true)}>
           <Trash2 className="size-4" />
           Delete
         </K.Item>

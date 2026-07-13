@@ -194,10 +194,7 @@ export function DeploymentActions({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setDeleteOpen(true);
-                }}
+                onSelect={() => setDeleteOpen(true)}
                 disabled={pending}
               >
                 <Trash2 className="size-4" />

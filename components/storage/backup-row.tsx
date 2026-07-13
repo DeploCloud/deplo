@@ -154,23 +154,13 @@ export function BackupRow({
               </DropdownMenuItem>
             </SimpleTooltip>
             <SimpleTooltip content="Edit this backup schedule" side="left">
-              <DropdownMenuItem
-                onSelect={(e: Event) => {
-                  e.preventDefault();
-                  setEditOpen(true);
-                }}
-              >
+              <DropdownMenuItem onSelect={() => setEditOpen(true)}>
                 <Pencil className="size-4" />
                 Edit…
               </DropdownMenuItem>
             </SimpleTooltip>
             <SimpleTooltip content="Restore from a recent backup" side="left">
-              <DropdownMenuItem
-                onSelect={(e: Event) => {
-                  e.preventDefault();
-                  setRestoreOpen(true);
-                }}
-              >
+              <DropdownMenuItem onSelect={() => setRestoreOpen(true)}>
                 <RotateCcw className="size-4" />
                 Restore…
               </DropdownMenuItem>
@@ -179,10 +169,7 @@ export function BackupRow({
             <SimpleTooltip content="Delete this backup schedule" side="left">
               <DropdownMenuItem
                 variant="destructive"
-                onSelect={(e: Event) => {
-                  e.preventDefault();
-                  setConfirmOpen(true);
-                }}
+                onSelect={() => setConfirmOpen(true)}
               >
                 <Trash2 className="size-4" />
                 Delete

@@ -140,22 +140,14 @@ export function DatabaseCard({
                   {running ? <Square className="size-4" /> : <Play className="size-4" />}
                   {running ? "Stop" : "Start"}
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setEditOpen(true);
-                  }}
-                >
+                <DropdownMenuItem onSelect={() => setEditOpen(true)}>
                   <Pencil className="size-4" />
                   Edit…
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setConfirmOpen(true);
-                  }}
+                  onSelect={() => setConfirmOpen(true)}
                 >
                   <Trash2 className="size-4" />
                   Delete

@@ -238,8 +238,7 @@ export function FolderCard({
         <>
           <SimpleTooltip content="Rename this folder" side="left">
             <K.Item
-              onSelect={(e: Event) => {
-                e.preventDefault();
+              onSelect={() => {
                 setName(folder.name);
                 setRenameOpen(true);
               }}
@@ -250,8 +249,7 @@ export function FolderCard({
           </SimpleTooltip>
           <SimpleTooltip content="Change this folder's colour" side="left">
             <K.Item
-              onSelect={(e: Event) => {
-                e.preventDefault();
+              onSelect={() => {
                 setDraftColor(folder.color ?? null);
                 setColorOpen(true);
               }}
@@ -314,10 +312,7 @@ export function FolderCard({
           >
             <K.Item
               variant="destructive"
-              onSelect={(e: Event) => {
-                e.preventDefault();
-                setDeleteOpen(true);
-              }}
+              onSelect={() => setDeleteOpen(true)}
             >
               <Trash2 className="size-4" />
               Delete
@@ -331,12 +326,7 @@ export function FolderCard({
         <>
           {canManageThisFolder && <K.Separator />}
           <SimpleTooltip content="Share this folder with other members" side="left">
-            <K.Item
-              onSelect={(e: Event) => {
-                e.preventDefault();
-                setShareOpen(true);
-              }}
-            >
+            <K.Item onSelect={() => setShareOpen(true)}>
               <Share2 className="size-4" />
               Share folder…
             </K.Item>

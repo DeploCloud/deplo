@@ -37,7 +37,7 @@ const DialogContent = React.forwardRef<
     hideClose?: boolean;
   }
 >(({ className, children, hideClose, onInteractOutside, ...props }, ref) => {
-  const nestedLayerWasOpenRef = useNestedLayerDismissGuard();
+  const nestedLayerJustDismissed = useNestedLayerDismissGuard();
   return (
   <DialogPortal>
     <DialogOverlay />
@@ -50,7 +50,7 @@ const DialogContent = React.forwardRef<
       onInteractOutside={(event) => {
         // Swallow the outside-dismiss when this gesture just closed a nested
         // popper (Select/menu/popover); otherwise defer to the caller.
-        if (nestedLayerWasOpenRef.current) {
+        if (nestedLayerJustDismissed()) {
           event.preventDefault();
           return;
         }

@@ -214,12 +214,7 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
               content="View details and edit this user's global permissions"
               side="left"
             >
-              <DropdownMenuItem
-                onSelect={(e: Event) => {
-                  e.preventDefault();
-                  setOpen(true);
-                }}
-              >
+              <DropdownMenuItem onSelect={() => setOpen(true)}>
                 <UserCog className="size-4" />
                 Manage user
               </DropdownMenuItem>
@@ -247,13 +242,12 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
               <DropdownMenuItem
                 variant={user.suspended ? undefined : "destructive"}
                 disabled={isSelf || pending}
-                onSelect={(e: Event) => {
+                onSelect={() => {
                   // Reactivating is safe → apply straight away. Suspending is
                   // guarded by a confirm modal (opened once the menu closes).
                   if (user.suspended) {
                     flip({ suspended: false });
                   } else {
-                    e.preventDefault();
                     setConfirmSuspend(true);
                   }
                 }}

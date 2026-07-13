@@ -248,12 +248,7 @@ function MemberCard({
                   content="Adjust this member's role and capabilities in the team"
                   side="left"
                 >
-                  <DropdownMenuItem
-                    onSelect={(e: Event) => {
-                      e.preventDefault();
-                      setEditOpen(true);
-                    }}
-                  >
+                  <DropdownMenuItem onSelect={() => setEditOpen(true)}>
                     <Pencil className="size-4" />
                     Edit permissions
                   </DropdownMenuItem>
@@ -264,12 +259,7 @@ function MemberCard({
                   content="View and edit this user's instance-wide account and permissions"
                   side="left"
                 >
-                  <DropdownMenuItem
-                    onSelect={(e: Event) => {
-                      e.preventDefault();
-                      setUserEditOpen(true);
-                    }}
-                  >
+                  <DropdownMenuItem onSelect={() => setUserEditOpen(true)}>
                     <UserCog className="size-4" />
                     Manage user account
                   </DropdownMenuItem>

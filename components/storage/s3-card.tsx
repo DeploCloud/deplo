@@ -88,10 +88,7 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
                 >
                   <DropdownMenuItem
                     variant="destructive"
-                    onSelect={(e: Event) => {
-                      e.preventDefault();
-                      setConfirmOpen(true);
-                    }}
+                    onSelect={() => setConfirmOpen(true)}
                   >
                     <Trash2 className="size-4" />
                     Remove

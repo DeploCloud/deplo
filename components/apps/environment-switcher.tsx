@@ -182,8 +182,7 @@ export function EnvironmentSwitcher({
                     <DropdownMenuSubContent className="w-44">
                       <DropdownMenuItem
                         className="cursor-pointer"
-                        onSelect={(ev: Event) => {
-                          ev.preventDefault();
+                        onSelect={() => {
                           setRenameFor(e);
                           setRenameName(e.name);
                         }}
@@ -204,10 +203,7 @@ export function EnvironmentSwitcher({
                         variant="destructive"
                         className="cursor-pointer"
                         disabled={e.isDefault}
-                        onSelect={(ev: Event) => {
-                          ev.preventDefault();
-                          setDeleteFor(e);
-                        }}
+                        onSelect={() => setDeleteFor(e)}
                       >
                         <Trash2 className="size-4" />
                         Delete
@@ -223,10 +219,7 @@ export function EnvironmentSwitcher({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="cursor-pointer"
-                onSelect={(e: Event) => {
-                  e.preventDefault();
-                  setAddOpen(true);
-                }}
+                onSelect={() => setAddOpen(true)}
               >
                 <Plus className="size-4" />
                 New environment

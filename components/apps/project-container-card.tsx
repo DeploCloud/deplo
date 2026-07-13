@@ -139,8 +139,7 @@ export function ProjectContainerCard({
       {canManage && (
         <>
           <K.Item
-            onSelect={(e: Event) => {
-              e.preventDefault();
+            onSelect={() => {
               setName(project.name);
               setRenameOpen(true);
             }}
@@ -149,8 +148,7 @@ export function ProjectContainerCard({
             Rename
           </K.Item>
           <K.Item
-            onSelect={(e: Event) => {
-              e.preventDefault();
+            onSelect={() => {
               setDraftColor(project.color ?? null);
               setColorOpen(true);
             }}
@@ -161,10 +159,7 @@ export function ProjectContainerCard({
           <K.Separator />
           <K.Item
             variant="destructive"
-            onSelect={(e: Event) => {
-              e.preventDefault();
-              setDeleteOpen(true);
-            }}
+            onSelect={() => setDeleteOpen(true)}
           >
             <Trash2 className="size-4" />
             Delete

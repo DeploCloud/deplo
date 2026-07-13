@@ -343,12 +343,7 @@ export function DomainRow({
                 Visit
               </a>
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault();
-                openEdit();
-              }}
-            >
+            <DropdownMenuItem onSelect={() => openEdit()}>
               <Pencil className="size-4" />
               Edit
             </DropdownMenuItem>
@@ -396,10 +391,7 @@ export function DomainRow({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
-              onSelect={(e) => {
-                e.preventDefault();
-                setConfirmOpen(true);
-              }}
+              onSelect={() => setConfirmOpen(true)}
             >
               <Trash2 className="size-4" />
               Remove

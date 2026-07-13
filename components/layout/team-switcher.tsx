@@ -87,10 +87,7 @@ export function TeamSwitcher({
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="cursor-pointer"
-            onSelect={(e) => {
-              e.preventDefault();
-              setCreateOpen(true);
-            }}
+            onSelect={() => setCreateOpen(true)}
           >
             <Plus className="size-4" />
             Create team

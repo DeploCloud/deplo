@@ -284,10 +284,7 @@ export function ServerActions({
                 side="left"
               >
                 <DropdownMenuItem
-                  onSelect={(e: Event) => {
-                    e.preventDefault();
-                    setConfirmUpdate(true);
-                  }}
+                  onSelect={() => setConfirmUpdate(true)}
                   disabled={pending}
                 >
                   <CircleFadingArrowUp className="size-4" />
@@ -302,10 +299,7 @@ export function ServerActions({
             side="left"
           >
             <DropdownMenuItem
-              onSelect={(e: Event) => {
-                e.preventDefault();
-                setReadinessOpen(true);
-              }}
+              onSelect={() => setReadinessOpen(true)}
               disabled={pending}
             >
               <ListChecks className="size-4" />
@@ -327,10 +321,7 @@ export function ServerActions({
               side="left"
             >
               <DropdownMenuItem
-                onSelect={(e: Event) => {
-                  e.preventDefault();
-                  openAccess();
-                }}
+                onSelect={() => openAccess()}
                 disabled={pending}
               >
                 <Users className="size-4" />
@@ -344,10 +335,7 @@ export function ServerActions({
               side="left"
             >
               <DropdownMenuItem
-                onSelect={(e: Event) => {
-                  e.preventDefault();
-                  openConcurrency();
-                }}
+                onSelect={() => openConcurrency()}
                 disabled={pending}
               >
                 <Gauge className="size-4" />
@@ -362,10 +350,7 @@ export function ServerActions({
           >
             <DropdownMenuItem
               variant="destructive"
-              onSelect={(e: Event) => {
-                e.preventDefault();
-                setConfirmRemove(true);
-              }}
+              onSelect={() => setConfirmRemove(true)}
               disabled={pending}
             >
               <Trash2 className="size-4" />
