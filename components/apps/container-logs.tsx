@@ -21,12 +21,12 @@ import {
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
+import { LogLines, LogRow } from "@/components/shared/log-line-row";
 import type { AppRuntimeView } from "@/components/apps/use-app-runtime";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { stripAnsi } from "@/lib/ansi";
 import { mergeLogBurst } from "@/lib/logs/merge";
 import { detectLogLevel } from "@/lib/log-level-detect";
-import { LEVEL_BADGE_CLASS, LEVEL_LABEL } from "@/lib/log-levels";
 import { cn } from "@/lib/utils";
 
 type Status = "connecting" | "live" | "reattaching" | "ended" | "error";
@@ -421,26 +421,11 @@ export function ContainerLogs({
         </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className="h-[520px] overflow-y-auto bg-black/90 p-3 font-mono text-[13px] leading-relaxed text-zinc-200"
-      >
+      <LogLines ref={scrollRef} onScroll={onScroll} className="h-[520px]">
         {lines.map((l, i) => (
-          <div key={i} className="flex gap-3">
-            <span
-              className={cn(
-                "shrink-0 select-none rounded px-1.5 text-[10px] font-semibold uppercase leading-5 tracking-wide",
-                LEVEL_BADGE_CLASS[l.level] ?? "bg-zinc-700/30 text-zinc-300",
-              )}
-            >
-              {LEVEL_LABEL[l.level] ?? l.level}
-            </span>
-            {/* Message text stays neutral — the level pill carries the colour. */}
-            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-zinc-300">
-              {l.text}
-            </span>
-          </div>
+          // The level here is INFERRED from the text, not authored, so the
+          // message stays neutral and only the chip carries the guess.
+          <LogRow key={i} level={l.level} text={l.text} tintMessage={false} />
         ))}
 
         {status === "connecting" && !output ? (
@@ -476,7 +461,7 @@ export function ContainerLogs({
             Reconnect
           </Button>
         ) : null}
-      </div>
+      </LogLines>
     </div>
   );
 }

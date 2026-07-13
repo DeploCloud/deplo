@@ -7,13 +7,9 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import { StatusDot } from "@/components/shared/status-badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { LogLines, LogRow } from "@/components/shared/log-line-row";
 import { cn, timeAgo } from "@/lib/utils";
-import {
-  LEVEL_BADGE_CLASS,
-  LEVEL_LABEL,
-  LEVEL_TEXT_CLASS,
-  levelLabelPadded,
-} from "@/lib/log-levels";
+import { levelLabelPadded } from "@/lib/log-levels";
 import type { DeploymentStatus, LogLevel, LogLine } from "@/lib/types";
 
 export type DeploymentSummary = {
@@ -185,7 +181,7 @@ export function LogViewer({
         </div>
 
         {/* Terminal */}
-        <div className="max-h-[540px] overflow-y-auto rounded-b-xl bg-[#0a0a0a] p-4 font-mono text-xs leading-relaxed">
+        <LogLines className="max-h-[540px] rounded-b-xl text-xs">
           {filteredLines.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
               <FileSearch className="size-5 text-muted-foreground" />
@@ -197,33 +193,15 @@ export function LogViewer({
             </div>
           ) : (
             filteredLines.map((line, i) => (
-              <div
+              <LogRow
                 key={i}
-                className="flex gap-3 whitespace-pre-wrap break-words py-0.5"
-              >
-                <span className="shrink-0 select-none text-zinc-600">
-                  [{fmtTime(line.ts)}]
-                </span>
-                <span
-                  className={cn(
-                    "shrink-0 select-none self-start rounded px-1.5 text-[10px] font-semibold uppercase leading-5 tracking-wide",
-                    LEVEL_BADGE_CLASS[line.level] ?? "bg-zinc-700/30 text-zinc-300",
-                  )}
-                >
-                  {LEVEL_LABEL[line.level] ?? line.level}
-                </span>
-                <span
-                  className={cn(
-                    "min-w-0 flex-1",
-                    LEVEL_TEXT_CLASS[line.level] ?? "text-zinc-300",
-                  )}
-                >
-                  {line.text}
-                </span>
-              </div>
+                level={line.level}
+                text={line.text}
+                time={`[${fmtTime(line.ts)}]`}
+              />
             ))
           )}
-        </div>
+        </LogLines>
       </div>
     </div>
   );
