@@ -34,6 +34,9 @@ const ActivityRef = builder.objectRef<Activity>("Activity").implement({
     type: t.field({ type: ActivityTypeEnum, resolve: (a) => a.type }),
     message: t.exposeString("message"),
     actor: t.exposeString("actor"),
+    // The human behind `actor`, when there is one. Non-human actors ("system" /
+    // "github") and rows predating the column stay null.
+    actorUserId: t.exposeID("actorUserId", { nullable: true }),
     appId: t.exposeID("appId", { nullable: true }),
     createdAt: t.exposeString("createdAt"),
   }),

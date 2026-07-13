@@ -230,20 +230,6 @@ export default async function OverviewPage(props: PageProps<"/">) {
             </Button>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Recent Previews</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-8 text-center">
-              <Eye className="size-5 text-muted-foreground" />
-              <p className="max-w-50 text-xs text-muted-foreground">
-                Preview deployments you create will appear here.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Overview: projects, folders and apps */}

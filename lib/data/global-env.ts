@@ -11,11 +11,14 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireInstanceAdmin } from "../membership";
 import { recordActivity } from "./activity";
+import { authorOf, loadUserIdentities } from "./user-identity";
 import { encryptSecret, decryptSecret } from "../crypto";
+import { ALL_ENV_TARGETS, sanitizeTargets } from "../types";
 import type {
   EnvTarget,
   GlobalEnvVar,
   GlobalEnvVarDTO,
+  VarAuthor,
 } from "../types";
 
 /**
@@ -39,6 +42,8 @@ type VarRow = {
   key: string;
   valueEnc: string;
   type: string;
+  createdByUserId: string | null;
+  updatedByUserId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -59,13 +64,15 @@ function assemble(vars: VarRow[], targets: TargetRow[]): GlobalEnvVar[] {
       valueEnc: v.valueEnc,
       type: v.type as "plain" | "secret",
       targets: byVar.get(v.id) ?? [],
+      createdByUserId: v.createdByUserId,
+      updatedByUserId: v.updatedByUserId,
       createdAt: v.createdAt,
       updatedAt: v.updatedAt,
     }))
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 
-function toDTO(e: GlobalEnvVar): GlobalEnvVarDTO {
+function toDTO(e: GlobalEnvVar, authors: Map<string, VarAuthor>): GlobalEnvVarDTO {
   const isSecret = e.type === "secret";
   return {
     id: e.id,
@@ -75,6 +82,10 @@ function toDTO(e: GlobalEnvVar): GlobalEnvVarDTO {
     masked: isSecret,
     targets: e.targets,
     type: e.type,
+    // Authorship is metadata, not value — safe alongside a masked `value`.
+    createdBy: authorOf(e.createdByUserId, authors),
+    updatedBy: authorOf(e.updatedByUserId, authors),
+    createdAt: e.createdAt,
     updatedAt: e.updatedAt,
   };
 }
@@ -122,7 +133,12 @@ export async function loadInstanceEnv(): Promise<GlobalEnvEntry[]> {
 
 export async function listInstanceEnv(): Promise<GlobalEnvVarDTO[]> {
   await requireInstanceAdmin();
-  return (await loadInstanceVars()).map(toDTO);
+  const vars = await loadInstanceVars();
+  // One identity query for the whole list.
+  const authors = await loadUserIdentities(
+    vars.flatMap((v) => [v.createdByUserId, v.updatedByUserId]),
+  );
+  return vars.map((v) => toDTO(v, authors));
 }
 
 export async function revealInstanceEnv(id: string): Promise<string> {
@@ -139,15 +155,21 @@ export async function revealInstanceEnv(id: string): Promise<string> {
 export async function upsertInstanceEnv(input: {
   key: string;
   value: string;
-  targets: EnvTarget[];
+  /**
+   * Omitted (the UI no longer asks): a NEW var gets every runtime; an EDIT keeps
+   * whatever targets the var already has — an edit must never widen them.
+   */
+  targets?: EnvTarget[];
   type: "plain" | "secret";
 }): Promise<void> {
-  await requireInstanceAdmin();
+  const { userId } = await requireInstanceAdmin();
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
-  if (input.targets.length === 0)
-    throw new Error("Select at least one environment");
+  // `null` ⇒ the caller named no targets: default them on insert, PRESERVE them on
+  // update. Silently widening a legacy production-only secret would inject it into
+  // the dev container (lib/deploy/dev.ts).
+  const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
   const keepValue = input.value === MASK;
 
   await getDb().transaction(async (tx) => {
@@ -163,13 +185,18 @@ export async function upsertInstanceEnv(input: {
         .set({
           ...(keepValue ? {} : { valueEnc: encryptSecret(input.value) }),
           type: input.type,
+          // An edit never rewrites who created the var.
+          updatedByUserId: userId,
           updatedAt: nowIso(),
         })
         .where(eq(instVars.id, id));
-      await tx.delete(instTargets).where(eq(instTargets.envVarId, id));
-      await tx
-        .insert(instTargets)
-        .values(input.targets.map((target) => ({ envVarId: id, target })));
+      // Whole-set replace of the targets junction — only when the caller sent one.
+      if (targets) {
+        await tx.delete(instTargets).where(eq(instTargets.envVarId, id));
+        await tx
+          .insert(instTargets)
+          .values(targets.map((target) => ({ envVarId: id, target })));
+      }
     } else {
       const id = newId("env");
       const now = nowIso();
@@ -178,12 +205,16 @@ export async function upsertInstanceEnv(input: {
         key,
         valueEnc: encryptSecret(input.value),
         type: input.type,
+        createdByUserId: userId,
+        updatedByUserId: userId,
         createdAt: now,
         updatedAt: now,
       });
       await tx
         .insert(instTargets)
-        .values(input.targets.map((target) => ({ envVarId: id, target })));
+        .values(
+          (targets ?? [...ALL_ENV_TARGETS]).map((target) => ({ envVarId: id, target })),
+        );
     }
   });
   await recordActivity(

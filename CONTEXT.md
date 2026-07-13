@@ -211,6 +211,52 @@ code in its own repo (**DeploCloud/deplo-agent**), contract in
 _Avoid_: agent (ambiguous — say "server agent"), node, worker, runner (CI term), daemon
 (reserve for the Docker daemon it drives), deplo agent on the remote being a "second Deplo".
 
+**Server health**:
+A server's **status** is an OBSERVATION, not a lifecycle the control plane drives: the outcome of
+the last live agent **Hello**, stamped with **when** it was observed (`statusCheckedAt`) and, when
+it isn't green, **why** (`statusMessage`, from a closed set of curated strings — never a raw agent
+error, which would leak the pinned fingerprint and the dial address). The five values:
+**provisioning** (no agent has called home yet — never dialed, never demoted), **online** (Hello
+answered, Docker reachable), **warning** (agent up and trusted, but Docker is unreachable, so
+nothing can deploy there), **error** (the peer answered but its agent is wrong — untrusted cert,
+unsupported contract, application error), **offline** (nothing answered, confirmed by a retry).
+The stored value is a **cache the UI must qualify**, never a **gate**: past a staleness window the
+Servers page renders it as *Unknown* rather than a confident stale green, and **nothing in the
+deploy path consults it** — the gate there is the mandatory live Hello pre-flight
+([ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md)). Probing is throttled and
+watermarked on probe-START time, and an inconclusive probe writes **nothing** (a fabricated
+check is the same lie as a stale badge). Written by the Servers page's on-load sweep, the
+per-server *Check status* button, and the metrics poll — all through the one recorder
+([`lib/data/server-health.ts`](../lib/data/server-health.ts)), classified by
+[`lib/infra/server-health.ts`](../lib/infra/server-health.ts).
+_Avoid_: "the server is up/down" (say which of the five), treating **warning** as a soft
+**error** (it is a *deployability* verdict), gating anything on the stored status.
+
+**Server readiness**:
+A **live, never-stored** answer to *"is this host's installation complete enough to deploy Apps
+to?"* — distinct from **Server health**, which answers *"can we reach and trust this agent right
+now?"*. A **readiness check** (Settings → Servers → a server's ⋯ menu → *Check readiness*) dials
+the owning agent once and assembles a **readiness report**: rows grouped as **agent** (handshake,
+protocol, version, the platform features the binary supports), **docker** (the daemon answered),
+**routing** (a running Traefik container; host ports 80/443 bind-tested), **capacity** (disk
+headroom on the host's root filesystem), **build methods** (which the agent supports), and
+**Deplo configuration** (team access, deploy concurrency). Each row is `pass`/`info`/`warn`/
+`fail`/`skip`, where **fail** means a deployment to this server cannot succeed, **warn** means it
+succeeds but the result is not fully usable, and **skip** means we could not evaluate it (an
+agent too old to bind-test ports degrades to a skipped row — never a faked pass). The report is
+**NOT a sixth `ServerStatus`**, is **never persisted**, and **nothing gates on it** — the deploy
+gate is and stays the mandatory live Hello pre-flight (ADR-0006), and `servers.status` stays the
+health prober's alone. Its discipline is **honesty**: a Hello flag proves the agent *knows how to
+run* Nixpacks — not that the nixpacks binary is on the host (it is fetched on the first build) —
+and Docker being unreachable forces the agent's Traefik answer false, so that row is **skipped**,
+not warned. Classified by [`lib/infra/server-readiness.ts`](../lib/infra/server-readiness.ts)
+(pure), orchestrated by [`lib/data/server-readiness.ts`](../lib/data/server-readiness.ts)
+(instance-admin, dials once, writes nothing).
+_Avoid_: "health check" (that is the Hello classifier — `checkServerHealth`), calling readiness a
+**status** or a **Capability** (that word is the authz term; the agent's Hello flags are only
+"what the agent supports"), "installed" for anything a Hello flag reports, gating a deploy on a
+readiness verdict.
+
 **Bootstrap token**:
 The **one-time, short-lived** secret that lets a freshly-installed **server agent** prove it is
 an authorized newcomer when it first **calls home** to the control plane — after which the

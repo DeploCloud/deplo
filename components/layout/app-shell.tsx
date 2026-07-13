@@ -1,4 +1,5 @@
 import { Sidebar } from "./sidebar";
+import { SidebarProvider } from "./sidebar-state";
 import { Topbar } from "./topbar";
 import { UpdateBanner } from "./update-banner";
 import { NavigationHistoryTracker } from "./navigation-history";
@@ -26,27 +27,31 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen w-full">
-      {/* Tracks in-app history depth so sidebar back links can use the browser's
-          back when there's a page to return to (see navigation-history). */}
-      <NavigationHistoryTracker />
-      <Sidebar capabilities={capabilities} isAdmin={isAdmin} />
+    // The provider spans both panes: the sidebar collapses to zero width and the
+    // topbar hosts the control that expands it again.
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full">
+        {/* Tracks in-app history depth so sidebar back links can use the browser's
+            back when there's a page to return to (see navigation-history). */}
+        <NavigationHistoryTracker />
+        <Sidebar capabilities={capabilities} isAdmin={isAdmin} />
 
-      {/* Main */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar
-          user={user}
-          team={team}
-          teams={teams}
-          breadcrumb={breadcrumb}
-          capabilities={capabilities}
-          isAdmin={isAdmin}
-        />
-        <UpdateBanner />
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-345">{children}</div>
-        </main>
+        {/* Main */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Topbar
+            user={user}
+            team={team}
+            teams={teams}
+            breadcrumb={breadcrumb}
+            capabilities={capabilities}
+            isAdmin={isAdmin}
+          />
+          <UpdateBanner />
+          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+            <div className="mx-auto w-full max-w-345">{children}</div>
+          </main>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

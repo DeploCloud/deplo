@@ -66,6 +66,10 @@ export function makeServer(opts: Partial<Server> & { id: string }): Server {
     agent: opts.agent,
     bootstrap: opts.bootstrap,
     lastSeenAt: opts.lastSeenAt,
+    // Left unset by default = "never health-probed", which is what a freshly seeded
+    // server genuinely is. Tests that exercise the prober set them explicitly.
+    statusCheckedAt: opts.statusCheckedAt,
+    statusMessage: opts.statusMessage,
   };
 }
 
@@ -149,6 +153,7 @@ export async function seedActivity(
     type: (opts.type ?? "service") as ActivityType,
     message: opts.message ?? "did a thing",
     actor: opts.actor ?? "owner",
+    actorUserId: opts.actorUserId ?? null,
     appId: opts.appId ?? null,
     createdAt: opts.createdAt ?? T0,
   };

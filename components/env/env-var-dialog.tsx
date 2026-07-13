@@ -24,28 +24,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { parseEnv } from "@/components/env/env-parse";
-import type { EnvTarget, EnvVarDTO } from "@/lib/types";
+import { VIA_LABEL } from "@/components/env/env-filters";
+import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
-
-const ALL_TARGETS: EnvTarget[] = ["production", "preview", "development"];
 
 /** Mirrors the server's key rule (lib/data/env.ts) so a bad key fails loudly here. */
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
-
-/** Human labels for how a shared var reaches an app. */
-const VIA_LABEL: Record<string, string> = {
-  teamWide: "Team-wide",
-  environment: "Environment",
-  project: "Project",
-  link: "Linked",
-};
 
 /**
  * Add/edit an app's environment variable. Editing shows a single form; adding
@@ -102,15 +92,16 @@ function EditForm({
   editing: EnvVarDTO;
 }) {
   // Prefill: a plain var shows its value; a secret shows the MASK, which the
-  // server keeps as-is (so editing only the environments can't blank the value).
+  // server keeps as-is (so editing only the secret flag can't blank the value).
   const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");
-  const [targets, setTargets] = React.useState<EnvTarget[]>(editing.targets);
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
 
   function submit() {
     startTransition(async () => {
+      // No `targets`: an App has no Environment of its own — it inherits exactly
+      // one from its Project — so the server defaults every variable to all three.
       const res = await gqlAction<{ upsertEnv: { id: string } }>(
         `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
         {
@@ -118,7 +109,6 @@ function EditForm({
             appId,
             key: editing.key,
             value,
-            targets,
             type: secret ? "secret" : "plain",
           },
         },
@@ -139,7 +129,7 @@ function EditForm({
         <DialogHeader>
           <DialogTitle>Edit variable</DialogTitle>
           <DialogDescription>
-            Update the value or environments for this variable.
+            Update the value of this variable.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -151,21 +141,24 @@ function EditForm({
           </div>
           <div className="space-y-2">
             <Label>Value</Label>
+            {/* The key is disabled here, so the value is the first thing to put the
+                caret in — and it keeps the Dialog's initial focus off the info
+                button next to the Key label. */}
             <Textarea
               value={value}
               onChange={(e) => setValue(e.target.value)}
               placeholder="Enter a new value"
               rows={3}
+              autoFocus
             />
           </div>
-          <TargetsField targets={targets} onToggle={(t) => setTargets(toggle(targets, t))} />
           <SecretRow secret={secret} onChange={setSecret} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending || targets.length === 0}>
+          <Button onClick={submit} disabled={pending}>
             {pending ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
@@ -193,7 +186,7 @@ function AddDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Add variables</DialogTitle>
           <DialogDescription>
@@ -227,7 +220,6 @@ type Row = { key: string; value: string };
 
 function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void }) {
   const [rows, setRows] = React.useState<Row[]>([{ key: "", value: "" }]);
-  const [targets, setTargets] = React.useState<EnvTarget[]>([...ALL_TARGETS]);
   const [secret, setSecret] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
@@ -270,6 +262,9 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
 
   function save() {
     startTransition(async () => {
+      // No `targets` on either path: an App has no Environment of its own — it
+      // inherits exactly one from its Project — so the server defaults every
+      // variable to all three.
       if (filled.length === 1) {
         const res = await gqlAction<{ upsertEnv: { id: string } }>(
           `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
@@ -278,7 +273,6 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
               appId,
               key: filled[0].key.trim(),
               value: filled[0].value,
-              targets,
               type: secret ? "secret" : "plain",
             },
           },
@@ -296,10 +290,10 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
       // secret from the table afterwards).
       const blob = filled.map((r) => `${r.key.trim()}=${r.value}`).join("\n");
       const res = await gqlAction<{ importEnv: number }, number>(
-        `mutation($appId: String!, $blob: String!, $targets: [EnvTarget!]!) {
-          importEnv(appId: $appId, blob: $blob, targets: $targets)
+        `mutation($appId: String!, $blob: String!) {
+          importEnv(appId: $appId, blob: $blob)
         }`,
-        { appId, blob, targets },
+        { appId, blob },
         (d) => d.importEnv,
       );
       if (res.ok && res.data != null) {
@@ -367,7 +361,6 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
           digits and underscores.
         </p>
       )}
-      <TargetsField targets={targets} onToggle={(t) => setTargets(toggle(targets, t))} />
       {filled.length > 1 ? (
         <p className="text-xs text-muted-foreground">
           Pasted variables are added as plain — flip individual ones to secret from
@@ -382,12 +375,7 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
         </Button>
         <Button
           onClick={save}
-          disabled={
-            pending ||
-            filled.length === 0 ||
-            invalid.length > 0 ||
-            targets.length === 0
-          }
+          disabled={pending || filled.length === 0 || invalid.length > 0}
         >
           {pending ? "Saving…" : filled.length > 1 ? `Add ${filled.length}` : "Add"}
         </Button>
@@ -415,7 +403,10 @@ function SharedTab({
     let alive = true;
     gql<{ sharedVarsForApp: AppSharedVarDTO[] }>(
       `query($appId: String!) {
-        sharedVarsForApp(appId: $appId) { id key masked type targets via applied inherited linked }
+        sharedVarsForApp(appId: $appId) {
+          id key masked type targets via applied inherited linked
+          updatedAt updatedBy { id name username avatarColor }
+        }
       }`,
       { appId },
     )
@@ -524,34 +515,6 @@ function SharedVarLinkRow({
 /* ------------------------------------------------------------------ */
 /* Shared bits                                                         */
 /* ------------------------------------------------------------------ */
-
-function toggle(list: EnvTarget[], t: EnvTarget): EnvTarget[] {
-  return list.includes(t) ? list.filter((x) => x !== t) : [...list, t];
-}
-
-function TargetsField({
-  targets,
-  onToggle,
-}: {
-  targets: EnvTarget[];
-  onToggle: (t: EnvTarget) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <FieldLabel info="The environments this variable is injected into. A deployment only receives variables enabled for its environment.">
-        Environments
-      </FieldLabel>
-      <div className="flex flex-wrap gap-4">
-        {ALL_TARGETS.map((t) => (
-          <label key={t} className="flex cursor-pointer items-center gap-2 text-sm capitalize">
-            <Checkbox checked={targets.includes(t)} onCheckedChange={() => onToggle(t)} />
-            {t}
-          </label>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function SecretRow({
   secret,

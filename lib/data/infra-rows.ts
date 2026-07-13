@@ -90,6 +90,8 @@ const SERVER_FIELDS = {
   agent: true,
   bootstrap: true,
   lastSeenAt: true,
+  statusCheckedAt: true,
+  statusMessage: true,
 } satisfies Record<keyof Server, true>;
 void SERVER_FIELDS;
 
@@ -122,6 +124,10 @@ export function serverToRow(s: Server): ServerInsert {
     bootstrapExpiresAt: s.bootstrap?.expiresAt ?? null,
     bootstrapUsedAt: s.bootstrap?.usedAt ?? null,
     lastSeenAt: s.lastSeenAt ?? null,
+    // The health OBSERVATION behind `status`. Absent means "never probed" — a
+    // distinct, honest state the UI renders as "Unknown", so neither is defaulted.
+    statusCheckedAt: s.statusCheckedAt ?? null,
+    statusMessage: s.statusMessage ?? null,
     createdAt: s.createdAt,
   };
 }
@@ -169,6 +175,8 @@ export function assembleServer(row: ServerRow): Server {
     };
   }
   if (row.lastSeenAt !== null) server.lastSeenAt = row.lastSeenAt;
+  if (row.statusCheckedAt !== null) server.statusCheckedAt = row.statusCheckedAt;
+  if (row.statusMessage !== null) server.statusMessage = row.statusMessage;
   return server;
 }
 
@@ -288,6 +296,7 @@ export function activityToRow(a: Activity): ActivityInsert {
     type: a.type,
     message: a.message,
     actor: a.actor,
+    actorUserId: a.actorUserId,
     appId: a.appId,
     createdAt: a.createdAt,
   } satisfies Record<keyof Activity, unknown> as ActivityInsert;
@@ -305,6 +314,7 @@ export function assembleActivity(row: ActivityRow): Activity {
     type: row.type as ActivityType,
     message: row.message,
     actor: row.actor,
+    actorUserId: row.actorUserId,
     appId: row.appId,
     createdAt: row.createdAt,
   };

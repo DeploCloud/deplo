@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Pencil } from "lucide-react";
+import { Plus, Trash2, Pencil, SearchX } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -24,18 +24,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EnvValueCell } from "@/components/env/env-value-cell";
+import { EnvAuthorCell } from "@/components/env/env-author-cell";
+import {
+  EnvFilters,
+  useEnvFilters,
+  editorFacet,
+  typeFacet,
+  updatedFacet,
+} from "@/components/env/env-filters";
 import { gqlAction } from "@/lib/graphql-client";
-import { ALL_ENV_TARGETS } from "@/lib/types";
-import type { EnvTarget, GlobalEnvScope, GlobalEnvVarDTO } from "@/lib/types";
+import { timeAgo } from "@/lib/utils";
+import type { GlobalEnvScope, GlobalEnvVarDTO } from "@/lib/types";
 
 // Sentinel for an unchanged secret on edit: kept verbatim by the upsert (which
 // then preserves the stored value), matching lib/data/global-env.ts's MASK. Lets
-// an operator edit ONLY a secret's targets without re-entering its value.
+// an operator flip a secret to plain, or re-save it, without re-entering it.
 const MASK = "••••••••••••";
 
 // GraphQL mutation field names per scope. The `team` scope is GONE — team-global
@@ -54,8 +61,8 @@ const MUTATIONS: Record<
 
 /**
  * Manage INSTANCE-wide global variables (every app of every team, admin-only). A
- * flat key/value/targets table with add/edit/delete — no per-app attachment,
- * because a global applies to every app automatically.
+ * flat key/value table with add/edit/delete — no per-app attachment, because a
+ * global applies to every app automatically.
  */
 export function GlobalEnvManager({
   scope,
@@ -70,14 +77,25 @@ export function GlobalEnvManager({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const m = MUTATIONS[scope];
 
+  // An instance-wide variable belongs to no project and no app, so this tab
+  // filters on the three axes every variable has: what it is, who last touched
+  // it, and when.
+  const facets = React.useMemo(
+    () => [typeFacet(vars), editorFacet(vars), updatedFacet<GlobalEnvVarDTO>()],
+    [vars],
+  );
+  const { state, setState, clear, shown, counts } = useEnvFilters(vars, facets);
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      {/* The action sits in the HEADER, not beside the filters: the toolbar needs
+          the full width to keep its dropdowns on one row. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">All-teams variables</h3>
           <p className="text-sm text-muted-foreground">
-            Injected into every app of every team. Any shared or app variable with
-            the same key overrides it.
+            Injected into every app of every team. Any shared or app variable
+            with the same key overrides it.
           </p>
         </div>
         <Button
@@ -92,11 +110,34 @@ export function GlobalEnvManager({
         </Button>
       </div>
 
+      {vars.length > 0 && (
+        <EnvFilters
+          state={state}
+          onChange={setState}
+          onClear={clear}
+          facets={facets}
+          counts={counts}
+          total={vars.length}
+          shown={shown.length}
+        />
+      )}
+
       {vars.length === 0 ? (
         <EmptyState
           icon={Plus}
           title="No variables yet"
           description="Add a variable to inject it into every app of every team."
+        />
+      ) : shown.length === 0 ? (
+        <EmptyState
+          icon={SearchX}
+          title="No matching variables"
+          description="No all-teams variable matches the current search and filters."
+          action={
+            <Button variant="outline" size="sm" onClick={clear}>
+              Clear filters
+            </Button>
+          }
         />
       ) : (
         <div className="rounded-xl border border-border">
@@ -105,12 +146,13 @@ export function GlobalEnvManager({
               <TableRow>
                 <TableHead>Key</TableHead>
                 <TableHead>Value</TableHead>
-                <TableHead>Environments</TableHead>
+                <TableHead>Last modified</TableHead>
+                <TableHead>Modified by</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {vars.map((v) => (
+              {shown.map((v) => (
                 <TableRow key={v.id}>
                   <TableCell className="font-mono text-xs font-medium">
                     {v.key}
@@ -118,18 +160,13 @@ export function GlobalEnvManager({
                   <TableCell>
                     <EnvValueCell value={v.value} masked={v.masked} />
                   </TableCell>
+                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                    <SimpleTooltip content={new Date(v.updatedAt).toLocaleString()}>
+                      <span>{timeAgo(v.updatedAt)}</span>
+                    </SimpleTooltip>
+                  </TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {v.targets.map((target) => (
-                        <Badge
-                          key={target}
-                          variant="muted"
-                          className="text-[10px] capitalize"
-                        >
-                          {target}
-                        </Badge>
-                      ))}
-                    </div>
+                    <EnvAuthorCell author={v.updatedBy ?? v.createdBy ?? null} />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
@@ -207,22 +244,13 @@ function GlobalEnvDialog({
   const [pending, startTransition] = React.useTransition();
   const [key, setKey] = React.useState(editing?.key ?? "");
   // A secret's value is never sent to the client; prefill the MASK sentinel when
-  // editing a secret so the operator can change ONLY its targets (the upsert
-  // keeps the stored value when it sees the unchanged MASK) — or overwrite it by
-  // typing. Plain vars prefill their real value.
+  // editing a secret so the operator can re-save it without re-entering it (the
+  // upsert keeps the stored value when it sees the unchanged MASK) — or
+  // overwrite it by typing. Plain vars prefill their real value.
   const [value, setValue] = React.useState(
     editing ? (editing.masked ? MASK : editing.value) : "",
   );
   const [secret, setSecret] = React.useState(editing?.type === "secret");
-  const [targets, setTargets] = React.useState<EnvTarget[]>(
-    editing?.targets ?? [...ALL_ENV_TARGETS],
-  );
-
-  function toggleTarget(t: EnvTarget, on: boolean) {
-    setTargets((prev) =>
-      on ? [...new Set([...prev, t])] : prev.filter((x) => x !== t),
-    );
-  }
 
   function submit() {
     startTransition(async () => {
@@ -232,7 +260,6 @@ function GlobalEnvDialog({
           input: {
             key,
             value,
-            targets,
             type: secret ? "secret" : "plain",
           },
         },
@@ -249,7 +276,7 @@ function GlobalEnvDialog({
         <DialogHeader>
           <DialogTitle>{editing ? "Edit variable" : "Add variable"}</DialogTitle>
           <DialogDescription>
-            Applies to every targeted environment of the apps in this scope.
+            Injected into every app of every team on this instance.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -266,6 +293,8 @@ function GlobalEnvDialog({
             >
               Key
             </FieldLabel>
+            {/* An explicit autoFocus keeps the Dialog's own "focus the first
+                tabbable element" from landing on the label's info button. */}
             <Input
               id="ge-key"
               value={key}
@@ -273,6 +302,7 @@ function GlobalEnvDialog({
               placeholder="API_BASE_URL"
               className="font-mono text-sm"
               disabled={!!editing}
+              autoFocus={!editing}
             />
           </div>
           <div className="space-y-2">
@@ -291,6 +321,9 @@ function GlobalEnvDialog({
               value={value}
               onChange={(e) => setValue(e.target.value)}
               className="font-mono text-sm"
+              // Editing: the key is disabled, so the value is the first thing to
+              // put the caret in.
+              autoFocus={!!editing}
             />
           </div>
           <div className="flex items-center justify-between">
@@ -302,35 +335,6 @@ function GlobalEnvDialog({
             </div>
             <Switch id="ge-secret" checked={secret} onCheckedChange={setSecret} />
           </div>
-          <div className="space-y-2">
-            <FieldLabel
-              info={
-                <>
-                  Which deployment environments this variable is injected into —{" "}
-                  <code className="font-mono">production</code>,{" "}
-                  <code className="font-mono">preview</code> and{" "}
-                  <code className="font-mono">development</code>. Deselect one to
-                  withhold the variable there.
-                </>
-              }
-            >
-              Environments
-            </FieldLabel>
-            <div className="flex flex-wrap gap-3">
-              {ALL_ENV_TARGETS.map((t) => (
-                <label
-                  key={t}
-                  className="flex cursor-pointer items-center gap-2 text-sm capitalize"
-                >
-                  <Checkbox
-                    checked={targets.includes(t)}
-                    onCheckedChange={(c) => toggleTarget(t, c === true)}
-                  />
-                  {t}
-                </label>
-              ))}
-            </div>
-          </div>
         </div>
         <DialogFooter>
           <Button
@@ -340,10 +344,7 @@ function GlobalEnvDialog({
           >
             Cancel
           </Button>
-          <Button
-            onClick={submit}
-            disabled={pending || !key.trim() || !value || targets.length === 0}
-          >
+          <Button onClick={submit} disabled={pending || !key.trim() || !value}>
             {pending ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

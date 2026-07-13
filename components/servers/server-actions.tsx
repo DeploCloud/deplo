@@ -11,6 +11,7 @@ import {
   CircleFadingArrowUp,
   Users,
   Gauge,
+  ListChecks,
 } from "lucide-react";
 import {
   Dialog,
@@ -39,6 +40,7 @@ import {
   type ServerAccess,
   type TeamOption,
 } from "./server-team-access";
+import { ServerReadinessDialog } from "./server-readiness-dialog";
 
 /**
  * Per-server management actions, shown for EVERY server card (the host running
@@ -52,9 +54,13 @@ import {
  *   - Reissue install command — mint a FRESH one-time bootstrap command for a
  *     server still provisioning (the original token expired or was lost). This is
  *     the "server's menu" the AddServer dialog's note points at.
- *   - Remove server — revoke trust + best-effort teardown. Returns a warning when
- *     the agent was unreachable (the stack/containers on that host must be cleaned
- *     by hand); shown so the operator knows.
+ *   - Remove server — revoke the agent's trust and forget the row. It does NOT
+ *     uninstall anything on the host (Deplo has no RPC that could, and revoking
+ *     trust is exactly what ends its right to command that agent), so the
+ *     mutation hands back the host-side uninstall command and we show it the
+ *     moment the server is gone. The list refresh is deferred until that dialog
+ *     is dismissed — refreshing immediately would unmount this component, taking
+ *     the command with it.
  */
 
 export function ServerActions({
@@ -90,6 +96,8 @@ export function ServerActions({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [command, setCommand] = React.useState<string | null>(null);
+  /** Set once the server is removed: the host-side uninstall one-liner to run. */
+  const [uninstall, setUninstall] = React.useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = React.useState(false);
   const [confirmUpdate, setConfirmUpdate] = React.useState(false);
   const [accessOpen, setAccessOpen] = React.useState(false);
@@ -99,6 +107,9 @@ export function ServerActions({
   });
   const [concurrencyOpen, setConcurrencyOpen] = React.useState(false);
   const [concurrency, setConcurrency] = React.useState(String(deployConcurrency));
+  // The readiness dialog owns its own probe + loading state (it writes nothing and
+  // refreshes nothing), so it deliberately stays out of the shared `pending` flow.
+  const [readinessOpen, setReadinessOpen] = React.useState(false);
 
   function reissue() {
     startTransition(async () => {
@@ -216,27 +227,40 @@ export function ServerActions({
 
   function remove() {
     startTransition(async () => {
-      const res = await gqlAction<{ removeServer: string | null }>(
+      const res = await gqlAction<{
+        removeServer: { uninstallCommand: string; warning: string | null };
+      }>(
         `mutation RemoveServer($id: String!) {
-          removeServer(id: $id)
+          removeServer(id: $id) {
+            uninstallCommand
+            warning
+          }
         }`,
         { id: serverId },
       );
       if (!res.ok) {
+        // Surfaces the "move or delete the apps/databases on this server first"
+        // block verbatim.
         toast.error(res.error);
         return;
       }
+      if (!res.data) return;
       setConfirmRemove(false);
-      // removeServer returns a warning string when the agent was unreachable (its
-      // leftover containers need manual cleanup), else null for a clean teardown.
-      const warning = res.data?.removeServer;
-      if (warning) {
-        toast.warning(warning);
-      } else {
-        toast.success(`${serverName} removed`);
-      }
-      router.refresh();
+      const { uninstallCommand, warning } = res.data.removeServer;
+      toast.success(`${serverName} removed — now clean up the host`);
+      // A stranded-volume hazard (an App was mid-move off this host) rides in its
+      // own toast, verbatim, so it is not lost behind the cleanup dialog.
+      if (warning) toast.warning(warning);
+      // NOT router.refresh() here — that would drop this server's card and unmount
+      // us mid-dialog. The refresh runs when the operator dismisses the command.
+      setUninstall(uninstallCommand);
     });
+  }
+
+  /** The server is already gone from the DB; catch the list up now. */
+  function closeCleanup() {
+    setUninstall(null);
+    router.refresh();
   }
 
   return (
@@ -273,6 +297,21 @@ export function ServerActions({
               <DropdownMenuSeparator />
             </>
           ) : null}
+          <SimpleTooltip
+            content="Check that this server is set up and ready to run deployments"
+            side="left"
+          >
+            <DropdownMenuItem
+              onSelect={(e: Event) => {
+                e.preventDefault();
+                setReadinessOpen(true);
+              }}
+              disabled={pending}
+            >
+              <ListChecks className="size-4" />
+              Check readiness
+            </DropdownMenuItem>
+          </SimpleTooltip>
           <SimpleTooltip
             content="Mint a fresh one-time bootstrap/install command for this server"
             side="left"
@@ -335,6 +374,14 @@ export function ServerActions({
           </SimpleTooltip>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Live readiness report — dials the agent on open, persists nothing. */}
+      <ServerReadinessDialog
+        serverId={serverId}
+        serverName={serverName}
+        open={readinessOpen}
+        onOpenChange={setReadinessOpen}
+      />
 
       {/* Reissued install command (shown once; embeds a fresh single-use token). */}
       <Dialog
@@ -498,11 +545,13 @@ export function ServerActions({
           <DialogHeader>
             <DialogTitle>Remove {serverName}?</DialogTitle>
             <DialogDescription>
-              This revokes the agent&rsquo;s trust and tells it to tear down its
-              containers. You can&rsquo;t remove a server while apps are still
-              assigned to it — reassign or delete them first. If the agent is
-              unreachable, removal proceeds anyway and you&rsquo;ll need to clean
-              up leftover containers on the host by hand.
+              This revokes the agent&rsquo;s trust and forgets the server.{" "}
+              <strong>It does not uninstall anything on the host</strong> — the
+              Deplo agent, Traefik on :80/:443 and the <code>deplo</code> network
+              all keep running there. We&rsquo;ll give you the command to remove
+              them as soon as it&rsquo;s gone. You can&rsquo;t remove a server
+              while apps or databases still live on it — move or delete those
+              first.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -520,6 +569,46 @@ export function ServerActions({
             >
               {pending ? "Removing…" : "Remove server"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* The server is gone from Deplo; its agent is still running on the host.
+          This is the only thing that can actually remove it. */}
+      <Dialog
+        open={uninstall !== null}
+        onOpenChange={(open) => {
+          if (!open) closeCleanup();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ServerCog className="size-4" />
+              Finish the cleanup on {serverName}
+            </DialogTitle>
+            <DialogDescription>
+              Deplo no longer trusts this server, but its agent is still installed
+              and running there. Run this on the host, as root, to remove it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Uninstall command</Label>
+            {uninstall ? <CommandLine command={uninstall} /> : null}
+            <p className="text-muted-foreground text-xs">
+              Removes the deplo-agent service and binary,{" "}
+              <code>/var/lib/deplo-agent</code> (its certificates and
+              Traefik&rsquo;s issued TLS certs), the <code>deplo-traefik</code>{" "}
+              container, the SSH gateway and the <code>deplo</code> Docker
+              network. It leaves Docker itself alone, and it does{" "}
+              <strong>not</strong> delete your data — app and database volumes,
+              built images and <code>/data</code> survive. Add{" "}
+              <code>--purge-data</code> to delete those too; that is
+              irreversible.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => closeCleanup()}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

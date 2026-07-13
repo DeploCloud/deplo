@@ -9,44 +9,36 @@ export default function Loading() {
       aria-busy
       aria-label="Loading servers"
     >
-      {/* PageHeader — "Servers" + description + Check-for-updates action */}
+      {/* PageHeader — "Servers" + description + Check-status / Check-for-updates / Add-server
+          actions. The old "Add a server" card is gone (Add is a header action now), so no
+          skeleton stands in for it — a placeholder for a card that never arrives is a layout
+          shift on every load. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <Skeleton className="h-8 w-24" />
           <Skeleton className="h-4 w-80" />
         </div>
         <div className="flex items-center gap-2">
+          <Skeleton className="h-8 w-32 rounded-md" />
           <Skeleton className="h-8 w-40 rounded-md" />
+          <Skeleton className="h-8 w-28 rounded-md" />
         </div>
       </div>
-
-      {/* "Add a server" card — title + description on the left, AddServer button right */}
-      <Card>
-        <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <Skeleton className="h-5 w-28" />
-            <div className="space-y-1.5">
-              <Skeleton className="h-4 w-full max-w-[34rem]" />
-              <Skeleton className="h-4 w-full max-w-[30rem]" />
-              <Skeleton className="h-4 w-2/3 max-w-[16rem]" />
-            </div>
-          </div>
-          <Skeleton className="h-8 w-40 rounded-md" />
-        </CardHeader>
-      </Card>
 
       {/* Server card grid */}
       <div className="grid gap-4 sm:grid-cols-2">
         {Array.from({ length: 4 }).map((_, card) => (
           <Card key={card}>
             <CardHeader className="space-y-3">
-              {/* Status dot + name + status/access badges + actions menu */}
+              {/* Name + health chip + access badge, then check-status + actions buttons */}
               <div className="flex items-center gap-2">
-                <Skeleton className="size-2.5 rounded-full" />
                 <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-5 w-16 rounded-md" />
+                <Skeleton className="h-5 w-24 rounded-md" />
                 <Skeleton className="h-5 w-20 rounded-md" />
-                <Skeleton className="ml-auto size-8 shrink-0 rounded-md" />
+                <div className="ml-auto flex items-center gap-1">
+                  <Skeleton className="size-8 shrink-0 rounded-md" />
+                  <Skeleton className="size-8 shrink-0 rounded-md" />
+                </div>
               </div>
               {/* IP + Traefik + agent-version badges */}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

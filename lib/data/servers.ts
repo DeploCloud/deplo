@@ -19,6 +19,7 @@ import { recordActivity } from "./activity";
 import {
   mintBootstrap,
   installCommand,
+  uninstallCommand,
   controlPlaneCertFingerprint,
   findServerForToken,
   signBootstrapCsr,
@@ -307,70 +308,148 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   return { server: fresh, installCommand: installCommand({ baseUrl, rawToken, fingerprint }) };
 }
 
+/** What {@link removeServer} hands back to the operator. */
+export interface ServerRemoval {
+  /**
+   * The paste-on-the-server command that actually uninstalls the agent. ALWAYS
+   * returned — removal never cleans the host, so the operator always needs it.
+   */
+  uninstallCommand: string;
+  /** A non-blocking hazard the operator must know about, or null. */
+  warning: string | null;
+}
+
 /**
- * Remove a remote server with the ordered three-move teardown (PLAN P6):
- *   (a) ALWAYS revoke trust first — drop the pinned cert — even if the box is
- *       dead, so a removed server never keeps a valid badge;
- *   (b) BLOCK removal while apps are still assigned — the operator
- *       reassigns or deletes them first, consciously (no silent re-home);
- *   (c) BEST-EFFORT remote teardown — pre-flight Hello, and if the agent
- *       answers, tell it to tear down its stacks; if unreachable, proceed with
- *       removal anyway and warn that leftover containers need a manual cleanup.
- *
- * Returns a warning string when (c) could not complete (the agent was
- * unreachable), or null on a clean teardown.
+ * The instance's public base URL, tolerating a call from OUTSIDE a request scope.
+ * `headers()` throws there, and removeServer is driven directly by the data-layer
+ * tests — the base URL only feeds a display string (the uninstall one-liner), so
+ * degrading to the DEPLO_PUBLIC_URL / placeholder path is right, while throwing
+ * would fail a removal that has already happened. In every real caller (resolver,
+ * RSC) the headers are present and this is exactly resolvePublicBaseUrl.
  */
-export async function removeServer(id: string): Promise<{ warning: string | null }> {
+async function publicBaseUrl(): Promise<string> {
+  try {
+    return resolvePublicBaseUrl(await headers());
+  } catch {
+    return resolvePublicBaseUrl(new Headers());
+  }
+}
+
+/** Format a blocked-by list for an error message: at most `max` names, then a count. */
+function nameList(names: string[], max = 5): string {
+  const shown = names.slice(0, max).join(", ");
+  const rest = names.length - max;
+  return rest > 0 ? `${shown} …and ${rest} more` : shown;
+}
+
+/**
+ * Refuse a removal that would strand a running workload, BEFORE anything is
+ * touched. Both tables' `server_id` FKs are RESTRICT, so the DELETE would fail
+ * anyway — but as a raw Postgres foreign-key error, which tells the operator
+ * nothing. This is the clear message, and it runs before the trust revoke so a
+ * blocked removal has no side effects at all.
+ */
+async function assertServerRemovable(id: string): Promise<void> {
+  const [apps, dbs] = await Promise.all([
+    getDb()
+      .select({ slug: appsTable.slug })
+      .from(appsTable)
+      .where(eq(appsTable.serverId, id)),
+    getDb()
+      .select({ name: databasesTable.name })
+      .from(databasesTable)
+      .where(eq(databasesTable.serverId, id)),
+  ]);
+  if (apps.length > 0)
+    throw new Error(
+      `Move or delete the apps on this server first — still assigned: ` +
+        `${nameList(apps.map((a) => a.slug))}`,
+    );
+  if (dbs.length > 0)
+    throw new Error(
+      `Move or delete the databases on this server first — still hosted here: ` +
+        `${nameList(dbs.map((d) => d.name))}`,
+    );
+}
+
+/**
+ * Remove a server. This is TRUST REVOCATION + FORGETTING — it is NOT a host
+ * uninstall, and it never pretended to be one anywhere but in its own copy:
+ *
+ *   (a) BLOCK first, with zero side effects, while any App or database still
+ *       lives on the host — the operator moves or deletes them consciously.
+ *   (b) Revoke trust — drop the pinned agent cert — so even a box we can no
+ *       longer reach never keeps a valid badge. Persisted before the delete, so
+ *       a crash in between still leaves trust dead.
+ *   (c) Delete the row. If that fails, RESTORE the pin: a server that is still
+ *       in the table but permanently un-dialable is the worst of both states.
+ *
+ * There is deliberately no "teardown" RPC call here. After (a) the control plane
+ * provably owns no stack on that host, so there is nothing left it could name and
+ * destroy — and everything that DOES survive (the deplo-agent binary + its
+ * systemd unit, /var/lib/deplo-agent with the mTLS certs and Traefik's acme.json,
+ * the deplo-traefik container squatting on :80/:443, the `deplo` docker network,
+ * the SSH gateway, built images, and Docker itself) has no RPC behind it at all —
+ * and (b) has just revoked our right to call the agent anyway. A sweep here would
+ * be theatre. The honest answer is the host-side {@link uninstallCommand}, which
+ * we always return so the UI can hand it over the moment the server is gone.
+ */
+export async function removeServer(id: string): Promise<ServerRemoval> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
 
-  // (b) Block while apps are assigned — a conscious decision by the operator.
-  // Apps are relational; count this server's apps directly (also: the
-  // `apps.server_id` FK is RESTRICT, so the DELETE below would fail anyway —
-  // this gives a clear message before the teardown work).
-  const assigned = await getDb()
-    .select({ id: appsTable.id })
+  // (a) Block on live workloads — before any side effect.
+  await assertServerRemovable(id);
+
+  // An App mid-move OFF this server is NOT a blocker (the source host may be the
+  // very thing that died, which would deadlock the removal) — but it is a data
+  // hazard we must not let pass silently: its volumes still sit on this host and
+  // `apps.migrate_from_server_id` is SET NULL on delete, so the marker naming
+  // this host as the copy-from source is about to vanish. The next deploy would
+  // then quietly start from EMPTY volumes. Warn, loudly, with the App named.
+  const stranded = await getDb()
+    .select({ slug: appsTable.slug })
     .from(appsTable)
-    .where(eq(appsTable.serverId, id))
-    .limit(1);
-  if (assigned.length > 0)
-    throw new Error("Move or delete apps on this server first");
+    .where(eq(appsTable.migrateFromServerId, id));
 
-  // The teardown dials the agent with its CURRENT (pre-revoke) trust material, so
-  // capture it before the revoke below clears the pinned cert.
-  const snapshot: Server = { ...server, agent: server.agent ? { ...server.agent } : undefined };
-  const wasProvisioned = Boolean(server.agent?.certFingerprint) || server.status === "online";
-
-  // (a) Revoke trust FIRST, unconditionally: clear the pinned cert so even if
-  // every later step fails, the agent's badge is already dead. Persisted before
-  // any network call so a crash mid-teardown still leaves trust revoked.
+  // (b) Revoke trust before the delete: if anything below fails, the agent's
+  // badge is already dead.
+  const pinned = server.agent?.certFingerprint ?? "";
   await getDb()
     .update(serversTable)
     .set({ agentCertFingerprint: "" })
     .where(eq(serversTable.id, id));
 
-  // (c) Best-effort remote teardown. Import lazily so removing a server doesn't
-  // force the agent-client (and its grpc deps) into modules that never deploy.
-  // Dial via the pre-revoke snapshot (the live row's pin is now cleared).
-  let warning: string | null = null;
-  if (wasProvisioned) {
-    try {
-      const { teardownServerAgent } = await import("../infra/agent-client");
-      await teardownServerAgent(snapshot);
-    } catch (e) {
-      warning =
-        `Could not reach the agent on ${server.name} to tear down its containers ` +
-        `(${e instanceof Error ? e.message : String(e)}). Remove leftover ` +
-        `deplo-* containers on that host by hand.`;
-    }
+  // (c) Delete — restoring the pin if it fails, so we never leave a server that
+  // is present in the table yet can never be dialed again.
+  try {
+    await getDb().delete(serversTable).where(eq(serversTable.id, id));
+  } catch (e) {
+    await getDb()
+      .update(serversTable)
+      .set({ agentCertFingerprint: pinned })
+      .where(eq(serversTable.id, id));
+    throw new Error(
+      `Could not remove ${server.name} (its trust was restored): ` +
+        `${e instanceof Error ? e.message : String(e)}`,
+    );
   }
-
-  await getDb().delete(serversTable).where(eq(serversTable.id, id));
   await recordActivity("member", `Removed server ${server.name}`, user.name, null, teamId);
-  return { warning };
+
+  const warning =
+    stranded.length > 0
+      ? `${nameList(stranded.map((a) => a.slug))} ${stranded.length === 1 ? "was" : "were"} ` +
+        `mid-move off ${server.name}: the data volumes still live on that host and Deplo ` +
+        `has just forgotten where. Copy them off before you uninstall with --purge-data.`
+      : null;
+
+  return {
+    uninstallCommand: uninstallCommand({ baseUrl: await publicBaseUrl() }),
+    warning,
+  };
 }
 
 /**

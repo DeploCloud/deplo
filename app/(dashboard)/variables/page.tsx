@@ -53,7 +53,20 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
 
   const sharedByApp: Record<string, AppliedSharedVarDTO[]> = {};
   for (const s of appliedShared) (sharedByApp[s.appId] ??= []).push(s);
-  const projects = projectSummaries.map((p) => ({ id: p.id, name: p.name, slug: p.slug }));
+  // The wizard's project cards carry the container's colour + counts, so a
+  // project is recognised the same way it is on the Overview.
+  const projects = projectSummaries.map((p) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    color: p.color ?? null,
+    appCount: p.appCount,
+    environmentCount: p.environmentCount,
+  }));
+  // The shared-var wizard's "specific apps" scope needs every app in the active
+  // team, not just the ones that hold variables — and listAllAppEnv already
+  // returns a group per app (name-sorted), so there is nothing more to fetch.
+  const apps = allAppGroups.map((g) => g.app);
 
   // Two team-facing tabs (App / Shared) + an admin-only instance tab. Legacy
   // deep links (?tab=service|environments|team) fold gracefully into the new set.
@@ -91,6 +104,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
             groups={allAppGroups}
             sharedByApp={sharedByApp}
             sharedVars={sharedVars}
+            apps={apps}
             projects={projects}
             environments={teamEnvironments}
           />
@@ -100,6 +114,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
         <TabsContent value="shared">
           <SharedVarsManager
             vars={sharedVars}
+            apps={apps}
             projects={projects}
             environments={teamEnvironments}
           />

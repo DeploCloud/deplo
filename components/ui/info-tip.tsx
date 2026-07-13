@@ -7,6 +7,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
+  keyboardOnlyTooltipFocus,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +38,9 @@ export function InfoTip({
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
+      {/* Shut on open: a Dialog focuses its first tabbable element, and next to a
+          field label that is this button — see `keyboardOnlyTooltipFocus`. */}
+      <TooltipTrigger asChild onFocus={keyboardOnlyTooltipFocus}>
         <button
           type="button"
           aria-label={label}

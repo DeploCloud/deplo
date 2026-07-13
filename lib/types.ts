@@ -308,7 +308,32 @@ export interface Environment {
   updatedAt: string;
 }
 
-export type ServerStatus = "online" | "offline" | "provisioning" | "error";
+/**
+ * A server's health, as last OBSERVED by a live agent `Hello` probe — not a
+ * lifecycle the control plane drives. Read it together with
+ * [[Server.statusCheckedAt]]: the value is a timestamped observation (a cache),
+ * never a gate. Nothing in the deploy path consults it; the gate there is the
+ * mandatory live Hello pre-flight (ADR-0006).
+ *
+ *  - `provisioning` — no agent has called home yet, so there is nothing to dial.
+ *    The prober SKIPS these rows; they are never demoted to offline.
+ *  - `online`       — Hello answered and Docker is reachable: the server can deploy.
+ *  - `warning`      — Hello answered (the agent is up and trusted) but the host is
+ *                     degraded and CANNOT deploy — today that means exactly one
+ *                     thing: the Docker daemon is unreachable from the agent.
+ *  - `error`        — the peer answered but the exchange is broken: the agent's
+ *                     certificate is not the pinned one (trust failure), it speaks
+ *                     an unsupported contract version, or it returned an
+ *                     application error. The box is up; its agent is wrong.
+ *  - `offline`      — nothing answered: connection refused, or no reply within the
+ *                     probe deadline (confirmed by a retry before we demote).
+ */
+export type ServerStatus =
+  | "online"
+  | "warning"
+  | "error"
+  | "offline"
+  | "provisioning";
 
 /**
  * The agent trust + reachability material for a server (PLAN Part B). EVERY
@@ -407,6 +432,31 @@ export interface Server {
    * behind the live-read health check, never the source of truth.
    */
   lastSeenAt?: string;
+  /**
+   * When [[Server.status]] was last OBSERVED (ISO) — i.e. when a probe classified
+   * and recorded a result, not when the row was last written. Absent until the
+   * first observation, and never fabricated: a probe that times out or is skipped
+   * writes nothing rather than stamping a check it did not perform. (The throttle
+   * lease is a SEPARATE column, `status_probed_at`, precisely so that "we tried"
+   * can advance without "we observed" advancing with it — an inconclusive probe
+   * must never leave a fresh timestamp over a stale status.)
+   *
+   * This is what makes the stored status honest. `status` alone is a value that
+   * was true at SOME point; `status` + this stamp is a claim the UI can qualify
+   * ("Online, checked 12s ago") and — past a staleness window — refuse to paint
+   * at all, falling back to "Unknown" instead of a confident, stale green.
+   */
+  statusCheckedAt?: string;
+  /**
+   * The operator-facing reason behind a non-`online` status ("Docker daemon
+   * unreachable — deploys to this server will fail"), from the closed set in
+   * `classifyServerHealth`. Absent when `online` or never probed.
+   *
+   * NEVER a raw agent/gRPC error: those embed the pinned cert fingerprint, the
+   * dial address and other internals. Raw detail goes to the server log; only a
+   * curated string is persisted, and it is instance-admin-scoped in GraphQL.
+   */
+  statusMessage?: string;
 }
 
 export type AppStatus =
@@ -868,6 +918,32 @@ export const ALL_ENV_TARGETS: EnvTarget[] = [
   "development",
 ];
 
+/**
+ * Keep only valid targets, deduped and in canonical order; fall back to all three
+ * if none survive. The UI no longer offers a target picker (an App belongs to
+ * exactly ONE Environment — the production/preview/development axis is a legacy
+ * storage detail), so a write that names no target means "every runtime".
+ */
+export function sanitizeTargets(targets: EnvTarget[]): EnvTarget[] {
+  const kept = ALL_ENV_TARGETS.filter((t) => targets.includes(t));
+  return kept.length ? kept : [...ALL_ENV_TARGETS];
+}
+
+/**
+ * Who created or last modified a variable. `null` when the author's account was
+ * deleted (the FK is ON DELETE SET NULL) or the row predates authorship tracking
+ * (migration 0029 does not backfill) — the UI renders "—".
+ *
+ * Identity fields only: never an email, never a hash. Authorship is METADATA, not
+ * a value, so it is safe in a DTO whose `value` stays masked.
+ */
+export interface VarAuthor {
+  id: ID;
+  name: string;
+  username: string;
+  avatarColor: string;
+}
+
 export interface EnvVar {
   id: ID;
   appId: ID;
@@ -876,6 +952,8 @@ export interface EnvVar {
   valueEnc: string;
   targets: EnvTarget[];
   type: "plain" | "secret";
+  createdByUserId: ID | null;
+  updatedByUserId: ID | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -888,6 +966,9 @@ export interface EnvVarDTO {
   masked: boolean;
   targets: EnvTarget[];
   type: "plain" | "secret";
+  createdBy: VarAuthor | null;
+  updatedBy: VarAuthor | null;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -911,6 +992,8 @@ export interface GlobalEnvVar {
   valueEnc: string; // encrypted at rest
   targets: EnvTarget[];
   type: "plain" | "secret";
+  createdByUserId: ID | null;
+  updatedByUserId: ID | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -923,6 +1006,9 @@ export interface GlobalEnvVarDTO {
   masked: boolean;
   targets: EnvTarget[];
   type: "plain" | "secret";
+  createdBy: VarAuthor | null;
+  updatedBy: VarAuthor | null;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -1015,7 +1101,9 @@ export interface Domain {
    * never a backtick (it is interpolated into a Traefik backtick literal).
    * Absent/empty ⇒ a `Host()`-only rule, the long-standing behaviour. Two hosts
    * with different prefixes can't share a router, so it is part of the router
-   * signature; a longer prefix gets a higher router `priority` so it wins.
+   * signature; a path router is also given a `priority` above every whole-host
+   * router (which would otherwise swallow the path — Traefik defaults an
+   * un-pinned router's priority to its rule LENGTH), longest prefix first.
    */
   pathPrefix?: string;
   /**
@@ -1228,6 +1316,12 @@ export interface Activity {
   type: ActivityType;
   message: string;
   actor: string;
+  /**
+   * The human behind `actor`, when there is one. `actor` is free text and also
+   * carries non-human actors ("system" / "github"), which must NEVER be attributed
+   * to a person — those stay `null`, as do rows predating the column.
+   */
+  actorUserId: ID | null;
   appId: ID | null;
   createdAt: string;
 }
@@ -1256,6 +1350,8 @@ export interface SharedVar {
   projectIds: ID[];
   appIds: ID[];
   targets: EnvTarget[];
+  createdByUserId: ID | null;
+  updatedByUserId: ID | null;
   createdAt: string;
   updatedAt: string;
 }

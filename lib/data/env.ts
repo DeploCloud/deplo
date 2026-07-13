@@ -7,6 +7,7 @@ import {
   envVars as envVarsTable,
   envVarTargets as envVarTargetsTable,
   apps as appsTable,
+  domains as domainsTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
@@ -21,11 +22,13 @@ import {
   loadEnvVarsForApps,
   appInTeam,
 } from "./app-graph-load";
-import type { EnvTarget, EnvVar, EnvVarDTO } from "../types";
+import { authorOf, loadUserIdentities } from "./user-identity";
+import { ALL_ENV_TARGETS, sanitizeTargets } from "../types";
+import type { EnvTarget, EnvVar, EnvVarDTO, VarAuthor } from "../types";
 
 const MASK = "••••••••••••";
 
-function toDTO(e: EnvVar): EnvVarDTO {
+function toDTO(e: EnvVar, authors: Map<string, VarAuthor>): EnvVarDTO {
   const isSecret = e.type === "secret";
   return {
     id: e.id,
@@ -37,8 +40,17 @@ function toDTO(e: EnvVar): EnvVarDTO {
     masked: isSecret,
     targets: e.targets,
     type: e.type,
+    // Authorship is metadata, not value — safe to project while `value` stays masked.
+    createdBy: authorOf(e.createdByUserId, authors),
+    updatedBy: authorOf(e.updatedByUserId, authors),
+    createdAt: e.createdAt,
     updatedAt: e.updatedAt,
   };
+}
+
+/** Every author id a set of vars references, for one batched identity lookup. */
+function authorIds(vars: EnvVar[]): (string | null)[] {
+  return vars.flatMap((e) => [e.createdByUserId, e.updatedByUserId]);
 }
 
 /**
@@ -51,14 +63,45 @@ export async function listEnv(appId: string): Promise<EnvVarDTO[]> {
   // Env vars are owned through their project; an out-of-team project yields none.
   if (!(await appInTeam(appId, teamId))) return [];
   await requireFolderCapabilityForApp(appId, "manage_env");
-  return (await loadEnvVarsForApp(appId))
-    .sort((a, b) => a.key.localeCompare(b.key))
-    .map(toDTO);
+  const vars = (await loadEnvVarsForApp(appId)).sort((a, b) =>
+    a.key.localeCompare(b.key),
+  );
+  const authors = await loadUserIdentities(authorIds(vars));
+  return vars.map((e) => toDTO(e, authors));
 }
 
 export interface AppEnvGroup {
-  app: { id: string; name: string; slug: string };
+  /**
+   * `projectId` / `environmentId` are how a shared variable's project scope
+   * resolves to apps (see `listSharedVarsForApp`), so the shared-var wizard needs
+   * them to tell you what a scope actually reaches. Both are null for a loose app.
+   *
+   * `logo` / `primaryDomain` are what the wizard's app cards show, so two apps
+   * with near-identical names are told apart by sight instead of by slug.
+   */
+  app: {
+    id: string;
+    name: string;
+    slug: string;
+    projectId: string | null;
+    environmentId: string | null;
+    logo: string | null;
+    /** Hostname of the app's primary domain — at most one per app (DB-enforced). */
+    primaryDomain: string | null;
+  };
   vars: EnvVarDTO[];
+}
+
+/** The primary domain hostname of each given app, for the ones that have one. */
+async function loadPrimaryDomains(appIds: string[]): Promise<Map<string, string>> {
+  if (appIds.length === 0) return new Map();
+  const rows = await getDb()
+    .select({ appId: domainsTable.appId, name: domainsTable.name })
+    .from(domainsTable)
+    .where(
+      and(inArray(domainsTable.appId, appIds), eq(domainsTable.isPrimary, true)),
+    );
+  return new Map(rows.map((r) => [r.appId, r.name]));
 }
 
 /** Every project's env vars, grouped by project (for the global Variables tab). */
@@ -69,12 +112,20 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
       id: appsTable.id,
       name: appsTable.name,
       slug: appsTable.slug,
+      projectId: appsTable.projectId,
+      environmentId: appsTable.environmentId,
+      logo: appsTable.logo,
     })
     .from(appsTable)
     .where(eq(appsTable.teamId, teamId));
   // Batch-load every var across the team's apps (one pair of queries), then
   // group in memory — no per-project round-trip.
   const all = await loadEnvVarsForApps(apps.map((p) => p.id));
+  // Same shape for the primary domains: one query for the whole team, keyed by
+  // app. `domains_one_primary_uq` guarantees at most one row per app.
+  const primaryDomains = await loadPrimaryDomains(apps.map((p) => p.id));
+  // One identity query for the whole page, not one per var / per app.
+  const authors = await loadUserIdentities(authorIds(all));
   const byApp = new Map<string, EnvVar[]>();
   for (const e of all) {
     const list = byApp.get(e.appId) ?? [];
@@ -84,10 +135,18 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
   return apps
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((p) => ({
-      app: { id: p.id, name: p.name, slug: p.slug },
+      app: {
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        projectId: p.projectId,
+        environmentId: p.environmentId,
+        logo: p.logo ?? null,
+        primaryDomain: primaryDomains.get(p.id) ?? null,
+      },
       vars: (byApp.get(p.id) ?? [])
         .sort((a, b) => a.key.localeCompare(b.key))
-        .map(toDTO),
+        .map((e) => toDTO(e, authors)),
     }));
 }
 
@@ -107,14 +166,21 @@ export async function upsertEnv(input: {
   appId: string;
   key: string;
   value: string;
-  targets: EnvTarget[];
+  /**
+   * Omitted (the UI no longer asks): a NEW var gets every runtime; an EDIT keeps
+   * whatever targets the var already has — an edit must never widen them.
+   */
+  targets?: EnvTarget[];
   type: "plain" | "secret";
 }): Promise<void> {
-  const { membership } = await requireCapability("manage_env");
+  const { membership, userId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
-  if (input.targets.length === 0) throw new Error("Select at least one environment");
+  // `null` ⇒ the caller named no targets: default them on insert, PRESERVE them on
+  // update. Silently widening a legacy production-only secret would inject it into
+  // the dev container (lib/deploy/dev.ts).
+  const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
   if (!(await appInTeam(input.appId, membership.teamId)))
     throw new Error("App not found");
   await requireFolderCapabilityForApp(input.appId, "manage_env");
@@ -142,14 +208,18 @@ export async function upsertEnv(input: {
         .set({
           ...(keepValue ? {} : { valueEnc: encryptSecret(input.value) }),
           type: input.type,
+          // An edit never rewrites who created the var.
+          updatedByUserId: userId,
           updatedAt: nowIso(),
         })
         .where(eq(envVarsTable.id, varId));
-      // Whole-set replace of the targets junction.
-      await tx.delete(envVarTargetsTable).where(eq(envVarTargetsTable.envVarId, varId));
-      await tx
-        .insert(envVarTargetsTable)
-        .values(input.targets.map((target) => ({ envVarId: varId, target })));
+      // Whole-set replace of the targets junction — only when the caller sent one.
+      if (targets) {
+        await tx.delete(envVarTargetsTable).where(eq(envVarTargetsTable.envVarId, varId));
+        await tx
+          .insert(envVarTargetsTable)
+          .values(targets.map((target) => ({ envVarId: varId, target })));
+      }
     } else {
       await insertEnvVars(tx, [
         {
@@ -157,8 +227,10 @@ export async function upsertEnv(input: {
           appId: input.appId,
           key,
           valueEnc: encryptSecret(input.value),
-          targets: input.targets,
+          targets: targets ?? [...ALL_ENV_TARGETS],
           type: input.type,
+          createdByUserId: userId,
+          updatedByUserId: userId,
           createdAt: nowIso(),
           updatedAt: nowIso(),
         },
@@ -172,7 +244,7 @@ export async function upsertEnv(input: {
 export async function importEnv(
   appId: string,
   blob: string,
-  targets: EnvTarget[]
+  targets?: EnvTarget[],
 ): Promise<number> {
   const { membership } = await requireCapability("manage_env");
   if (!(await appInTeam(appId, membership.teamId)))
@@ -205,7 +277,8 @@ export async function importEnv(
  * Replace a project's whole env set from the ".env editor": upsert every entry
  * and delete the ones the editor dropped, in a single atomic write.
  *
- *  - New keys are created as PLAIN (never secret by default) with `defaultTargets`.
+ *  - New keys are created as PLAIN (never secret by default) with `defaultTargets`
+ *    (omitted ⇒ every runtime).
  *  - Existing keys keep their `type` and `targets` (the flat editor can't express
  *    them); only the value changes.
  *  - A SECRET whose incoming value is still the mask (the editor hides secret
@@ -216,16 +289,16 @@ export async function importEnv(
 export async function setAppEnv(
   appId: string,
   entries: { key: string; value: string }[],
-  defaultTargets: EnvTarget[],
+  defaultTargets?: EnvTarget[],
 ): Promise<number> {
-  const { membership } = await requireCapability("manage_env");
+  const { membership, userId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
   await requireFolderCapabilityForApp(appId, "manage_env");
-  if (defaultTargets.length === 0) {
-    throw new Error("Select at least one environment for new variables");
-  }
+  const targets = defaultTargets?.length
+    ? sanitizeTargets(defaultTargets)
+    : [...ALL_ENV_TARGETS];
 
   // Validate + dedupe (last assignment of a key wins), dropping invalid names.
   const wanted = new Map<string, string>();
@@ -246,7 +319,11 @@ export async function setAppEnv(
         if (e.type === "secret" && value === MASK) continue;
         await tx
           .update(envVarsTable)
-          .set({ valueEnc: encryptSecret(value), updatedAt: nowIso() })
+          .set({
+            valueEnc: encryptSecret(value),
+            updatedByUserId: userId,
+            updatedAt: nowIso(),
+          })
           .where(eq(envVarsTable.id, e.id));
       } else {
         created.push({
@@ -254,8 +331,10 @@ export async function setAppEnv(
           appId,
           key,
           valueEnc: encryptSecret(value),
-          targets: defaultTargets,
+          targets,
           type: "plain",
+          createdByUserId: userId,
+          updatedByUserId: userId,
           createdAt: nowIso(),
           updatedAt: nowIso(),
         });

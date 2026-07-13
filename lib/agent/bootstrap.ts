@@ -83,6 +83,27 @@ export function installCommand(opts: {
 }
 
 /**
+ * Build the paste-on-the-server UNINSTALL command — the counterpart to
+ * {@link installCommand}, handed to the operator when they remove a server.
+ *
+ * Removing a server revokes the agent's trust, which is precisely when the
+ * control plane loses the ability to command it; and no V1 RPC could delete the
+ * binary, the systemd unit, Traefik or the `deplo` network in any case. So the
+ * host cleanup is host-side, and this is the command that does it. No token: the
+ * script only removes Deplo's own footprint from the box it runs on, and needs
+ * root to do that anyway.
+ *
+ * `--yes` because the script is a dry run without it; `--purge-data` (which
+ * deletes volumes and images) is deliberately NOT in the copy-and-run command —
+ * the operator must reach for it consciously. `baseUrl` MUST come from
+ * resolvePublicBaseUrl (never a raw request header) — it is interpolated into a
+ * copy-and-run shell string.
+ */
+export function uninstallCommand(opts: { baseUrl: string }): string {
+  return `curl -fsSL '${opts.baseUrl}/uninstall-agent.sh' | sudo bash -s -- --yes`;
+}
+
+/**
  * Read the sha256 fingerprint of the cert the control plane's own public URL
  * serves, by making a TLS connection to it. Used to embed the pin in the install
  * command (P3). Returns "" for a non-HTTPS URL (the bare-IP case — the agent

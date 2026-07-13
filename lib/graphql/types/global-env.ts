@@ -1,6 +1,6 @@
 import { builder } from "../builder";
 import { EnvTargetEnum } from "./enums";
-import { EnvVarTypeEnum } from "./env";
+import { EnvVarTypeEnum, VarAuthorRef } from "./env";
 import {
   listInstanceEnv,
   upsertInstanceEnv,
@@ -25,6 +25,17 @@ const GlobalEnvVarRef = builder
       isMasked: t.exposeBoolean("masked"),
       targets: t.field({ type: [EnvTargetEnum], resolve: (e) => e.targets }),
       type: t.field({ type: EnvVarTypeEnum, resolve: (e) => e.type }),
+      createdBy: t.field({
+        type: VarAuthorRef,
+        nullable: true,
+        resolve: (e) => e.createdBy,
+      }),
+      updatedBy: t.field({
+        type: VarAuthorRef,
+        nullable: true,
+        resolve: (e) => e.updatedBy,
+      }),
+      createdAt: t.exposeString("createdAt"),
       updatedAt: t.exposeString("updatedAt"),
     }),
   });
@@ -33,7 +44,8 @@ const UpsertGlobalEnvInputType = builder.inputType("UpsertGlobalEnvInput", {
   fields: (t) => ({
     key: t.string({ required: true }),
     value: t.string({ required: true }),
-    targets: t.field({ type: [EnvTargetEnum], required: true }),
+    // Omit ⇒ every deploy runtime (the UI no longer asks); see UpsertEnvInput.
+    targets: t.field({ type: [EnvTargetEnum], required: false }),
     type: t.field({ type: EnvVarTypeEnum, required: true }),
   }),
 });
@@ -67,7 +79,7 @@ builder.mutationFields((t) => ({
       await upsertInstanceEnv({
         key: input.key,
         value: input.value,
-        targets: input.targets,
+        targets: input.targets ?? undefined,
         type: input.type,
       });
       return reload(listInstanceEnv, input.key);

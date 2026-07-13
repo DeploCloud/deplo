@@ -44,6 +44,7 @@ import {
   ensureAutoDomain,
   ensureExtraDomain,
   uniqueAutoDomainName,
+  routableRoutes,
 } from "./domains";
 import { loadDomainsForApp } from "./app-graph-load";
 import { nipEmbeddedIp } from "../deploy/domains";
@@ -236,6 +237,49 @@ test("env vars + targets round-trip through the relational layer", async () => {
   assert.notEqual(rows[0]!.valueEnc, "s3cret");
 });
 
+test("an app env var records its author and defaults to every runtime", async () => {
+  await seedApp(db, { id: "prj_1", status: "active" });
+  await asUser1(async () => {
+    // No targets: the picker is gone from the UI (an App belongs to exactly ONE
+    // Environment), so the var reaches every runtime.
+    await upsertEnv({ appId: "prj_1", key: "K", value: "v", type: "plain" });
+    const [v] = await listEnv("prj_1");
+    assert.deepEqual([...v!.targets].sort(), ["development", "preview", "production"]);
+    assert.equal(v!.createdBy?.id, USER_1);
+    assert.equal(v!.updatedBy?.id, USER_1);
+    assert.equal(v!.createdBy?.username, USER_1);
+  });
+});
+
+test("an edit that names no targets PRESERVES the stored ones", async () => {
+  // The dialogs no longer send targets. A legacy production-only SECRET must not
+  // silently widen to every runtime on a value rotation — that would inject the
+  // live key into the dev container (lib/deploy/dev.ts).
+  await seedApp(db, { id: "prj_1", status: "active" });
+  await asUser1(async () => {
+    await upsertEnv({
+      appId: "prj_1",
+      key: "STRIPE",
+      value: "live",
+      targets: ["production"],
+      type: "secret",
+    });
+    await upsertEnv({ appId: "prj_1", key: "STRIPE", value: "rotated", type: "secret" });
+    const [v] = await listEnv("prj_1");
+    assert.deepEqual(v!.targets, ["production"]);
+    // An explicit set still replaces them.
+    await upsertEnv({
+      appId: "prj_1",
+      key: "STRIPE",
+      value: "rotated",
+      targets: ["production", "development"],
+      type: "secret",
+    });
+    const [v2] = await listEnv("prj_1");
+    assert.deepEqual([...v2!.targets].sort(), ["development", "production"]);
+  });
+});
+
 test("re-saving a secret with the MASK keeps its value (editing targets can't wipe it)", async () => {
   // The edit dialog prefills a secret's value with the MASK (you can't read back a
   // secret you didn't set). Without a keep-value contract, changing ONLY the
@@ -390,4 +434,63 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
   );
   assert.notEqual(yName, preferred, "Y regenerated rather than colliding");
   assert.equal(nipEmbeddedIp(yName), IP);
+});
+
+/* ------------------------------------------------------------------ */
+/* Path-routed domains — a hostname carries one row per path          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `pathPrefix` lets several rows share ONE hostname (`app.com` for `/`, `app.com`
+ * for `/api`), which is the whole point of the "Internal path" option. Two things
+ * used to silently kill it in the data layer:
+ *
+ *  1. the new row was inserted `pending`, and `routableRoutes` only routes
+ *     `valid`/`cloudflare` — so the path row was filtered off the router even
+ *     though its hostname's DNS was already proven by the sibling row. DNS is a
+ *     property of the HOSTNAME, not of the path;
+ *  2. the row's `pathPrefix`/`stripPrefix` had to survive the round trip into the
+ *     route the router grammar is rendered from.
+ */
+
+test("a path row on an already-verified hostname inherits its DNS status (and routes)", async () => {
+  await seedApp(db, { id: "prj_1", status: "active" });
+  await asUser1(async () => {
+    // ensureAutoDomain inserts a `valid` row — the verified sibling.
+    const auto = await ensureAutoDomain("prj_1", {
+      slug: "app",
+      ip: "1.2.3.4",
+      defaultPort: 80,
+    });
+    // A SECOND row on the same hostname, path-routed to another port.
+    const api = await addDomain("prj_1", auto, {
+      port: 8080,
+      pathPrefix: "/api",
+      stripPrefix: true,
+    });
+    assert.equal(
+      api.status,
+      "valid",
+      "same hostname, already-proven DNS ⇒ routable immediately, not stuck pending",
+    );
+
+    // Both rows reach the router, and the path row keeps its full config.
+    const routes = await routableRoutes("prj_1");
+    assert.equal(routes.length, 2, "both the whole-host and the /api row route");
+    const path = routes.find((r) => r.pathPrefix === "/api");
+    assert.ok(path, "the /api route must be present");
+    assert.equal(path.stripPrefix, true);
+    assert.equal(path.port, 8080);
+    assert.equal(path.name, auto);
+  });
+});
+
+test("a path row on an UNVERIFIED hostname stays pending (DNS is still unproven)", async () => {
+  await seedApp(db, { id: "prj_1", status: "active" });
+  await asUser1(async () => {
+    // No verified sibling for this hostname ⇒ the DNS really is unchecked.
+    const d = await addDomain("prj_1", "fresh.example.io", { pathPrefix: "/api" });
+    assert.equal(d.status, "pending");
+    assert.deepEqual(await routableRoutes("prj_1"), [], "unproven host is not routed");
+  });
 });

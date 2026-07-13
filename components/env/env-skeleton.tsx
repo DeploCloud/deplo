@@ -20,18 +20,17 @@ import { cn } from "@/lib/utils";
  */
 
 // Per-row shape, varied so the placeholder reads as real data instead of a
-// perfect grid. `envs` is how many environment badges to draw, `masked` adds
-// the little "secret" eye dot in the value cell.
+// perfect grid. `masked` adds the little "secret" eye dot in the value cell;
+// `author` is false for a row with no known author (pre-0029 rows render an em
+// dash), which is also the narrowest the cell ever gets.
 const ROWS = [
-  { key: "w-28", value: "w-40", envs: 3, masked: false },
-  { key: "w-40", value: "w-24", envs: 1, masked: true },
-  { key: "w-24", value: "w-52", envs: 2, masked: false },
-  { key: "w-36", value: "w-32", envs: 3, masked: true },
-  { key: "w-32", value: "w-44", envs: 2, masked: false },
-  { key: "w-44", value: "w-28", envs: 1, masked: false },
+  { key: "w-28", value: "w-40", when: "w-20", author: true, masked: false },
+  { key: "w-40", value: "w-24", when: "w-16", author: true, masked: true },
+  { key: "w-24", value: "w-52", when: "w-24", author: false, masked: false },
+  { key: "w-36", value: "w-32", when: "w-16", author: true, masked: true },
+  { key: "w-32", value: "w-44", when: "w-20", author: true, masked: false },
+  { key: "w-44", value: "w-28", when: "w-24", author: false, masked: false },
 ];
-
-const BADGE_W = ["w-14", "w-16", "w-20"];
 
 // 90ms between rows — enough to read as a wave, short enough to feel alive. A
 // negative delay starts each row mid-cycle so the whole table is already in
@@ -42,9 +41,9 @@ const rowDelay = (i: number): React.CSSProperties =>
 
 /**
  * The bordered env-vars table: a header row plus `rows` body rows rendered with
- * the real Table primitives on the same Key / Value / Environments / Actions
- * columns the live table uses. Set `actions={false}` for the read-only tables
- * (e.g. the Variables page cards) whose last column is targets, not row actions.
+ * the real Table primitives on the same Key / Value / Last modified / Modified
+ * by / Actions columns the live table uses. Set `actions={false}` for a
+ * read-only table, which drops the trailing row-actions column.
  */
 export function EnvTableSkeleton({
   rows = 5,
@@ -65,6 +64,9 @@ export function EnvTableSkeleton({
             </TableHead>
             <TableHead>
               <Skeleton shimmer className="h-3 w-10" />
+            </TableHead>
+            <TableHead>
+              <Skeleton shimmer className="h-3 w-20" />
             </TableHead>
             <TableHead>
               <Skeleton shimmer className="h-3 w-20" />
@@ -105,18 +107,25 @@ export function EnvTableSkeleton({
                   </div>
                 </TableCell>
 
-                {/* Environment badges */}
+                {/* Last modified ("3 days ago") */}
                 <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {Array.from({ length: r.envs }).map((_, b) => (
+                  <Skeleton shimmer style={delay} className={cn("h-3", r.when)} />
+                </TableCell>
+
+                {/* Modified by (avatar + @username), or the em dash */}
+                <TableCell>
+                  {r.author ? (
+                    <div className="flex items-center gap-2">
                       <Skeleton
-                        key={b}
                         shimmer
                         style={delay}
-                        className={cn("h-5 rounded-md", BADGE_W[b % BADGE_W.length])}
+                        className="size-5 shrink-0 rounded-full"
                       />
-                    ))}
-                  </div>
+                      <Skeleton shimmer style={delay} className="h-3 w-16" />
+                    </div>
+                  ) : (
+                    <Skeleton shimmer style={delay} className="h-3 w-3" />
+                  )}
                 </TableCell>
 
                 {/* Row actions */}
@@ -146,8 +155,10 @@ export function EnvTableSkeleton({
 }
 
 /**
- * Full loading state for an app's Environment Variables tab: the header +
- * toolbar (Reveal all, Add, view toggle) above the table.
+ * Full loading state for an app's Environment Variables tab: the title block,
+ * then the toolbar row <EnvManager> renders — the search/filter/sort bar on the
+ * left, the Reveal all / Add / view-toggle actions pinned right — above the
+ * table.
  */
 export function EnvManagerSkeleton({ rows = 5 }: { rows?: number }) {
   return (
@@ -157,12 +168,16 @@ export function EnvManagerSkeleton({ rows = 5 }: { rows?: number }) {
       aria-label="Loading environment variables"
       aria-busy
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="space-y-2">
-          <Skeleton shimmer className="h-5 w-44" />
-          <Skeleton shimmer className="h-4 w-72" />
-        </div>
-        <div className="flex items-center gap-2">
+      <div className="space-y-2">
+        <Skeleton shimmer className="h-5 w-44" />
+        <Skeleton shimmer className="h-4 w-72" />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Search input (flex-1) + the Author / Type / Sort selects */}
+        <Skeleton shimmer className="h-9 min-w-[12rem] flex-1 rounded-md" />
+        <Skeleton shimmer className="h-9 w-[140px] rounded-md" />
+        <Skeleton shimmer className="h-9 w-[180px] rounded-md" />
+        <div className="ml-auto flex items-center gap-2">
           <Skeleton shimmer className="h-8 w-28 rounded-md" />
           <Skeleton shimmer className="h-8 w-16 rounded-md" />
           <Skeleton shimmer className="h-8 w-[150px] rounded-lg" />

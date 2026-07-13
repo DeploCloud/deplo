@@ -22,7 +22,7 @@ export function AppTabs({
   running?: boolean;
   /** Source-bearing apps get a Dev Mode tab (live container + SSH access). */
   devEligible?: boolean;
-  /** The Environment tab is only shown to members with the manage_env capability. */
+  /** The Variables tab is only shown to members with the manage_env capability. */
   canManageEnv?: boolean;
   /** The Files tab is shown only when the app has an on-disk files dir and
    *  the viewer holds the manage_files capability (resolved server-side). */
@@ -52,12 +52,15 @@ export function AppTabs({
       href: `${base}/deployments`,
       active: matchSub("/deployments"),
     },
-    // Environment is hidden from members without the manage_env capability —
-    // env values are sensitive (the page guards server-side too).
+    // Labelled "Variables", not "Environment": only Projects have Environments,
+    // so the old label collided with the real environment switcher. The ROUTE
+    // stays /environment (deep links, and the page's own heading).
+    // Hidden from members without the manage_env capability — env values are
+    // sensitive (the page guards server-side too).
     ...(canManageEnv
       ? [
           {
-            label: "Environment",
+            label: "Variables",
             href: `${base}/environment`,
             active: matchSub("/environment"),
           },

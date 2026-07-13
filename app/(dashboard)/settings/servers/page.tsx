@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
-import { StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AddServer } from "@/components/servers/add-server";
 import { ServerActions } from "@/components/servers/server-actions";
@@ -36,6 +35,12 @@ import type { Server } from "@/lib/types";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import { CheckUpdatesButton } from "./check-updates-button";
 import { AgentVersionBadge } from "./agent-version-badge";
+import { ServerHealthChip } from "./server-health-chip";
+import {
+  ServerHealthProvider,
+  type ServerHealthState,
+} from "./server-health-provider";
+import { CheckStatusButton, CheckAllStatusButton } from "./check-status-button";
 
 export const metadata = { title: "Servers" };
 
@@ -89,17 +94,28 @@ function ServerCard({
     <Card className="transition-colors hover:border-foreground/20">
       <CardHeader className="space-y-3">
         <div className="flex items-center gap-2">
-          <StatusDot status={server.status} />
+          {/* The chip owns BOTH the dot and the label: the status and its age are one
+              fact, and splitting them across two elements is how a page ends up
+              rendering a confident green dot next to a status nobody has verified. */}
           <CardTitle className="truncate">{serverLabel(server)}</CardTitle>
-          <Badge variant="secondary" className="capitalize">
-            {server.status}
-          </Badge>
+          <ServerHealthChip
+            serverId={server.id}
+            fallback={{
+              status: server.status,
+              checkedAt: server.statusCheckedAt ?? null,
+              message: server.statusMessage ?? null,
+            }}
+          />
           <Badge variant="muted" title="Which teams can deploy to this server">
             {accessLabel}
           </Badge>
           {/* Every server is a bootstrapped agent now (the host running Deplo
               included), so the management actions apply to all of them. */}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <CheckStatusButton
+              serverId={server.id}
+              serverName={serverLabel(server)}
+            />
             <ServerActions
               serverId={server.id}
               serverName={serverLabel(server)}
@@ -190,55 +206,78 @@ export default async function ServersPage(
   const servers = await hydrateServerSpecs(serversRaw);
   const teams: TeamOption[] = teamsRaw.map((t) => ({ id: t.id, name: t.name }));
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Servers"
-        description="Connected Docker hosts running your deployments."
-        actions={<CheckUpdatesButton />}
-      />
+  // The LAST OBSERVED health of each server, handed to the client so the cards paint
+  // immediately. It is a seed, not the answer: <ServerHealthProvider> re-probes every
+  // agent on mount, and the chip refuses to paint any of this once it is stale. The
+  // probe deliberately does NOT run here — dialing every agent inside the render would
+  // make the one page an operator opens *because* a host is broken as slow as that
+  // broken host, on every single load.
+  const healthSeed: Record<string, ServerHealthState> = Object.fromEntries(
+    servers.map((s) => [
+      s.id,
+      {
+        status: s.status,
+        checkedAt: s.statusCheckedAt ?? null,
+        message: s.statusMessage ?? null,
+      },
+    ]),
+  );
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-          <div className="space-y-1.5">
-            <CardTitle className="flex w-fit items-center gap-2">
-              Add a server
+  return (
+    <ServerHealthProvider seed={healthSeed}>
+      <div className="space-y-6">
+        {/* The install flow is explained ONCE, in the title's InfoTip — it used to live on
+            the "Add a server" card, which is gone now that Add is a header action. It stays
+            on the page (not inside the dialog) so an operator can read it before they click. */}
+        <PageHeader
+          title={
+            <span className="flex items-center gap-2">
+              Servers
               <InfoTip
                 content={
                   <>
                     Start with <strong>this host</strong>: add it (use its IP),
-                    then run the one-time install command it gives you here on
-                    the box to install the agent. Add more Linux hosts the same
-                    way. The agent calls home and provisions itself — Deplo never
-                    needs SSH access to your servers.
+                    then run the one-time install command it gives you on the box
+                    to install the agent. Add more Linux hosts the same way. The
+                    agent calls home and provisions itself — Deplo never needs
+                    SSH access to your servers.
                   </>
                 }
               />
-            </CardTitle>
-          </div>
-          <AddServer autoOpen={autoOpenServer} teams={teams} />
-        </CardHeader>
-      </Card>
-
-      {servers.length === 0 ? (
-        <EmptyState
-          icon={ServerIcon}
-          title="No servers connected"
-          description="Run the install command above on a Linux host to add your first server."
+            </span>
+          }
+          description="Connected Docker hosts running your deployments."
+          actions={
+            <>
+              <CheckAllStatusButton />
+              <CheckUpdatesButton />
+              {/* The ONE mounted AddServer on this page: a second instance would also
+                  answer ?new=1 and open two dialogs at once. */}
+              <AddServer autoOpen={autoOpenServer} teams={teams} />
+            </>
+          }
         />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {servers.map((server) => (
-            <ServerCard
-              key={server.id}
-              server={server}
-              expectedAgentVersion={expectedAgentVersion}
-              teams={teams}
-              accessTeamIds={serverTeamIds.get(server.id) ?? []}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+
+        {servers.length === 0 ? (
+          <EmptyState
+            icon={ServerIcon}
+            title="No servers connected"
+            description="Use Add above to register your first Linux host, then run the one-time install command it gives you on the box."
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {servers.map((server) => (
+              <ServerCard
+                key={server.id}
+                server={server}
+                expectedAgentVersion={expectedAgentVersion}
+                teams={teams}
+                accessTeamIds={serverTeamIds.get(server.id) ?? []}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </ServerHealthProvider>
   );
 }

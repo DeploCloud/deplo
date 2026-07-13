@@ -56,6 +56,13 @@ import type { Server } from "../types";
  */
 
 const HELLO_TIMEOUT_MS = 8_000;
+/**
+ * The Hello deadline the HEALTH PROBER uses (lib/data/server-health.ts) — much
+ * shorter than {@link HELLO_TIMEOUT_MS}, which is a deploy pre-flight budget spent
+ * on a deploy the operator has already committed to. A health probe runs while
+ * someone waits on the Servers page, and a slow answer is itself the answer.
+ */
+export const HEALTH_HELLO_TIMEOUT_MS = 3_000;
 const DEPLOY_DEADLINE_MS = 30 * 60_000; // a build can be long
 const CONSOLE_TIMEOUT_MS = 30_000; // exec runs in-container; match docker.ts exec
 const FILES_TIMEOUT_MS = 15_000;
@@ -152,7 +159,17 @@ export interface AgentTunnelStatus {
 
 /** A live, mTLS-secured connection to one agent, with a typed wrapper. */
 export interface AgentConnection {
-  hello(): Promise<HelloResponse>;
+  /**
+   * The reachability + capability handshake. `timeoutMs` overrides the default
+   * {@link HELLO_TIMEOUT_MS} deploy-preflight budget — the health prober passes
+   * the much shorter {@link HEALTH_HELLO_TIMEOUT_MS} because it runs while an
+   * operator waits on a page, not while a deploy is already committed.
+   *
+   * Rejects with {@link AgentUnreachableError}; on a certificate failure that
+   * error carries `trust: true` (the peer answered, it just isn't the agent we
+   * pinned) — the one signal that separates a broken agent from a dead host.
+   */
+  hello(timeoutMs?: number): Promise<HelloResponse>;
   metrics(dataDir?: string): Promise<HostMetrics>;
   /** Stream a deploy; yields DeployEvents until the terminal result. */
   deploy(req: DeployRequest): AsyncGenerator<DeployEvent, void, unknown>;
@@ -338,8 +355,32 @@ interface DialTarget {
   pinnedFingerprint: string;
 }
 
-/** A typed availability error: the agent could not be reached (caller falls back). */
-export class AgentUnreachableError extends Error {}
+/**
+ * A typed availability error: the agent could not be reached (caller falls back).
+ *
+ * The two optional fields exist for ONE caller — the health prober
+ * (`lib/data/server-health.ts`), which has to tell "the box is off" apart from
+ * "the box answered with the wrong certificate". They are additive and optional,
+ * so every existing `instanceof AgentUnreachableError` guard (team-delete, backups,
+ * s3, apps, console, metricsFor) keeps behaving exactly as before.
+ */
+export class AgentUnreachableError extends Error {
+  constructor(
+    message: string,
+    /** The gRPC status code we normalised, when the failure came from an RPC. */
+    readonly code?: number,
+    /**
+     * True when the failure is a TRUST failure rather than a dead host: the peer
+     * presented a cert that is not the pinned one, or it rejected OUR client cert
+     * (UNAUTHENTICATED). Both reach gRPC as an opaque transport error, so the fact
+     * is captured at the only place that knows it ({@link dial}) instead of being
+     * recovered by parsing an error string we do not control.
+     */
+    readonly trust?: boolean,
+  ) {
+    super(message);
+  }
+}
 
 /**
  * The reachable agent does not (yet) implement the in-place self-update RPC.
@@ -460,7 +501,9 @@ function toAgentError(err: unknown): Error {
   const code = (err as Partial<ServiceError> | null)?.code;
   if (typeof code === "number" && TRANSPORT_DOWN_CODES.has(code)) {
     const msg = err instanceof Error ? err.message : String(err);
-    return new AgentUnreachableError(msg);
+    // Carry the code so the health prober can separate "no answer within the
+    // deadline" from "connection refused". Every other caller ignores it.
+    return new AgentUnreachableError(msg, code);
   }
   return err instanceof Error ? err : new Error(String(err));
 }
@@ -517,6 +560,14 @@ function peerFingerprint(cert: PeerCertificate): string {
 /** Build a typed connection over an mTLS channel to the given target. */
 function dial(target: DialTarget): AgentConnection {
   const { certPem, keyPem, caPem } = target.clientCreds;
+  // Set by checkServerIdentity below when the peer's cert is not the pinned one.
+  // Node's TLS layer turns that rejection into a handshake failure, which grpc-js
+  // surfaces as an opaque UNAVAILABLE — indistinguishable from "the host is off".
+  // Recording the fact HERE, at the only place that knows it, is what lets the
+  // health prober report a trust failure as `error` instead of lying with
+  // `offline`. (Recovering it by matching on the error string would mean parsing
+  // a message grpc-js owns and can reword at any release.)
+  let trustFailed = false;
   const creds = credentials.createSsl(
     Buffer.from(caPem),
     Buffer.from(keyPem),
@@ -529,6 +580,7 @@ function dial(target: DialTarget): AgentConnection {
       checkServerIdentity: (_host, cert) => {
         const got = peerFingerprint(cert);
         if (got !== target.pinnedFingerprint) {
+          trustFailed = true;
           return new Error(
             `agent cert fingerprint mismatch: pinned ${target.pinnedFingerprint}, got ${got}`,
           );
@@ -752,15 +804,34 @@ function dial(target: DialTarget): AgentConnection {
     modifiedAt: e.modifiedAt,
   });
 
+  /**
+   * Hello-specific error normaliser. A cert-pin rejection (recorded by
+   * `checkServerIdentity` above) or an UNAUTHENTICATED — the agent refusing OUR
+   * client cert — is a TRUST failure, not a dead host: the peer is up, the mTLS
+   * identity is wrong. Only `hello` normalises this way, because only the health
+   * prober consumes the distinction; every other RPC keeps seeing the plain
+   * transport-down AgentUnreachableError it always has.
+   */
+  const helloError = (err: unknown): Error => {
+    const e = toAgentError(err);
+    if (
+      e instanceof AgentUnreachableError &&
+      (trustFailed || e.code === GrpcStatus.UNAUTHENTICATED)
+    ) {
+      return new AgentUnreachableError(e.message, e.code, true);
+    }
+    return e;
+  };
+
   return {
-    hello() {
+    hello(timeoutMs = HELLO_TIMEOUT_MS) {
       return new Promise<HelloResponse>((resolve, reject) => {
-        const deadline = new Date(Date.now() + HELLO_TIMEOUT_MS);
+        const deadline = new Date(Date.now() + timeoutMs);
         client.hello(
           { contractVersion: ContractVersion.CONTRACT_VERSION_V1, controlPlaneVersion: "" },
           new Metadata(),
           { deadline },
-          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp)),
+          (err, resp) => (err ? reject(helloError(err)) : resolve(resp)),
         );
       });
     },
@@ -1369,25 +1440,25 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
   }
 }
 
-/**
- * Best-effort agent teardown for server removal (PLAN P6, move c). Pre-flight
- * Hello to confirm the agent answers; if it does, the removal is clean and the
- * operator is not warned. (Container cleanup is bounded: removeServer blocks
- * while any project is still assigned, so by the time we reach here the control
- * plane owns no stacks on this host — the meaningful signal is reachability.)
- * Throws if the agent is unreachable so the caller warns about manual cleanup.
- * Applies to every server uniformly (the host running Deplo included).
+/*
+ * There is deliberately NO teardownServerAgent here.
+ *
+ * There used to be: removeServer called it, and the UI told the operator it
+ * "tells the agent to tear down its containers". It did nothing of the sort — it
+ * sent a single Hello and closed the connection. The honest reading is that no
+ * such function CAN exist: removeServer blocks while any App or database is still
+ * on the host, so there is no stack left for the control plane to even name; and
+ * everything that genuinely survives a removal (the agent binary, its systemd
+ * unit, /var/lib/deplo-agent, deplo-traefik on :80/:443, the `deplo` network,
+ * Docker itself) has no RPC behind it in the V1 contract. Removal also revokes the
+ * pinned cert, which is exactly the moment we lose the right to dial that agent.
+ *
+ * The host cleanup is therefore host-side: `uninstall-agent.sh`, whose one-liner
+ * removeServer returns (see lib/agent/bootstrap.ts `uninstallCommand`). If a
+ * future agent ever grows a real host-teardown RPC, gate it on a Hello capability
+ * the way SELF_UPDATE_CAPABILITY / BACKUP_CAPABILITY are gated below — do not
+ * bring back a function whose name promises more than it does.
  */
-export async function teardownServerAgent(server: Server): Promise<void> {
-  const target = await remoteTarget(server).catch(() => null);
-  if (!target) return; // never provisioned; nothing to reach
-  const conn = dial(target);
-  try {
-    await conn.hello(); // reachability pre-flight; throws if the box is gone
-  } finally {
-    conn.close();
-  }
-}
 
 /** The capability an agent advertises in Hello once it can self-update (mirrors
  *  the "self-update" entry in the agent's server.Capabilities). */

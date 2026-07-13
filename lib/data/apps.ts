@@ -347,7 +347,7 @@ export interface CreateAppInput {
 export async function createApp(
   input: CreateAppInput
 ): Promise<AppSummary> {
-  const { membership } = await requireCapability("deploy");
+  const { membership, userId } = await requireCapability("deploy");
   // Publishing container ports — a service's `ports:` (bound to the host) or
   // `expose:` (advertised to linked containers) — needs the expose-ports grant.
   // Giving a service a public Traefik DOMAIN (composeService/composePort/exposes)
@@ -468,6 +468,9 @@ export async function createApp(
       valueEnc: encryptSecret(e.value),
       targets: ["production", "preview", "development"] as EnvTarget[],
       type: isSecretKey(e.key) ? ("secret" as const) : ("plain" as const),
+      // A template's defaults are still an authored write by whoever created the app.
+      createdByUserId: userId,
+      updatedByUserId: userId,
       createdAt: now,
       updatedAt: now,
     }));

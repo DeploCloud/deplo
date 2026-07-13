@@ -1,6 +1,6 @@
 import { builder } from "../builder";
 import { EnvTargetEnum } from "./enums";
-import { EnvVarTypeEnum } from "./env";
+import { EnvVarTypeEnum, VarAuthorRef } from "./env";
 import {
   listSharedVars,
   listSharedVarsForApp,
@@ -78,6 +78,17 @@ const SharedVarRef = builder.objectRef<SharedVarDTO>("SharedVar").implement({
       resolve: (v) => v.projects,
     }),
     apps: t.field({ type: [SharedVarAppRef], resolve: (v) => v.apps }),
+    createdBy: t.field({
+      type: VarAuthorRef,
+      nullable: true,
+      resolve: (v) => v.createdBy,
+    }),
+    updatedBy: t.field({
+      type: VarAuthorRef,
+      nullable: true,
+      resolve: (v) => v.updatedBy,
+    }),
+    createdAt: t.exposeString("createdAt"),
     updatedAt: t.exposeString("updatedAt"),
   }),
 });
@@ -100,6 +111,14 @@ const AppSharedVarRef = builder
       applied: t.exposeBoolean("applied"),
       inherited: t.exposeBoolean("inherited"),
       linked: t.exposeBoolean("linked"),
+      // No `createdBy` here: the data layer already falls back to the creator,
+      // so this is the single "Modified by" the app's table renders.
+      updatedBy: t.field({
+        type: VarAuthorRef,
+        nullable: true,
+        resolve: (v) => v.updatedBy,
+      }),
+      updatedAt: t.exposeString("updatedAt"),
     }),
   });
 
@@ -109,17 +128,24 @@ const AppSharedVarRef = builder
 
 const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
   description:
-    "Create (omit id) or update (provide id) one shared variable. At least one " +
-    "sharing mode is required: teamWide, ≥1 environment, or ≥1 project.",
+    "Create (omit id) or update (provide id) one shared variable. It must reach " +
+    "something: teamWide, ≥1 environment, ≥1 project, or ≥1 app.",
   fields: (t) => ({
     id: t.string({ required: false }),
     key: t.string({ required: true }),
     value: t.string({ required: true }),
     type: t.field({ type: EnvVarTypeEnum, required: true }),
-    targets: t.field({ type: [EnvTargetEnum], required: true }),
+    // Omit ⇒ every deploy runtime (the UI no longer asks); see UpsertEnvInput.
+    targets: t.field({ type: [EnvTargetEnum], required: false }),
     teamWide: t.boolean({ required: true }),
     environmentIds: t.idList({ required: true }),
     projectIds: t.idList({ required: true }),
+    appIds: t.stringList({
+      required: false,
+      description:
+        "The per-app links, as a whole set. OMIT to leave the existing links " +
+        "untouched — that is what preserves setSharedVarAppLink's app-side toggle.",
+    }),
   }),
 });
 
@@ -160,10 +186,11 @@ builder.mutationFields((t) => ({
         key: input.key,
         value: input.value,
         type: input.type,
-        targets: input.targets,
+        targets: input.targets ?? undefined,
         teamWide: input.teamWide,
         environmentIds: input.environmentIds,
         projectIds: input.projectIds,
+        appIds: input.appIds ?? undefined,
       });
       // Reload by the id the data fn minted — matching by key would be ambiguous
       // (keys are deliberately NOT unique per team; a key repeats across scopes).

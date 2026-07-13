@@ -10,7 +10,7 @@ import {
   deleteEnv,
   type AppEnvGroup,
 } from "@/lib/data/env";
-import type { EnvVarDTO } from "@/lib/types";
+import type { EnvVarDTO, VarAuthor } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /* Local enums                                                         */
@@ -27,6 +27,20 @@ export const EnvVarTypeEnum = builder.enumType("EnvVarType", {
 /* Object types                                                        */
 /* ------------------------------------------------------------------ */
 
+// The one authorship type for every kind of variable (app / instance / shared),
+// so exported: a Pothos type name must be unique, and global-env.ts and
+// shared-env.ts import this ref rather than declaring a second "VarAuthor".
+export const VarAuthorRef = builder.objectRef<VarAuthor>("VarAuthor").implement({
+  description:
+    "The user who created or last modified a variable. Identity only — never an email.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    name: t.exposeString("name"),
+    username: t.exposeString("username"),
+    avatarColor: t.exposeString("avatarColor"),
+  }),
+});
+
 const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
   description:
     "A single environment variable. Secret values are masked unless revealed.",
@@ -41,6 +55,19 @@ const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
       resolve: (e) => e.targets,
     }),
     type: t.field({ type: EnvVarTypeEnum, resolve: (e) => e.type }),
+    // Null for rows written before authorship tracking, or once the author's
+    // user is deleted (the FK is ON DELETE SET NULL) — the UI renders "—".
+    createdBy: t.field({
+      type: VarAuthorRef,
+      nullable: true,
+      resolve: (e) => e.createdBy,
+    }),
+    updatedBy: t.field({
+      type: VarAuthorRef,
+      nullable: true,
+      resolve: (e) => e.updatedBy,
+    }),
+    createdAt: t.exposeString("createdAt"),
     updatedAt: t.exposeString("updatedAt"),
   }),
 });
@@ -83,7 +110,10 @@ const UpsertEnvInputType = builder.inputType("UpsertEnvInput", {
     appId: t.string({ required: true }),
     key: t.string({ required: true }),
     value: t.string({ required: true }),
-    targets: t.field({ type: [EnvTargetEnum], required: true }),
+    // An App belongs to exactly one Environment, so the UI no longer asks for
+    // deploy runtimes; omit and the variable applies to all of them. Optional,
+    // not removed, so clients still passing targets keep working.
+    targets: t.field({ type: [EnvTargetEnum], required: false }),
     type: t.field({ type: EnvVarTypeEnum, required: true }),
   }),
 });
@@ -132,7 +162,7 @@ builder.mutationFields((t) => ({
         appId: input.appId,
         key: input.key,
         value: input.value,
-        targets: input.targets,
+        targets: input.targets ?? undefined,
         type: input.type,
       });
       return reloadEnv(input.appId, input.key);
@@ -156,10 +186,10 @@ builder.mutationFields((t) => ({
     args: {
       appId: t.arg.string({ required: true }),
       blob: t.arg.string({ required: true }),
-      targets: t.arg({ type: [EnvTargetEnum], required: true }),
+      targets: t.arg({ type: [EnvTargetEnum], required: false }),
     },
     resolve: (_r, { appId, blob, targets }) =>
-      importEnv(appId, blob, targets),
+      importEnv(appId, blob, targets ?? undefined),
   }),
   setAppEnv: t.field({
     type: "Int",
@@ -169,13 +199,13 @@ builder.mutationFields((t) => ({
     args: {
       appId: t.arg.string({ required: true }),
       entries: t.arg({ type: [EnvEntryInputType], required: true }),
-      defaultTargets: t.arg({ type: [EnvTargetEnum], required: true }),
+      defaultTargets: t.arg({ type: [EnvTargetEnum], required: false }),
     },
     resolve: (_r, { appId, entries, defaultTargets }) =>
       setAppEnv(
         appId,
         entries.map((e) => ({ key: e.key, value: e.value })),
-        defaultTargets,
+        defaultTargets ?? undefined,
       ),
   }),
   revealEnv: t.field({

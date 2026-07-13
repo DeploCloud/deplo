@@ -5,6 +5,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { activities as activitiesTable, teams } from "../db/schema/control-plane";
 import { assembleActivity, activityToRow } from "./infra-rows";
+import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId } from "../membership";
 import type { Activity, ActivityType } from "../types";
@@ -45,6 +46,9 @@ export async function listActivityByActor(
  * team events). When neither resolves — e.g. a background deploy with no request
  * context — it falls back to the first team so the row is never written team-less
  * (which would make it invisible to every team).
+ *
+ * The actor's user id is resolved HERE (no caller passes it), so the log can render
+ * a real identity for a human actor while `actor` stays free text.
  */
 export async function recordActivity(
   type: ActivityType,
@@ -84,6 +88,7 @@ export async function recordActivity(
       type,
       message,
       actor,
+      actorUserId: await resolveActorUserId(actor),
       appId,
       createdAt: nowIso(),
     };
@@ -91,4 +96,20 @@ export async function recordActivity(
   } catch (e) {
     console.error("[deplo] recordActivity failed:", e);
   }
+}
+
+/**
+ * The human behind an `actor` string, or null. Best-effort by design:
+ *  - outside a request (a background deploy, a webhook) there is no current user;
+ *  - a NON-HUMAN actor ("system" / "github") must never be attributed to whoever
+ *    happens to be logged in, so the string has to match the user it names.
+ */
+async function resolveActorUserId(actor: string): Promise<string | null> {
+  try {
+    const u = await getCurrentUser();
+    if (u && (u.name === actor || u.username === actor)) return u.id;
+  } catch {
+    // No request scope — leave the row unattributed.
+  }
+  return null;
 }

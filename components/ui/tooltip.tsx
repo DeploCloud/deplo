@@ -8,6 +8,27 @@ const TooltipProvider = TooltipPrimitive.Provider;
 const Tooltip = TooltipPrimitive.Root;
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
+/**
+ * Keep a tooltip SHUT when its trigger is focused by anything but the keyboard.
+ *
+ * Radix opens a tooltip on *any* focus of the trigger
+ * (`onFocus: composeEventHandlers(props.onFocus, () => context.onOpen())`), and a
+ * Dialog focuses its first tabbable element as it opens. Next to a field label
+ * that element is the little info button — so the dialog came up with its tooltip
+ * already open, before the user had done anything.
+ *
+ * `preventDefault()` is Radix's own escape hatch: `composeEventHandlers` skips
+ * the primitive's handler on a default-prevented event. Focus itself is NOT
+ * cancelled (a focus event isn't cancelable) — only Radix's reaction to it. A
+ * real keyboard focus still matches `:focus-visible` and still shows the hint.
+ *
+ * Pass it as `onFocus` on the TRIGGER (it is the "original" handler Radix
+ * composes with), never on the child element.
+ */
+export function keyboardOnlyTooltipFocus(event: React.FocusEvent<HTMLElement>) {
+  if (!event.currentTarget.matches(":focus-visible")) event.preventDefault();
+}
+
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
@@ -38,7 +59,9 @@ function SimpleTooltip({
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipTrigger asChild onFocus={keyboardOnlyTooltipFocus}>
+        {children}
+      </TooltipTrigger>
       <TooltipContent side={side}>{content}</TooltipContent>
     </Tooltip>
   );

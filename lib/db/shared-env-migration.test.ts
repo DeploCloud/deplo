@@ -11,7 +11,6 @@ import { isoTimestampParser } from "./timestamp-parser";
 import { schema } from "./schema";
 import { __setTestDb, __resetTestDb } from "./client";
 import {
-  envVars as envVarsTable,
   envVarTargets as envVarTargetsTable,
   projects as projectsTable,
   environments as environmentsTable,
@@ -22,7 +21,7 @@ import {
   TEAM_A,
   USER_1,
 } from "../data/identity-test-helpers";
-import { seedServer, seedApp } from "../data/app-graph-test-helpers";
+import { seedApp } from "../data/app-graph-test-helpers";
 import { loadEnvVarsForApp } from "../data/app-graph-load";
 import { loadSharedVarsForApp } from "../data/shared-vars";
 import { loadInstanceEnv } from "../data/global-env";
@@ -31,13 +30,17 @@ import type { EnvTarget } from "../types";
 
 /**
  * Migration-parity test for ADR-0010 (spec §4 "final check"). It replays the
- * committed migrations up to 0027 ONLY (old tables still present after 0027's
- * backfill, dropped only in 0028), seeds representative old-world data — a team-
- * global, an environment-scoped var, and a shared group attached to an app whose
- * key COLLIDES with the app's own var — then asserts the NEW loader + resolver
- * yields the byte-identical resolved key→value map per (app, target) the old
- * system did. value_enc is compared verbatim (the backfill copies it), so no
- * decryption is needed.
+ * committed migrations, PAUSING after 0026 to seed representative old-world data —
+ * a team-global, an environment-scoped var, and a shared group attached to an app
+ * whose key COLLIDES with the app's own var — so that 0027's backfill has something
+ * to convert, then asserts the NEW loader + resolver yields the byte-identical
+ * resolved key→value map per (app, target) the old system did. value_enc is compared
+ * verbatim (the backfill copies it), so no decryption is needed.
+ *
+ * Because the assertions run through the LIVE drizzle schema, the seeds are the
+ * fragile part: they execute against a schema frozen at 0026, so anything a LATER
+ * migration touches must be seeded with raw SQL — drizzle names every column of the
+ * table object in an INSERT, including ones that do not exist yet at that point.
  */
 
 const T0 = "2026-01-01T00:00:00.000Z";
@@ -64,21 +67,39 @@ before(async () => {
   });
   db = drizzle(pg, { schema });
 
-  // Replay committed migrations 0000..0027 (STOP before 0028 so the legacy tables
-  // the backfill reads still exist and can be seeded/verified).
+  // Replay 0000..0026, seed the old world, THEN apply 0027 and EVERYTHING after it.
+  // Two constraints pull in opposite directions and this ordering satisfies both:
+  // 0027's backfill reads legacy tables that 0028 drops, so they must exist and hold
+  // rows when it runs; but the assertions below drive the LIVE drizzle schema, whose
+  // star-SELECTs name every column the schema object currently knows — so the DB has
+  // to be at the LATEST migration, not frozen at 0027. Nothing past the backfill
+  // asserts on the legacy tables, so dropping them in 0028 costs nothing.
   const files = readdirSync(MIG_DIR)
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();
-  const upto = files.filter((f) => Number(f.slice(0, 4)) <= 27);
-  const pre27 = upto.filter((f) => Number(f.slice(0, 4)) < 27);
-  const only27 = upto.filter((f) => Number(f.slice(0, 4)) === 27);
+  const pre27 = files.filter((f) => Number(f.slice(0, 4)) < 27);
+  const from27 = files.filter((f) => Number(f.slice(0, 4)) >= 27);
 
   for (const f of pre27) await applyFile(f);
 
   // --- Seed old-world fixtures BETWEEN 0026 and 0027 (via the seed helpers so
   // the many required team/app columns stay correct) ---
   await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
-  await seedServer(db);
+  // RAW SQL, not the drizzle `seedServer` helper: the schema is frozen at 0026 here,
+  // but drizzle names EVERY column the live `servers` object knows in its INSERT — so
+  // the helper reaches for columns a later migration adds (0030's status_checked_at /
+  // status_message) and the insert fails on a table that doesn't have them yet. Naming
+  // only the 0026-era columns keeps this seed pinned to the era it is seeding.
+  await pg.exec(`
+    insert into servers (
+      id, name, host, type, status, ip, docker_version, traefik_enabled,
+      cpu_cores, memory_mb, disk_gb, cpu_usage, memory_usage, disk_usage,
+      all_teams, deploy_concurrency, created_at
+    ) values (
+      'srv_1', 'srv_1', '10.0.0.1', 'remote', 'online', '10.0.0.1', '27', true,
+      4, 8192, 100, 1, 1, 1,
+      true, 1, '${T0}'
+    ) on conflict do nothing;`);
   await db.insert(projectsTable).values({
     id: "prc_1",
     teamId: TEAM_A,
@@ -100,11 +121,16 @@ before(async () => {
     .update(appsTable)
     .set({ projectId: "prc_1", environmentId: "env_dev" })
     .where(eq(appsTable.id, "app_p"));
-  // app_p's OWN vars: OWN (unique) + DUP (collides with the shared group).
-  await db.insert(envVarsTable).values([
-    { id: "ev_own", appId: "app_p", key: "OWN", valueEnc: "enc:own", type: "plain", createdAt: T0, updatedAt: T0 },
-    { id: "ev_dup", appId: "app_p", key: "DUP", valueEnc: "enc:appdup", type: "plain", createdAt: T0, updatedAt: T0 },
-  ]);
+  // app_p's OWN vars: OWN (unique) + DUP (collides with the shared group). Seeded
+  // with raw SQL, NOT db.insert(envVars): the seeds land on the 0026-era schema while
+  // the drizzle table object is the LIVE one and names every column it knows — a
+  // column introduced by a later migration (0029's authorship columns) does not exist
+  // yet at this point in the replay. Same reason the legacy tables below go in raw.
+  await pg.exec(`
+    insert into env_vars (id, app_id, key, value_enc, type, created_at, updated_at) values
+      ('ev_own', 'app_p', 'OWN', 'enc:own', 'plain', '${T0}', '${T0}'),
+      ('ev_dup', 'app_p', 'DUP', 'enc:appdup', 'plain', '${T0}', '${T0}');
+  `);
   await db.insert(envVarTargetsTable).values([
     { envVarId: "ev_own", target: "production" },
     { envVarId: "ev_dup", target: "production" },
@@ -134,8 +160,9 @@ before(async () => {
       values ('g2', 'UNUSED', 'enc:unused', 'plain');
   `);
 
-  // Now run 0027 — it CREATES the new tables and backfills from the seeds above.
-  for (const f of only27) await applyFile(f);
+  // Now run 0027 — it CREATES the new tables and backfills from the seeds above —
+  // and every migration after it, to bring the DB up to the live drizzle schema.
+  for (const f of from27) await applyFile(f);
 
   __setTestDb(db);
 });

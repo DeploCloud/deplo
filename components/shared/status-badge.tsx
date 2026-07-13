@@ -44,6 +44,10 @@ const COLORS: Record<string, string> = {
   provisioning: "bg-[var(--warning)]",
   pending: "bg-[var(--warning)]",
   unverified: "bg-[var(--warning)]",
+  // A server whose agent answers but whose host is degraded (Docker unreachable):
+  // up, but nothing can deploy there. Amber, not red — the box is not down — and
+  // deliberately not grey, which would make a broken host look merely stopped.
+  warning: "bg-[var(--warning)]",
   never: "bg-muted-foreground",
   // red — a genuine failure/unreachable state (a crash, a build error, a server
   // that's down). NOT a user-initiated stop; that is "idle" below.
@@ -80,6 +84,7 @@ const VARIANTS: Record<string, "success" | "warning" | "destructive" | "muted"> 
   provisioning: "warning",
   pending: "warning",
   unverified: "warning",
+  warning: "warning",
   error: "destructive",
   failed: "destructive",
   misconfigured: "destructive",

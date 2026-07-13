@@ -518,6 +518,8 @@ export function assembleEnvVar(
     valueEnc: row.valueEnc,
     targets: targets.map((t) => t.target as EnvTarget),
     type: row.type as EnvVar["type"],
+    createdByUserId: row.createdByUserId,
+    updatedByUserId: row.updatedByUserId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -530,6 +532,8 @@ export function envVarToRow(e: EnvVar): EnvVarInsert {
     key: e.key,
     valueEnc: e.valueEnc,
     type: e.type,
+    createdByUserId: e.createdByUserId,
+    updatedByUserId: e.updatedByUserId,
     createdAt: e.createdAt,
     updatedAt: e.updatedAt,
   };

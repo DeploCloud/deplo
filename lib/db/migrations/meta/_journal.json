@@ -204,6 +204,20 @@
       "when": 1783600409000,
       "tag": "0028_drop_legacy_shared_env",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1783600410000,
+      "tag": "0029_add_variable_authorship",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1783600411000,
+      "tag": "0030_add_server_status_check",
+      "breakpoints": true
     }
   ]
 }

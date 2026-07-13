@@ -29,19 +29,6 @@ export default function Loading() {
             <Skeleton className="h-8 w-full rounded-md" />
           </CardContent>
         </Card>
-
-        {/* Recent Previews */}
-        <Card>
-          <CardHeader className="pb-3">
-            <Skeleton className="h-4 w-28" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-8 text-center">
-              <Skeleton className="size-5 rounded-md" />
-              <Skeleton className="h-3 w-40" />
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Apps */}

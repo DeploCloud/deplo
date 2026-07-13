@@ -1,0 +1,35 @@
+-- Server health becomes an OBSERVATION, not a claim. `servers.status` has been
+-- write-once since call-home (set `online` by completeBootstrap and never revisited),
+-- so a dead agent's card stayed green forever. The Settings → Servers page now probes
+-- each provisioned agent with a live Hello and records the outcome here:
+--
+--   status_checked_at  when `status` was last OBSERVED — i.e. when a probe actually
+--                      classified a result and recorded it. NULL = never observed. This
+--                      is the UI's freshness watermark: past a staleness window the card
+--                      renders "Unknown" rather than a confident stale value. It is
+--                      advanced ONLY by a real observation, never merely by attempting a
+--                      probe — a fabricated checked-at is the lie this change exists to kill.
+--   status_probed_at   when a probe was last CLAIMED (the throttle lease), advanced by the
+--                      conditional UPDATE that wins the right to dial so N concurrent page
+--                      renders cannot stampede one dead host. Kept SEPARATE from
+--                      status_checked_at on purpose: a probe that times out or is skipped
+--                      advances this (it did happen) but must NOT touch status_checked_at
+--                      (it observed nothing), or an inconclusive probe would leave a stale
+--                      status wearing a fresh timestamp.
+--   status_message     the operator-facing reason behind a non-`online` status, drawn
+--                      from a CLOSED set of curated strings (classifyServerHealth). NEVER
+--                      a raw agent/gRPC error: those embed the pinned cert fingerprint
+--                      and the dial address. NULL when `online` or never probed.
+--
+-- `status` itself gains the value `warning` (agent up and trusted, but Docker is
+-- unreachable so nothing can deploy here). It stays a plain text column — no CHECK
+-- constraint to widen — and nothing in the deploy path gates on it (ADR-0006: the gate
+-- is the live Hello pre-flight), so widening the set cannot block a deploy.
+--
+-- Both columns NULLABLE with no DEFAULT and NO BACKFILL. The migrator auto-applies at
+-- boot against live self-hosted DBs whose `servers` table is non-empty, so a NOT NULL
+-- add would fail — and a fabricated checked-at would be exactly the lie this change
+-- exists to kill. Until the first probe the UI renders the row as "Unknown", not green.
+ALTER TABLE "servers" ADD COLUMN "status_checked_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "servers" ADD COLUMN "status_probed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "servers" ADD COLUMN "status_message" text;

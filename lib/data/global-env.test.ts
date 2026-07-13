@@ -125,6 +125,48 @@ test("editing a secret with the MASK keeps the stored value (targets-only edit)"
   assert.equal(v2!.targets.length, 3);
 });
 
+test("an omitted target set means every runtime", async () => {
+  // The production/preview/development picker is gone from the UI (an App belongs
+  // to exactly ONE Environment) — a write that names no target reaches them all.
+  await asUser1(() => upsertInstanceEnv({ key: "NOTARGET", value: "1", type: "plain" }));
+  const [v] = await asUser1(() => listInstanceEnv());
+  assert.deepEqual(v!.targets.sort(), [...ALL].sort());
+});
+
+test("an edit that names no targets PRESERVES the stored ones", async () => {
+  // The dialogs no longer send targets. A legacy production-only SECRET must not
+  // silently widen to every runtime on a value rotation — that would inject the
+  // live key into the dev container (lib/deploy/dev.ts).
+  await asUser1(() =>
+    upsertInstanceEnv({ key: "STRIPE", value: "live", targets: ["production"], type: "secret" }),
+  );
+  await asUser1(() => upsertInstanceEnv({ key: "STRIPE", value: "rotated", type: "secret" }));
+  const [v] = await asUser1(() => listInstanceEnv());
+  assert.deepEqual(v!.targets, ["production"]);
+  assert.equal(await asUser1(() => revealInstanceEnv(v!.id)), "rotated");
+  // An explicit set still replaces them.
+  await asUser1(() =>
+    upsertInstanceEnv({ key: "STRIPE", value: "rotated", targets: [...ALL], type: "secret" }),
+  );
+  assert.equal((await asUser1(() => listInstanceEnv()))[0]!.targets.length, 3);
+});
+
+test("authorship is stamped on create and only updatedBy changes on edit", async () => {
+  await asUser1(() =>
+    upsertInstanceEnv({ key: "A", value: "1", targets: [...ALL], type: "plain" }),
+  );
+  const [created] = await asUser1(() => listInstanceEnv());
+  assert.equal(created!.createdBy?.id, USER_1);
+  assert.equal(created!.updatedBy?.id, USER_1);
+  // Identity only — no email, no hash.
+  assert.deepEqual(Object.keys(created!.createdBy!).sort(), [
+    "avatarColor",
+    "id",
+    "name",
+    "username",
+  ]);
+});
+
 test("loadInstanceEnv returns instance globals (encrypted, targeted)", async () => {
   await asUser1(() =>
     upsertInstanceEnv({ key: "INST", value: "i", targets: ["production"], type: "plain" }),

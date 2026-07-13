@@ -11,7 +11,10 @@ import {
   updateServerAgent,
   setServerTeams,
   setServerDeployConcurrency,
+  type ServerRemoval,
 } from "@/lib/data/servers";
+import { checkServerHealth, checkAllServerHealth } from "@/lib/data/server-health";
+import { checkServerReadiness } from "@/lib/data/server-readiness";
 import {
   isAgentOutdated,
   reportedAgentVersion,
@@ -19,6 +22,7 @@ import {
 } from "@/lib/version";
 // (resolveExpectedAgentVersion is awaited per-request; it is cached so the three
 // agent fields below don't each hit GitHub.)
+import type { ReadinessCheck, ReadinessReport } from "@/lib/infra/server-readiness";
 import type { Server } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -27,12 +31,32 @@ import type { Server } from "@/lib/types";
 
 // These two unions back the Server DTO but are not shared across modules,
 // so they live locally here rather than in enums.ts (exported nothing).
+// `warning` is NOT optional here: the health prober persists it, and an enum that
+// doesn't know the value makes every `servers { status }` query fail at serialization.
 const ServerStatusEnum = builder.enumType("ServerStatus", {
-  values: ["online", "offline", "provisioning", "error"] as const,
+  values: ["online", "warning", "error", "offline", "provisioning"] as const,
 });
 
 const ServerTypeEnum = builder.enumType("ServerType", {
   values: ["remote"] as const,
+});
+
+// Readiness is a live, never-persisted REPORT, not a sixth ServerStatus: its enums describe
+// one row's weight and one report's overall answer, and nothing gates on either.
+const ServerReadinessSeverityEnum = builder.enumType("ServerReadinessSeverity", {
+  description:
+    "How much a readiness row matters. fail = a deployment to this server cannot succeed. warn = a deployment succeeds, but the result is not fully usable. info = a true, neutral fact. pass = verified good. skip = we could not evaluate it (the agent is too old, or an upstream fact is missing) — a skip never moves the verdict.",
+  values: ["pass", "info", "warn", "fail", "skip"] as const,
+});
+
+const ServerReadinessGroupEnum = builder.enumType("ServerReadinessGroup", {
+  values: ["agent", "docker", "routing", "capacity", "build", "config"] as const,
+});
+
+const ServerReadinessVerdictEnum = builder.enumType("ServerReadinessVerdict", {
+  description:
+    "The report's overall answer. provisioning = no agent has called home yet (never dialed). A `fail` row outranks `provisioning`.",
+  values: ["ready", "degraded", "not_ready", "provisioning"] as const,
 });
 
 /* ------------------------------------------------------------------ */
@@ -112,6 +136,23 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       description: "Heartbeat cache (P5) — a hint, not the source of truth.",
       resolve: (s) => s.lastSeenAt ?? null,
     }),
+    statusCheckedAt: t.string({
+      nullable: true,
+      description:
+        "When `status` was last OBSERVED by a live agent Hello probe (ISO), or null if it never has been. Read it WITH `status`: the pair is a timestamped observation, not a standing claim, and a client that shows the status without qualifying its age is showing a value that may be hours old. Never fabricated — a probe that times out or is throttled writes nothing.",
+      resolve: (s) => s.statusCheckedAt ?? null,
+    }),
+    statusMessage: t.string({
+      nullable: true,
+      // Instance-admin only, like `teams` above is manage_infra only. The strings are
+      // curated (never a raw agent error), but they describe the internal state of
+      // shared infrastructure and belong to the operator who administers it, not to
+      // every member who can merely target the server.
+      authScopes: { instanceAdmin: true },
+      description:
+        "Why `status` is not `online` — e.g. \"The agent is up but Docker is unreachable\". Null when online or never probed. Requires instanceAdmin.",
+      resolve: (s) => s.statusMessage ?? null,
+    }),
   }),
 });
 
@@ -136,6 +177,66 @@ const AddServerPayloadRef = builder
         description:
           "Paste-on-the-server command to provision the agent. Shown once; embeds a single-use token.",
       }),
+    }),
+  });
+
+const ServerRemovalRef = builder
+  .objectRef<ServerRemoval>("ServerRemoval")
+  .implement({
+    description:
+      "The result of removing a server. Removal revokes the agent's trust and forgets the row — it does NOT uninstall anything on the host, so the uninstall command is always returned.",
+    fields: (t) => ({
+      uninstallCommand: t.exposeString("uninstallCommand", {
+        description:
+          "Paste-on-the-server command that removes the agent, Traefik and the deplo network from the host. Deplo cannot do this remotely: revoking trust is precisely what ends its right to command that agent.",
+      }),
+      warning: t.exposeString("warning", {
+        nullable: true,
+        description:
+          "A non-blocking hazard the operator must know about (e.g. an App was mid-move off this host, so its data volumes are now stranded there), or null.",
+      }),
+    }),
+  });
+
+const ServerReadinessCheckRef = builder
+  .objectRef<ReadinessCheck>("ServerReadinessCheck")
+  .implement({
+    description:
+      "One row of a server readiness report: a single thing Deplo could verify about the host, and what it found.",
+    fields: (t) => ({
+      // A String, not an enum: the ids contain dots ("build.nixpacks").
+      id: t.exposeString("id", {
+        description: 'Stable row id, e.g. "docker.available" or "build.nixpacks".',
+      }),
+      group: t.field({ type: ServerReadinessGroupEnum, resolve: (c) => c.group }),
+      label: t.exposeString("label"),
+      severity: t.field({ type: ServerReadinessSeverityEnum, resolve: (c) => c.severity }),
+      detail: t.exposeString("detail", {
+        description:
+          "What we found. Drawn from a closed, curated set whenever it describes a failure — never a raw agent error (which would leak the pinned certificate fingerprint and the dial address).",
+      }),
+      hint: t.string({
+        nullable: true,
+        description: "What to do about it. Null on a `pass` row.",
+        resolve: (c) => c.hint ?? null,
+      }),
+    }),
+  });
+
+const ServerReadinessReportRef = builder
+  .objectRef<ReadinessReport>("ServerReadinessReport")
+  .implement({
+    description:
+      "A live, never-persisted answer to 'is this host set up to run deployments?'. Assembled from one agent Hello, two host port bind-tests and one host-metrics call, plus the control plane's own record of the server. It is NOT a sixth ServerStatus and nothing gates on it — the deploy gate is and stays the mandatory live Hello pre-flight.",
+    fields: (t) => ({
+      serverId: t.exposeString("serverId"),
+      serverName: t.exposeString("serverName"),
+      checkedAt: t.exposeString("checkedAt", {
+        description: "When the probe STARTED (ISO). Never fabricated.",
+      }),
+      verdict: t.field({ type: ServerReadinessVerdictEnum, resolve: (r) => r.verdict }),
+      summary: t.exposeString("summary", { description: "One sentence for the banner." }),
+      checks: t.field({ type: [ServerReadinessCheckRef], resolve: (r) => r.checks }),
     }),
   });
 
@@ -244,16 +345,12 @@ builder.mutationFields((t) => ({
     resolve: (_r, { id }) => reissueBootstrap(id),
   }),
   removeServer: t.field({
-    type: "String",
-    nullable: true,
+    type: ServerRemovalRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Disconnect and remove a remote server (revokes trust, best-effort teardown). Returns a warning string if the agent was unreachable, else null.",
+      "Remove a server: revoke its agent's trust and forget the row. This does NOT uninstall anything on the host — the agent, Traefik and the deplo network keep running there — so the returned payload always carries the host-side uninstall command. Blocked while any App or database still lives on the server.",
     args: { id: t.arg.string({ required: true }) },
-    resolve: async (_r, { id }) => {
-      const { warning } = await removeServer(id);
-      return warning;
-    },
+    resolve: (_r, { id }) => removeServer(id),
   }),
   updateServerAgent: t.field({
     type: "String",
@@ -265,6 +362,54 @@ builder.mutationFields((t) => ({
       const { version } = await updateServerAgent(id);
       return version;
     },
+  }),
+  // Health checks are MUTATIONS, not queries, even though they read. They dial out
+  // over the network and write the row — and app/api/graphql/route.ts serves GET, so a
+  // side-effecting query would be reachable by a plain link (prefetch, crawler, CSRF)
+  // and would turn the control plane into a fan-out dialer on someone else's click.
+  // Neither takes a host/port: only an opaque serverId, resolved through the pinned
+  // dial target, so this can never be pointed at an arbitrary address.
+  checkServerHealth: t.field({
+    type: ServerRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Probe ONE server's agent right now (a live Hello) and persist what it reports: online, warning (agent up, Docker unreachable), error (agent untrusted or broken) or offline. Returns the refreshed server. Throttled server-side even when forced, so it cannot be used to hammer a host; an inconclusive probe leaves the previous observation untouched rather than guessing.",
+    args: {
+      id: t.arg.string({ required: true }),
+      force: t.arg.boolean({
+        required: false,
+        description:
+          "Bypass the ambient throttle (the operator asked for this check explicitly). A short floor still applies.",
+      }),
+    },
+    resolve: (_r, { id, force }) => checkServerHealth(id, { force: force ?? false }),
+  }),
+  checkAllServerHealth: t.field({
+    type: [ServerRef],
+    authScopes: { instanceAdmin: true },
+    description:
+      "Probe every provisioned server's agent and persist each outcome; returns every server (unprovisioned ones pass through untouched). This is what the Servers page runs on load, so a reload always reflects reality rather than the status a server had when it first called home.",
+    args: {
+      force: t.arg.boolean({
+        required: false,
+        description: "Bypass the ambient throttle (the header's 'Check all' button).",
+      }),
+    },
+    resolve: (_r, { force }) => checkAllServerHealth({ force: force ?? false }),
+  }),
+  // A MUTATION, not a query, for exactly the reason checkServerHealth above is one: it dials
+  // out over the network, and app/api/graphql/route.ts serves GET — a side-effecting query
+  // would be reachable by a plain link (prefetch, crawler, CSRF) and would turn the control
+  // plane into a fan-out dialer on someone else's click. It takes an opaque serverId, resolved
+  // through the pinned dial target, so it can never be pointed at an arbitrary address. Unlike
+  // the health checks it writes NOTHING — the report is computed live and thrown away.
+  checkServerReadiness: t.field({
+    type: ServerReadinessReportRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Check whether ONE server's installation is complete enough to run deployments, right now. Dials the agent (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted — it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => checkServerReadiness(id),
   }),
   checkAgentUpdates: t.field({
     type: "String",

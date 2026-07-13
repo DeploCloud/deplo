@@ -20,9 +20,10 @@ import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { appInTeam } from "./app-graph-load";
+import { authorOf, loadUserIdentities } from "./user-identity";
 import { encryptSecret, decryptSecret } from "../crypto";
-import { ALL_ENV_TARGETS } from "../types";
-import type { EnvTarget, SharedVar } from "../types";
+import { ALL_ENV_TARGETS, sanitizeTargets } from "../types";
+import type { EnvTarget, SharedVar, VarAuthor } from "../types";
 import type { SharedVarEntry, SharedVarMode } from "../deploy/env-resolve";
 
 /**
@@ -38,11 +39,9 @@ import type { SharedVarEntry, SharedVarMode } from "../deploy/env-resolve";
 const MASK = "••••••••••••";
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
-/** Keep only valid, deduped targets; fall back to all three if none survive. */
-function sanitizeTargets(targets: EnvTarget[]): EnvTarget[] {
-  const allowed = new Set(ALL_ENV_TARGETS);
-  const kept = ALL_ENV_TARGETS.filter((t) => targets.includes(t) && allowed.has(t));
-  return kept.length ? kept : ALL_ENV_TARGETS;
+/** Every author id a set of vars references, for one batched identity lookup. */
+function authorIds(vars: SharedVar[]): (string | null)[] {
+  return vars.flatMap((v) => [v.createdByUserId, v.updatedByUserId]);
 }
 
 /**
@@ -104,6 +103,8 @@ async function loadSharedVarsForTeam(teamId: string): Promise<SharedVar[]> {
     projectIds: projsBy.get(r.id) ?? [],
     appIds: appsBy.get(r.id) ?? [],
     targets: targetsBy.get(r.id) ?? [],
+    createdByUserId: r.createdByUserId,
+    updatedByUserId: r.updatedByUserId,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   }));
@@ -128,6 +129,9 @@ export interface SharedVarDTO {
   environments: { id: string; name: string; projectName: string }[];
   projects: { id: string; name: string; slug: string }[];
   apps: { id: string; name: string; slug: string }[];
+  createdBy: VarAuthor | null;
+  updatedBy: VarAuthor | null;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -171,6 +175,8 @@ export async function listSharedVars(): Promise<SharedVarDTO[]> {
     loadSharedVarsForTeam(teamId),
     teamLookups(teamId),
   ]);
+  // One identity query for the whole list.
+  const authors = await loadUserIdentities(authorIds(vars));
   return vars
     .sort((a, b) => a.key.localeCompare(b.key))
     .map((v) => ({
@@ -193,6 +199,10 @@ export async function listSharedVars(): Promise<SharedVarDTO[]> {
       apps: v.appIds
         .map((id) => lookups.apps.get(id))
         .filter((a): a is NonNullable<typeof a> => Boolean(a)),
+      // Authorship is metadata, not value — safe alongside a masked `value`.
+      createdBy: authorOf(v.createdByUserId, authors),
+      updatedBy: authorOf(v.updatedByUserId, authors),
+      createdAt: v.createdAt,
       updatedAt: v.updatedAt,
     }));
 }
@@ -213,6 +223,8 @@ export interface AppSharedVarDTO {
   applied: boolean;
   inherited: boolean;
   linked: boolean;
+  updatedBy: VarAuthor | null;
+  updatedAt: string;
 }
 
 /**
@@ -245,6 +257,8 @@ export async function listSharedVarsForApp(
   const projectId = app?.projectId ?? null;
   const environmentId = app?.environmentId ?? null;
   const vars = await loadSharedVarsForTeam(teamId);
+  // One identity query for every shared row on the app's Environment page.
+  const authors = await loadUserIdentities(authorIds(vars));
   return vars
     .map((v) => {
       const byProject = projectId != null && v.projectIds.includes(projectId);
@@ -265,6 +279,10 @@ export async function listSharedVarsForApp(
         applied: inherited || linked,
         inherited,
         linked,
+        // Falls back to the creator so "Last modified" never shows a timestamp
+        // with no author.
+        updatedBy: authorOf(v.updatedByUserId ?? v.createdByUserId, authors),
+        updatedAt: v.updatedAt,
       };
     })
     .sort((a, b) => a.key.localeCompare(b.key));
@@ -278,6 +296,8 @@ export interface AppliedSharedVarDTO {
   masked: boolean;
   via: SharedVarMode;
   targets: EnvTarget[];
+  updatedBy: VarAuthor | null;
+  updatedAt: string;
 }
 
 /**
@@ -298,6 +318,8 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
       .from(appsTable)
       .where(eq(appsTable.teamId, teamId)),
   ]);
+  // One identity query for every card on the page.
+  const authors = await loadUserIdentities(authorIds(vars));
   const out: AppliedSharedVarDTO[] = [];
   for (const app of apps) {
     for (const v of vars) {
@@ -313,6 +335,10 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
         masked: v.type === "secret",
         via: viaFor({ linked, byProject, byOwnEnv: byEnv, teamWide: v.teamWide }),
         targets: sanitizeTargets(v.targets),
+        // Falls back to the creator so "Last modified" never shows a timestamp
+        // with no author.
+        updatedBy: authorOf(v.updatedByUserId ?? v.createdByUserId, authors),
+        updatedAt: v.updatedAt,
       });
     }
   }
@@ -334,16 +360,28 @@ export async function revealSharedVar(id: string): Promise<string> {
 /* Mutations — gated `manage_env`, scoped to the active team.          */
 /* ------------------------------------------------------------------ */
 
-/** Whole-set replace of a var's target/environment/project junctions. */
+/**
+ * Whole-set replace of the targets junction — but ONLY when the caller sent a
+ * set. `null` leaves the stored targets untouched (see `saveSharedVar`).
+ */
+async function replaceTargets(
+  tx: DbTx,
+  varId: string,
+  targets: EnvTarget[] | null,
+): Promise<void> {
+  if (!targets) return;
+  await tx.delete(targetsTable).where(eq(targetsTable.varId, varId));
+  if (targets.length > 0)
+    await tx.insert(targetsTable).values(targets.map((target) => ({ varId, target })));
+}
+
+/** Whole-set replace of a var's environment/project junctions. */
 async function insertScopeChildren(
   tx: DbTx,
   varId: string,
-  targets: EnvTarget[],
   environmentIds: string[],
   projectIds: string[],
 ): Promise<void> {
-  if (targets.length > 0)
-    await tx.insert(targetsTable).values(targets.map((target) => ({ varId, target })));
   if (environmentIds.length > 0)
     await tx
       .insert(envJunction)
@@ -352,44 +390,106 @@ async function insertScopeChildren(
     await tx.insert(projJunction).values(projectIds.map((projectId) => ({ varId, projectId })));
 }
 
+/**
+ * Whole-set replace of the per-app links — but ONLY when the caller sent a set.
+ * `undefined` leaves the junction untouched (see `saveSharedVar`'s `appIds`).
+ */
+async function replaceAppLinks(
+  tx: DbTx,
+  varId: string,
+  appIds: string[] | undefined,
+): Promise<void> {
+  if (!appIds) return;
+  await tx.delete(appJunction).where(eq(appJunction.varId, varId));
+  if (appIds.length > 0)
+    await tx.insert(appJunction).values(appIds.map((appId) => ({ varId, appId })));
+}
+
+/**
+ * The var's current per-app links (empty for a var that doesn't exist yet).
+ * Joined to the var's team: a var id from ANOTHER team must read as "no links",
+ * or the reach check below turns into a 1-bit oracle on a foreign var (it runs
+ * before the in-transaction ownership probe).
+ */
+async function currentAppLinks(
+  teamId: string,
+  varId: string | undefined,
+): Promise<string[]> {
+  if (!varId) return [];
+  const rows = await getDb()
+    .select({ appId: appJunction.appId })
+    .from(appJunction)
+    .innerJoin(varsTable, eq(varsTable.id, appJunction.varId))
+    .where(and(eq(appJunction.varId, varId), eq(varsTable.teamId, teamId)));
+  return rows.map((r) => r.appId);
+}
+
 export async function saveSharedVar(input: {
   id?: string;
   key: string;
   value: string;
   type: "plain" | "secret";
-  targets: EnvTarget[];
+  /**
+   * Omitted (the UI no longer asks): a NEW var gets every runtime; an EDIT keeps
+   * whatever targets the var already has — an edit must never widen them.
+   */
+  targets?: EnvTarget[];
   teamWide: boolean;
   environmentIds: string[];
   projectIds: string[];
+  /**
+   * The per-app links, as a whole set. OMITTED means "leave the links alone" —
+   * that is what keeps the app-side toggle (setSharedVarAppLink) and the link-only
+   * vars migration 0027 produced intact when the shared-var dialog saves a var it
+   * never asked about apps for.
+   */
+  appIds?: string[];
 }): Promise<string> {
-  const { teamId } = await requireCapability("manage_env");
+  const { teamId, userId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
-  if (input.targets.length === 0)
-    throw new Error("Select at least one environment");
-  const targets = sanitizeTargets(input.targets);
+  // An omitted target set defaults to every runtime on INSERT, but on UPDATE it
+  // means "leave the stored targets alone" (null below) — the dialogs no longer
+  // ask, and widening a legacy production-only secret to all three would inject
+  // it into the dev container. Only an explicit non-empty set replaces them.
+  const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
 
-  // Keep only environments/projects that belong to the active team.
+  // Keep only environments/projects/apps that belong to the active team.
   const environmentIds = await filterTeamEnvironments(teamId, input.environmentIds);
   const projectIds = await filterTeamProjects(teamId, input.projectIds);
+  const appIds = input.appIds
+    ? await filterTeamApps(teamId, input.appIds)
+    : undefined;
   const teamWide = Boolean(input.teamWide);
+  const storedLinks = await currentAppLinks(teamId, input.id);
+
+  // Both halves of the whole-set link replace are folder-gated writes, exactly
+  // like setSharedVarAppLink: ADDING a link injects this var into the app at the
+  // HIGHEST deploy precedence (lib/deploy/env-resolve.ts), REMOVING one strips a
+  // variable off the app's next deploy. Team-level `manage_env` is not enough for
+  // an app that lives under a folder. Untouched links aren't re-authorized — the
+  // save doesn't change what they reach.
+  if (appIds) {
+    const incoming = new Set(appIds);
+    const changed = [
+      ...appIds.filter((id) => !storedLinks.includes(id)),
+      ...storedLinks.filter((id) => !incoming.has(id)),
+    ];
+    for (const appId of changed)
+      await requireFolderCapabilityForApp(appId, "manage_env");
+  }
 
   // A shared var must REACH something. Normally that means ≥1 sharing mode — but a
   // var carrying explicit per-app LINKS already reaches those apps, and that is
   // exactly the shape migration 0027 gives every var exploded out of a legacy
   // shared GROUP (links, no modes). Rejecting it here would make every migrated
-  // group variable permanently unsavable, so links count as reach on update.
-  if (!teamWide && environmentIds.length === 0 && projectIds.length === 0) {
-    const links = input.id
-      ? await getDb()
-          .select({ appId: appJunction.appId })
-          .from(appJunction)
-          .where(eq(appJunction.varId, input.id))
-      : [];
-    if (links.length === 0)
-      throw new Error("Share with at least one environment, project, or team-wide");
-  }
+  // group variable permanently unsavable, so links count as reach. When the caller
+  // sends `appIds` it OWNS the link set, so only the incoming set counts — the
+  // stored links are about to be replaced by it.
+  const reachesByLink = appIds ? appIds.length > 0 : storedLinks.length > 0;
+  if (!teamWide && environmentIds.length === 0 && projectIds.length === 0 && !reachesByLink)
+    throw new Error("Share with at least one app, project, or the whole team");
 
   // The editor sends the MASK back unchanged when only scope/type changed on a
   // secret — keep the stored value rather than encrypting the mask string.
@@ -411,15 +511,17 @@ export async function saveSharedVar(input: {
           ...(keepValue ? {} : { valueEnc: encryptSecret(input.value) }),
           type: input.type,
           teamWide,
+          // An edit never rewrites who created the var.
+          updatedByUserId: userId,
           updatedAt: nowIso(),
         })
         .where(and(eq(varsTable.id, input.id), eq(varsTable.teamId, teamId)));
-      // Whole-set replace the scope junctions (NOT the per-app links — those are
-      // owned by the app UI's setSharedVarAppLink).
-      await tx.delete(targetsTable).where(eq(targetsTable.varId, input.id));
+      // Whole-set replace the scope junctions (targets only if explicitly sent).
+      await replaceTargets(tx, input.id, targets);
       await tx.delete(envJunction).where(eq(envJunction.varId, input.id));
       await tx.delete(projJunction).where(eq(projJunction.varId, input.id));
-      await insertScopeChildren(tx, input.id, targets, environmentIds, projectIds);
+      await insertScopeChildren(tx, input.id, environmentIds, projectIds);
+      await replaceAppLinks(tx, input.id, appIds);
       savedId = input.id;
     } else {
       const id = newId("svar");
@@ -431,10 +533,14 @@ export async function saveSharedVar(input: {
         valueEnc: encryptSecret(input.value),
         type: input.type,
         teamWide,
+        createdByUserId: userId,
+        updatedByUserId: userId,
         createdAt: now,
         updatedAt: now,
       });
-      await insertScopeChildren(tx, id, targets, environmentIds, projectIds);
+      await replaceTargets(tx, id, targets ?? [...ALL_ENV_TARGETS]);
+      await insertScopeChildren(tx, id, environmentIds, projectIds);
+      await replaceAppLinks(tx, id, appIds);
       savedId = id;
     }
   });
@@ -454,7 +560,7 @@ export async function setSharedVarAppLink(
   appId: string,
   linked: boolean,
 ): Promise<void> {
-  const { teamId } = await requireCapability("manage_env");
+  const { teamId, userId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   if (!(await appInTeam(appId, teamId))) throw new Error("App not found");
   await requireFolderCapabilityForApp(appId, "manage_env");
@@ -471,9 +577,11 @@ export async function setSharedVarAppLink(
       .delete(appJunction)
       .where(and(eq(appJunction.varId, varId), eq(appJunction.appId, appId)));
   }
+  // Linking is a scope change, so it IS a modification: stamp the author too —
+  // "Last modified" must never show a timestamp with nobody behind it.
   await getDb()
     .update(varsTable)
-    .set({ updatedAt: nowIso() })
+    .set({ updatedByUserId: userId, updatedAt: nowIso() })
     .where(eq(varsTable.id, varId));
   await recordActivity(
     "env",
@@ -528,6 +636,17 @@ async function filterTeamProjects(teamId: string, ids: string[]): Promise<string
     .select({ id: projectsTable.id })
     .from(projectsTable)
     .where(and(inArray(projectsTable.id, unique), eq(projectsTable.teamId, teamId)));
+  return rows.map((r) => r.id);
+}
+
+/** Keep only app ids that belong to the team. */
+async function filterTeamApps(teamId: string, ids: string[]): Promise<string[]> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return [];
+  const rows = await getDb()
+    .select({ id: appsTable.id })
+    .from(appsTable)
+    .where(and(inArray(appsTable.id, unique), eq(appsTable.teamId, teamId)));
   return rows.map((r) => r.id);
 }
 

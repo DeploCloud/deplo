@@ -4,7 +4,10 @@ import { listServersForCurrentTeam, getServer } from "./servers";
 import { hostFacts } from "../infra/host";
 import { connectAgent } from "../infra/agent-client";
 import { markServerSeen } from "./servers";
+import { recordServerHealth } from "./server-health";
+import { classifyServerHealth } from "../infra/server-health";
 import { isAgentOutdated, reportedAgentVersion, resolveExpectedAgentVersion } from "../version";
+import { nowIso } from "../ids";
 import type { Server } from "../types";
 
 /**
@@ -110,6 +113,8 @@ function unavailable(serverId: string, expected: string, server?: Server): Serve
  * optimisation (TODO) if the fleet/viewer count makes the churn matter.
  */
 async function measureRemote(server: Server, expected: string): Promise<ServerMetrics> {
+  // Watermark for any health we learn on this poll — see recordServerHealth.
+  const observedAt = nowIso();
   const conn = await connectAgent(server.id);
   try {
     // Empty dataDir => the agent measures its own configured --data-dir.
@@ -144,6 +149,13 @@ async function measureRemote(server: Server, expected: string): Promise<ServerMe
         },
         hello.dockerVersion,
       );
+      // This Hello is a health OBSERVATION as good as the Servers page's own probe,
+      // so it goes through the SAME recorder. Without this the two views contradict
+      // each other: the dashboard streams live green while the stored status — last
+      // written by a probe that lost a race — still says offline. The 1s poll also
+      // keeps `status_checked_at` fresh, which makes the Servers page's throttle
+      // correctly decide there is nothing to re-dial.
+      await recordServerHealth(server.id, classifyServerHealth(hello, null), observedAt);
     } catch {
       /* metrics succeeded; the Hello refresh is best-effort */
     }
@@ -181,6 +193,15 @@ async function metricsFor(server: Server, expected: string): Promise<ServerMetri
     // Unreachable / unprovisioned agent, or any transport error: report offline
     // rather than a fabricated snapshot. Still carry the version fields from the
     // stored value so an offline-but-outdated server stays flagged.
+    //
+    // Deliberately DO NOT persist health here. This catch is the crude path — it has
+    // no confirming retry, no throttle, and no trust-detection, because `measureRemote`
+    // issues `metrics()` (not `hello()`) as its first RPC, so a cert-pin rejection
+    // arrives WITHOUT the `trust` flag and would be misrecorded as `offline` instead of
+    // the security-relevant `error`. Recording failure states is the dedicated prober's
+    // job (lib/data/server-health.ts), which has all three protections. When the metrics
+    // poll stops succeeding, `status_checked_at` simply stops advancing and the Servers
+    // page ages the card out to "Unknown" on its own — honest, and never a false verdict.
     return unavailable(server.id, expected, server);
   }
 }
@@ -270,7 +291,13 @@ export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
     // Cheap hydration hint from the stored status; the first live poll replaces
     // it. A not-yet-provisioned server has no agent and reports offline, exactly
     // as metricsFor() would, keeping the card UI consistent.
-    online: Boolean(s.agent?.certFingerprint) && s.status === "online",
+    //
+    // `warning` counts as up: the agent answered, it just can't reach Docker. It
+    // still serves metrics, so hydrating it as offline would blank the very host
+    // an operator opened this page to look at.
+    online:
+      Boolean(s.agent?.certFingerprint) &&
+      (s.status === "online" || s.status === "warning"),
     // Cheap hydration value from the stored flag; the first live poll replaces it.
     traefik: s.traefikEnabled,
     cpu: s.cpuUsage,

@@ -46,7 +46,14 @@ export function MonitoringDashboard({
   );
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
-  const online = selected?.status === "online";
+  // Poll anything that HAS an agent — not just a server whose last stored status was
+  // `online`. The stored status is a timestamped observation now, and it can say
+  // `offline`/`warning`/`error` while the box is answering perfectly well; gating the
+  // live poll on it would blank the metrics for exactly the server an operator opened
+  // this page to diagnose, and — because the poll is what refreshes the status — the
+  // stale value could then never correct itself. `provisioning` is the one real
+  // exclusion: there is no agent on the other end yet.
+  const online = Boolean(selected) && selected.status !== "provisioning";
 
   // Poll the selected server while it is online; append to its rolling buffer.
   // A single measurement takes ~1.2s (network sampling window), longer than the
@@ -164,7 +171,7 @@ export function MonitoringDashboard({
             <p className="max-w-xs text-xs text-muted-foreground">
               {selected?.status === "provisioning"
                 ? "This server is still provisioning. Metrics appear once the agent is online."
-                : "This server is offline. Metrics resume when it reconnects."}
+                : "This server's agent isn't answering. Metrics resume as soon as it does."}
             </p>
           </CardContent>
         </Card>

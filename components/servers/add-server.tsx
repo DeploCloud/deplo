@@ -107,7 +107,7 @@ export function AddServer({
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="size-4" />
-          Add remote server
+          Add
         </Button>
       </DialogTrigger>
       <DialogContent>

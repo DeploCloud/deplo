@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { DeploLogo } from "@/components/logo";
 import { SidebarNav } from "./sidebar-nav";
+import { SidebarExpandButton } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 import { TeamSwitcher } from "./team-switcher";
@@ -58,6 +59,10 @@ export function Topbar({
           />
         </SheetContent>
       </Sheet>
+
+      {/* Only present while the sidebar is collapsed — it has no header of its
+          own to host the control at zero width. */}
+      <SidebarExpandButton />
 
       {/* Team switcher — replaced by a neutral label on personal/system settings,
           which act outside any single team. */}

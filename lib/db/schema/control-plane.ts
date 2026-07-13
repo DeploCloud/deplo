@@ -519,6 +519,17 @@ export const servers = pgTable(
     bootstrapExpiresAt: isoTimestamptz("bootstrap_expires_at"),
     bootstrapUsedAt: isoTimestamptz("bootstrap_used_at"),
     lastSeenAt: isoTimestamptz("last_seen_at"),
+    // When `status` was last OBSERVED (a probe classified and recorded a result),
+    // and the curated reason behind a non-online value. See
+    // [Server.statusCheckedAt](../../types.ts): the pair demotes the stored status
+    // from a claim to a timestamped observation the UI can qualify.
+    statusCheckedAt: isoTimestamptz("status_checked_at"),
+    // The throttle LEASE — when a probe was last claimed, advanced whether or not it
+    // went on to observe anything. Kept separate from status_checked_at so an
+    // inconclusive probe (timeout/skip) never fabricates a fresh observation
+    // timestamp. Internal to the health prober; never projected into the DTO.
+    statusProbedAt: isoTimestamptz("status_probed_at"),
+    statusMessage: text("status_message"),
     // Team access scope. `true` (default) = available to every team — the
     // historical instance-wide behaviour. `false` restricts the server to the
     // teams enumerated in `server_teams`. See [Server.allTeams](../../types.ts).
@@ -862,6 +873,12 @@ export const deploymentLogs = pgTable(
 /**
  * [EnvVar](../../types.ts). `value_enc` secret. `UNIQUE(project_id, key)` enables
  * `ON CONFLICT` upsert. `targets` → `env_var_targets` junction.
+ *
+ * Authorship (`created_by_user_id` / `updated_by_user_id`) is METADATA, never a
+ * value: it is safe to project into a DTO while `value_enc` stays write-only.
+ * Nullable + `ON DELETE SET NULL` — NULL means the author was deleted, or the row
+ * predates authorship tracking (0029 deliberately does not backfill), and the UI
+ * renders "—".
  */
 export const envVars = pgTable(
   "env_vars",
@@ -873,6 +890,12 @@ export const envVars = pgTable(
     key: text("key").notNull(),
     valueEnc: text("value_enc").notNull(),
     type: text("type").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
@@ -901,6 +924,11 @@ export const envVarTargets = pgTable(
  * admin. No team scope. `UNIQUE(key)`; `targets` → junction. The LOWEST deploy
  * precedence — any more-specific scope (team-global, service, shared) overrides
  * it. See lib/deploy/env-resolve.ts.
+ *
+ * Authorship (`created_by_user_id` / `updated_by_user_id`) is METADATA, never a
+ * value — exposable in a DTO while `value_enc` stays write-only. Nullable + `ON
+ * DELETE SET NULL`: NULL = the instance admin who wrote it was deleted, or the
+ * row predates authorship tracking (0029 does not backfill) → the UI renders "—".
  */
 export const instanceEnvVars = pgTable(
   "instance_env_vars",
@@ -909,6 +937,12 @@ export const instanceEnvVars = pgTable(
     key: text("key").notNull(),
     valueEnc: text("value_enc").notNull(),
     type: text("type").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
@@ -1302,6 +1336,18 @@ export const apiTokens = pgTable(
  * created_at DESC, seq DESC)` index. `actor` free text (incl. "system"), NOT an
  * FK. `project_id` `SET NULL`. Backfill maps empty-string team_id to a real team
  * before NOT NULL+FK, and assigns `seq` in source-array order.
+ *
+ * `actor_user_id` is the identity BEHIND that free text, and only when the actor
+ * was a human: authorship is metadata, so the log can render a real user. Like
+ * `actor`, it is deliberately NOT an FK, and for the same reason: this is an
+ * append-only AUDIT trail, so `ON DELETE SET NULL` would REWRITE history the day a
+ * user is deleted — precisely what the log must never do. (It is also the one table
+ * here that grows without bound, and `ADD CONSTRAINT` takes an ACCESS EXCLUSIVE lock
+ * plus a validating scan — at boot, since migrations auto-apply in
+ * `instrumentation.ts`.) The raw id is kept forever; an id that no longer resolves
+ * renders as "—" and the `actor` name survives regardless. Nullable — a non-human
+ * actor ("system"/"github") must never be attributed to anyone, and rows predating
+ * tracking (0029 does not backfill) stay NULL.
  */
 export const activities = pgTable(
   "activities",
@@ -1314,6 +1360,7 @@ export const activities = pgTable(
     type: text("type").notNull(),
     message: text("message").notNull(),
     actor: text("actor").notNull(),
+    actorUserId: text("actor_user_id"),
     appId: text("app_id").references(() => apps.id, {
       onDelete: "set null",
     }),
@@ -1432,6 +1479,12 @@ export const installedPlugins = pgTable(
  * environments = two rows). Same-key collisions resolve by deploy precedence, not
  * a constraint — see lib/deploy/env-resolve.ts. The "≥1 mode" rule is enforced in
  * the data layer (a CHECK cannot span junction existence).
+ *
+ * Authorship (`created_by_user_id` / `updated_by_user_id`) is METADATA, never a
+ * value — exposable in a DTO while `value_enc` stays write-only. Nullable + `ON
+ * DELETE SET NULL`: NULL = the author was deleted, or the row predates authorship
+ * tracking — including every var the 0027 backfill exploded out of the legacy
+ * groups, which 0029 deliberately does not attribute to anyone. The UI renders "—".
  */
 export const sharedEnvVars = pgTable(
   "shared_env_vars",
@@ -1444,6 +1497,12 @@ export const sharedEnvVars = pgTable(
     valueEnc: text("value_enc").notNull(),
     type: text("type").notNull(),
     teamWide: boolean("team_wide").notNull().default(false),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
