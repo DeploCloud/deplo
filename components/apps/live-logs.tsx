@@ -167,12 +167,30 @@ function RuntimeNotice({ runtime }: { runtime: AppRuntimeView | null }) {
     );
   }
   if (runtime.restarting > 0) {
+    const restarts = Math.max(
+      ...runtime.containers.map((c) => c.restartCount),
+      0,
+    );
     return (
       <Notice
         icon={RotateCw}
         iconClass="text-[var(--warning)] animate-spin [animation-duration:3s]"
-        title="This container is in a restart loop"
+        title={
+          restarts > 0
+            ? `This container is in a restart loop (${restarts} restarts)`
+            : "This container is in a restart loop"
+        }
         body="Docker starts it, it dies, and Docker starts it again. The output below is its live log across those restarts — the error that kills it is in there."
+      />
+    );
+  }
+  if (runtime.unhealthy > 0) {
+    return (
+      <Notice
+        icon={CircleAlert}
+        iconClass="text-[var(--warning)]"
+        title="This container is running but failing its healthcheck"
+        body="The process is up and Docker's healthcheck says it is not working. The output below is live — whatever the check is failing on should be in it."
       />
     );
   }

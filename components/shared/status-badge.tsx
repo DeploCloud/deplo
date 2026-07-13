@@ -24,6 +24,7 @@ type AnyStatus =
   // Live container states, derived from the agent (lib/apps/display-status.ts).
   | "restarting"
   | "degraded"
+  | "unhealthy"
   | "down";
 
 const COLORS: Record<string, string> = {
@@ -54,6 +55,8 @@ const COLORS: Record<string, string> = {
   restarting: "bg-[var(--warning)]",
   // Part of a compose stack is up, part is not.
   degraded: "bg-[var(--warning)]",
+  // Running, and failing its own healthcheck. Up is not the same as working.
+  unhealthy: "bg-[var(--warning)]",
   // A server whose agent answers but whose host is degraded (Docker unreachable):
   // up, but nothing can deploy there. Amber, not red — the box is not down — and
   // deliberately not grey, which would make a broken host look merely stopped.
@@ -107,6 +110,7 @@ const VARIANTS: Record<string, "success" | "warning" | "destructive" | "muted"> 
   warning: "warning",
   restarting: "warning",
   degraded: "warning",
+  unhealthy: "warning",
   error: "destructive",
   failed: "destructive",
   misconfigured: "destructive",

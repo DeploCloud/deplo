@@ -6,6 +6,7 @@ const runtime = (over: Partial<RuntimeSnapshot> = {}): RuntimeSnapshot => ({
   total: 1,
   running: 1,
   restarting: 0,
+  unhealthy: 0,
   missing: [],
   unreachable: false,
   ...over,
@@ -64,6 +65,23 @@ test("a stack whose main container is GONE is degraded, not Online", () => {
       runtime({ total: 2, running: 2, missing: ["activepieces"] }),
     ),
     "degraded",
+  );
+});
+
+test("running but failing its own healthcheck is not Online", () => {
+  assert.equal(
+    displayStatus("active", runtime({ total: 1, running: 1, unhealthy: 1 })),
+    "unhealthy",
+  );
+});
+
+test("a crash loop outranks an unhealthy sidecar", () => {
+  assert.equal(
+    displayStatus(
+      "active",
+      runtime({ total: 2, running: 1, restarting: 1, unhealthy: 1 }),
+    ),
+    "restarting",
   );
 });
 

@@ -13,15 +13,23 @@ import type { AppStatus } from "@/lib/types";
  * The extra states beyond AppStatus are all runtime facts, never persisted:
  *  - `restarting` — docker is restart-looping the container (it keeps dying)
  *  - `degraded`   — part of a compose stack is up, part is not
+ *  - `unhealthy`  — running, but failing its own healthcheck
  *  - `down`       — we believe the app is deployed and up, and nothing is running
  */
-export type DisplayStatus = AppStatus | "restarting" | "degraded" | "down";
+export type DisplayStatus =
+  | AppStatus
+  | "restarting"
+  | "degraded"
+  | "unhealthy"
+  | "down";
 
 /** The slice of {@link import("@/lib/data/console").AppRuntime} the fold needs. */
 export interface RuntimeSnapshot {
   total: number;
   running: number;
   restarting: number;
+  /** Running containers failing their healthcheck. */
+  unhealthy: number;
   /** Declared services with no container on the host at all. */
   missing: string[];
   unreachable: boolean;
@@ -42,6 +50,8 @@ export function displayStatus(
   // only that claim is worth checking.
   if (status !== "active") return status;
 
+  // A crash loop outranks everything: it is the loudest thing the host can be
+  // telling us, and the reason this function exists.
   if (runtime.restarting > 0) return "restarting";
   // Nothing of the app is up: neither a container that is running, nor one that
   // could be. (An app whose containers are all missing lands here too.)
@@ -50,5 +60,8 @@ export function displayStatus(
   // is missing entirely, which the running/total counts alone cannot see.
   if (runtime.running < runtime.total || runtime.missing.length > 0)
     return "degraded";
+  // Everything is up, and something is failing its own healthcheck. Running is
+  // not the same as working, and the app should not read green for this.
+  if (runtime.unhealthy > 0) return "unhealthy";
   return "active";
 }

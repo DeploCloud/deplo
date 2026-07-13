@@ -72,6 +72,18 @@ export interface ConsoleInstance {
    * control chars (e.g. Ctrl-C → \x03) reach the app as signals.
    */
   tty: boolean;
+  /**
+   * Raw docker state ("running" | "restarting" | "exited" | …), straight from
+   * the owning agent. EMPTY when that agent predates the field — `running`
+   * alone cannot separate a crash loop from a clean stop, so "" means unknown.
+   */
+  state: string;
+  /** "healthy" | "unhealthy" | "starting", or "" when the image declares no
+   *  healthcheck — which is NOT a synonym for healthy. */
+  health: string;
+  /** Times docker has restarted this container: what turns "it is starting" into
+   *  "it has been dying all afternoon". */
+  restartCount: number;
 }
 
 export function containerName(p: App): string {
@@ -160,6 +172,10 @@ function displayFallback(p: App): ConsoleInstance {
     workdir: "/",
     openStdin: false,
     tty: false,
+    // Unknown, not "stopped": this entry exists because we could not ask.
+    state: "",
+    health: "",
+    restartCount: 0,
   };
 }
 
@@ -212,6 +228,10 @@ export interface RuntimeContainer {
    * unknown, and the UI must say "not running", not invent a reason.
    */
   state: string;
+  /** "healthy" | "unhealthy" | "starting", or "" for an image with no healthcheck. */
+  health: string;
+  /** Times docker has restarted it — the difference between "booting" and "dying". */
+  restartCount: number;
   running: boolean;
   exposed: boolean;
 }
@@ -229,6 +249,11 @@ export interface AppRuntime {
   running: number;
   /** How many docker is restarting right now — i.e. a crash loop. */
   restarting: number;
+  /**
+   * How many are running but FAILING their own healthcheck. Up, listening, and
+   * broken — the state a running/not-running boolean can never express.
+   */
+  unhealthy: number;
   /**
    * Services the app declares that have NO container on the host at all.
    *
@@ -279,18 +304,23 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
       await conn.listInstances(p.id, p.slug, exposeService),
     );
 
-    // ListInstances only carries a running/not-running boolean, so a restarting
-    // container and a dead one look identical there. For a single-image app the
-    // container is `deplo-<slug>`, which the Inspect RPC resolves by name and
-    // answers with the raw docker state — enough to tell a crash loop from a
-    // container that simply exited. A compose stack's containers are
-    // `deplo-<slug>-<service>-N`, which Inspect cannot address, so they stay
-    // unknown ("") until the agent reports per-instance state.
-    let soloState = "";
-    if (instances.length === 1 && instances[0].name === containerName(p)) {
+    // The agent reports each container's raw docker state. An agent older than
+    // that field sends "" — and then a restarting container is indistinguishable
+    // from a dead one, because all we have is a bool. For a SINGLE-IMAGE app we
+    // can still recover the truth: its container is `deplo-<slug>`, which the
+    // older Inspect RPC resolves by name and answers with the raw state. A
+    // compose stack's containers (`deplo-<slug>-<service>-N`) are not addressable
+    // that way, so against an old agent they stay honestly unknown.
+    let legacySoloState = "";
+    const agentReportsState = instances.some((i) => i.state !== "");
+    if (
+      !agentReportsState &&
+      instances.length === 1 &&
+      instances[0].name === containerName(p)
+    ) {
       try {
         const seen = await conn.inspect(p.slug);
-        if (seen.exists) soloState = seen.state;
+        if (seen.exists) legacySoloState = seen.state;
       } catch {
         /* best-effort: an Inspect failure just leaves the state unknown */
       }
@@ -299,7 +329,9 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
     const containers: RuntimeContainer[] = instances.map((i, idx) => ({
       name: i.name,
       service: i.service,
-      state: idx === 0 ? soloState : "",
+      state: i.state || (idx === 0 ? legacySoloState : ""),
+      health: i.health,
+      restartCount: i.restartCount,
       running: i.running,
       exposed: i.exposed,
     }));
@@ -315,6 +347,8 @@ async function probeRuntime(p: App): Promise<AppRuntime> {
       total: containers.length,
       running: containers.filter((c) => c.running).length,
       restarting: containers.filter((c) => c.state === "restarting").length,
+      unhealthy: containers.filter((c) => c.running && c.health === "unhealthy")
+        .length,
       missing,
       containers,
       unreachable: false,
@@ -332,6 +366,7 @@ function unknownRuntime(): AppRuntime {
     total: 0,
     running: 0,
     restarting: 0,
+    unhealthy: 0,
     missing: [],
     containers: [],
     unreachable: true,

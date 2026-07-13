@@ -1212,6 +1212,22 @@ export interface ConsoleInstance {
   workdir: string;
   openStdin: boolean;
   tty: boolean;
+  /**
+   * Raw docker state: "running" | "restarting" | "exited" | "created" |
+   * "paused" | "dead" | "removing". Empty from an agent too old to send it.
+   */
+  state: string;
+  /**
+   * Healthcheck verdict when the image defines one: "healthy" | "unhealthy" |
+   * "starting". Empty when the container has no healthcheck (the common case) —
+   * NOT a synonym for healthy.
+   */
+  health: string;
+  /**
+   * How many times docker has restarted this container. The number that turns
+   * "it is starting" into "it has been dying for an hour".
+   */
+  restartCount: number;
 }
 
 export interface ListInstancesResponse {
@@ -7318,6 +7334,9 @@ function createBaseConsoleInstance(): ConsoleInstance {
     workdir: "",
     openStdin: false,
     tty: false,
+    state: "",
+    health: "",
+    restartCount: 0,
   };
 }
 
@@ -7349,6 +7368,15 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     }
     if (message.tty !== false) {
       writer.uint32(72).bool(message.tty);
+    }
+    if (message.state !== "") {
+      writer.uint32(82).string(message.state);
+    }
+    if (message.health !== "") {
+      writer.uint32(90).string(message.health);
+    }
+    if (message.restartCount !== 0) {
+      writer.uint32(96).int32(message.restartCount);
     }
     return writer;
   },
@@ -7432,6 +7460,30 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
           message.tty = reader.bool();
           continue;
         }
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.state = reader.string();
+          continue;
+        }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.health = reader.string();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.restartCount = reader.int32();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -7456,6 +7508,13 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
         ? globalThis.Boolean(object.open_stdin)
         : false,
       tty: isSet(object.tty) ? globalThis.Boolean(object.tty) : false,
+      state: isSet(object.state) ? globalThis.String(object.state) : "",
+      health: isSet(object.health) ? globalThis.String(object.health) : "",
+      restartCount: isSet(object.restartCount)
+        ? globalThis.Number(object.restartCount)
+        : isSet(object.restart_count)
+        ? globalThis.Number(object.restart_count)
+        : 0,
     };
   },
 
@@ -7488,6 +7547,15 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     if (message.tty !== false) {
       obj.tty = message.tty;
     }
+    if (message.state !== "") {
+      obj.state = message.state;
+    }
+    if (message.health !== "") {
+      obj.health = message.health;
+    }
+    if (message.restartCount !== 0) {
+      obj.restartCount = Math.round(message.restartCount);
+    }
     return obj;
   },
 
@@ -7505,6 +7573,9 @@ export const ConsoleInstance: MessageFns<ConsoleInstance> = {
     message.workdir = object.workdir ?? "";
     message.openStdin = object.openStdin ?? false;
     message.tty = object.tty ?? false;
+    message.state = object.state ?? "";
+    message.health = object.health ?? "";
+    message.restartCount = object.restartCount ?? 0;
     return message;
   },
 };

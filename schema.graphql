@@ -135,6 +135,11 @@ type AppRuntime {
   running: Int
   total: Int
 
+  """
+  Containers that are running and failing their own healthcheck — up, listening, and broken.
+  """
+  unhealthy: Int
+
   """The agent did not answer: the counts are unknown, not zero."""
   unreachable: Boolean
 }
@@ -1617,7 +1622,15 @@ enum Role {
 """One container of an app, as the host actually has it now."""
 type RuntimeContainer {
   exposed: Boolean
+
+  """
+  "healthy" | "unhealthy" | "starting", or "" when the image declares no healthcheck — which is not a synonym for healthy.
+  """
+  health: String
   name: String
+
+  """Times docker has restarted this container."""
+  restartCount: Int
   running: Boolean
   service: String
 

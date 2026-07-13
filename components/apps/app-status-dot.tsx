@@ -36,8 +36,17 @@ function useDisplayStatus(fallback: AppStatus): {
 /** The sentence behind a badge that is reporting trouble. */
 function detailFor(runtime: AppRuntimeView | null): string | null {
   if (!runtime || runtime.unreachable) return null;
-  if (runtime.restarting > 0)
-    return "Docker keeps restarting this container: it starts, dies, and starts again. The Logs tab shows why.";
+
+  if (runtime.restarting > 0) {
+    // The restart count is what separates "it is booting" from "it has been
+    // dying all afternoon", so lead with it when the agent reports one.
+    const restarts = Math.max(
+      ...runtime.containers.map((c) => c.restartCount),
+      0,
+    );
+    const times = restarts > 0 ? ` It has restarted ${restarts} times.` : "";
+    return `Docker keeps restarting this container: it starts, dies, and starts again.${times} The Logs tab shows why.`;
+  }
   if (runtime.total === 0)
     return "This app is deployed, but it has no container on its server at all.";
   if (runtime.running === 0)
@@ -46,6 +55,12 @@ function detailFor(runtime: AppRuntimeView | null): string | null {
     return `The rest of this stack is up, but ${runtime.missing.join(", ")} has no container on the host at all.`;
   if (runtime.running < runtime.total)
     return `Only ${runtime.running} of ${runtime.total} containers in this stack are running.`;
+  if (runtime.unhealthy > 0) {
+    const sick = runtime.containers
+      .filter((c) => c.health === "unhealthy")
+      .map((c) => c.service);
+    return `Everything is running, but ${sick.join(", ") || "a container"} is failing its healthcheck — up, but not working.`;
+  }
   return null;
 }
 

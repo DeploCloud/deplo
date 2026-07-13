@@ -87,6 +87,14 @@ const RuntimeContainerRef = builder
           'Raw docker state ("running" | "restarting" | "exited" | …), or "" ' +
           "when the owning agent is too old to report it.",
       }),
+      health: t.exposeString("health", {
+        description:
+          '"healthy" | "unhealthy" | "starting", or "" when the image declares ' +
+          "no healthcheck — which is not a synonym for healthy.",
+      }),
+      restartCount: t.exposeInt("restartCount", {
+        description: "Times docker has restarted this container.",
+      }),
       running: t.exposeBoolean("running"),
       exposed: t.exposeBoolean("exposed"),
     }),
@@ -102,6 +110,11 @@ const AppRuntimeRef = builder.objectRef<AppRuntime>("AppRuntime").implement({
     total: t.exposeInt("total"),
     running: t.exposeInt("running"),
     restarting: t.exposeInt("restarting"),
+    unhealthy: t.exposeInt("unhealthy", {
+      description:
+        "Containers that are running and failing their own healthcheck — up, " +
+        "listening, and broken.",
+    }),
     missing: t.exposeStringList("missing", {
       description:
         "Declared services with NO container on the host — the failure the " +

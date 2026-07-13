@@ -100,6 +100,17 @@ export interface AgentConsoleInstance {
   workdir: string;
   openStdin: boolean;
   tty: boolean;
+  /**
+   * Raw docker state ("running" | "restarting" | "exited" | …). EMPTY from an
+   * agent older than the field, which only sent `running` — and a bool cannot
+   * tell a crash loop from a clean stop. Treat "" as unknown, never as a state.
+   */
+  state: string;
+  /** "healthy" | "unhealthy" | "starting", or "" when the image has no
+   *  healthcheck (which is NOT the same as healthy). */
+  health: string;
+  /** How many times docker has restarted this container. */
+  restartCount: number;
 }
 export interface AgentFileEntry {
   path: string;
@@ -822,6 +833,11 @@ function dial(target: DialTarget): AgentConnection {
     workdir: i.workdir,
     openStdin: i.openStdin,
     tty: i.tty,
+    // Absent from an older agent: protobuf leaves them at "" / 0, which the
+    // runtime probe reads as "this agent cannot tell me" and falls back.
+    state: i.state,
+    health: i.health,
+    restartCount: i.restartCount,
   });
   const mapEntry = (e: PbFileEntry): AgentFileEntry => ({
     path: e.path,

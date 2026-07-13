@@ -20,12 +20,15 @@ const APP_RUNTIME_QUERY = /* GraphQL */ `
       total
       running
       restarting
+      unhealthy
       missing
       unreachable
       containers {
         name
         service
         state
+        health
+        restartCount
         running
         exposed
       }
@@ -37,6 +40,8 @@ export interface RuntimeContainerView {
   name: string;
   service: string;
   state: string;
+  health: string;
+  restartCount: number;
   running: boolean;
   exposed: boolean;
 }
