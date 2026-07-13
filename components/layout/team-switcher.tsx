@@ -36,6 +36,7 @@ export function TeamSwitcher({
         { teamId },
       );
       if (res.ok) {
+        router.push("/");
         router.refresh();
       } else {
         toast.error(res.error);

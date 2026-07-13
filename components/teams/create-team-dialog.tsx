@@ -44,6 +44,7 @@ export function CreateTeamDialog({
         toast.success("Team created");
         onOpenChange(false);
         setName("");
+        router.push("/");
         router.refresh();
       } else {
         toast.error(res.error);
