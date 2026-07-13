@@ -40,16 +40,27 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
   }
 
   const admin = await isInstanceAdmin();
-  const [allAppGroups, sharedVars, appliedShared, projectSummaries, teamEnvironments, instanceGlobals] =
-    await Promise.all([
-      listAllAppEnv(),
-      listSharedVars(),
-      listAppliedSharedVarsByApp(),
-      listProjects(),
-      listAllEnvironmentsForTeam(),
-      // Instance-wide vars are admin-only; skip the (throwing) read otherwise.
-      admin ? listInstanceEnv() : Promise.resolve([]),
-    ]);
+  const [
+    allAppGroups,
+    sharedVars,
+    appliedShared,
+    projectSummaries,
+    teamEnvironments,
+    instanceGlobals,
+    canManageTeam,
+  ] = await Promise.all([
+    listAllAppEnv(),
+    listSharedVars(),
+    listAppliedSharedVarsByApp(),
+    listProjects(),
+    listAllEnvironmentsForTeam(),
+    // Instance-wide vars are admin-only; skip the (throwing) read otherwise.
+    admin ? listInstanceEnv() : Promise.resolve([]),
+    hasCapability("manage_team"),
+  ]);
+  // The project order this page drags is the TEAM-WIDE one the Overview grid
+  // shows, so it takes the same super-user gate `reorderProjects` enforces.
+  const canReorderProjects = admin || canManageTeam;
 
   const sharedByApp: Record<string, AppliedSharedVarDTO[]> = {};
   for (const s of appliedShared) (sharedByApp[s.appId] ??= []).push(s);
@@ -68,7 +79,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
   // returns a group per app (name-sorted), so there is nothing more to fetch.
   const apps = allAppGroups.map((g) => g.app);
 
-  // Two team-facing tabs (App / Shared) + an admin-only instance tab. Legacy
+  // Two team-facing tabs (All / Shared) + an admin-only instance tab. Legacy
   // deep links (?tab=service|environments|team) fold gracefully into the new set.
   const legacy: Record<string, string> = {
     service: "app",
@@ -91,14 +102,15 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
           the old panel and the click would appear to do nothing. */}
       <Tabs key={defaultTab} defaultValue={defaultTab}>
         <UnderlineTabsList>
-          <UnderlineTabsTrigger value="app">App</UnderlineTabsTrigger>
+          {/* The value stays `app` — it is what every ?tab= deep link carries. */}
+          <UnderlineTabsTrigger value="app">All</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
           {admin && (
             <UnderlineTabsTrigger value="instance">All teams</UnderlineTabsTrigger>
           )}
         </UnderlineTabsList>
 
-        {/* App: every app's variables (standalone + applied shared), editable */}
+        {/* All: every app's variables (standalone + applied shared), editable */}
         <TabsContent value="app" className="space-y-4">
           <AllAppsEnvManager
             groups={allAppGroups}
@@ -107,6 +119,7 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
             apps={apps}
             projects={projects}
             environments={teamEnvironments}
+            canReorderProjects={canReorderProjects}
           />
         </TabsContent>
 

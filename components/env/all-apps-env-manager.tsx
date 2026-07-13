@@ -3,6 +3,25 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   Plus,
   Pencil,
@@ -14,6 +33,7 @@ import {
   ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
+  GripVertical,
   Layers,
   SearchX,
   Variable,
@@ -68,6 +88,9 @@ import type { TeamEnvironment } from "@/lib/data/environments";
 
 /** The app a row belongs to — what the Project / Environment filters read. */
 type RowApp = AppEnvGroup["app"];
+
+/** The same team-wide Project order the Overview grid drags (`reorderProjects`). */
+const REORDER_PROJECTS = `mutation($ids: [ID!]!) { reorderProjects(projectIds: $ids) }`;
 
 /**
  * An applied shared var carries no `type` (the DTO never decrypts a value), but
@@ -168,11 +191,12 @@ function appSubtitle(
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /**
- * The editable aggregate of every app's variables (the Variables page's "App"
- * tab). One collapsible section per Project — open by default — holding one card
- * per app: standalone vars with per-row edit/delete + an Add button, plus the
- * shared vars that apply, shown read-only. The same per-variable editing
- * experience as the single-app page, aggregated across the team.
+ * The editable aggregate of every app's variables (the Variables page's "All"
+ * tab). One collapsible section per Project — open by default, in the team's own
+ * project order and draggable into another — holding one card per app: standalone
+ * vars with per-row edit/delete + an Add button, plus the shared vars that apply,
+ * shown read-only. The same per-variable editing experience as the single-app
+ * page, aggregated across the team.
  *
  * An app with no variables at all gets NO card, and a project with no such app no
  * section — an empty card is pure noise on a page whose whole subject is
@@ -185,6 +209,7 @@ export function AllAppsEnvManager({
   apps,
   projects,
   environments,
+  canReorderProjects,
 }: {
   groups: AppEnvGroup[];
   sharedByApp: Record<string, AppliedSharedVarDTO[]>;
@@ -192,8 +217,12 @@ export function AllAppsEnvManager({
   sharedVars: SharedVarDTO[];
   /** Every app in the active team — the wizard's "specific apps" scope. */
   apps: AppRef[];
+  /** Projects in the team's own order — the order the sections come out in. */
   projects: ProjectRef[];
   environments: TeamEnvironment[];
+  /** The viewer may change the TEAM-WIDE project order (manage_team / instance
+   *  admin) — gates the section drag handles. */
+  canReorderProjects: boolean;
 }) {
   const [dialog, setDialog] = React.useState<{
     appId: string;
@@ -210,6 +239,50 @@ export function AllAppsEnvManager({
   );
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
+  const [, startTransition] = React.useTransition();
+
+  // The local, optimistic project order — the sole source of the sections'
+  // arrangement, so a drag lands instantly and the write settles behind it. It
+  // holds EVERY project of the team (not only the ones with a section on
+  // screen), which is what lets a drag under an active filter still send a total
+  // order rather than a subset the server would have to guess the rest of.
+  const [order, setOrder] = React.useState<string[]>(() =>
+    projects.map((p) => p.id),
+  );
+  // Re-seed when the MEMBERSHIP changes (a project created or deleted
+  // elsewhere), not when the order does: our own reorder's `router.refresh()`
+  // returns the same ids in the order we already show, and re-seeding on that
+  // would fight an in-flight drag. Done in render (previous-value pattern), not
+  // in an effect, so it never costs a second paint.
+  const membership = projects
+    .map((p) => p.id)
+    .sort()
+    .join(",");
+  const [prevMembership, setPrevMembership] = React.useState(membership);
+  if (membership !== prevMembership) {
+    setPrevMembership(membership);
+    setOrder(projects.map((p) => p.id));
+  }
+  // Projects in the local order. Anything the order hasn't seen yet keeps its
+  // server position at the end — the re-seed above normally beats this to it.
+  const orderedProjects = React.useMemo(() => {
+    const byId = new Map(projects.map((p) => [p.id, p] as const));
+    const ranked = order
+      .map((id) => byId.get(id))
+      .filter((p): p is ProjectRef => p !== undefined);
+    const seen = new Set(ranked.map((p) => p.id));
+    return [...ranked, ...projects.filter((p) => !seen.has(p.id))];
+  }, [order, projects]);
+
+  const sensors = useSensors(
+    // A few px of travel before a drag starts, so a click on the handle (or on
+    // the header next to it) still reads as a click.
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    // Touch: a short hold, so a tap toggles and a swipe still scrolls the page.
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
   const sharedById = React.useMemo(
     () => new Map(sharedVars.map((v) => [v.id, v] as const)),
     [sharedVars],
@@ -283,7 +356,7 @@ export function AllAppsEnvManager({
           .filter((p) => projectIds.has(p.id))
           .map((p) => ({ value: p.id, label: p.name })),
         ...(loose
-          ? [{ value: FACET_NONE, label: "No project", hint: "top level" }]
+          ? [{ value: FACET_NONE, label: "No project", hint: "standalone" }]
           : []),
       ],
       match: (row, value) =>
@@ -322,18 +395,55 @@ export function AllAppsEnvManager({
   const { state: filters, setState: setFilters, clear, shown, counts } =
     useEnvFilters(rows, facets, (row) => `${row.app.name} ${row.projectName}`);
 
-  // Back into sections, in the order the sort left the rows. Sorting BY KEY is
-  // about the keys, not the apps — there the sections and cards stay in name
-  // order instead of reshuffling behind the table.
+  // Back into sections — in the team's project order (the one the handles drag),
+  // Standalone last. Sorting BY KEY is about the keys, not the apps: there the
+  // app cards stay in name order instead of reshuffling behind the table.
   const sections = React.useMemo<ProjectBucket<EnvRow>[]>(
     () =>
-      groupRowsByProject(shown, projects, { byName: filters.sort === "key" }),
-    [shown, projects, filters.sort],
+      groupRowsByProject(shown, orderedProjects, {
+        byName: filters.sort === "key",
+      }),
+    [shown, orderedProjects, filters.sort],
   );
 
   const openSections = sections.filter(
     (s) => !projectCollapse.collapsed.has(s.id),
   ).length;
+
+  // The sections a drag can move: real projects only (Standalone is not one and
+  // always sits last), and only those the local order knows. A lone project has
+  // nothing to reorder against, so it gets no handle either.
+  const orderedIds = new Set(order);
+  const draggableIds = canReorderProjects
+    ? sections.filter((s) => orderedIds.has(s.id)).map((s) => s.id)
+    : [];
+  const reorderable = draggableIds.length > 1;
+  const draggable = new Set(reorderable ? draggableIds : []);
+
+  /**
+   * Drop: move the dragged project to the target's slot IN THE FULL ORDER, so
+   * the projects a filter is currently hiding keep their places (the mutation
+   * takes a total order and appends whatever it isn't given — a subset would
+   * scramble them). Optimistic, reverted on failure.
+   */
+  function onDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const from = order.indexOf(String(active.id));
+    const to = order.indexOf(String(over.id));
+    if (from < 0 || to < 0) return;
+    const previous = order;
+    const next = arrayMove(order, from, to);
+    setOrder(next);
+    startTransition(async () => {
+      const res = await gqlAction(REORDER_PROJECTS, { ids: next });
+      if (res.ok) router.refresh();
+      else {
+        toast.error(res.error);
+        setOrder(previous);
+      }
+    });
+  }
 
   /**
    * Collapse (or expand) every section ON SCREEN, by MERGING into the collapsed
@@ -427,45 +537,83 @@ export function AllAppsEnvManager({
         </div>
       )}
 
-      {sections.map((section) => {
-        const open = !projectCollapse.collapsed.has(section.id);
+      {/* One node per section, rendered the same whether or not it can be
+          dragged — the sortable wrapper only adds the handle and the transform. */}
+      {(() => {
+        const nodes = sections.map((section) => {
+          const open = !projectCollapse.collapsed.has(section.id);
+          const body = (handle: React.ReactNode) => (
+            <>
+              <ProjectSectionHeader
+                section={section}
+                open={open}
+                onToggle={() => projectCollapse.toggle(section.id)}
+                handle={handle}
+              />
+              {open && (
+                <div
+                  id={`vars-project-${section.id}`}
+                  className="space-y-4 sm:pl-4"
+                >
+                  {section.apps.map((card) => (
+                    <AppVarsCard
+                      key={card.app.id}
+                      card={card}
+                      open={!appCollapse.collapsed.has(card.app.id)}
+                      onToggle={() => appCollapse.toggle(card.app.id)}
+                      environmentName={environmentName}
+                      onAdd={() =>
+                        setDialog({ appId: card.app.id, editing: null })
+                      }
+                      onEdit={(row) =>
+                        setDialog({ appId: card.app.id, editing: row })
+                      }
+                      onDelete={setDeleteId}
+                      onEditShared={(id) => {
+                        const full = sharedById.get(id);
+                        if (full) setSharedEditing(full);
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          );
+
+          return draggable.has(section.id) ? (
+            <SortableSection key={section.id} id={section.id}>
+              {body}
+            </SortableSection>
+          ) : (
+            <section key={section.id} className="group space-y-3">
+              {/* Standalone can't be dragged (it is not a project), but it still
+                  holds the handle's slot open — otherwise its header would sit a
+                  grip's width left of every other one. */}
+              {body(
+                reorderable ? (
+                  <span aria-hidden className="size-6 shrink-0" />
+                ) : null,
+              )}
+            </section>
+          );
+        });
+
+        if (!reorderable) return nodes;
         return (
-          <section key={section.id} className="space-y-3">
-            <ProjectSectionHeader
-              section={section}
-              open={open}
-              onToggle={() => projectCollapse.toggle(section.id)}
-            />
-            {open && (
-              <div
-                id={`vars-project-${section.id}`}
-                className="space-y-4 sm:pl-4"
-              >
-                {section.apps.map((card) => (
-                  <AppVarsCard
-                    key={card.app.id}
-                    card={card}
-                    open={!appCollapse.collapsed.has(card.app.id)}
-                    onToggle={() => appCollapse.toggle(card.app.id)}
-                    environmentName={environmentName}
-                    onAdd={() =>
-                      setDialog({ appId: card.app.id, editing: null })
-                    }
-                    onEdit={(row) =>
-                      setDialog({ appId: card.app.id, editing: row })
-                    }
-                    onDelete={setDeleteId}
-                    onEditShared={(id) => {
-                      const full = sharedById.get(id);
-                      if (full) setSharedEditing(full);
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onDragEnd}
+          >
+            <SortableContext
+              items={draggableIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {nodes}
+            </SortableContext>
+          </DndContext>
         );
-      })}
+      })()}
 
       {dialog && (
         <EnvVarDialog
@@ -520,20 +668,91 @@ export function AllAppsEnvManager({
 }
 
 /**
+ * A Project section the viewer may drag into a new place in the team's order.
+ *
+ * The drag is HANDLE-bound: the header is a collapse toggle and the page scrolls
+ * under the pointer, so lifting the whole section on any press would fight both.
+ * The transform is clamped to Y — the sections are a vertical list, and sideways
+ * travel would only be noise.
+ */
+function SortableSection({
+  id,
+  children,
+}: {
+  id: string;
+  /** Rendered with the handle to plant in the section's header. */
+  children: (handle: React.ReactNode) => React.ReactNode;
+}) {
+  const {
+    setNodeRef,
+    setActivatorNodeRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style: React.CSSProperties = {
+    transform: transform
+      ? CSS.Transform.toString({ ...transform, x: 0, scaleX: 1, scaleY: 1 })
+      : undefined,
+    transition,
+  };
+
+  const handle = (
+    <button
+      ref={setActivatorNodeRef}
+      type="button"
+      aria-label="Drag to reorder project"
+      className={cn(
+        "shrink-0 cursor-grab rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity active:cursor-grabbing",
+        "hover:bg-accent hover:text-foreground group-hover:opacity-100",
+        "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+      {...attributes}
+      {...listeners}
+    >
+      <GripVertical className="size-4" />
+    </button>
+  );
+
+  return (
+    <section
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        // Suppress the native long-press callout so a touch drag isn't preempted
+        // by the browser's own selection UI.
+        "group touch-manipulation space-y-3 [-webkit-touch-callout:none]",
+        isDragging && "relative z-10 opacity-80",
+      )}
+    >
+      {children(handle)}
+    </section>
+  );
+}
+
+/**
  * One Project's collapsible header. It wears the project's own colour — the same
  * ~10% wash / 25% edge the Overview's project cards use — so a section is
  * recognised here the way it is there. Collapsed, its counts are the only thing
  * left to say what is inside, and under an active search those counts are what
  * they matched.
+ *
+ * The drag handle (when the viewer may reorder) sits BESIDE the toggle rather
+ * than inside it — a button never nests in a button.
  */
 function ProjectSectionHeader({
   section,
   open,
   onToggle,
+  handle,
 }: {
   section: ProjectBucket<EnvRow>;
   open: boolean;
   onToggle: () => void;
+  handle: React.ReactNode;
 }) {
   const top = section.id === TOP_LEVEL;
   const color = section.color;
@@ -547,44 +766,52 @@ function ProjectSectionHeader({
   const Glyph = top ? AppWindow : Boxes;
 
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      aria-controls={`vars-project-${section.id}`}
+    <div
       style={headerStyle}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-3 rounded-lg border border-border px-4 py-3 text-left transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "flex w-full items-center gap-2 rounded-lg border border-border pr-4 transition-colors",
+        handle ? "pl-2" : "pl-4",
         !color && "hover:bg-accent/40",
       )}
     >
-      <ChevronDown
-        aria-hidden
+      {handle}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={`vars-project-${section.id}`}
         className={cn(
-          "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
-          !open && "-rotate-90",
+          "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md py-3 text-left",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         )}
-      />
-      <span
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-md",
-          color ? "" : "bg-secondary text-muted-foreground",
-        )}
-        style={tileStyle}
       >
-        <Glyph className="size-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">
-          {section.name}
+        <ChevronDown
+          aria-hidden
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
+            !open && "-rotate-90",
+          )}
+        />
+        <span
+          className={cn(
+            "flex size-8 shrink-0 items-center justify-center rounded-md",
+            color ? "" : "bg-secondary text-muted-foreground",
+          )}
+          style={tileStyle}
+        >
+          <Glyph className="size-4" />
         </span>
-        <span className="block truncate text-xs text-muted-foreground">
-          {plural(section.apps.length, "app")} ·{" "}
-          {plural(section.rowCount, "variable")}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">
+            {section.name}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {plural(section.apps.length, "app")} ·{" "}
+            {plural(section.rowCount, "variable")}
+          </span>
         </span>
-      </span>
-    </button>
+      </button>
+    </div>
   );
 }
 

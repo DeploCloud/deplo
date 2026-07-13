@@ -1,5 +1,5 @@
 /**
- * Folding the Variables page's aggregate "App" tab into Project sections.
+ * Folding the Variables page's aggregate "All" tab into Project sections.
  *
  * The tab holds every variable of every app in ONE flat row list (that is what
  * lets its filters cut across cards and its sort order the whole page). This is
@@ -8,16 +8,16 @@
  *
  * Kept pure and UI-free on purpose — the component around it cannot be tested in
  * this repo (no renderer in the `node --test` harness), so the grouping, the
- * ordering and the Top level bucket live here where they can be.
+ * ordering and the Standalone bucket live here where they can be.
  */
 
 /** The section key of every App that belongs to no Project. */
 export const TOP_LEVEL = "__top_level__";
 
 /** What that section is CALLED. The Project facet's option says "No project"
- *  (with a "top level" hint); a section header is not a filter — it names the
- *  place, and the place is the top level. */
-export const TOP_LEVEL_NAME = "Top level";
+ *  (with a "standalone" hint); a section header is not a filter — it names what
+ *  is inside, and those apps stand on their own, outside every project. */
+export const TOP_LEVEL_NAME = "Standalone";
 
 /** The least an App must carry to be grouped: who it is, and where it lives. */
 export interface GroupableApp {
@@ -51,14 +51,18 @@ export interface ProjectBucket<R extends { app: GroupableApp }> {
 }
 
 /**
- * Fold rows into Project → App buckets IN PASS ORDER: the first row of a bucket
- * IS its extreme (the newest one under "Recently modified"), so grouping in the
- * order the sort left the rows carries that sort up to the sections and the cards
- * for free.
+ * Fold rows into Project → App buckets.
  *
- * `byName` re-sorts both levels A→Z instead, with Top level last. That is what
- * the "Sort by key" mode wants — there the ordering is about the KEYS, and the
- * sections should just sit still rather than reshuffle behind the table.
+ * The SECTIONS come out in `projects` order — the team-wide Project order the
+ * Overview grid shows and the Variables page lets you drag — with Standalone
+ * always last. That order is the user's, so no sort mode and no search may
+ * reshuffle it behind their back; only a drag moves a section.
+ *
+ * Inside a section the cards keep PASS ORDER: the first row of a bucket is its
+ * extreme (the newest one under "Recently modified"), so grouping in the order
+ * the sort left the rows carries that sort down to the cards for free. `byName`
+ * re-sorts them A→Z instead — what the "Sort by key" mode wants, where the
+ * ordering is about the KEYS and the cards should just sit still.
  *
  * A project or an app with no surviving row never appears: an empty card is pure
  * noise on a page whose whole subject is variables.
@@ -105,12 +109,17 @@ export function groupRowsByProject<R extends { app: GroupableApp }>(
     section.rowCount += 1;
   }
 
+  // Sections follow the caller's Project order. A section whose project the
+  // caller never passed has no rank of its own: it sits after the ranked ones
+  // (before Standalone), in pass order — `sort` is stable.
+  const rank = new Map(projects.map((p, i) => [p.id, i] as const));
+  const rankOf = (section: ProjectBucket<R>) =>
+    section.id === TOP_LEVEL
+      ? Number.POSITIVE_INFINITY
+      : (rank.get(section.id) ?? Number.MAX_SAFE_INTEGER);
+  out.sort((a, b) => rankOf(a) - rankOf(b));
+
   if (opts.byName) {
-    out.sort(
-      (a, b) =>
-        Number(a.id === TOP_LEVEL) - Number(b.id === TOP_LEVEL) ||
-        a.name.localeCompare(b.name),
-    );
     for (const section of out) {
       section.apps.sort((a, b) => a.app.name.localeCompare(b.app.name));
     }
