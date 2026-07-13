@@ -41,12 +41,12 @@ export default async function AppDomainsPage(
   const serverIp = resolveServerIp(server);
   const suggestedDomain = productionDomain(project.slug, serverIp);
 
-  // Only surface the "reload to apply" notice when there is actually pending
-  // routing work — a domain that isn't yet verified-and-live (`pending` after an
-  // add, `misconfigured`/`error` after a failed check). Once every domain is
-  // `valid`/`cloudflare` the notice would just nag, so it's hidden. This is the
-  // cheapest honest signal available on the page; the running container's exact
-  // label set isn't knowable here, so a settled list is treated as applied.
+  // Every domain mutation now re-applies routing to the running container itself
+  // (see `applyRouting` in lib/graphql/types/domain.ts), so a settled domain is
+  // genuinely live and needs no nagging. What is still NOT live is a host whose
+  // DNS hasn't checked out — `pending` after an add, `misconfigured`/`error`
+  // after a failed check. Those are filtered out of the router on purpose, so
+  // they route only once they verify, and that is what this notice explains.
   const hasUnsettledDomain = domains.some(
     (d) => d.status !== "valid" && d.status !== "cloudflare",
   );
@@ -71,22 +71,19 @@ export default async function AppDomainsPage(
         />
       </div>
 
-      {/* Routing is baked into the stack at deploy time (traefikRouterLabels),
-          so a domain added/edited/removed here is DB-only until the running
-          container is re-created. The lightweight "Reload" (reapplyRouting) or a
-          full Redeploy — both in the toolbar above — apply it. Shown only while a
-          domain is still unsettled (see `hasUnsettledDomain`), so a fully-verified
-          list doesn't nag. */}
+      {/* Only a host that has NOT checked out is off the router (see
+          `hasUnsettledDomain`). Adding, editing, removing or verifying a domain
+          re-applies routing to the running container on the spot, so a verified
+          list is live and gets no notice. */}
       {hasUnsettledDomain && (
         <div className="flex items-start gap-2.5 rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm">
           <RefreshCw className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <div className="space-y-0.5">
-            <p className="font-medium">Reload to apply domain changes</p>
+            <p className="font-medium">Verify to start routing</p>
             <p className="text-muted-foreground">
-              A custom domain starts routing once its DNS is verified. After
-              verifying (or adding, editing, or removing a domain), it only
-              reaches the running app when you Reload it (re-applies routing to
-              the container — no rebuild) or redeploy, using the toolbar above.
+              A custom domain only reaches the app once its DNS is verified.
+              Point it at this server, then hit Verify — routing is applied to
+              the running container for you, with no rebuild.
             </p>
           </div>
         </div>

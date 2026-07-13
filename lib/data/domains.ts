@@ -351,15 +351,27 @@ export async function addDomain(
   // prefix to strip), so drop it otherwise — the router grammar does the same.
   const stripPrefix = Boolean(pathPrefix && config.stripPrefix);
   // First domain on the project becomes primary.
-  const isFirst = (await loadDomainsForApp(appId)).length === 0;
+  const existing = await loadDomainsForApp(appId);
+  const isFirst = existing.length === 0;
+  // A path-routed row is a SECOND row on a hostname that may already be verified
+  // (`app.com` for `/`, `app.com` for `/api`). DNS verification is a property of
+  // the HOSTNAME, not of the path — the new row resolves to exactly the same
+  // A/CNAME record the sibling already proved — so inherit the sibling's verified
+  // status instead of restarting at `pending`. Without this the new row is filtered
+  // out of `routableRoutes` (which only routes `valid`/`cloudflare`) and the path
+  // silently never routes until the user hunts down the Verify button.
+  // No verified sibling ⇒ `pending` as before, and DNS is checked for real.
+  const sibling = existing.find(
+    (d) => d.name === clean && (d.status === "valid" || d.status === "cloudflare"),
+  );
   const domain: Domain = {
     id: newId("dom"),
     appId,
     name: clean,
-    status: "pending",
+    status: sibling?.status ?? "pending",
     primary: isFirst,
     redirectTo: null,
-    ssl: false,
+    ssl: sibling?.ssl ?? false,
     // Always store a concrete port so no domain is ever portless. Compose
     // already required one above; single-image falls back to the project's
     // production port (build.port) — byte-identical to leaving it null, since
@@ -775,15 +787,54 @@ export async function routableRoutes(
     // pending/misconfigured host has no working DNS and is left off the router.
     .filter((d) => d.status === "valid" || d.status === "cloudflare")
     .sort((a, b) => Number(b.primary) - Number(a.primary))
-    .map((d) => ({
-      name: d.name,
-      port: d.port ?? null,
-      ...domainTlsConfig(d),
-      middlewares: d.middlewares ?? [],
-      pathPrefix: d.pathPrefix ?? "",
-      stripPrefix: Boolean(d.stripPrefix),
-      service: d.service ?? null,
-    }));
+    .map(toRoutableDomain);
+}
+
+/**
+ * The stored row → the route its Traefik router is rendered from. The ONE mapper,
+ * so every path into the router grammar carries the row's full config — port
+ * override, TLS triplet, middleware chain, and (the part that used to get lost)
+ * its `pathPrefix` + `stripPrefix`.
+ *
+ * {@link defaultRoute} is its counterpart for a hostname with no row behind it at
+ * all (a preview's ephemeral host). Reaching for `defaultRoute` when a row DOES
+ * exist is the bug this exists to prevent: it silently flattens the row to
+ * whole-host HTTPS-on-the-default-port and the path never routes.
+ */
+export function toRoutableDomain(d: Domain): RoutableDomain {
+  return {
+    name: d.name,
+    port: d.port ?? null,
+    ...domainTlsConfig(d),
+    middlewares: d.middlewares ?? [],
+    pathPrefix: d.pathPrefix ?? "",
+    stripPrefix: Boolean(d.stripPrefix),
+    service: d.service ?? null,
+  };
+}
+
+/**
+ * The primary's stored row as a route, verified or NOT — the fallback a deploy
+ * uses when the canonical host hasn't passed its DNS check yet (a brand-new app,
+ * or a custom domain added minutes ago). Null when the app has no row for that
+ * hostname, in which case the caller synthesises a {@link defaultRoute}.
+ *
+ * Store-direct (no auth) so the deploy engine can call it like {@link
+ * routableDomains} does.
+ */
+export async function pendingPrimaryRoute(
+  appId: string,
+  primary: string,
+): Promise<RoutableDomain | null> {
+  if (!primary) return null;
+  const rows = (await loadDomainsForApp(appId)).filter((d) => d.name === primary);
+  // A hostname can carry SEVERAL rows (one per path), so prefer the one actually
+  // flagged primary — `primary` is only a name, and picking whichever row happens
+  // to come back first would route an arbitrary sibling's path as the canonical
+  // host. Fall back to any row on that hostname when none is flagged (a legacy
+  // app whose primary flag was never set).
+  const row = rows.find((d) => d.primary) ?? rows[0];
+  return row ? toRoutableDomain(row) : null;
 }
 
 /**

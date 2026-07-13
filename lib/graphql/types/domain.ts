@@ -10,6 +10,7 @@ import {
   type DomainConfig,
   type DomainPatch,
 } from "@/lib/data/domains";
+import { rerouteApp } from "@/lib/deploy/build";
 import type { Domain } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -137,7 +138,7 @@ builder.mutationFields((t) => ({
       name: t.arg.string({ required: true }),
       config: t.arg({ type: DomainConfigInput, required: false }),
     },
-    resolve: (_r, { appId, name, config }) => {
+    resolve: async (_r, { appId, name, config }) => {
       const cfg: DomainConfig = {
         port: config?.port ?? null,
         // Enum args arrive as the runtime string union; pass through as-is.
@@ -148,7 +149,9 @@ builder.mutationFields((t) => ({
         stripPrefix: config?.stripPrefix ?? undefined,
         service: config?.service ?? undefined,
       };
-      return addDomain(appId, name, cfg);
+      const domain = await addDomain(appId, name, cfg);
+      await applyRouting(appId);
+      return domain;
     },
   }),
   updateDomain: t.field({
@@ -174,6 +177,7 @@ builder.mutationFields((t) => ({
         service: patch.service ?? undefined,
       };
       const appId = await updateDomain(id, next);
+      await applyRouting(appId);
       return reloadDomain(id, appId);
     },
   }),
@@ -182,7 +186,14 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "manage_domains" },
     description: "Re-check the domain's DNS and (re)issue its certificate.",
     args: { id: t.arg.string({ required: true }) },
-    resolve: (_r, { id }) => verifyDomain(id),
+    resolve: async (_r, { id }) => {
+      // Verifying is what flips a host to `valid` — i.e. what makes it routable
+      // in the first place. Without the reroute the domain reports "verified"
+      // while the container still carries labels that never mentioned it.
+      const domain = await verifyDomain(id);
+      await applyRouting(domain.appId);
+      return domain;
+    },
   }),
   setPrimaryDomain: t.field({
     type: "Boolean",
@@ -190,7 +201,7 @@ builder.mutationFields((t) => ({
     description: "Make this domain its app's primary (canonical) host. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await setPrimaryDomain(id);
+      await applyRouting(await setPrimaryDomain(id));
       return true;
     },
   }),
@@ -200,11 +211,41 @@ builder.mutationFields((t) => ({
     description: "Remove the domain so it stops routing. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await removeDomain(id);
+      await applyRouting(await removeDomain(id));
       return true;
     },
   }),
 }));
+
+/**
+ * Push an app's current routing to its RUNNING container.
+ *
+ * A router's rule, path, strip middleware and target port are baked into the
+ * container's Traefik labels at deploy time, so every domain write here is
+ * DB-only until the stack is re-rendered. Each `lib/data/domains` mutation
+ * returns the affected appId precisely "so the caller can re-apply routing" —
+ * and nobody did, which is why editing a domain's path or strip flag appeared to
+ * do nothing at all: the row changed, the labels didn't.
+ *
+ * `rerouteApp` is the lightweight, label-only path (no build, no git, no env
+ * regeneration) and it is a no-op when there is nothing to do: it reports
+ * "unchanged" when the rendered labels already match (so a routing-neutral edit
+ * never restarts a container) and "deferred" when the app isn't running (the
+ * stack file is still rewritten, so the right labels are in place when it next
+ * comes up). It throws only on a real docker failure for an ACTIVE app, which is
+ * exactly the case the user must hear about — the domain is saved either way, but
+ * the routing they asked for is not live, so we surface it rather than swallow it.
+ *
+ * Authorization is already settled when we get here: `appId` is whatever the
+ * lib/data domain mutation just returned, and every one of them gates on
+ * `requireCapability("manage_domains")` + the app's team + its folder before
+ * writing. So this deliberately calls the deploy-engine primitive rather than
+ * `reloadApp`, whose own gate is `deploy` — a member who may manage domains but
+ * not deploy must still be able to route the domain they just changed.
+ */
+async function applyRouting(appId: string): Promise<void> {
+  await rerouteApp(appId);
+}
 
 /** Reload a domain by id after updateDomain (which returns only the appId)
  * so the mutation can return the updated entity. Scopes the lookup to the

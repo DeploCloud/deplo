@@ -47,10 +47,11 @@ export interface RouterRoute {
   middlewares?: string[];
   /** Path prefix this router matches, e.g. `/api`. The rule becomes
    * `(Host(`a`) || …) && PathPrefix(`/api`)` and the router gets a
-   * `priority=<prefix length>` so a longer prefix wins on the same host. Empty/
-   * absent ⇒ a `Host()`-only rule with no priority label (byte-identical to the
-   * pre-path output). Normalised (single leading slash, no trailing slash, no
-   * backtick) before use. */
+   * `priority=PATH_PRIORITY_BASE + <prefix length>`, which puts it above every
+   * whole-host router (whatever their rule-length default) and orders path
+   * routers longest-prefix-first. Empty/absent ⇒ a `Host()`-only rule with no
+   * priority label (byte-identical to the pre-path output). Normalised (single
+   * leading slash, no trailing slash, no backtick) before use. */
   pathPrefix?: string;
   /** Strip `pathPrefix` before forwarding, via a generated `stripprefix`
    * middleware PREPENDED to `middlewares` (so user middlewares see the stripped
@@ -95,6 +96,35 @@ export interface RouterLabelOptions {
 }
 
 /**
+ * Priority floor for a router that carries a `PathPrefix`, added on top of the
+ * prefix length.
+ *
+ * Traefik picks the HIGHEST-priority router among those whose rule MATCHES, and
+ * an un-pinned router's priority defaults to its RULE-STRING LENGTH. So a bare
+ * `Host(`app.com`)` router (no priority label ⇒ default 15) silently outranked a
+ * `(Host(`app.com`)) && PathPrefix(`/api`)` router pinned to the prefix length
+ * (4) — the whole-host router swallowed `/api`, and neither the PathPrefix nor
+ * its stripprefix middleware ever fired. That is the bug this base fixes.
+ *
+ * The competing whole-host router is frequently NOT ours to pin: it can belong
+ * to a different app, a different team's stack, or a user's file-provider route
+ * — any container on the shared daemon. Traefik router priorities are global, so
+ * the only robust fix is to lift every path router above ANY rule-length default
+ * rather than to push the others down. `docker-compose.yml` already pins Deplo's
+ * own dashboard router to `priority=1` for exactly this reason; that trick does
+ * not generalise, because we don't own the other routers.
+ *
+ * 1e6 is far beyond any reachable rule length (a rule that long would need tens
+ * of thousands of OR'd hostnames on one router) yet nowhere near overflowing
+ * Traefik's int priority, so `BASE + prefixLength` stays strictly ordered by
+ * specificity: longer prefix ⇒ higher priority ⇒ `/api/v1` beats `/api` beats
+ * the whole host. Raising a path router's priority can never hijack traffic it
+ * shouldn't serve — priority only breaks ties among routers that already match,
+ * and a PathPrefix router only matches requests under its prefix.
+ */
+const PATH_PRIORITY_BASE = 1_000_000;
+
+/**
  * Render the Traefik router + service labels for a set of routes.
  *
  * Default mode (no `perRouteKey`): group routes by their full signature —
@@ -102,8 +132,9 @@ export interface RouterLabelOptions {
  * middleware chain, and the path prefix (+strip flag) — and emit one router per
  * distinct signature. Two hosts fold into one OR-rule router only when ALL of
  * these match; a different `pathPrefix` always splits them (one Traefik rule
- * line carries one `PathPrefix`), and a longer prefix gets a higher router
- * `priority` so `/api` beats `/` on the same host. The default group (default port,
+ * line carries one `PathPrefix`), and every path router is lifted above the
+ * whole-host routers by {@link PATH_PRIORITY_BASE}, longest prefix first, so
+ * `/api/v1` beats `/api` beats the bare host. The default group (default port,
  * HTTPS via `websecure` with the call's default resolver) reuses `baseKey` bare;
  * every other signature suffixes `__<port>[-…]` (port first, preserving the
  * historical `__<port>` form when only the port differs; an `http`/entrypoint/
@@ -375,12 +406,18 @@ function routerBlock(
           `traefik.http.routers.${key}.tls.certresolver=${sig.certResolver}`,
         ]
       : []),
-    // A longer prefix wins on the same host: Traefik orders routers by priority
-    // (default = rule length), but we set it explicitly to the prefix length so
-    // `/api` deterministically beats `/` regardless of emission order. Omitted
-    // when there's no path so a path-less route stays byte-identical.
+    // A path router MUST outrank the path-less router serving the same host, or
+    // Traefik hands `/api` to the whole-host router and the PathPrefix (and its
+    // stripprefix middleware) never fire. See PATH_PRIORITY_BASE — the offset is
+    // what makes that true; the prefix length on top is what makes a longer path
+    // beat a shorter one. Omitted when there's no path, so a path-less route
+    // keeps Traefik's rule-length default and stays byte-identical.
     ...(sig.pathPrefix
-      ? [`traefik.http.routers.${key}.priority=${sig.pathPrefix.length}`]
+      ? [
+          `traefik.http.routers.${key}.priority=${
+            PATH_PRIORITY_BASE + sig.pathPrefix.length
+          }`,
+        ]
       : []),
     ...(stripName
       ? [`traefik.http.middlewares.${stripName}.stripprefix.prefixes=${sig.pathPrefix}`]

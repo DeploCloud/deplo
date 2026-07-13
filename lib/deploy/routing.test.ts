@@ -423,17 +423,133 @@ test("a path prefix appends && PathPrefix to a parenthesised Host group + priori
     certResolver: CR,
   });
   // Rule wraps the Host group in parens (so && binds across all hosts) and adds
-  // PathPrefix; a priority label equal to the prefix length is emitted; NO
-  // stripprefix / middlewares label (strip not requested).
+  // PathPrefix; the priority is the BASE (which lifts it above every whole-host
+  // router) plus the prefix length; NO stripprefix / middlewares label (strip
+  // not requested).
   assert.ok(
     labels.some((l) => l.includes(".rule=(Host(`app.com`)) && PathPrefix(`/api`)")),
   );
   const ruleLine = labels.find((l) => l.includes(".rule="))!;
   const key = ruleLine.slice("traefik.http.routers.".length, ruleLine.indexOf(".rule="));
   assert.ok(key.startsWith("deplo-app__3000-path-api-"), `key was ${key}`);
-  assert.ok(labels.includes(`traefik.http.routers.${key}.priority=4`));
+  assert.ok(labels.includes(`traefik.http.routers.${key}.priority=${1_000_000 + 4}`));
   assert.ok(!labels.some((l) => l.includes(".stripprefix.")));
   assert.ok(!labels.some((l) => l.includes(".middlewares=")));
+});
+
+// Traefik picks the highest-priority router among those that MATCH, and defaults
+// an un-pinned router's priority to its RULE-STRING LENGTH. These are the tests
+// that would have caught the shipped bug: a path router pinned to the bare prefix
+// length (4) lost to the whole-host router serving the same host (default 15), so
+// `/api` never reached the path router and the strip middleware never fired.
+// The competing whole-host router usually belongs to ANOTHER app's container, so
+// this must hold across separate traefikRouterLabels() calls.
+
+/** The priority Traefik will actually use for a rendered router: the explicit
+ * label when we emit one, else its rule-string length (Traefik's default). */
+function effectivePriority(labels: string[]): number {
+  const prio = labels.find((l) => l.includes(".priority="));
+  if (prio) return Number(prio.slice(prio.indexOf(".priority=") + ".priority=".length));
+  const rule = labels.find((l) => l.includes(".rule="))!;
+  return rule.slice(rule.indexOf(".rule=") + ".rule=".length).length;
+}
+
+test("a path router OUTRANKS a whole-host router on the same host (other app)", () => {
+  // App A owns app.com with no path; app B wants app.com/api. Two containers,
+  // two separate renders — Traefik ranks them against each other globally.
+  const hostOnly = traefikRouterLabels({
+    baseKey: "deplo-web",
+    routes: [{ name: "app.com", port: null }],
+    defaultPort: 3000,
+    certResolver: CR,
+  });
+  const pathRoute = traefikRouterLabels({
+    baseKey: "deplo-api",
+    routes: [{ name: "app.com", port: null, pathPrefix: "/api", stripPrefix: true }],
+    defaultPort: 8080,
+    certResolver: CR,
+  });
+  assert.ok(
+    effectivePriority(pathRoute) > effectivePriority(hostOnly),
+    `path router (${effectivePriority(pathRoute)}) must beat the whole-host router ` +
+      `(${effectivePriority(hostOnly)}), else GET app.com/api hits the wrong app`,
+  );
+});
+
+test("a path router outranks a whole-host router with MANY hosts (long rule)", () => {
+  // The default priority grows with the rule string, so a whole-host router with
+  // a long OR-list has a large default. The path router must still win — this is
+  // why the base is far above any reachable rule length, not a small constant.
+  const manyHosts = traefikRouterLabels({
+    baseKey: "deplo-web",
+    routes: Array.from({ length: 40 }, (_, i) => ({
+      name: `a-very-long-hostname-number-${i}.example.com`,
+      port: null,
+    })),
+    defaultPort: 3000,
+    certResolver: CR,
+  });
+  const pathRoute = traefikRouterLabels({
+    baseKey: "deplo-api",
+    routes: [{ name: "app.com", port: null, pathPrefix: "/a", stripPrefix: true }],
+    defaultPort: 8080,
+    certResolver: CR,
+  });
+  assert.ok(effectivePriority(manyHosts) > 100, "sanity: the long rule has a big default");
+  assert.ok(effectivePriority(pathRoute) > effectivePriority(manyHosts));
+});
+
+test("a LONGER path prefix outranks a shorter one on the same host", () => {
+  const api = traefikRouterLabels({
+    baseKey: "deplo-api",
+    routes: [{ name: "app.com", port: null, pathPrefix: "/api" }],
+    defaultPort: 8080,
+    certResolver: CR,
+  });
+  const v1 = traefikRouterLabels({
+    baseKey: "deplo-v1",
+    routes: [{ name: "app.com", port: null, pathPrefix: "/api/v1" }],
+    defaultPort: 9000,
+    certResolver: CR,
+  });
+  assert.ok(effectivePriority(v1) > effectivePriority(api));
+});
+
+test("one app serving BOTH the bare host and a path on it ranks the path first", () => {
+  // The same container carries both routers (two signatures, two routers).
+  const labels = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [
+      { name: "app.com", port: null },
+      { name: "app.com", port: 8080, pathPrefix: "/api", stripPrefix: true },
+    ],
+    defaultPort: 3000,
+    certResolver: CR,
+  });
+  const bareRule = labels.find((l) => l.endsWith(".rule=Host(`app.com`)"))!;
+  const bareKey = bareRule.slice("traefik.http.routers.".length, bareRule.indexOf(".rule="));
+  const pathRule = labels.find((l) => l.includes("PathPrefix(`/api`)"))!;
+  const pathKey = pathRule.slice("traefik.http.routers.".length, pathRule.indexOf(".rule="));
+
+  // The bare router stays un-pinned (byte-identical to a path-less app), so its
+  // effective priority is its rule length; the path router must exceed it.
+  assert.ok(!labels.some((l) => l.startsWith(`traefik.http.routers.${bareKey}.priority`)));
+  const bare = "Host(`app.com`)".length;
+  const path = Number(
+    labels
+      .find((l) => l.startsWith(`traefik.http.routers.${pathKey}.priority=`))!
+      .split("=")[1],
+  );
+  assert.ok(path > bare, `path ${path} must beat bare host ${bare}`);
+  // …and the strip middleware is on the path router, not the bare one.
+  assert.ok(
+    labels.includes(
+      `traefik.http.middlewares.${pathKey}-stripprefix.stripprefix.prefixes=/api`,
+    ),
+  );
+  assert.ok(
+    labels.includes(`traefik.http.routers.${pathKey}.middlewares=${pathKey}-stripprefix`),
+  );
 });
 
 test("strip prefix emits a stripprefix middleware prepended to the (empty) chain", () => {
@@ -586,10 +702,14 @@ test("per-route mode applies PathPrefix + stripprefix too (compose path)", () =>
   assert.ok(
     labels.includes("traefik.http.middlewares.deplo-svc-8080-stripprefix.stripprefix.prefixes=/api"),
   );
-  assert.ok(labels.includes("traefik.http.routers.deplo-svc-8080.priority=4"));
-  // The path-less route stays byte-identical (no PathPrefix / priority / strip).
+  assert.ok(
+    labels.includes(`traefik.http.routers.deplo-svc-8080.priority=${1_000_000 + 4}`),
+  );
+  // The path-less route stays byte-identical (no PathPrefix / priority / strip)
+  // — and the path router must still outrank it (its default = its rule length).
   assert.ok(labels.includes("traefik.http.routers.deplo-svc-3000.rule=Host(`app.com`)"));
   assert.ok(!labels.some((l) => l.startsWith("traefik.http.routers.deplo-svc-3000.priority")));
+  assert.ok(1_000_000 + 4 > "Host(`app.com`)".length);
 });
 
 // --- Single-image backfill invariant: storing port = build.port explicitly must

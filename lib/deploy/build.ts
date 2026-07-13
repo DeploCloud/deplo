@@ -50,6 +50,7 @@ import {
   primaryDomainName,
   routableRoutes,
   defaultRoute,
+  pendingPrimaryRoute,
   type RoutableDomain,
 } from "../data/domains";
 import { basicAuthUsersValue } from "../data/basic-auth";
@@ -1385,14 +1386,53 @@ async function routableForDeploy(
 ): Promise<RoutableDomain[]> {
   // A preview routes only to its ephemeral host, on the project default port.
   if (environment !== "production") return [defaultRoute(primary)];
-  const valid = await routableRoutes(appId);
-  // No valid domain: route to the pending primary if there is one, else nothing.
-  if (valid.length === 0) return primary ? [defaultRoute(primary)] : [];
-  // Keep the canonical primary first even if it isn't flagged `valid` yet (it
-  // carries its own port override + TLS choice if it has one; else the defaults).
+  const [valid, fallback] = await Promise.all([
+    routableRoutes(appId),
+    // The primary's STORED row, verified or not. It is what the fallback route is
+    // built from when the host hasn't passed its DNS check yet, so an unverified
+    // primary is still routed with its own path/port/TLS instead of being
+    // flattened to whole-host defaults.
+    pendingPrimaryRoute(appId, primary),
+  ]);
+  return orderDeployRoutes(valid, primary, fallback);
+}
+
+/**
+ * Put the canonical primary host first and keep EVERY other routable row.
+ *
+ * Pure (the DB read is the caller's) so the ordering contract is directly
+ * testable. The subtle part is what "the primary" means once paths exist: a path
+ * lets several rows share ONE hostname — uniqueness is on `(name, path)`, not on
+ * `name` — so `app.com` and `app.com` + `/api` are two different routes and
+ * `app.com/api` is the entire point of the feature. Dropping "every row whose
+ * name equals the primary's" therefore deleted the `/api` row from the deploy and
+ * the path silently did nothing; the primary row is excluded by IDENTITY instead.
+ *
+ * When no valid row carries the primary's name we still route it, so a brand-new
+ * app whose domain hasn't passed its DNS check yet answers on it. `fallback` is
+ * that host's STORED row (see `pendingPrimaryRoute`) and is preferred, because it
+ * carries the row's real path/strip/port/TLS; only a hostname with no row at all
+ * degrades to a synthetic {@link defaultRoute}, which routes the whole host on the
+ * defaults. Building that fallback from `defaultRoute` unconditionally is what
+ * used to drop an unverified primary's `pathPrefix` on the floor.
+ *
+ * The fallback is only reached when nothing in `valid` is named `primary`, so it
+ * can never duplicate a real row. An empty `primary` with no valid rows means the
+ * app has no domain at all (all deleted, never resurrected): NO routes, so the
+ * deploy goes out unrouted (`traefik.enable=false`) rather than baking an empty
+ * rule.
+ */
+export function orderDeployRoutes(
+  valid: RoutableDomain[],
+  primary: string,
+  fallback?: RoutableDomain | null,
+): RoutableDomain[] {
+  const primaryFallback = () => fallback ?? defaultRoute(primary);
+  if (valid.length === 0) return primary ? [primaryFallback()] : [];
+  // The primary row keeps its own port override + TLS choice if it has one.
   const primaryRoute =
-    valid.find((d) => d.name === primary) ?? defaultRoute(primary);
-  return [primaryRoute, ...valid.filter((d) => d.name !== primary)];
+    valid.find((d) => d.name === primary) ?? primaryFallback();
+  return [primaryRoute, ...valid.filter((d) => d !== primaryRoute)];
 }
 
 /** The `image:` baked into a single-image stack YAML, so a reroute reuses the
