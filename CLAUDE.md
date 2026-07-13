@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Issues and PRDs live in the IdraDev/deplo GitHub Issues, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and PRDs live in the DeploCloud/deplo GitHub Issues, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
