@@ -3,18 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import {
-  Plus,
-  Trash2,
-  Pencil,
-  Rows3,
-  FileText,
-  Share2,
-  Eye,
-  EyeOff,
-  SearchX,
-} from "lucide-react";
+import { Plus, Trash2, Pencil, Share2, SearchX } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -24,7 +13,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -41,9 +29,8 @@ import {
   updatedFacet,
   VIA_LABEL,
 } from "@/components/env/env-filters";
-import { parseEnv, serializeEnv } from "@/components/env/env-parse";
 import { gqlAction } from "@/lib/graphql-client";
-import { cn, timeAgo } from "@/lib/utils";
+import { timeAgo } from "@/lib/utils";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
 
@@ -52,7 +39,7 @@ import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
  * whole table: filtered/sorted per block, "Recently modified" would still stack
  * every standalone var above every shared one, whatever their timestamps say.
  * `kind` is what the actions cell keys off; the `Shared · <via>` badge is what
- * the eye keys off.
+ * marks a row the app doesn't own.
  */
 type EnvRow =
   | ({ kind: "standalone" } & EnvVarDTO)
@@ -70,12 +57,13 @@ export function EnvManager({
   const [editing, setEditing] = React.useState<EnvVarDTO | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
-  // "table" → the per-row UI; "editor" → a raw .env text editor over all vars.
-  const [mode, setMode] = React.useState<"table" | "editor">("table");
   const router = useRouter();
 
-  // Shared vars that currently inject into this app — shown read-only (values
-  // are managed centrally on the Variables page and never reach the client).
+  // Shared vars that currently inject into this app. Their VALUES read like any
+  // other row's (plain revealed on demand, secret masked) — the app's table is
+  // what its next deploy will get, so a row it can't read at all is a hole in
+  // that picture. What it cannot do here is CHANGE them: they are edited centrally
+  // on the Variables page, which is what "Manage" links to.
   const appliedShared = React.useMemo(
     () => sharedVars.filter((v) => v.applied),
     [sharedVars],
@@ -112,32 +100,21 @@ export function EnvManager({
   const hasVars = rows.length > 0;
   const hasMatches = shownRows.length > 0;
 
-  // Which plain rows are currently revealed. Secrets are never in this set —
-  // they have no reveal path. "Reveal all" fills/clears it in one shot.
-  const [revealedIds, setRevealedIds] = React.useState<ReadonlySet<string>>(
-    () => new Set(),
+  // The page's one action. It rides the toolbar (the end of the search/sort row)
+  // when there is a table to act on, and the empty state otherwise — the first
+  // variable has to be reachable from a page that has no toolbar yet.
+  const addButton = (
+    <Button
+      size="sm"
+      onClick={() => {
+        setEditing(null);
+        setAddOpen(true);
+      }}
+    >
+      <Plus className="size-4" />
+      Add
+    </Button>
   );
-  // Scoped to the VISIBLE rows, not every row: with a filter on, "Reveal all"
-  // must act on what you can actually see, or the button reads "Hide all" for
-  // rows that aren't on screen and clicking it appears to do nothing.
-  const revealableIds = React.useMemo(
-    () =>
-      shownRows
-        .filter((r) => r.kind === "standalone" && !r.masked)
-        .map((r) => r.id),
-    [shownRows],
-  );
-  const allRevealed =
-    revealableIds.length > 0 && revealableIds.every((id) => revealedIds.has(id));
-
-  function toggleReveal(id: string, next: boolean) {
-    setRevealedIds((prev) => {
-      const set = new Set(prev);
-      if (next) set.add(id);
-      else set.delete(id);
-      return set;
-    });
-  }
 
   return (
     <div className="space-y-4">
@@ -148,48 +125,7 @@ export function EnvManager({
         </p>
       </div>
 
-      {/* The actions sit OUTSIDE the mode branch below (the view toggle has to
-          survive the editor swapping the table out) and ABOVE the filters, which
-          need the full width to keep their dropdowns on one row. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {mode === "table" && (
-            <>
-              {revealableIds.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setRevealedIds(
-                      allRevealed ? new Set() : new Set(revealableIds),
-                    )
-                  }
-                >
-                  {allRevealed ? (
-                    <EyeOff className="size-4" />
-                  ) : (
-                    <Eye className="size-4" />
-                  )}
-                  {allRevealed ? "Hide all" : "Reveal all"}
-                </Button>
-              )}
-              <Button
-                size="sm"
-                onClick={() => {
-                  setEditing(null);
-                  setAddOpen(true);
-                }}
-              >
-                <Plus className="size-4" />
-                Add
-              </Button>
-            </>
-          )}
-          <ViewToggle mode={mode} onChange={setMode} />
-        </div>
-      </div>
-
-      {mode === "table" && hasVars && (
+      {hasVars && (
         <EnvFilters
           state={filters}
           onChange={setFilters}
@@ -198,19 +134,16 @@ export function EnvManager({
           counts={counts}
           total={rows.length}
           shown={shownRows.length}
+          actions={addButton}
         />
       )}
 
-      {mode === "editor" ? (
-        // UNFILTERED on purpose: the editor saves through `setAppEnv`, which deletes
-        // every variable absent from the text it is given. Handing it the filtered
-        // rows would silently drop whatever the search happened to hide.
-        <EnvEditor appId={appId} vars={vars} onDone={() => setMode("table")} />
-      ) : !hasVars ? (
+      {!hasVars ? (
         <EmptyState
           icon={Plus}
           title="No environment variables"
           description="Add variables to configure your app at runtime."
+          action={addButton}
         />
       ) : !hasMatches ? (
         <EmptyState
@@ -243,12 +176,7 @@ export function EnvManager({
                       {row.key}
                     </TableCell>
                     <TableCell>
-                      <EnvValueCell
-                        value={row.value}
-                        masked={row.masked}
-                        revealed={revealedIds.has(row.id)}
-                        onRevealedChange={(next) => toggleReveal(row.id, next)}
-                      />
+                      <EnvValueCell value={row.value} masked={row.masked} />
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                       <SimpleTooltip
@@ -299,10 +227,7 @@ export function EnvManager({
                       </div>
                     </TableCell>
                     <TableCell>
-                      {/* Shared values are never exposed to the client. */}
-                      <span className="text-xs text-muted-foreground">
-                        managed centrally
-                      </span>
+                      <EnvValueCell value={row.value} masked={row.masked} />
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                       <SimpleTooltip
@@ -357,119 +282,6 @@ export function EnvManager({
           return res;
         }}
       />
-    </div>
-  );
-}
-
-/** Segmented Table / Editor switch for the manager's two views. */
-function ViewToggle({
-  mode,
-  onChange,
-}: {
-  mode: "table" | "editor";
-  onChange: (m: "table" | "editor") => void;
-}) {
-  const opt = (m: "table" | "editor", Icon: typeof Rows3, label: string) => (
-    <SimpleTooltip content={`${label} view`}>
-      <button
-        type="button"
-        onClick={() => onChange(m)}
-        aria-pressed={mode === m}
-        className={cn(
-          "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
-          mode === m
-            ? "bg-background font-medium text-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <Icon className="size-3.5" />
-        {label}
-      </button>
-    </SimpleTooltip>
-  );
-  return (
-    <div className="inline-flex items-center rounded-lg border border-border bg-secondary/40 p-0.5">
-      {opt("table", Rows3, "Table")}
-      {opt("editor", FileText, "Editor")}
-    </div>
-  );
-}
-
-/**
- * The ".env editor": one textarea over ALL of an app's variables. Plain
- * values are editable in place; secret values show as a mask and are preserved
- * unless changed (you can't read a secret you didn't set). Saving upserts every
- * line and deletes the ones removed — new vars are PLAIN. Existing vars keep
- * their own type.
- */
-function EnvEditor({
-  appId,
-  vars,
-  onDone,
-}: {
-  appId: string;
-  vars: EnvVarDTO[];
-  onDone: () => void;
-}) {
-  const initial = React.useMemo(() => serializeEnv(vars), [vars]);
-  const [text, setText] = React.useState(initial);
-  const [pending, startTransition] = React.useTransition();
-  const router = useRouter();
-
-  const hasSecrets = vars.some((v) => v.masked);
-  const dirty = text !== initial;
-
-  function save() {
-    startTransition(async () => {
-      const entries = parseEnv(text);
-      const res = await gqlAction<{ setAppEnv: number }, number>(
-        `mutation($appId: String!, $entries: [EnvEntryInput!]!) {
-          setAppEnv(appId: $appId, entries: $entries)
-        }`,
-        { appId, entries },
-        (d) => d.setAppEnv,
-      );
-      if (res.ok) {
-        toast.success("Environment saved");
-        router.refresh();
-        onDone();
-      } else {
-        toast.error(res.error);
-      }
-    });
-  }
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
-        Edit every variable as a <code className="font-mono">.env</code> file.
-        Deleting a line removes that variable.
-        {hasSecrets &&
-          " Secret values are hidden — leave a secret's masked value unchanged to keep it."}
-      </p>
-      <Textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={16}
-        spellCheck={false}
-        placeholder={"DATABASE_URL=postgres://...\nPORT=3000"}
-        className="font-mono text-xs"
-      />
-      <div className="flex justify-end gap-2">
-        <Button
-          variant="outline"
-          onClick={() => {
-            setText(initial);
-            onDone();
-          }}
-          disabled={pending}
-        >
-          Cancel
-        </Button>
-        <Button onClick={save} disabled={pending || !dirty}>
-          {pending ? "Saving…" : "Save changes"}
-        </Button>
-      </div>
     </div>
   );
 }

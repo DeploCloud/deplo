@@ -390,9 +390,10 @@ export function useEnvFilters<T extends FilterableVar>(
  * one) and the toolbar renders them the same way, in the same place, with the
  * same clear-everything button and the same "showing X of Y" line.
  *
- * Two rows: the search + what it left standing + the sort, then ONE row of
- * filter dropdowns — on a desktop they share that row and shrink to fit rather
- * than wrapping into a stack that pushes the table down the page.
+ * Two rows: the search + what it left standing + the sort (+ the page's own
+ * action, if it has one), then ONE row of filter dropdowns — on a desktop they
+ * share that row and shrink to fit rather than wrapping into a stack that pushes
+ * the table down the page.
  */
 export function EnvFilters<T extends FilterableVar>({
   state,
@@ -402,6 +403,7 @@ export function EnvFilters<T extends FilterableVar>({
   counts,
   total,
   shown,
+  actions,
   className,
 }: {
   state: EnvFilterState;
@@ -414,6 +416,13 @@ export function EnvFilters<T extends FilterableVar>({
   /** Rows before filtering / after it: the "Showing 8 of 40" line. */
   total?: number;
   shown?: number;
+  /**
+   * The table's own action (an app's "Add"), rendered LAST on the search row —
+   * after the sort. It sits here rather than in the page header because the row
+   * of filter dropdowns below needs the full width, and a header button would
+   * leave the toolbar's own right edge empty.
+   */
+  actions?: React.ReactNode;
   className?: string;
 }) {
   const picked = Object.values(state.facets).filter((v) => v?.length).length;
@@ -498,6 +507,8 @@ export function EnvFilters<T extends FilterableVar>({
             <SelectItem value="key">Key (A–Z)</SelectItem>
           </SelectContent>
         </Select>
+
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
 
       {visible.length > 0 && (

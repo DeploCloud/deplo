@@ -9,36 +9,22 @@ const MASK = "••••••••••••";
 
 /**
  * The value cell for one env-var row. EVERY value is hidden by default — there is
- * no "plain values are always visible" path.
+ * no "plain values are always visible" path. Each cell owns its own reveal state:
+ * a value is uncovered one row at a time, deliberately, and never in bulk.
  *
  *  - plain var  → the decrypted value rides the DTO; the eye is a real toggle that
  *                 reveals/hides it locally (nothing is fetched on reveal).
  *  - secret var → write-only: the value never reaches the client, so the eye is a
  *                 disabled, non-interactive indicator with no reveal path.
- *
- * Reveal state is uncontrolled by default (each cell owns it). Pass `revealed` +
- * `onRevealedChange` to control it from a parent — e.g. the app table's
- * "Reveal all" toggle drives every plain row at once.
  */
 export function EnvValueCell({
   value,
   masked,
-  revealed: revealedProp,
-  onRevealedChange,
 }: {
   value: string;
   masked: boolean;
-  revealed?: boolean;
-  onRevealedChange?: (revealed: boolean) => void;
 }) {
-  const [internal, setInternal] = React.useState(false);
-  const revealed = revealedProp ?? internal;
-
-  function toggle() {
-    const next = !revealed;
-    if (revealedProp === undefined) setInternal(next);
-    onRevealedChange?.(next);
-  }
+  const [revealed, setRevealed] = React.useState(false);
 
   if (masked) {
     return (
@@ -64,7 +50,7 @@ export function EnvValueCell({
       </code>
       <button
         type="button"
-        onClick={toggle}
+        onClick={() => setRevealed((r) => !r)}
         className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
         aria-label={revealed ? "Hide value" : "Reveal value"}
         aria-pressed={revealed}

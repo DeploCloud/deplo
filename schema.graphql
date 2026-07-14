@@ -158,6 +158,9 @@ type AppSharedVar {
   updatedAt: String
   updatedBy: VarAuthor
 
+  """Masked for secrets, like SharedVar.value."""
+  value: String
+
   """How it reaches this app: teamWide | environment | project | link."""
   via: String
 }

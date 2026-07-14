@@ -209,13 +209,20 @@ export async function listSharedVars(): Promise<SharedVarDTO[]> {
 
 /**
  * A shared var as seen from ONE app: whether it reaches the app, how, and its
- * per-app link toggle state. Values are never decrypted here. `inherited` marks a
- * var applied through a sharing MODE (the toggle can't turn it off from the app);
- * `linked` is the explicit per-app link state.
+ * per-app link toggle state. `inherited` marks a var applied through a sharing
+ * MODE (the toggle can't turn it off from the app); `linked` is the explicit
+ * per-app link state.
+ *
+ * The VALUE reads exactly as it does on the Variables page (`listSharedVars`): a
+ * plain value is decrypted for a `manage_env` holder, a secret comes through as
+ * the MASK. An app's own table shows the variables its next deploy will get, and a
+ * shared one it can't read at all is a hole in that picture.
  */
 export interface AppSharedVarDTO {
   id: string;
   key: string;
+  /** Masked for secrets — a secret still has no reveal path here. */
+  value: string;
   masked: boolean;
   type: "plain" | "secret";
   targets: EnvTarget[];
@@ -270,6 +277,7 @@ export async function listSharedVarsForApp(
       return {
         id: v.id,
         key: v.key,
+        value: v.type === "secret" ? MASK : decryptSecret(v.valueEnc),
         masked: v.type === "secret",
         type: v.type,
         targets: sanitizeTargets(v.targets),
@@ -288,11 +296,13 @@ export async function listSharedVarsForApp(
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 
-/** One applied shared var as seen on the aggregate App tab (no values). */
+/** One applied shared var as seen on the aggregate App tab. */
 export interface AppliedSharedVarDTO {
   appId: string;
   id: string;
   key: string;
+  /** Masked for secrets, like every other variable table (see AppSharedVarDTO). */
+  value: string;
   masked: boolean;
   via: SharedVarMode;
   targets: EnvTarget[];
@@ -303,7 +313,7 @@ export interface AppliedSharedVarDTO {
 /**
  * Every (app, shared var) pair that currently injects, across the team — the
  * read-only "shared" rows on the aggregate App tab. One pass over the team's
- * shared vars and apps (no per-app query fan-out). Values are never decrypted.
+ * shared vars and apps (no per-app query fan-out).
  */
 export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[]> {
   const { teamId } = await requireCapability("manage_env");
@@ -320,6 +330,14 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
   ]);
   // One identity query for every card on the page.
   const authors = await loadUserIdentities(authorIds(vars));
+  // A team-wide var lands on EVERY app, so decrypt each value once here rather
+  // than once per (app, var) pair below.
+  const shown = new Map(
+    vars.map(
+      (v) =>
+        [v.id, v.type === "secret" ? MASK : decryptSecret(v.valueEnc)] as const,
+    ),
+  );
   const out: AppliedSharedVarDTO[] = [];
   for (const app of apps) {
     for (const v of vars) {
@@ -332,6 +350,7 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
         appId: app.id,
         id: v.id,
         key: v.key,
+        value: shown.get(v.id)!,
         masked: v.type === "secret",
         via: viaFor({ linked, byProject, byOwnEnv: byEnv, teamWide: v.teamWide }),
         targets: sanitizeTargets(v.targets),

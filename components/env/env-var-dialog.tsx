@@ -38,6 +38,14 @@ import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 /**
+ * A shared var as the LINK rows read it: everything but the value. This dialog
+ * only ever answers "does this variable reach the app?", so it neither renders a
+ * value nor asks the API for one — an `AppSharedVarDTO` passed in from a page that
+ * already has the values fits it unchanged.
+ */
+type LinkableSharedVar = Omit<AppSharedVarDTO, "value">;
+
+/**
  * Add/edit an app's environment variable. Editing shows a single form; adding
  * shows two tabs — "Standalone" (a multi-row editor that also accepts a pasted
  * `.env`) and "Shared" (link existing shared variables to this app).
@@ -54,7 +62,7 @@ export function EnvVarDialog({
   appId: string;
   editing: EnvVarDTO | null;
   /** In-scope shared vars for this app; lazy-fetched when omitted. */
-  sharedVars?: AppSharedVarDTO[];
+  sharedVars?: LinkableSharedVar[];
 }) {
   if (editing) {
     return (
@@ -180,7 +188,7 @@ function AddDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   appId: string;
-  sharedVars?: AppSharedVarDTO[];
+  sharedVars?: LinkableSharedVar[];
 }) {
   const [tab, setTab] = React.useState<"standalone" | "shared">("standalone");
 
@@ -390,10 +398,10 @@ function SharedTab({
   onClose,
 }: {
   appId: string;
-  sharedVars?: AppSharedVarDTO[];
+  sharedVars?: LinkableSharedVar[];
   onClose: () => void;
 }) {
-  const [vars, setVars] = React.useState<AppSharedVarDTO[] | null>(
+  const [vars, setVars] = React.useState<LinkableSharedVar[] | null>(
     sharedVars ?? null,
   );
 
@@ -401,7 +409,7 @@ function SharedTab({
   React.useEffect(() => {
     if (vars !== null) return;
     let alive = true;
-    gql<{ sharedVarsForApp: AppSharedVarDTO[] }>(
+    gql<{ sharedVarsForApp: LinkableSharedVar[] }>(
       `query($appId: String!) {
         sharedVarsForApp(appId: $appId) {
           id key masked type targets via applied inherited linked
@@ -454,7 +462,7 @@ function SharedVarLinkRow({
   sharedVar,
 }: {
   appId: string;
-  sharedVar: AppSharedVarDTO;
+  sharedVar: LinkableSharedVar;
 }) {
   const router = useRouter();
   const [linked, setLinked] = React.useState(sharedVar.linked);

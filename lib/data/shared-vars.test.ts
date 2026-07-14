@@ -419,6 +419,25 @@ test("listSharedVarsForApp returns EVERY team var so any can be linked", async (
   assert.equal(other.linked, false);
 });
 
+test("listSharedVarsForApp reads values like the Variables page does", async () => {
+  // The app's own table shows what its next deploy will get, so a shared PLAIN
+  // value is readable there (same `manage_env` gate as the Shared tab) while a
+  // shared SECRET stays masked — an app page is not a reveal path.
+  await asUser1(() =>
+    mkVar({ key: "PLAIN", value: "readable", teamWide: true }),
+  );
+  await asUser1(() =>
+    mkVar({ key: "SECRET", value: "s3cr3t", type: "secret", teamWide: true }),
+  );
+  const rows = await asUser1(() => listSharedVarsForApp("app_p"));
+  const plain = rows.find((r) => r.key === "PLAIN")!;
+  const secret = rows.find((r) => r.key === "SECRET")!;
+  assert.equal(plain.value, "readable");
+  assert.equal(plain.masked, false);
+  assert.equal(secret.masked, true);
+  assert.notEqual(secret.value, "s3cr3t");
+});
+
 test("a secret shared var is masked in the list and revealed on demand", async () => {
   const id = await asUser1(() =>
     mkVar({ key: "SECRET", value: "s3cr3t", type: "secret", teamWide: true }),

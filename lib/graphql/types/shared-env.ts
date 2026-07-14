@@ -102,6 +102,9 @@ const AppSharedVarRef = builder
     fields: (t) => ({
       id: t.exposeID("id"),
       key: t.exposeString("key"),
+      value: t.exposeString("value", {
+        description: "Masked for secrets, like SharedVar.value.",
+      }),
       masked: t.exposeBoolean("masked"),
       type: t.field({ type: EnvVarTypeEnum, resolve: (v) => v.type }),
       targets: t.field({ type: [EnvTargetEnum], resolve: (v) => v.targets }),

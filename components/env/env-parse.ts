@@ -1,17 +1,7 @@
-import type { EnvVarDTO } from "@/lib/types";
-
-/**
- * Serialise vars to `.env` text. Plain values are shown verbatim; secret values
- * come through as the mask (they are never revealed).
- */
-export function serializeEnv(vars: EnvVarDTO[]): string {
-  return vars.map((v) => `${v.key}=${v.value}`).join("\n");
-}
-
 /**
  * Parse `.env` text into KEY=VALUE pairs (skips blanks/comments; strips one layer
- * of surrounding quotes). Key validation is done server-side. Shared by the app's
- * `.env` editor and the Add-variable modal's paste-`.env` flow.
+ * of surrounding quotes). Key validation is done server-side. Feeds the
+ * Add-variable modal's paste-a-`.env` flow.
  */
 export function parseEnv(text: string): { key: string; value: string }[] {
   const out: { key: string; value: string }[] = [];

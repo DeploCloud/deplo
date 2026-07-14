@@ -958,9 +958,7 @@ function AppVarsCard({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className="text-xs text-muted-foreground">
-                          managed centrally
-                        </span>
+                        <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                         <SimpleTooltip content={new Date(row.updatedAt).toLocaleString()}>
