@@ -25,6 +25,11 @@ const TabsList = React.forwardRef<
 ));
 TabsList.displayName = TabsPrimitive.List.displayName;
 
+// Icon + label spacing, straight off `buttonVariants`: a trigger is a button with
+// an icon in it, and every one of ours has an icon. Without this each call site
+// re-invented the gap — or forgot it, and the glyph sat glued to the word.
+const TRIGGER_ICON = "gap-2 [&_svg]:size-4 [&_svg]:shrink-0";
+
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
@@ -33,6 +38,7 @@ const TabsTrigger = React.forwardRef<
     ref={ref}
     className={cn(
       "inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 text-muted-foreground hover:text-foreground data-[state=active]:bg-accent data-[state=active]:text-foreground",
+      TRIGGER_ICON,
       className
     )}
     {...props}
@@ -98,6 +104,7 @@ const UnderlineTabsTrigger = React.forwardRef<
     ref={ref}
     className={cn(
       "inline-flex h-12 cursor-pointer items-center justify-center whitespace-nowrap rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none data-[state=active]:text-foreground",
+      TRIGGER_ICON,
       className
     )}
     {...props}

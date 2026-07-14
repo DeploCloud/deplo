@@ -581,17 +581,22 @@ export function DevModeFields({
       {enabled && (
         <Tabs defaultValue="vscode" className="space-y-6">
           <UnderlineTabsList>
+            {/* No literal space before the label: the trigger gaps its own icon. */}
             <UnderlineTabsTrigger value="vscode">
-              <Code2 className="size-4" /> VS Code
+              <Code2 className="size-4" />
+              VS Code
             </UnderlineTabsTrigger>
             <UnderlineTabsTrigger value="container">
-              <Container className="size-4" /> Container
+              <Container className="size-4" />
+              Container
             </UnderlineTabsTrigger>
             <UnderlineTabsTrigger value="preview">
-              <Globe className="size-4" /> Preview &amp; Env
+              <Globe className="size-4" />
+              Preview &amp; Env
             </UnderlineTabsTrigger>
             <UnderlineTabsTrigger value="ssh">
-              <Terminal className="size-4" /> SSH Access
+              <Terminal className="size-4" />
+              SSH Access
             </UnderlineTabsTrigger>
           </UnderlineTabsList>
 

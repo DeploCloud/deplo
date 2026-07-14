@@ -4,7 +4,16 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2, Share2, ArrowUpRight } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Share2,
+  ArrowUpRight,
+  ClipboardPaste,
+  Info,
+  KeyRound,
+  TriangleAlert,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -179,6 +188,17 @@ function EditForm({
 /* Add: Standalone (multi-row / paste .env) + Shared tabs              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The modal is a fixed HEADER (title + the two tabs), a body that scrolls on its
+ * own, and a footer bar pinned under it — not one long scrolling column. Paste a
+ * 40-line `.env` and the rows scroll while "Add 40" stays exactly where your
+ * hand left it; the old layout pushed the button off the bottom of the screen.
+ *
+ * Each tab owns its own footer (they confirm different things), so the two halves
+ * live inside the panels — `data-[state=active]:flex` rather than a bare `flex`,
+ * or the utility would out-rank `[hidden]` and paint the idle panel on top of the
+ * live one.
+ */
 function AddDialog({
   open,
   onOpenChange,
@@ -194,29 +214,55 @@ function AddDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+        <DialogHeader className="px-6 pb-4 pt-6">
           <DialogTitle>Add variables</DialogTitle>
           <DialogDescription>
             Add variables to this app, or link existing shared variables.
           </DialogDescription>
         </DialogHeader>
-        <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="standalone">
-              <Plus className="size-4" />
-              Standalone
-            </TabsTrigger>
-            <TabsTrigger value="shared">
-              <Share2 className="size-4" />
-              Shared
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="standalone">
+
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as typeof tab)}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          {/* A segmented control on a track — the same shape the app wears
+              elsewhere — so the idle half still reads as a place you can go. */}
+          <div className="border-b border-border px-6 pb-4">
+            <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-border bg-secondary/40 p-1">
+              <TabsTrigger
+                value="standalone"
+                className="data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <Plus />
+                Standalone
+              </TabsTrigger>
+              <TabsTrigger
+                value="shared"
+                className="data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                <Share2 />
+                Shared
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent
+            value="standalone"
+            className="mt-0 min-h-0 flex-1 flex-col data-[state=active]:flex"
+          >
             <StandaloneTab appId={appId} onDone={() => onOpenChange(false)} />
           </TabsContent>
-          <TabsContent value="shared">
-            <SharedTab appId={appId} sharedVars={sharedVars} onClose={() => onOpenChange(false)} />
+          <TabsContent
+            value="shared"
+            className="mt-0 min-h-0 flex-1 flex-col data-[state=active]:flex"
+          >
+            <SharedTab
+              appId={appId}
+              sharedVars={sharedVars}
+              onClose={() => onOpenChange(false)}
+            />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -225,6 +271,9 @@ function AddDialog({
 }
 
 type Row = { key: string; value: string };
+
+/** The three columns every row of the key/value editor lines up on. */
+const GRID = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_2rem] items-center gap-2";
 
 function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void }) {
   const [rows, setRows] = React.useState<Row[]>([{ key: "", value: "" }]);
@@ -315,69 +364,121 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
   }
 
   return (
-    <div className="space-y-4 pt-2">
-      <p className="text-xs text-muted-foreground">
-        Enter one or more variables, or paste a full{" "}
-        <code className="font-mono">.env</code> into a key field to fill the rows.
-      </p>
-      <div className="space-y-2">
-        {rows.map((r, i) => {
-          const bad = r.key.trim() !== "" && !KEY_RE.test(r.key.trim());
-          return (
-            <div key={i} className="flex items-center gap-2">
-              <Input
-                value={r.key}
-                onChange={(e) => setRow(i, { key: e.target.value })}
-                onPaste={(e) => onPaste(i, e)}
-                placeholder="KEY"
-                aria-invalid={bad}
-                className={cn(
-                  "font-mono text-xs",
-                  bad && "border-destructive focus-visible:ring-destructive",
-                )}
-              />
-              <Input
-                value={r.value}
-                onChange={(e) => setRow(i, { value: e.target.value })}
-                placeholder="value"
-                className="text-xs"
-              />
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 text-muted-foreground hover:text-destructive"
-                onClick={() => removeRow(i)}
-                disabled={rows.length === 1}
-                aria-label="Remove row"
+    <>
+      {/* The body — the only thing that scrolls. */}
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
+        <p className="flex items-start gap-2 text-xs text-muted-foreground">
+          <ClipboardPaste className="mt-px size-3.5 shrink-0" />
+          <span>
+            Enter one or more variables, or paste a full{" "}
+            <code className="font-mono">.env</code> into a key field to fill the
+            rows.
+          </span>
+        </p>
+
+        {/* The rows are a small TABLE, not a stack of loose inputs: two labelled
+            columns the eye can run down, and cells that carry no border of their
+            own — the same shape the variables page shows them in afterwards. */}
+        <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {/* Same px-2 as the rows, and the labels carry the cells' own px-1.5:
+              the two grids then land on the very same tracks, so KEY sits over
+              the keys and VALUE over the values, to the pixel. */}
+          <div
+            className={cn(
+              GRID,
+              "bg-secondary/40 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
+            )}
+          >
+            <span className="px-1.5">Key</span>
+            <span className="px-1.5">Value</span>
+            <span aria-hidden />
+          </div>
+
+          {rows.map((r, i) => {
+            const bad = r.key.trim() !== "" && !KEY_RE.test(r.key.trim());
+            return (
+              <div
+                key={i}
+                className={cn(GRID, "px-2 py-1.5", bad && "bg-destructive/5")}
               >
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-          );
-        })}
-        <Button variant="ghost" size="sm" onClick={addRow} className="text-muted-foreground">
-          <Plus className="size-4" />
-          Add another
-        </Button>
+                <Input
+                  value={r.key}
+                  onChange={(e) => setRow(i, { key: e.target.value })}
+                  onPaste={(e) => onPaste(i, e)}
+                  placeholder="KEY"
+                  aria-invalid={bad}
+                  autoFocus={i === 0}
+                  className={cn(
+                    "h-8 border-0 bg-transparent px-1.5 font-mono text-xs shadow-none focus-visible:ring-1 focus-visible:ring-offset-0",
+                    bad && "text-destructive focus-visible:ring-destructive",
+                  )}
+                />
+                <Input
+                  value={r.value}
+                  onChange={(e) => setRow(i, { value: e.target.value })}
+                  placeholder="value"
+                  className="h-8 border-0 bg-transparent px-1.5 font-mono text-xs shadow-none focus-visible:ring-1 focus-visible:ring-offset-0"
+                />
+                {/* Kept in the layout, hidden while it would do nothing: the last
+                    row can't be removed, and a column that comes and goes would
+                    shift every input under the cursor. */}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(
+                    "text-muted-foreground hover:text-destructive",
+                    rows.length === 1 && "invisible",
+                  )}
+                  onClick={() => removeRow(i)}
+                  disabled={rows.length === 1}
+                  aria-label="Remove row"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            );
+          })}
+
+          <div className="p-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={addRow}
+              className="h-8 w-full justify-start px-2 text-muted-foreground hover:text-foreground"
+            >
+              <Plus className="size-4" />
+              Add another
+            </Button>
+          </div>
+        </div>
+
+        {invalid.length > 0 && (
+          <p className="flex items-start gap-2 text-xs text-destructive">
+            <TriangleAlert className="mt-px size-3.5 shrink-0" />
+            <span>
+              {invalid.length === 1
+                ? `“${invalid[0].key.trim()}” isn't a valid variable name.`
+                : `${invalid.length} keys aren't valid variable names.`}{" "}
+              Names must start with a letter or underscore and contain only
+              letters, digits and underscores.
+            </span>
+          </p>
+        )}
+
+        {filled.length > 1 ? (
+          <p className="flex items-start gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">
+            <Info className="mt-px size-3.5 shrink-0" />
+            <span>
+              Pasted variables are added as plain — flip individual ones to secret
+              from the table.
+            </span>
+          </p>
+        ) : (
+          <SecretRow secret={secret} onChange={setSecret} />
+        )}
       </div>
-      {invalid.length > 0 && (
-        <p className="text-xs text-destructive">
-          {invalid.length === 1
-            ? `“${invalid[0].key.trim()}” isn't a valid variable name.`
-            : `${invalid.length} keys aren't valid variable names.`}{" "}
-          Names must start with a letter or underscore and contain only letters,
-          digits and underscores.
-        </p>
-      )}
-      {filled.length > 1 ? (
-        <p className="text-xs text-muted-foreground">
-          Pasted variables are added as plain — flip individual ones to secret from
-          the table.
-        </p>
-      ) : (
-        <SecretRow secret={secret} onChange={setSecret} />
-      )}
-      <DialogFooter>
+
+      <DialogFooter className="border-t border-border px-6 py-4">
         <Button variant="outline" onClick={onDone} disabled={pending}>
           Cancel
         </Button>
@@ -388,7 +489,7 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
           {pending ? "Saving…" : filled.length > 1 ? `Add ${filled.length}` : "Add"}
         </Button>
       </DialogFooter>
-    </div>
+    </>
   );
 }
 
@@ -426,34 +527,45 @@ function SharedTab({
   }, [appId, vars]);
 
   return (
-    <div className="space-y-4 pt-2">
-      {vars === null ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>
-      ) : vars.length === 0 ? (
-        <EmptyState
-          icon={Share2}
-          title="No shared variables"
-          description="Create shared variables on the Variables page to reuse them across apps."
-        />
-      ) : (
-        <div className="space-y-2">
-          {vars.map((v) => (
-            <SharedVarLinkRow key={v.id} appId={appId} sharedVar={v} />
-          ))}
-        </div>
-      )}
-      <DialogFooter className="sm:justify-between">
-        <Button variant="outline" size="sm" asChild>
+    <>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        {vars === null ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            Loading…
+          </p>
+        ) : vars.length === 0 ? (
+          <EmptyState
+            icon={Share2}
+            title="No shared variables"
+            description="Create shared variables on the Variables page to reuse them across apps."
+            className="py-10"
+          />
+        ) : (
+          // Same table grammar as the Standalone tab: a labelled header, one row
+          // per variable, no card floating loose inside a card.
+          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+            <div className="flex items-center justify-between bg-secondary/40 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span>Shared variable</span>
+              <span>Applied</span>
+            </div>
+            {vars.map((v) => (
+              <SharedVarLinkRow key={v.id} appId={appId} sharedVar={v} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Each toggle already saved itself — Done just closes, it doesn't commit. */}
+      <DialogFooter className="border-t border-border px-6 py-4 sm:justify-between">
+        <Button variant="outline" asChild>
           <Link href="/variables?tab=shared">
             Create &amp; manage
             <ArrowUpRight className="size-4" />
           </Link>
         </Button>
-        <Button variant="outline" onClick={onClose}>
-          Done
-        </Button>
+        <Button onClick={onClose}>Done</Button>
       </DialogFooter>
-    </div>
+    </>
   );
 }
 
@@ -490,18 +602,19 @@ function SharedVarLinkRow({
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+    <div className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-accent/30">
       <div className="min-w-0 space-y-1">
         <p className="truncate font-mono text-xs font-medium">{sharedVar.key}</p>
         <div className="flex flex-wrap items-center gap-1.5">
           {sharedVar.applied ? (
             <>
-              <Badge variant="muted" className="text-[10px]">
+              <Badge variant="muted" className="gap-1 text-[10px] font-normal">
+                <Share2 className="size-3" />
                 {VIA_LABEL[sharedVar.via] ?? "Shared"}
               </Badge>
               {sharedVar.inherited && (
                 <span className="text-[10px] text-muted-foreground">
-                  Auto-applied
+                  Auto-applied — change it on the Variables page
                 </span>
               )}
             </>
@@ -532,14 +645,17 @@ function SecretRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-border p-3">
-      <div>
-        <p className="text-sm font-medium">Secret</p>
-        <p className="text-xs text-muted-foreground">
-          Hide the value in the UI after saving.
-        </p>
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+      <div className="flex items-start gap-2.5">
+        <KeyRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div>
+          <p className="text-sm font-medium leading-none">Secret</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Hide the value in the UI after saving. It can never be read back.
+          </p>
+        </div>
       </div>
-      <Switch checked={secret} onCheckedChange={onChange} />
+      <Switch checked={secret} onCheckedChange={onChange} aria-label="Secret" />
     </div>
   );
 }
