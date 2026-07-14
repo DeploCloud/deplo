@@ -1,21 +1,27 @@
 "use client";
 
 import * as React from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Lock } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // The hidden-value placeholder. Matches the server-side MASK used for secrets in
-// lib/data/env.ts / global-env.ts, so a hidden plain var and a secret read the same.
+// lib/data/env.ts / global-env.ts.
 const MASK = "••••••••••••";
 
 /**
- * The value cell for one env-var row. EVERY value is hidden by default — there is
- * no "plain values are always visible" path. Each cell owns its own reveal state:
- * a value is uncovered one row at a time, deliberately, and never in bulk.
+ * The value cell for one env-var row — a Discord-style spoiler.
  *
- *  - plain var  → the decrypted value rides the DTO; the eye is a real toggle that
- *                 reveals/hides it locally (nothing is fetched on reveal).
- *  - secret var → write-only: the value never reaches the client, so the eye is a
- *                 disabled, non-interactive indicator with no reveal path.
+ *  - plain var  → the decrypted value rides the row's props, so it sits SHARP in
+ *                 the DOM but under a frosted-glass pane (Revolut-style): you can
+ *                 tell there's something there, but a `backdrop-blur` smears it
+ *                 past reading until you click. Click again to cover it back up.
+ *                 Nothing is fetched on reveal — the value was already here.
+ *  - secret var → write-only: the server sends the MASK, never the value, so there
+ *                 is nothing behind the glass to uncover. It shows masked dots with
+ *                 a lock and never opens.
+ *
+ * Each cell owns its own reveal state: a value is uncovered one row at a time,
+ * deliberately, and there is no bulk "reveal all".
  */
 export function EnvValueCell({
   value,
@@ -26,41 +32,67 @@ export function EnvValueCell({
 }) {
   const [revealed, setRevealed] = React.useState(false);
 
+  function toggle() {
+    // A drag to copy the value leaves a selection behind; don't let the click
+    // that ends it also slam the spoiler shut.
+    if (revealed && (window.getSelection()?.toString().length ?? 0) > 0) return;
+    setRevealed((r) => !r);
+  }
+
   if (masked) {
     return (
-      <div className="flex items-center gap-1.5">
-        <code className="max-w-[220px] truncate font-mono text-xs text-muted-foreground">
+      <span
+        title="Secret — hidden, and can never be read back."
+        className="inline-flex max-w-[15rem] items-center gap-1.5 rounded-md bg-foreground/[0.04] px-2 py-1 align-middle ring-1 ring-inset ring-border/50"
+      >
+        <code className="truncate font-mono text-xs text-muted-foreground">
           {MASK}
         </code>
-        <Eye
-          className="size-3.5 shrink-0 cursor-not-allowed text-muted-foreground opacity-50"
-          aria-label="Secret value (hidden)"
-        />
-      </div>
+        <Lock className="size-3 shrink-0 text-muted-foreground/70" aria-hidden />
+        <span className="sr-only">Secret value, hidden</span>
+      </span>
     );
   }
 
   return (
-    <div className="flex items-center gap-1.5">
+    <button
+      type="button"
+      onClick={toggle}
+      aria-pressed={revealed}
+      aria-label={revealed ? "Hide value" : "Reveal value"}
+      title={revealed ? value : "Click to reveal"}
+      className={cn(
+        "group relative inline-flex max-w-[15rem] cursor-pointer items-center overflow-hidden rounded-md px-2 py-1 text-left align-middle ring-1 ring-inset transition-colors",
+        revealed
+          ? "ring-border/40 hover:bg-foreground/[0.03]"
+          : "bg-foreground/[0.04] ring-border/60",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
       <code
-        title={revealed ? value : undefined}
-        className="max-w-[220px] truncate font-mono text-xs text-muted-foreground"
-      >
-        {revealed ? value : MASK}
-      </code>
-      <button
-        type="button"
-        onClick={() => setRevealed((r) => !r)}
-        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-        aria-label={revealed ? "Hide value" : "Reveal value"}
-        aria-pressed={revealed}
-      >
-        {revealed ? (
-          <EyeOff className="size-3.5" />
-        ) : (
-          <Eye className="size-3.5" />
+        className={cn(
+          "truncate font-mono text-xs transition-colors",
+          // Revealed text is selectable so the value can be copied; while it's
+          // under the glass, selecting a blur would only leak it, so lock it down.
+          revealed
+            ? "select-text text-foreground/90"
+            : "select-none text-muted-foreground",
         )}
-      </button>
-    </div>
+      >
+        {value}
+      </code>
+
+      {/* The frosted pane. `backdrop-blur` smears the sharp text beneath it; the
+          sheen is the Revolut-style highlight raking across the glass. Mounted
+          only while hidden, so the revealed value is never blurred or intercepted. */}
+      {!revealed && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-md bg-background/30 backdrop-blur-[6px]"
+        >
+          <span className="absolute inset-0 bg-gradient-to-br from-white/15 via-white/[0.04] to-transparent" />
+        </span>
+      )}
+    </button>
   );
 }
