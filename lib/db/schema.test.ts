@@ -74,6 +74,14 @@ const CONTROL_PLANE = [
   // infra
   "servers",
   "server_teams",
+  // docker cleanup — instance-wide (a singleton policy + its scopes, the per-server
+  // opt-out list, and one run per server per sweep). Never team-scoped: servers are
+  // the one shared cross-team resource.
+  "docker_cleanup_policy",
+  "docker_cleanup_policy_scopes",
+  "docker_cleanup_excluded_servers",
+  "docker_cleanup_runs",
+  "docker_cleanup_run_items",
   // services
   "apps",
   "app_build",

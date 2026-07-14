@@ -19,10 +19,16 @@
  *    leaves it stuck `running`, which retention also never prunes. We mark stale
  *    `running` runs `failed` on boot so a hung backup never lies indefinitely.
  *
- * It also STARTS the backup scheduler (PLAN backups Step 6) — the once-a-minute
- * loop that fires due cron `schedule`s. Boot is the natural home: it runs once
- * per server instance, after the reconcile has settled any orphaned runs, and the
- * loop is lease-guarded so multiple instances don't double-fire.
+ *  - Docker-cleanup runs: identical shape (a `running` row is written before a sweep
+ *    that can take half an hour), with one extra edge — the cleanup tick skips a
+ *    server that already has a `running` run, so an unsettled orphan would take that
+ *    host out of the schedule permanently.
+ *
+ * It also STARTS the two schedulers — the backup one (PLAN backups Step 6) and the
+ * Docker-cleanup one — each a once-a-minute loop that fires due cron `schedule`s.
+ * Boot is the natural home: it runs once per server instance, after the reconciles
+ * have settled any orphaned runs, and each loop is lease-guarded (under its own
+ * lease name) so multiple instances don't double-fire.
  *
  * Node runtime only: the reconcile + scheduler touch the `server-only` store. The
  * Edge runtime has neither, so guard on NEXT_RUNTIME.
@@ -66,6 +72,21 @@ export async function register(): Promise<void> {
     // over an orphaned `running` run. Idempotent + lease-guarded internally.
     const { startBackupScheduler } = await import("./lib/backups/scheduler");
     startBackupScheduler();
+    const { reconcileInFlightCleanupRuns } = await import(
+      "./lib/data/docker-cleanup"
+    );
+    // AWAITED, same rule as the backup reconcile: the cleanup tick SKIPS a server
+    // that already has a `running` run (two `docker rmi` sweeps on one host would
+    // race each other's candidate lists), so a run stranded by the restart that
+    // brought us here would exclude its host from the schedule forever.
+    await reconcileInFlightCleanupRuns();
+    // Then the cleanup loop — a sibling of the backup scheduler under its own lease.
+    // Its boot tick is load-bearing: unlike backups, cleanup CATCHES UP, so a control
+    // plane that was down at 04:00 sweeps on the way back up.
+    const { startDockerCleanupScheduler } = await import(
+      "./lib/docker-cleanup/scheduler"
+    );
+    startDockerCleanupScheduler();
   } catch (e) {
     // Never let a boot-time reconcile/scheduler failure crash the server.
     console.error("[deplo] startup reconcile failed:", e);

@@ -7,6 +7,7 @@ import {
   LayoutTemplate,
   Server,
   Settings,
+  Brush,
   Activity,
   LineChart,
   Braces,
@@ -228,6 +229,17 @@ export const SETTINGS_NAV: NavSection[] = [
         // not the per-team manage_infra capability. Members reach servers only
         // through the team-scoped deploy pickers, never this page.
         requiresAdmin: true,
+      },
+      {
+        label: "Docker cleanup",
+        href: "/settings/cleanup",
+        icon: Brush,
+        tooltip: "Reclaim Docker disk on your servers",
+        // NOT `requiresAdmin`, unlike its neighbours: reclaiming build cache is
+        // operational hygiene, and the people who run out of disk at 3am are the
+        // manage_infra holders — the same capability the page and
+        // lib/data/docker-cleanup gate on.
+        requires: "manage_infra",
       },
       {
         label: "Users",
@@ -460,6 +472,9 @@ export const NON_TEAM_SETTINGS_PREFIXES = [
   "/settings/tokens",
   "/settings/users",
   "/settings/servers",
+  // The cleanup policy is instance-wide and its runs belong to hosts, not teams —
+  // servers are the one shared cross-team resource, so there is no team to act in.
+  "/settings/cleanup",
 ];
 
 /** True when the path is a personal/system settings route (team header hidden). */

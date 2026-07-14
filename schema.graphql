@@ -13,6 +13,7 @@ type Activity {
 enum ActivityType {
   app
   backup
+  cleanup
   database
   deployment
   domain
@@ -485,6 +486,124 @@ enum DevStatus {
   running
   starting
   stopped
+}
+
+"""
+The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Reads as the safe defaults (disabled) until it is saved once.
+"""
+type DockerCleanupPolicy {
+  enabled: Boolean
+
+  """
+  Servers the SCHEDULED sweep skips. A manual runDockerCleanupNow ignores this list — the operator standing in front of the button has already made that decision.
+  """
+  excludedServerIds: [String!]
+
+  """unused_app_images only: how many of the newest images to keep per app."""
+  keepImagesPerApp: Int
+
+  """Only reclaim objects older than this. 0 = no age filter."""
+  minAgeHours: Int
+
+  """
+  5-field cron expression, evaluated in UTC. Rejected on save if it does not parse.
+  """
+  schedule: String
+
+  """
+  What the sweep reclaims. Empty = nothing, and the policy cannot be enabled.
+  """
+  scopes: [DockerCleanupScope!]
+
+  """Null until the policy has been saved once."""
+  updatedAt: String
+}
+
+"""
+A live, never-persisted answer to 'what would a cleanup reclaim on this host?' — the agent's dry run. Nothing was removed. This is what the confirm dialog shows, so the operator approves a LIST rather than a verb.
+"""
+type DockerCleanupReport {
+  """The sum of the per-scope totals."""
+  reclaimedBytes: Float
+  scopes: [DockerCleanupReportScope!]
+  serverId: String
+  serverName: String
+}
+
+"""
+One scope's line in a preview: what the agent WOULD reclaim, having removed nothing.
+"""
+type DockerCleanupReportScope {
+  error: String
+
+  """
+  The image ids / volume names in question. Bounded by the agent to 200 entries — `itemsRemoved` is the authoritative count.
+  """
+  items: [String!]
+  itemsRemoved: Int
+  reclaimedBytes: Float
+  scope: DockerCleanupScope
+
+  """
+  The agent declined this scope because it could not prove the removal was safe. Not a failure: the other scopes still run.
+  """
+  skipped: Boolean
+}
+
+"""
+One executed sweep on one server. A run that could not even start — an unprovisioned host, an agent offline or too old — is still recorded, as `failed`: the history never lies about an attempt.
+"""
+type DockerCleanupRun {
+  """The user who ran it, or "Scheduler" for a scheduled sweep."""
+  actor: String
+  error: String
+  finishedAt: String
+  id: ID
+
+  """The per-scope breakdown, in the scope allow-list's order."""
+  items: [DockerCleanupRunItem!]
+  reclaimedBytes: Float
+
+  """
+  Null once the server is removed — `serverName` is what keeps the row readable.
+  """
+  serverId: ID
+  serverName: String
+  startedAt: String
+  status: DockerCleanupRunStatus
+  trigger: DockerCleanupTrigger
+}
+
+"""
+One scope's outcome in an executed run. Counts only — the history keeps how much was reclaimed, not which objects.
+"""
+type DockerCleanupRunItem {
+  error: String
+  itemsRemoved: Int
+  reclaimedBytes: Float
+  scope: DockerCleanupScope
+  skipped: Boolean
+}
+
+enum DockerCleanupRunStatus {
+  failed
+  running
+  success
+}
+
+"""
+A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references (off by default: Deplo pushes to no registry, so a removed image comes back only by a rebuild).
+"""
+enum DockerCleanupScope {
+  build_cache
+  dangling_images
+  orphan_buildkit_cache
+  unused_app_images
+}
+
+enum DockerCleanupTrigger {
+  manual
+  scheduled
 }
 
 """A routable hostname attached to an app (Traefik router)."""
@@ -1054,6 +1173,11 @@ type Mutation {
   """
   moveFolder(id: ID!, parentId: ID): Boolean
 
+  """
+  Enumerate what a cleanup WOULD reclaim on this server, removing nothing (the agent's dry run). Writes no run row. This is what the UI calls before it opens the confirm dialog.
+  """
+  previewDockerCleanup(serverId: String!): DockerCleanupReport
+
   """Promote a preview deployment to production."""
   promoteDeployment(id: String!): Boolean
   rebuildApp(id: String!): App
@@ -1157,6 +1281,11 @@ type Mutation {
 
   """Run a backup schedule manually now. Returns true."""
   runBackup(id: String!): Boolean
+
+  """
+  Reclaim Docker disk on this server now, with the policy's scopes — whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive. Errors clearly when the server is unreachable, unprovisioned, or its agent is too old to know how to clean up.
+  """
+  runDockerCleanupNow(serverId: String!): DockerCleanupRun
 
   """Replace the active team's notification settings."""
   saveNotificationSettings(input: JSON!): NotificationSettings
@@ -1269,6 +1398,11 @@ type Mutation {
   """
   updateDatabase(id: String!, input: UpdateDatabaseInput!): Database
   updateDev(appId: String!, patch: UpdateDevInput!): DevInfo
+
+  """
+  Save the instance-wide cleanup policy. The cron is rejected (not repaired) when it does not parse — an unparseable schedule is a cleanup that silently never runs while the UI says it is enabled. The numeric bounds are clamped instead: there is no dangerous value of 'keep N images', only an unhelpful one.
+  """
+  updateDockerCleanupPolicy(input: UpdateDockerCleanupPolicyInput!): DockerCleanupPolicy
 
   """
   Apply a full edit to a domain and return the updated domain (reloaded).
@@ -1437,6 +1571,22 @@ type Query {
 
   """SSH credentials for an app's dev container."""
   devSshUsers(appId: String!): [DevSshUser!]
+
+  """
+  The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as disabled, with the safe defaults.
+  """
+  dockerCleanupPolicy: DockerCleanupPolicy
+
+  """
+  Cleanup history, newest first. Not team-scoped: servers are the one shared cross-team resource, so a run belongs to a host.
+  """
+  dockerCleanupRuns(
+    """Clamped to [1, 100]. Defaults to 20."""
+    limit: Int
+
+    """Only this server's runs. Omit for every server's."""
+    serverId: String
+  ): [DockerCleanupRun!]
 
   """
   Domains in the active team, primary first. Optionally filtered to one project.
@@ -1987,6 +2137,18 @@ input UpdateDevInput {
   imageKind: DevImageKind
   port: Int
   previewEnabled: Boolean
+}
+
+"""
+Save the instance-wide cleanup policy. The scopes are a whole-set replace, so a scope left out is a scope no longer reclaimed.
+"""
+input UpdateDockerCleanupPolicyInput {
+  enabled: Boolean!
+  excludedServerIds: [String!]
+  keepImagesPerApp: Int!
+  minAgeHours: Int!
+  schedule: String!
+  scopes: [DockerCleanupScope!]!
 }
 
 """

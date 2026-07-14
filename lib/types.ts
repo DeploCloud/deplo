@@ -1307,7 +1307,9 @@ export type ActivityType =
   | "env"
   | "member"
   | "backup"
-  | "s3";
+  | "s3"
+  /** Docker cleanup: a policy change, or a sweep that reclaimed disk on a server. */
+  | "cleanup";
 
 export interface Activity {
   id: ID;

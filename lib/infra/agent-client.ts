@@ -35,6 +35,8 @@ import {
   type VolumeChunk,
   type FilesChunk,
   type StackResult,
+  type DockerCleanupRequest,
+  type DockerCleanupResponse,
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
 import { getServerById, markServerSeen } from "../data/servers";
@@ -88,6 +90,13 @@ const VOLUME_COPY_DEADLINE_MS = 60 * 60_000;
 // Keep the deadline short so an unreachable agent fails fast (this gates an
 // interactive "generate available port" click + the pre-provision guard).
 const CHECK_PORT_DEADLINE_MS = 15_000;
+// A cleanup sweep walks every image, volume and build-cache record on the host and
+// then removes them one at a time (never in one `prune` verb — see dockerCleanup);
+// on a full host that is tens of GB of unlinking. The agent budgets ~30min for its
+// own docker calls, so this is the backup class of deadline, not the interactive
+// one. It stays MANDATORY all the same: an agent that wedges mid-sweep must fail
+// the run rather than pin the request forever.
+const CLEANUP_DEADLINE_MS = 30 * 60_000;
 
 /** Plain structural shapes the agent returns — mapped 1:1 by the data layer. */
 export interface AgentConsoleInstance {
@@ -260,6 +269,20 @@ export interface AgentConnection {
     version: string,
     binaries: Record<string, { url: string; sha256: string }>,
   ): Promise<{ version: string; restarting: boolean }>;
+  /** Reclaim Docker disk on the host — a STRICT ALLOW-LIST, never a prune verb. The
+   *  agent removes only what it can PROVE is unreferenced (a container-reference
+   *  reverse index over running AND exited containers, or an on-disk sentinel), and
+   *  never runs `system`/`container`/`volume`/`network prune`: on a Deplo host a
+   *  STOPPED app is a LIVE app (StopStack is `compose stop` — the container, its
+   *  volumes and its networks must survive it) and a dangling volume may hold a
+   *  database's data files. With `dryRun` it enumerates the candidates and reclaims
+   *  NOTHING, filling every result field as if it had — that is what the confirm
+   *  dialog renders. A scope that fails, or that the agent declines because it could
+   *  not build the reverse index, is reported per-scope and the sweep carries on;
+   *  `ok:false` means the sweep never started. An agent too old to implement it
+   *  rejects with UNIMPLEMENTED (mapped to AgentCleanupUnsupportedError by the
+   *  caller — go through {@link runAgentCleanup}, which pre-flights the capability). */
+  dockerCleanup(req: DockerCleanupRequest): Promise<DockerCleanupResponse>;
 
   // ---- Backups: dump/restore to S3 + the S3 affordances (ADR-0007) ----
   /** Dump a database or project to S3, streaming progress; yields BackupEvents
@@ -485,6 +508,45 @@ export function mapVolumeCopyUnsupported(e: unknown, which: string): Error {
     return new AgentVolumeCopyUnsupportedError(
       `The ${which} server's agent is too old to copy data between servers. Update the agent on that server, then try again.`,
     );
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
+
+/**
+ * The reachable agent does not (yet) implement the {@link AgentConnection.dockerCleanup}
+ * RPC — it doesn't advertise the `"docker-cleanup"` capability in Hello, or it answers
+ * with gRPC UNIMPLEMENTED. Reclaiming Docker disk is host-coupled work, so it lives
+ * entirely agent-side (ADR-0006); until a server runs an agent new enough to answer,
+ * the data layer surfaces THIS error — distinct from {@link AgentUnreachableError} (the
+ * agent IS up, it just can't reclaim disk yet) — and the UI says "update the agent on
+ * this server".
+ *
+ * The alternative — letting an unsupported call resolve as an ok response with zero
+ * bytes reclaimed — is the one outcome a cleanup must NEVER produce: a sweep that
+ * silently did nothing is indistinguishable from one that worked, and the operator
+ * would go on believing the disk was being kept clear while it filled up. Mirrors
+ * {@link AgentCheckPortUnsupportedError}.
+ */
+export class AgentCleanupUnsupportedError extends Error {}
+
+/** The single message an out-of-date agent produces, wherever the gap is caught —
+ *  the Hello pre-flight in {@link runAgentCleanup} or the RPC's own UNIMPLEMENTED.
+ *  One string so the two paths can never drift into two different stories. */
+const CLEANUP_UNSUPPORTED_MESSAGE =
+  "The agent on this server is too old to clean up Docker disk. " +
+  "Update the agent on this server, then try again.";
+
+/**
+ * Map a DockerCleanup RPC error to {@link AgentCleanupUnsupportedError} when it is a
+ * gRPC UNIMPLEMENTED (the agent predates the RPC); every other error passes through
+ * unchanged. {@link runAgentCleanup} preflights the capability via Hello first, but an
+ * agent could advertise nothing yet still reject — this is the belt-and-braces.
+ * Idempotent on an already-mapped error.
+ */
+export function mapCleanupUnsupported(e: unknown): Error {
+  if (e instanceof AgentCleanupUnsupportedError) return e;
+  if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
+    return new AgentCleanupUnsupportedError(CLEANUP_UNSUPPORTED_MESSAGE);
   }
   return e instanceof Error ? e : new Error(String(e));
 }
@@ -1119,6 +1181,19 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
+    dockerCleanup(req: DockerCleanupRequest) {
+      // The response IS the DTO (per-scope results and all): the caller reads the
+      // whole report, so there is nothing to narrow and re-mapping it field by field
+      // would only risk dropping a scope the agent did report.
+      return new Promise<DockerCleanupResponse>((resolve, reject) => {
+        client.dockerCleanup(
+          req,
+          new Metadata(),
+          { deadline: new Date(Date.now() + CLEANUP_DEADLINE_MS) },
+          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp)),
+        );
+      });
+    },
 
     // ---- Backups: dump/restore to S3 + the S3 affordances (ADR-0007) ----
     backup(req: BackupRequest) {
@@ -1605,6 +1680,69 @@ export async function selfUpdateServerAgent(
       );
     }
     throw e;
+  } finally {
+    conn.close();
+  }
+}
+
+/** The capability an agent advertises in Hello once it can reclaim Docker disk
+ *  (mirrors the "docker-cleanup" entry in the agent's server.Capabilities).
+ *  Exported so the readiness report can name the gap before anyone clicks. */
+export const DOCKER_CLEANUP_CAPABILITY = "docker-cleanup";
+
+/**
+ * Reclaim Docker disk on `serverId`'s host: dial → Hello → capability pre-flight →
+ * DockerCleanup → close, all in one self-contained op. Shaped like
+ * {@link selfUpdateServerAgent} rather than {@link connectBackupAgent} because a
+ * cleanup is a single unary RPC — there is no live connection left for the caller to
+ * hold, so the caller never has to remember to close one.
+ *
+ * This is a HOST-level RPC, and the note above {@link selfUpdateServerAgent} says any
+ * such RPC must be gated on a Hello capability the way SELF_UPDATE / BACKUP are. Here
+ * the gate is load-bearing beyond mere ergonomics: an agent that does not advertise
+ * `"docker-cleanup"` is never asked, and the failure it produces is
+ * {@link AgentCleanupUnsupportedError} — "update the agent on this server" — never an
+ * ok response with zero bytes reclaimed. A cleanup is only ever trusted, never
+ * watched; the operator has no way to tell a sweep that quietly did nothing from one
+ * that worked, so the ONE thing this function must not do is fake a success.
+ *
+ * `req.dryRun` picks the preview or the real sweep — the same RPC, the same deadline,
+ * the same enumeration either way; under `dryRun` the agent removes nothing. The
+ * safety of what gets removed is agent-side and allow-listed (never `system prune` /
+ * `container prune` / `volume prune` / `network prune`): the control plane owns the
+ * scope SET, not the deletion logic.
+ *
+ * Throws:
+ *  - {@link AgentUnreachableError} when the server is unknown / not provisioned /
+ *    offline. The caller writes the failed run — history never lies about a sweep it
+ *    could not even start.
+ *  - {@link AgentCleanupUnsupportedError} when the reachable agent is too old, whether
+ *    that shows up in Hello or as UNIMPLEMENTED on the call itself.
+ */
+export async function runAgentCleanup(
+  serverId: string,
+  req: DockerCleanupRequest,
+): Promise<DockerCleanupResponse> {
+  // Resolves only for a provisioned server with un-revoked trust; throws
+  // AgentUnreachableError otherwise.
+  const target = await resolveTarget(serverId);
+
+  const conn = dial(target);
+  try {
+    // Pre-flight: the agent must SAY it can clean up before we ask it to. An agent
+    // too old to know the RPC won't advertise the capability.
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(DOCKER_CLEANUP_CAPABILITY)) {
+      throw new AgentCleanupUnsupportedError(CLEANUP_UNSUPPORTED_MESSAGE);
+    }
+    return await conn.dockerCleanup(req);
+  } catch (e) {
+    // Belt-and-braces: an agent one version behind on the RPC can advertise the
+    // capability and still answer UNIMPLEMENTED. mapCleanupUnsupported turns that
+    // into the same actionable error, passes every other failure (an unreachable
+    // host, a docker error the agent reported) through untouched, and is idempotent
+    // on the pre-flight throw above.
+    throw mapCleanupUnsupported(e);
   } finally {
     conn.close();
   }

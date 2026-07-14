@@ -1622,3 +1622,169 @@ export const githubInstallation = pgTable(
     uniqueIndex("github_installation_installation_id_uq").on(t.installationId),
   ],
 );
+
+/* ================================================================== */
+/* Docker cleanup                                                      */
+/* ================================================================== */
+
+/**
+ * The Docker-cleanup POLICY — a SINGLETON row (`id` is a fixed `'default'`), not a
+ * row per server. Reclaiming Docker disk is a property of the fleet, not of one
+ * host: an operator sets "daily at 04:00, keep 3 images, drop caches older than a
+ * week" once, and every server inherits it. A host that must be left alone opts OUT
+ * via {@link dockerCleanupExcludedServers} — an exclusion list, not N schedules, so
+ * there is exactly ONE schedule to reason about and adding a server cannot silently
+ * leave it un-swept.
+ *
+ * No `team_id`: servers are the one shared cross-team resource, so this is
+ * instance-wide infra state like `servers.deploy_concurrency`. The singleton PK is a
+ * literal so `INSERT … ON CONFLICT (id) DO UPDATE` is the whole write path and two
+ * concurrent saves can never mint two policies. A MISSING row is legal and means
+ * "cleanup has never been configured" — the data layer answers with defaults
+ * (disabled), the way a missing `notification_settings` row does.
+ *
+ * There is deliberately NO denormalized `last_run_at` / `last_status` here (the
+ * `backups` table carries them because its schedule is 1:1 with its runs). One policy
+ * fans out to N servers, so "when did THIS host last run, and is one in flight?" is a
+ * per-server question, answered from {@link dockerCleanupRuns} — the source of truth,
+ * which cannot drift from itself.
+ */
+export const dockerCleanupPolicy = pgTable("docker_cleanup_policy", {
+  /** Always `'default'`. The row is a singleton; the PK exists to enforce that. */
+  id: text("id").primaryKey().default("default"),
+  enabled: boolean("enabled").notNull(),
+  /**
+   * 5-field cron, evaluated in **UTC** by lib/backups/cron.ts (no timezone column,
+   * no DST handling). Validated at write time: an unparseable expression never
+   * matches, so it would silently mean "never run" rather than fail loudly.
+   */
+  schedule: text("schedule").notNull(),
+  /** Only reclaim objects older than this (docker's `--filter until=<n>h`). 0 = no age filter. */
+  minAgeHours: integer("min_age_hours").notNull(),
+  /** `unused_app_images` only: how many of the newest images to keep per app slug. >= 1. */
+  keepImagesPerApp: integer("keep_images_per_app").notNull(),
+  createdAt: isoTimestamptz("created_at").notNull(),
+  updatedAt: isoTimestamptz("updated_at").notNull(),
+});
+
+/**
+ * The scopes the policy is allowed to reclaim — a LIST, so a junction table, never a
+ * JSONB array. `scope` is one of the four wire ids the agent's `CleanupScope` enum
+ * defines: `build_cache` · `dangling_images` · `orphan_buildkit_cache` ·
+ * `unused_app_images`. That set is an ALLOW-LIST and is closed: container, volume,
+ * network and `system` prune do not exist as scopes and must never be added, because
+ * on a Deplo host a STOPPED app is a live app (StopStack = `compose stop`, the
+ * container must survive) and a dangling volume may hold user data.
+ *
+ * Plain `text` like `backup_runs.status`, not a `pgEnum`: the enforcement that
+ * matters is the agent's own allow-list (the only thing that can delete anything) plus
+ * the data layer's validation on write — a DB CHECK would add a second place for the
+ * set to drift from the proto enum without being the boundary that protects the host.
+ * A scope the agent does not recognise is refused there, not obeyed.
+ */
+export const dockerCleanupPolicyScopes = pgTable(
+  "docker_cleanup_policy_scopes",
+  {
+    policyId: text("policy_id")
+      .notNull()
+      .references(() => dockerCleanupPolicy.id, { onDelete: "cascade" }),
+    scope: text("scope").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.policyId, t.scope] })],
+);
+
+/**
+ * Servers the SCHEDULED sweep skips — the policy's opt-out list. A row here means
+ * "the nightly job leaves this host alone"; a MANUAL "clean up now" ignores the list
+ * entirely, because an operator standing in front of the button has already made the
+ * decision this table exists to encode.
+ *
+ * Membership is the whole record — presence is the fact, so there is no `enabled`
+ * flag to contradict it. CASCADE on the server: an excluded server that is removed
+ * takes its exclusion with it, so a later server minted with a recycled id could not
+ * inherit a stale opt-out.
+ */
+export const dockerCleanupExcludedServers = pgTable(
+  "docker_cleanup_excluded_servers",
+  {
+    serverId: text("server_id")
+      .primaryKey()
+      .references(() => servers.id, { onDelete: "cascade" }),
+  },
+);
+
+/**
+ * One cleanup RUN on one server — the history, and a SEPARATE table from the policy
+ * (the `backup_runs` precedent). One scheduled tick fans out to one row per server.
+ *
+ * The row is written as `status:'running'` BEFORE the agent is dialled, so "could not
+ * reach the agent" still lands as a failed run: history never lies about a sweep that
+ * was attempted. `seq bigint identity` breaks same-millisecond ties so every listing
+ * is a total order (`ORDER BY started_at DESC, seq DESC`, PLAN §5).
+ *
+ * `server_id` is `SET NULL` and `server_name` is DENORMALIZED next to it on purpose:
+ * the history outlives the server. Once a host is removed, "we reclaimed 9 GB on
+ * eu-main-1 last Tuesday" must still read as that sentence, not as a dangling id.
+ *
+ * `reclaimed_bytes` MUST be `bigint` (the `backup_runs.size_bytes` rule) — a full
+ * build cache exceeds 2 GB routinely and would overflow `integer`.
+ *
+ * The partial index on `status='running'` serves both the boot reconcile (settle rows
+ * stranded by a control-plane restart) and the scheduler's never-stack-runs check.
+ */
+export const dockerCleanupRuns = pgTable(
+  "docker_cleanup_runs",
+  {
+    id: text("id").primaryKey(),
+    seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
+    serverId: text("server_id").references(() => servers.id, {
+      onDelete: "set null",
+    }),
+    serverName: text("server_name").notNull(),
+    /** `'manual'` | `'scheduled'`. */
+    trigger: text("trigger").notNull(),
+    /** The human's name, or `"Scheduler"` for a tick — free text, like `activities.actor`. */
+    actor: text("actor").notNull(),
+    /** `'running'` | `'success'` | `'failed'`. */
+    status: text("status").notNull(),
+    error: text("error"),
+    reclaimedBytes: bigint("reclaimed_bytes", { mode: "number" }).notNull(),
+    startedAt: isoTimestamptz("started_at").notNull(),
+    finishedAt: isoTimestamptz("finished_at"),
+  },
+  (t) => [
+    index("docker_cleanup_runs_server_started_idx").on(
+      t.serverId,
+      t.startedAt.desc(),
+      t.seq.desc(),
+    ),
+    index("docker_cleanup_runs_running_idx")
+      .on(t.status)
+      .where(sql`${t.status} = 'running'`),
+  ],
+);
+
+/**
+ * The per-scope breakdown of one run — a LIST, so a child table. `(run_id, scope)` is
+ * the PK: a scope reports exactly once per run.
+ *
+ * `skipped` is NOT a failure and neither is `error`: the agent declines a scope it
+ * cannot prove is safe (e.g. it could not build the container-reference reverse index,
+ * so it refused to guess) and reports the per-scope failure, while the run as a whole
+ * still succeeds. Keeping both here is what lets the UI say *which* scope reclaimed
+ * nothing and *why*, instead of a single opaque total.
+ */
+export const dockerCleanupRunItems = pgTable(
+  "docker_cleanup_run_items",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => dockerCleanupRuns.id, { onDelete: "cascade" }),
+    scope: text("scope").notNull(),
+    reclaimedBytes: bigint("reclaimed_bytes", { mode: "number" }).notNull(),
+    itemsRemoved: integer("items_removed").notNull(),
+    skipped: boolean("skipped").notNull(),
+    error: text("error"),
+  },
+  (t) => [primaryKey({ columns: [t.runId, t.scope] })],
+);

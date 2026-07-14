@@ -342,6 +342,89 @@ export function backupKindToJSON(object: BackupKind): string {
   }
 }
 
+/**
+ * Which classes of object a cleanup may reclaim. Every scope is an ALLOW-LIST —
+ * see the DockerCleanup RPC contract. Scopes not listed here DO NOT EXIST:
+ * container prune, volume prune, network prune and `system prune` are
+ * deliberately absent and must never be added, because a stopped Deplo app is a
+ * live app (its container, volumes and networks must survive a `compose stop`)
+ * and a dangling volume may hold a database's data files. Adding one would turn
+ * a disk-reclaim button into a data-loss button.
+ */
+export enum CleanupScope {
+  CLEANUP_SCOPE_UNSPECIFIED = 0,
+  /**
+   * CLEANUP_SCOPE_BUILD_CACHE - `docker builder prune` — the daemon's own BuildKit cache. Touches no Deplo
+   * object at all.
+   */
+  CLEANUP_SCOPE_BUILD_CACHE = 1,
+  /**
+   * CLEANUP_SCOPE_DANGLING_IMAGES - `docker image prune` — untagged layers only, NEVER `-a`. A stopped container
+   * still pins its image, so this cannot strand an app.
+   */
+  CLEANUP_SCOPE_DANGLING_IMAGES = 2,
+  /**
+   * CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE - Dangling anonymous volumes that are PROVABLY buildkitd stores: the railpack
+   * builder runs `moby/buildkit`, which declares VOLUME /var/lib/buildkit, and an
+   * orphaned one is identified by the `buildkitd.lock` sentinel file at its
+   * mountpoint — never by name, never by label. Removed one `docker volume rm` at
+   * a time.
+   */
+  CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE = 3,
+  /**
+   * CLEANUP_SCOPE_UNUSED_APP_IMAGES - Old `deplo/<slug>:<deployment>` images labelled deplo.managed=true that NO
+   * container (running or exited) references, older than min_age_hours, minus the
+   * newest keep_images_per_app per deplo.slug. Removed BY ID with an explicit
+   * `docker rmi` each — never `image prune -a`, which would decide for us. There
+   * is no registry push anywhere in Deplo, so a removed image is recoverable only
+   * by a rebuild: this scope is opt-in and off by default.
+   */
+  CLEANUP_SCOPE_UNUSED_APP_IMAGES = 4,
+  UNRECOGNIZED = -1,
+}
+
+export function cleanupScopeFromJSON(object: any): CleanupScope {
+  switch (object) {
+    case 0:
+    case "CLEANUP_SCOPE_UNSPECIFIED":
+      return CleanupScope.CLEANUP_SCOPE_UNSPECIFIED;
+    case 1:
+    case "CLEANUP_SCOPE_BUILD_CACHE":
+      return CleanupScope.CLEANUP_SCOPE_BUILD_CACHE;
+    case 2:
+    case "CLEANUP_SCOPE_DANGLING_IMAGES":
+      return CleanupScope.CLEANUP_SCOPE_DANGLING_IMAGES;
+    case 3:
+    case "CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE":
+      return CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE;
+    case 4:
+    case "CLEANUP_SCOPE_UNUSED_APP_IMAGES":
+      return CleanupScope.CLEANUP_SCOPE_UNUSED_APP_IMAGES;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return CleanupScope.UNRECOGNIZED;
+  }
+}
+
+export function cleanupScopeToJSON(object: CleanupScope): string {
+  switch (object) {
+    case CleanupScope.CLEANUP_SCOPE_UNSPECIFIED:
+      return "CLEANUP_SCOPE_UNSPECIFIED";
+    case CleanupScope.CLEANUP_SCOPE_BUILD_CACHE:
+      return "CLEANUP_SCOPE_BUILD_CACHE";
+    case CleanupScope.CLEANUP_SCOPE_DANGLING_IMAGES:
+      return "CLEANUP_SCOPE_DANGLING_IMAGES";
+    case CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE:
+      return "CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE";
+    case CleanupScope.CLEANUP_SCOPE_UNUSED_APP_IMAGES:
+      return "CLEANUP_SCOPE_UNUSED_APP_IMAGES";
+    case CleanupScope.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
 export interface HelloRequest {
   /** The contract version the control plane speaks. */
   contractVersion: ContractVersion;
@@ -1514,6 +1597,70 @@ export interface TunnelRequest {
 export interface TunnelStatus {
   running: boolean;
   log: string;
+}
+
+export interface DockerCleanupRequest {
+  /**
+   * The scopes to reclaim. Empty => nothing is done (ok, zero results): the
+   * control plane, not the agent, owns the default set.
+   */
+  scopes: CleanupScope[];
+  /**
+   * When true the agent ENUMERATES candidates and removes NOTHING; every
+   * CleanupScopeResult is populated as if the removal had happened. This is what
+   * the UI calls to render its confirm dialog.
+   */
+  dryRun: boolean;
+  /**
+   * Only reclaim objects older than this. 0 => no age filter. Maps to docker's
+   * `--filter until=<n>h` on the prune scopes, and to a created-at comparison on
+   * the enumerated ones. An object whose age the agent cannot determine is never
+   * a candidate while an age filter is set (fail closed).
+   */
+  minAgeHours: number;
+  /**
+   * UNUSED_APP_IMAGES only: how many of the newest images to keep per deplo.slug.
+   * 0 => 1 — the current tag is always kept, even when no container references it
+   * (a stopped app must stay redeployable without a rebuild).
+   */
+  keepImagesPerApp: number;
+}
+
+export interface CleanupScopeResult {
+  scope: CleanupScope;
+  /**
+   * Bytes reclaimed by this scope. Where docker reports its own total after a
+   * prune that total is authoritative; otherwise it is the summed size of the
+   * objects actually removed (which is also what a dry_run reports, since nothing
+   * has been removed yet to measure). Never an invented number.
+   */
+  reclaimedBytes: number;
+  itemsRemoved: number;
+  /**
+   * The image ids / volume names / cache-record ids removed — or, under dry_run,
+   * that WOULD be removed. Bounded to 200 entries; items_removed is authoritative.
+   */
+  items: string[];
+  /**
+   * True when the agent DECLINED the scope: it could not build the
+   * container-reference reverse index the scope's safety rests on, so it refused
+   * to guess. A skipped scope is not a failure — the sweep continues.
+   */
+  skipped: boolean;
+  /**
+   * Per-scope failure. Non-fatal: the other scopes still run and the response is
+   * still ok.
+   */
+  error: string;
+}
+
+export interface DockerCleanupResponse {
+  /** False only when the whole sweep could not start. */
+  ok: boolean;
+  error: string;
+  /** The sum of the per-scope reclaimed_bytes. */
+  reclaimedBytes: number;
+  results: CleanupScopeResult[];
 }
 
 function createBaseHelloRequest(): HelloRequest {
@@ -10090,6 +10237,400 @@ export const TunnelStatus: MessageFns<TunnelStatus> = {
   },
 };
 
+function createBaseDockerCleanupRequest(): DockerCleanupRequest {
+  return { scopes: [], dryRun: false, minAgeHours: 0, keepImagesPerApp: 0 };
+}
+
+export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
+  encode(message: DockerCleanupRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    writer.uint32(10).fork();
+    for (const v of message.scopes) {
+      writer.int32(v);
+    }
+    writer.join();
+    if (message.dryRun !== false) {
+      writer.uint32(16).bool(message.dryRun);
+    }
+    if (message.minAgeHours !== 0) {
+      writer.uint32(24).int32(message.minAgeHours);
+    }
+    if (message.keepImagesPerApp !== 0) {
+      writer.uint32(32).int32(message.keepImagesPerApp);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DockerCleanupRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDockerCleanupRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag === 8) {
+            message.scopes.push(reader.int32() as any);
+
+            continue;
+          }
+
+          if (tag === 10) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.scopes.push(reader.int32() as any);
+            }
+
+            continue;
+          }
+
+          break;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.dryRun = reader.bool();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.minAgeHours = reader.int32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.keepImagesPerApp = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DockerCleanupRequest {
+    return {
+      scopes: globalThis.Array.isArray(object?.scopes) ? object.scopes.map((e: any) => cleanupScopeFromJSON(e)) : [],
+      dryRun: isSet(object.dryRun)
+        ? globalThis.Boolean(object.dryRun)
+        : isSet(object.dry_run)
+        ? globalThis.Boolean(object.dry_run)
+        : false,
+      minAgeHours: isSet(object.minAgeHours)
+        ? globalThis.Number(object.minAgeHours)
+        : isSet(object.min_age_hours)
+        ? globalThis.Number(object.min_age_hours)
+        : 0,
+      keepImagesPerApp: isSet(object.keepImagesPerApp)
+        ? globalThis.Number(object.keepImagesPerApp)
+        : isSet(object.keep_images_per_app)
+        ? globalThis.Number(object.keep_images_per_app)
+        : 0,
+    };
+  },
+
+  toJSON(message: DockerCleanupRequest): unknown {
+    const obj: any = {};
+    if (message.scopes?.length) {
+      obj.scopes = message.scopes.map((e) => cleanupScopeToJSON(e));
+    }
+    if (message.dryRun !== false) {
+      obj.dryRun = message.dryRun;
+    }
+    if (message.minAgeHours !== 0) {
+      obj.minAgeHours = Math.round(message.minAgeHours);
+    }
+    if (message.keepImagesPerApp !== 0) {
+      obj.keepImagesPerApp = Math.round(message.keepImagesPerApp);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<DockerCleanupRequest>, I>>(base?: I): DockerCleanupRequest {
+    return DockerCleanupRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<DockerCleanupRequest>, I>>(object: I): DockerCleanupRequest {
+    const message = createBaseDockerCleanupRequest();
+    message.scopes = object.scopes?.map((e) => e) || [];
+    message.dryRun = object.dryRun ?? false;
+    message.minAgeHours = object.minAgeHours ?? 0;
+    message.keepImagesPerApp = object.keepImagesPerApp ?? 0;
+    return message;
+  },
+};
+
+function createBaseCleanupScopeResult(): CleanupScopeResult {
+  return { scope: 0, reclaimedBytes: 0, itemsRemoved: 0, items: [], skipped: false, error: "" };
+}
+
+export const CleanupScopeResult: MessageFns<CleanupScopeResult> = {
+  encode(message: CleanupScopeResult, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.scope !== 0) {
+      writer.uint32(8).int32(message.scope);
+    }
+    if (message.reclaimedBytes !== 0) {
+      writer.uint32(16).int64(message.reclaimedBytes);
+    }
+    if (message.itemsRemoved !== 0) {
+      writer.uint32(24).int32(message.itemsRemoved);
+    }
+    for (const v of message.items) {
+      writer.uint32(34).string(v!);
+    }
+    if (message.skipped !== false) {
+      writer.uint32(40).bool(message.skipped);
+    }
+    if (message.error !== "") {
+      writer.uint32(50).string(message.error);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CleanupScopeResult {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCleanupScopeResult();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.scope = reader.int32() as any;
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.reclaimedBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.itemsRemoved = reader.int32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.items.push(reader.string());
+          continue;
+        }
+        case 5: {
+          if (tag !== 40) {
+            break;
+          }
+
+          message.skipped = reader.bool();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CleanupScopeResult {
+    return {
+      scope: isSet(object.scope) ? cleanupScopeFromJSON(object.scope) : 0,
+      reclaimedBytes: isSet(object.reclaimedBytes)
+        ? globalThis.Number(object.reclaimedBytes)
+        : isSet(object.reclaimed_bytes)
+        ? globalThis.Number(object.reclaimed_bytes)
+        : 0,
+      itemsRemoved: isSet(object.itemsRemoved)
+        ? globalThis.Number(object.itemsRemoved)
+        : isSet(object.items_removed)
+        ? globalThis.Number(object.items_removed)
+        : 0,
+      items: globalThis.Array.isArray(object?.items) ? object.items.map((e: any) => globalThis.String(e)) : [],
+      skipped: isSet(object.skipped) ? globalThis.Boolean(object.skipped) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+    };
+  },
+
+  toJSON(message: CleanupScopeResult): unknown {
+    const obj: any = {};
+    if (message.scope !== 0) {
+      obj.scope = cleanupScopeToJSON(message.scope);
+    }
+    if (message.reclaimedBytes !== 0) {
+      obj.reclaimedBytes = Math.round(message.reclaimedBytes);
+    }
+    if (message.itemsRemoved !== 0) {
+      obj.itemsRemoved = Math.round(message.itemsRemoved);
+    }
+    if (message.items?.length) {
+      obj.items = message.items;
+    }
+    if (message.skipped !== false) {
+      obj.skipped = message.skipped;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CleanupScopeResult>, I>>(base?: I): CleanupScopeResult {
+    return CleanupScopeResult.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CleanupScopeResult>, I>>(object: I): CleanupScopeResult {
+    const message = createBaseCleanupScopeResult();
+    message.scope = object.scope ?? 0;
+    message.reclaimedBytes = object.reclaimedBytes ?? 0;
+    message.itemsRemoved = object.itemsRemoved ?? 0;
+    message.items = object.items?.map((e) => e) || [];
+    message.skipped = object.skipped ?? false;
+    message.error = object.error ?? "";
+    return message;
+  },
+};
+
+function createBaseDockerCleanupResponse(): DockerCleanupResponse {
+  return { ok: false, error: "", reclaimedBytes: 0, results: [] };
+}
+
+export const DockerCleanupResponse: MessageFns<DockerCleanupResponse> = {
+  encode(message: DockerCleanupResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.ok !== false) {
+      writer.uint32(8).bool(message.ok);
+    }
+    if (message.error !== "") {
+      writer.uint32(18).string(message.error);
+    }
+    if (message.reclaimedBytes !== 0) {
+      writer.uint32(24).int64(message.reclaimedBytes);
+    }
+    for (const v of message.results) {
+      CleanupScopeResult.encode(v!, writer.uint32(34).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DockerCleanupResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDockerCleanupResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.ok = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.reclaimedBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.results.push(CleanupScopeResult.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DockerCleanupResponse {
+    return {
+      ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+      reclaimedBytes: isSet(object.reclaimedBytes)
+        ? globalThis.Number(object.reclaimedBytes)
+        : isSet(object.reclaimed_bytes)
+        ? globalThis.Number(object.reclaimed_bytes)
+        : 0,
+      results: globalThis.Array.isArray(object?.results)
+        ? object.results.map((e: any) => CleanupScopeResult.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: DockerCleanupResponse): unknown {
+    const obj: any = {};
+    if (message.ok !== false) {
+      obj.ok = message.ok;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    if (message.reclaimedBytes !== 0) {
+      obj.reclaimedBytes = Math.round(message.reclaimedBytes);
+    }
+    if (message.results?.length) {
+      obj.results = message.results.map((e) => CleanupScopeResult.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<DockerCleanupResponse>, I>>(base?: I): DockerCleanupResponse {
+    return DockerCleanupResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<DockerCleanupResponse>, I>>(object: I): DockerCleanupResponse {
+    const message = createBaseDockerCleanupResponse();
+    message.ok = object.ok ?? false;
+    message.error = object.error ?? "";
+    message.reclaimedBytes = object.reclaimedBytes ?? 0;
+    message.results = object.results?.map((e) => CleanupScopeResult.fromPartial(e)) || [];
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -10334,6 +10875,37 @@ export const AgentService = {
     requestDeserialize: (value: Buffer): CheckPortRequest => CheckPortRequest.decode(value),
     responseSerialize: (value: CheckPortResponse): Buffer => Buffer.from(CheckPortResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): CheckPortResponse => CheckPortResponse.decode(value),
+  },
+  /**
+   * Reclaim Docker disk on the host. STRICTLY AN ALLOW-LIST: the agent removes
+   * only what it can PROVE is unreferenced, and the proof is always a
+   * container-reference REVERSE INDEX over `docker ps -aq` (running AND exited) or
+   * an on-disk sentinel — never a label, because a genuine app container may carry
+   * no `deplo.*` label at all (`deplo-myapp-web-1` does not). It therefore never
+   * runs `docker system prune`, `container prune`, `volume prune` or `network
+   * prune`: on a Deplo host a STOPPED app is a LIVE app (StopStack is `compose
+   * stop`, StartStack is `compose start` — the container, its volumes and its
+   * networks must all survive a stop), and a dangling volume may hold a database's
+   * data files. Those verbs are absent from CleanupScope and must never be added.
+   *
+   * With dry_run the agent enumerates candidates and reclaims NOTHING, filling in
+   * every result field as if it had — this is what the UI calls first, to render
+   * the confirm dialog. A scope that fails, or that the agent declines because it
+   * could not build the reverse index and refuses to guess, is reported per-scope
+   * and the sweep carries on; ok=false is reserved for a sweep that could not start
+   * at all (UNAVAILABLE when Docker is unreachable). Gated behind the
+   * "docker-cleanup" Hello capability so an older agent surfaces "update the agent"
+   * rather than a fake success.
+   */
+  dockerCleanup: {
+    path: "/deplo.agent.v1.Agent/DockerCleanup" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: DockerCleanupRequest): Buffer => Buffer.from(DockerCleanupRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): DockerCleanupRequest => DockerCleanupRequest.decode(value),
+    responseSerialize: (value: DockerCleanupResponse): Buffer =>
+      Buffer.from(DockerCleanupResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): DockerCleanupResponse => DockerCleanupResponse.decode(value),
   },
   /**
    * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping
@@ -10846,6 +11418,28 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   checkPort: handleUnaryCall<CheckPortRequest, CheckPortResponse>;
   /**
+   * Reclaim Docker disk on the host. STRICTLY AN ALLOW-LIST: the agent removes
+   * only what it can PROVE is unreferenced, and the proof is always a
+   * container-reference REVERSE INDEX over `docker ps -aq` (running AND exited) or
+   * an on-disk sentinel — never a label, because a genuine app container may carry
+   * no `deplo.*` label at all (`deplo-myapp-web-1` does not). It therefore never
+   * runs `docker system prune`, `container prune`, `volume prune` or `network
+   * prune`: on a Deplo host a STOPPED app is a LIVE app (StopStack is `compose
+   * stop`, StartStack is `compose start` — the container, its volumes and its
+   * networks must all survive a stop), and a dangling volume may hold a database's
+   * data files. Those verbs are absent from CleanupScope and must never be added.
+   *
+   * With dry_run the agent enumerates candidates and reclaims NOTHING, filling in
+   * every result field as if it had — this is what the UI calls first, to render
+   * the confirm dialog. A scope that fails, or that the agent declines because it
+   * could not build the reverse index and refuses to guess, is reported per-scope
+   * and the sweep carries on; ok=false is reserved for a sweep that could not start
+   * at all (UNAVAILABLE when Docker is unreachable). Gated behind the
+   * "docker-cleanup" Hello capability so an older agent surfaces "update the agent"
+   * rather than a fake success.
+   */
+  dockerCleanup: handleUnaryCall<DockerCleanupRequest, DockerCleanupResponse>;
+  /**
    * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping
    * — the agent's mTLS materials (agent.crt/agent.key/ca.crt under --agent-dir)
    * are NEVER touched, so the server keeps its identity and pinned fingerprint
@@ -11295,6 +11889,42 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: CheckPortResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Reclaim Docker disk on the host. STRICTLY AN ALLOW-LIST: the agent removes
+   * only what it can PROVE is unreferenced, and the proof is always a
+   * container-reference REVERSE INDEX over `docker ps -aq` (running AND exited) or
+   * an on-disk sentinel — never a label, because a genuine app container may carry
+   * no `deplo.*` label at all (`deplo-myapp-web-1` does not). It therefore never
+   * runs `docker system prune`, `container prune`, `volume prune` or `network
+   * prune`: on a Deplo host a STOPPED app is a LIVE app (StopStack is `compose
+   * stop`, StartStack is `compose start` — the container, its volumes and its
+   * networks must all survive a stop), and a dangling volume may hold a database's
+   * data files. Those verbs are absent from CleanupScope and must never be added.
+   *
+   * With dry_run the agent enumerates candidates and reclaims NOTHING, filling in
+   * every result field as if it had — this is what the UI calls first, to render
+   * the confirm dialog. A scope that fails, or that the agent declines because it
+   * could not build the reverse index and refuses to guess, is reported per-scope
+   * and the sweep carries on; ok=false is reserved for a sweep that could not start
+   * at all (UNAVAILABLE when Docker is unreachable). Gated behind the
+   * "docker-cleanup" Hello capability so an older agent surfaces "update the agent"
+   * rather than a fake success.
+   */
+  dockerCleanup(
+    request: DockerCleanupRequest,
+    callback: (error: ServiceError | null, response: DockerCleanupResponse) => void,
+  ): ClientUnaryCall;
+  dockerCleanup(
+    request: DockerCleanupRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: DockerCleanupResponse) => void,
+  ): ClientUnaryCall;
+  dockerCleanup(
+    request: DockerCleanupRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: DockerCleanupResponse) => void,
   ): ClientUnaryCall;
   /**
    * Update the agent BINARY in place to a newer release, WITHOUT re-bootstrapping

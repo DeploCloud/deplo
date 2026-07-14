@@ -27,6 +27,14 @@ export const LEASE_STALE_MS = 2 * 60 * 60 * 1000; // 2h — see PLAN "stale > 2h
 /** The scheduler's lease name (one row in `scheduler_lease`). */
 export const BACKUP_SCHEDULER_LEASE = "backup-scheduler";
 
+/**
+ * The Docker-cleanup scheduler's lease name. `scheduler_lease.name` is the PK, so a
+ * second scheduler is simply a second ROW — no migration, and no coupling: the two
+ * loops claim different names, so a long nightly dump can never block the cleanup
+ * tick (or the reverse), and a crashed cleanup owner only stalls cleanup.
+ */
+export const DOCKER_CLEANUP_LEASE = "docker-cleanup-scheduler";
+
 /* ------------------------------------------------------------------ */
 /* Pure decision (unit-tested)                                          */
 /* ------------------------------------------------------------------ */
