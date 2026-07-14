@@ -161,11 +161,11 @@ export function EnvManager({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Key</TableHead>
-                <TableHead>Value</TableHead>
-                <TableHead>Last modified</TableHead>
-                <TableHead>Modified by</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="whitespace-nowrap">Key</TableHead>
+                <TableHead className="w-full">Value</TableHead>
+                <TableHead className="whitespace-nowrap">Last modified</TableHead>
+                <TableHead className="whitespace-nowrap">Modified by</TableHead>
+                <TableHead className="whitespace-nowrap text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -219,7 +219,7 @@ export function EnvManager({
                         {row.key}
                         <Badge
                           variant="muted"
-                          className="gap-1 text-[10px] font-normal"
+                          className="gap-1 whitespace-nowrap text-[10px] font-normal"
                         >
                           <Share2 className="size-3" />
                           Shared · {VIA_LABEL[row.via] ?? "Shared"}

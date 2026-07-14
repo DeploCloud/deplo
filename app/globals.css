@@ -317,33 +317,6 @@
   }
 }
 
-/* Telegram-style spoiler particles for a hidden env value. The cell is a plain
-   grey bar at rest — the dots are painted (opacity 0 → 0.5) and set drifting ONLY
-   while its `.group` chip is hovered, so idle rows cost nothing. Three offset dot
-   layers drift on one keyframe (different directions) for a twinkling-static look;
-   --foreground dots read in both themes. Consumed by components/env/env-value-cell. */
-@keyframes deplo-spoiler-drift {
-  to {
-    background-position: 5px 6px, -6px 4px, 4px -5px;
-  }
-}
-
-.env-spoiler {
-  background-image:
-    radial-gradient(circle, var(--foreground) 0.6px, transparent 1px),
-    radial-gradient(circle, var(--foreground) 0.5px, transparent 1px),
-    radial-gradient(circle, var(--foreground) 0.5px, transparent 1px);
-  background-size: 4px 4px, 6px 6px, 5px 5px;
-  background-position: 0 0, 2px 1px, 1px 3px;
-  opacity: 0;
-  transition: opacity 180ms ease;
-}
-
-.group:hover .env-spoiler {
-  opacity: 0.5;
-  animation: deplo-spoiler-drift 2.2s linear infinite;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,

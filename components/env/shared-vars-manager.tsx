@@ -241,12 +241,12 @@ export function SharedVarsManager({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Key</TableHead>
-                <TableHead>Value</TableHead>
-                <TableHead>Shared with</TableHead>
-                <TableHead>Last modified</TableHead>
-                <TableHead>Modified by</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="whitespace-nowrap">Key</TableHead>
+                <TableHead className="w-full">Value</TableHead>
+                <TableHead className="whitespace-nowrap">Shared with</TableHead>
+                <TableHead className="whitespace-nowrap">Last modified</TableHead>
+                <TableHead className="whitespace-nowrap">Modified by</TableHead>
+                <TableHead className="whitespace-nowrap text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
