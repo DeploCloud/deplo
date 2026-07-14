@@ -25,7 +25,7 @@ import {
  * Data-layer tests for server → team access (the "all teams / specific teams"
  * feature). Covers the consumption filter (`listServersForTeam`), the
  * `setServerTeams` widen/restrict transitions, and the block that refuses to
- * revoke a team's access while it still has workloads (services or databases) on
+ * revoke a team's access while it still has workloads (apps or databases) on
  * the server — the conscious-teardown rule mirrored from `removeServer`.
  */
 
@@ -107,7 +107,7 @@ test("restricting is BLOCKED when an excluded team has a PROJECT on the server",
     asUser1(() =>
       setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
     ),
-    /services or databases/,
+    /apps or databases/,
   );
   // The block left the access untouched (still all teams).
   assert.equal((await getServerById(SERVER_1))!.allTeams, true);
@@ -120,7 +120,7 @@ test("restricting is BLOCKED when an excluded team has a DATABASE on the server"
     asUser1(() =>
       setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
     ),
-    /services or databases/,
+    /apps or databases/,
   );
 });
 

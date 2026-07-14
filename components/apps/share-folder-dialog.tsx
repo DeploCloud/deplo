@@ -140,6 +140,7 @@ export function ShareFolderDialog({
   }, [folderId]);
 
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- `reload` flips the loading flag before its first await; the fetch is the external system this effect exists to sync with
     if (open) reload();
   }, [open, reload]);
 

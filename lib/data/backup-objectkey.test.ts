@@ -47,7 +47,7 @@ test("targetPrefix is the per-target folder and ends in a slash", () => {
   );
   assert.equal(
     targetPrefix("team_1", "app", "prj_2"),
-    "deplo/team_1/service/prj_2/",
+    "deplo/team_1/app/prj_2/",
   );
 });
 

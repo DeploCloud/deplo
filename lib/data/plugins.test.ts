@@ -16,7 +16,7 @@ import { pluginRuntimeStatus, startPlugin, stopPlugin } from "./plugins";
  * mutations and `listInstalledPlugins` go through the app runtime (Docker) and
  * `headers()` (a request scope) so they aren't unit-testable here — that was true
  * of the JSONB version too. The migration-relevant change (the team-scoped
- * `findPlugin` query + the "App not installed" guard) is fully covered:
+ * `findPlugin` query + the "Plugin not installed" guard) is fully covered:
  *  - `pluginRuntimeStatus` resolves an existing row (status "error" — no Docker — is
  *    the honest answer when the daemon is unreachable),
  *  - `startPlugin`/`stopPlugin` reject a row that isn't in the caller's active team
@@ -72,15 +72,15 @@ test("pluginRuntimeStatus reads an existing app in the active team (error withou
 test("pluginRuntimeStatus rejects an app the active team does not own", async () => {
   await seedApp("app_b", TEAM_B, "mcp__beta");
   await asUser1(async () => {
-    await assert.rejects(() => pluginRuntimeStatus("app_b"), /App not installed/);
+    await assert.rejects(() => pluginRuntimeStatus("app_b"), /Plugin not installed/);
   });
 });
 
 test("startPlugin / stopPlugin reject a cross-team app before touching the runtime", async () => {
   await seedApp("app_b", TEAM_B, "mcp__beta");
   await asUser1(async () => {
-    // Team-scoped find returns null → "App not installed" before any docker call.
-    await assert.rejects(() => startPlugin("app_b"), /App not installed/);
-    await assert.rejects(() => stopPlugin("app_b"), /App not installed/);
+    // Team-scoped find returns null → "Plugin not installed" before any docker call.
+    await assert.rejects(() => startPlugin("app_b"), /Plugin not installed/);
+    await assert.rejects(() => stopPlugin("app_b"), /Plugin not installed/);
   });
 });
