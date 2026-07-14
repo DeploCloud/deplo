@@ -149,3 +149,93 @@ test("the self-guard FIRES on the raw repo template", async () => {
 function guardMatches(url: string): boolean {
   return /__AGENT_URL.*AMD64__/.test(url);
 }
+
+/* ------------------------------------------------------------------ */
+/* The Docker address-pool step                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Docker's default pools cap a host at ~31 networks and Deplo takes one PER APP,
+ * so both installers widen the pool. Three invariants, and every one of them
+ * fails SILENTLY if broken — hence the tests.
+ *
+ *  - ORDER. The step must run before ANYTHING allocates a subnet. Move it below
+ *    `docker network create deplo` and it still runs, still prints [ok], and
+ *    still leaves the host capped: the daemon only reads pools at restart, and by
+ *    then Traefik has already taken a subnet from the OLD ones.
+ *  - NO 10.0.0.0/8. Coolify hardcoded exactly that and it swallowed hosts' own
+ *    LAN/VPN, so dockerd refused to start — their #9537, the error the fix was
+ *    meant to prevent. The base must be CHOSEN against the host's routes.
+ *  - PARITY. The block is duplicated into install.sh and install-agent.sh: two
+ *    standalone curl|bash scripts that cannot source a shared file. A "KEEP IN
+ *    SYNC" comment is not a mechanism. This is.
+ */
+
+/** The address-pool block, comments and indentation stripped, for comparison. */
+function poolBlock(script: string): string {
+  const start = script.indexOf("pool_candidate_is_free() {");
+  const end = script.indexOf("\nconfigure_docker_address_pools\n", start);
+  assert.ok(start >= 0 && end > start, "address-pool block not found in installer");
+  return script
+    .slice(start, end)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "" && !l.startsWith("#"))
+    .join("\n");
+}
+
+test("the address-pool step runs BEFORE anything creates a docker network", async () => {
+  const restore = stubReleaseFetch();
+  __resetReleaseCacheForTests();
+  try {
+    const agent = await renderInstallScript();
+    assert.ok(agent);
+    const configured = agent!.indexOf("\nconfigure_docker_address_pools\n");
+    const firstNetwork = agent!.indexOf("docker network create deplo");
+    assert.ok(configured > 0, "install-agent.sh never calls configure_docker_address_pools");
+    assert.ok(firstNetwork > 0, "install-agent.sh no longer creates the deplo network?");
+    assert.ok(
+      configured < firstNetwork,
+      "pools are configured AFTER the first network is created — the host stays capped at ~31 apps",
+    );
+
+    const host = await readFile(join(process.cwd(), "install.sh"), "utf8");
+    const hostConfigured = host.indexOf("\nconfigure_docker_address_pools\n");
+    const hostNetwork = host.indexOf("docker network inspect deplo");
+    assert.ok(hostConfigured > 0, "install.sh never calls configure_docker_address_pools");
+    assert.ok(hostNetwork > 0, "install.sh no longer creates the deplo network?");
+    assert.ok(
+      hostConfigured < hostNetwork,
+      "install.sh configures pools AFTER creating the deplo network — the step is a no-op",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("no installer ever hardcodes 10.0.0.0/8 as the address pool", async () => {
+  for (const file of ["install.sh", "install-agent.sh"]) {
+    const script = await readFile(join(process.cwd(), file), "utf8");
+    // CODE only: the block comment names the range precisely to warn the next
+    // editor off it, and a test that can't tell prose from config would fire on
+    // the warning itself.
+    const code = script
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("#"))
+      .join("\n");
+    assert.ok(
+      !code.includes("10.0.0.0/8"),
+      `${file} hardcodes 10.0.0.0/8 — it swallows the host's own LAN/VPN and dockerd won't start`,
+    );
+  }
+});
+
+test("both installers carry the SAME address-pool block", async () => {
+  const host = await readFile(join(process.cwd(), "install.sh"), "utf8");
+  const agent = await readFile(join(process.cwd(), "install-agent.sh"), "utf8");
+  assert.equal(
+    poolBlock(host),
+    poolBlock(agent),
+    "install.sh and install-agent.sh have drifted — the address-pool block must stay identical",
+  );
+});

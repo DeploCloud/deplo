@@ -76,6 +76,150 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
+# 1b. Docker address pools ---------------------------------------------------
+# Docker's DEFAULT pools — 172.17.0.0/12 carved into /16s (15 subnets) plus
+# 192.168.0.0/16 carved into /20s (16) — allow ~31 networks on a host, and Deplo
+# burns ONE PER APP (every stack gets its own `<app>_default` bridge). An
+# untouched host therefore dies on its 32nd deploy with "all predefined address
+# pools have been fully subnetted", and no amount of cleanup saves it: the
+# networks of RUNNING apps are not garbage. Widening the pool is the only fix.
+#
+# It happens HERE, before the `deplo` network below or any app has taken a
+# subnet, because the change needs a FULL daemon restart (a reload does not load
+# pools) — and on a host with nothing running yet, that restart is free. Note the
+# restart also re-homes docker0 itself (it is allocated from the pools when `bip`
+# is unset), which is harmless on a host where nothing is on the default bridge
+# yet, and is a second reason not to do this later.
+#
+# Two rules, both learned from Coolify shipping this same fix badly (their #3529
+# then #9537):
+#   1. NEVER hardcode 10.0.0.0/8. It swallows the host's own LAN / VPN / WireGuard
+#      and then dockerd refuses to start — the very error we came to prevent.
+#      Pick a /13 that overlaps NO route already on the box.
+#   2. NEVER clobber the operator's daemon.json. An existing default-address-pools
+#      always wins; a file we cannot merge safely is left alone with a warning.
+# KEEP IN SYNC with the identical block in install-agent.sh.
+
+# Is the /13 at 10.<$1>.0.0 (second octets $1..$1+7) clear of every 10.x route on
+# this host? Pure awk — no python, jq or ipcalc required on the target.
+pool_candidate_is_free() {
+  printf '%s\n' "$2" | awk -v start="$1" '
+    BEGIN { end = start + 7; free = 1 }
+    $0 != "" {
+      split($0, cidr, "/")
+      prefix = (cidr[2] == "") ? 32 : cidr[2] + 0
+      split(cidr[1], oct, ".")
+      if (oct[1] + 0 != 10) next
+      if (prefix <= 8) { free = 0; exit }        # this route owns all of 10/8
+      if (prefix >= 16) { lo = oct[2] + 0; hi = lo }
+      else {
+        span = 1
+        for (k = prefix; k < 16; k++) span *= 2  # 2^(16-prefix) second octets
+        lo = int((oct[2] + 0) / span) * span
+        hi = lo + span - 1
+      }
+      if (lo <= end && hi >= start) { free = 0; exit }
+    }
+    END { exit (free ? 0 : 1) }
+  '
+}
+
+configure_docker_address_pools() {
+  CFG=/etc/docker/daemon.json
+  SIZE=24
+
+  if [ -f "$CFG" ] && grep -q '"default-address-pools"' "$CFG" 2>/dev/null; then
+    ok "Docker address pools already configured — leaving them untouched"
+    return 0
+  fi
+
+  ROUTES="$(ip -4 route 2>/dev/null | awk '{print $1}' | grep -E '^10\.' || true)"
+  BASE=""
+  for cand in 200 208 216 224 232 240 248 192; do
+    if pool_candidate_is_free "$cand" "$ROUTES"; then
+      BASE="10.${cand}.0.0/13"
+      break
+    fi
+  done
+  if [ -z "$BASE" ]; then
+    err "Every candidate address pool overlaps a route on this host — NOT touching Docker."
+    err "This server is capped at ~31 apps until you set default-address-pools in $CFG yourself."
+    return 0
+  fi
+
+  TMP="$(mktemp)"
+  if [ ! -f "$CFG" ]; then
+    printf '{\n  "default-address-pools": [\n    { "base": "%s", "size": %s }\n  ]\n}\n' \
+      "$BASE" "$SIZE" > "$TMP"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys
+cfg, base, size = sys.argv[1], sys.argv[2], int(sys.argv[3])
+with open(cfg) as f: d = json.load(f)
+d["default-address-pools"] = [{"base": base, "size": size}]
+sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP" 2>/dev/null || {
+      err "Could not parse $CFG as JSON — leaving it untouched."
+      err "Add manually: \"default-address-pools\": [{\"base\": \"$BASE\", \"size\": $SIZE}]"
+      rm -f "$TMP"; return 0
+    }
+  elif command -v jq >/dev/null 2>&1; then
+    jq --arg b "$BASE" --argjson s "$SIZE" \
+      '.["default-address-pools"] = [{base: $b, size: $s}]' "$CFG" > "$TMP" 2>/dev/null || {
+      err "Could not parse $CFG as JSON — leaving it untouched."
+      err "Add manually: \"default-address-pools\": [{\"base\": \"$BASE\", \"size\": $SIZE}]"
+      rm -f "$TMP"; return 0
+    }
+  else
+    err "$CFG exists and neither python3 nor jq is available to merge into it safely."
+    err "Add manually: \"default-address-pools\": [{\"base\": \"$BASE\", \"size\": $SIZE}]"
+    rm -f "$TMP"; return 0
+  fi
+
+  # Never hand dockerd a config it will reject: it would fail to come back up.
+  if command -v dockerd >/dev/null 2>&1 \
+     && ! dockerd --validate --config-file="$TMP" >/dev/null 2>&1; then
+    err "The generated Docker config failed validation — leaving $CFG untouched."
+    rm -f "$TMP"; return 0
+  fi
+
+  RUNNING="$(docker ps -q 2>/dev/null | wc -l | tr -d ' ' || true)"
+  [ -f "$CFG" ] && cp "$CFG" "$CFG.deplo-bak"
+  mkdir -p /etc/docker
+  install -m 0644 "$TMP" "$CFG"
+  rm -f "$TMP"
+
+  # An UPDATE run lands here on a live host: never bounce someone's running apps.
+  # Pools apply at the next daemon restart; until the operator picks a window,
+  # this host keeps its ceiling.
+  if [ "${RUNNING:-0}" -gt 0 ]; then
+    ok "Address pool $BASE written to $CFG"
+    err "Docker is running $RUNNING container(s), so it was NOT restarted."
+    err "Apply it in a maintenance window: systemctl restart docker"
+    return 0
+  fi
+
+  step "Applying Docker address pool $BASE (a /$SIZE per network)..."
+  systemctl restart docker >/dev/null 2>&1 || true
+  i=0
+  until docker info >/dev/null 2>&1; do
+    i=$((i + 1)); [ "$i" -ge 15 ] && break
+    sleep 1
+  done
+  if docker info >/dev/null 2>&1; then
+    ok "Docker address pool: $BASE, a /$SIZE per app (thousands of apps, not 31)"
+  else
+    err "Docker did not come back after the address-pool change — rolling back."
+    if [ -f "$CFG.deplo-bak" ]; then mv "$CFG.deplo-bak" "$CFG"; else rm -f "$CFG"; fi
+    systemctl restart docker >/dev/null 2>&1 || true
+    if docker info >/dev/null 2>&1; then
+      err "Rolled back — Docker is up again, with the default ~31-network ceiling."
+    else
+      err "Docker is STILL down. Inspect: journalctl -u docker -n 50"
+    fi
+  fi
+}
+
+configure_docker_address_pools
+
 # 2. Workspace, secrets + network -------------------------------------------
 step "Preparing $DEPLO_DIR and the 'deplo' network..."
 mkdir -p "$DEPLO_DIR/traefik" "$DEPLO_DIR/data" "$DEPLO_DIR/acme"
