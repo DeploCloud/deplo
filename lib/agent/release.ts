@@ -29,7 +29,7 @@ export const AGENT_REPO = "DeploCloud/deplo-agent";
  * "expected" as "nothing is outdated" — so a stale fallback never wrongly flags
  * a healthy agent. Bump it when cutting a release you want reflected offline.
  */
-export const FALLBACK_AGENT_VERSION = "1.1.0";
+export const FALLBACK_AGENT_VERSION = "1.8.0";
 
 /** The asset basename the install script downloads, per Linux architecture. */
 function assetName(arch: "amd64" | "arm64"): string {
