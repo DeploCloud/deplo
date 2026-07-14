@@ -85,6 +85,17 @@ export function EnvValueCell({
     >
       <span className={INNER}>
         {revealed ? (
+          <EyeOff
+            aria-hidden
+            className="size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
+          />
+        ) : (
+          <Eye
+            aria-hidden
+            className="size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
+          />
+        )}
+        {revealed ? (
           <code className="min-w-0 flex-1 select-text truncate font-mono text-xs text-foreground/90">
             {value}
           </code>
@@ -97,17 +108,6 @@ export function EnvValueCell({
           >
             {MASK}
           </code>
-        )}
-        {revealed ? (
-          <EyeOff
-            aria-hidden
-            className="size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
-          />
-        ) : (
-          <Eye
-            aria-hidden
-            className="size-3.5 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground"
-          />
         )}
       </span>
     </button>
