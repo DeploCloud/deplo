@@ -22,12 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -188,16 +183,21 @@ function EditForm({
 /* Add: Standalone (multi-row / paste .env) + Shared tabs              */
 /* ------------------------------------------------------------------ */
 
+const ADD_TABS = ["standalone", "shared"] as const;
+type AddTab = (typeof ADD_TABS)[number];
+
 /**
- * The modal is a fixed HEADER (title + the two tabs), a body that scrolls on its
- * own, and a footer bar pinned under it — not one long scrolling column. Paste a
- * 40-line `.env` and the rows scroll while "Add 40" stays exactly where your
- * hand left it; the old layout pushed the button off the bottom of the screen.
+ * Standalone + Shared, as two panels on ONE horizontal track that slides between
+ * them when you switch tab — and the modal's height eases to whichever panel is
+ * showing, so the slide glides instead of jumping. A fixed header (title + tabs),
+ * a body that scrolls inside each panel, a footer pinned under it: paste a 40-line
+ * `.env` and "Add 40" stays put while the rows scroll.
  *
- * Each tab owns its own footer (they confirm different things), so the two halves
- * live inside the panels — `data-[state=active]:flex` rather than a bare `flex`,
- * or the utility would out-rank `[hidden]` and paint the idle panel on top of the
- * live one.
+ * Both panels stay mounted (a slide needs the outgoing one on screen too, moving
+ * out as the other moves in), so the off-screen one is `inert` — neither tabbable
+ * nor read by a screen reader while it waits in the wings. Each panel keeps its
+ * NATURAL height (`self-start`); the viewport is clipped to the active one, which
+ * is what its measured height drives.
  */
 function AddDialog({
   open,
@@ -210,7 +210,58 @@ function AddDialog({
   appId: string;
   sharedVars?: LinkableSharedVar[];
 }) {
-  const [tab, setTab] = React.useState<"standalone" | "shared">("standalone");
+  const [tab, setTab] = React.useState<AddTab>("standalone");
+  const index = ADD_TABS.indexOf(tab);
+
+  // The viewport's height follows the ACTIVE panel. We track BOTH panels' heights
+  // live so a switch has the target height in hand (no measure-lag), and keep them
+  // fresh as a panel grows or shrinks — a row added, the shared list loading in.
+  // Measuring happens in the panel's own callback ref (fires the moment the node
+  // attaches) rather than a layout effect: the panels mount inside Radix's Dialog
+  // presence, so an effect can run a beat before their refs are wired.
+  const panels = React.useRef<Record<AddTab, HTMLElement | null>>({
+    standalone: null,
+    shared: null,
+  });
+  const [heights, setHeights] = React.useState<Record<AddTab, number>>({
+    standalone: 0,
+    shared: 0,
+  });
+  const height = heights[tab] || undefined;
+
+  // Created once (lazy state init, so `new ResizeObserver` never runs on the
+  // server); a single instance keeps both panels measured.
+  const [observer] = React.useState<ResizeObserver | null>(() =>
+    typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver((entries) => {
+          setHeights((prev) => {
+            let next = prev;
+            for (const entry of entries) {
+              const el = entry.target as HTMLElement;
+              const t = el.dataset.panel as AddTab | undefined;
+              if (t && next[t] !== el.offsetHeight)
+                next = { ...next, [t]: el.offsetHeight };
+            }
+            return next;
+          });
+        }),
+  );
+  React.useEffect(() => () => observer?.disconnect(), [observer]);
+
+  // Measure on attach and observe for later size changes; unobserve on detach.
+  const registerPanel = React.useCallback(
+    (t: AddTab) => (el: HTMLElement | null) => {
+      const prev = panels.current[t];
+      if (prev) observer?.unobserve(prev);
+      panels.current[t] = el;
+      if (!el) return;
+      const h = el.offsetHeight;
+      setHeights((prevH) => (prevH[t] === h ? prevH : { ...prevH, [t]: h }));
+      observer?.observe(el);
+    },
+    [observer],
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -224,8 +275,8 @@ function AddDialog({
 
         <Tabs
           value={tab}
-          onValueChange={(v) => setTab(v as typeof tab)}
-          className="flex min-h-0 flex-1 flex-col"
+          onValueChange={(v) => setTab(v as AddTab)}
+          className="flex min-h-0 flex-col"
         >
           {/* A segmented control on a track — the same shape the app wears
               elsewhere — so the idle half still reads as a place you can go. */}
@@ -248,22 +299,43 @@ function AddDialog({
             </TabsList>
           </div>
 
-          <TabsContent
-            value="standalone"
-            className="mt-0 min-h-0 flex-1 flex-col data-[state=active]:flex"
+          {/* The sliding viewport: its height eases to the active panel while the
+              track glides one panel-width sideways per tab. */}
+          <div
+            className="relative overflow-hidden transition-[height] duration-300 ease-out motion-reduce:transition-none"
+            style={{ height }}
           >
-            <StandaloneTab appId={appId} onDone={() => onOpenChange(false)} />
-          </TabsContent>
-          <TabsContent
-            value="shared"
-            className="mt-0 min-h-0 flex-1 flex-col data-[state=active]:flex"
-          >
-            <SharedTab
-              appId={appId}
-              sharedVars={sharedVars}
-              onClose={() => onOpenChange(false)}
-            />
-          </TabsContent>
+            <div
+              className="flex transition-transform duration-300 ease-out motion-reduce:transition-none"
+              style={{ transform: `translateX(-${index * 100}%)` }}
+            >
+              {ADD_TABS.map((t) => (
+                <div
+                  key={t}
+                  ref={registerPanel(t)}
+                  data-panel={t}
+                  role="tabpanel"
+                  aria-label={t === "standalone" ? "Standalone" : "Shared"}
+                  inert={t !== tab ? true : undefined}
+                  className="w-full shrink-0 self-start"
+                >
+                  {t === "standalone" ? (
+                    <StandaloneTab
+                      appId={appId}
+                      onDone={() => onOpenChange(false)}
+                    />
+                  ) : (
+                    <SharedTab
+                      appId={appId}
+                      sharedVars={sharedVars}
+                      active={tab === "shared"}
+                      onClose={() => onOpenChange(false)}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </Tabs>
       </DialogContent>
     </Dialog>
@@ -274,6 +346,11 @@ type Row = { key: string; value: string };
 
 /** The three columns every row of the key/value editor lines up on. */
 const GRID = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_2rem] items-center gap-2";
+
+/** Each panel's scrolling body caps here so its footer stays on screen and the
+ *  whole modal stays inside its 85vh box — the chrome (header + tabs + footer) is
+ *  ~14rem, so the body gets the rest. */
+const PANEL_BODY_MAX = "max-h-[calc(85vh-14rem)]";
 
 function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void }) {
   const [rows, setRows] = React.useState<Row[]>([{ key: "", value: "" }]);
@@ -366,7 +443,7 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
   return (
     <>
       {/* The body — the only thing that scrolls. */}
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
+      <div className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}>
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
           <ClipboardPaste className="mt-px size-3.5 shrink-0" />
           <span>
@@ -496,19 +573,25 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
 function SharedTab({
   appId,
   sharedVars,
+  active,
   onClose,
 }: {
   appId: string;
   sharedVars?: LinkableSharedVar[];
+  /** This tab is mounted even while off-screen (for the slide); only reach for
+   *  the network once it has actually been opened. */
+  active: boolean;
   onClose: () => void;
 }) {
   const [vars, setVars] = React.useState<LinkableSharedVar[] | null>(
     sharedVars ?? null,
   );
 
-  // Lazy-fetch when the caller didn't pass the in-scope set (aggregate view).
+  // Lazy-fetch when the caller didn't pass the in-scope set (aggregate view) —
+  // but not before this tab is opened, so a dialog left on Standalone never
+  // queries for shared vars it won't show.
   React.useEffect(() => {
-    if (vars !== null) return;
+    if (!active || vars !== null) return;
     let alive = true;
     gql<{ sharedVarsForApp: LinkableSharedVar[] }>(
       `query($appId: String!) {
@@ -524,11 +607,11 @@ function SharedTab({
     return () => {
       alive = false;
     };
-  }, [appId, vars]);
+  }, [appId, vars, active]);
 
   return (
     <>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+      <div className={cn("overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}>
         {vars === null ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
             Loading…
