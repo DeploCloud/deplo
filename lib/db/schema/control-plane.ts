@@ -658,6 +658,26 @@ export const apps = pgTable(
     productionUrl: text("production_url"),
     status: text("status").notNull(),
     autoDeploy: boolean("auto_deploy").notNull(),
+    // Per-app resource limits (flattened ResourceLimits, like repo_*/upload_*).
+    // Every column NULLABLE with NO default: NULL ⇒ that dimension is UNCAPPED,
+    // and an all-NULL row ⇒ `resources` assembles to null (no limits set), so an
+    // app that never opened the Resources page renders a byte-identical stack.
+    // These are applied at deploy time as `docker compose up` container keys
+    // (mem_limit/cpus/pids_limit/…) — see lib/deploy/resources.ts. Memory sizes
+    // are stored in MEBIBYTES, disk in GIBIBYTES, and CPU in MILLI-CPUs (1000 =
+    // one core) so every value is a clean integer (no float column).
+    resourceMemLimitMb: integer("resource_mem_limit_mb"),
+    resourceMemReservationMb: integer("resource_mem_reservation_mb"),
+    resourceMemSwapMb: integer("resource_mem_swap_mb"),
+    resourceCpuMilli: integer("resource_cpu_milli"),
+    resourceCpuShares: integer("resource_cpu_shares"),
+    resourceCpuset: text("resource_cpuset"),
+    resourcePidsLimit: integer("resource_pids_limit"),
+    resourceShmSizeMb: integer("resource_shm_size_mb"),
+    resourceStorageSizeGb: integer("resource_storage_size_gb"),
+    resourceUlimitNofile: integer("resource_ulimit_nofile"),
+    resourceUlimitNproc: integer("resource_ulimit_nproc"),
+    resourceOomScoreAdj: integer("resource_oom_score_adj"),
     // Pointer to the service's latest Deployment. `SET NULL` so deleting a
     // deployment can't leave a dangling pointer (the orphan-prevention-as-DB-
     // invariant goal). The value is set in a second backfill pass after

@@ -24,9 +24,11 @@ import {
   deleteApps,
   reorderApps,
   setAppVolumes,
+  updateAppResources,
   findAppSummaryBySlugForTeam,
   summarizeForTeam,
   type AppSummary,
+  type ResourceLimitsInput,
 } from "@/lib/data/apps";
 import { pubSub } from "../pubsub";
 import {
@@ -43,7 +45,13 @@ import {
   promoteToProduction,
 } from "@/lib/data/deployments";
 import { renderAppStack } from "@/lib/deploy/build";
-import type { Deployment, GitRepo, LogLine, VolumeMount } from "@/lib/types";
+import type {
+  Deployment,
+  GitRepo,
+  LogLine,
+  ResourceLimits,
+  VolumeMount,
+} from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /* Object types                                                        */
@@ -112,6 +120,29 @@ const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
   }),
 });
 
+const ResourceLimitsRef = builder
+  .objectRef<ResourceLimits>("ResourceLimits")
+  .implement({
+    description:
+      "Per-app resource caps applied to the app's container(s) at deploy time. " +
+      "A null field means that dimension is uncapped. Memory is in MiB, disk in " +
+      "GiB, CPU in milli-CPUs (1000 = one core).",
+    fields: (t) => ({
+      memoryMb: t.exposeInt("memoryMb", { nullable: true }),
+      memoryReservationMb: t.exposeInt("memoryReservationMb", { nullable: true }),
+      swapMb: t.exposeInt("swapMb", { nullable: true }),
+      cpuMilli: t.exposeInt("cpuMilli", { nullable: true }),
+      cpuShares: t.exposeInt("cpuShares", { nullable: true }),
+      cpuset: t.exposeString("cpuset", { nullable: true }),
+      pidsLimit: t.exposeInt("pidsLimit", { nullable: true }),
+      shmSizeMb: t.exposeInt("shmSizeMb", { nullable: true }),
+      storageGb: t.exposeInt("storageGb", { nullable: true }),
+      nofile: t.exposeInt("nofile", { nullable: true }),
+      nproc: t.exposeInt("nproc", { nullable: true }),
+      oomScoreAdj: t.exposeInt("oomScoreAdj", { nullable: true }),
+    }),
+  });
+
 export const AppRef = builder
   .objectRef<AppSummary>("App")
   .implement({
@@ -138,6 +169,14 @@ export const AppRef = builder
         description:
           "Persistent named volumes (single-container apps only).",
         resolve: (p) => p.volumes ?? [],
+      }),
+      resources: t.field({
+        type: ResourceLimitsRef,
+        nullable: true,
+        description:
+          "Per-app resource caps applied at deploy time, or null when the app " +
+          "has no limits set.",
+        resolve: (p) => p.resources,
       }),
       productionUrl: t.exposeString("productionUrl", { nullable: true }),
       status: t.field({ type: AppStatusEnum, resolve: (p) => p.status }),
@@ -219,6 +258,27 @@ const BuildConfigInput = builder.inputType("BuildConfigInput", {
     runtimeVersion: t.string({ required: false }),
     port: t.int({ required: false }),
     settings: t.field({ type: "JSON", required: false }),
+  }),
+});
+
+const ResourceLimitsInputType = builder.inputType("ResourceLimitsInput", {
+  description:
+    "Per-app resource caps. Every field is optional and independently nullable " +
+    "(null ⇒ that dimension is uncapped); the form sends the full set on each " +
+    "save. Memory in MiB, disk in GiB, CPU in milli-CPUs (1000 = one core).",
+  fields: (t) => ({
+    memoryMb: t.int({ required: false }),
+    memoryReservationMb: t.int({ required: false }),
+    swapMb: t.int({ required: false }),
+    cpuMilli: t.int({ required: false }),
+    cpuShares: t.int({ required: false }),
+    cpuset: t.string({ required: false }),
+    pidsLimit: t.int({ required: false }),
+    shmSizeMb: t.int({ required: false }),
+    storageGb: t.int({ required: false }),
+    nofile: t.int({ required: false }),
+    nproc: t.int({ required: false }),
+    oomScoreAdj: t.int({ required: false }),
   }),
 });
 
@@ -416,6 +476,21 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, build }) => {
       await updateAppBuild(id, remapBuildInput(build) as never);
+      return reloadApp(id);
+    },
+  }),
+  updateAppResources: t.field({
+    type: AppRef,
+    description:
+      "Save the app's per-app resource caps (RAM/CPU/PIDs/disk/…). Applied on " +
+      "the next deploy. A cleared field ⇒ that dimension is uncapped.",
+    authScopes: { capability: "deploy" },
+    args: {
+      id: t.arg.string({ required: true }),
+      limits: t.arg({ type: ResourceLimitsInputType, required: true }),
+    },
+    resolve: async (_r, { id, limits }) => {
+      await updateAppResources(id, limits as ResourceLimitsInput);
       return reloadApp(id);
     },
   }),

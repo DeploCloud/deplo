@@ -2,8 +2,10 @@ import "server-only";
 
 import yaml from "js-yaml";
 
+import type { ResourceLimits } from "../types";
 import { certResolver } from "./domains";
 import { traefikRouterLabels } from "./routing";
+import { mergeResourceLimits } from "./resources";
 
 /**
  * Turn a raw template/user docker-compose file into a Deplo-deployable stack.
@@ -101,6 +103,15 @@ export interface ComposeStackInput {
    * `environment:` change (byte-identical to a stack without injected env).
    */
   envKeys?: string[];
+  /**
+   * Per-app resource caps applied to EVERY service in the stack as `docker
+   * compose up` keys (`mem_limit`/`cpus`/…), EXISTING-WINS: a service that sets
+   * its own limit in the compose keeps it (like `envKeys`, the user's compose is
+   * authoritative). Null/absent ⇒ no service is touched (byte-identical). A
+   * multi-service stack has no host-level aggregate cgroup, so the app-level cap
+   * is applied per service — see the Resources settings copy for compose stacks.
+   */
+  resources?: ResourceLimits | null;
 }
 
 type App = Record<string, unknown>;
@@ -394,6 +405,10 @@ export function buildComposeStack(input: ComposeStackInput): string {
       // EVERY service (the value rides the env-file) — the env analogue of the
       // tracking/routing labels above. A key the service already declares wins.
       mergeEnvironment(svc as App, envKeys);
+      // Apply the app-level resource caps to EVERY service, existing-wins: a
+      // service that already sets its own `mem_limit`/`cpus`/… keeps it. Null
+      // resources ⇒ no-op (byte-identical).
+      mergeResourceLimits(svc as App, input.resources);
     }
   }
 

@@ -75,6 +75,7 @@ export interface SeedAppOpts {
   slug?: string;
   status?: App["status"];
   source?: App["source"];
+  resources?: App["resources"];
 }
 
 /** Seed one project + its 1-to-1 build / method-settings rows. Returns the id. */
@@ -105,6 +106,7 @@ export async function seedApp(
     productionUrl: null,
     status: opts.status ?? "active",
     autoDeploy: true,
+    resources: opts.resources ?? null,
     latestDeploymentId: null,
     createdAt: T0,
     updatedAt: T0,

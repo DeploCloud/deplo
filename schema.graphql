@@ -93,6 +93,11 @@ type App {
 
   """The Project container this app belongs to, if any."""
   projectId: ID
+
+  """
+  Per-app resource caps applied at deploy time, or null when the app has no limits set.
+  """
+  resources: ResourceLimits
   serverId: ID
   slug: String
   source: DeploySource
@@ -1389,6 +1394,11 @@ type Mutation {
   uninstallPlugin(id: String!): Boolean
   updateAppBuild(build: BuildConfigInput!, id: String!): App
   updateAppLogo(id: String!, logo: String): App
+
+  """
+  Save the app's per-app resource caps (RAM/CPU/PIDs/disk/…). Applied on the next deploy. A cleared field ⇒ that dimension is uncapped.
+  """
+  updateAppResources(id: String!, limits: ResourceLimitsInput!): App
   updateAppSource(id: String!, input: UpdateSourceInput!): App
 
   """
@@ -1767,6 +1777,42 @@ enum RegistryType {
   generic
   ghcr
   gitlab
+}
+
+"""
+Per-app resource caps applied to the app's container(s) at deploy time. A null field means that dimension is uncapped. Memory is in MiB, disk in GiB, CPU in milli-CPUs (1000 = one core).
+"""
+type ResourceLimits {
+  cpuMilli: Int
+  cpuShares: Int
+  cpuset: String
+  memoryMb: Int
+  memoryReservationMb: Int
+  nofile: Int
+  nproc: Int
+  oomScoreAdj: Int
+  pidsLimit: Int
+  shmSizeMb: Int
+  storageGb: Int
+  swapMb: Int
+}
+
+"""
+Per-app resource caps. Every field is optional and independently nullable (null ⇒ that dimension is uncapped); the form sends the full set on each save. Memory in MiB, disk in GiB, CPU in milli-CPUs (1000 = one core).
+"""
+input ResourceLimitsInput {
+  cpuMilli: Int
+  cpuShares: Int
+  cpuset: String
+  memoryMb: Int
+  memoryReservationMb: Int
+  nofile: Int
+  nproc: Int
+  oomScoreAdj: Int
+  pidsLimit: Int
+  shmSizeMb: Int
+  storageGb: Int
+  swapMb: Int
 }
 
 enum Role {

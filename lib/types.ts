@@ -776,6 +776,51 @@ export interface VolumeMount {
   readOnly: boolean;
 }
 
+/**
+ * Per-app resource limits — caps applied to the app's container(s) at deploy
+ * time so a runaway app can't starve its neighbours on a shared host. Every
+ * field is INDEPENDENTLY optional: `null` ⇒ that dimension is uncapped. An
+ * app with no limits at all has `App.resources === null` (assembled from an
+ * all-NULL row), so its rendered stack is byte-identical to the historical one.
+ *
+ * Units are normalized so each stored value is a clean integer: memory in
+ * MEBIBYTES, disk in GIBIBYTES, CPU in MILLI-CPUs (`1000` = one core). The
+ * mapping to `docker compose up` container keys (the non-swarm form, the only
+ * one deplo's agent honors) lives in `lib/deploy/resources.ts`; validation and
+ * clamping in `cleanResourceLimits` (`lib/data/apps.ts`).
+ */
+export interface ResourceLimits {
+  /** Hard RAM ceiling, MiB → `mem_limit`. The container is OOM-killed above it. */
+  memoryMb: number | null;
+  /** Soft RAM reservation, MiB → `mem_reservation` (a scheduling hint, not a cap). */
+  memoryReservationMb: number | null;
+  /** Memory + swap ceiling, MiB → `memswap_limit`. Must be ≥ `memoryMb`. */
+  swapMb: number | null;
+  /** Hard CPU ceiling in milli-CPUs (1000 = one core) → `cpus`. */
+  cpuMilli: number | null;
+  /** Relative CPU weight under contention, 2–262144 → `cpu_shares`. */
+  cpuShares: number | null;
+  /** Pin to specific host cores, e.g. "0,2-3" → `cpuset`. */
+  cpuset: string | null;
+  /** Max processes/threads (fork-bomb guard) → `pids_limit`. */
+  pidsLimit: number | null;
+  /** `/dev/shm` size, MiB → `shm_size`. */
+  shmSizeMb: number | null;
+  /**
+   * Writable-layer disk quota, GiB → `storage_opt.size`. HOST-GATED: only takes
+   * effect where the Docker storage driver supports quotas (overlay2 on XFS with
+   * pquota, or devicemapper); on other hosts `compose up` rejects it. Left null
+   * (the default) everywhere unless an operator opts in.
+   */
+  storageGb: number | null;
+  /** Max open file descriptors → `ulimits.nofile` (soft = hard). */
+  nofile: number | null;
+  /** Max processes for the container user → `ulimits.nproc` (soft = hard). */
+  nproc: number | null;
+  /** OOM-killer priority, -1000..1000 → `oom_score_adj` (higher = killed first). */
+  oomScoreAdj: number | null;
+}
+
 export interface App {
   id: ID;
   name: string;
@@ -855,6 +900,11 @@ export interface App {
   productionUrl: string | null;
   status: AppStatus;
   autoDeploy: boolean;
+  /**
+   * Per-app resource caps applied at deploy time, or `null` when the app has no
+   * limits set (the default). See {@link ResourceLimits}.
+   */
+  resources: ResourceLimits | null;
   latestDeploymentId: ID | null;
   createdAt: string;
   updatedAt: string;

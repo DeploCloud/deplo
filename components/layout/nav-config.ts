@@ -29,6 +29,7 @@ import {
   HardDrive,
   ShieldCheck,
   SlidersHorizontal,
+  Cpu,
   type LucideIcon,
 } from "lucide-react";
 
@@ -444,6 +445,12 @@ export function appSettingsNav(slug: string): NavSection[] {
           href: `${base}/storage`,
           icon: HardDrive,
           tooltip: "Persistent volumes",
+        },
+        {
+          label: "Resources",
+          href: `${base}/resources`,
+          icon: Cpu,
+          tooltip: "RAM, CPU & other limits",
         },
         {
           label: "Access",

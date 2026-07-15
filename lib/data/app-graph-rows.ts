@@ -11,6 +11,7 @@ import type {
   Folder,
   LogLine,
   App,
+  ResourceLimits,
   VolumeMount,
 } from "../types";
 import type {
@@ -210,10 +211,37 @@ export function assembleApp(
     productionUrl: row.productionUrl,
     status: row.status as App["status"],
     autoDeploy: row.autoDeploy,
+    // All-NULL resource columns ⇒ no limits set (null), like assembleRepo.
+    resources: assembleResources(row),
     latestDeploymentId: row.latestDeploymentId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+/**
+ * Fold the flat `resource_*` columns into a {@link ResourceLimits}, or null when
+ * EVERY column is NULL (no limits set) — the same null-when-absent shape
+ * `assembleRepo`/`assembleUpload` use, so an app that never set a limit
+ * round-trips to `resources: null` and renders a byte-identical stack. Each
+ * present column passes through as-is (an independently-optional cap).
+ */
+function assembleResources(row: AppRow): App["resources"] {
+  const r: ResourceLimits = {
+    memoryMb: row.resourceMemLimitMb,
+    memoryReservationMb: row.resourceMemReservationMb,
+    swapMb: row.resourceMemSwapMb,
+    cpuMilli: row.resourceCpuMilli,
+    cpuShares: row.resourceCpuShares,
+    cpuset: row.resourceCpuset,
+    pidsLimit: row.resourcePidsLimit,
+    shmSizeMb: row.resourceShmSizeMb,
+    storageGb: row.resourceStorageSizeGb,
+    nofile: row.resourceUlimitNofile,
+    nproc: row.resourceUlimitNproc,
+    oomScoreAdj: row.resourceOomScoreAdj,
+  };
+  return Object.values(r).some((v) => v != null) ? r : null;
 }
 
 function assembleRepo(row: AppRow): App["repo"] {
@@ -300,6 +328,31 @@ export interface AppRowSet {
   mounts: AppMountInsert[];
 }
 
+/**
+ * The flat `resource_*` columns for a {@link ResourceLimits} (null ⇒ every
+ * column NULL, i.e. no limits). Spread into the `apps` row by {@link appToRow}
+ * and reused by the resource-limits setter so the App→column mapping lives in
+ * exactly one place (the same single-source discipline as `buildToRow`).
+ */
+export function resourceLimitsToRow(
+  r: ResourceLimits | null,
+): Partial<AppInsert> {
+  return {
+    resourceMemLimitMb: r?.memoryMb ?? null,
+    resourceMemReservationMb: r?.memoryReservationMb ?? null,
+    resourceMemSwapMb: r?.swapMb ?? null,
+    resourceCpuMilli: r?.cpuMilli ?? null,
+    resourceCpuShares: r?.cpuShares ?? null,
+    resourceCpuset: r?.cpuset ?? null,
+    resourcePidsLimit: r?.pidsLimit ?? null,
+    resourceShmSizeMb: r?.shmSizeMb ?? null,
+    resourceStorageSizeGb: r?.storageGb ?? null,
+    resourceUlimitNofile: r?.nofile ?? null,
+    resourceUlimitNproc: r?.nproc ?? null,
+    resourceOomScoreAdj: r?.oomScoreAdj ?? null,
+  } satisfies Partial<AppInsert>;
+}
+
 /** The flat `apps` row for a {@link App} (children handled separately). */
 export function appToRow(p: App): AppInsert {
   return {
@@ -332,6 +385,9 @@ export function appToRow(p: App): AppInsert {
     productionUrl: p.productionUrl ?? null,
     status: p.status,
     autoDeploy: p.autoDeploy,
+    // Flattened ResourceLimits (null ⇒ that dimension is uncapped). An app with
+    // `resources: null` writes every column NULL, so it round-trips to null.
+    ...resourceLimitsToRow(p.resources),
     // `latest_deployment_id` is a forward FK to a deployment that may not exist
     // yet at project-insert time; the caller (createApp) sets it in a second
     // pass after deployments land, or leaves it null.

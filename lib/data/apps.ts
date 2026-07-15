@@ -44,6 +44,7 @@ import type {
   GitRepo,
   App,
   AppStatus,
+  ResourceLimits,
   UploadArchive,
   VolumeMount,
 } from "../types";
@@ -84,6 +85,7 @@ import {
   methodSettingsToRow,
   mountsToRows,
   appToRow,
+  resourceLimitsToRow,
   volumesToRows,
 } from "./app-graph-rows";
 import { detectDefaultApp } from "../deploy/compose-stack";
@@ -452,6 +454,8 @@ export async function createApp(
     productionUrl: null,
     status: isUpload ? "idle" : "queued",
     autoDeploy: input.autoDeploy ?? true,
+    // New apps start uncapped; limits are set later from Settings → Resources.
+    resources: null,
     latestDeploymentId: null,
     createdAt: nowIso(),
     updatedAt: nowIso(),
@@ -949,6 +953,144 @@ export async function setAppVolumes(
       .where(eq(appsTable.id, id));
   });
   await recordActivity("app", `Updated volumes`, user.name, id);
+}
+
+/**
+ * A resource-limits patch from the API. Every field is INDEPENDENTLY optional;
+ * `null` (or absent) ⇒ that dimension is left uncapped. The Resources settings
+ * form sends the full set on each save, so in practice this is a whole-object
+ * replace: a field the user cleared arrives as `null` and clears its column.
+ */
+export type ResourceLimitsInput = {
+  [K in keyof ResourceLimits]?: ResourceLimits[K] | null;
+};
+
+// A limit is a guard rail, not a quota — bounds are deliberately generous. We
+// reject only what Docker itself would refuse (or an obvious typo) and NEVER
+// clamp silently: a settings form should save exactly what you typed, or tell
+// you why it can't. Ceilings exist just to turn a fat-fingered "999999" GiB into
+// a clear error instead of a broken `compose up` on the host.
+const MEM_MB_MAX = 1_048_576; // 1 TiB, in MiB
+const CPU_MILLI_MAX = 512_000; // 512 cores, in milli-CPUs
+const PIDS_MAX = 4_194_304; // kernel pid_max ceiling
+const CPU_SHARES_MIN = 2;
+const CPU_SHARES_MAX = 262_144; // Docker's documented cpu-shares range
+
+/** Validate one optional integer limit; null/absent passes through as "uncapped". */
+function intLimit(
+  v: number | null | undefined,
+  label: string,
+  min: number,
+  max: number,
+): number | null {
+  if (v == null) return null;
+  if (typeof v !== "number" || !Number.isFinite(v) || !Number.isInteger(v)) {
+    throw new Error(`${label} must be a whole number.`);
+  }
+  if (v < min) throw new Error(`${label} must be at least ${min}.`);
+  if (v > max) throw new Error(`${label} must be at most ${max}.`);
+  return v;
+}
+
+/** Validate an optional CPU-set list like "0", "0,2" or "0-3". */
+function cleanCpuset(v: string | null | undefined): string | null {
+  if (v == null) return null;
+  const s = v.trim();
+  if (!s) return null;
+  if (!/^\d+([-,]\d+)*$/.test(s)) {
+    throw new Error('CPU pinning must be a core list like "0", "0,2" or "0-3".');
+  }
+  return s;
+}
+
+/**
+ * Normalize + validate a {@link ResourceLimitsInput} into a full
+ * {@link ResourceLimits}. PURE (no DB / no auth) so it unit-tests directly and
+ * runs identically on the write path. Throws a user-facing `Error` (surfaced via
+ * the mutation's toast) on any value Docker's `compose up` would reject; an
+ * all-null input validates to an all-null result ("no limits set").
+ */
+export function cleanResourceLimits(input: ResourceLimitsInput): ResourceLimits {
+  const memoryMb = intLimit(input.memoryMb, "Memory limit", 6, MEM_MB_MAX);
+  const memoryReservationMb = intLimit(
+    input.memoryReservationMb,
+    "Memory reservation",
+    6,
+    MEM_MB_MAX,
+  );
+  const swapMb = intLimit(input.swapMb, "Swap limit", 6, MEM_MB_MAX * 2);
+  const cpuMilli = intLimit(input.cpuMilli, "CPU limit", 10, CPU_MILLI_MAX);
+  const cpuShares = intLimit(
+    input.cpuShares,
+    "CPU shares",
+    CPU_SHARES_MIN,
+    CPU_SHARES_MAX,
+  );
+  const cpuset = cleanCpuset(input.cpuset);
+  const pidsLimit = intLimit(input.pidsLimit, "Process limit", 1, PIDS_MAX);
+  const shmSizeMb = intLimit(input.shmSizeMb, "Shared memory", 1, MEM_MB_MAX);
+  const storageGb = intLimit(input.storageGb, "Disk limit", 1, 65_536);
+  const nofile = intLimit(input.nofile, "Open-files limit", 1, 1_073_741_816);
+  const nproc = intLimit(input.nproc, "Process (ulimit) limit", 1, PIDS_MAX);
+  const oomScoreAdj = intLimit(input.oomScoreAdj, "OOM score adjust", -1000, 1000);
+
+  // Cross-field coherence — Docker rejects these combinations outright, so we
+  // catch them here with a plain-language reason rather than at `compose up`.
+  if (
+    memoryReservationMb != null &&
+    memoryMb != null &&
+    memoryReservationMb > memoryMb
+  ) {
+    throw new Error("Memory reservation can't exceed the memory limit.");
+  }
+  if (swapMb != null) {
+    if (memoryMb == null) {
+      throw new Error(
+        "Set a memory limit before a swap limit — the swap value is the memory + swap total.",
+      );
+    }
+    if (swapMb < memoryMb) {
+      throw new Error(
+        "Swap limit must be at least the memory limit (it's the combined memory + swap total).",
+      );
+    }
+  }
+
+  return {
+    memoryMb,
+    memoryReservationMb,
+    swapMb,
+    cpuMilli,
+    cpuShares,
+    cpuset,
+    pidsLimit,
+    shmSizeMb,
+    storageGb,
+    nofile,
+    nproc,
+    oomScoreAdj,
+  };
+}
+
+/**
+ * Save an app's per-app resource limits (Settings → Resources). Same
+ * `deploy` + folder gate as every other app-settings write; the limits take
+ * effect on the NEXT deploy (they are baked into the rendered compose, like
+ * volumes). A cleared field writes NULL, i.e. "uncapped".
+ */
+export async function updateAppResources(
+  id: string,
+  input: ResourceLimitsInput,
+): Promise<void> {
+  const { membership } = await requireCapability("deploy");
+  await requireFolderCapabilityForApp(id, "deploy");
+  const user = (await getCurrentUser())!;
+  const cleaned = cleanResourceLimits(input);
+  await updateAppOwned(id, membership.teamId, {
+    ...resourceLimitsToRow(cleaned),
+    updatedAt: nowIso(),
+  });
+  await recordActivity("app", "Updated resource limits", user.name, id);
 }
 
 /**

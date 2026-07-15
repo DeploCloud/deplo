@@ -21,7 +21,6 @@ import {
   TEAM_A,
   USER_1,
 } from "../data/identity-test-helpers";
-import { seedApp } from "../data/app-graph-test-helpers";
 import { loadEnvVarsForApp } from "../data/app-graph-load";
 import { loadSharedVarsForApp } from "../data/shared-vars";
 import { loadInstanceEnv } from "../data/global-env";
@@ -114,9 +113,19 @@ before(async () => {
     { id: "env_dev", projectId: "prc_1", name: "Development", slug: "development", kind: "development", gitBranch: "", isDefault: true, position: 0, createdAt: T0, updatedAt: T0 },
     { id: "env_prod", projectId: "prc_1", name: "Production", slug: "production", kind: "production", gitBranch: "", isDefault: false, position: 1, createdAt: T0, updatedAt: T0 },
   ]);
-  // app_p lives in the project's Development env; app_top is top-level.
-  await seedApp(db, { id: "app_p", teamId: TEAM_A });
-  await seedApp(db, { id: "app_top", teamId: TEAM_A });
+  // app_p lives in the project's Development env; app_top is top-level. Seeded
+  // via RAW SQL (not the drizzle `seedApp` helper): `appToRow` names the
+  // resource_* columns that migration 0032 adds, which don't exist yet at this
+  // 0026 freeze — the same reason the servers/env_vars seeds above go in raw.
+  // Only the apps rows (the FK anchors env_vars need) are seeded — the loaders
+  // the assertions drive read env/shared vars, never the app_build child.
+  await pg.exec(`
+    insert into apps (
+      id, name, slug, team_id, server_id, source, status, auto_deploy,
+      repo_submodules, created_at, updated_at
+    ) values
+      ('app_p',   'app_p',   'app_p',   '${TEAM_A}', 'srv_1', 'github', 'active', false, false, '${T0}', '${T0}'),
+      ('app_top', 'app_top', 'app_top', '${TEAM_A}', 'srv_1', 'github', 'active', false, false, '${T0}', '${T0}');`);
   await db
     .update(appsTable)
     .set({ projectId: "prc_1", environmentId: "env_dev" })
