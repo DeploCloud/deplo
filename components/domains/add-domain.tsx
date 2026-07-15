@@ -4,6 +4,11 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import yaml from "js-yaml";
 import { toast } from "sonner";
+import {
+  uniqueNamesGenerator,
+  adjectives,
+  animals,
+} from "unique-names-generator";
 import { Plus, Sparkles } from "lucide-react";
 import {
   Dialog,
@@ -59,11 +64,49 @@ function composeServices(compose?: string | null): string[] {
   }
 }
 
+/**
+ * A server-provided suggestion has the shape
+ * `<label>-<adjective>-<animal>-<hexip>.nip.io`. This peels off the app label and
+ * the trailing hex-IP suffix (both of which must stay fixed for the host to keep
+ * resolving to the right server) so only the two random words get regenerated.
+ * `.*` is greedy, so the label absorbs any hyphens in the slug and only the last
+ * two `[a-z0-9]+` tokens before the hex IP are treated as the words.
+ */
+const NIP_SUGGESTION_RE = /^(.*)-[a-z0-9]+-[a-z0-9]+-([0-9a-f]{8}\.nip\.io)$/i;
+
+/** A fresh `adjective-animal` pair (same generator the server uses), in the
+ * browser, so every click yields new words with no round-trip. */
+function freshWords(): string {
+  return uniqueNamesGenerator({
+    dictionaries: [adjectives, animals],
+    separator: "-",
+    length: 2,
+  });
+}
+
+/**
+ * Produce a brand-new zero-config nip.io host from the server's suggestion by
+ * swapping only its random words — the app label and hex-IP suffix are preserved,
+ * so the result still routes to the correct server. Each call is independent (no
+ * limit, no caching), so the Generate button can be clicked indefinitely. Falls
+ * back to the original suggestion if it doesn't match the expected shape.
+ */
+function regenerateNipDomain(suggested: string): string {
+  const m = NIP_SUGGESTION_RE.exec(suggested);
+  if (!m) return suggested;
+  const [, label, hexSuffix] = m;
+  return `${label}-${freshWords()}-${hexSuffix}`;
+}
+
 export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
+  // The nip.io host shown in the field-help example. Tracks the most recently
+  // generated suggestion so the tooltip stays in sync with what Generate dropped
+  // into the field; seeded with the server's first (already-fresh) suggestion.
+  const [suggestion, setSuggestion] = React.useState(suggestedDomain);
   const [config, setConfig] = React.useState<DomainConfigState>(() =>
     initialDomainConfig(undefined, project.defaultPort),
   );
@@ -143,8 +186,8 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
                   suggestedDomain ? (
                     <>
                       No domain? Generate a free{" "}
-                      <span className="font-mono">{suggestedDomain}</span> that
-                      works with zero DNS setup.
+                      <span className="font-mono">{suggestion}</span> that works
+                      with zero DNS setup. Click again for a different one.
                     </>
                   ) : (
                     "The custom hostname to route to this app, e.g. app.example.com. Add its DNS record afterward to verify."
@@ -159,10 +202,14 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
                   variant="ghost"
                   size="sm"
                   className="h-7 px-2 text-xs text-muted-foreground"
-                  onClick={() => setName(suggestedDomain)}
+                  onClick={() => {
+                    const next = regenerateNipDomain(suggestedDomain);
+                    setSuggestion(next);
+                    setName(next);
+                  }}
                 >
                   <Sparkles className="size-3.5" />
-                  Generate from nip.io
+                  Generate
                 </Button>
               ) : null}
             </div>
