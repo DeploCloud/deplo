@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { ContainerAttach } from "@/components/apps/container-attach";
@@ -147,16 +148,24 @@ export function ContainerConsole({
           {active.running ? "running" : "stopped"}
         </Badge>
         {active.running ? (
-          <Button
-            size="sm"
-            variant={mode === "attach" ? "secondary" : "ghost"}
-            onClick={() => setMode((m) => (m === "attach" ? "exec" : "attach"))}
-            className="h-7 gap-1.5 px-2 text-xs"
-            aria-pressed={mode === "attach"}
+          <SimpleTooltip
+            content={
+              mode === "attach"
+                ? "Back to the exec console — run one-off commands (docker exec)."
+                : "Attach to the container's main process (PID 1): watch its live output and type to its stdin. Ctrl-C reaches the app; detaching never stops the container."
+            }
           >
-            <Plug className="size-3.5" />
-            {mode === "attach" ? "Exec console" : "Attach"}
-          </Button>
+            <Button
+              size="sm"
+              variant={mode === "attach" ? "secondary" : "ghost"}
+              onClick={() => setMode((m) => (m === "attach" ? "exec" : "attach"))}
+              className="h-7 gap-1.5 px-2 text-xs"
+              aria-pressed={mode === "attach"}
+            >
+              <Plug className="size-3.5" />
+              {mode === "attach" ? "Exec console" : "Attach"}
+            </Button>
+          </SimpleTooltip>
         ) : null}
         <span className="ml-auto truncate font-mono text-[11px] text-muted-foreground">
           workdir {active.workdir} · {active.image}
