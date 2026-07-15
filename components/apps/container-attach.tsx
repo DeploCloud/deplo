@@ -3,19 +3,22 @@
 import * as React from "react";
 import { Plug, PlugZap, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { parseAnsi } from "@/lib/ansi";
+import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
 import { cn } from "@/lib/utils";
 
 type Status = "connecting" | "live" | "ended" | "error";
 
 /**
- * Interactive `docker attach` to a running container's PID 1.
+ * Interactive `docker attach` to a running container's PID 1, rendered in a real
+ * xterm.js terminal.
  *
- * Output streams over an EventSource (SSE) from GET /api/apps/:id/attach;
- * the first `session` event carries the server-side session id. Keystrokes are
- * POSTed to the same session so they reach the container's stdin — full-duplex
- * without a WebSocket. Detaching kills only our local attach client, never the
- * container (the route spawns with --sig-proxy=false).
+ * Output streams over an EventSource (SSE) from GET /api/apps/:id/attach; the
+ * first `session` event carries the server-side session id. Every keystroke —
+ * arrows, Tab, Ctrl-C, the lot — is POSTed raw to that session's stdin, so a
+ * shell/TUI behaves as it would over a local `docker attach`. The terminal seeds
+ * the pty with its own size on open and POSTs a resize on every refit. Detaching
+ * kills only our local attach client, never the container (spawn is
+ * `--sig-proxy=false`).
  */
 export function ContainerAttach({
   appId,
@@ -32,18 +35,37 @@ export function ContainerAttach({
   embedded?: boolean;
 }) {
   const [status, setStatus] = React.useState<Status>("connecting");
-  const [output, setOutput] = React.useState("");
-  const [value, setValue] = React.useState("");
+  // Gate the stream on the terminal being mounted + fitted, so the GET can carry
+  // the real initial pty size instead of a guess.
+  const [ready, setReady] = React.useState(false);
+  const term = React.useRef<XtermApi | null>(null);
+  const size = React.useRef({ cols: 80, rows: 24 });
   const sessionId = React.useRef<string | null>(null);
-  const scrollRef = React.useRef<HTMLDivElement>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  // Bumped on reconnect to retrigger the effect for a fresh stream.
+  // Bumped on reattach to retrigger the stream effect with a fresh connection.
   const [attempt, setAttempt] = React.useState(0);
 
   const base = `/api/apps/${encodeURIComponent(appId)}/attach`;
 
+  // One POST helper for both stdin bytes and resize frames — same session route.
+  const post = React.useCallback(
+    (payload: { data: string } | { resize: { cols: number; rows: number } }) => {
+      const id = sessionId.current;
+      if (!id) return;
+      void fetch(base, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: id, ...payload }),
+      }).catch(() => {});
+    },
+    [base],
+  );
+
   React.useEffect(() => {
-    const url = `${base}?container=${encodeURIComponent(containerName)}`;
+    if (!ready) return;
+    const { cols, rows } = size.current;
+    const url = `${base}?container=${encodeURIComponent(
+      containerName,
+    )}&cols=${cols}&rows=${rows}`;
     const es = new EventSource(url);
 
     // Custom `session` frame carries the server-side session id. (Not "open" —
@@ -52,19 +74,19 @@ export function ContainerAttach({
     es.addEventListener("session", (e) => {
       sessionId.current = JSON.parse((e as MessageEvent).data);
       setStatus("live");
+      term.current?.focus();
     });
     es.addEventListener("data", (e) => {
-      setOutput((prev) => prev + JSON.parse((e as MessageEvent).data));
+      term.current?.write(JSON.parse((e as MessageEvent).data));
     });
     es.addEventListener("exit", () => {
       setStatus("ended");
       es.close();
     });
-    // Native EventSource error: the connection dropped or failed to open.
+    // Native EventSource error: the connection dropped or failed to open. If we
+    // never went live (no `session` frame), the attach failed (stopped/404);
+    // once live, an error just means the stream ended.
     es.onerror = () => {
-      // If we never went live (no `session` frame), the attach failed
-      // (stopped/404). Once live, an error means the stream ended — treat it as
-      // such rather than retrying.
       setStatus((s) => (s === "live" ? "ended" : "error"));
       es.close();
     };
@@ -84,48 +106,33 @@ export function ContainerAttach({
       }
       sessionId.current = null;
     };
-  }, [base, containerName, attempt]);
+  }, [ready, base, containerName, attempt]);
 
-  React.useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [output]);
+  const onReady = React.useCallback((api: XtermApi) => {
+    term.current = api;
+    size.current = api.fit();
+    setReady(true);
+  }, []);
 
-  // Container output carries ANSI color/control codes; render them as styled
-  // runs instead of leaking raw `[33m`-style escapes into the pane.
-  const segments = React.useMemo(() => parseAnsi(output), [output]);
+  // Every keystroke (incl. control sequences) → the container's stdin, raw.
+  const onData = React.useCallback(
+    (d: string) => {
+      if (openStdin) post({ data: d });
+    },
+    [openStdin, post],
+  );
 
-  async function send(data: string) {
-    const id = sessionId.current;
-    if (!id || status !== "live") return;
-    await fetch(base, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: id, data }),
-    }).catch(() => {});
-  }
+  // Refit → reseed the pty so the shell/TUI wraps at the real width.
+  const onResize = React.useCallback(
+    (cols: number, rows: number) => {
+      size.current = { cols, rows };
+      post({ resize: { cols, rows } });
+    },
+    [post],
+  );
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (status !== "live") return;
-    // Line-mode: send the typed line plus a newline. Do NOT echo locally — the
-    // attached process echoes its own stdin back through the stream (like a real
-    // `docker attach`), so a local echo would double every line.
-    void send(value + "\n");
-    setValue("");
-  }
-
-  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    // Ctrl-C: send the literal interrupt byte. Only meaningful with a TTY (the
-    // app receives SIGINT); harmless otherwise. No local echo — see submit().
-    if (e.key === "c" && e.ctrlKey) {
-      e.preventDefault();
-      void send("\x03");
-    }
-  }
-
-  function reconnect() {
-    setOutput("");
+  function reattach() {
+    term.current?.reset();
     sessionId.current = null;
     setStatus("connecting");
     setAttempt((n) => n + 1);
@@ -179,66 +186,42 @@ export function ContainerAttach({
         </span>
       </div>
 
-      <div
-        ref={scrollRef}
-        onClick={() => inputRef.current?.focus()}
-        className="h-[420px] cursor-text overflow-y-auto bg-black/90 p-3 font-mono text-[13px] leading-relaxed text-zinc-200"
-      >
-        <pre className="whitespace-pre-wrap break-words text-zinc-300">
-          {segments.map((s, i) =>
-            s.className ? (
-              <span key={i} className={s.className}>
-                {s.text}
-              </span>
-            ) : (
-              s.text
-            ),
-          )}
-        </pre>
+      <div className="h-[420px] bg-[#0a0a0a] p-2">
+        <XtermView
+          readOnly={!openStdin}
+          onReady={onReady}
+          onData={onData}
+          onResize={onResize}
+          className="h-full w-full"
+        />
+      </div>
 
-        {status === "live" && openStdin ? (
-          <form onSubmit={submit} className="mt-1 flex items-center gap-2">
-            <span className="shrink-0 text-[var(--success)]">›</span>
-            <input
-              ref={inputRef}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={onKeyDown}
-              autoFocus
-              spellCheck={false}
-              autoComplete="off"
-              autoCapitalize="off"
-              className="flex-1 border-0 bg-transparent font-mono text-[13px] text-zinc-100 outline-none placeholder:text-zinc-600"
-              aria-label="Send to container stdin"
-              placeholder={
-                tty
-                  ? "type to send to stdin · Ctrl-C to interrupt"
-                  : "type to send a line to stdin"
-              }
-            />
-          </form>
-        ) : null}
+      {status === "live" && !openStdin ? (
+        <div className="border-t border-border bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
+          This container was started without stdin open, so it won&apos;t read
+          input — attach is streaming its live output only. Use the exec console
+          to run commands.
+        </div>
+      ) : null}
 
-        {status === "live" && !openStdin ? (
-          <p className="mt-2 text-[11px] text-zinc-500">
-            This container was started without stdin open, so it won&apos;t read
-            input — attach is streaming its live output only. Use the exec
-            console to run commands.
-          </p>
-        ) : null}
-
-        {status === "ended" || status === "error" ? (
+      {status === "ended" || status === "error" ? (
+        <div className="flex items-center gap-2 border-t border-border bg-secondary/20 px-3 py-2">
+          <span className="text-[11px] text-muted-foreground">
+            {status === "error"
+              ? "Couldn't attach to this container."
+              : "Detached from the container."}
+          </span>
           <Button
             size="sm"
             variant="outline"
-            onClick={reconnect}
-            className="mt-3"
+            onClick={reattach}
+            className="ml-auto h-7"
           >
             <RotateCcw className="size-4" />
             Reattach
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

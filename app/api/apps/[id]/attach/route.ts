@@ -8,9 +8,12 @@ import { connectAgent } from "@/lib/infra/agent-client";
 /**
  * Interactive `docker attach` to an app's running container, over plain HTTP.
  *
- *   GET    ?container=<name>   → SSE stream of the container's live PID 1 output.
+ *   GET    ?container=<name>[&cols=&rows=]
+ *                                → SSE stream of the container's live PID 1 output.
  *                                The first event is `session` with the session id.
- *   POST   { sessionId, data } → forward a keystroke chunk to the container stdin.
+ *                                cols/rows seed the pty size (tty containers).
+ *   POST   { sessionId, data }            → forward a keystroke chunk to stdin.
+ *   POST   { sessionId, resize:{cols,rows} } → resize the pty (tty containers).
  *   DELETE ?sessionId=<id>     → detach (kills our local attach client only).
  *
  * Output and input are separate requests against one server-side session (see
@@ -30,7 +33,12 @@ export async function GET(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id: appId } = await ctx.params;
-  const target = request.nextUrl.searchParams.get("container") ?? undefined;
+  const params = request.nextUrl.searchParams;
+  const target = params.get("container") ?? undefined;
+  // The client's terminal knows its own size before it opens the stream, so it
+  // seeds the pty here — no more hardcoded 80×24 that wraps every TUI wrong.
+  const cols = clampDim(params.get("cols"), 80, 500);
+  const rows = clampDim(params.get("rows"), 24, 300);
 
   const resolved = await resolveAttachTarget(appId, target);
   if (!resolved.ok) {
@@ -50,7 +58,7 @@ export async function GET(
   let session;
   try {
     const conn = await connectAgent(resolved.server!.id);
-    const handle = conn.attach(appId, resolved.instance.name, tty, 80, 24);
+    const handle = conn.attach(appId, resolved.instance.name, tty, cols, rows);
     session = attach.open(appId, resolved.instance.name, handle, () =>
       conn.close(),
     );
@@ -128,7 +136,7 @@ export async function POST(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id: appId } = await ctx.params;
-  let body: { sessionId?: unknown; data?: unknown };
+  let body: { sessionId?: unknown; data?: unknown; resize?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -141,8 +149,33 @@ export async function POST(
   const session = attach.get(sessionId, appId);
   if (!session) return Response.json({ error: "No such session" }, { status: 404 });
 
+  // A resize frame carries no stdin bytes: apply it to the pty and return. The
+  // terminal posts one on every fit (mount + container resize).
+  const resize = parseResize(body.resize);
+  if (resize) {
+    session.handle.resize?.(resize.cols, resize.rows);
+    return Response.json({ ok: true });
+  }
+
   session.handle.write(data);
   return Response.json({ ok: true });
+}
+
+/** A query-string dimension → a sane pty size, clamped so a bad client can't ask
+ *  for a 10⁶-column pty. Empty/invalid falls back to `fallback`. */
+function clampDim(raw: string | null, fallback: number, max: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), max) : fallback;
+}
+
+/** Validate a POSTed `{cols,rows}` resize payload into clamped integers, or null. */
+function parseResize(raw: unknown): { cols: number; rows: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { cols, rows } = raw as { cols?: unknown; rows?: unknown };
+  const c = Number(cols);
+  const r = Number(rows);
+  if (!Number.isFinite(c) || !Number.isFinite(r) || c <= 0 || r <= 0) return null;
+  return { cols: Math.min(Math.floor(c), 500), rows: Math.min(Math.floor(r), 300) };
 }
 
 export async function DELETE(

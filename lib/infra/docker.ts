@@ -436,6 +436,12 @@ export interface AttachHandle {
   onExit(cb: (error?: string) => void): void;
   /** Send raw bytes to the container's stdin (best-effort; no-op once closed). */
   write(data: string): void;
+  /**
+   * Resize the backing pseudo-terminal (tty containers only). Optional: the
+   * logs backing and pipe-backed attach have no pty to resize, so they omit it
+   * and callers guard with `handle.resize?.(cols, rows)`.
+   */
+  resize?(cols: number, rows: number): void;
   /** Detach: tear down our local attach client only, never the container. */
   close(): void;
 }
@@ -584,6 +590,14 @@ export function attachContainerPty(name: string): AttachHandle {
       if (closed) return;
       try {
         term.write(data);
+      } catch {
+        /* pty gone; ignore */
+      }
+    },
+    resize(cols: number, rows: number) {
+      if (closed) return;
+      try {
+        term.resize(cols, rows);
       } catch {
         /* pty gone; ignore */
       }

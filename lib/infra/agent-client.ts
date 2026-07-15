@@ -847,6 +847,16 @@ function dial(target: DialTarget): AgentConnection {
           /* stream gone; ignore */
         }
       },
+      resize(cols: number, rows: number) {
+        if (closed) return;
+        try {
+          // A tty-only AttachInput frame; the agent applies it to the pty. On a
+          // pipe-backed (non-tty) attach the agent ignores it — harmless.
+          stream.write({ resize: { cols, rows } });
+        } catch {
+          /* stream gone; ignore */
+        }
+      },
       close() {
         if (closed) return;
         closed = true;
