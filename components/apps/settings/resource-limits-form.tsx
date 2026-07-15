@@ -3,7 +3,15 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Save, RotateCcw, Cpu, MemoryStick, HardDrive, Layers } from "lucide-react";
+import {
+  Save,
+  RotateCcw,
+  Cpu,
+  MemoryStick,
+  HardDrive,
+  Layers,
+  Gauge,
+} from "lucide-react";
 import {
   Card,
   CardContent,
@@ -49,7 +57,12 @@ import { cn } from "@/lib/utils";
  * still works for stacks.
  */
 
-/** A labelled numeric/text field with an optional unit suffix and info tooltip. */
+/**
+ * A labelled numeric/text field. The input fills its column and the unit rides
+ * inside it as a right-aligned suffix (native number spinners are hidden so they
+ * never collide with it) — so fields read cleanly at any width instead of tiny
+ * boxes floating in empty space.
+ */
 function LimitField({
   label,
   info,
@@ -60,7 +73,6 @@ function LimitField({
   min,
   step,
   type = "number",
-  className,
 }: {
   label: string;
   info: React.ReactNode;
@@ -71,12 +83,11 @@ function LimitField({
   min?: number;
   step?: number;
   type?: "number" | "text";
-  className?: string;
 }) {
   return (
-    <div className={cn("space-y-1.5", className)}>
+    <div className="space-y-2">
       <FieldLabel info={info}>{label}</FieldLabel>
-      <div className="flex items-center gap-2">
+      <div className="relative">
         <Input
           type={type}
           inputMode={type === "number" ? "decimal" : undefined}
@@ -85,13 +96,49 @@ function LimitField({
           value={value}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className="max-w-[9rem]"
+          className={cn(
+            "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+            unit && "pr-14",
+          )}
         />
         {unit && (
-          <span className="shrink-0 text-xs text-muted-foreground">{unit}</span>
+          <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs font-medium text-muted-foreground">
+            {unit}
+          </span>
         )}
       </div>
     </div>
+  );
+}
+
+/** A titled group of limit fields laid out in a responsive grid. */
+function LimitGroup({
+  icon: Icon,
+  title,
+  cols = 2,
+  children,
+}: {
+  icon?: React.ComponentType<{ className?: string }>;
+  title: string;
+  /** Widest column count on large screens (2 by default, 3 for denser groups). */
+  cols?: 2 | 3;
+  children: React.ReactNode;
+}) {
+  return (
+    <fieldset className="space-y-3">
+      <legend className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {Icon && <Icon className="size-3.5" />}
+        {title}
+      </legend>
+      <div
+        className={cn(
+          "grid gap-x-4 gap-y-5 sm:grid-cols-2",
+          cols === 3 && "lg:grid-cols-3",
+        )}
+      >
+        {children}
+      </div>
+    </fieldset>
   );
 }
 
@@ -139,6 +186,10 @@ export function ResourceLimitsForm({
     });
   }
 
+  const clearDisabled =
+    pending ||
+    serializeResourceForm(form) === serializeResourceForm(EMPTY_RESOURCE_FORM);
+
   return (
     <>
       {isComposeStack && (
@@ -153,33 +204,53 @@ export function ResourceLimitsForm({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Cpu className="size-4 text-muted-foreground" />
-            Memory &amp; CPU
+            Resource limits
           </CardTitle>
           <CardDescription>
             Cap how much of the host this app can use. Leave a field empty to
             leave that resource uncapped. Applied on the next deploy.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
+
+        <CardContent className="space-y-8">
           {/* Quick-pick sizes fill Memory + CPU together. */}
-          <div className="flex flex-wrap items-center gap-2">
-            {RESOURCE_PRESETS.map((p) => (
-              <Button
-                key={p.label}
-                type="button"
-                size="sm"
-                variant={activePreset?.label === p.label ? "default" : "outline"}
-                onClick={() => applyPreset(p)}
-              >
-                {p.label}
-                <span className="ml-1.5 text-xs opacity-70">
-                  {p.cpuCores} CPU · {p.memoryMb >= 1024 ? `${p.memoryMb / 1024} GB` : `${p.memoryMb} MB`}
-                </span>
-              </Button>
-            ))}
+          <div className="space-y-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Quick size
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {RESOURCE_PRESETS.map((p) => {
+                const active = activePreset?.label === p.label;
+                return (
+                  <Button
+                    key={p.label}
+                    type="button"
+                    variant={active ? "default" : "outline"}
+                    onClick={() => applyPreset(p)}
+                    className="h-auto flex-col items-start gap-0.5 px-3 py-1.5"
+                  >
+                    <span className="text-sm font-medium leading-none">
+                      {p.label}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[11px] leading-none",
+                        active ? "opacity-80" : "text-muted-foreground",
+                      )}
+                    >
+                      {p.cpuCores} CPU ·{" "}
+                      {p.memoryMb >= 1024
+                        ? `${p.memoryMb / 1024} GB`
+                        : `${p.memoryMb} MB`}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="grid gap-5 sm:grid-cols-2">
+          {/* Headline: the two fields everyone reaches for. */}
+          <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
             <LimitField
               label="Memory limit"
               unit="MB"
@@ -200,7 +271,122 @@ export function ResourceLimitsForm({
               info="Maximum CPU cores. 0.5 = half a core, 2 = two cores. Fractions allowed."
             />
           </div>
+
+          {/* Everything else, folded away so the happy path is two fields. */}
+          <Accordion type="single" collapsible className="border-t border-border">
+            <AccordionItem value="advanced" className="border-none">
+              <AccordionTrigger className="text-sm hover:no-underline">
+                Advanced limits
+              </AccordionTrigger>
+              <AccordionContent className="space-y-7 pt-2">
+                <LimitGroup icon={MemoryStick} title="Memory">
+                  <LimitField
+                    label="Memory reservation"
+                    unit="MB"
+                    min={6}
+                    placeholder="e.g. 256"
+                    value={form.memoryReservationMb}
+                    onChange={set("memoryReservationMb")}
+                    info="Soft RAM floor the scheduler tries to keep available for this app under contention. Must be ≤ the memory limit."
+                  />
+                  <LimitField
+                    label="Swap limit"
+                    unit="MB"
+                    min={6}
+                    placeholder="e.g. 1024"
+                    value={form.swapMb}
+                    onChange={set("swapMb")}
+                    info="Total memory + swap ceiling. Needs a memory limit set, and must be ≥ it (the difference is how much swap the app may use)."
+                  />
+                </LimitGroup>
+
+                <LimitGroup icon={Cpu} title="CPU">
+                  <LimitField
+                    label="CPU shares"
+                    unit="weight"
+                    min={2}
+                    placeholder="1024"
+                    value={form.cpuShares}
+                    onChange={set("cpuShares")}
+                    info="Relative CPU weight when the host is busy (default 1024). An app with 2048 gets twice the CPU of one with 1024. Doesn't cap idle-time usage."
+                  />
+                  <LimitField
+                    label="CPU pinning"
+                    type="text"
+                    placeholder="e.g. 0,2-3"
+                    value={form.cpuset}
+                    onChange={set("cpuset")}
+                    info='Pin the app to specific host cores, e.g. "0", "0,1" or "0-3". Leave empty to run on any core.'
+                  />
+                </LimitGroup>
+
+                <LimitGroup icon={Layers} title="Processes & files" cols={3}>
+                  <LimitField
+                    label="Process limit"
+                    unit="count"
+                    min={1}
+                    placeholder="e.g. 512"
+                    value={form.pidsLimit}
+                    onChange={set("pidsLimit")}
+                    info="Maximum number of processes/threads the container may spawn — a guard against fork bombs and runaway workers."
+                  />
+                  <LimitField
+                    label="Open files"
+                    unit="count"
+                    min={1}
+                    placeholder="e.g. 1024"
+                    value={form.nofile}
+                    onChange={set("nofile")}
+                    info="Maximum open file descriptors (ulimit nofile). Raise it for high-connection servers hitting 'too many open files'."
+                  />
+                  <LimitField
+                    label="User processes"
+                    unit="count"
+                    min={1}
+                    placeholder="e.g. 512"
+                    value={form.nproc}
+                    onChange={set("nproc")}
+                    info="Maximum processes for the container's user (ulimit nproc). Usually leave to the process limit above; set only if you need the per-user ulimit specifically."
+                  />
+                </LimitGroup>
+
+                <LimitGroup icon={HardDrive} title="Storage">
+                  <LimitField
+                    label="Shared memory"
+                    unit="MB"
+                    min={1}
+                    placeholder="e.g. 64"
+                    value={form.shmSizeMb}
+                    onChange={set("shmSizeMb")}
+                    info="Size of /dev/shm (shared-memory segment). Default is 64 MB; raise it for apps that need more (some databases, Chromium/Puppeteer)."
+                  />
+                  <LimitField
+                    label="Disk quota"
+                    unit="GB"
+                    min={1}
+                    placeholder="e.g. 10"
+                    value={form.storageGb}
+                    onChange={set("storageGb")}
+                    info="⚠ Hard cap on the container's writable-layer disk usage. Requires host support (XFS + pquota, or the devicemapper driver); on other hosts the deploy is rejected. Leave empty unless you know your host supports it — this does not limit named volumes."
+                  />
+                </LimitGroup>
+
+                <LimitGroup icon={Gauge} title="Under memory pressure">
+                  <LimitField
+                    label="OOM priority"
+                    unit="score"
+                    min={-1000}
+                    placeholder="0"
+                    value={form.oomScoreAdj}
+                    onChange={set("oomScoreAdj")}
+                    info="Range −1000…1000. When the whole host runs out of memory, containers with a higher score are killed first. Use a negative value to protect this app, positive to sacrifice it first."
+                  />
+                </LimitGroup>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </CardContent>
+
         <CardFooter className="justify-between border-t border-border pt-4">
           <DirtyHint dirty={dirty} />
           <div className="flex items-center gap-2">
@@ -209,11 +395,7 @@ export function ResourceLimitsForm({
               size="sm"
               variant="ghost"
               onClick={() => setForm({ ...EMPTY_RESOURCE_FORM })}
-              disabled={
-                pending ||
-                serializeResourceForm(form) ===
-                  serializeResourceForm(EMPTY_RESOURCE_FORM)
-              }
+              disabled={clearDisabled}
             >
               <RotateCcw className="size-4" />
               Clear all
@@ -224,159 +406,6 @@ export function ResourceLimitsForm({
             </Button>
           </div>
         </CardFooter>
-      </Card>
-
-      <Card>
-        <CardContent className="pt-6">
-          <Accordion type="single" collapsible>
-            <AccordionItem value="advanced" className="border-none">
-              <AccordionTrigger className="py-0 text-sm hover:no-underline">
-                Advanced limits
-              </AccordionTrigger>
-              <AccordionContent className="pt-6">
-                <div className="space-y-8">
-                  {/* Memory */}
-                  <fieldset className="space-y-4">
-                    <legend className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      <MemoryStick className="size-3.5" />
-                      Memory
-                    </legend>
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <LimitField
-                        label="Memory reservation"
-                        unit="MB"
-                        min={6}
-                        placeholder="e.g. 256"
-                        value={form.memoryReservationMb}
-                        onChange={set("memoryReservationMb")}
-                        info="Soft RAM floor the scheduler tries to keep available for this app under contention. Must be ≤ the memory limit."
-                      />
-                      <LimitField
-                        label="Swap limit"
-                        unit="MB"
-                        min={6}
-                        placeholder="e.g. 1024"
-                        value={form.swapMb}
-                        onChange={set("swapMb")}
-                        info="Total memory + swap ceiling. Needs a memory limit set, and must be ≥ it (the difference is how much swap the app may use)."
-                      />
-                    </div>
-                  </fieldset>
-
-                  {/* CPU */}
-                  <fieldset className="space-y-4">
-                    <legend className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      <Cpu className="size-3.5" />
-                      CPU
-                    </legend>
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <LimitField
-                        label="CPU shares"
-                        unit="weight"
-                        min={2}
-                        placeholder="1024"
-                        value={form.cpuShares}
-                        onChange={set("cpuShares")}
-                        info="Relative CPU weight when the host is busy (default 1024). An app with 2048 gets twice the CPU of one with 1024. Doesn't cap idle-time usage."
-                      />
-                      <LimitField
-                        label="CPU pinning"
-                        type="text"
-                        placeholder="e.g. 0,2-3"
-                        value={form.cpuset}
-                        onChange={set("cpuset")}
-                        info='Pin the app to specific host cores, e.g. "0", "0,1" or "0-3". Leave empty to run on any core.'
-                      />
-                    </div>
-                  </fieldset>
-
-                  {/* Processes & files */}
-                  <fieldset className="space-y-4">
-                    <legend className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      <Layers className="size-3.5" />
-                      Processes &amp; files
-                    </legend>
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <LimitField
-                        label="Process limit"
-                        unit="count"
-                        min={1}
-                        placeholder="e.g. 512"
-                        value={form.pidsLimit}
-                        onChange={set("pidsLimit")}
-                        info="Maximum number of processes/threads the container may spawn — a guard against fork bombs and runaway workers."
-                      />
-                      <LimitField
-                        label="Open files"
-                        unit="count"
-                        min={1}
-                        placeholder="e.g. 1024"
-                        value={form.nofile}
-                        onChange={set("nofile")}
-                        info="Maximum open file descriptors (ulimit nofile). Raise it for high-connection servers hitting 'too many open files'."
-                      />
-                      <LimitField
-                        label="User processes"
-                        unit="count"
-                        min={1}
-                        placeholder="e.g. 512"
-                        value={form.nproc}
-                        onChange={set("nproc")}
-                        info="Maximum processes for the container's user (ulimit nproc). Usually leave to the process limit above; set only if you need the per-user ulimit specifically."
-                      />
-                    </div>
-                  </fieldset>
-
-                  {/* Storage */}
-                  <fieldset className="space-y-4">
-                    <legend className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      <HardDrive className="size-3.5" />
-                      Storage
-                    </legend>
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <LimitField
-                        label="Shared memory"
-                        unit="MB"
-                        min={1}
-                        placeholder="e.g. 64"
-                        value={form.shmSizeMb}
-                        onChange={set("shmSizeMb")}
-                        info="Size of /dev/shm (shared-memory segment). Default is 64 MB; raise it for apps that need more (some databases, Chromium/Puppeteer)."
-                      />
-                      <LimitField
-                        label="Disk quota"
-                        unit="GB"
-                        min={1}
-                        placeholder="e.g. 10"
-                        value={form.storageGb}
-                        onChange={set("storageGb")}
-                        info="⚠ Hard cap on the container's writable-layer disk usage. Requires host support (XFS + pquota, or the devicemapper driver); on other hosts the deploy is rejected. Leave empty unless you know your host supports it — this does not limit named volumes."
-                      />
-                    </div>
-                  </fieldset>
-
-                  {/* Scheduling */}
-                  <fieldset className="space-y-4">
-                    <legend className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Under memory pressure
-                    </legend>
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <LimitField
-                        label="OOM priority"
-                        unit="-1000…1000"
-                        min={-1000}
-                        placeholder="0"
-                        value={form.oomScoreAdj}
-                        onChange={set("oomScoreAdj")}
-                        info="When the whole host runs out of memory, containers with a higher score are killed first. Use a negative value to protect this app, positive to sacrifice it first."
-                      />
-                    </div>
-                  </fieldset>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </CardContent>
       </Card>
 
       <UnsavedChangesGuard when={dirty} />
