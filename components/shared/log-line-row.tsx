@@ -28,6 +28,44 @@ import type { LogLevel } from "@/lib/types";
  *  breathe, so no label is ever clipped and every message starts at the same x. */
 const CHIP = "h-[18px] w-16";
 
+/**
+ * Matches http(s) URLs inside a log line. Kept deliberately conservative: a URL
+ * runs until the first whitespace, and a trailing `.,;:!?)]}` (common sentence /
+ * bracket punctuation) is trimmed off the match so "see https://x.dev/foo." links
+ * `https://x.dev/foo`, not `…/foo.`. The capturing group lets `split` keep the
+ * URLs interleaved with the surrounding text.
+ */
+const URL_RE = /(https?:\/\/[^\s]+?)(?=[.,;:!?)\]}]*(?:\s|$))/g;
+
+/**
+ * Render a log message with any http(s) URLs turned into links that open in a new
+ * tab (underlined). Everything between URLs stays plain text, so `whitespace-pre-wrap`
+ * on the parent still governs wrapping and indentation.
+ */
+function LinkifiedText({ text }: { text: string }) {
+  const parts = text.split(URL_RE);
+  return (
+    <>
+      {parts.map((part, i) =>
+        // Odd indices are the captured URLs (see URL_RE); even are plain text.
+        i % 2 === 1 ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            {part}
+          </a>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
 export function LevelChip({
   level,
   className,
@@ -115,7 +153,7 @@ export function LogRow({
           tintMessage ? LEVEL_TEXT_CLASS[level] ?? "text-zinc-300" : "text-zinc-300",
         )}
       >
-        {text}
+        <LinkifiedText text={text} />
       </span>
     </div>
   );
