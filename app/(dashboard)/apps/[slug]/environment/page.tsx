@@ -3,7 +3,7 @@ import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasCapability } from "@/lib/membership";
 import { listEnv } from "@/lib/data/env";
-import { listSharedVarsForApp } from "@/lib/data/shared-vars";
+import { listSharedVars, listSharedVarsForApp } from "@/lib/data/shared-vars";
 import { EnvManager } from "@/components/env/env-manager";
 import { EmptyState } from "@/components/shared/empty-state";
 
@@ -28,10 +28,24 @@ export default async function AppEnvPage(
     );
   }
 
-  const [vars, sharedVars] = await Promise.all([
+  const [vars, sharedVars, allSharedVars] = await Promise.all([
     listEnv(project.id),
     listSharedVarsForApp(project.id),
+    // The full records back the value edit + "Shared with" chips a shared row now
+    // exposes here; narrow to the ones this app actually receives.
+    listSharedVars(),
   ]);
+  const appliedIds = new Set(
+    sharedVars.filter((v) => v.applied).map((v) => v.id),
+  );
+  const sharedVarDetails = allSharedVars.filter((v) => appliedIds.has(v.id));
 
-  return <EnvManager appId={project.id} vars={vars} sharedVars={sharedVars} />;
+  return (
+    <EnvManager
+      appId={project.id}
+      vars={vars}
+      sharedVars={sharedVars}
+      sharedVarDetails={sharedVarDetails}
+    />
+  );
 }

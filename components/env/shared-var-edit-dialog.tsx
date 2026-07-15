@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Share2 } from "lucide-react";
+import { Share2, AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -41,12 +41,20 @@ export function SharedVarEditDialog({
   onOpenChange,
   editing,
   onChangeSharing,
+  warnShared = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   editing: SharedVarDTO;
   /** Hand this variable to the wizard to change WHO gets it. */
   onChangeSharing?: () => void;
+  /**
+   * Opened from a single app's table, where the variable is one row among the
+   * app's own — surface that this edit is NOT local (it lands on every app the
+   * variable reaches). Redundant on the Shared tab, where that is already the
+   * whole frame, so it defaults off.
+   */
+  warnShared?: boolean;
 }) {
   // Prefill: a plain var shows its value; a secret shows the MASK, which the
   // server keeps as-is — so flipping only the type can't blank the stored value.
@@ -92,6 +100,17 @@ export function SharedVarEditDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {warnShared && (
+            <div className="flex gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
+              <p className="text-sm text-muted-foreground">
+                This is a{" "}
+                <span className="font-medium text-foreground">shared</span>{" "}
+                variable. Your changes apply to every app it reaches, not just
+                this one.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <FieldLabel info="The variable's name, exposed to every app it reaches. It can't be renamed once created.">
               Key
