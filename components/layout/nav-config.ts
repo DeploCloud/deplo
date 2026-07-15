@@ -28,7 +28,7 @@ import {
   Settings2,
   HardDrive,
   ShieldCheck,
-  TriangleAlert,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 
@@ -397,7 +397,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
  * An app's SETTINGS sub-menu — one level deeper than {@link appNav}. When
  * the viewer is under `/apps/<slug>/settings` the sidebar swaps the app
  * nav for this set, so each settings section (General, Deployments, Storage,
- * Access, Danger) is its own dedicated page. The "back" escape hatch here goes UP
+ * Access, Advanced) is its own dedicated page. The "back" escape hatch here goes UP
  * one level to the app overview — unlike {@link appNav}'s "Back to
  * apps", which leaves the app entirely — so it is a plain link (not a
  * history `back`, which would exit the whole `/apps/<slug>` section).
@@ -451,10 +451,10 @@ export function appSettingsNav(slug: string): NavSection[] {
           requires: "manage_domains",
         },
         {
-          label: "Danger",
-          href: `${base}/danger`,
-          icon: TriangleAlert,
-          tooltip: "Delete this app",
+          label: "Advanced",
+          href: `${base}/advanced`,
+          icon: SlidersHorizontal,
+          tooltip: "Console access & danger zone",
         },
       ],
     },

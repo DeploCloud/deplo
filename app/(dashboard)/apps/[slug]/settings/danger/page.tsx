@@ -1,15 +1,12 @@
-import { notFound } from "next/navigation";
-import { getAppBySlug } from "@/lib/data/apps";
-import { DangerSettings } from "@/components/apps/settings/danger-settings";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Danger zone" };
-
-export default async function AppDangerSettingsPage(
+/**
+ * The Danger Zone now lives under Advanced settings. This stub keeps the old
+ * `/settings/danger` path working for existing links and bookmarks.
+ */
+export default async function AppDangerSettingsRedirect(
   props: PageProps<"/apps/[slug]/settings/danger">,
 ) {
   const { slug } = await props.params;
-  const project = await getAppBySlug(slug);
-  if (!project) notFound();
-
-  return <DangerSettings appId={project.id} name={project.name} />;
+  redirect(`/apps/${slug}/settings/advanced`);
 }

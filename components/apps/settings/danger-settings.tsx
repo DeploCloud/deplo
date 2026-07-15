@@ -14,9 +14,9 @@ import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Danger zone: permanently delete this app and everything it owns. Its own
- * self-describing red card, on its own settings page. On success the browser
- * returns to the dashboard (the app no longer exists).
+ * Danger zone: permanently delete this app and everything it owns. A
+ * self-describing red card within the Advanced settings section. On success the
+ * browser returns to the dashboard (the app no longer exists).
  */
 export function DangerSettings({
   appId,

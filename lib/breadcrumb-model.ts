@@ -127,7 +127,7 @@ const SETTINGS_SUBS: { seg: string; label: string; requires?: keyof BreadcrumbCa
     { seg: "deployments", label: "Deployments" },
     { seg: "storage", label: "Storage" },
     { seg: "access", label: "Access", requires: "manageDomains" },
-    { seg: "danger", label: "Danger" },
+    { seg: "advanced", label: "Advanced" },
   ];
 
 const byNameThenId = (
