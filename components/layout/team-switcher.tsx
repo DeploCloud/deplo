@@ -65,10 +65,7 @@ export function TeamSwitcher({
               key={t.id}
               className="cursor-pointer"
               disabled={pending}
-              onSelect={(e) => {
-                e.preventDefault();
-                switchTo(t.id);
-              }}
+              onSelect={() => switchTo(t.id)}
             >
               <Avatar className="size-5">
                 <AvatarFallback className="bg-foreground text-[9px] text-background">
