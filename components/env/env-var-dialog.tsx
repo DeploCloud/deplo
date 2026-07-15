@@ -13,6 +13,8 @@ import {
   Info,
   KeyRound,
   TriangleAlert,
+  Search,
+  Check,
 } from "lucide-react";
 import {
   Dialog,
@@ -624,6 +626,7 @@ function SharedTab({
   const [vars, setVars] = React.useState<LinkableSharedVar[] | null>(
     sharedVars ?? null,
   );
+  const [query, setQuery] = React.useState("");
 
   // Lazy-fetch when the caller didn't pass the in-scope set (aggregate view) —
   // but not before this tab is opened, so a dialog left on Standalone never
@@ -647,9 +650,14 @@ function SharedTab({
     };
   }, [appId, vars, active]);
 
+  const q = query.trim().toLowerCase();
+  // Case-insensitive substring match on the key — the only thing a row shows and
+  // the only thing you'd search a variable by.
+  const filtered = vars?.filter((v) => v.key.toLowerCase().includes(q)) ?? null;
+
   return (
     <>
-      <div className={cn("overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}>
+      <div className={cn("space-y-3 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}>
         {vars === null ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
             Loading…
@@ -662,17 +670,34 @@ function SharedTab({
             className="py-10"
           />
         ) : (
-          // Same table grammar as the Standalone tab: a labelled header, one row
-          // per variable, no card floating loose inside a card.
-          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-            <div className="flex items-center justify-between bg-secondary/40 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              <span>Shared variable</span>
-              <span>Applied</span>
+          <>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search shared variables"
+                className="h-9 pl-8"
+              />
             </div>
-            {vars.map((v) => (
-              <SharedVarLinkRow key={v.id} appId={appId} sharedVar={v} />
-            ))}
-          </div>
+            {filtered && filtered.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No shared variables match “{query.trim()}”.
+              </p>
+            ) : (
+              // Same table grammar as the Standalone tab: a labelled header, one
+              // row per variable, no card floating loose inside a card.
+              <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                <div className="flex items-center justify-between bg-secondary/40 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <span>Shared variable</span>
+                  <span aria-hidden />
+                </div>
+                {filtered!.map((v) => (
+                  <SharedVarLinkRow key={v.id} appId={appId} sharedVar={v} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -700,7 +725,8 @@ function SharedVarLinkRow({
   const router = useRouter();
   const [linked, setLinked] = React.useState(sharedVar.linked);
   const [pending, startTransition] = React.useTransition();
-  // Auto-applied via a mode → can't be unlinked from the app; shown checked+disabled.
+  // Auto-applied via a mode → can't be unlinked from the app; shown as a disabled
+  // check, no add/remove button.
   const on = sharedVar.inherited || linked;
 
   function toggle(next: boolean) {
@@ -744,12 +770,41 @@ function SharedVarLinkRow({
           )}
         </div>
       </div>
-      <Switch
-        checked={on}
-        onCheckedChange={toggle}
-        disabled={pending || sharedVar.inherited}
-        aria-label={on ? "Unlink" : "Link"}
-      />
+      {sharedVar.inherited ? (
+        // Reaches the app through a sharing mode — present, but not removable from
+        // this one app. A disabled check reads it as "already in", nothing to do.
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled
+          aria-label="Applied automatically"
+          className="shrink-0 text-muted-foreground disabled:opacity-100"
+        >
+          <Check className="size-4" />
+        </Button>
+      ) : on ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => toggle(false)}
+          disabled={pending}
+          aria-label="Remove from this app"
+          className="shrink-0 text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          size="icon-sm"
+          onClick={() => toggle(true)}
+          disabled={pending}
+          aria-label="Add to this app"
+          className="shrink-0"
+        >
+          <Plus className="size-4" />
+        </Button>
+      )}
     </div>
   );
 }
