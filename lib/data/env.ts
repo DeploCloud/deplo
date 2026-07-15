@@ -240,6 +240,46 @@ export async function upsertEnv(input: {
   await recordActivity("env", `Updated env var ${key}`, user.name, input.appId);
 }
 
+/**
+ * Rename an existing env var's key. Kept OUT of `upsertEnv` on purpose: that one
+ * locates the row by `(appId, key)`, so feeding it a changed key would mint a
+ * brand-new var beside the old, not rename it. Here the row is targeted by `id`
+ * and its key moved in place, so its value, targets, type and authorship all ride
+ * along untouched. Returns the owning app so the caller can reload the entity.
+ */
+export async function renameEnv(id: string, newKeyRaw: string): Promise<string> {
+  const { teamId, userId } = await requireCapability("manage_env");
+  const user = (await getCurrentUser())!;
+  const newKey = newKeyRaw.trim();
+  if (!KEY_RE.test(newKey)) throw new Error("Invalid variable name");
+  const existing = await loadEnvVar(id);
+  if (!existing) throw new Error("Env var not found");
+  // Env vars are owned through their app; an out-of-team id reads as "not found".
+  if (!(await appInTeam(existing.appId, teamId))) throw new Error("Env var not found");
+  await requireFolderCapabilityForApp(existing.appId, "manage_env");
+  if (existing.key === newKey) return existing.appId; // no-op rename
+  // Guard the `env_vars_app_key_uq (appId, key)` uniqueness with a readable message
+  // instead of leaking the raw constraint violation the DB would otherwise throw.
+  const clash = await getDb()
+    .select({ id: envVarsTable.id })
+    .from(envVarsTable)
+    .where(and(eq(envVarsTable.appId, existing.appId), eq(envVarsTable.key, newKey)))
+    .limit(1);
+  if (clash.length > 0)
+    throw new Error(`A variable named ${newKey} already exists on this app`);
+  await getDb()
+    .update(envVarsTable)
+    .set({ key: newKey, updatedByUserId: userId, updatedAt: nowIso() })
+    .where(and(eq(envVarsTable.id, id), eq(envVarsTable.appId, existing.appId)));
+  await recordActivity(
+    "env",
+    `Renamed env var ${existing.key} → ${newKey}`,
+    user.name,
+    existing.appId,
+  );
+  return existing.appId;
+}
+
 /** Bulk import from a .env style blob. */
 export async function importEnv(
   appId: string,

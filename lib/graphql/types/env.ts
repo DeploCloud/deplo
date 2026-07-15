@@ -5,6 +5,7 @@ import {
   listAllAppEnv,
   revealEnv,
   upsertEnv,
+  renameEnv,
   importEnv,
   setAppEnv,
   deleteEnv,
@@ -166,6 +167,19 @@ builder.mutationFields((t) => ({
         type: input.type,
       });
       return reloadEnv(input.appId, input.key);
+    },
+  }),
+  renameEnv: t.field({
+    type: EnvVarRef,
+    authScopes: { capability: "manage_env" },
+    description: "Rename an env var's key in place, then return the stored entity.",
+    args: {
+      id: t.arg.string({ required: true }),
+      newKey: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { id, newKey }) => {
+      const appId = await renameEnv(id, newKey);
+      return reloadEnv(appId, newKey);
     },
   }),
   deleteEnv: t.field({

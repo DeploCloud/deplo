@@ -105,13 +105,34 @@ function EditForm({
 }) {
   // Prefill: a plain var shows its value; a secret shows the MASK, which the
   // server keeps as-is (so editing only the secret flag can't blank the value).
+  const [key, setKey] = React.useState(editing.key);
   const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
 
+  const trimmedKey = key.trim();
+  const keyValid = KEY_RE.test(trimmedKey);
+  const renamed = trimmedKey !== editing.key;
+
   function submit() {
     startTransition(async () => {
+      // A rename moves the row to its new key FIRST — it's keyed by id, so it can't
+      // clash with the value upsert below (which finds the row by (appId, key), and
+      // by then the row already lives at the new key). Bail on a rename clash before
+      // touching the value so a failed rename never half-applies.
+      if (renamed) {
+        const r = await gqlAction<{ renameEnv: { id: string } }>(
+          `mutation($id: String!, $newKey: String!) {
+            renameEnv(id: $id, newKey: $newKey) { id }
+          }`,
+          { id: editing.id, newKey: trimmedKey },
+        );
+        if (!r.ok) {
+          toast.error(r.error);
+          return;
+        }
+      }
       // No `targets`: an App has no Environment of its own — it inherits exactly
       // one from its Project — so the server defaults every variable to all three.
       const res = await gqlAction<{ upsertEnv: { id: string } }>(
@@ -119,7 +140,7 @@ function EditForm({
         {
           input: {
             appId,
-            key: editing.key,
+            key: trimmedKey,
             value,
             type: secret ? "secret" : "plain",
           },
@@ -141,21 +162,38 @@ function EditForm({
         <DialogHeader>
           <DialogTitle>Edit variable</DialogTitle>
           <DialogDescription>
-            Update the value of this variable.
+            Update this variable&apos;s name or value.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <FieldLabel info="The variable's name, exposed to your app at runtime. It can't be renamed once created.">
+            <FieldLabel info="The variable's name, exposed to your app at runtime. Renaming it takes effect on the next deploy.">
               Key
             </FieldLabel>
-            <Input value={editing.key} className="font-mono text-sm" disabled />
+            <Input
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              spellCheck={false}
+              aria-invalid={trimmedKey !== "" && !keyValid}
+              className={cn(
+                "font-mono text-sm",
+                trimmedKey !== "" &&
+                  !keyValid &&
+                  "border-destructive text-destructive focus-visible:ring-destructive",
+              )}
+            />
+            {trimmedKey !== "" && !keyValid && (
+              <p className="text-xs text-destructive">
+                Names must start with a letter or underscore and contain only
+                letters, digits and underscores.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Value</Label>
-            {/* The key is disabled here, so the value is the first thing to put the
-                caret in — and it keeps the Dialog's initial focus off the info
-                button next to the Key label. */}
+            {/* Focus lands on the value, not the key: an edit far more often
+                changes the value than renames — and it keeps the Dialog's initial
+                focus off the info button next to the Key label. */}
             <Textarea
               value={value}
               onChange={(e) => setValue(e.target.value)}
@@ -170,7 +208,7 @@ function EditForm({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending}>
+          <Button onClick={submit} disabled={pending || !keyValid}>
             {pending ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

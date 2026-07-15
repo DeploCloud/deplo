@@ -17,7 +17,7 @@ import {
   apps as appsTable,
   domains as domainsTable,
 } from "../db/schema/control-plane";
-import { listAllAppEnv } from "./env";
+import { listAllAppEnv, listEnv, upsertEnv, renameEnv } from "./env";
 
 /**
  * The app descriptor `listAllAppEnv` hands the Variables page: its logo and its
@@ -88,4 +88,73 @@ test("listAllAppEnv carries each app's logo and PRIMARY domain", async () => {
   const bare = byId.get("app_bare");
   assert.equal(bare?.logo, null);
   assert.equal(bare?.primaryDomain, null);
+});
+
+const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+
+test("renameEnv moves the key in place, preserving value, type and identity", async () => {
+  await asUser1(() =>
+    upsertEnv({ appId: "app_web", key: "OLD_NAME", value: "keepme", type: "plain" }),
+  );
+  const before = (await asUser1(() => listEnv("app_web"))).find(
+    (e) => e.key === "OLD_NAME",
+  )!;
+
+  await asUser1(() => renameEnv(before.id, "new_name")); // trims + case-tolerant key rule
+
+  const after = await asUser1(() => listEnv("app_web"));
+  assert.equal(after.some((e) => e.key === "OLD_NAME"), false);
+  const renamed = after.find((e) => e.key === "new_name")!;
+  // Same ROW — the value and type ride along, no new var was minted.
+  assert.equal(renamed.id, before.id);
+  assert.equal(renamed.value, "keepme");
+  assert.equal(renamed.type, "plain");
+  assert.equal(after.length, 1);
+});
+
+test("renameEnv refuses to collide with an existing key on the same app", async () => {
+  await asUser1(() =>
+    upsertEnv({ appId: "app_web", key: "ALPHA", value: "a", type: "plain" }),
+  );
+  await asUser1(() =>
+    upsertEnv({ appId: "app_web", key: "BETA", value: "b", type: "plain" }),
+  );
+  const beta = (await asUser1(() => listEnv("app_web"))).find(
+    (e) => e.key === "BETA",
+  )!;
+
+  await assert.rejects(
+    () => asUser1(() => renameEnv(beta.id, "ALPHA")),
+    /already exists/,
+  );
+  // Neither var was touched — the guard fires before the update.
+  const rows = await asUser1(() => listEnv("app_web"));
+  assert.deepEqual(rows.map((e) => e.key).sort(), ["ALPHA", "BETA"]);
+});
+
+test("renameEnv rejects a malformed key", async () => {
+  await asUser1(() =>
+    upsertEnv({ appId: "app_web", key: "GOOD", value: "v", type: "plain" }),
+  );
+  const good = (await asUser1(() => listEnv("app_web"))).find(
+    (e) => e.key === "GOOD",
+  )!;
+  await assert.rejects(
+    () => asUser1(() => renameEnv(good.id, "1BAD KEY")),
+    /Invalid variable name/,
+  );
+});
+
+test("renaming to the same key is a harmless no-op", async () => {
+  await asUser1(() =>
+    upsertEnv({ appId: "app_web", key: "SAME", value: "v", type: "plain" }),
+  );
+  const v = (await asUser1(() => listEnv("app_web"))).find(
+    (e) => e.key === "SAME",
+  )!;
+  await asUser1(() => renameEnv(v.id, "SAME"));
+  const rows = await asUser1(() => listEnv("app_web"));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].key, "SAME");
 });

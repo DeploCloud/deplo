@@ -19,7 +19,11 @@ import { Switch } from "@/components/ui/switch";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { SharedWithChips } from "@/components/env/shared-with-chips";
 import { gqlAction } from "@/lib/graphql-client";
+import { cn } from "@/lib/utils";
 import type { SharedVarDTO } from "@/lib/data/shared-vars";
+
+/** Mirrors the server's key rule (lib/data/shared-vars.ts) so a bad key fails here. */
+const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 /**
  * Edit ONE shared variable's value — not who gets it. The single form both the
@@ -58,10 +62,14 @@ export function SharedVarEditDialog({
 }) {
   // Prefill: a plain var shows its value; a secret shows the MASK, which the
   // server keeps as-is — so flipping only the type can't blank the stored value.
+  const [key, setKey] = React.useState(editing.key);
   const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
+
+  const trimmedKey = key.trim();
+  const keyValid = KEY_RE.test(trimmedKey);
 
   function submit() {
     startTransition(async () => {
@@ -70,7 +78,7 @@ export function SharedVarEditDialog({
         {
           input: {
             id: editing.id,
-            key: editing.key,
+            key: trimmedKey,
             value,
             type: secret ? "secret" : "plain",
             teamWide: editing.teamWide,
@@ -96,7 +104,8 @@ export function SharedVarEditDialog({
         <DialogHeader>
           <DialogTitle>Edit shared variable</DialogTitle>
           <DialogDescription>
-            Update the value of this variable. Who receives it doesn&apos;t change.
+            Update this variable&apos;s name or value. Who receives it doesn&apos;t
+            change.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -112,10 +121,27 @@ export function SharedVarEditDialog({
             </div>
           )}
           <div className="space-y-2">
-            <FieldLabel info="The variable's name, exposed to every app it reaches. It can't be renamed once created.">
+            <FieldLabel info="The variable's name, exposed to every app it reaches. Renaming it takes effect on their next deploy.">
               Key
             </FieldLabel>
-            <Input value={editing.key} className="font-mono text-sm" disabled />
+            <Input
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              spellCheck={false}
+              aria-invalid={trimmedKey !== "" && !keyValid}
+              className={cn(
+                "font-mono text-sm",
+                trimmedKey !== "" &&
+                  !keyValid &&
+                  "border-destructive text-destructive focus-visible:ring-destructive",
+              )}
+            />
+            {trimmedKey !== "" && !keyValid && (
+              <p className="text-xs text-destructive">
+                Names must start with a letter or underscore and contain only
+                letters, digits and underscores.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <FieldLabel
@@ -176,7 +202,7 @@ export function SharedVarEditDialog({
           >
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending}>
+          <Button onClick={submit} disabled={pending || !keyValid}>
             {pending ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

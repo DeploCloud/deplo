@@ -1230,6 +1230,9 @@ type Mutation {
   """Rename or move a file/folder within the app files tree."""
   renameAppFile(appId: String!, newPath: String!, path: String!): FileEntry
 
+  """Rename an env var's key in place, then return the stored entity."""
+  renameEnv(id: String!, newKey: String!): EnvVar
+
   """Rename an environment."""
   renameEnvironment(id: ID!, name: String!): Boolean
 
