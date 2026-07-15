@@ -12,42 +12,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-
-/** Once acknowledged, the console opens straight away on every app, forever. */
-const ACK_KEY = "deplo:console-warning-ack";
-
-// A tiny external store over the localStorage flag. Read via useSyncExternalStore
-// (not setState-in-effect), which also keeps SSR honest — the server snapshot is
-// `null` (undecided), so an acknowledged user never flashes the modal on
-// hydration — and lets every mounted gate flip the instant it's acknowledged.
-const ackListeners = new Set<() => void>();
-function readAck(): boolean {
-  try {
-    return window.localStorage.getItem(ACK_KEY) === "1";
-  } catch {
-    return false; // storage blocked (private mode) → warn again
-  }
-}
-function subscribeAck(cb: () => void): () => void {
-  ackListeners.add(cb);
-  return () => ackListeners.delete(cb);
-}
-function writeAck(): void {
-  try {
-    window.localStorage.setItem(ACK_KEY, "1");
-  } catch {
-    /* storage blocked → proceed this once, just can't remember it */
-  }
-  ackListeners.forEach((cb) => cb());
-}
+import { useConsoleAck, acknowledgeConsole } from "@/components/apps/console-ack";
 
 /**
  * A one-time "know what you're doing" gate in front of the container console.
  * The console is a live terminal into a running container, so the FIRST time
  * anyone opens it we hold the terminal back behind a warning modal: leaving the
- * page is the safe default; continuing mounts the console AND remembers the
- * choice in localStorage so the modal never returns. The child (the live
- * console) isn't mounted — no agent stream opens — until the user continues.
+ * page is the safe default; continuing mounts the console AND records the ack
+ * (see {@link acknowledgeConsole}) so the modal never returns — and the console
+ * sidebar chip unlocks. The child (the live console) isn't mounted — no agent
+ * stream opens — until the user continues.
  */
 export function ConsoleWarningGate({
   slug,
@@ -58,11 +32,7 @@ export function ConsoleWarningGate({
 }) {
   // null = undecided (server render / hydration). boolean once the client has
   // read localStorage.
-  const acknowledged = React.useSyncExternalStore<boolean | null>(
-    subscribeAck,
-    readAck,
-    () => null,
-  );
+  const acknowledged = useConsoleAck();
   const router = useRouter();
 
   if (acknowledged) return <>{children}</>;
@@ -93,7 +63,9 @@ export function ConsoleWarningGate({
           <Button variant="outline" onClick={() => router.push(`/apps/${slug}`)}>
             Leave page
           </Button>
-          <Button onClick={writeAck}>I understand, open the console</Button>
+          <Button onClick={acknowledgeConsole}>
+            I understand, open the console
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

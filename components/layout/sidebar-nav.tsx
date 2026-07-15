@@ -13,6 +13,7 @@ import {
 } from "./nav-config";
 import { backOutOf } from "./navigation-history";
 import { useAppNav } from "@/components/apps/app-nav-store";
+import { useConsoleAck } from "@/components/apps/console-ack";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -40,6 +41,9 @@ export function SidebarNav({
   const pathname = usePathname();
   const caps = new Set(capabilities);
   const service = useAppNav();
+  // The console chip is unlocked only once the user confirms its warning; `null`
+  // (undecided, pre-hydration) reads as "not yet" so nothing flashes.
+  const consoleAcknowledged = useConsoleAck() === true;
 
   // A "back" escape hatch leaves the whole current section via the browser's
   // history — jumping to the last page you were on *outside* it — so it lands
@@ -104,6 +108,7 @@ export function SidebarNav({
       running: matches ? service!.running : false,
       devEligible: matches ? service!.devEligible : false,
       showFiles: matches ? service!.showFiles : false,
+      consoleAcknowledged,
     });
   } else if (inSettings) {
     sections = SETTINGS_NAV;

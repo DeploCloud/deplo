@@ -266,6 +266,9 @@ export interface AppNavFlags {
   running: boolean;
   devEligible: boolean;
   showFiles: boolean;
+  /** The console is an advanced surface: its chip appears only once the user has
+   *  confirmed the one-time "I understand" warning (persisted in localStorage). */
+  consoleAcknowledged: boolean;
 }
 
 /**
@@ -315,9 +318,11 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       icon: Globe,
       tooltip: "Custom domains & routing",
     },
-    // Console streams from a live container, so it shows only while the app
-    // is running (or when that page is itself the one open).
-    ...(f.running || on("/console")
+    // Console is an ADVANCED surface — a live shell into the container, reached
+    // from Advanced settings. Its chip stays hidden until the user confirms the
+    // one-time warning (consoleAcknowledged), and then only while there's a live
+    // container to reach (running, or the console page is itself open).
+    ...(f.consoleAcknowledged && (f.running || on("/console"))
       ? [
           {
             label: "Console",
