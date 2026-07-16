@@ -13,8 +13,18 @@ import {
   ArrowDown,
   ArrowUp,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { FieldLabel } from "@/components/ui/info-tip";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import { gqlAction } from "@/lib/graphql-client";
@@ -44,12 +54,20 @@ const WINDOWS = [
 export function MonitoringDashboard({
   servers,
   initialMetrics,
+  initialSaveMetrics,
+  canManageInfra,
 }: {
   servers: ServerLite[];
   initialMetrics: ServerMetrics[];
+  /** The stored "save metrics on server" switch state (instance-wide). */
+  initialSaveMetrics: boolean;
+  /** Cosmetic gate for the switch; the mutation enforces `manage_infra` itself. */
+  canManageInfra: boolean;
 }) {
   const [selectedId, setSelectedId] = React.useState(servers[0]?.id ?? "");
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
+  const [saveMetrics, setSaveMetrics] = React.useState(initialSaveMetrics);
+  const [savingToggle, setSavingToggle] = React.useState(false);
   // Chart history holds live MEASUREMENTS only. The SSR hint (stored status,
   // zeroed net/load) and offline snapshots are placeholders, not measurements —
   // charting them would draw fake dips to 0. The latest poll result (whatever
@@ -127,6 +145,86 @@ export function MonitoringDashboard({
     };
   }, [selectedId, online]);
 
+  // Seed the charts from the control plane's buffered history (when "save
+  // metrics on server" is on): a reload or a server switch starts from the
+  // saved window instead of an empty chart. Merged by timestamp with whatever
+  // live samples have already landed — the two writers overlap harmlessly.
+  React.useEffect(() => {
+    if (!selectedId || !online || !saveMetrics) return;
+    let active = true;
+    (async () => {
+      const res = await gqlAction<
+        { serverMetricsHistory: ServerMetrics[] },
+        ServerMetrics[]
+      >(
+        `query ServerMetricsHistory($serverId: String!) {
+          serverMetricsHistory(serverId: $serverId) {
+            serverId
+            online
+            ts
+            cpu
+            cpuCores
+            memUsed
+            memTotal
+            memPct
+            diskUsed
+            diskTotal
+            diskPct
+            netRx
+            netTx
+            load
+            uptimeSec
+            containers
+          }
+        }`,
+        { serverId: selectedId },
+        (d) => d.serverMetricsHistory,
+      );
+      if (!active || !res.ok || !res.data || res.data.length === 0) return;
+      const seeded = res.data;
+      setHistory((h) => {
+        const byTs = new Map<number, ServerMetrics>();
+        // Live samples second so they win a timestamp collision (same data,
+        // fresher provenance).
+        for (const s of [...seeded, ...(h[selectedId] ?? [])]) byTs.set(s.ts, s);
+        const merged = [...byTs.values()]
+          .sort((a, b) => a.ts - b.ts)
+          .slice(-MAX_POINTS);
+        return { ...h, [selectedId]: merged };
+      });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [selectedId, online, saveMetrics]);
+
+  // Flip the instance-wide "save metrics on server" switch. Optimistic (the
+  // switch answers immediately) with a revert + the server's message on failure.
+  async function toggleSaveMetrics(next: boolean) {
+    setSaveMetrics(next);
+    setSavingToggle(true);
+    try {
+      const res = await gqlAction<
+        { setSaveMetrics: { saveMetrics: boolean } },
+        boolean
+      >(
+        `mutation SetSaveMetrics($enabled: Boolean!) {
+          setSaveMetrics(enabled: $enabled) {
+            saveMetrics
+          }
+        }`,
+        { enabled: next },
+        (d) => d.setSaveMetrics.saveMetrics,
+      );
+      if (!res.ok) {
+        setSaveMetrics(!next);
+        toast.error(res.error);
+      }
+    } finally {
+      setSavingToggle(false);
+    }
+  }
+
   const samples = history[selectedId] ?? [];
   const lastPoll = live[selectedId];
   // Latest measurement for the tiles — while the agent is unreachable they
@@ -174,34 +272,67 @@ export function MonitoringDashboard({
     );
   }
 
+  // The switch is rendered for everyone (so the page never hides where the
+  // behavior is controlled) but only `manage_infra` can flip it — the tooltip
+  // says so instead of leaving a dead control unexplained.
+  const saveSwitch = (
+    <div className="flex items-center gap-2">
+      <Switch
+        id="save-metrics"
+        checked={saveMetrics}
+        disabled={!canManageInfra || savingToggle}
+        onCheckedChange={toggleSaveMetrics}
+        aria-label="Save metrics on server"
+      />
+      <FieldLabel
+        htmlFor="save-metrics"
+        className="text-sm font-normal text-muted-foreground"
+        info={
+          <>
+            Keeps a rolling ~15-minute metrics history for every server in the
+            control plane&apos;s memory, so these charts survive a page reload
+            and keep filling while nobody is watching. RAM only (~0.5&nbsp;MB
+            per server) — nothing is written to the database, and a
+            control-plane restart starts the window over. Turning it off also
+            drops the saved history.
+          </>
+        }
+      >
+        Save metrics on server
+      </FieldLabel>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      {/* Server selector */}
-      <div className="flex flex-wrap gap-2">
-        {servers.map((s) => {
-          // Compare against the resolved `selected` (which falls back to the
-          // first server) so the highlight always matches the data on screen.
-          const active = s.id === selected?.id;
-          return (
-            <button
-              key={s.id}
-              onClick={() => setSelectedId(s.id)}
-              className={cn(
-                "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                active
-                  ? "border-foreground/30 bg-secondary"
-                  : "border-border hover:bg-accent/50",
-              )}
-            >
-              <StatusDot status={s.status} />
-              <span className="font-medium">{serverLabel(s)}</span>
-              <Badge variant="secondary">{s.status}</Badge>
-              <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
-                {s.ip}
-              </span>
-            </button>
-          );
-        })}
+      {/* Server selector + the instance-wide history switch */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Select value={selected?.id ?? ""} onValueChange={setSelectedId}>
+          <SelectTrigger className="w-full sm:w-80" aria-label="Server">
+            <SelectValue placeholder="Select a server" />
+          </SelectTrigger>
+          <SelectContent>
+            {servers.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                <span className="flex items-center gap-2">
+                  <StatusDot status={s.status} />
+                  <span className="font-medium">{serverLabel(s)}</span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {s.ip}
+                  </span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {canManageInfra ? (
+          saveSwitch
+        ) : (
+          <SimpleTooltip content="Requires the Manage infrastructure capability">
+            {/* span so the tooltip still fires over the disabled switch */}
+            <span tabIndex={0}>{saveSwitch}</span>
+          </SimpleTooltip>
+        )}
       </div>
 
       {!online || !cur ? (

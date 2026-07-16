@@ -246,6 +246,13 @@
       "when": 1784205214000,
       "tag": "0034_add_team_database_order",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1784324700000,
+      "tag": "0035_add_monitoring_settings",
+      "breakpoints": true
     }
   ]
 }

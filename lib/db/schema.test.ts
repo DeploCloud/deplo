@@ -82,6 +82,9 @@ const CONTROL_PLANE = [
   "docker_cleanup_excluded_servers",
   "docker_cleanup_runs",
   "docker_cleanup_run_items",
+  // monitoring — instance-wide singleton (the "save metrics on server" switch);
+  // the metrics history itself is process RAM, never a table.
+  "monitoring_settings",
   // services
   "apps",
   "app_build",

@@ -1851,3 +1851,33 @@ export const dockerCleanupRunItems = pgTable(
   },
   (t) => [primaryKey({ columns: [t.runId, t.scope] })],
 );
+
+/* ================================================================== */
+/* Monitoring                                                          */
+/* ================================================================== */
+
+/**
+ * Monitoring settings — a SINGLETON row like {@link dockerCleanupPolicy} (`id` is a
+ * fixed `'default'`), and instance-wide for the same reason: servers are the one
+ * shared cross-team resource, so whether the control plane keeps their metrics
+ * history is a property of the fleet, not of a team.
+ *
+ * The one knob today is `save_metrics`: when true, the control plane keeps a
+ * short rolling metrics HISTORY per server **in process memory** (see
+ * lib/monitoring/history.ts) — fed by a background collector plus every live
+ * dashboard poll — so the Monitoring charts survive a page reload instead of
+ * starting empty. The samples themselves are deliberately NOT stored in Postgres:
+ * a per-second time series is ring-buffer data, not relational state, and the
+ * window is minutes, not months.
+ *
+ * A MISSING row is legal and means "never configured" — the data layer answers
+ * with the default (**enabled**: keeping ~15 minutes of numbers in RAM costs
+ * ~0.5 MB per server and makes the page work the way a non-expert expects).
+ */
+export const monitoringSettings = pgTable("monitoring_settings", {
+  /** Always `'default'`. The row is a singleton; the PK exists to enforce that. */
+  id: text("id").primaryKey().default("default"),
+  /** Keep a rolling in-memory metrics history per server on the control plane. */
+  saveMetrics: boolean("save_metrics").notNull(),
+  updatedAt: isoTimestamptz("updated_at").notNull(),
+});

@@ -19,6 +19,7 @@ enum ActivityType {
   domain
   env
   member
+  monitoring
   project
   s3
 }
@@ -980,6 +981,14 @@ input MintRegistrationLinkInput {
   teamAssignments: [RegistrationTeamAssignmentInput!]
 }
 
+"""
+Instance-wide monitoring settings (a fleet-scoped singleton, like the Docker cleanup policy).
+"""
+type MonitoringSettings {
+  saveMetrics: Boolean
+  updatedAt: String
+}
+
 """A config file a template materialises into its stack at deploy."""
 input MountInput {
   content: String!
@@ -1400,6 +1409,11 @@ type Mutation {
   setProjectColor(color: String, id: ID!): Boolean
 
   """
+  Turn saving server metrics on the control plane on or off. Turning it off also drops the buffered history.
+  """
+  setSaveMetrics(enabled: Boolean!): MonitoringSettings
+
+  """
   Set how many deployments this server runs at once (the per-server slot count the deploy queue enforces). 1 = strict serialization. Whole number in [1, 50].
   """
   setServerDeployConcurrency(concurrency: Int!, id: String!): Server
@@ -1749,6 +1763,9 @@ type Query {
   """Members of the active team, oldest first."""
   members: [Member!]
 
+  """The instance-wide monitoring settings."""
+  monitoringSettings: MonitoringSettings
+
   """Every team the viewer belongs to, for the team switcher."""
   myTeams: [TeamMembership!]
 
@@ -1784,6 +1801,11 @@ type Query {
 
   """A fresh live metrics snapshot for one server."""
   serverMetrics(serverId: String!): ServerMetrics
+
+  """
+  The metrics history buffered on the control plane for one server (oldest first) — what the Monitoring charts seed from on load. Empty when saving is off or the control plane restarted recently.
+  """
+  serverMetricsHistory(serverId: String!): [ServerMetrics!]
 
   """All servers, by creation order."""
   servers: [Server!]

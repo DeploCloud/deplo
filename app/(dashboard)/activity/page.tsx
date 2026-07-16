@@ -9,6 +9,7 @@ import {
   Archive,
   HardDrive,
   Brush,
+  Gauge,
   Activity as ActivityIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const ICON_BY_TYPE: Record<ActivityType, LucideIcon> = {
   backup: Archive,
   s3: HardDrive,
   cleanup: Brush,
+  monitoring: Gauge,
 };
 
 function iconFor(type: ActivityType): LucideIcon {

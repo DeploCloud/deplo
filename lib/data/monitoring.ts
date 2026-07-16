@@ -8,6 +8,8 @@ import { recordServerHealth } from "./server-health";
 import { classifyServerHealth } from "../infra/server-health";
 import { isAgentOutdated, reportedAgentVersion, resolveExpectedAgentVersion } from "../version";
 import { nowIso } from "../ids";
+import { getMetricsHistory, recordMetricsSample } from "../monitoring/history";
+import { isMetricsSavingEnabled } from "./monitoring-settings";
 import type { Server } from "../types";
 
 /**
@@ -211,7 +213,12 @@ export async function getServerMetrics(serverId: string): Promise<ServerMetrics>
   // a member can't poll the live metrics of a server restricted to other teams.
   const server = await getServer(serverId);
   if (!server) throw new Error("Server not found");
-  return metricsFor(server, await resolveExpectedAgentVersion());
+  const m = await metricsFor(server, await resolveExpectedAgentVersion());
+  // Every live poll doubles as a history writer (when saving is on): a watched
+  // server gets 1s-dense history for free, and the background collector sees the
+  // fresh sample and skips it. recordMetricsSample refuses offline snapshots.
+  if (await isMetricsSavingEnabled()) recordMetricsSample(m);
+  return m;
 }
 
 export async function getAllServerMetrics(): Promise<ServerMetrics[]> {
@@ -219,10 +226,35 @@ export async function getAllServerMetrics(): Promise<ServerMetrics[]> {
   // a "Check for updates" bust resolved a fresh value, so this poll carries it to
   // every open Servers tab's badge. Team-scoped to the servers this team can see.
   const expected = await resolveExpectedAgentVersion();
-  return Promise.all(
+  const all = await Promise.all(
     (await listServersForCurrentTeam()).map((s) => metricsFor(s, expected)),
   );
+  // Same free-history rule as getServerMetrics: the Servers page's fleet poll
+  // keeps every visible server's buffer warm while it is open.
+  if (await isMetricsSavingEnabled()) for (const m of all) recordMetricsSample(m);
+  return all;
 }
+
+/**
+ * The buffered metrics HISTORY for one server (lib/monitoring/history.ts) — what
+ * the Monitoring page seeds its charts from on load, so a reload no longer starts
+ * them empty. Team-scoped exactly like {@link getServerMetrics}; empty when saving
+ * is off (the switch drops the buffers) or nothing has been sampled yet.
+ */
+export async function getServerMetricsHistory(serverId: string): Promise<ServerMetrics[]> {
+  const server = await getServer(serverId);
+  if (!server) throw new Error("Server not found");
+  return getMetricsHistory(serverId);
+}
+
+/**
+ * Session-free measure for the background collector (lib/monitoring/collector.ts),
+ * which has no request context to team-scope against: it takes an already-resolved
+ * Server row — never a caller-supplied id — and its result reaches no client
+ * directly; the sample lands in the in-memory history buffer only. Every
+ * user-facing read goes through {@link getServerMetrics} / {@link getAllServerMetrics}.
+ */
+export const measureServerForCollector = metricsFor;
 
 /**
  * Cheap, instant metrics for the initial server render. measureLocal() takes

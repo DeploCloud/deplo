@@ -20,6 +20,7 @@ const ActivityTypeEnum = builder.enumType("ActivityType", {
     "backup",
     "s3",
     "cleanup",
+    "monitoring",
   ] as const,
 });
 
