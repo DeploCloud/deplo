@@ -204,8 +204,10 @@ function detectExpose(
 
 /** Labels that mark a container as Deplo-owned. Applied to EVERY service so the
  * whole stack is discoverable by `label=deplo.project=<id>` / `deplo.slug=<slug>`
- * — container counts, the console, health waits and teardown all rely on this. */
-function deploLabels(appId: string, slug: string): string[] {
+ * — container counts, the console, health waits and teardown all rely on this.
+ * Exported for the database renderer (`database-compose.ts`), which stamps the
+ * same labels with the database id so DB containers are equally discoverable. */
+export function deploLabels(appId: string, slug: string): string[] {
   return ["deplo.managed=true", `deplo.project=${appId}`, `deplo.slug=${slug}`];
 }
 

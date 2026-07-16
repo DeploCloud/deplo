@@ -389,15 +389,7 @@ export async function createDatabase(input: {
 
   // Provision the real container on the owning server's agent in the background;
   // flips to running/error.
-  void provisionDatabase(db.id, server.id, {
-    service,
-    type: input.type,
-    version: input.version,
-    username,
-    password,
-    dbName,
-    hostPort: exposedPort ?? undefined,
-  }).catch(async () => {
+  void provisionDatabase(db, password).catch(async () => {
     // Mark the row errored — but only if it still exists (a concurrent delete may
     // have raced the floated provision; an UPDATE matching no row is a safe no-op).
     await getDb()
@@ -410,6 +402,30 @@ export async function createDatabase(input: {
 }
 
 /**
+ * The ONE render call for a database's compose stack. Every path that ships
+ * YAML to the agent (initial provision, exposure edit / server move, redeploy)
+ * goes through here, reading everything — exposure, resource limits, image /
+ * command overrides — from the {@link Database} object, so the renders can't
+ * drift and "the row is truth": any reroute applies the row's pending edits.
+ */
+function renderDatabaseStackYaml(db: Database, password: string): string {
+  return generateDatabaseCompose({
+    name: db.host, // service slug, stable
+    databaseId: db.id,
+    type: db.type,
+    version: db.version,
+    username: db.username,
+    password,
+    dbName: db.dbName,
+    hostPort:
+      db.exposedPublicly && db.exposedPort != null ? db.exposedPort : undefined,
+    resources: db.resources,
+    customImage: db.customImage,
+    customCommand: db.customCommand,
+  });
+}
+
+/**
  * Provision the DB stack on the owning server's agent. Reuses `Reroute`, which
  * is already a "provision stack" primitive: it writes `<stackDir>/<slug>.yml`
  * and `docker compose -p deplo-<slug> up -d --remove-orphans` idempotently
@@ -417,40 +433,19 @@ export async function createDatabase(input: {
  * agent's host now (Step 0). The DB keeps its `db-<name>` DNS name on the shared
  * `deplo` network, so connection strings are unchanged.
  */
-async function provisionDatabase(
-  id: string,
-  serverId: string,
-  opts: {
-    service: string;
-    type: DatabaseType;
-    version: string;
-    username: string;
-    password: string;
-    dbName: string;
-    /** The validated host port to publish, or undefined for an unexposed DB. */
-    hostPort?: number;
-  },
-): Promise<void> {
-  const yaml = generateDatabaseCompose({
-    name: opts.service,
-    type: opts.type,
-    version: opts.version,
-    username: opts.username,
-    password: opts.password,
-    dbName: opts.dbName,
-    hostPort: opts.hostPort,
-  });
+async function provisionDatabase(db: Database, password: string): Promise<void> {
+  const yaml = renderDatabaseStackYaml(db, password);
   // Run the provision under the DB's lifecycle lock so a concurrent delete can't
   // interleave: a delete issued during provisioning WAITS here, then tears down a
   // fully-created stack (no orphan). If the row was already deleted before we even
   // acquired the lock, there is nothing to provision — bail without creating a
   // stack the control plane no longer tracks.
-  await withKeyedLock(id, async () => {
-    if (!(await databaseExists(id))) return; // deleted before us
-    const conn = await connectAgent(serverId);
+  await withKeyedLock(db.id, async () => {
+    if (!(await databaseExists(db.id))) return; // deleted before us
+    const conn = await connectAgent(db.serverId);
     try {
       const res = await conn.reroute({
-        slug: opts.service,
+        slug: db.host,
         composeYaml: yaml,
         env: {},
         mounts: [],
@@ -464,7 +459,7 @@ async function provisionDatabase(
     await getDb()
       .update(databasesTable)
       .set({ status: "running" })
-      .where(eq(databasesTable.id, id));
+      .where(eq(databasesTable.id, db.id));
   });
 }
 
@@ -658,15 +653,6 @@ export async function updateDatabase(
     dbName: db.dbName,
   });
   const connEnc = encryptSecret(conn);
-  const yaml = generateDatabaseCompose({
-    name: db.host, // service slug, stable
-    type: db.type,
-    version: db.version,
-    username: db.username,
-    password,
-    dbName: db.dbName,
-    hostPort: newExposedPort ?? undefined,
-  });
 
   // The reroute + teardown + row write happen under the DB's lifecycle lock, the
   // SAME lock create/start-stop/delete use: an edit issued during provisioning
@@ -685,6 +671,13 @@ export async function updateDatabase(
       throw new Error(
         "Database is still provisioning — wait for it to finish before editing it.",
       );
+    // Render from the FRESH row (with the new exposure overlaid) so the reroute
+    // also applies any pending row edits — resource limits, image/command
+    // overrides — saved since the pre-lock read ("the row is truth").
+    const yaml = renderDatabaseStackYaml(
+      { ...cur, exposedPublicly: exposed, exposedPort: newExposedPort },
+      password,
+    );
     // Provision on the TARGET server first. On a move this creates the stack fresh
     // on the new host (empty volume, ready to receive the copied data); in place it
     // reroutes the existing container. Doing this BEFORE any old-host teardown means

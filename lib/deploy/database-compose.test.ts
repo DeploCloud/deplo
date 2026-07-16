@@ -10,8 +10,9 @@ import type { DatabaseType } from "../types";
 
 /** The username/dbName the pre-parameterization tests implicitly assumed: the
  *  service name for the DB, `app` for the login. Passed explicitly now that both
- *  are required params, keeping every existing assertion's expected value intact. */
-const DEFAULTS = { username: "app", dbName: "mydb" };
+ *  are required params, keeping every existing assertion's expected value intact.
+ *  `databaseId` stamps the deplo.* labels (required since the detail-page work). */
+const DEFAULTS = { username: "app", dbName: "mydb", databaseId: "db_test" };
 
 /**
  * The database compose is the on-host stack the agent provisions for a managed
@@ -71,6 +72,7 @@ for (const type of Object.keys(EXPECTED_DATA_DIR) as DatabaseType[]) {
 test("generateDatabaseCompose: redis still sets requirepass via command override", () => {
   const yaml = generateDatabaseCompose({
     name: "cache",
+    databaseId: "db_test",
     type: "redis",
     version: "7",
     password: "s3cret",
@@ -112,6 +114,7 @@ for (const [type, envLine] of Object.entries(DB_CREATE_ENV) as [
 test("generateDatabaseCompose: no ports block when hostPort omitted (internal only)", () => {
   const yaml = generateDatabaseCompose({
     name: "db-internal",
+    databaseId: "db_test",
     type: "postgres",
     version: "16",
     password: "pw",
@@ -125,6 +128,7 @@ test("generateDatabaseCompose: publishes hostPort:enginePort bound to 0.0.0.0 wh
   // A postgres DB (engine port 5432) exposed on host port 25432.
   const yaml = generateDatabaseCompose({
     name: "db-public",
+    databaseId: "db_test",
     type: "postgres",
     version: "16",
     password: "pw",
@@ -142,6 +146,7 @@ test("generateDatabaseCompose: publishes hostPort:enginePort bound to 0.0.0.0 wh
 test("generateDatabaseCompose: hostPort maps to the engine's own port (redis 6379)", () => {
   const yaml = generateDatabaseCompose({
     name: "cache-public",
+    databaseId: "db_test",
     type: "redis",
     version: "7",
     password: "pw",
@@ -161,6 +166,7 @@ test("generateDatabaseCompose: hostPort maps to the engine's own port (redis 637
 test("generateDatabaseCompose: threads a custom username + dbName into the engine env", () => {
   const yaml = generateDatabaseCompose({
     name: "db-shop",
+    databaseId: "db_test",
     type: "postgres",
     version: "16",
     username: "shopuser",
@@ -182,6 +188,7 @@ for (const [type, prefix] of [
   test(`generateDatabaseCompose(${type}): root username emits no ${prefix}_USER`, () => {
     const yaml = generateDatabaseCompose({
       name: "db-app",
+      databaseId: "db_test",
       type,
       version: "1",
       username: "root",
@@ -198,6 +205,7 @@ for (const [type, prefix] of [
   test(`generateDatabaseCompose(${type}): non-root username emits ${prefix}_USER alongside root`, () => {
     const yaml = generateDatabaseCompose({
       name: "db-app",
+      databaseId: "db_test",
       type,
       version: "1",
       username: "appuser",
@@ -234,6 +242,119 @@ test("buildConnectionString: per-engine scheme + path", () => {
     buildConnectionString({ ...base, type: "redis", username: "default", dbName: "ignored" }),
     "redis://default:pw@db-x:5432",
   );
+});
+
+// The deplo.* labels are LOAD-BEARING: the agent authorizes every container RPC
+// (listInstances/exec/attach/followLogs) by `deplo.project=<id>`, so a DB stack
+// without them is invisible to logs, the terminal, and the runtime poll.
+test("generateDatabaseCompose: stamps the deplo.* labels with the database id", () => {
+  const yaml = generateDatabaseCompose({
+    name: "mydb",
+    type: "postgres",
+    version: "16",
+    password: "pw",
+    ...DEFAULTS,
+  });
+  assert.ok(yaml.includes("labels:"), yaml);
+  assert.ok(yaml.includes("- deplo.managed=true"), yaml);
+  assert.ok(yaml.includes("- deplo.project=db_test"), yaml);
+  assert.ok(yaml.includes("- deplo.slug=mydb"), yaml);
+});
+
+// Resource limits render as the same compose keys apps use; absent limits render
+// NOTHING (no resource keys at all), preserving the no-limits stack unchanged.
+test("generateDatabaseCompose: renders resource limits, omits them when unset", () => {
+  const base = {
+    name: "mydb",
+    type: "postgres" as DatabaseType,
+    version: "16",
+    password: "pw",
+    ...DEFAULTS,
+  };
+  const plain = generateDatabaseCompose(base);
+  assert.ok(!plain.includes("mem_limit"), plain);
+  assert.ok(!plain.includes("cpus:"), plain);
+
+  const limited = generateDatabaseCompose({
+    ...base,
+    resources: {
+      memoryMb: 512,
+      memoryReservationMb: null,
+      swapMb: null,
+      cpuMilli: 500,
+      cpuShares: null,
+      cpuset: null,
+      pidsLimit: 256,
+      shmSizeMb: null,
+      storageGb: null,
+      nofile: null,
+      nproc: null,
+      oomScoreAdj: null,
+    },
+  });
+  assert.ok(limited.includes("mem_limit: 512m"), limited);
+  assert.ok(limited.includes("cpus: '0.5'"), limited);
+  assert.ok(limited.includes("pids_limit: 256"), limited);
+});
+
+// customImage replaces the derived engine image ref entirely (version inert).
+test("generateDatabaseCompose: customImage replaces the derived image", () => {
+  const yaml = generateDatabaseCompose({
+    name: "mydb",
+    type: "postgres",
+    version: "16",
+    password: "pw",
+    ...DEFAULTS,
+    customImage: "timescale/timescaledb:2.15-pg16",
+  });
+  assert.ok(yaml.includes("image: timescale/timescaledb:2.15-pg16"), yaml);
+  assert.ok(!yaml.includes("postgres:16-alpine"), yaml);
+});
+
+// customCommand replaces the default verbatim — including redis's
+// password-bearing `--requirepass` (the UI warns; this is the expert hatch).
+test("generateDatabaseCompose: customCommand replaces redis's requirepass command", () => {
+  const yaml = generateDatabaseCompose({
+    name: "cache",
+    databaseId: "db_test",
+    type: "redis",
+    version: "7",
+    password: "s3cret",
+    username: "default",
+    dbName: "cache",
+    customCommand: "redis-server /etc/redis/redis.conf",
+  });
+  assert.ok(yaml.includes("command: redis-server /etc/redis/redis.conf"), yaml);
+  assert.ok(!yaml.includes("--requirepass"), yaml);
+});
+
+// Real per-engine healthchecks (replacing the historical `exit 0`), chosen to
+// avoid embedding the password literally. Under a customImage override the
+// engine tooling can't be assumed — fall back to the no-op probe.
+test("generateDatabaseCompose: real healthcheck per engine, exit 0 under customImage", () => {
+  const mk = (type: DatabaseType, extra: Record<string, unknown> = {}) =>
+    generateDatabaseCompose({
+      name: "mydb",
+      type,
+      version: "1",
+      password: "pw",
+      ...DEFAULTS,
+      ...extra,
+    });
+  assert.ok(mk("postgres").includes("pg_isready -U app -d mydb"));
+  assert.ok(
+    mk("mysql").includes(
+      'mysqladmin ping -h 127.0.0.1 -uroot -p\\"$$MYSQL_ROOT_PASSWORD\\"',
+    ),
+  );
+  assert.ok(mk("mariadb").includes("healthcheck.sh --connect --innodb_initialized"));
+  assert.ok(mk("mongodb").includes("db.adminCommand('ping').ok"));
+  assert.ok(mk("redis").includes('"CMD-SHELL", "redis-cli ping"'));
+  assert.ok(mk("clickhouse").includes("http://127.0.0.1:8123/ping"));
+  for (const yaml of [mk("postgres"), mk("redis")])
+    assert.ok(!yaml.includes('"exit 0"'), yaml);
+  const custom = mk("postgres", { customImage: "myorg/pg:1" });
+  assert.ok(custom.includes('"CMD-SHELL", "exit 0"'), custom);
 });
 
 // parseConnectionPassword recovers the create-only password on edit (and for the

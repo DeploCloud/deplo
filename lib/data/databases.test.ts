@@ -144,6 +144,7 @@ test("dbVolumeHostName matches the rendered DB compose volume (move copies the r
   // `name:` on the volume), this fails loudly instead of breaking moves silently.
   const yaml = generateDatabaseCompose({
     name: slug,
+    databaseId: "db_test",
     type: "postgres",
     version: "16",
     username: "app",
