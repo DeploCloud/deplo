@@ -257,11 +257,14 @@ export function DomainRow({
                 </>
               }
             >
-              <Badge variant="outline" className="gap-1">
-                {/* Cloudflare's brand orange — a deliberate brand-color
-                    exception to the token-only rule, like the cert badge's
-                    text-success it colors only the icon. */}
-                <Cloud className="size-3 text-[#f38020]" />
+              {/* Cloudflare's brand orange — a deliberate brand-color exception
+                  to the token-only rule. Alpha tints keep the fill/border
+                  legible on both the light and dark theme. */}
+              <Badge
+                variant="outline"
+                className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
+              >
+                <Cloud className="size-3" />
                 Cloudflare DNS
               </Badge>
             </SimpleTooltip>
