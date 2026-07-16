@@ -220,13 +220,36 @@ export function assembleApp(
 }
 
 /**
+ * The camelCase drizzle properties of the flat `resource_*` columns — the block
+ * is declared identically on `apps` AND `databases`, so both row shapes satisfy
+ * this structurally and share the one mapping below (exported for
+ * `backup-rows.ts`, the databases anti-drift twin of this module).
+ */
+export interface ResourceLimitsRowColumns {
+  resourceMemLimitMb: number | null;
+  resourceMemReservationMb: number | null;
+  resourceMemSwapMb: number | null;
+  resourceCpuMilli: number | null;
+  resourceCpuShares: number | null;
+  resourceCpuset: string | null;
+  resourcePidsLimit: number | null;
+  resourceShmSizeMb: number | null;
+  resourceStorageSizeGb: number | null;
+  resourceUlimitNofile: number | null;
+  resourceUlimitNproc: number | null;
+  resourceOomScoreAdj: number | null;
+}
+
+/**
  * Fold the flat `resource_*` columns into a {@link ResourceLimits}, or null when
  * EVERY column is NULL (no limits set) — the same null-when-absent shape
  * `assembleRepo`/`assembleUpload` use, so an app that never set a limit
  * round-trips to `resources: null` and renders a byte-identical stack. Each
  * present column passes through as-is (an independently-optional cap).
  */
-function assembleResources(row: AppRow): App["resources"] {
+export function assembleResources(
+  row: ResourceLimitsRowColumns,
+): ResourceLimits | null {
   const r: ResourceLimits = {
     memoryMb: row.resourceMemLimitMb,
     memoryReservationMb: row.resourceMemReservationMb,
@@ -331,12 +354,13 @@ export interface AppRowSet {
 /**
  * The flat `resource_*` columns for a {@link ResourceLimits} (null ⇒ every
  * column NULL, i.e. no limits). Spread into the `apps` row by {@link appToRow}
- * and reused by the resource-limits setter so the App→column mapping lives in
- * exactly one place (the same single-source discipline as `buildToRow`).
+ * (and into the `databases` row by `databaseToRow`) and reused by both
+ * resource-limits setters so the domain→column mapping lives in exactly one
+ * place (the same single-source discipline as `buildToRow`).
  */
 export function resourceLimitsToRow(
   r: ResourceLimits | null,
-): Partial<AppInsert> {
+): ResourceLimitsRowColumns {
   return {
     resourceMemLimitMb: r?.memoryMb ?? null,
     resourceMemReservationMb: r?.memoryReservationMb ?? null,
@@ -350,7 +374,7 @@ export function resourceLimitsToRow(
     resourceUlimitNofile: r?.nofile ?? null,
     resourceUlimitNproc: r?.nproc ?? null,
     resourceOomScoreAdj: r?.oomScoreAdj ?? null,
-  } satisfies Partial<AppInsert>;
+  } satisfies ResourceLimitsRowColumns;
 }
 
 /** The flat `apps` row for a {@link App} (children handled separately). */

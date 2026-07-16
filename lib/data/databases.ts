@@ -372,6 +372,9 @@ export async function createDatabase(input: {
     connectionStringEnc: encryptSecret(conn),
     exposedPublicly: exposed,
     exposedPort,
+    resources: null,
+    customImage: null,
+    customCommand: null,
     sizeMb: 0,
     createdAt: nowIso(),
   };

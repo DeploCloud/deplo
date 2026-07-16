@@ -1203,6 +1203,28 @@ export const databases = pgTable(
     // of colliding with whatever already owns the engine's default port on that
     // host (a system Postgres, the control plane's own DB, another DB stack).
     exposedPort: integer("exposed_port"),
+    // Per-database resource limits — the exact flattened ResourceLimits shape and
+    // units used on `apps` above (NULL ⇒ uncapped, all-NULL ⇒ `resources: null`;
+    // MiB / GiB / milli-CPUs). Applied to the rendered stack on the next
+    // provision/reroute via lib/deploy/resources.ts, same as apps.
+    resourceMemLimitMb: integer("resource_mem_limit_mb"),
+    resourceMemReservationMb: integer("resource_mem_reservation_mb"),
+    resourceMemSwapMb: integer("resource_mem_swap_mb"),
+    resourceCpuMilli: integer("resource_cpu_milli"),
+    resourceCpuShares: integer("resource_cpu_shares"),
+    resourceCpuset: text("resource_cpuset"),
+    resourcePidsLimit: integer("resource_pids_limit"),
+    resourceShmSizeMb: integer("resource_shm_size_mb"),
+    resourceStorageSizeGb: integer("resource_storage_size_gb"),
+    resourceUlimitNofile: integer("resource_ulimit_nofile"),
+    resourceUlimitNproc: integer("resource_ulimit_nproc"),
+    resourceOomScoreAdj: integer("resource_oom_score_adj"),
+    // Expert overrides, both applied at the next render/reroute. `custom_image`
+    // is a full image ref replacing DB_IMAGES[type](version) (version becomes
+    // inert while set); `custom_command` REPLACES the default command verbatim —
+    // for redis that default carries `--requirepass`, so the UI warns about it.
+    customImage: text("custom_image"),
+    customCommand: text("custom_command"),
     sizeMb: bigint("size_mb", { mode: "number" }).notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
   },

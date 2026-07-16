@@ -232,6 +232,13 @@
       "when": 1783600413000,
       "tag": "0032_add_app_resource_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1784205213000,
+      "tag": "0033_add_database_resources_and_overrides",
+      "breakpoints": true
     }
   ]
 }

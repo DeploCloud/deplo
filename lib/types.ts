@@ -1249,6 +1249,24 @@ export interface Database {
    * host port instead of colliding with the engine's default on that host.
    */
   exposedPort: number | null;
+  /**
+   * Per-database resource limits, or null when none set — the exact
+   * {@link ResourceLimits} shape apps use, applied to the rendered stack on the
+   * next provision/reroute (lib/deploy/resources.ts).
+   */
+  resources: ResourceLimits | null;
+  /**
+   * Expert override: full image ref replacing the derived engine image
+   * (`DB_IMAGES[type](version)`); {@link version} is inert while set. Null =
+   * derived image.
+   */
+  customImage: string | null;
+  /**
+   * Expert override: REPLACES the container command verbatim. Redis's default
+   * command carries `--requirepass <password>` — omitting it from a custom
+   * command drops auth, so the UI warns. Null = image/engine default.
+   */
+  customCommand: string | null;
   sizeMb: number;
   createdAt: string;
 }

@@ -1,5 +1,6 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 
+import { assembleResources, resourceLimitsToRow } from "./app-graph-rows";
 import {
   backups,
   backupRuns,
@@ -68,9 +69,18 @@ export function databaseToRow(d: Database): DatabaseInsert {
     connectionStringEnc: d.connectionStringEnc,
     exposedPublicly: d.exposedPublicly,
     exposedPort: d.exposedPort,
+    // Flattened ResourceLimits — shared with `appToRow` via the one mapping in
+    // app-graph-rows.ts (the `resource_*` block is declared identically on both
+    // tables), so the two tables can't drift on the column↔field fold.
+    ...resourceLimitsToRow(d.resources),
+    customImage: d.customImage,
+    customCommand: d.customCommand,
     sizeMb: d.sizeMb,
     createdAt: d.createdAt,
-  } satisfies Record<keyof Database, unknown> as DatabaseInsert;
+  } satisfies Record<
+    Exclude<keyof Database, "resources">,
+    unknown
+  > as DatabaseInsert;
 }
 
 /** Reassemble a `databases` row into a {@link Database}. */
@@ -90,6 +100,10 @@ export function assembleDatabase(row: DatabaseRow): Database {
     connectionStringEnc: row.connectionStringEnc,
     exposedPublicly: row.exposedPublicly,
     exposedPort: row.exposedPort,
+    // All-NULL resource columns ⇒ no limits set (null) — same fold as apps.
+    resources: assembleResources(row),
+    customImage: row.customImage,
+    customCommand: row.customCommand,
     sizeMb: row.sizeMb,
     createdAt: row.createdAt,
   };

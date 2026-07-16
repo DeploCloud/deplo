@@ -79,6 +79,9 @@ export async function seedDatabase(
     ),
     exposedPublicly: false,
     exposedPort: null,
+    resources: null,
+    customImage: null,
+    customCommand: null,
     sizeMb: 0,
     createdAt: T0,
   };
