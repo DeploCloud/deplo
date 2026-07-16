@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
+import { DbVersionInput } from "@/components/storage/db-version-input";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
@@ -76,19 +77,18 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1.5">
-          <FieldLabel info="The engine version (image tag). Downgrading across major versions can leave a data volume the new engine can't read.">
+          <FieldLabel info="The engine version (image tag) — the real Docker Hub tag list loads as you type. Downgrading across major versions can leave a data volume the new engine can't read.">
             Version
           </FieldLabel>
-          <Input
-            value={version}
-            onChange={(e) => setVersion(e.target.value)}
-            placeholder={db.version}
-            disabled={customImage.trim() !== ""}
-          />
-          {customImage.trim() !== "" && (
-            <p className="text-xs text-muted-foreground">
-              A custom image is set, so the version tag is ignored.
-            </p>
+          {customImage.trim() !== "" ? (
+            <>
+              <Input value={version} disabled />
+              <p className="text-xs text-muted-foreground">
+                A custom image is set, so the version tag is ignored.
+              </p>
+            </>
+          ) : (
+            <DbVersionInput engine={db.type} value={version} onChange={setVersion} />
           )}
         </div>
 

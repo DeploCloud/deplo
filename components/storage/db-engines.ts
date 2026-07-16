@@ -19,12 +19,16 @@ export const DB_TYPES: {
   icon: LucideIcon;
   versions: string[];
 }[] = [
-  { id: "postgres", name: "PostgreSQL", icon: DatabaseIcon, versions: ["16", "15", "14"] },
-  { id: "mysql", name: "MySQL", icon: DatabaseIcon, versions: ["8", "5.7"] },
+  // These lists are only the OFFLINE FALLBACK + default (versions[0]) for the
+  // create dialog — the real version picker (DbVersionInput) fetches the live
+  // tag list from Docker Hub via /api/database-versions, so it tracks new
+  // releases automatically. Keep the first entry a sensible current default.
+  { id: "postgres", name: "PostgreSQL", icon: DatabaseIcon, versions: ["18", "17", "16"] },
+  { id: "mysql", name: "MySQL", icon: DatabaseIcon, versions: ["8.4", "8.0"] },
   { id: "mariadb", name: "MariaDB", icon: DatabaseIcon, versions: ["11", "10"] },
-  { id: "mongodb", name: "MongoDB", icon: Leaf, versions: ["7", "6"] },
-  { id: "redis", name: "Redis", icon: MemoryStick, versions: ["7", "6"] },
-  { id: "clickhouse", name: "ClickHouse", icon: BarChart3, versions: ["24", "23"] },
+  { id: "mongodb", name: "MongoDB", icon: Leaf, versions: ["8", "7"] },
+  { id: "redis", name: "Redis", icon: MemoryStick, versions: ["8", "7"] },
+  { id: "clickhouse", name: "ClickHouse", icon: BarChart3, versions: ["25", "24"] },
 ];
 
 export const DB_ICONS: Record<DatabaseType, LucideIcon> = {

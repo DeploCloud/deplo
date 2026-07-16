@@ -33,6 +33,7 @@ import { useRouter } from "next/navigation";
 import { gqlAction } from "@/lib/graphql-client";
 import { generatePassword } from "@/lib/utils";
 import { DB_TYPES as TYPES, ENGINE_CREDS } from "./db-engines";
+import { DbVersionInput } from "./db-version-input";
 import type { DatabaseType } from "@/lib/types";
 
 export function CreateDatabase({
@@ -68,7 +69,11 @@ export function CreateDatabase({
   }, []);
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState<DatabaseType>("postgres");
-  const [version, setVersion] = React.useState("16");
+  // Default to the newest fallback major; the live picker (DbVersionInput)
+  // fetches the real Docker Hub tag list when the user opens it.
+  const [version, setVersion] = React.useState(
+    TYPES.find((t) => t.id === "postgres")!.versions[0],
+  );
   const [serverId, setServerId] = React.useState<string>(servers[0]?.id ?? "");
   // Optional per-engine credentials. Blank => the server's generated defaults.
   const [username, setUsername] = React.useState("");
@@ -82,7 +87,6 @@ export function CreateDatabase({
   const [port, setPort] = React.useState("");
   const [generatingPort, setGeneratingPort] = React.useState(false);
 
-  const current = TYPES.find((t) => t.id === type)!;
   const creds = ENGINE_CREDS[type];
   const noServers = servers.length === 0;
   // The useState initializer runs only on mount, but `servers` arrives via a
@@ -247,21 +251,10 @@ export function CreateDatabase({
               </Select>
             </div>
             <div className="space-y-2">
-              <FieldLabel info="The major version of the selected engine to provision. Pick the version your application targets.">
+              <FieldLabel info="The engine version to provision — the real Docker Hub tag list loads as you type, so new releases appear automatically. Pick the version your application targets, or type any published tag.">
                 Version
               </FieldLabel>
-              <Select value={version} onValueChange={setVersion}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {current.versions.map((v) => (
-                    <SelectItem key={v} value={v}>
-                      {v}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <DbVersionInput engine={type} value={version} onChange={setVersion} />
             </div>
           </div>
           <div className="space-y-3 rounded-lg border border-border p-3">
