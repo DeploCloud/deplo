@@ -9,6 +9,29 @@ the deeper docs it links (this file points; it does not restate them).
 - **`docs/api/graphql.md`** — external API reference · **`schema.graphql`** (root) — generated SDL.
 - **`docs/agents/`** — `issue-tracker.md`, `triage-labels.md`, `domain.md`.
 
+## Core mission — the north star every feature answers to
+
+**deplo exists to make self-hosting exhaustively simple, Vercel-style.** The user must **never
+be required to know Docker or SSH** to get full value out of deplo — that non-requirement is the
+whole differentiator from Coolify / Dokploy, which both assume the operator lives in a shell.
+
+Consequences that bind every design and review decision:
+
+- **No feature may push Docker/SSH/YAML knowledge onto the user as a prerequisite.** If a flow
+  only works when the user drops to a shell or hand-edits compose, it is unfinished, not done.
+  The escape hatch may exist for experts; the *happy path* must not need it.
+- **Every feature is tested exhaustively and judged on UX/DX**, not just "does it function."
+  "Generally useful, obvious, and safe for a non-expert" is the bar. Half a feature that assumes
+  operator expertise is a regression against the mission.
+- **Favor derived / live / automatic over manual.** Disaster recovery, backups, secrets, status,
+  URLs — the platform should do the operator's job for them, using infrastructure they already
+  have (e.g. the fleet itself), not ask them to stand up more (an S3 bucket, an external DB) as a
+  precondition.
+
+When weighing a design, ask: *would a competent developer who has never touched Docker or SSH
+succeed on the happy path, with the platform doing the operational heavy lifting?* If not,
+reconsider.
+
 ## This is NOT the Next.js you know
 
 APIs, conventions, and file structure may all differ from your training data. **Read the
