@@ -43,6 +43,21 @@ import type { CertProvider, Domain, DomainEntrypoint } from "../types";
 
 const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
 
+/** The one DNS resolver every domain check goes through, swappable so the
+ * pglite test suite stays hermetic (a real `resolve4` would hit the network for
+ * every seeded `*.example.io` host). Production always uses node's resolver. */
+let dnsResolve4: (name: string) => Promise<string[]> = resolve4;
+
+export function __setDnsResolve4ForTest(
+  fn: (name: string) => Promise<string[]>,
+): void {
+  dnsResolve4 = fn;
+}
+
+export function __resetDnsResolve4ForTest(): void {
+  dnsResolve4 = resolve4;
+}
+
 /** A per-domain port override applies to every project: on a single-image
  * project it picks the container port this host routes to; on a compose stack it
  * overrides the chosen `service`'s compose-declared port (blank ⇒ the service's
@@ -391,18 +406,27 @@ export async function addDomain(
   // status instead of restarting at `pending`. Without this the new row is filtered
   // out of `routableRoutes` (which only routes `valid`/`cloudflare`) and the path
   // silently never routes until the user hunts down the Verify button.
-  // No verified sibling ⇒ `pending` as before, and DNS is checked for real.
   const sibling = existing.find(
     (d) => d.name === clean && (d.status === "valid" || d.status === "cloudflare"),
   );
+  // No verified sibling ⇒ check DNS RIGHT NOW instead of parking the row at
+  // `pending` until someone finds the Verify button: a host whose record is
+  // already in place (a suggested nip.io domain, a pre-pointed custom domain)
+  // is born `valid`/`cloudflare` and the caller's routing re-apply makes it
+  // live in the same click — zero manual steps. A host that doesn't check out
+  // yet lands on `pending` (no record) or `misconfigured` (wrong address) and
+  // the domains page keeps re-checking it automatically.
+  const status =
+    sibling?.status ??
+    (await checkDomainDns(clean, await appServerIp(appId)));
   const domain: Domain = {
     id: newId("dom"),
     appId,
     name: clean,
-    status: sibling?.status ?? "pending",
+    status,
     primary: isFirst,
     redirectTo: null,
-    ssl: sibling?.ssl ?? false,
+    ssl: sibling ? sibling.ssl : status === "valid" || status === "cloudflare",
     // Always store a concrete port so no domain is ever portless. Compose
     // already required one above; single-image falls back to the project's
     // production port (build.port) — byte-identical to leaving it null, since
@@ -620,12 +644,15 @@ export async function updateDomain(
     next.stripPrefix = strip ? true : undefined;
   }
   if (patch.service !== undefined) next.service = nextApp ?? undefined;
-  // A renamed custom domain points at a new host whose DNS we haven't checked:
-  // drop it back to pending so it stops routing until re-verified. An auto
-  // nip.io host always resolves, so it stays valid.
+  // A renamed custom domain points at a new host whose DNS the stored status
+  // says nothing about — so check the NEW name right now, exactly like addDomain
+  // does: a pre-pointed host keeps routing across the rename with zero manual
+  // steps, an unpointed one drops to pending/misconfigured and stops routing
+  // until the automatic re-checks see it settle. An auto nip.io host always
+  // resolves, so it stays valid untouched.
   if (renamed && next.source !== "auto") {
-    next.status = "pending";
-    next.ssl = false;
+    next.status = await checkDomainDns(nextName, await appServerIp(current.appId));
+    next.ssl = next.status === "valid" || next.status === "cloudflare";
   }
 
   await getDb().transaction(async (tx) => {
@@ -663,14 +690,23 @@ export async function updateDomain(
  *                     treated as routable (see {@link routableRoutes}). TLS is
  *                     served at Cloudflare's edge, so `ssl` is on.
  *   - `misconfigured` its A records point at some unrelated address (a different
- *                     server, an unrelated site) or it doesn't resolve at all.
+ *                     server, an unrelated site).
+ *   - `pending`       it doesn't resolve at all yet (no A record) — the normal
+ *                     state of a record the user just created; the domains page
+ *                     re-checks it automatically until it settles.
  *
  * The server-IP DNS check (deplo's core) is unchanged; the Cloudflare case is a
  * new, additive branch that stops a correctly-proxied domain from reading as
  * broken. A domain whose DNS is on Cloudflare but NOT proxied (grey-cloud)
  * resolves straight to the origin and so verifies as `valid` exactly as before.
+ *
+ * Returns the settled domain plus `statusChanged`, so the caller can skip the
+ * routing re-apply (an agent round-trip) when a check settles on the status the
+ * row already had — the common case for the page's automatic interval checks.
  */
-export async function verifyDomain(id: string): Promise<Domain> {
+export async function verifyDomain(
+  id: string,
+): Promise<Domain & { statusChanged: boolean }> {
   const { membership } = await requireCapability("manage_domains");
   const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
@@ -683,10 +719,11 @@ export async function verifyDomain(id: string): Promise<Domain> {
   const target = await appServerIp(dom.appId);
   const status = await checkDomainDns(dom.name, target);
   // `valid` (points straight here) and `cloudflare` (proxied — DNS correctly
-  // delegated to Cloudflare, origin masked) are both working, routable states;
-  // only `misconfigured` means DNS doesn't reach this server, so `ssl` (a cert
-  // is in effect for end users) is on for the first two.
-  const ssl = status !== "misconfigured";
+  // delegated to Cloudflare, origin masked) are both working, routable states,
+  // so `ssl` (a cert is in effect for end users) is on for those two only — a
+  // `pending`/`misconfigured` host has no working DNS and thus no live cert.
+  const ssl = status === "valid" || status === "cloudflare";
+  const statusChanged = status !== dom.status || ssl !== dom.ssl;
 
   const updated = await getDb()
     .update(domainsTable)
@@ -694,7 +731,7 @@ export async function verifyDomain(id: string): Promise<Domain> {
     .where(eq(domainsTable.id, id))
     .returning();
   if (updated.length === 0) throw new Error("Not found");
-  return { ...dom, status, ssl };
+  return { ...dom, status, ssl, statusChanged };
 }
 
 /** The public IPv4 a project's custom domains must resolve to: the IP of the
@@ -710,26 +747,35 @@ async function appServerIp(appId: string): Promise<string> {
 
 /**
  * Resolve `name`'s A records and classify them against `target` (the server IP
- * this domain must reach) into `valid` / `cloudflare` / `misconfigured`. This is
- * the thin resolver boundary; the verdict itself is pure ({@link
- * classifyDomainDns}) so it stays exhaustively unit-testable without a network.
+ * this domain must reach) into `pending` / `valid` / `cloudflare` /
+ * `misconfigured`. This is the thin resolver boundary; the verdict itself is
+ * pure ({@link classifyDomainDns}) so it stays exhaustively unit-testable
+ * without a network.
  *
  * resolve4 follows CNAME chains and returns the final A records, so a CNAME'd
  * host is handled here too — including a Cloudflare-proxied host, whose CNAME is
- * flattened to Cloudflare's anycast A records. A resolution failure (NXDOMAIN,
- * SERVFAIL, no A record) yields an empty set ⇒ `misconfigured`. IPv4-only,
- * matching the IPv4 the rest of the domain system uses.
+ * flattened to Cloudflare's anycast A records. IPv4-only, matching the IPv4 the
+ * rest of the domain system uses.
+ *
+ * A host that doesn't resolve AT ALL (NXDOMAIN, SERVFAIL, no A record) reads as
+ * `pending`, not `misconfigured`: checks now run automatically (at add time and
+ * on the domains page's interval), so "no record yet" is the normal state of a
+ * record the user just created and DNS hasn't propagated — calling that
+ * "misconfigured" would flash red at everyone doing the right thing.
+ * `misconfigured` is reserved for a host that DOES resolve, to an address that
+ * is neither this server nor a Cloudflare edge.
  */
 async function checkDomainDns(
   name: string,
   target: string,
-): Promise<DomainDnsClass> {
+): Promise<"pending" | DomainDnsClass> {
   let ips: string[] = [];
   try {
-    ips = await resolve4(name);
+    ips = await dnsResolve4(name);
   } catch {
     ips = [];
   }
+  if (ips.length === 0) return "pending";
   return classifyDomainDns(ips, target);
 }
 

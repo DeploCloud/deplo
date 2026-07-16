@@ -192,7 +192,15 @@ builder.mutationFields((t) => ({
       // in the first place. Without the reroute the domain reports "verified"
       // while the container still carries labels that never mentioned it.
       const domain = await verifyDomain(id);
-      await applyRouting(domain.appId);
+      // Re-apply routing when the check changed anything, or whenever the host
+      // is routable (so a manual Verify can still heal drifted labels). The one
+      // case skipped — an unroutable status re-confirming itself — is exactly
+      // what the domains page's automatic interval checks produce while the
+      // user is still setting DNS up; skipping it keeps that polling free of
+      // per-check agent round-trips.
+      const routable =
+        domain.status === "valid" || domain.status === "cloudflare";
+      if (domain.statusChanged || routable) await applyRouting(domain.appId);
       return domain;
     },
   }),

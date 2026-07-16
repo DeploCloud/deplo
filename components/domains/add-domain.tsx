@@ -130,9 +130,11 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
       return;
     }
     startTransition(async () => {
-      const res = await gqlAction(
+      const res = await gqlAction<{
+        addDomain: { id: string; status: string };
+      }>(
         `mutation AddDomain($appId: String!, $name: String!, $config: DomainConfigInput) {
-          addDomain(appId: $appId, name: $name, config: $config) { id }
+          addDomain(appId: $appId, name: $name, config: $config) { id status }
         }`,
         {
           appId: project.id,
@@ -150,7 +152,23 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
         },
       );
       if (res.ok) {
-        toast.success("Domain added — configure DNS to verify");
+        // DNS was checked as part of the add, so the toast reports the real
+        // outcome: a pre-pointed host is already live; an unpointed one is
+        // watched automatically from the domains page — never a generic
+        // "now go verify" chore.
+        const status = res.data?.addDomain.status;
+        if (status === "valid")
+          toast.success("Domain added — DNS already points here, routing is live");
+        else if (status === "cloudflare")
+          toast.success("Domain added — proxied through Cloudflare, routing is live");
+        else if (status === "misconfigured")
+          toast.warning(
+            "Domain added, but its DNS points at another address — see the hint on its row",
+          );
+        else
+          toast.success(
+            "Domain added — point its DNS at the server and it verifies automatically",
+          );
         setOpen(false);
         reset();
         router.refresh();

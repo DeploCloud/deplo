@@ -45,6 +45,8 @@ import {
   ensureExtraDomain,
   uniqueAutoDomainName,
   routableRoutes,
+  __setDnsResolve4ForTest,
+  __resetDnsResolve4ForTest,
 } from "./domains";
 import { loadDomainsForApp } from "./app-graph-load";
 import { nipEmbeddedIp } from "../deploy/domains";
@@ -65,10 +67,15 @@ let pg: PGlite;
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
+  // addDomain/updateDomain now check DNS at write time; stub the resolver so
+  // the suite never hits the network. "Resolves nowhere" ⇒ every added custom
+  // domain is born `pending`, the pre-check status these tests always assumed.
+  __setDnsResolve4ForTest(async () => []);
 });
 
 after(async () => {
   __resetTestDb();
+  __resetDnsResolve4ForTest();
   await pg.close();
 });
 

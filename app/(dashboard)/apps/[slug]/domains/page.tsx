@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Globe, RefreshCw } from "lucide-react";
+import { Globe } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { listServers } from "@/lib/data/servers";
 import { listDomains } from "@/lib/data/domains";
@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AddDomain } from "@/components/domains/add-domain";
+import { DomainDnsAutoCheck } from "@/components/domains/domain-dns-auto-check";
 import { DomainRow } from "@/components/domains/domain-row";
 
 export const metadata = { title: "App Domains" };
@@ -44,12 +45,13 @@ export default async function AppDomainsPage(
   // Every domain mutation now re-applies routing to the running container itself
   // (see `applyRouting` in lib/graphql/types/domain.ts), so a settled domain is
   // genuinely live and needs no nagging. What is still NOT live is a host whose
-  // DNS hasn't checked out — `pending` after an add, `misconfigured`/`error`
-  // after a failed check. Those are filtered out of the router on purpose, so
-  // they route only once they verify, and that is what this notice explains.
-  const hasUnsettledDomain = domains.some(
-    (d) => d.status !== "valid" && d.status !== "cloudflare",
-  );
+  // DNS hasn't checked out — `pending`/`misconfigured` after the add-time check,
+  // `error` after an unexpected failure. Those are filtered out of the router on
+  // purpose; while any exist, the auto-check callout below re-verifies them on
+  // an interval so they start routing on their own the moment DNS resolves.
+  const unsettledDomains = domains
+    .filter((d) => d.status !== "valid" && d.status !== "cloudflare")
+    .map((d) => ({ id: d.id, name: d.name, status: d.status }));
 
   return (
     <div className="space-y-4">
@@ -72,21 +74,12 @@ export default async function AppDomainsPage(
       </div>
 
       {/* Only a host that has NOT checked out is off the router (see
-          `hasUnsettledDomain`). Adding, editing, removing or verifying a domain
-          re-applies routing to the running container on the spot, so a verified
-          list is live and gets no notice. */}
-      {hasUnsettledDomain && (
-        <div className="flex items-start gap-2.5 rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm">
-          <RefreshCw className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <div className="space-y-0.5">
-            <p className="font-medium">Verify to start routing</p>
-            <p className="text-muted-foreground">
-              A custom domain only reaches the app once its DNS is verified.
-              Point it at this server, then hit Verify — routing is applied to
-              the running container for you, with no rebuild.
-            </p>
-          </div>
-        </div>
+          `unsettledDomains`). While any exist, this client component both
+          explains the wait AND re-checks their DNS automatically on an
+          interval — the moment a record resolves, the same server path a
+          manual Verify uses flips the domain routable and applies routing. */}
+      {unsettledDomains.length > 0 && (
+        <DomainDnsAutoCheck domains={unsettledDomains} serverIp={serverIp} />
       )}
 
       {domains.length === 0 ? (

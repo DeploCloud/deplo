@@ -275,18 +275,23 @@ export function DomainRow({
             → {domain.redirectTo}
           </p>
         )}
-        {domain.status === "misconfigured" && (
-          // A misconfigured domain resolves somewhere other than this
-          // app's server. Tell the user exactly where to point DNS: the
-          // A record must resolve to THIS app's server IP, which is
-          // server-specific (an app on another server needs a different
-          // address) — so the concrete IP is shown, never a generic one.
+        {(domain.status === "misconfigured" || domain.status === "pending") && (
+          // A pending domain has no DNS record yet; a misconfigured one
+          // resolves somewhere other than this app's server. Both need the
+          // same fix, so both get the instructions: the A record must resolve
+          // to THIS app's server IP, which is server-specific (an app on
+          // another server needs a different address) — so the concrete IP is
+          // shown, never a generic one. No "then Verify" chore: the page
+          // re-checks DNS automatically while it's open.
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
             <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
             {serverIp ? (
               <>
                 <span>
-                  This domain’s DNS doesn’t point here. Add an{" "}
+                  {domain.status === "pending"
+                    ? "This domain doesn’t resolve yet."
+                    : "This domain’s DNS doesn’t point here."}{" "}
+                  Add an{" "}
                   <span className="font-medium text-foreground">
                     A record
                   </span>{" "}
@@ -302,15 +307,18 @@ export function DomainRow({
                 <CopyButton value={serverIp} className="size-6" />
                 <span>
                   — the IP of the server this app runs on (unique to this
-                  server), then Verify.
+                  server). It’s re-checked automatically.
                 </span>
               </>
             ) : (
               <span>
-                This domain’s DNS doesn’t point here. Point its{" "}
+                {domain.status === "pending"
+                  ? "This domain doesn’t resolve yet."
+                  : "This domain’s DNS doesn’t point here."}{" "}
+                Point its{" "}
                 <span className="font-medium text-foreground">A record</span>{" "}
                 at the IP of the server this app is deployed on (unique to
-                that server), then Verify.
+                that server). It’s re-checked automatically.
               </span>
             )}
           </div>
@@ -353,15 +361,40 @@ export function DomainRow({
             {domain.status !== "valid" && (
               <DropdownMenuItem
                 onClick={() =>
-                  call(
-                    () =>
-                      gqlAction<{ verifyDomain: { id: string } }, undefined>(
-                        `mutation($id: String!) { verifyDomain(id: $id) { id } }`,
-                        { id: domain.id },
-                        () => undefined,
-                      ),
-                    "Domain verified",
-                  )
+                  // Verify reports what the check actually FOUND, not a blanket
+                  // "verified": a domain can settle on pending/misconfigured and
+                  // the toast must say so (the page keeps re-checking it
+                  // automatically either way).
+                  startTransition(async () => {
+                    const res = await gqlAction<{
+                      verifyDomain: { id: string; status: string };
+                    }>(
+                      /* GraphQL */ `mutation($id: String!) {
+                        verifyDomain(id: $id) { id status }
+                      }`,
+                      { id: domain.id },
+                    );
+                    if (!res.ok) {
+                      toast.error(res.error);
+                      return;
+                    }
+                    const status = res.data?.verifyDomain.status;
+                    if (status === "valid")
+                      toast.success("Domain verified — routing is live");
+                    else if (status === "cloudflare")
+                      toast.success(
+                        "Domain verified — proxied through Cloudflare",
+                      );
+                    else if (status === "misconfigured")
+                      toast.warning(
+                        "This domain’s DNS points at another address — see the hint on its row",
+                      );
+                    else
+                      toast.warning(
+                        "No DNS record found yet — it’s re-checked automatically",
+                      );
+                    router.refresh();
+                  })
                 }
                 disabled={pending}
               >
