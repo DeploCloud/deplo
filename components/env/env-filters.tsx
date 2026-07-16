@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -97,7 +98,8 @@ export interface EnvFacet<T> {
   /** Show it even with a single option — a filter a team EXPECTS to find (who
    *  changed this?) must not vanish just because one person changed everything. */
   persistent?: boolean;
-  /** Put a type-to-narrow autocomplete at the top of the menu (people lists). */
+  /** Render the facet as an autocomplete: the toolbar control IS an input you
+   *  type into, and the menu narrows live (people lists). */
   searchable?: boolean;
 }
 
@@ -231,9 +233,9 @@ export function typeFacet<T extends FilterableVar>(rows: T[]): EnvFacet<T> {
 
 /**
  * Who touched the variable LAST — the person in the "Modified by" column. Tick
- * several people to see everything any of them changed. The menu is an
- * autocomplete (`searchable`) and every person leads with their avatar, so a
- * long team narrows by typing and a face is recognised before a handle is read.
+ * several people to see everything any of them changed. The control is an
+ * autocomplete input (`searchable`) and every person leads with their avatar, so
+ * a long team narrows by typing and a face is recognised before a handle is read.
  *
  * `persistent`: this one is always on the toolbar. It is the filter people go
  * looking for ("what did Ada change?"), and hiding it on a team where one person
@@ -272,7 +274,7 @@ export function editorFacet<T extends FilterableVar>(rows: T[]): EnvFacet<T> {
     icon: UserRound,
     persistent: true,
     searchable: true,
-    info: "Who last changed the variable — the user in the “Modified by” column. Type to narrow the list; pick more than one to see everything any of them touched.",
+    info: "Who last changed the variable — the user in the “Modified by” column. Type a name straight into the box to narrow the list; pick more than one to see everything any of them touched.",
     options,
     match: (row, value) =>
       value === FACET_NONE
@@ -504,13 +506,133 @@ export function EnvFilters<T extends FilterableVar>({
   );
 }
 
+/** Compact by design: six of these share one desktop row, so a permanent
+ *  "Environment:" prefix would leave no room for the value. Idle, the control IS
+ *  the facet's name; with one pick it becomes the pick; with several, the name
+ *  plus how many. The full picture is one click away, in the menu. */
+function facetSummary<T>(facet: EnvFacet<T>, values: string[]): string {
+  if (facet.options.length === 0) return `${facet.label} — none`;
+  if (values.length === 0) return facet.label;
+  if (values.length === 1)
+    return (
+      facet.options.find((o) => o.value === values[0])?.label ?? facet.label
+    );
+  return `${facet.label} · ${values.length}`;
+}
+
+/** The hover title of an active control: every picked label, spelled out. */
+function facetTitle<T>(facet: EnvFacet<T>, values: string[]): string {
+  return values.length > 0
+    ? `${facet.label}: ${facet.options
+        .filter((o) => values.includes(o.value))
+        .map((o) => o.label)
+        .join(", ")}`
+    : `Filter by ${facet.label.toLowerCase()}`;
+}
+
 /**
- * One facet, as a multi-select menu: tick as many options as you like (they are
- * OR-ed), see how many rows each one would leave, and clear the whole facet from
- * the row at the top. The trigger states the filter in its own words —
- * "Modified by: Ada" / "Modified by: 3 selected".
+ * One facet on the toolbar. Both shapes share the multi-select menu — tick as
+ * many options as you like (they are OR-ed), see how many rows each one would
+ * leave, clear the whole facet from the row at the top — and differ only in the
+ * control: a `searchable` facet (people lists) is a combobox whose toolbar
+ * control IS an autocomplete input, everything else is a button that opens the
+ * menu.
  */
-function FacetPicker<T>({
+function FacetPicker<T>(props: {
+  facet: EnvFacet<T>;
+  values: string[];
+  counts?: Record<string, number>;
+  onChange: (values: string[]) => void;
+}) {
+  const { facet } = props;
+  return (
+    <div className="flex min-w-[10rem] flex-1 items-center gap-1 lg:min-w-0">
+      {facet.searchable ? (
+        <FacetCombobox {...props} />
+      ) : (
+        <FacetMenu {...props} />
+      )}
+      {facet.info != null && (
+        <InfoTip
+          content={facet.info}
+          className="shrink-0"
+          label={`About the ${facet.label.toLowerCase()} filter`}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One option of a facet menu: checkbox, avatar for a person, label, hint, and
+ *  how many rows picking it would leave. In a combobox listbox it also carries
+ *  the `option` role and the keyboard highlight (`active`). */
+function FacetOptionRow({
+  opt,
+  checked,
+  count,
+  onToggle,
+  id,
+  active,
+  onActivate,
+}: {
+  opt: FacetOption;
+  checked: boolean;
+  count?: number;
+  onToggle: () => void;
+  /** Set by the combobox — the row becomes an aria `option` the input points at. */
+  id?: string;
+  active?: boolean;
+  onActivate?: () => void;
+}) {
+  return (
+    <label
+      id={id}
+      role={id ? "option" : undefined}
+      aria-selected={id ? checked : undefined}
+      onMouseEnter={onActivate}
+      // Keep the combobox input focused while ticking — a row must never steal
+      // the caret mid-search.
+      onMouseDown={id ? (e) => e.preventDefault() : undefined}
+      className={cn(
+        "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+        active ? "bg-accent" : "hover:bg-accent",
+        // Ticking it would add nothing — shown, so you can see the option
+        // exists, greyed, so you know why it's pointless.
+        count === 0 && !checked && "opacity-50",
+      )}
+    >
+      <Checkbox checked={checked} onCheckedChange={onToggle} />
+      {opt.author && (
+        <Avatar className="size-5 shrink-0">
+          <AvatarFallback
+            className="text-[9px]"
+            style={{
+              backgroundColor: opt.author.avatarColor,
+              color: "#000",
+            }}
+          >
+            {opt.author.username.slice(0, 2).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+      )}
+      <span className="truncate">{opt.label}</span>
+      {opt.hint && (
+        <span className="truncate text-xs text-muted-foreground">
+          {opt.hint}
+        </span>
+      )}
+      {count != null && (
+        <span className="ml-auto pl-2 text-xs tabular-nums text-muted-foreground">
+          {count}
+        </span>
+      )}
+    </label>
+  );
+}
+
+/** The default facet control: a button stating the filter in its own words —
+ *  "Modified by: Ada" / "Modified by · 3" — that opens the multi-select menu. */
+function FacetMenu<T>({
   facet,
   values,
   counts,
@@ -522,35 +644,8 @@ function FacetPicker<T>({
   onChange: (values: string[]) => void;
 }) {
   const Icon = facet.icon;
-  // The autocomplete needle of a `searchable` facet. Reset on close so the menu
-  // reopens whole — a stale needle would read as options having vanished.
-  const [query, setQuery] = React.useState("");
   const on = values.length > 0;
   const empty = facet.options.length === 0;
-  const first = facet.options.find((o) => o.value === values[0]);
-
-  const needle = query.trim().toLowerCase();
-  // Never hide a TICKED option: unticking must stay one click away even when the
-  // needle no longer matches it.
-  const shownOptions =
-    facet.searchable && needle
-      ? facet.options.filter(
-          (o) =>
-            values.includes(o.value) ||
-            `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(needle),
-        )
-      : facet.options;
-  // Compact by design: six of these share one desktop row, so a permanent
-  // "Environment:" prefix would leave no room for the value. Idle, the trigger IS
-  // the facet's name; with one pick it becomes the pick; with several, the name
-  // plus how many. The full picture is one click away, in the menu.
-  const summary = empty
-    ? `${facet.label} — none`
-    : values.length === 0
-      ? facet.label
-      : values.length === 1
-        ? (first?.label ?? facet.label)
-        : `${facet.label} · ${values.length}`;
 
   function toggle(value: string) {
     onChange(
@@ -561,54 +656,250 @@ function FacetPicker<T>({
   }
 
   return (
-    <div className="flex min-w-[10rem] flex-1 items-center gap-1 lg:min-w-0">
-      <Popover onOpenChange={(open) => !open && setQuery("")}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            disabled={empty}
-            aria-label={`Filter by ${facet.label.toLowerCase()}`}
-            title={
-              on
-                ? `${facet.label}: ${facet.options
-                    .filter((o) => values.includes(o.value))
-                    .map((o) => o.label)
-                    .join(", ")}`
-                : `Filter by ${facet.label.toLowerCase()}`
-            }
-            className={cn(
-              "flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors",
-              "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background",
-              "disabled:cursor-not-allowed disabled:opacity-50",
-              on
-                ? "border-primary/60 bg-primary/[0.06] text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {Icon && <Icon className="size-3.5 shrink-0" />}
-            <span className="truncate">{summary}</span>
-            <ChevronDown className="ml-auto size-4 shrink-0 opacity-50" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-64 p-1">
-          {facet.searchable && (
-            <div className="relative p-1">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={`Search ${facet.label.toLowerCase()}…`}
-                aria-label={`Search ${facet.label.toLowerCase()} options`}
-                className="h-8 pl-8 text-sm"
-                autoFocus
-              />
-            </div>
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={empty}
+          aria-label={`Filter by ${facet.label.toLowerCase()}`}
+          title={facetTitle(facet, values)}
+          className={cn(
+            "flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors",
+            "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background",
+            "disabled:cursor-not-allowed disabled:opacity-50",
+            on
+              ? "border-primary/60 bg-primary/[0.06] text-foreground"
+              : "text-muted-foreground hover:text-foreground",
           )}
+        >
+          {Icon && <Icon className="size-3.5 shrink-0" />}
+          <span className="truncate">{facetSummary(facet, values)}</span>
+          <ChevronDown className="ml-auto size-4 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-1">
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className={cn(
+            "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
+            !on && "font-medium",
+          )}
+        >
+          <span className="flex size-4 shrink-0 items-center justify-center">
+            {!on && <Check className="size-3.5" />}
+          </span>
+          {facet.allLabel}
+        </button>
+        <div className="my-1 h-px bg-border" />
+        <div className="max-h-72 space-y-0.5 overflow-y-auto">
+          {facet.options.map((opt) => (
+            <FacetOptionRow
+              key={opt.value}
+              opt={opt}
+              checked={values.includes(opt.value)}
+              count={counts?.[opt.value]}
+              onToggle={() => toggle(opt.value)}
+            />
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * The `searchable` facet control: a combobox. The toolbar control IS an input —
+ * type a name straight into it and the menu narrows live, no menu-then-search
+ * two-step. Idle, the placeholder wears the summary ("Modified by" / "Ada" /
+ * "Modified by · 3"); the value is always the needle, so what you typed and what
+ * is picked never fight over the same box.
+ *
+ * Keyboard: ↑/↓ walk the menu (the clear row rides at index 0), Enter ticks,
+ * Escape clears the needle first and closes second, Tab moves on. Focus stays in
+ * the input throughout — the menu is pointed at via `aria-activedescendant`.
+ */
+function FacetCombobox<T>({
+  facet,
+  values,
+  counts,
+  onChange,
+}: {
+  facet: EnvFacet<T>;
+  values: string[];
+  counts?: Record<string, number>;
+  onChange: (values: string[]) => void;
+}) {
+  const Icon = facet.icon;
+  const baseId = React.useId();
+  const anchorRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [open, setOpen] = React.useState(false);
+  // The autocomplete needle. Reset on close so the menu reopens whole — a stale
+  // needle would read as options having vanished.
+  const [query, setQuery] = React.useState("");
+  const [active, setActive] = React.useState(0);
+
+  const on = values.length > 0;
+  const empty = facet.options.length === 0;
+
+  const needle = query.trim().toLowerCase();
+  // Never hide a TICKED option: unticking must stay one click away even when the
+  // needle no longer matches it.
+  const shownOptions = needle
+    ? facet.options.filter(
+        (o) =>
+          values.includes(o.value) ||
+          `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(needle),
+      )
+    : facet.options;
+
+  // Index 0 is the clear row; the options follow. Clamp instead of resetting so
+  // the highlight survives the list shrinking under a longer needle.
+  const rowCount = shownOptions.length + 1;
+  const activeIndex = Math.min(active, rowCount - 1);
+  const optionId = (index: number) => `${baseId}-opt-${index}`;
+
+  React.useEffect(() => {
+    if (!open) return;
+    document
+      .getElementById(optionId(activeIndex))
+      ?.scrollIntoView({ block: "nearest" });
+    // optionId is render-stable (useId); only the highlight moves the scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, activeIndex]);
+
+  function close() {
+    setOpen(false);
+    setQuery("");
+    setActive(0);
+  }
+
+  function toggle(value: string) {
+    onChange(
+      values.includes(value)
+        ? values.filter((v) => v !== value)
+        : [...values, value],
+    );
+    // A row is a <label> whose activation forwards to the checkbox button —
+    // reclaim the caret so the next keystroke keeps narrowing.
+    inputRef.current?.focus();
+  }
+
+  /** Enter / click on row `index`: the clear row clears, an option toggles. The
+   *  menu STAYS open — this is a multi-select, one pick is rarely the last. */
+  function pick(index: number) {
+    if (index === 0) {
+      onChange([]);
+      inputRef.current?.focus();
+      return;
+    }
+    const opt = shownOptions[index - 1];
+    if (opt) toggle(opt.value);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!open) {
+        setOpen(true);
+        return;
+      }
+      setActive(
+        e.key === "ArrowDown"
+          ? Math.min(activeIndex + 1, rowCount - 1)
+          : Math.max(activeIndex - 1, 0),
+      );
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (open) pick(activeIndex);
+      else setOpen(true);
+    } else if (e.key === "Tab") {
+      // Let the Tab through — just don't leave a menu floating behind it.
+      close();
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
+      <PopoverAnchor asChild>
+        <div ref={anchorRef} className="relative min-w-0 flex-1">
+          {Icon && (
+            <Icon
+              className={cn(
+                "pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2",
+                on ? "text-foreground" : "text-muted-foreground",
+              )}
+            />
+          )}
+          <Input
+            ref={inputRef}
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={`${baseId}-listbox`}
+            aria-autocomplete="list"
+            aria-activedescendant={open ? optionId(activeIndex) : undefined}
+            aria-label={`Filter by ${facet.label.toLowerCase()}`}
+            title={facetTitle(facet, values)}
+            disabled={empty}
+            value={query}
+            placeholder={facetSummary(facet, values)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActive(0);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onClick={() => setOpen(true)}
+            onKeyDown={onKeyDown}
+            className={cn(
+              "h-9 pr-8",
+              Icon ? "pl-8" : "pl-3",
+              // An active filter wears the same tint as an active FacetMenu
+              // button, and its summary-as-placeholder reads as a VALUE, not a
+              // hint — it is what the filter is doing right now.
+              on &&
+                "border-primary/60 bg-primary/[0.06] placeholder:text-foreground",
+            )}
+          />
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 opacity-50" />
+        </div>
+      </PopoverAnchor>
+      <PopoverContent
+        align="start"
+        className="min-w-64 p-1"
+        style={{ width: "var(--radix-popper-anchor-width)" }}
+        // Focus lives in the input for the combobox's whole life: never yank it
+        // into the menu on open, never fling it elsewhere on close, and don't
+        // treat clicks on the input (the ANCHOR — outside the content) as a
+        // dismissal.
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        onInteractOutside={(e) => {
+          if (anchorRef.current?.contains(e.target as Node)) e.preventDefault();
+        }}
+        // Escape backs out one layer at a time: a needle is cleared, an empty
+        // box is closed.
+        onEscapeKeyDown={(e) => {
+          if (query) {
+            e.preventDefault();
+            setQuery("");
+            setActive(0);
+          }
+        }}
+      >
+        <div id={`${baseId}-listbox`} role="listbox" aria-multiselectable="true">
           <button
             type="button"
-            onClick={() => onChange([])}
+            id={optionId(0)}
+            role="option"
+            aria-selected={!on}
+            onMouseDown={(e) => e.preventDefault()}
+            onMouseEnter={() => setActive(0)}
+            onClick={() => pick(0)}
             className={cn(
-              "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
+              "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+              activeIndex === 0 ? "bg-accent" : "hover:bg-accent",
               !on && "font-medium",
             )}
           >
@@ -617,67 +908,28 @@ function FacetPicker<T>({
             </span>
             {facet.allLabel}
           </button>
-          <div className="my-1 h-px bg-border" />
+          <div aria-hidden className="my-1 h-px bg-border" />
           <div className="max-h-72 space-y-0.5 overflow-y-auto">
             {shownOptions.length === 0 && (
               <p className="px-2 py-1.5 text-xs text-muted-foreground">
                 No match for “{query.trim()}”.
               </p>
             )}
-            {shownOptions.map((opt) => {
-              const checked = values.includes(opt.value);
-              const n = counts?.[opt.value];
-              return (
-                <label
-                  key={opt.value}
-                  className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
-                    // Ticking it would add nothing — shown, so you can see the
-                    // option exists, greyed, so you know why it's pointless.
-                    n === 0 && !checked && "opacity-50",
-                  )}
-                >
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={() => toggle(opt.value)}
-                  />
-                  {opt.author && (
-                    <Avatar className="size-5 shrink-0">
-                      <AvatarFallback
-                        className="text-[9px]"
-                        style={{
-                          backgroundColor: opt.author.avatarColor,
-                          color: "#000",
-                        }}
-                      >
-                        {opt.author.username.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                  <span className="truncate">{opt.label}</span>
-                  {opt.hint && (
-                    <span className="truncate text-xs text-muted-foreground">
-                      {opt.hint}
-                    </span>
-                  )}
-                  {n != null && (
-                    <span className="ml-auto pl-2 text-xs tabular-nums text-muted-foreground">
-                      {n}
-                    </span>
-                  )}
-                </label>
-              );
-            })}
+            {shownOptions.map((opt, i) => (
+              <FacetOptionRow
+                key={opt.value}
+                opt={opt}
+                checked={values.includes(opt.value)}
+                count={counts?.[opt.value]}
+                onToggle={() => toggle(opt.value)}
+                id={optionId(i + 1)}
+                active={activeIndex === i + 1}
+                onActivate={() => setActive(i + 1)}
+              />
+            ))}
           </div>
-        </PopoverContent>
-      </Popover>
-      {facet.info != null && (
-        <InfoTip
-          content={facet.info}
-          className="shrink-0"
-          label={`About the ${facet.label.toLowerCase()} filter`}
-        />
-      )}
-    </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
