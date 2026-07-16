@@ -70,7 +70,6 @@ import {
   typeFacet,
   updatedFacet,
   FACET_NONE,
-  VIA_LABEL,
   type EnvFacet,
 } from "@/components/env/env-filters";
 import { gqlAction } from "@/lib/graphql-client";
@@ -497,8 +496,6 @@ export function AllAppsEnvManager({
         onClear={clear}
         facets={facets}
         counts={counts}
-        total={rows.length}
-        shown={shown.length}
       />
 
       {sections.length === 0 && (
@@ -953,7 +950,7 @@ function AppVarsCard({
                           {row.key}
                           <Badge variant="muted" className="gap-1 whitespace-nowrap text-[10px] font-normal">
                             <Share2 className="size-3" />
-                            Shared · {VIA_LABEL[row.via] ?? "Shared"}
+                            Shared
                           </Badge>
                         </div>
                       </TableCell>

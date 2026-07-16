@@ -24,20 +24,29 @@ import { authorOf, loadUserIdentities } from "./user-identity";
 import { encryptSecret, decryptSecret } from "../crypto";
 import { ALL_ENV_TARGETS, sanitizeTargets } from "../types";
 import type { EnvTarget, SharedVar, VarAuthor } from "../types";
-import type { SharedVarEntry, SharedVarMode } from "../deploy/env-resolve";
+import type { SharedVarEntry } from "../deploy/env-resolve";
 
 /**
- * Unified SHARED variables (ADR-0010) — one individual variable owned by a team,
- * the replacement for shared-env groups, environment-scoped vars, and team-global
- * vars. A shared var reaches an app through any of three sharing MODES
- * (team-wide / environment[] / project[] whitelist) plus a per-app link. Which
- * apps a var reaches, and in what deploy precedence, is resolved in
- * lib/deploy/env-resolve.ts. Values are encryptSecret at rest and only decrypt at
- * the deploy edge or on an explicit `manage_env`-gated reveal.
+ * Unified SHARED variables (ADR-0010, opt-in per ADR-0012) — one individual
+ * variable owned by a team, the replacement for shared-env groups,
+ * environment-scoped vars, and team-global vars. A shared var carries
+ * AVAILABILITY scopes (team-wide / environment[] / project[] whitelist) that say
+ * which apps it is offered to, but it only ever INJECTS through an explicit
+ * per-app link — nothing is added to an app the developer didn't opt into.
+ * Deploy precedence is resolved in lib/deploy/env-resolve.ts. Values are
+ * encryptSecret at rest and only decrypt at the deploy edge or on an explicit
+ * `manage_env`-gated reveal.
  */
 
 const MASK = "••••••••••••";
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
+
+/**
+ * An AVAILABILITY scope of a shared var, as seen from one app: the layer through
+ * which the var is offered to it (never the layer it injects through — injection
+ * is always the per-app link, ADR-0012).
+ */
+export type SharedVarScope = "teamWide" | "environment" | "project";
 
 /** Every author id a set of vars references, for one batched identity lookup. */
 function authorIds(vars: SharedVar[]): (string | null)[] {
@@ -45,21 +54,19 @@ function authorIds(vars: SharedVar[]): (string | null)[] {
 }
 
 /**
- * The layer a shared var injects into one app through, in DEPLOY PRECEDENCE order
- * (lib/deploy/env-resolve.ts): a per-app link is the highest layer, so it wins the
- * badge over any mode. Meaningless when the var doesn't apply — callers gate the
- * badge on `applied`.
+ * The most SPECIFIC availability scope covering one app — what the app UI shows
+ * as the reason a var is suggested there. `null` when no scope covers the app
+ * (the var is still linkable; scopes are suggestions, not gates).
  */
-function viaFor(m: {
-  linked: boolean;
-  byProject: boolean;
+function scopeFor(m: {
   byOwnEnv: boolean;
+  byProject: boolean;
   teamWide: boolean;
-}): SharedVarMode {
-  if (m.linked) return "link";
-  if (m.byProject) return "project";
+}): SharedVarScope | null {
   if (m.byOwnEnv) return "environment";
-  return "teamWide";
+  if (m.byProject) return "project";
+  if (m.teamWide) return "teamWide";
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -208,10 +215,10 @@ export async function listSharedVars(): Promise<SharedVarDTO[]> {
 }
 
 /**
- * A shared var as seen from ONE app: whether it reaches the app, how, and its
- * per-app link toggle state. `inherited` marks a var applied through a sharing
- * MODE (the toggle can't turn it off from the app); `linked` is the explicit
- * per-app link state.
+ * A shared var as seen from ONE app: whether the app has opted into it
+ * (`linked` — the ONLY thing that makes it inject, ADR-0012), and whether an
+ * availability scope offers it here (`inScope` + `scope`, the "suggested"
+ * signal the Add-variable modal shows).
  *
  * The VALUE reads exactly as it does on the Variables page (`listSharedVars`): a
  * plain value is decrypted for a `manage_env` holder, a secret comes through as
@@ -226,24 +233,25 @@ export interface AppSharedVarDTO {
   masked: boolean;
   type: "plain" | "secret";
   targets: EnvTarget[];
-  via: SharedVarMode;
-  applied: boolean;
-  inherited: boolean;
+  /** The app has explicitly opted in — the var injects on its next deploy. */
   linked: boolean;
+  /** An availability scope (team-wide / environment / project) covers this app. */
+  inScope: boolean;
+  /** The most specific covering scope; null when none does. */
+  scope: SharedVarScope | null;
   updatedBy: VarAuthor | null;
   updatedAt: string;
 }
 
 /**
- * EVERY shared var of the team, as seen from one app: whether it currently
- * injects (`applied`), through which layer (`via`), whether that is a MODE the
- * app can't switch off (`inherited`), and its per-app link state (`linked`).
+ * EVERY shared var of the team, as seen from one app: its opt-in state
+ * (`linked`) and whether a scope suggests it here (`inScope`/`scope`).
  *
- * The full team set is returned — not just the in-scope ones — because the app
- * modal's per-app LINK is the escape hatch for attaching an EXTRA shared var to
- * one app (one that no mode already covers). Filtering to in-scope vars would
- * make that impossible for a top-level app (no project/environment) and would
- * strand a link-only var the moment its last link is removed.
+ * The full team set is returned — not just the in-scope ones — because scopes
+ * are suggestions, not gates (ADR-0012): any team shared var can be opted into
+ * from any app. Filtering to in-scope vars would strand a link-only var the
+ * moment its last link is removed, and would hide everything from a top-level
+ * app (no project/environment).
  */
 export async function listSharedVarsForApp(
   appId: string,
@@ -272,8 +280,8 @@ export async function listSharedVarsForApp(
       const byOwnEnv =
         environmentId != null && v.environmentIds.includes(environmentId);
       const linked = v.appIds.includes(appId);
-      // A MODE applies → the app can't switch it off from here.
-      const inherited = v.teamWide || byProject || byOwnEnv;
+      // A covering scope only SUGGESTS the var here — injection is the link.
+      const inScope = v.teamWide || byProject || byOwnEnv;
       return {
         id: v.id,
         key: v.key,
@@ -281,12 +289,9 @@ export async function listSharedVarsForApp(
         masked: v.type === "secret",
         type: v.type,
         targets: sanitizeTargets(v.targets),
-        // The layer it actually injects through, in deploy precedence order
-        // (a per-app link is the HIGHEST layer — see lib/deploy/env-resolve.ts).
-        via: viaFor({ linked, byProject, byOwnEnv, teamWide: v.teamWide }),
-        applied: inherited || linked,
-        inherited,
         linked,
+        inScope,
+        scope: scopeFor({ byOwnEnv, byProject, teamWide: v.teamWide }),
         // Falls back to the creator so "Last modified" never shows a timestamp
         // with no author.
         updatedBy: authorOf(v.updatedByUserId ?? v.createdByUserId, authors),
@@ -296,7 +301,7 @@ export async function listSharedVarsForApp(
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 
-/** One applied shared var as seen on the aggregate App tab. */
+/** One opted-in shared var as seen on the aggregate App tab. */
 export interface AppliedSharedVarDTO {
   appId: string;
   id: string;
@@ -304,34 +309,24 @@ export interface AppliedSharedVarDTO {
   /** Masked for secrets, like every other variable table (see AppSharedVarDTO). */
   value: string;
   masked: boolean;
-  via: SharedVarMode;
   targets: EnvTarget[];
   updatedBy: VarAuthor | null;
   updatedAt: string;
 }
 
 /**
- * Every (app, shared var) pair that currently injects, across the team — the
- * read-only "shared" rows on the aggregate App tab. One pass over the team's
- * shared vars and apps (no per-app query fan-out).
+ * Every (app, shared var) pair that currently injects — i.e. every per-app LINK
+ * (ADR-0012: only an explicit opt-in injects) — across the team: the read-only
+ * "shared" rows on the aggregate App tab. One pass over the team's shared vars
+ * (no per-app query fan-out).
  */
 export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[]> {
   const { teamId } = await requireCapability("manage_env");
-  const [vars, apps] = await Promise.all([
-    loadSharedVarsForTeam(teamId),
-    getDb()
-      .select({
-        id: appsTable.id,
-        projectId: appsTable.projectId,
-        environmentId: appsTable.environmentId,
-      })
-      .from(appsTable)
-      .where(eq(appsTable.teamId, teamId)),
-  ]);
+  const vars = await loadSharedVarsForTeam(teamId);
   // One identity query for every card on the page.
   const authors = await loadUserIdentities(authorIds(vars));
-  // A team-wide var lands on EVERY app, so decrypt each value once here rather
-  // than once per (app, var) pair below.
+  // A var linked to SEVERAL apps repeats below, so decrypt each value once here
+  // rather than once per (app, var) pair.
   const shown = new Map(
     vars.map(
       (v) =>
@@ -339,20 +334,14 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
     ),
   );
   const out: AppliedSharedVarDTO[] = [];
-  for (const app of apps) {
-    for (const v of vars) {
-      const byProject = app.projectId != null && v.projectIds.includes(app.projectId);
-      const byEnv =
-        app.environmentId != null && v.environmentIds.includes(app.environmentId);
-      const linked = v.appIds.includes(app.id);
-      if (!(v.teamWide || byProject || byEnv || linked)) continue;
+  for (const v of vars) {
+    for (const appId of v.appIds) {
       out.push({
-        appId: app.id,
+        appId,
         id: v.id,
         key: v.key,
         value: shown.get(v.id)!,
         masked: v.type === "secret",
-        via: viaFor({ linked, byProject, byOwnEnv: byEnv, teamWide: v.teamWide }),
         targets: sanitizeTargets(v.targets),
         // Falls back to the creator so "Last modified" never shows a timestamp
         // with no author.
@@ -499,13 +488,12 @@ export async function saveSharedVar(input: {
       await requireFolderCapabilityForApp(appId, "manage_env");
   }
 
-  // A shared var must REACH something. Normally that means ≥1 sharing mode — but a
-  // var carrying explicit per-app LINKS already reaches those apps, and that is
-  // exactly the shape migration 0027 gives every var exploded out of a legacy
-  // shared GROUP (links, no modes). Rejecting it here would make every migrated
-  // group variable permanently unsavable, so links count as reach. When the caller
-  // sends `appIds` it OWNS the link set, so only the incoming set counts — the
-  // stored links are about to be replaced by it.
+  // A shared var must be shared WITH something: offered through ≥1 availability
+  // scope, or linked to ≥1 app. Links count — that is exactly the shape migration
+  // 0027 gives every var exploded out of a legacy shared GROUP (links, no scopes),
+  // and rejecting it would make every migrated group variable permanently
+  // unsavable. When the caller sends `appIds` it OWNS the link set, so only the
+  // incoming set counts — the stored links are about to be replaced by it.
   const reachesByLink = appIds ? appIds.length > 0 : storedLinks.length > 0;
   if (!teamWide && environmentIds.length === 0 && projectIds.length === 0 && !reachesByLink)
     throw new Error("Share with at least one app, project, or the whole team");
@@ -674,12 +662,11 @@ async function filterTeamApps(teamId: string, ids: string[]): Promise<string[]> 
 /* ------------------------------------------------------------------ */
 
 /**
- * The shared-var entries that apply to one app, tagged with the layer each
- * reaches it through, for the deploy-time merge. A var matching several ways
- * (e.g. team-wide AND per-app link) is emitted once per matched layer so the
- * resolver's precedence picks the most specific. Entries are sorted
- * `created_at ASC` so a within-layer key collision resolves to the later var.
- * Returns encrypted entries; the caller decrypts at the edge.
+ * The shared-var entries that inject into one app for the deploy-time merge:
+ * ONLY the vars the app is explicitly linked to (ADR-0012 — availability scopes
+ * never inject). Entries are sorted `created_at ASC` so a key collision between
+ * two linked vars resolves to the later var. Returns encrypted entries; the
+ * caller decrypts at the edge.
  */
 export async function loadSharedVarsForApp(
   appId: string,
@@ -687,75 +674,29 @@ export async function loadSharedVarsForApp(
   const db = getDb();
   const app = (
     await db
-      .select({
-        teamId: appsTable.teamId,
-        projectId: appsTable.projectId,
-        environmentId: appsTable.environmentId,
-      })
+      .select({ teamId: appsTable.teamId })
       .from(appsTable)
       .where(eq(appsTable.id, appId))
       .limit(1)
   )[0];
   if (!app) return [];
-  type Row = { id: string; key: string; valueEnc: string; createdAt: string };
-  const cols = {
-    id: varsTable.id,
-    key: varsTable.key,
-    valueEnc: varsTable.valueEnc,
-    createdAt: varsTable.createdAt,
-  };
-  const teamId = app.teamId;
 
-  const [teamWide, byEnv, byProject, byLink] = await Promise.all<Row[]>([
-    db
-      .select(cols)
-      .from(varsTable)
-      .where(and(eq(varsTable.teamId, teamId), eq(varsTable.teamWide, true))),
-    app.environmentId
-      ? db
-          .select(cols)
-          .from(varsTable)
-          .innerJoin(envJunction, eq(envJunction.varId, varsTable.id))
-          .where(
-            and(
-              eq(varsTable.teamId, teamId),
-              eq(envJunction.environmentId, app.environmentId),
-            ),
-          )
-      : Promise.resolve<Row[]>([]),
-    app.projectId
-      ? db
-          .select(cols)
-          .from(varsTable)
-          .innerJoin(projJunction, eq(projJunction.varId, varsTable.id))
-          .where(
-            and(
-              eq(varsTable.teamId, teamId),
-              eq(projJunction.projectId, app.projectId),
-            ),
-          )
-      : Promise.resolve<Row[]>([]),
-    db
-      .select(cols)
-      .from(varsTable)
-      .innerJoin(appJunction, eq(appJunction.varId, varsTable.id))
-      .where(and(eq(varsTable.teamId, teamId), eq(appJunction.appId, appId))),
-  ]);
+  const rows = await db
+    .select({
+      id: varsTable.id,
+      key: varsTable.key,
+      valueEnc: varsTable.valueEnc,
+      createdAt: varsTable.createdAt,
+    })
+    .from(varsTable)
+    .innerJoin(appJunction, eq(appJunction.varId, varsTable.id))
+    .where(and(eq(varsTable.teamId, app.teamId), eq(appJunction.appId, appId)));
+  if (rows.length === 0) return [];
 
-  const layers: [SharedVarMode, Row[]][] = [
-    ["teamWide", teamWide],
-    ["environment", byEnv],
-    ["project", byProject],
-    ["link", byLink],
-  ];
-  const allIds = [
-    ...new Set(layers.flatMap(([, rows]) => rows.map((r) => r.id))),
-  ];
-  if (allIds.length === 0) return [];
   const targetRows = await db
     .select()
     .from(targetsTable)
-    .where(inArray(targetsTable.varId, allIds));
+    .where(inArray(targetsTable.varId, rows.map((r) => r.id)));
   const targetsBy = new Map<string, EnvTarget[]>();
   for (const t of targetRows) {
     const arr = targetsBy.get(t.varId) ?? [];
@@ -763,24 +704,14 @@ export async function loadSharedVarsForApp(
     targetsBy.set(t.varId, arr);
   }
 
-  const entries: (SharedVarEntry & { createdAt: string })[] = [];
-  for (const [mode, rows] of layers) {
-    for (const r of rows) {
+  return rows
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((r) => {
       const targets = targetsBy.get(r.id);
-      entries.push({
+      return {
         key: r.key,
         valueEnc: r.valueEnc,
         targets: targets && targets.length ? targets : ALL_ENV_TARGETS,
-        mode,
-        createdAt: r.createdAt,
-      });
-    }
-  }
-  entries.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  return entries.map((e) => ({
-    key: e.key,
-    valueEnc: e.valueEnc,
-    targets: e.targets,
-    mode: e.mode,
-  }));
+      };
+    });
 }

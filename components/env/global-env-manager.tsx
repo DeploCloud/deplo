@@ -117,8 +117,6 @@ export function GlobalEnvManager({
           onClear={clear}
           facets={facets}
           counts={counts}
-          total={vars.length}
-          shown={shown.length}
         />
       )}
 

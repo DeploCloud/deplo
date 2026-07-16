@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Trash2, Pencil, Share2, SearchX, Unlink } from "lucide-react";
@@ -36,7 +35,6 @@ import {
   sourceFacet,
   typeFacet,
   updatedFacet,
-  VIA_LABEL,
 } from "@/components/env/env-filters";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
@@ -75,13 +73,14 @@ export function EnvManager({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
 
-  // Shared vars that currently inject into this app. Their VALUES read like any
-  // other row's (plain revealed on demand, secret masked) — the app's table is
-  // what its next deploy will get, so a row it can't read at all is a hole in
-  // that picture. They can be edited and deleted straight from here too (see
-  // SharedRowActions) — a change just isn't local, so the UI says so.
+  // Shared vars this app has OPTED INTO (linked — the only way a shared var
+  // injects, ADR-0012). Their VALUES read like any other row's (plain revealed
+  // on demand, secret masked) — the app's table is what its next deploy will
+  // get, so a row it can't read at all is a hole in that picture. They can be
+  // edited and deleted straight from here too (see SharedRowActions) — a change
+  // just isn't local, so the UI says so.
   const appliedShared = React.useMemo(
-    () => sharedVars.filter((v) => v.applied),
+    () => sharedVars.filter((v) => v.linked),
     [sharedVars],
   );
 
@@ -153,8 +152,6 @@ export function EnvManager({
           onClear={clear}
           facets={facets}
           counts={counts}
-          total={rows.length}
-          shown={shownRows.length}
           actions={addButton}
         />
       )}
@@ -243,7 +240,7 @@ export function EnvManager({
                           className="gap-1 whitespace-nowrap text-[10px] font-normal"
                         >
                           <Share2 className="size-3" />
-                          Shared · {VIA_LABEL[row.via] ?? "Shared"}
+                          Shared
                         </Badge>
                       </div>
                     </TableCell>
@@ -305,27 +302,13 @@ export function EnvManager({
 }
 
 /**
- * How an INHERITED (mode-based) shared var reaches this app, for the note that
- * explains why it can't be peeled off one app. `link` is here only for
- * completeness — a linked var takes the removable path instead.
- */
-const VIA_PHRASE: Record<string, string> = {
-  teamWide: "with the whole team",
-  project: "with this app's project",
-  environment: "with this app's environment",
-  link: "with this app",
-};
-
-/**
  * Actions for a SHARED row on one app's table: edit its value, and a delete
  * menu that separates the two very different removals a shared var has.
  *
- * A per-app LINK is the only removal that touches just this app, so
- * "Remove from this app" appears only when the var reaches the app SOLELY
- * through its link (`linked && !inherited`) — unlinking a var that also arrives
- * through a team/project/environment mode wouldn't stop it injecting, so we don't
- * offer a no-op. Every shared var can still be deleted for the whole team, which
- * is the destructive item guarded by a confirm.
+ * Every shared row here is an OPT-IN (ADR-0012), so "Remove from this app"
+ * is always available — it just unlinks, and every other app keeps the
+ * variable. Deleting it for the whole team is the destructive item, guarded
+ * by a confirm.
  */
 function SharedRowActions({
   row,
@@ -340,8 +323,6 @@ function SharedRowActions({
   const [editOpen, setEditOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
-
-  const canRemoveFromApp = row.linked && !row.inherited;
 
   function removeFromApp() {
     startTransition(async () => {
@@ -389,32 +370,18 @@ function SharedRowActions({
           </DropdownMenuTrigger>
         </SimpleTooltip>
         <DropdownMenuContent align="end" className="w-72">
-          {canRemoveFromApp ? (
-            <DropdownMenuItem
-              className="flex-col items-start gap-0.5"
-              onSelect={removeFromApp}
-            >
-              <span className="flex items-center gap-2">
-                <Unlink className="size-4" />
-                Remove from this app
-              </span>
-              <span className="pl-6 text-xs text-muted-foreground">
-                Unlinks it here. Every other app keeps it.
-              </span>
-            </DropdownMenuItem>
-          ) : (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">
-              Shared {VIA_PHRASE[row.via] ?? "beyond this app"}. It can&apos;t be
-              removed from only this app — change its sharing on the{" "}
-              <Link
-                href="/variables?tab=shared"
-                className="font-medium text-foreground underline underline-offset-2"
-              >
-                Variables page
-              </Link>
-              .
-            </p>
-          )}
+          <DropdownMenuItem
+            className="flex-col items-start gap-0.5"
+            onSelect={removeFromApp}
+          >
+            <span className="flex items-center gap-2">
+              <Unlink className="size-4" />
+              Remove from this app
+            </span>
+            <span className="pl-6 text-xs text-muted-foreground">
+              Unlinks it here. Every other app keeps it.
+            </span>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"

@@ -30,10 +30,10 @@ import {
 } from "./shared-vars";
 
 /**
- * Data-layer tests for the unified shared-variable model (ADR-0010): the three
- * sharing modes + per-app link, ≥1-mode validation, secret masking, team
- * isolation, and the deploy loader's scope resolution (which app each mode
- * reaches, tagged with its precedence layer).
+ * Data-layer tests for the unified shared-variable model (ADR-0010, opt-in per
+ * ADR-0012): the three availability scopes + per-app link, ≥1-scope validation,
+ * secret masking, team isolation, and the deploy loader — which injects ONLY
+ * the vars an app is explicitly linked to (scopes never inject).
  */
 
 let db: TestDb;
@@ -178,10 +178,10 @@ test("a link-only var (the migrated shared-group shape) can still be saved", asy
   assert.equal(v!.teamWide, false);
   assert.equal(v!.value, "rotated");
   assert.deepEqual(v!.appIds, ["app_p"]);
-  // It still injects into the linked app, through the `link` layer.
+  // It still injects into the linked app.
   assert.deepEqual(
-    (await loadSharedVarsForApp("app_p")).map((e) => [e.key, e.mode]),
-    [["FROMGROUP", "link"]],
+    (await loadSharedVarsForApp("app_p")).map((e) => e.key),
+    ["FROMGROUP"],
   );
 });
 
@@ -227,8 +227,10 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
   // The dialogs no longer send targets. A legacy production-only SECRET must not
   // silently widen to every runtime on a value rotation — that would inject the
   // live key into the dev container (lib/deploy/dev.ts).
+  // Linked to app_p so the deploy-loader assertion below has an injecting row
+  // to read (a scope alone no longer injects — ADR-0012).
   const id = await asUser1(() =>
-    mkVar({ key: "STRIPE_LIVE_KEY", value: "live", type: "secret", targets: ["production"], teamWide: true }),
+    mkVar({ key: "STRIPE_LIVE_KEY", value: "live", type: "secret", targets: ["production"], teamWide: true, appIds: ["app_p"] }),
   );
   await asUser1(() =>
     saveSharedVar({
@@ -408,15 +410,15 @@ test("an empty appIds set with no mode reaches nothing and is rejected", async (
 });
 
 test("listSharedVarsForApp returns EVERY team var so any can be linked", async () => {
-  // Including one scoped to an environment this app does not live in — the per-app
-  // link is the escape hatch for attaching an extra shared var to one app.
+  // Including one scoped to an environment this app does not live in — scopes
+  // are suggestions, not gates, so any team var can be opted into from any app.
   await asUser1(() => mkVar({ key: "OTHERENV", environmentIds: [ENV_PROD] }));
   const rows = await asUser1(() => listSharedVarsForApp("app_top")); // top-level app
   const other = rows.find((r) => r.key === "OTHERENV")!;
   assert.ok(other, "an out-of-scope var is still listed (linkable)");
-  assert.equal(other.applied, false);
-  assert.equal(other.inherited, false);
   assert.equal(other.linked, false);
+  assert.equal(other.inScope, false);
+  assert.equal(other.scope, null);
 });
 
 test("listSharedVarsForApp reads values like the Variables page does", async () => {
@@ -467,56 +469,44 @@ test("editing a secret with the MASK keeps the stored value", async () => {
   assert.equal(await asUser1(() => revealSharedVar(id)), "real");
 });
 
-test("loadSharedVarsForApp: team-wide reaches every app", async () => {
+test("loadSharedVarsForApp: an availability scope alone injects NOTHING (opt-in, ADR-0012)", async () => {
+  // Team-wide, project and environment scopes only say who MAY opt in — no app
+  // receives any of these until it links the var itself.
   await asUser1(() => mkVar({ key: "TW", teamWide: true }));
-  const p = await loadSharedVarsForApp("app_p");
-  const top = await loadSharedVarsForApp("app_top");
-  assert.deepEqual(p.map((e) => [e.key, e.mode]), [["TW", "teamWide"]]);
-  assert.deepEqual(top.map((e) => [e.key, e.mode]), [["TW", "teamWide"]]);
-});
-
-test("loadSharedVarsForApp: project whitelist reaches only apps in that project", async () => {
   await asUser1(() => mkVar({ key: "PROJ", projectIds: [PRJ] }));
-  assert.deepEqual(
-    (await loadSharedVarsForApp("app_p")).map((e) => [e.key, e.mode]),
-    [["PROJ", "project"]],
-  );
-  assert.deepEqual(await loadSharedVarsForApp("app_top"), []);
-});
-
-test("loadSharedVarsForApp: environment mode reaches only apps living in that env", async () => {
   await asUser1(() => mkVar({ key: "EDEV", environmentIds: [ENV_DEV] }));
-  await asUser1(() => mkVar({ key: "EPROD", environmentIds: [ENV_PROD] }));
-  // app_p lives in ENV_DEV → gets EDEV, not EPROD.
-  assert.deepEqual(
-    (await loadSharedVarsForApp("app_p")).map((e) => e.key),
-    ["EDEV"],
-  );
-  // app_top has no environment → gets neither.
+  assert.deepEqual(await loadSharedVarsForApp("app_p"), []);
   assert.deepEqual(await loadSharedVarsForApp("app_top"), []);
 });
 
-test("loadSharedVarsForApp: a per-app link reaches only the linked app", async () => {
+test("loadSharedVarsForApp: a per-app link injects, and only into the linked app", async () => {
   const id = await asUser1(() => mkVar({ key: "LINKED", teamWide: true }));
-  // Remove the team-wide mode so ONLY the link makes it apply — but ≥1 mode is
-  // required at save, so instead test link on top: link app_top explicitly.
   await asUser1(() => setSharedVarAppLink(id, "app_top", true));
-  const top = await loadSharedVarsForApp("app_top");
-  // team-wide already reaches app_top; the link adds a second (link-mode) entry.
-  assert.ok(top.some((e) => e.mode === "link" && e.key === "LINKED"));
+  assert.deepEqual(
+    (await loadSharedVarsForApp("app_top")).map((e) => e.key),
+    ["LINKED"],
+  );
+  // The team-wide scope does not leak it into the unlinked app.
+  assert.deepEqual(await loadSharedVarsForApp("app_p"), []);
 });
 
-test("listSharedVarsForApp annotates applied / inherited / linked / via", async () => {
-  await asUser1(() => mkVar({ key: "TW", teamWide: true }));
+test("listSharedVarsForApp annotates linked / inScope / scope", async () => {
+  const twId = await asUser1(() => mkVar({ key: "TW", teamWide: true }));
   await asUser1(() => mkVar({ key: "PROJ", projectIds: [PRJ] }));
+  await asUser1(() => mkVar({ key: "EDEV", environmentIds: [ENV_DEV] }));
+  await asUser1(() => setSharedVarAppLink(twId, "app_p", true));
   const rows = await asUser1(() => listSharedVarsForApp("app_p"));
   const tw = rows.find((r) => r.key === "TW")!;
   const proj = rows.find((r) => r.key === "PROJ")!;
-  assert.equal(tw.applied, true);
-  assert.equal(tw.inherited, true);
-  assert.equal(tw.via, "teamWide");
-  assert.equal(proj.via, "project");
-  assert.equal(proj.inherited, true);
+  const edev = rows.find((r) => r.key === "EDEV")!;
+  assert.equal(tw.linked, true);
+  assert.equal(tw.inScope, true);
+  assert.equal(tw.scope, "teamWide");
+  assert.equal(proj.linked, false, "in scope is NOT applied");
+  assert.equal(proj.inScope, true);
+  assert.equal(proj.scope, "project");
+  // The environment scope is the most specific and wins the scope label.
+  assert.equal(edev.scope, "environment");
 });
 
 test("setSharedVarAppLink toggles the link and is team-gated", async () => {
@@ -534,8 +524,11 @@ test("setSharedVarAppLink toggles the link and is team-gated", async () => {
   );
 });
 
-test("deleteSharedVar removes it (and its scope rows cascade)", async () => {
-  const id = await asUser1(() => mkVar({ key: "GONE", projectIds: [PRJ] }));
+test("deleteSharedVar removes it (and its scope + link rows cascade)", async () => {
+  const id = await asUser1(() =>
+    mkVar({ key: "GONE", projectIds: [PRJ], appIds: ["app_p"] }),
+  );
+  assert.equal((await loadSharedVarsForApp("app_p")).length, 1);
   await asUser1(() => deleteSharedVar(id));
   assert.deepEqual(await asUser1(() => listSharedVars()), []);
   assert.deepEqual(await loadSharedVarsForApp("app_p"), []);

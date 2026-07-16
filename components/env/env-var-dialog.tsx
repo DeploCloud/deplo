@@ -36,7 +36,6 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { parseEnv } from "@/components/env/env-parse";
-import { VIA_LABEL } from "@/components/env/env-filters";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
 
@@ -637,7 +636,7 @@ function SharedTab({
     gql<{ sharedVarsForApp: LinkableSharedVar[] }>(
       `query($appId: String!) {
         sharedVarsForApp(appId: $appId) {
-          id key masked type targets via applied inherited linked
+          id key masked type targets linked inScope scope
           updatedAt updatedBy { id name username avatarColor }
         }
       }`,
@@ -715,6 +714,13 @@ function SharedTab({
   );
 }
 
+/** Why a not-yet-added variable is suggested here — its availability scope. */
+const SCOPE_HINT: Record<string, string> = {
+  teamWide: "Shared with the whole team",
+  project: "Shared with this app's project",
+  environment: "Shared with this app's environment",
+};
+
 function SharedVarLinkRow({
   appId,
   sharedVar,
@@ -725,9 +731,6 @@ function SharedVarLinkRow({
   const router = useRouter();
   const [linked, setLinked] = React.useState(sharedVar.linked);
   const [pending, startTransition] = React.useTransition();
-  // Auto-applied via a mode → can't be unlinked from the app; shown as a disabled
-  // check, no add/remove button.
-  const on = sharedVar.inherited || linked;
 
   function toggle(next: boolean) {
     setLinked(next);
@@ -739,7 +742,7 @@ function SharedVarLinkRow({
         { varId: sharedVar.id, appId, linked: next },
       );
       if (res.ok) {
-        toast.success(next ? "Linked" : "Unlinked");
+        toast.success(next ? "Added to this app" : "Removed from this app");
         router.refresh();
       } else {
         setLinked(!next);
@@ -748,41 +751,27 @@ function SharedVarLinkRow({
     });
   }
 
+  // Every shared variable is OPT-IN (ADR-0012): added ⇒ removable, never a
+  // disabled "auto-applied" state. The scope only explains why it's suggested.
+  const hint = sharedVar.scope ? SCOPE_HINT[sharedVar.scope] : null;
+
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-accent/30">
       <div className="min-w-0 space-y-1">
         <p className="truncate font-mono text-xs font-medium">{sharedVar.key}</p>
         <div className="flex flex-wrap items-center gap-1.5">
-          {sharedVar.applied ? (
-            <>
-              <Badge variant="muted" className="gap-1 text-[10px] font-normal">
-                <Share2 className="size-3" />
-                {VIA_LABEL[sharedVar.via] ?? "Shared"}
-              </Badge>
-              {sharedVar.inherited && (
-                <span className="text-[10px] text-muted-foreground">
-                  Auto-applied — change it on the Variables page
-                </span>
-              )}
-            </>
-          ) : (
-            <span className="text-[10px] text-muted-foreground">Not applied</span>
+          {linked && (
+            <Badge variant="muted" className="gap-1 text-[10px] font-normal">
+              <Check className="size-3" />
+              Added
+            </Badge>
           )}
+          <span className="text-[10px] text-muted-foreground">
+            {hint ?? (linked ? "Added directly to this app" : "Not added")}
+          </span>
         </div>
       </div>
-      {sharedVar.inherited ? (
-        // Reaches the app through a sharing mode — present, but not removable from
-        // this one app. A disabled check reads it as "already in", nothing to do.
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          disabled
-          aria-label="Applied automatically"
-          className="shrink-0 text-muted-foreground disabled:opacity-100"
-        >
-          <Check className="size-4" />
-        </Button>
-      ) : on ? (
+      {linked ? (
         <Button
           variant="ghost"
           size="icon-sm"

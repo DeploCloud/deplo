@@ -67,7 +67,9 @@ const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 type StepId = "variable" | "scope" | "details" | "review";
 
-/** The three sharing modes. Multi-select — a variable may use any combination. */
+/** The three sharing scopes. Multi-select — a variable may use any combination.
+ *  Team/projects only make the variable AVAILABLE (each app still opts in from
+ *  its own Environment tab — ADR-0012); "Specific apps" adds it right away. */
 type ScopeId = "team" | "projects" | "apps";
 
 const SCOPES: {
@@ -79,20 +81,21 @@ const SCOPES: {
   {
     id: "team",
     title: "The whole team",
-    blurb: "Every app in the team gets it, including apps you create later.",
+    blurb:
+      "Suggested to every app in the team — each app still adds it explicitly, nothing is injected automatically.",
     icon: Users,
   },
   {
     id: "projects",
     title: "Projects",
     blurb:
-      "Every app in the projects you pick. You can narrow a project down to single environments.",
+      "Suggested to the apps of the projects you pick (narrowable to single environments) — each app still adds it explicitly.",
     icon: Folders,
   },
   {
     id: "apps",
     title: "Specific apps",
-    blurb: "Only the apps you pick, wherever they live.",
+    blurb: "Added to the apps you pick right away, wherever they live.",
     icon: AppWindow,
   },
 ];
@@ -285,7 +288,8 @@ export function SharedVarDialog({
             {editing ? "Edit shared variable" : "New shared variable"}
           </DialogTitle>
           <DialogDescription>
-            Write the variable once, then choose which apps receive it.
+            Write the variable once, then choose who can use it. Apps opt in —
+            a shared variable is never added to an app automatically.
           </DialogDescription>
         </DialogHeader>
 
@@ -351,8 +355,9 @@ export function SharedVarDialog({
         {steps[index] === "scope" && (
           <div className="mx-auto w-full max-w-xl space-y-3">
             <p className="text-sm text-muted-foreground">
-              Who gets this variable? Pick one or more — you&apos;ll fill in the
-              details next.
+              Who is this variable for? Pick one or more — you&apos;ll fill in
+              the details next. Only “Specific apps” adds it somewhere right
+              away; the other scopes suggest it and each app opts in itself.
             </p>
             <div role="group" aria-label="Shared with" className="space-y-2">
               {SCOPES.map((s) => (
@@ -614,9 +619,9 @@ function ProjectsSection({
       <div>
         <h4 className="text-sm font-medium">Projects</h4>
         <p className="text-xs text-muted-foreground">
-          Pick the projects that need this variable. Every app in a project gets
-          it, unless you narrow it to single environments.{" "}
-          {count > 0 && `${count} selected.`}
+          Pick the projects whose apps should see this variable suggested —
+          narrow a project to single environments if you like. Each app still
+          adds it itself. {count > 0 && `${count} selected.`}
         </p>
       </div>
       <div className="relative">
@@ -671,7 +676,7 @@ function ProjectsSection({
                 <div className="space-y-2 border-t border-border/60 px-3 py-2">
                   {envs.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      Every app in this project.
+                      Suggested to every app in this project.
                     </p>
                   ) : (
                     <>
@@ -794,8 +799,8 @@ function AppsSection({
       <div>
         <h4 className="text-sm font-medium">Apps</h4>
         <p className="text-xs text-muted-foreground">
-          Pick the apps that need this variable.{" "}
-          {selected.length > 0 && `${selected.length} selected.`}
+          Pick the apps to add this variable to — it reaches them on their next
+          deploy. {selected.length > 0 && `${selected.length} selected.`}
         </p>
       </div>
       <div className="relative">
@@ -928,8 +933,8 @@ function Review({
     list.find((x) => x.id === id)?.name ?? id;
 
   // `apps` is every app in the active team, so every count below is exact as of
-  // now — and a scope also picks up apps added later, which is why the copy says
-  // "today". Same match the server makes when it resolves the variable.
+  // now. Availability scopes only SUGGEST (each app opts in itself, ADR-0012),
+  // so the counts read "can add it"; only the Apps group adds anything directly.
   const reach = (scope: ProjectScope, projectId: string) =>
     scope.mode === "all"
       ? apps.filter((a) => a.projectId === projectId).length
@@ -947,16 +952,14 @@ function Review({
         ? `${name(projects, projectId)} · all environments`
         : `${name(projects, projectId)} · ${scope.envIds
             .map((id) => environments.find((e) => e.id === id)?.name ?? id)
-            .join(", ")}`) + ` → ${appCount(reach(scope, projectId))}`,
+            .join(", ")}`) + ` → ${appCount(reach(scope, projectId))} can add it`,
   }));
   const appChips = appIds.map((id) => ({ id, label: name(apps, id) }));
   const teamChips = teamWide
     ? [
         {
           id: "team",
-          label: `Every app in the team — ${appCount(
-            apps.length,
-          )} today, plus any you add later`,
+          label: `Every app in the team can add it — ${appCount(apps.length)} today`,
         },
       ]
     : [];
@@ -976,11 +979,11 @@ function Review({
       </div>
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Shared with
+          Available to
         </p>
         <ChipGroup title="Whole team" chips={teamChips} />
         <ChipGroup title="Projects" chips={projectChips} />
-        <ChipGroup title="Apps" chips={appChips} />
+        <ChipGroup title="Added to these apps" chips={appChips} />
       </div>
     </div>
   );

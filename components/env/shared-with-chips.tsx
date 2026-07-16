@@ -10,9 +10,10 @@ import type { SharedVarDTO } from "@/lib/data/shared-vars";
 const CHIP_LIMIT = 2;
 
 /**
- * WHO a shared variable reaches, BY NAME — not by count. "2 projects" made you
- * open the editor to find out which two, and who gets the variable is the whole
- * point of the Shared tab.
+ * WHO a shared variable is available to (and which apps added it), BY NAME —
+ * not by count. "2 projects" made you open the editor to find out which two,
+ * and who can use the variable is the whole point of the Shared tab. Scopes
+ * are availability only — each app opts in itself (ADR-0012).
  *
  * `limit` caps how many names each group spells out before folding the rest into
  * a "+N" chip that names them in its tooltip: a table cell is tight (2), the edit

@@ -146,9 +146,10 @@ create; renamable and extensible. Carries a well-known `kind`
 resolution and global-env targeting working. The default environment (seeded: Production)
 keeps the bare `deplo-<slug>` deploy key so live stacks are untouched; others get
 `deplo-<slug>__<envSlug>`. id prefix `environ_`. An Environment is one of the three
-**sharing modes** of a **Shared variable** (ADR-0010): a variable shared to an
-environment reaches every app that LIVES in it. (It no longer owns its own var table —
-`environment_env_vars` was folded into the unified `shared_env_vars` model.)
+**availability scopes** of a **Shared variable** (ADR-0010/0012): a variable scoped to an
+environment is SUGGESTED to every app that LIVES in it — each app still opts in itself.
+(It no longer owns its own var table — `environment_env_vars` was folded into the
+unified `shared_env_vars` model.)
 _Avoid_: env target (the legacy fixed enum, now `Environment.kind`), stage, deployment
 environment (the two-valued build axis).
 
@@ -409,20 +410,22 @@ Nothing is inherited implicitly: a fresh app's dev container is empty until a `d
 var is added.
 _Avoid_: environment (that is the per-Project entity); scope.
 
-**Shared variable** (ADR-0010):
+**Shared variable** (ADR-0010, opt-in per ADR-0012):
 ONE variable owned by a team, the unified replacement for shared-env groups,
-environment-scoped vars, and team-global vars. It reaches an app through any of three
-non-exclusive **sharing modes** — **team-wide** (every app in the team), **environment**
-(apps living in one of the selected **Environments**), **project** (apps in one of the
-selected **Projects**, a whitelist) — plus an explicit **per-app link** attached from the
-app UI. At least one mode is required. An orthogonal **env target** axis gates the runtime
-(defaults to all three). In-scope vars auto-apply — a new app in a shared environment/
-project/team inherits them with no extra step. Deploy precedence (low→high): instance
-globals < team-wide < environment < an app's own var < project < per-app link. Managed on
-the Variables page's **Shared** tab (create / edit / assign the modes); linked to a single
-app from that app's Add-variable modal. Stored in `shared_env_vars` (+ target / environment
+environment-scoped vars, and team-global vars. It INJECTS into an app through exactly one
+mechanism: the explicit **per-app link** (the opt-in — attached from the app's
+Add-variable modal, a shared row's actions, or the wizard's "Specific apps" step). The
+three non-exclusive **availability scopes** — **team-wide** (every app in the team),
+**environment** (apps living in one of the selected **Environments**), **project** (apps
+in one of the selected **Projects**) — only say who the variable is SUGGESTED to; they
+never auto-apply, and they don't gate linking (any team var is linkable from any app).
+At least one scope or link is required. An orthogonal **env target** axis gates the
+runtime (defaults to all three). Deploy precedence (low→high): instance globals < an
+app's own var < linked shared var. Managed on the Variables page's **Shared** tab
+(create / edit / assign the scopes). Stored in `shared_env_vars` (+ target / environment
 / project / app junctions). id prefix `svar_`.
-_Avoid_: shared env group (the old model), shared variables as Coolify's whole-set concept.
+_Avoid_: shared env group (the old model), sharing mode (pre-0012 auto-apply language),
+shared variables as Coolify's whole-set concept.
 
 **Port target**:
 The runtime a port belongs to: `production` or `development` (a two-valued narrowing

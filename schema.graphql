@@ -150,14 +150,24 @@ type AppRuntime {
   unreachable: Boolean
 }
 
-"""A shared variable as seen from one app, with its per-app link state."""
+"""
+A shared variable as seen from one app. `linked` is the explicit opt-in (the only thing that injects — ADR-0012); `inScope`/`scope` say whether an availability scope suggests it here.
+"""
 type AppSharedVar {
-  applied: Boolean
   id: ID
-  inherited: Boolean
+
+  """
+  An availability scope (team-wide / environment / project) covers this app.
+  """
+  inScope: Boolean
   key: String
+
+  """The app opted in — the var injects on its next deploy."""
   linked: Boolean
   masked: Boolean
+
+  """The most specific covering scope: teamWide | environment | project."""
+  scope: String
   targets: [EnvTarget!]
   type: EnvVarType
   updatedAt: String
@@ -165,9 +175,6 @@ type AppSharedVar {
 
   """Masked for secrets, like SharedVar.value."""
   value: String
-
-  """How it reaches this app: teamWide | environment | project | link."""
-  via: String
 }
 
 enum AppStatus {
@@ -1707,7 +1714,7 @@ type Query {
   sharedVars: [SharedVar!]
 
   """
-  Shared variables relevant to one app, with per-app link + applied state.
+  Every team shared variable as seen from one app, with its opt-in (link) state.
   """
   sharedVarsForApp(appId: String!): [AppSharedVar!]
 
@@ -1873,7 +1880,7 @@ enum S3Status {
 }
 
 """
-Create (omit id) or update (provide id) one shared variable. It must reach something: teamWide, ≥1 environment, ≥1 project, or ≥1 app.
+Create (omit id) or update (provide id) one shared variable. It must be shared with something: teamWide, ≥1 environment, ≥1 project, or ≥1 app.
 """
 input SaveSharedVarInput {
   """
@@ -2084,7 +2091,7 @@ input SetServerTeamsInput {
 }
 
 """
-A shared environment variable (ADR-0010). Secret values are masked. It reaches apps via team-wide / environment / project modes plus per-app links.
+A shared environment variable (ADR-0010/0012). Secret values are masked. Team-wide / environment / project scopes say who it is AVAILABLE to; it injects only through explicit per-app links (opt-in).
 """
 type SharedVar {
   appIds: [ID!]

@@ -285,8 +285,8 @@ function autoDetectRepoLogo(
 
 /**
  * Decrypted env for the production stack: the app's own vars targeting
- * `production`, plus every shared var that reaches the app and also targets
- * `production`, plus instance globals. Selection lives in the shared
+ * `production`, plus every shared var the app opted into (linked) that also
+ * targets `production`, plus instance globals. Selection lives in the shared
  * `resolveEnvEntries` seam; we only decrypt here.
  */
 async function appEnv(

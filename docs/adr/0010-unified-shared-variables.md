@@ -1,6 +1,9 @@
 # ADR-0010: Unified shared variables (one model, three sharing modes)
 
-- **Status**: Accepted — 2026-07-12.
+- **Status**: Accepted — 2026-07-12. **Amended by [ADR-0012](0012-shared-variables-are-opt-in-per-app.md)**
+  (2026-07-16): §2's "in-scope vars auto-apply" is reversed — modes are now
+  availability scopes and only the per-app link injects; §4's precedence
+  collapses accordingly.
 - **Amends**: the env-var scoping in [ADR-0008](0008-projects-own-environments-services-are-the-deployable-unit.md)
   (environment-scoped vars) and the glossary ([CONTEXT.md](../../CONTEXT.md)).
 

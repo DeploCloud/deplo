@@ -35,10 +35,10 @@ export default async function AppEnvPage(
     // exposes here; narrow to the ones this app actually receives.
     listSharedVars(),
   ]);
-  const appliedIds = new Set(
-    sharedVars.filter((v) => v.applied).map((v) => v.id),
+  const linkedIds = new Set(
+    sharedVars.filter((v) => v.linked).map((v) => v.id),
   );
-  const sharedVarDetails = allSharedVars.filter((v) => appliedIds.has(v.id));
+  const sharedVarDetails = allSharedVars.filter((v) => linkedIds.has(v.id));
 
   return (
     <EnvManager

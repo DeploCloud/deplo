@@ -127,8 +127,8 @@ export function newDevPreviewHost(slug: string, ip = instanceHost()): string {
 
 /**
  * Decrypted env for a dev container: the app's own vars tagged `development`,
- * plus every shared var that reaches the app and targets `development`, plus
- * instance globals. Shares the exact `resolveEnvEntries` seam with the production
+ * plus every shared var the app opted into (linked) that targets `development`,
+ * plus instance globals. Shares the exact `resolveEnvEntries` seam with the production
  * stack — only the target differs — so the two runtimes can never drift on what
  * `development` inherits.
  */

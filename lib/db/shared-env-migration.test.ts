@@ -28,13 +28,20 @@ import { resolveEnvEntries } from "../deploy/env-resolve";
 import type { EnvTarget } from "../types";
 
 /**
- * Migration-parity test for ADR-0010 (spec §4 "final check"). It replays the
- * committed migrations, PAUSING after 0026 to seed representative old-world data —
+ * Migration-parity test for ADR-0010 (spec §4 "final check"), AMENDED by
+ * ADR-0012 (shared variables are opt-in per app). It replays the committed
+ * migrations, PAUSING after 0026 to seed representative old-world data —
  * a team-global, an environment-scoped var, and a shared group attached to an app
  * whose key COLLIDES with the app's own var — so that 0027's backfill has something
- * to convert, then asserts the NEW loader + resolver yields the byte-identical
- * resolved key→value map per (app, target) the old system did. value_enc is compared
- * verbatim (the backfill copies it), so no decryption is needed.
+ * to convert, then asserts what the NEW loader + resolver yields per (app, target).
+ * value_enc is compared verbatim (the backfill copies it), so no decryption is needed.
+ *
+ * Since ADR-0012, parity holds ONLY for LINK-derived vars (the old shared
+ * groups, whose explicit per-app attachment IS an opt-in): they keep injecting,
+ * with their old above-app-own precedence. Scope-derived vars (old team-globals
+ * → team-wide, old environment vars → environment scope) deliberately STOP
+ * injecting — they become available for each app to opt into. That behaviour
+ * change is the point of ADR-0012, and these tests pin it down.
  *
  * Because the assertions run through the LIVE drizzle schema, the seeds are the
  * fragile part: they execute against a schema frozen at 0026, so anything a LATER
@@ -222,8 +229,7 @@ test("the only mode-less/link-less var is the one whose group reached no app", a
   assert.deepEqual(orphans.rows.map((r) => r.key), ["UNUSED"]);
 });
 
-test("every var that reached an app before still reaches it (no lost coverage)", async () => {
-  // The unattached group's var must reach NOTHING, on every app and every target.
+test("the unattached group's var reaches nothing, on every app and target", async () => {
   for (const app of ["app_p", "app_top"]) {
     for (const target of ["production", "preview", "development"] as EnvTarget[]) {
       assert.equal(
@@ -235,22 +241,39 @@ test("every var that reached an app before still reaches it (no lost coverage)",
   }
 });
 
-test("parity: app_p production resolves identically (env membership + link overrides app-own)", async () => {
+test("app_p production: linked (old group) vars inject, link overrides app-own; scoped vars don't", async () => {
   assert.deepEqual(await resolved("app_p", "production"), {
-    TG: "enc:tg", // team-global → team-wide
-    EE: "enc:ee", // environment membership (targets = all)
     OWN: "enc:own", // app's own var
     DUP: "enc:sgdup", // shared group (now a link) overrides the app's own DUP
-    SG: "enc:sg", // shared group var
+    SG: "enc:sg", // shared group var (linked → still injects)
+    // NOT here (ADR-0012): TG (team-wide scope) and EE (environment scope) are
+    // now opt-in — available on the app's Environment tab, injected only once
+    // the app links them.
   });
 });
 
-test("parity: app_p development gets only the membership env var", async () => {
-  // TG/app-own/group all target production only; the env var (targets=all) reaches dev.
-  assert.deepEqual(await resolved("app_p", "development"), { EE: "enc:ee" });
+test("app_p development: nothing injects (the only dev-targeted var is scope-only)", async () => {
+  // The env var EE (targets=all) used to reach dev via membership; it is now
+  // opt-in. TG/app-own/group all target production only.
+  assert.deepEqual(await resolved("app_p", "development"), {});
 });
 
-test("parity: app_top production gets only the team-wide global", async () => {
-  // The group is not linked to app_top; the env var belongs to app_p's env only.
+test("app_top production: nothing injects (the team-wide global became opt-in)", async () => {
+  // The group is not linked to app_top, and the old team-global no longer
+  // auto-applies (ADR-0012).
+  assert.deepEqual(await resolved("app_top", "production"), {});
+});
+
+test("scope-derived vars remain AVAILABLE: linking one injects it again", async () => {
+  // The migration didn't lose the old team-global — it is one opt-in away.
+  const tg = await pg.query<{ id: string }>(
+    `select id from shared_env_vars where key = 'TG'`,
+  );
+  await pg.exec(
+    `insert into shared_env_var_apps (var_id, app_id) values ('${tg.rows[0]!.id}', 'app_top')`,
+  );
   assert.deepEqual(await resolved("app_top", "production"), { TG: "enc:tg" });
+  await pg.exec(
+    `delete from shared_env_var_apps where var_id = '${tg.rows[0]!.id}'`,
+  );
 });

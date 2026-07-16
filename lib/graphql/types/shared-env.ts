@@ -49,11 +49,12 @@ const SharedVarAppRef = builder
     }),
   });
 
-/** One unified shared variable with its three sharing modes + per-app links. */
+/** One unified shared variable: availability scopes + opt-in per-app links. */
 const SharedVarRef = builder.objectRef<SharedVarDTO>("SharedVar").implement({
   description:
-    "A shared environment variable (ADR-0010). Secret values are masked. It " +
-    "reaches apps via team-wide / environment / project modes plus per-app links.",
+    "A shared environment variable (ADR-0010/0012). Secret values are masked. " +
+    "Team-wide / environment / project scopes say who it is AVAILABLE to; it " +
+    "injects only through explicit per-app links (opt-in).",
   fields: (t) => ({
     id: t.exposeID("id"),
     key: t.exposeString("key"),
@@ -93,12 +94,14 @@ const SharedVarRef = builder.objectRef<SharedVarDTO>("SharedVar").implement({
   }),
 });
 
-/** A shared var as seen from one app: does it apply, how, and its link state. */
+/** A shared var as seen from one app: its opt-in state + availability scope. */
 const AppSharedVarRef = builder
   .objectRef<AppSharedVarDTO>("AppSharedVar")
   .implement({
     description:
-      "A shared variable as seen from one app, with its per-app link state.",
+      "A shared variable as seen from one app. `linked` is the explicit opt-in " +
+      "(the only thing that injects — ADR-0012); `inScope`/`scope` say whether an " +
+      "availability scope suggests it here.",
     fields: (t) => ({
       id: t.exposeID("id"),
       key: t.exposeString("key"),
@@ -108,12 +111,18 @@ const AppSharedVarRef = builder
       masked: t.exposeBoolean("masked"),
       type: t.field({ type: EnvVarTypeEnum, resolve: (v) => v.type }),
       targets: t.field({ type: [EnvTargetEnum], resolve: (v) => v.targets }),
-      via: t.exposeString("via", {
-        description: "How it reaches this app: teamWide | environment | project | link.",
+      linked: t.exposeBoolean("linked", {
+        description: "The app opted in — the var injects on its next deploy.",
       }),
-      applied: t.exposeBoolean("applied"),
-      inherited: t.exposeBoolean("inherited"),
-      linked: t.exposeBoolean("linked"),
+      inScope: t.exposeBoolean("inScope", {
+        description:
+          "An availability scope (team-wide / environment / project) covers this app.",
+      }),
+      scope: t.exposeString("scope", {
+        nullable: true,
+        description:
+          "The most specific covering scope: teamWide | environment | project.",
+      }),
       // No `createdBy` here: the data layer already falls back to the creator,
       // so this is the single "Modified by" the app's table renders.
       updatedBy: t.field({
@@ -131,8 +140,8 @@ const AppSharedVarRef = builder
 
 const SaveSharedVarInputType = builder.inputType("SaveSharedVarInput", {
   description:
-    "Create (omit id) or update (provide id) one shared variable. It must reach " +
-    "something: teamWide, ≥1 environment, ≥1 project, or ≥1 app.",
+    "Create (omit id) or update (provide id) one shared variable. It must be " +
+    "shared with something: teamWide, ≥1 environment, ≥1 project, or ≥1 app.",
   fields: (t) => ({
     id: t.string({ required: false }),
     key: t.string({ required: true }),
@@ -167,7 +176,7 @@ builder.queryFields((t) => ({
     type: [AppSharedVarRef],
     authScopes: { capability: "manage_env" },
     description:
-      "Shared variables relevant to one app, with per-app link + applied state.",
+      "Every team shared variable as seen from one app, with its opt-in (link) state.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => listSharedVarsForApp(appId),
   }),

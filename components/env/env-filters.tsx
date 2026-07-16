@@ -11,6 +11,7 @@ import {
   Share2,
   UserRound,
 } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -65,11 +66,13 @@ export interface FilterableVar {
 }
 
 /** One choice inside a facet. `hint` disambiguates repeated labels ("Production"
- *  exists in every project), and is shown greyed next to the label. */
+ *  exists in every project), and is shown greyed next to the label. `author`
+ *  marks the option as a person — the menu then leads with their avatar. */
 export interface FacetOption {
   value: string;
   label: string;
   hint?: string;
+  author?: VarAuthor;
 }
 
 /**
@@ -94,6 +97,8 @@ export interface EnvFacet<T> {
   /** Show it even with a single option — a filter a team EXPECTS to find (who
    *  changed this?) must not vanish just because one person changed everything. */
   persistent?: boolean;
+  /** Put a type-to-narrow autocomplete at the top of the menu (people lists). */
+  searchable?: boolean;
 }
 
 /** How an author reads in the menu — the display name, or the handle when a user
@@ -111,15 +116,6 @@ function timestamp(iso: string): number {
 export function lastEditor(row: FilterableVar): VarAuthor | null {
   return row.updatedBy ?? row.createdBy ?? null;
 }
-
-/** Human copy for how a shared variable reaches an app — the `via` layer. Shared
- *  by the Source facet and by the "Shared · …" badges on every variables table. */
-export const VIA_LABEL: Record<string, string> = {
-  teamWide: "Team-wide",
-  environment: "Environment",
-  project: "Project",
-  link: "Linked",
-};
 
 /* ------------------------------------------------------------------ */
 /* Filtering                                                           */
@@ -235,7 +231,9 @@ export function typeFacet<T extends FilterableVar>(rows: T[]): EnvFacet<T> {
 
 /**
  * Who touched the variable LAST — the person in the "Modified by" column. Tick
- * several people to see everything any of them changed.
+ * several people to see everything any of them changed. The menu is an
+ * autocomplete (`searchable`) and every person leads with their avatar, so a
+ * long team narrows by typing and a face is recognised before a handle is read.
  *
  * `persistent`: this one is always on the toolbar. It is the filter people go
  * looking for ("what did Ada change?"), and hiding it on a team where one person
@@ -258,7 +256,13 @@ export function editorFacet<T extends FilterableVar>(rows: T[]): EnvFacet<T> {
   const options: FacetOption[] = [
     ...[...byId.values()]
       .sort((a, b) => authorLabel(a).localeCompare(authorLabel(b)))
-      .map((a) => ({ value: a.id, label: authorLabel(a) })),
+      .map((a) => ({
+        value: a.id,
+        label: authorLabel(a),
+        // The handle disambiguates two "Ada"s — pointless when it IS the label.
+        hint: a.name.trim() ? `@${a.username}` : undefined,
+        author: a,
+      })),
     ...(anonymous ? [{ value: FACET_NONE, label: "Unknown" }] : []),
   ];
   return {
@@ -267,7 +271,8 @@ export function editorFacet<T extends FilterableVar>(rows: T[]): EnvFacet<T> {
     allLabel: "Anyone",
     icon: UserRound,
     persistent: true,
-    info: "Who last changed the variable — the user in the “Modified by” column. Pick more than one to see everything any of them touched.",
+    searchable: true,
+    info: "Who last changed the variable — the user in the “Modified by” column. Type to narrow the list; pick more than one to see everything any of them touched.",
     options,
     match: (row, value) =>
       value === FACET_NONE
@@ -306,42 +311,32 @@ export function updatedFacet<T extends FilterableVar>(): EnvFacet<T> {
   };
 }
 
-/** A row that is either the app's own variable or a shared one, and — when
- *  shared — the layer it arrives through. */
+/** A row that is either the app's own variable or a shared one it opted into. */
 export interface SourceRow {
   kind: "standalone" | "shared";
-  via?: string;
 }
 
-/** Standalone vs shared, and for shared rows WHICH sharing layer brought it in. */
+/** Standalone vs shared. Shared always means "the app opted in" (ADR-0012), so
+ *  there is no per-layer split left to filter on. */
 export function sourceFacet<T extends FilterableVar & SourceRow>(
   rows: T[],
 ): EnvFacet<T> {
-  const vias = new Set(
-    rows.flatMap((r) => (r.kind === "shared" && r.via ? [r.via] : [])),
-  );
   const options: FacetOption[] = [
     ...(rows.some((r) => r.kind === "standalone")
       ? [{ value: "standalone", label: "Standalone" }]
       : []),
-    ...(["teamWide", "project", "environment", "link"] as const)
-      .filter((via) => vias.has(via))
-      .map((via) => ({
-        value: `shared:${via}`,
-        label: `Shared · ${VIA_LABEL[via]}`,
-      })),
+    ...(rows.some((r) => r.kind === "shared")
+      ? [{ value: "shared", label: "Shared" }]
+      : []),
   ];
   return {
     id: "source",
     label: "Source",
     allLabel: "All sources",
     icon: Share2,
-    info: "Where the variable comes from: written on the app itself, or shared with it team-wide, through its project, through its environment, or by a direct link.",
+    info: "Where the variable comes from: written on the app itself, or a shared variable the app opted into.",
     options,
-    match: (row, value) =>
-      value === "standalone"
-        ? row.kind === "standalone"
-        : row.kind === "shared" && `shared:${row.via}` === value,
+    match: (row, value) => row.kind === value,
   };
 }
 
@@ -388,12 +383,11 @@ export function useEnvFilters<T extends FilterableVar>(
  * controlled and fully declarative: the tab hands it the facets that make sense
  * there (a per-app table has no Project filter; the Shared tab has no Source
  * one) and the toolbar renders them the same way, in the same place, with the
- * same clear-everything button and the same "showing X of Y" line.
+ * same clear-everything button.
  *
- * Two rows: the search + what it left standing + the sort (+ the page's own
- * action, if it has one), then ONE row of filter dropdowns — on a desktop they
- * share that row and shrink to fit rather than wrapping into a stack that pushes
- * the table down the page.
+ * ONE row on a desktop: search, then every filter dropdown, then the sort (+ the
+ * page's own action). `lg:flex-nowrap` + flexible bases let the dropdowns share
+ * the width and truncate their own labels; below `lg` the row wraps.
  */
 export function EnvFilters<T extends FilterableVar>({
   state,
@@ -401,8 +395,6 @@ export function EnvFilters<T extends FilterableVar>({
   onClear,
   facets,
   counts,
-  total,
-  shown,
   actions,
   className,
 }: {
@@ -413,14 +405,9 @@ export function EnvFilters<T extends FilterableVar>({
   facets: EnvFacet<T>[];
   /** Per-option row counts — {@link facetCounts}. */
   counts?: Record<string, Record<string, number>>;
-  /** Rows before filtering / after it: the "Showing 8 of 40" line. */
-  total?: number;
-  shown?: number;
   /**
-   * The table's own action (an app's "Add"), rendered LAST on the search row —
-   * after the sort. It sits here rather than in the page header because the row
-   * of filter dropdowns below needs the full width, and a header button would
-   * leave the toolbar's own right edge empty.
+   * The table's own action (an app's "Add"), rendered LAST on the row — after
+   * the sort, pinned to the toolbar's right edge.
    */
   actions?: React.ReactNode;
   className?: string;
@@ -437,101 +424,82 @@ export function EnvFilters<T extends FilterableVar>({
       Boolean(state.facets[f.id]?.length),
   );
 
-  const narrowed = total != null && shown != null && shown !== total;
-
   return (
-    <div className={cn("space-y-2", className)}>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[14rem] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={state.q}
-            onChange={(e) => onChange({ ...state, q: e.target.value })}
-            placeholder="Search variables…"
-            aria-label="Search variables"
-            className="h-9 pl-9"
-          />
-        </div>
-
-        {/* The slot is RESERVED, never conditionally mounted: this button turns up
-            on the first keystroke, and inserting it into a wrapping flex row would
-            shove the controls around it while the cursor is still in the search
-            box. `invisible` also takes it out of the tab order and the a11y tree,
-            so an idle toolbar exposes nothing to clear. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!hasFilter}
-          className={cn("shrink-0", !hasFilter && "invisible")}
-          onClick={onClear}
-        >
-          Clear filters
-        </Button>
-
-        {total != null && shown != null && (
-          <p
-            aria-live="polite"
-            className={cn(
-              "shrink-0 whitespace-nowrap text-xs",
-              narrowed ? "text-foreground" : "text-muted-foreground",
-            )}
-          >
-            {narrowed
-              ? `Showing ${shown} of ${total} variables`
-              : `${total} variable${total === 1 ? "" : "s"}`}
-          </p>
-        )}
-
-        <Select
-          value={state.sort}
-          onValueChange={(v) => onChange({ ...state, sort: v as EnvSort })}
-        >
-          <SelectTrigger
-            className="w-[190px] shrink-0"
-            aria-label="Sort variables"
-          >
-            {/* `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1`
-                to its direct-child spans, whose `display:-webkit-box` outranks a
-                plain `flex` class (the `>span` selector is more specific) and would
-                stack the icon above the value. The important modifier keeps them on
-                one row. */}
-            <span className="flex! items-center gap-2">
-              <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="text-muted-foreground">Sort:</span>
-              <SelectValue />
-            </span>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="recent">Recently modified</SelectItem>
-            <SelectItem value="oldest">Oldest first</SelectItem>
-            <SelectItem value="key">Key (A–Z)</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2 lg:flex-nowrap",
+        className,
+      )}
+    >
+      {/* The search gets first claim on the width but yields on a crowded row —
+          a desktop caps it so six dropdowns still fit beside it. */}
+      <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto lg:max-w-[16rem]">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={state.q}
+          onChange={(e) => onChange({ ...state, q: e.target.value })}
+          placeholder="Search variables…"
+          aria-label="Search variables"
+          className="h-9 pl-9"
+        />
       </div>
 
-      {visible.length > 0 && (
-        // One row on a desktop: `lg:flex-nowrap` + a flexible basis lets the
-        // dropdowns share the width and truncate their own labels. Below `lg`
-        // they wrap, two or three to a line.
-        <div className="flex flex-wrap gap-2 lg:flex-nowrap">
-          {visible.map((facet) => (
-            <FacetPicker
-              key={facet.id}
-              facet={facet}
-              values={state.facets[facet.id] ?? []}
-              counts={counts?.[facet.id]}
-              onChange={(values) =>
-                onChange({
-                  ...state,
-                  facets: { ...state.facets, [facet.id]: values },
-                })
-              }
-            />
-          ))}
-        </div>
-      )}
+      {visible.map((facet) => (
+        <FacetPicker
+          key={facet.id}
+          facet={facet}
+          values={state.facets[facet.id] ?? []}
+          counts={counts?.[facet.id]}
+          onChange={(values) =>
+            onChange({
+              ...state,
+              facets: { ...state.facets, [facet.id]: values },
+            })
+          }
+        />
+      ))}
+
+      {/* The slot is RESERVED, never conditionally mounted: this button turns up
+          on the first keystroke, and inserting it into the row would shove the
+          controls around it while the cursor is still in the search box.
+          `invisible` also takes it out of the tab order and the a11y tree, so an
+          idle toolbar exposes nothing to clear. */}
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={!hasFilter}
+        className={cn("shrink-0", !hasFilter && "invisible")}
+        onClick={onClear}
+      >
+        Clear filters
+      </Button>
+
+      <Select
+        value={state.sort}
+        onValueChange={(v) => onChange({ ...state, sort: v as EnvSort })}
+      >
+        <SelectTrigger
+          className="w-[11.5rem] shrink-0"
+          aria-label="Sort variables"
+        >
+          {/* `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1`
+              to its direct-child spans, whose `display:-webkit-box` outranks a
+              plain `flex` class (the `>span` selector is more specific) and would
+              stack the icon above the value. The important modifier keeps them on
+              one row. The arrows icon is what says "this is the sort" — no label. */}
+          <span className="flex! items-center gap-2">
+            <ArrowUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+            <SelectValue />
+          </span>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="recent">Recently modified</SelectItem>
+          <SelectItem value="oldest">Oldest first</SelectItem>
+          <SelectItem value="key">Key (A–Z)</SelectItem>
+        </SelectContent>
+      </Select>
+
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -554,9 +522,24 @@ function FacetPicker<T>({
   onChange: (values: string[]) => void;
 }) {
   const Icon = facet.icon;
+  // The autocomplete needle of a `searchable` facet. Reset on close so the menu
+  // reopens whole — a stale needle would read as options having vanished.
+  const [query, setQuery] = React.useState("");
   const on = values.length > 0;
   const empty = facet.options.length === 0;
   const first = facet.options.find((o) => o.value === values[0]);
+
+  const needle = query.trim().toLowerCase();
+  // Never hide a TICKED option: unticking must stay one click away even when the
+  // needle no longer matches it.
+  const shownOptions =
+    facet.searchable && needle
+      ? facet.options.filter(
+          (o) =>
+            values.includes(o.value) ||
+            `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(needle),
+        )
+      : facet.options;
   // Compact by design: six of these share one desktop row, so a permanent
   // "Environment:" prefix would leave no room for the value. Idle, the trigger IS
   // the facet's name; with one pick it becomes the pick; with several, the name
@@ -579,7 +562,7 @@ function FacetPicker<T>({
 
   return (
     <div className="flex min-w-[10rem] flex-1 items-center gap-1 lg:min-w-0">
-      <Popover>
+      <Popover onOpenChange={(open) => !open && setQuery("")}>
         <PopoverTrigger asChild>
           <button
             type="button"
@@ -608,6 +591,19 @@ function FacetPicker<T>({
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-64 p-1">
+          {facet.searchable && (
+            <div className="relative p-1">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Search ${facet.label.toLowerCase()}…`}
+                aria-label={`Search ${facet.label.toLowerCase()} options`}
+                className="h-8 pl-8 text-sm"
+                autoFocus
+              />
+            </div>
+          )}
           <button
             type="button"
             onClick={() => onChange([])}
@@ -623,7 +619,12 @@ function FacetPicker<T>({
           </button>
           <div className="my-1 h-px bg-border" />
           <div className="max-h-72 space-y-0.5 overflow-y-auto">
-            {facet.options.map((opt) => {
+            {shownOptions.length === 0 && (
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                No match for “{query.trim()}”.
+              </p>
+            )}
+            {shownOptions.map((opt) => {
               const checked = values.includes(opt.value);
               const n = counts?.[opt.value];
               return (
@@ -640,6 +641,19 @@ function FacetPicker<T>({
                     checked={checked}
                     onCheckedChange={() => toggle(opt.value)}
                   />
+                  {opt.author && (
+                    <Avatar className="size-5 shrink-0">
+                      <AvatarFallback
+                        className="text-[9px]"
+                        style={{
+                          backgroundColor: opt.author.avatarColor,
+                          color: "#000",
+                        }}
+                      >
+                        {opt.author.username.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
                   <span className="truncate">{opt.label}</span>
                   {opt.hint && (
                     <span className="truncate text-xs text-muted-foreground">
