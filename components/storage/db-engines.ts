@@ -31,6 +31,11 @@ export const DB_TYPES: {
   { id: "clickhouse", name: "ClickHouse", icon: BarChart3, versions: ["25", "24"] },
 ];
 
+/** Engine id → proper display name ("postgres" → "PostgreSQL"), for card copy. */
+export const DB_NAMES = Object.fromEntries(
+  DB_TYPES.map((t) => [t.id, t.name]),
+) as Record<DatabaseType, string>;
+
 export const DB_ICONS: Record<DatabaseType, LucideIcon> = {
   postgres: DatabaseIcon,
   mysql: DatabaseIcon,
