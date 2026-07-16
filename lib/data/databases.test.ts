@@ -26,6 +26,7 @@ import {
   restartDatabase,
   redeployDatabase,
   rotateDatabasePassword,
+  reorderDatabases,
 } from "./databases";
 import { generateDatabaseCompose } from "../deploy/database-compose";
 import { composeStackVolumeHostNames } from "./project-backup-descriptor";
@@ -270,5 +271,58 @@ test("focused mutations reject a member without manage_infra", async () => {
     await assert.rejects(restartDatabase("db_cap"));
     await assert.rejects(redeployDatabase("db_cap"));
     await assert.rejects(rotateDatabasePassword("db_cap"));
+  });
+});
+
+test("reorderDatabases persists a team order that listDatabases honours", async () => {
+  // Three databases, created oldest→newest so the default sort is c, b, a.
+  await seedDatabase(db, { id: "db_a", name: "aaa" });
+  await db.update(databasesTable).set({ createdAt: "2026-01-01T00:00:00.000Z" }).where(eq(databasesTable.id, "db_a"));
+  await seedDatabase(db, { id: "db_b", name: "bbb" });
+  await db.update(databasesTable).set({ createdAt: "2026-02-01T00:00:00.000Z" }).where(eq(databasesTable.id, "db_b"));
+  await seedDatabase(db, { id: "db_c", name: "ccc" });
+  await db.update(databasesTable).set({ createdAt: "2026-03-01T00:00:00.000Z" }).where(eq(databasesTable.id, "db_c"));
+
+  await asUser1(async () => {
+    // Default: newest-first.
+    assert.deepEqual((await listDatabases()).map((d) => d.id), ["db_c", "db_b", "db_a"]);
+
+    // Persist an explicit order; listDatabases must follow it.
+    await reorderDatabases(["db_a", "db_c", "db_b"]);
+    assert.deepEqual((await listDatabases()).map((d) => d.id), ["db_a", "db_c", "db_b"]);
+
+    // A partial order pins the listed ids first (in order); the omitted one
+    // falls back to newest-first after them.
+    await reorderDatabases(["db_b"]);
+    assert.deepEqual((await listDatabases()).map((d) => d.id), ["db_b", "db_c", "db_a"]);
+
+    // Unknown/foreign ids are dropped, not stored.
+    await reorderDatabases(["db_nope", "db_a"]);
+    assert.deepEqual((await listDatabases()).map((d) => d.id), ["db_a", "db_c", "db_b"]);
+  });
+});
+
+test("reorderDatabases self-heals on delete (FK cascade) and rejects without manage_infra", async () => {
+  await seedDatabase(db, { id: "db_x", name: "xxx" });
+  await seedDatabase(db, { id: "db_y", name: "yyy" });
+  await asUser1(async () => {
+    await reorderDatabases(["db_y", "db_x"]);
+    // Deleting an ordered database must not leave its id in the order table.
+    await db.delete(databasesTable).where(eq(databasesTable.id, "db_y"));
+    assert.deepEqual((await listDatabases()).map((d) => d.id), ["db_x"]);
+  });
+
+  // A member without manage_infra can't reorder.
+  await pg.exec(`${TRUNCATE_BACKUPS}
+    truncate table users, teams restart identity cascade;`);
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "user_viewer2", teamId: TEAM_A, role: "member", capabilities: ["view"] },
+    ],
+  });
+  await seedDatabase(db, { id: "db_z", name: "zzz" });
+  await runWithIdentity({ userId: "user_viewer2", teamId: TEAM_A }, async () => {
+    await assert.rejects(reorderDatabases(["db_z"]));
   });
 });

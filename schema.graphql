@@ -1290,6 +1290,11 @@ type Mutation {
   """Set the team-wide display order of apps in Overview."""
   reorderApps(appIds: [ID!]!): Boolean
 
+  """
+  Persist the team-wide order of databases in the Storage grid. Ids are sanitised to the team's own databases; omitted ones are appended. Returns true.
+  """
+  reorderDatabases(databaseIds: [ID!]!): Boolean
+
   """Set the team-wide display order of folders in Overview."""
   reorderFolders(folderIds: [ID!]!): Boolean
 

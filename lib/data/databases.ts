@@ -4,7 +4,10 @@ import { and, desc, eq } from "drizzle-orm";
 
 import { listServersForTeam, assertServerAccessibleTx } from "./servers";
 import { getDb } from "../db/client";
-import { databases as databasesTable } from "../db/schema/control-plane";
+import {
+  databases as databasesTable,
+  teamDatabaseOrder,
+} from "../db/schema/control-plane";
 import { assembleDatabase, databaseToRow } from "./backup-rows";
 import { cleanResourceLimits, type ResourceLimitsInput } from "./apps";
 import { resourceLimitsToRow } from "./app-graph-rows";
@@ -246,15 +249,81 @@ async function loadDatabase(
   return rows[0] ? assembleDatabase(rows[0]) : null;
 }
 
+/** Team-wide manual database order (the `team_database_order` junction), id→rank. */
+async function databaseOrderRank(teamId: string): Promise<Map<string, number>> {
+  const rows = await getDb()
+    .select({
+      databaseId: teamDatabaseOrder.databaseId,
+      position: teamDatabaseOrder.position,
+    })
+    .from(teamDatabaseOrder)
+    .where(eq(teamDatabaseOrder.teamId, teamId));
+  return new Map(rows.map((r) => [r.databaseId, r.position] as const));
+}
+
 export async function listDatabases(): Promise<DatabaseDTO[]> {
   const teamId = await requireActiveTeamId();
-  // Newest-first sort pushed into SQL.
-  const rows = await getDb()
-    .select()
-    .from(databasesTable)
-    .where(eq(databasesTable.teamId, teamId))
-    .orderBy(desc(databasesTable.createdAt));
-  return rows.map((r) => toDTO(assembleDatabase(r)));
+  const [rows, rank] = await Promise.all([
+    getDb()
+      .select()
+      .from(databasesTable)
+      .where(eq(databasesTable.teamId, teamId)),
+    databaseOrderRank(teamId),
+  ]);
+  // Honour the team's manual order (Storage grid drag-and-drop) when present:
+  // explicitly-ordered databases come first in that order, anything not listed
+  // (a brand-new database, or before any reorder) falls back to newest-first —
+  // the same rule the Overview apps grid uses.
+  return rows
+    .map((r) => toDTO(assembleDatabase(r)))
+    .sort((a, b) => {
+      const ra = rank.get(a.id) ?? Infinity;
+      const rb = rank.get(b.id) ?? Infinity;
+      if (ra !== rb) return ra - rb;
+      return a.createdAt < b.createdAt ? 1 : -1;
+    });
+}
+
+/**
+ * Persist the team-wide order of databases in the Storage grid. Team-wide (every
+ * member sees the same arrangement), gated on `manage_infra` — the capability
+ * that owns every database mutation. Incoming ids are sanitised to the caller's
+ * own team databases (dropping unknown/duplicate ids); the `team_database_order`
+ * junction is rewritten over the survivors, and any omitted database is appended
+ * so the stored order stays total. A dead id can't be stored (the FK CASCADE
+ * makes the self-healing a DB invariant). Mirrors {@link import("./apps").reorderApps}.
+ */
+export async function reorderDatabases(orderedIds: string[]): Promise<void> {
+  const teamId = (await requireCapability("manage_infra")).teamId;
+  await getDb().transaction(async (tx) => {
+    // Newest-first, so a database the client omitted appends in a sensible,
+    // deterministic order after the explicitly-ordered ones.
+    const teamDbIds = (
+      await tx
+        .select({ id: databasesTable.id })
+        .from(databasesTable)
+        .where(eq(databasesTable.teamId, teamId))
+        .orderBy(desc(databasesTable.createdAt))
+    ).map((r) => r.id);
+    const valid = new Set(teamDbIds);
+    const seen = new Set<string>();
+    const next: string[] = [];
+    for (const id of orderedIds) {
+      if (valid.has(id) && !seen.has(id)) {
+        seen.add(id);
+        next.push(id);
+      }
+    }
+    for (const id of teamDbIds) if (!seen.has(id)) next.push(id);
+    await tx
+      .delete(teamDatabaseOrder)
+      .where(eq(teamDatabaseOrder.teamId, teamId));
+    if (next.length > 0) {
+      await tx.insert(teamDatabaseOrder).values(
+        next.map((databaseId, position) => ({ teamId, databaseId, position })),
+      );
+    }
+  });
 }
 
 export async function getDatabase(id: string): Promise<DatabaseDTO | null> {

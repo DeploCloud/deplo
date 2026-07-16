@@ -4,7 +4,7 @@ import { listS3 } from "@/lib/data/s3";
 import { listBackups } from "@/lib/data/backups";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listApps } from "@/lib/data/apps";
-import { canExposePorts } from "@/lib/membership";
+import { canExposePorts, hasCapability } from "@/lib/membership";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -22,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CreateDatabase } from "@/components/storage/create-database";
-import { DatabaseCard } from "@/components/storage/database-card";
+import { DatabasesGrid } from "@/components/storage/databases-grid";
 import { CreateS3 } from "@/components/storage/create-s3";
 import { S3Card } from "@/components/storage/s3-card";
 import { CreateBackup } from "@/components/storage/create-backup";
@@ -42,18 +42,28 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   const initialTab =
     newKind === "s3" ? "s3" : newKind === "backup" ? "backups" : "databases";
 
-  const [databases, destinations, backups, servers, services, mayExposePorts] =
-    await Promise.all([
-      listDatabases(),
-      listS3(),
-      listBackups(),
-      listServersForCurrentTeam(),
-      listApps(),
-      // Gates the "Expose publicly" toggle: only a user with the publish-ports
-      // grant may open a database to the internet (same grant as an app's
-      // compose `ports:`). Server-enforced too — this only hides the affordance.
-      canExposePorts(),
-    ]);
+  const [
+    databases,
+    destinations,
+    backups,
+    servers,
+    services,
+    mayExposePorts,
+    canManageDatabases,
+  ] = await Promise.all([
+    listDatabases(),
+    listS3(),
+    listBackups(),
+    listServersForCurrentTeam(),
+    listApps(),
+    // Gates the "Expose publicly" toggle: only a user with the publish-ports
+    // grant may open a database to the internet (same grant as an app's
+    // compose `ports:`). Server-enforced too — this only hides the affordance.
+    canExposePorts(),
+    // Gates drag-to-reorder of the databases grid (persisted team-wide) — the
+    // same capability every database mutation is gated on.
+    hasCapability("manage_infra"),
+  ]);
 
   // Only provisioned servers can host a database (provisioning routes through a
   // live agent). A server is provisioned once its agent has called home and
@@ -61,6 +71,8 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   const dbServers = servers
     .filter((s) => Boolean(s.agent?.certFingerprint))
     .map((s) => ({ id: s.id, name: s.name }));
+  // serverId → name, so a card can show which host each database runs on.
+  const serverNames = Object.fromEntries(servers.map((s) => [s.id, s.name]));
 
   return (
     <div className="space-y-6">
@@ -117,11 +129,15 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               }
             />
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {databases.map((db) => (
-                <DatabaseCard key={db.id} db={db} />
-              ))}
-            </div>
+            <DatabasesGrid
+              // Remount only when the SET of databases changes (create/delete),
+              // so a reorder — same set — never remounts and its optimistic
+              // order survives the drop (mirrors the Overview grid's gridKey).
+              key={[...databases.map((d) => d.id)].sort().join(",")}
+              databases={databases}
+              serverNames={serverNames}
+              canReorder={canManageDatabases}
+            />
           )}
         </TabsContent>
 

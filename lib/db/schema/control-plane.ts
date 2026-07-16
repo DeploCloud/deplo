@@ -1232,6 +1232,27 @@ export const databases = pgTable(
 );
 
 /**
+ * Team-wide database display order for the Storage grid — the direct analogue of
+ * `team_app_order` for the databases list. PK `(team_id, database_id)`, both FKs
+ * CASCADE so a deleted database can't leave a dead id in the order (the
+ * self-healing is a DB invariant). Declared AFTER `databases` so the FK needs no
+ * forward-reference thunk.
+ */
+export const teamDatabaseOrder = pgTable(
+  "team_database_order",
+  {
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    databaseId: text("database_id")
+      .notNull()
+      .references(() => databases.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.teamId, t.databaseId] })],
+);
+
+/**
  * [S3Destination](../../types.ts). `access_key_enc`/`secret_key_enc` secrets (the
  * secret key is never even masked-returned). `(team_id, created_at DESC)` index.
  */

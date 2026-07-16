@@ -101,6 +101,7 @@ const CONTROL_PLANE = [
   "dev_ssh_user",
   // data
   "databases",
+  "team_database_order",
   "s3_destination",
   "backups",
   "backup_runs",

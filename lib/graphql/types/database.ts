@@ -9,6 +9,7 @@ import {
   getConnectionString,
   createDatabase,
   updateDatabase,
+  reorderDatabases,
   updateDatabaseResources,
   updateDatabaseImage,
   setDatabaseRunning,
@@ -316,6 +317,19 @@ builder.mutationFields((t) => ({
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await deleteDatabase(id);
+      return true;
+    },
+  }),
+  reorderDatabases: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Persist the team-wide order of databases in the Storage grid. Ids are " +
+      "sanitised to the team's own databases; omitted ones are appended. " +
+      "Returns true.",
+    args: { databaseIds: t.arg.idList({ required: true }) },
+    resolve: async (_r, { databaseIds }) => {
+      await reorderDatabases(databaseIds.map(String));
       return true;
     },
   }),
