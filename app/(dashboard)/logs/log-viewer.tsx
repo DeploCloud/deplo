@@ -9,6 +9,7 @@ import { StatusDot } from "@/components/shared/status-badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LogLines, LogRow } from "@/components/shared/log-line-row";
 import { cn, timeAgo } from "@/lib/utils";
+import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
 import type { DeploymentStatus, LogLevel, LogLine } from "@/lib/types";
 
@@ -65,7 +66,10 @@ export function LogViewer({
     const q = query.trim().toLowerCase();
     return allLines.filter((line) => {
       if (!activeLevels.has(line.level)) return false;
-      if (q && !line.text.toLowerCase().includes(q)) return false;
+      // Match against the PLAIN text: lines are stored with their ANSI escapes
+      // (LogRow renders them as colors), and an `\x1b[33m` glued to a word
+      // would make it unsearchable.
+      if (q && !stripAnsi(line.text).toLowerCase().includes(q)) return false;
       return true;
     });
   }, [allLines, query, activeLevels]);
@@ -73,7 +77,10 @@ export function LogViewer({
   const copyValue = React.useMemo(
     () =>
       filteredLines
-        .map((l) => `[${fmtTime(l.ts)}] ${levelLabelPadded(l.level)} ${l.text}`)
+        .map(
+          (l) =>
+            `[${fmtTime(l.ts)}] ${levelLabelPadded(l.level)} ${stripAnsi(l.text)}`
+        )
         .join("\n"),
     [filteredLines]
   );

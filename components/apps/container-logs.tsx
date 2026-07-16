@@ -232,19 +232,24 @@ export function ContainerLogs({
   }, [output, follow]);
 
   // Container logs arrive as a raw byte stream with no severity (Docker keeps
-  // none), so we split the buffer into lines, strip ANSI to get the plain text,
-  // and infer a level per line — letting the runtime pane render the same level
-  // pills/tints as the build-log stream. A trailing partial line (no newline
-  // yet) is still shown; it just reclassifies as more bytes arrive.
+  // none), so we split the buffer into lines and infer a level per line —
+  // letting the runtime pane render the same level pills/tints as the build-log
+  // stream. The RAW line (ANSI escapes and all) goes to LogRow, which parses
+  // SGR colors into styled runs; only the level heuristic gets the stripped
+  // text (escape codes would confuse its regexes). A trailing partial line (no
+  // newline yet) is still shown; it just reclassifies as more bytes arrive.
   const lines = React.useMemo(() => {
-    const stripped = stripAnsi(output);
-    if (!stripped) return [];
+    if (!output) return [];
     // Keep a trailing empty entry out (split on "\n" yields one after a final
     // newline); blank interior lines are preserved so spacing survives.
-    const raw = stripped.split("\n");
+    const raw = output.split("\n");
     if (raw[raw.length - 1] === "") raw.pop();
-    return raw.map((text) => ({ level: detectLogLevel(text), text }));
+    return raw.map((text) => ({ level: detectLogLevel(stripAnsi(text)), text }));
   }, [output]);
+
+  // Copy/download hand off PLAIN text — pasting `\x1b[33m` into an editor or a
+  // bug report is exactly the garbage the pane itself no longer shows.
+  const plainOutput = React.useMemo(() => stripAnsi(output), [output]);
 
   function onScroll() {
     const el = scrollRef.current;
@@ -412,9 +417,9 @@ export function ContainerLogs({
               <Trash2 className="size-3.5" />
             </Button>
           </SimpleTooltip>
-          <CopyButton value={output} className="size-7" />
+          <CopyButton value={plainOutput} className="size-7" />
           <DownloadButton
-            value={output}
+            value={plainOutput}
             filename={`${active.name}.log`}
             className="size-7"
           />

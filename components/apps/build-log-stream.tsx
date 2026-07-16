@@ -10,6 +10,7 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import { LogLines, LogRow } from "@/components/shared/log-line-row";
 import { cn } from "@/lib/utils";
+import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
 import type { DeploymentStatus, LogLine } from "@/lib/types";
 
@@ -214,12 +215,14 @@ export function BuildLogStream({
     setFollow(atBottom);
   }
 
+  // Copy/download text is de-ANSI'd: the stored lines keep their escapes (the
+  // rows render them as colors), but pasted text should never carry `\x1b[33m`.
   const logText = React.useMemo(
     () =>
       logs
         .map(
           (l) =>
-            `[${formatLogTime(l.ts)}] ${levelLabelPadded(l.level)} ${l.text}`,
+            `[${formatLogTime(l.ts)}] ${levelLabelPadded(l.level)} ${stripAnsi(l.text)}`,
         )
         .join("\n"),
     [logs],

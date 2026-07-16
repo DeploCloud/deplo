@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { parseAnsi } from "@/lib/ansi";
 import {
   LEVEL_BADGE_CLASS,
   LEVEL_LABEL,
@@ -153,7 +154,25 @@ export function LogRow({
           tintMessage ? LEVEL_TEXT_CLASS[level] ?? "text-zinc-300" : "text-zinc-300",
         )}
       >
-        <LinkifiedText text={text} />
+        {/*
+          Log producers (docker build, buildkit, app stdout) emit raw ANSI, and
+          lines are stored verbatim — so parse each line into styled runs: SGR
+          colors render as colors, every other escape is swallowed instead of
+          showing up as `[0m`-style garbage. Parsing is per line, so styling
+          deliberately does NOT carry across rows: a producer that forgets its
+          reset tints one line, not the whole rest of the log. A segment's own
+          color (a nested class) wins over the level tint inherited from this
+          span; unstyled segments keep the tint.
+        */}
+        {parseAnsi(text).map((seg, i) =>
+          seg.className ? (
+            <span key={i} className={seg.className}>
+              <LinkifiedText text={seg.text} />
+            </span>
+          ) : (
+            <LinkifiedText key={i} text={seg.text} />
+          ),
+        )}
       </span>
     </div>
   );
