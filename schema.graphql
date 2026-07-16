@@ -383,6 +383,16 @@ A provisioned database container owned by a team. The connection string is maske
 type Database {
   connectionStringMasked: String
   createdAt: String
+
+  """
+  Expert override: replaces the container command verbatim (redis's default command carries --requirepass — omit it and auth is off).
+  """
+  customCommand: String
+
+  """
+  Expert override: the full image ref replacing the derived engine image; the version field is inert while set.
+  """
+  customImage: String
   dbName: String
   exposedPort: Int
   exposedPublicly: Boolean
@@ -390,6 +400,11 @@ type Database {
   id: ID
   name: String
   port: Int
+
+  """
+  Per-database resource caps applied at provision/redeploy time, or null when no limits are set.
+  """
+  resources: ResourceLimits
   serverId: ID
   sizeMb: Int
   status: DatabaseStatus
@@ -1199,6 +1214,11 @@ type Mutation {
   redeploy(appId: String!): Deployment
 
   """
+  Re-render the database's compose from its current settings (resource limits, image/command overrides, exposure) and reroute it on its server. The container is recreated only when its config actually changed; the data volume is always preserved.
+  """
+  redeployDatabase(id: String!): Database
+
+  """
   Create a new account + team via a single-use registration link. Signs in.
   """
   registerThroughLink(email: String!, name: String!, password: String!, teamName: String, token: String!, username: String!): AuthPayload
@@ -1270,6 +1290,11 @@ type Mutation {
   resetDevWorkspace(appId: String!): DevInfo
 
   """
+  Restart the database container (stop + start) without re-rendering its compose. Use redeployDatabase to apply pending settings.
+  """
+  restartDatabase(id: String!): Database
+
+  """
   Restore a backup run in place (overwrites the live target). Returns true.
   """
   restoreBackup(runId: String!): Boolean
@@ -1293,6 +1318,11 @@ type Mutation {
 
   """Revoke (delete) an API token. Returns true."""
   revokeToken(id: String!): Boolean
+
+  """
+  Rotate the database's engine password (auto-generated when none is given) and return the NEW connection string — shown once, like revealConnection. Engines that persist users in the data volume are told first via an exec in the running container; the compose is then re-rendered so env/command/healthcheck agree. Requires the database to be running.
+  """
+  rotateDatabasePassword(id: String!, password: String): String
 
   """Run an ad-hoc backup of an app now (no owning schedule). Returns true."""
   runAppBackup(appId: String!, destinationId: String!): Boolean
@@ -1420,6 +1450,16 @@ type Mutation {
   Edit a database's public exposure (publish/unpublish + host port) and, optionally, the server it runs on. An in-place edit re-renders the compose and reroutes the container on its current host (data volume preserved). A server change recreates the container on the new host, COPIES its data volume there host-to-host (relayed through the control plane, not via S3) so the data follows the move, then tears down the old host's stack. The copy runs with both stacks stopped and rolls back on failure (the DB stays put). The connection string is re-derived. Everything else is create-only. The publish-ports grant is enforced in the data layer when exposure is on.
   """
   updateDatabase(id: String!, input: UpdateDatabaseInput!): Database
+
+  """
+  Save the database's expert overrides: custom image, custom command, and/or engine version (image tag). Applied on the next redeploy. An absent field is left unchanged; an explicit null clears the override.
+  """
+  updateDatabaseImage(id: String!, input: UpdateDatabaseImageInput!): Database
+
+  """
+  Save the database's per-container resource limits. Applied on the next redeploy or settings-driven reroute.
+  """
+  updateDatabaseResources(id: String!, limits: ResourceLimitsInput!): Database
   updateDev(appId: String!, patch: UpdateDevInput!): DevInfo
 
   """
@@ -1787,7 +1827,7 @@ enum RegistryType {
 }
 
 """
-Per-app resource caps applied to the app's container(s) at deploy time. A null field means that dimension is uncapped. Memory is in MiB, disk in GiB, CPU in milli-CPUs (1000 = one core).
+Per-container resource caps applied to a workload (an App's containers at deploy time, a Database's container at provision/redeploy time). A null field means that dimension is uncapped. Memory is in MiB, disk in GiB, CPU in milli-CPUs (1000 = one core).
 """
 type ResourceLimits {
   cpuMilli: Int
@@ -1805,7 +1845,7 @@ type ResourceLimits {
 }
 
 """
-Per-app resource caps. Every field is optional and independently nullable (null ⇒ that dimension is uncapped); the form sends the full set on each save. Memory in MiB, disk in GiB, CPU in milli-CPUs (1000 = one core).
+Per-container resource caps. Every field is optional and independently nullable (null ⇒ that dimension is uncapped); the form sends the full set on each save. Memory in MiB, disk in GiB, CPU in milli-CPUs (1000 = one core).
 """
 input ResourceLimitsInput {
   cpuMilli: Int
@@ -2181,6 +2221,12 @@ input UpdateBackupInput {
   name: String!
   retentionDays: Int!
   schedule: String!
+}
+
+input UpdateDatabaseImageInput {
+  customCommand: String
+  customImage: String
+  version: String
 }
 
 input UpdateDatabaseInput {

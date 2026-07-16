@@ -324,7 +324,8 @@ test("generateDatabaseCompose: customCommand replaces redis's requirepass comman
     dbName: "cache",
     customCommand: "redis-server /etc/redis/redis.conf",
   });
-  assert.ok(yaml.includes("command: redis-server /etc/redis/redis.conf"), yaml);
+  // User-supplied commands render double-quoted (YAML-safe); the default stays plain.
+  assert.ok(yaml.includes('command: "redis-server /etc/redis/redis.conf"'), yaml);
   assert.ok(!yaml.includes("--requirepass"), yaml);
 });
 

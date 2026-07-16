@@ -1,5 +1,6 @@
 import { builder } from "../builder";
 import { remapBuildInput } from "./build-input";
+import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
 import {
   DeploySourceEnum,
   DeploymentStatusEnum,
@@ -49,7 +50,6 @@ import type {
   Deployment,
   GitRepo,
   LogLine,
-  ResourceLimits,
   VolumeMount,
 } from "@/lib/types";
 
@@ -119,29 +119,6 @@ const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
     readOnly: t.exposeBoolean("readOnly"),
   }),
 });
-
-const ResourceLimitsRef = builder
-  .objectRef<ResourceLimits>("ResourceLimits")
-  .implement({
-    description:
-      "Per-app resource caps applied to the app's container(s) at deploy time. " +
-      "A null field means that dimension is uncapped. Memory is in MiB, disk in " +
-      "GiB, CPU in milli-CPUs (1000 = one core).",
-    fields: (t) => ({
-      memoryMb: t.exposeInt("memoryMb", { nullable: true }),
-      memoryReservationMb: t.exposeInt("memoryReservationMb", { nullable: true }),
-      swapMb: t.exposeInt("swapMb", { nullable: true }),
-      cpuMilli: t.exposeInt("cpuMilli", { nullable: true }),
-      cpuShares: t.exposeInt("cpuShares", { nullable: true }),
-      cpuset: t.exposeString("cpuset", { nullable: true }),
-      pidsLimit: t.exposeInt("pidsLimit", { nullable: true }),
-      shmSizeMb: t.exposeInt("shmSizeMb", { nullable: true }),
-      storageGb: t.exposeInt("storageGb", { nullable: true }),
-      nofile: t.exposeInt("nofile", { nullable: true }),
-      nproc: t.exposeInt("nproc", { nullable: true }),
-      oomScoreAdj: t.exposeInt("oomScoreAdj", { nullable: true }),
-    }),
-  });
 
 export const AppRef = builder
   .objectRef<AppSummary>("App")
@@ -258,27 +235,6 @@ const BuildConfigInput = builder.inputType("BuildConfigInput", {
     runtimeVersion: t.string({ required: false }),
     port: t.int({ required: false }),
     settings: t.field({ type: "JSON", required: false }),
-  }),
-});
-
-const ResourceLimitsInputType = builder.inputType("ResourceLimitsInput", {
-  description:
-    "Per-app resource caps. Every field is optional and independently nullable " +
-    "(null ⇒ that dimension is uncapped); the form sends the full set on each " +
-    "save. Memory in MiB, disk in GiB, CPU in milli-CPUs (1000 = one core).",
-  fields: (t) => ({
-    memoryMb: t.int({ required: false }),
-    memoryReservationMb: t.int({ required: false }),
-    swapMb: t.int({ required: false }),
-    cpuMilli: t.int({ required: false }),
-    cpuShares: t.int({ required: false }),
-    cpuset: t.string({ required: false }),
-    pidsLimit: t.int({ required: false }),
-    shmSizeMb: t.int({ required: false }),
-    storageGb: t.int({ required: false }),
-    nofile: t.int({ required: false }),
-    nproc: t.int({ required: false }),
-    oomScoreAdj: t.int({ required: false }),
   }),
 });
 

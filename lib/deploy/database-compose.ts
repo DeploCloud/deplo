@@ -203,8 +203,14 @@ export function generateDatabaseCompose(input: {
   const customCommand = input.customCommand?.trim();
   const defaultCommand =
     type === "redis" ? `redis-server --requirepass ${password}` : "";
-  const commandLine = customCommand || defaultCommand;
-  const command = commandLine ? `    command: ${commandLine}\n` : "";
+  // The default (redis) command renders as the historical plain scalar; a
+  // USER-supplied command is emitted double-quoted (JSON is valid YAML) so
+  // embedded quotes / a `: ` can never change the YAML parse.
+  const command = customCommand
+    ? `    command: ${JSON.stringify(customCommand)}\n`
+    : defaultCommand
+      ? `    command: ${defaultCommand}\n`
+      : "";
   const envLines = envByType[type];
   const envBlock = envLines.length
     ? "    environment:\n" +

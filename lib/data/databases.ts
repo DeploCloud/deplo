@@ -6,6 +6,8 @@ import { listServersForTeam, assertServerAccessibleTx } from "./servers";
 import { getDb } from "../db/client";
 import { databases as databasesTable } from "../db/schema/control-plane";
 import { assembleDatabase, databaseToRow } from "./backup-rows";
+import { cleanResourceLimits, type ResourceLimitsInput } from "./apps";
+import { resourceLimitsToRow } from "./app-graph-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
@@ -26,7 +28,9 @@ import {
   generateDatabaseCompose,
   buildConnectionString,
   parseConnectionPassword,
+  effectiveDatabaseImage,
 } from "../deploy/database-compose";
+import { isDockerLevelStderr } from "../infra/docker";
 import { withKeyedLock } from "./keyed-mutex";
 import type { Database, DatabaseType } from "../types";
 
@@ -203,6 +207,19 @@ function toDTO(db: Database): DatabaseDTO {
     ...rest,
     connectionStringMasked: maskConnectionString(decryptSecret(connectionStringEnc)),
   };
+}
+
+/**
+ * Load one team-scoped database row, assembled, or null. Exported (cookie-free —
+ * the caller supplies the teamId) as the seam the `databaseStatus` subscription
+ * generator and `lib/data/database-console.ts` resolve through, mirroring
+ * `loadTeamApp` in apps.ts.
+ */
+export async function loadDatabaseForTeam(
+  id: string,
+  teamId: string,
+): Promise<Database | null> {
+  return loadDatabase(id, teamId);
 }
 
 /** Load one team-scoped database row, assembled, or null. */
@@ -532,11 +549,13 @@ export function dbVolumeHostName(slug: string): string {
 }
 
 /**
- * Edit a database's post-create-mutable settings: its public exposure
- * (publish/unpublish + host port) and, optionally, the SERVER it runs on.
- * Everything else (engine, version, username, db name, password) is create-only —
- * the official images apply those env vars only on first init against an empty
- * volume, so changing them would be a silent no-op or data loss.
+ * Edit a database's public exposure (publish/unpublish + host port) and,
+ * optionally, the SERVER it runs on. The engine, username and db name are
+ * create-only — the official images apply those env vars only on first init
+ * against an empty volume, so changing them would be a silent no-op or data
+ * loss. Version / image / command edits live in {@link updateDatabaseImage},
+ * resource limits in {@link updateDatabaseResources}, password rotation in
+ * {@link rotateDatabasePassword}.
  *
  * Two shapes of edit, both routed through the same lock and status gates:
  *
@@ -845,4 +864,337 @@ export async function deleteDatabase(id: string): Promise<void> {
       null,
     );
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Focused post-create mutations (the database detail page)            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Save a database's per-container resource limits (Settings → Resources).
+ * A row write only — no agent call, no lock: the limits are baked into the
+ * rendered compose (renderDatabaseStackYaml), so they take effect on the NEXT
+ * redeploy or settings-driven reroute, exactly like app resource limits take
+ * effect on the next deploy. Validation is the shared `cleanResourceLimits`
+ * (same bounds, same cross-field checks as apps).
+ */
+export async function updateDatabaseResources(
+  id: string,
+  input: ResourceLimitsInput,
+): Promise<void> {
+  const { membership } = await requireCapability("manage_infra");
+  const user = (await getCurrentUser())!;
+  const cleaned = cleanResourceLimits(input);
+  const updated = await getDb()
+    .update(databasesTable)
+    .set(resourceLimitsToRow(cleaned))
+    .where(
+      and(eq(databasesTable.id, id), eq(databasesTable.teamId, membership.teamId)),
+    )
+    .returning({ id: databasesTable.id });
+  if (updated.length === 0) throw new Error("Not found");
+  await recordActivity("database", "Updated database resource limits", user.name, null);
+}
+
+/** A docker image reference the compose can carry as a plain scalar: repo /
+ *  registry path, optional tag/digest. Anything else (whitespace, quotes, YAML
+ *  metacharacters) is rejected rather than escaped — an image ref never
+ *  legitimately contains them. */
+function isValidImageRef(ref: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/.test(ref);
+}
+
+/**
+ * Save a database's expert overrides (Settings → Advanced): a custom image
+ * replacing the derived engine image, a custom command replacing the default
+ * verbatim, and/or a version (image tag) change. A row write only — applied on
+ * the next redeploy/reroute ("the row is truth"). No engine-compat validation
+ * beyond syntax: this IS the expert escape hatch — the UI carries the warnings
+ * (redis `--requirepass`, cross-version data compatibility).
+ */
+export async function updateDatabaseImage(
+  id: string,
+  input: {
+    /** Full image ref, or null to clear back to the derived engine image. */
+    customImage?: string | null;
+    /** Verbatim command override, or null to clear back to the image default. */
+    customCommand?: string | null;
+    /** New engine version (image tag). Inert while customImage is set. */
+    version?: string;
+  },
+): Promise<void> {
+  const { membership } = await requireCapability("manage_infra");
+  const user = (await getCurrentUser())!;
+
+  const patch: Partial<typeof databasesTable.$inferInsert> = {};
+  if (input.customImage !== undefined) {
+    const img = input.customImage?.trim() || null;
+    if (img && !isValidImageRef(img))
+      throw new Error(
+        "Custom image must be a plain image reference (repo[:tag] or repo@digest) with no spaces or quotes.",
+      );
+    patch.customImage = img;
+  }
+  if (input.customCommand !== undefined) {
+    const cmd = input.customCommand?.trim() || null;
+    // One line, no control chars: the value is emitted into the compose as a
+    // quoted scalar, but a multi-line "command" is never what the user meant.
+    if (cmd && /[\r\n\t]/.test(cmd))
+      throw new Error("Custom command must be a single line.");
+    patch.customCommand = cmd;
+  }
+  if (input.version !== undefined) {
+    const v = input.version.trim();
+    if (!v || !/^[A-Za-z0-9._-]+$/.test(v))
+      throw new Error("Version must be a valid image tag.");
+    patch.version = v;
+  }
+  if (Object.keys(patch).length === 0) return;
+
+  const updated = await getDb()
+    .update(databasesTable)
+    .set(patch)
+    .where(
+      and(eq(databasesTable.id, id), eq(databasesTable.teamId, membership.teamId)),
+    )
+    .returning({ id: databasesTable.id });
+  if (updated.length === 0) throw new Error("Not found");
+  await recordActivity("database", "Updated database image settings", user.name, null);
+}
+
+/**
+ * Restart the database container (stop + start on the owning agent). Unlike
+ * redeploy this does NOT re-render the compose — it bounces the container
+ * exactly as configured on the host. Same lock/gate discipline as
+ * setDatabaseRunning.
+ */
+export async function restartDatabase(id: string): Promise<void> {
+  const teamId = (await requireCapability("manage_infra")).teamId;
+  const user = (await getCurrentUser())!;
+  await withKeyedLock(id, async () => {
+    const cur = await loadDatabase(id, teamId);
+    if (!cur) throw new Error("Not found");
+    if (cur.status === "provisioning")
+      throw new Error(
+        "Database is still provisioning — wait for it to finish before restarting it.",
+      );
+    const conn = await connectAgent(cur.serverId);
+    try {
+      const stop = await conn.stopStack(cur.host);
+      if (!stop.ok) throw new Error(stop.error || "agent failed to stop the database");
+      const start = await conn.startStack(cur.host);
+      if (!start.ok)
+        throw new Error(start.error || "agent failed to start the database");
+    } finally {
+      conn.close();
+    }
+    await getDb()
+      .update(databasesTable)
+      .set({ status: "running" })
+      .where(eq(databasesTable.id, id));
+  });
+  await recordActivity("database", "Restarted database", user.name, null);
+}
+
+/**
+ * Re-render the database's compose from the CURRENT row and reroute it on its
+ * owning server — the "apply my pending settings" verb. This is what makes
+ * resource limits / image / command edits take effect, and it is also the
+ * migration path that stamps the deplo.* labels onto containers provisioned
+ * before the labels existed (enabling logs / terminal / the runtime poll).
+ * `docker compose up -d` recreates the container only when its config actually
+ * changed; the data volume is always preserved.
+ */
+export async function redeployDatabase(id: string): Promise<void> {
+  const teamId = (await requireCapability("manage_infra")).teamId;
+  const user = (await getCurrentUser())!;
+  await withKeyedLock(id, async () => {
+    const cur = await loadDatabase(id, teamId);
+    if (!cur) throw new Error("Not found");
+    if (cur.status === "provisioning")
+      throw new Error(
+        "Database is still provisioning — wait for it to finish before redeploying it.",
+      );
+    const password = parseConnectionPassword(decryptSecret(cur.connectionStringEnc));
+    const yaml = renderDatabaseStackYaml(cur, password);
+    const conn = await connectAgent(cur.serverId);
+    try {
+      const res = await conn.reroute({
+        slug: cur.host,
+        composeYaml: yaml,
+        env: {},
+        mounts: [],
+      });
+      if (!res.ok)
+        throw new Error(res.error || "agent failed to redeploy the database");
+    } finally {
+      conn.close();
+    }
+    await getDb()
+      .update(databasesTable)
+      .set({ status: "running" })
+      .where(eq(databasesTable.id, id));
+  });
+  await recordActivity("database", "Redeployed database", user.name, null);
+}
+
+/**
+ * The per-engine in-engine rotation step. postgres / mysql / mariadb / mongodb
+ * persist their users INSIDE the data volume, so changing the compose env alone
+ * is a silent no-op on an initialized volume — the engine must be told first,
+ * via an exec in the running container. redis (command-carried `--requirepass`)
+ * and clickhouse (config regenerated from env on every container start, outside
+ * the data volume) rotate through the compose re-render alone.
+ *
+ * mysql/mariadb rotate BOTH root and the scoped user: root's password == the
+ * connection-string password is load-bearing for backups (`dumpUserFor` dumps
+ * as root with that password). `IF EXISTS` keeps the statement idempotent
+ * across the images' root@'%'/root@localhost variants.
+ */
+function rotationExecCommand(
+  db: Database,
+  oldPassword: string,
+  newPassword: string,
+): string | null {
+  switch (db.type) {
+    case "postgres":
+      // Unix-socket auth inside the official image is `trust` — no old password
+      // needed; the POSTGRES_USER login is a superuser.
+      return `psql -U ${db.username} -d ${db.dbName} -c "ALTER USER \\"${db.username}\\" WITH PASSWORD '${newPassword}'"`;
+    case "mysql":
+    case "mariadb": {
+      const stmts = [
+        `ALTER USER IF EXISTS 'root'@'%' IDENTIFIED BY '${newPassword}';`,
+        `ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY '${newPassword}';`,
+        ...(db.username !== "root"
+          ? [`ALTER USER IF EXISTS '${db.username}'@'%' IDENTIFIED BY '${newPassword}';`]
+          : []),
+        "FLUSH PRIVILEGES;",
+      ].join(" ");
+      return `mysql -uroot -p'${oldPassword}' -e "${stmts}"`;
+    }
+    case "mongodb":
+      return (
+        `mongosh -u ${db.username} -p '${oldPassword}' --authenticationDatabase admin --quiet ` +
+        `--eval "db.getSiblingDB('admin').changeUserPassword('${db.username}', '${newPassword}')"`
+      );
+    case "redis":
+    case "clickhouse":
+      return null; // compose re-render alone rotates
+  }
+}
+
+/**
+ * Rotate a database's engine password. Two-phase, old-credentials-safe:
+ *
+ *  1. Engines with volume-persisted users are told FIRST via an exec in the
+ *     running container ({@link rotationExecCommand}) — if that fails, nothing
+ *     was written and the old password stays fully valid.
+ *  2. The row's connection string is re-encrypted around the new password and
+ *     the stack is rerouted so the compose env / command / healthcheck agree
+ *     with the engine again. If the reroute fails AFTER a successful in-engine
+ *     rotation, the row already matches reality — "Redeploy" reconciles the
+ *     container config (the error says so).
+ *
+ * Requires the database to be RUNNING (the exec needs a live engine, and
+ * rotating a stopped redis would silently start it). Returns the NEW connection
+ * string — shown once by the UI, same contract as revealConnection.
+ */
+export async function rotateDatabasePassword(
+  id: string,
+  input: { password?: string } = {},
+): Promise<string> {
+  const teamId = (await requireCapability("manage_infra")).teamId;
+  const user = (await getCurrentUser())!;
+
+  const newPassword = input.password?.trim() || randomToken(24);
+  assertPasswordSafe(newPassword);
+  // Rotation embeds the password in an exec'd shell command (quoted with ' and
+  // "), which create never does — reject quotes on top of the create rules.
+  if (/['"]/.test(newPassword))
+    throw new Error("Password may not contain quotes");
+
+  let newConn = "";
+  await withKeyedLock(id, async () => {
+    const cur = await loadDatabase(id, teamId);
+    if (!cur) throw new Error("Not found");
+    if (cur.status !== "running")
+      throw new Error("Start the database before rotating its password.");
+
+    const oldPassword = parseConnectionPassword(decryptSecret(cur.connectionStringEnc));
+    // Old quotes would break the exec quoting below the same way; created
+    // passwords can legitimately contain them (create never rejected quotes).
+    const execCmd = rotationExecCommand(cur, oldPassword, newPassword);
+    if (execCmd && /['"]/.test(oldPassword))
+      throw new Error(
+        "This database's current password contains quotes, which the in-engine rotation step can't carry safely.",
+      );
+
+    // Phase 1 — tell the engine (postgres/mysql/mariadb/mongodb). Abort on any
+    // failure: nothing has been written yet, the old password stays valid. Never
+    // echo the command (it carries both passwords) — surface only the engine's
+    // own stderr.
+    if (execCmd) {
+      const conn = await connectAgent(cur.serverId);
+      try {
+        const res = await conn.exec(
+          cur.id,
+          cur.host,
+          execCmd,
+          effectiveDatabaseImage(cur),
+        );
+        if (isDockerLevelStderr(res.stderr))
+          throw new Error(
+            `Could not run the rotation inside the container: ${res.stderr.trim()}`,
+          );
+        if (res.code !== 0)
+          throw new Error(
+            `The engine rejected the password change${res.stderr.trim() ? `: ${res.stderr.trim()}` : ` (exit ${res.code})`}`,
+          );
+      } finally {
+        conn.close();
+      }
+    }
+
+    // Phase 2 — re-derive the connection string around the UNCHANGED host/port
+    // and persist it, then reroute so the compose (env / redis command /
+    // healthcheck) agrees with the engine again.
+    const exposedHostPort =
+      cur.exposedPublicly && cur.exposedPort != null ? cur.exposedPort : null;
+    const server =
+      exposedHostPort != null ? await resolveTeamServer(teamId, cur.serverId) : null;
+    newConn = buildConnectionString({
+      type: cur.type,
+      username: cur.username,
+      password: newPassword,
+      host: server ? server.host : cur.host,
+      port: exposedHostPort ?? cur.port,
+      dbName: cur.dbName,
+    });
+    await getDb()
+      .update(databasesTable)
+      .set({ connectionStringEnc: encryptSecret(newConn) })
+      .where(eq(databasesTable.id, id));
+
+    const updated: Database = { ...cur, connectionStringEnc: encryptSecret(newConn) };
+    const yaml = renderDatabaseStackYaml(updated, newPassword);
+    const conn = await connectAgent(cur.serverId);
+    try {
+      const res = await conn.reroute({
+        slug: cur.host,
+        composeYaml: yaml,
+        env: {},
+        mounts: [],
+      });
+      if (!res.ok)
+        throw new Error(
+          `The password was rotated but the container config could not be updated ` +
+            `(${res.error || "agent error"}). Run Redeploy to bring it in sync.`,
+        );
+    } finally {
+      conn.close();
+    }
+  });
+  await recordActivity("database", "Rotated database password", user.name, null);
+  return newConn;
 }

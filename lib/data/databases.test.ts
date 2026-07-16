@@ -21,6 +21,11 @@ import {
   listDatabases,
   deleteDatabase,
   dbVolumeHostName,
+  updateDatabaseResources,
+  updateDatabaseImage,
+  restartDatabase,
+  redeployDatabase,
+  rotateDatabasePassword,
 } from "./databases";
 import { generateDatabaseCompose } from "../deploy/database-compose";
 import { composeStackVolumeHostNames } from "./project-backup-descriptor";
@@ -153,4 +158,117 @@ test("dbVolumeHostName matches the rendered DB compose volume (move copies the r
   });
   const derived = composeStackVolumeHostNames(slug, yaml);
   assert.deepEqual(derived, [dbVolumeHostName(slug)]);
+});
+
+/* ------------------------------------------------------------------ */
+/* Focused post-create mutations (the database detail page)            */
+/* ------------------------------------------------------------------ */
+
+test("updateDatabaseResources: validates, persists, and round-trips via the DTO", async () => {
+  await seedDatabase(db, { id: "db_lim", name: "lim" });
+  await asUser1(async () => {
+    await updateDatabaseResources("db_lim", { memoryMb: 512, cpuMilli: 500 });
+    const dto = await getDatabase("db_lim");
+    assert.equal(dto?.resources?.memoryMb, 512);
+    assert.equal(dto?.resources?.cpuMilli, 500);
+    assert.equal(dto?.resources?.pidsLimit, null);
+
+    // Clearing every field folds back to resources: null (no limits set).
+    await updateDatabaseResources("db_lim", {});
+    assert.equal((await getDatabase("db_lim"))?.resources, null);
+
+    // The shared validator runs on this path too: swap without memory is the
+    // apps rule, verbatim.
+    await assert.rejects(
+      updateDatabaseResources("db_lim", { swapMb: 1024 }),
+      /memory limit before a swap limit/,
+    );
+  });
+});
+
+test("updateDatabaseResources: a cross-team id hits 0 rows (Not found)", async () => {
+  await seedDatabase(db, { id: "db_foreign", teamId: TEAM_B, name: "foreign" });
+  await asUser1(async () => {
+    await assert.rejects(
+      updateDatabaseResources("db_foreign", { memoryMb: 256 }),
+      /Not found/,
+    );
+  });
+});
+
+test("updateDatabaseImage: set + clear round-trip, syntax rejected", async () => {
+  await seedDatabase(db, { id: "db_img", name: "img" });
+  await asUser1(async () => {
+    await updateDatabaseImage("db_img", {
+      customImage: "timescale/timescaledb:2-pg16",
+      customCommand: "postgres -c shared_buffers=256MB",
+      version: "16.3",
+    });
+    let dto = await getDatabase("db_img");
+    assert.equal(dto?.customImage, "timescale/timescaledb:2-pg16");
+    assert.equal(dto?.customCommand, "postgres -c shared_buffers=256MB");
+    assert.equal(dto?.version, "16.3");
+
+    // Explicit null clears; absent fields stay untouched.
+    await updateDatabaseImage("db_img", { customImage: null });
+    dto = await getDatabase("db_img");
+    assert.equal(dto?.customImage, null);
+    assert.equal(dto?.customCommand, "postgres -c shared_buffers=256MB");
+
+    await assert.rejects(
+      updateDatabaseImage("db_img", { customImage: "bad image ref" }),
+      /plain image reference/,
+    );
+    await assert.rejects(
+      updateDatabaseImage("db_img", { customCommand: "line1\nline2" }),
+      /single line/,
+    );
+    await assert.rejects(
+      updateDatabaseImage("db_img", { version: "not a tag!" }),
+      /valid image tag/,
+    );
+  });
+});
+
+test("restart/redeploy: gated while provisioning with the curated message", async () => {
+  await seedDatabase(db, { id: "db_prov", name: "prov", status: "provisioning" });
+  await asUser1(async () => {
+    await assert.rejects(restartDatabase("db_prov"), /still provisioning/);
+    await assert.rejects(redeployDatabase("db_prov"), /still provisioning/);
+  });
+});
+
+test("rotateDatabasePassword: requires a running database and a quote-free password", async () => {
+  await seedDatabase(db, { id: "db_rot", name: "rot", status: "stopped" });
+  await asUser1(async () => {
+    await assert.rejects(
+      rotateDatabasePassword("db_rot"),
+      /Start the database/,
+    );
+    await assert.rejects(
+      rotateDatabasePassword("db_rot", { password: "with'quote" }),
+      /quotes/,
+    );
+  });
+});
+
+test("focused mutations reject a member without manage_infra", async () => {
+  // Re-seed identity with an extra low-capability member (the server row from
+  // beforeEach survives the identity truncate — servers are cross-team).
+  await pg.exec(`${TRUNCATE_BACKUPS}
+    truncate table users, teams restart identity cascade;`);
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "user_viewer", teamId: TEAM_A, role: "member", capabilities: ["view"] },
+    ],
+  });
+  await seedDatabase(db, { id: "db_cap", name: "cap" });
+  await runWithIdentity({ userId: "user_viewer", teamId: TEAM_A }, async () => {
+    await assert.rejects(updateDatabaseResources("db_cap", { memoryMb: 256 }));
+    await assert.rejects(updateDatabaseImage("db_cap", { version: "16" }));
+    await assert.rejects(restartDatabase("db_cap"));
+    await assert.rejects(redeployDatabase("db_cap"));
+    await assert.rejects(rotateDatabasePassword("db_cap"));
+  });
 });

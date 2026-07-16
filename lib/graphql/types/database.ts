@@ -1,16 +1,23 @@
 import { builder } from "../builder";
 import { DatabaseTypeEnum } from "./enums";
+import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
 import {
   listDatabases,
   getDatabase,
   getConnectionString,
   createDatabase,
   updateDatabase,
+  updateDatabaseResources,
+  updateDatabaseImage,
   setDatabaseRunning,
+  restartDatabase,
+  redeployDatabase,
+  rotateDatabasePassword,
   deleteDatabase,
   generateAvailableDbPort,
   type DatabaseDTO,
 } from "@/lib/data/databases";
+import type { ResourceLimitsInput } from "@/lib/data/apps";
 
 /* ------------------------------------------------------------------ */
 /* Local enums (not in the shared enums.ts)                            */
@@ -51,6 +58,26 @@ export const DatabaseRef = builder
       exposedPublicly: t.exposeBoolean("exposedPublicly"),
       // The published host port when exposedPublicly is true; null otherwise.
       exposedPort: t.exposeInt("exposedPort", { nullable: true }),
+      resources: t.field({
+        type: ResourceLimitsRef,
+        nullable: true,
+        description:
+          "Per-database resource caps applied at provision/redeploy time, or " +
+          "null when no limits are set.",
+        resolve: (d) => d.resources,
+      }),
+      customImage: t.exposeString("customImage", {
+        nullable: true,
+        description:
+          "Expert override: the full image ref replacing the derived engine " +
+          "image; the version field is inert while set.",
+      }),
+      customCommand: t.exposeString("customCommand", {
+        nullable: true,
+        description:
+          "Expert override: replaces the container command verbatim (redis's " +
+          "default command carries --requirepass — omit it and auth is off).",
+      }),
       sizeMb: t.exposeInt("sizeMb"),
       createdAt: t.exposeString("createdAt"),
     }),
@@ -98,6 +125,17 @@ const UpdateDatabaseInputType = builder.inputType("UpdateDatabaseInput", {
     exposedPublicly: t.boolean({ required: true }),
     exposedPort: t.int({ required: false }),
     serverId: t.id({ required: false }),
+  }),
+});
+
+// Expert overrides (Settings → Advanced). Absent field = leave unchanged;
+// explicit null = clear back to the derived/default value. Applied on the next
+// redeploy or settings-driven reroute — the row is truth, the container follows.
+const UpdateDatabaseImageInputType = builder.inputType("UpdateDatabaseImageInput", {
+  fields: (t) => ({
+    customImage: t.string({ required: false }),
+    customCommand: t.string({ required: false }),
+    version: t.string({ required: false }),
   }),
 });
 
@@ -190,6 +228,84 @@ builder.mutationFields((t) => ({
       await setDatabaseRunning(id, running);
       return reloadDatabase(id);
     },
+  }),
+  restartDatabase: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Restart the database container (stop + start) without re-rendering its " +
+      "compose. Use redeployDatabase to apply pending settings.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await restartDatabase(id);
+      return reloadDatabase(id);
+    },
+  }),
+  redeployDatabase: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Re-render the database's compose from its current settings (resource " +
+      "limits, image/command overrides, exposure) and reroute it on its server. " +
+      "The container is recreated only when its config actually changed; the " +
+      "data volume is always preserved.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await redeployDatabase(id);
+      return reloadDatabase(id);
+    },
+  }),
+  updateDatabaseResources: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Save the database's per-container resource limits. Applied on the next " +
+      "redeploy or settings-driven reroute.",
+    args: {
+      id: t.arg.string({ required: true }),
+      limits: t.arg({ type: ResourceLimitsInputType, required: true }),
+    },
+    resolve: async (_r, { id, limits }) => {
+      await updateDatabaseResources(id, limits as ResourceLimitsInput);
+      return reloadDatabase(id);
+    },
+  }),
+  updateDatabaseImage: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Save the database's expert overrides: custom image, custom command, " +
+      "and/or engine version (image tag). Applied on the next redeploy. An " +
+      "absent field is left unchanged; an explicit null clears the override.",
+    args: {
+      id: t.arg.string({ required: true }),
+      input: t.arg({ type: UpdateDatabaseImageInputType, required: true }),
+    },
+    resolve: async (_r, { id, input }) => {
+      await updateDatabaseImage(id, {
+        customImage: input.customImage,
+        customCommand: input.customCommand,
+        version: input.version ?? undefined,
+      });
+      return reloadDatabase(id);
+    },
+  }),
+  rotateDatabasePassword: t.field({
+    type: "String",
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Rotate the database's engine password (auto-generated when none is " +
+      "given) and return the NEW connection string — shown once, like " +
+      "revealConnection. Engines that persist users in the data volume are " +
+      "told first via an exec in the running container; the compose is then " +
+      "re-rendered so env/command/healthcheck agree. Requires the database to " +
+      "be running.",
+    args: {
+      id: t.arg.string({ required: true }),
+      password: t.arg.string({ required: false }),
+    },
+    resolve: (_r, { id, password }) =>
+      rotateDatabasePassword(id, { password: password ?? undefined }),
   }),
   deleteDatabase: t.field({
     type: "Boolean",
