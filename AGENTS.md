@@ -228,3 +228,8 @@ language — reconsider, or note the gap.
 - Check `docs/adr/` before working an area; flag contradictions explicitly rather than overriding.
 - **Commits = Conventional Commits with a scope**, imperative summary (`feat(apps): …`,
   `fix(auth): …`). Branch off `main` before committing.
+- **Stop what you start.** Any build or server you launch to work a task (dev server, test
+  server, watcher, Playwright harness) MUST be stopped once the task is 100% done — never leave
+  it running in the background. Kill the specific PID you spawned; **never `pkill -f
+  next-server`** (it kills deployed apps). The long-lived control plane on :3000 is the only
+  process meant to stay up.
