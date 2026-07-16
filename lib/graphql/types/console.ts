@@ -11,6 +11,10 @@ import {
   type AppRuntime,
   type RuntimeContainer,
 } from "@/lib/data/console";
+import {
+  getDatabaseRuntime,
+  type DatabaseRuntime,
+} from "@/lib/data/database-console";
 
 /**
  * GraphQL surface for the real container console: read the attachable instances
@@ -131,6 +135,36 @@ const AppRuntimeRef = builder.objectRef<AppRuntime>("AppRuntime").implement({
   }),
 });
 
+const DatabaseRuntimeRef = builder
+  .objectRef<DatabaseRuntime>("DatabaseRuntime")
+  .implement({
+    description:
+      "What a database's container is ACTUALLY doing on the host, read live " +
+      "from the owning agent — the same shape as AppRuntime plus the observed " +
+      "data size. A container provisioned before the deplo.* labels existed is " +
+      "invisible here until its next Redeploy.",
+    fields: (t) => ({
+      total: t.exposeInt("total"),
+      running: t.exposeInt("running"),
+      restarting: t.exposeInt("restarting"),
+      unhealthy: t.exposeInt("unhealthy"),
+      missing: t.exposeStringList("missing"),
+      unreachable: t.exposeBoolean("unreachable", {
+        description: "The agent did not answer: the counts are unknown, not zero.",
+      }),
+      containers: t.field({
+        type: [RuntimeContainerRef],
+        resolve: (r) => r.containers,
+      }),
+      dataSizeMb: t.exposeInt("dataSizeMb", {
+        nullable: true,
+        description:
+          "Observed size of the engine's data dir in MiB (du -sm inside the " +
+          "running container), or null when it can't be known. Never fabricated.",
+      }),
+    }),
+  });
+
 /** Result of running a command in the live container. */
 interface ExecResult {
   output: string;
@@ -196,6 +230,16 @@ builder.queryFields((t) => ({
       "truth behind the stored status. Polled by the app's status badge.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => getAppRuntime(appId),
+  }),
+  databaseRuntime: t.field({
+    type: DatabaseRuntimeRef,
+    nullable: true,
+    authScopes: { loggedIn: true },
+    description:
+      "Live container state for a database (plus its observed data size), " +
+      "straight from the owning agent. Polled by the database's status badge.",
+    args: { databaseId: t.arg.string({ required: true }) },
+    resolve: (_r, { databaseId }) => getDatabaseRuntime(databaseId),
   }),
   shellLabel: t.field({
     type: "String",

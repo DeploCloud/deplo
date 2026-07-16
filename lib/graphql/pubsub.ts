@@ -24,7 +24,10 @@ import { createPubSub } from "@graphql-yoga/subscription";
  * by the GraphQL route. Pinning it on `globalThis` collapses every module
  * instance onto a single emitter.
  */
-type Channels = { appChanged: [id: string, payload: string] };
+type Channels = {
+  appChanged: [id: string, payload: string];
+  databaseChanged: [id: string, payload: string];
+};
 type ServicePubSub = ReturnType<typeof createPubSub<Channels>>;
 
 const PUBSUB_KEY = Symbol.for("deplo.graphql.pubsub.singleton");
@@ -36,4 +39,10 @@ export const pubSub: ServicePubSub = (g[PUBSUB_KEY] ??=
 /** Notify every subscriber that this app's state changed. */
 export function publishAppChanged(appId: string): void {
   pubSub.publish("appChanged", appId, appId);
+}
+
+/** Notify every subscriber that this database's state changed — same contract
+ *  as {@link publishAppChanged}: the payload is just the id, "re-read it". */
+export function publishDatabaseChanged(databaseId: string): void {
+  pubSub.publish("databaseChanged", databaseId, databaseId);
 }

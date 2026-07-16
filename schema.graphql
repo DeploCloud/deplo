@@ -414,6 +414,26 @@ type Database {
   version: String
 }
 
+"""
+What a database's container is ACTUALLY doing on the host, read live from the owning agent — the same shape as AppRuntime plus the observed data size. A container provisioned before the deplo.* labels existed is invisible here until its next Redeploy.
+"""
+type DatabaseRuntime {
+  containers: [RuntimeContainer!]
+
+  """
+  Observed size of the engine's data dir in MiB (du -sm inside the running container), or null when it can't be known. Never fabricated.
+  """
+  dataSizeMb: Int
+  missing: [String!]
+  restarting: Int
+  running: Int
+  total: Int
+  unhealthy: Int
+
+  """The agent did not answer: the counts are unknown, not zero."""
+  unreachable: Boolean
+}
+
 enum DatabaseStatus {
   error
   provisioning
@@ -1621,6 +1641,11 @@ type Query {
   consoleInfo(appId: String!): ConsoleInfo
   database(id: String!): Database
 
+  """
+  Live container state for a database (plus its observed data size), straight from the owning agent. Polled by the database's status badge.
+  """
+  databaseRuntime(databaseId: String!): DatabaseRuntime
+
   """All databases in the active team, newest first."""
   databases: [Database!]
   deployment(id: String!): Deployment
@@ -2183,6 +2208,11 @@ type Subscription {
   Emits the app whenever its status (power / deployment) changes. Fires once immediately with the current snapshot, then on every change.
   """
   appStatus(slug: String!): App
+
+  """
+  Emits the database whenever its status changes (provisioning → running, start/stop, redeploy, …). Fires once immediately with the current snapshot, then on every change; ends when the database is deleted.
+  """
+  databaseStatus(id: String!): Database
 }
 
 """A team that owns apps, infra and members."""

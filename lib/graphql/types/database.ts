@@ -1,9 +1,11 @@
 import { builder } from "../builder";
 import { DatabaseTypeEnum } from "./enums";
 import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
+import { pubSub } from "../pubsub";
 import {
   listDatabases,
   getDatabase,
+  getDatabaseForTeam,
   getConnectionString,
   createDatabase,
   updateDatabase,
@@ -331,4 +333,48 @@ async function reloadDatabase(id: string): Promise<DatabaseDTO> {
   const db = await getDatabase(id);
   if (!db) throw new Error("Database not found");
   return db;
+}
+
+/* ------------------------------------------------------------------ */
+/* Subscriptions                                                       */
+/* ------------------------------------------------------------------ */
+
+builder.subscriptionFields((t) => ({
+  databaseStatus: t.field({
+    type: DatabaseRef,
+    description:
+      "Emits the database whenever its status changes (provisioning → running, " +
+      "start/stop, redeploy, …). Fires once immediately with the current " +
+      "snapshot, then on every change; ends when the database is deleted.",
+    // Same gating as appStatus: `loggedIn` opens the stream, the generator
+    // enforces team ownership through the cookie-free seam.
+    authScopes: { loggedIn: true },
+    args: { id: t.arg.string({ required: true }) },
+    subscribe: (_root, { id }, ctx) => databaseStatusStream(id, ctx.teamId),
+    resolve: (db) => db,
+  }),
+}));
+
+// Exported for the SSE test (same contract as appStatusStream): it must stay
+// cookie-free across iteration ticks — a subscription's async iterator runs
+// AFTER the HTTP handler returned the streaming Response, so `cookies()` is no
+// longer callable. Team identity rides in from the GraphQL context.
+export async function* databaseStatusStream(
+  id: string,
+  teamId: string | null,
+): AsyncGenerator<DatabaseDTO> {
+  if (!teamId) throw new Error("Database not found");
+  const first = await getDatabaseForTeam(id, teamId);
+  if (!first) throw new Error("Database not found");
+
+  // Initial snapshot — a fresh subscriber paints current state immediately.
+  yield first;
+
+  // Forward each change ping as a freshly-reloaded snapshot. A deleted database
+  // reloads to null → end the stream.
+  for await (const changedId of pubSub.subscribe("databaseChanged", id)) {
+    const next = await getDatabaseForTeam(changedId, teamId);
+    if (!next) return;
+    yield next;
+  }
 }

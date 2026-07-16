@@ -32,6 +32,7 @@ import {
 } from "../deploy/database-compose";
 import { isDockerLevelStderr } from "../infra/docker";
 import { withKeyedLock } from "./keyed-mutex";
+import { publishDatabaseChanged } from "../graphql/pubsub";
 import type { Database, DatabaseType } from "../types";
 
 export interface DatabaseDTO extends Omit<Database, "connectionStringEnc"> {
@@ -220,6 +221,16 @@ export async function loadDatabaseForTeam(
   teamId: string,
 ): Promise<Database | null> {
   return loadDatabase(id, teamId);
+}
+
+/** Cookie-free team-scoped DTO load — the `databaseStatus` subscription
+ *  generator's only data edge (masked, no `connectionStringEnc`). */
+export async function getDatabaseForTeam(
+  id: string,
+  teamId: string,
+): Promise<DatabaseDTO | null> {
+  const db = await loadDatabase(id, teamId);
+  return db ? toDTO(db) : null;
 }
 
 /** Load one team-scoped database row, assembled, or null. */
@@ -413,6 +424,7 @@ export async function createDatabase(input: {
       .update(databasesTable)
       .set({ status: "error" })
       .where(eq(databasesTable.id, db.id));
+    publishDatabaseChanged(db.id);
   });
 
   return toDTO(db);
@@ -477,6 +489,7 @@ async function provisionDatabase(db: Database, password: string): Promise<void> 
       .update(databasesTable)
       .set({ status: "running" })
       .where(eq(databasesTable.id, db.id));
+    publishDatabaseChanged(db.id);
   });
 }
 
@@ -533,6 +546,7 @@ export async function setDatabaseRunning(
       .update(databasesTable)
       .set({ status: running ? "running" : "stopped" })
       .where(eq(databasesTable.id, id));
+    publishDatabaseChanged(id);
   });
 }
 
@@ -788,6 +802,7 @@ export async function updateDatabase(
         connectionStringEnc: connEnc,
       })
       .where(eq(databasesTable.id, id));
+    publishDatabaseChanged(id);
   });
   if (moveWarning) console.warn(`[databases] ${moveWarning}`);
   await recordActivity(
@@ -855,6 +870,8 @@ export async function deleteDatabase(id: string): Promise<void> {
     // SCHEDULES automatically (was a manual `d.backups` filter); `backup_runs`'
     // `database_id` is SET NULL so run history outlives the deleted database.
     await getDb().delete(databasesTable).where(eq(databasesTable.id, id));
+    // Tell subscribers: the reload comes back null, ending their streams.
+    publishDatabaseChanged(id);
     await recordActivity(
       "database",
       orphanWarning
@@ -893,6 +910,7 @@ export async function updateDatabaseResources(
     )
     .returning({ id: databasesTable.id });
   if (updated.length === 0) throw new Error("Not found");
+  publishDatabaseChanged(id);
   await recordActivity("database", "Updated database resource limits", user.name, null);
 }
 
@@ -959,6 +977,7 @@ export async function updateDatabaseImage(
     )
     .returning({ id: databasesTable.id });
   if (updated.length === 0) throw new Error("Not found");
+  publishDatabaseChanged(id);
   await recordActivity("database", "Updated database image settings", user.name, null);
 }
 
@@ -992,6 +1011,7 @@ export async function restartDatabase(id: string): Promise<void> {
       .update(databasesTable)
       .set({ status: "running" })
       .where(eq(databasesTable.id, id));
+    publishDatabaseChanged(id);
   });
   await recordActivity("database", "Restarted database", user.name, null);
 }
@@ -1034,6 +1054,7 @@ export async function redeployDatabase(id: string): Promise<void> {
       .update(databasesTable)
       .set({ status: "running" })
       .where(eq(databasesTable.id, id));
+    publishDatabaseChanged(id);
   });
   await recordActivity("database", "Redeployed database", user.name, null);
 }
@@ -1194,6 +1215,7 @@ export async function rotateDatabasePassword(
     } finally {
       conn.close();
     }
+    publishDatabaseChanged(id);
   });
   await recordActivity("database", "Rotated database password", user.name, null);
   return newConn;
