@@ -11,7 +11,6 @@ import type { RuntimeContainerView } from "@/components/apps/use-app-runtime";
  * databaseStatus subscription only fires when the control plane changes
  * something; nothing pushes when the engine crash-loops on its own, so the
  * truth is pulled from the agent-backed databaseRuntime query (3s server-cache).
- * Also carries the live data size the overview shows.
  */
 
 const DATABASE_RUNTIME_QUERY = /* GraphQL */ `
@@ -23,7 +22,6 @@ const DATABASE_RUNTIME_QUERY = /* GraphQL */ `
       unhealthy
       missing
       unreachable
-      dataSizeMb
       containers {
         name
         service
@@ -39,7 +37,6 @@ const DATABASE_RUNTIME_QUERY = /* GraphQL */ `
 
 export interface DatabaseRuntimeView extends RuntimeSnapshot {
   containers: RuntimeContainerView[];
-  dataSizeMb: number | null;
 }
 
 type Response = { databaseRuntime: DatabaseRuntimeView | null };

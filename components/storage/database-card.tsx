@@ -30,7 +30,7 @@ import {
   DatabaseLiveStatusProvider,
 } from "@/components/storage/database-live-status";
 import { DatabaseStatusBadge } from "@/components/storage/database-status-badge";
-import { formatBytes, timeAgo } from "@/lib/utils";
+import { timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import { DB_ICONS } from "./db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases";
@@ -157,7 +157,6 @@ export function DatabaseCard({ db }: { db: DatabaseDTO }) {
               <ServerIcon className="size-3.5" />
               {db.host}:{db.port}
             </span>
-            <span>{db.sizeMb > 0 ? formatBytes(db.sizeMb * 1024 * 1024) : "—"}</span>
             <span className="ml-auto">{timeAgo(db.createdAt)}</span>
           </div>
         </CardContent>

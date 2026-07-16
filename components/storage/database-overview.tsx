@@ -7,7 +7,7 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { gqlAction } from "@/lib/graphql-client";
 import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
-import { formatBytes, timeAgo } from "@/lib/utils";
+import { timeAgo } from "@/lib/utils";
 import { ENGINE_CREDS } from "@/components/storage/db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
@@ -38,9 +38,6 @@ export function DatabaseOverview({
     !!runtime &&
     !runtime.unreachable &&
     runtime.total === 0;
-
-  // Prefer the freshly-observed size; fall back to the last-observed column.
-  const sizeMb = runtime?.dataSizeMb ?? db.sizeMb;
 
   function reveal() {
     if (revealed) {
@@ -128,9 +125,6 @@ export function DatabaseOverview({
               ) : (
                 <span className="text-muted-foreground">Internal only</span>
               )}
-            </Field>
-            <Field label="Data size">
-              {sizeMb > 0 ? formatBytes(sizeMb * 1024 * 1024) : "—"}
             </Field>
             <Field label="Created">{timeAgo(db.createdAt)}</Field>
           </dl>
