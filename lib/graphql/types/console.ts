@@ -13,6 +13,10 @@ import {
 } from "@/lib/data/console";
 import {
   getDatabaseRuntime,
+  getDatabaseConsoleInfo,
+  getDatabaseLogsInfo,
+  getDatabaseShellLabel,
+  execInDatabase,
   type DatabaseRuntime,
 } from "@/lib/data/database-console";
 
@@ -200,6 +204,16 @@ const ExecConsoleInputType = builder.inputType("ExecConsoleInput", {
   }),
 });
 
+const ExecDatabaseConsoleInputType = builder.inputType(
+  "ExecDatabaseConsoleInput",
+  {
+    fields: (t) => ({
+      databaseId: t.string({ required: true }),
+      command: t.string({ required: true }),
+    }),
+  },
+);
+
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
 /* ------------------------------------------------------------------ */
@@ -251,6 +265,31 @@ builder.queryFields((t) => ({
     resolve: (_r, { input }) =>
       getShellLabel(input.appId, input.containerName ?? undefined),
   }),
+  databaseConsoleInfo: t.field({
+    type: ConsoleInfoRef,
+    nullable: true,
+    authScopes: { loggedIn: true },
+    description: "Attachable container + default target for a database's console.",
+    args: { databaseId: t.arg.string({ required: true }) },
+    resolve: (_r, { databaseId }) => getDatabaseConsoleInfo(databaseId),
+  }),
+  databaseLogsInfo: t.field({
+    type: LogsInfoRef,
+    nullable: true,
+    authScopes: { loggedIn: true },
+    description: "Container list for a database's logs viewer.",
+    args: { databaseId: t.arg.string({ required: true }) },
+    resolve: (_r, { databaseId }) => getDatabaseLogsInfo(databaseId),
+  }),
+  databaseShellLabel: t.field({
+    type: "String",
+    authScopes: { loggedIn: true },
+    description:
+      "The database container's shell label — drives the console's " +
+      '"no shell" notice, like shellLabel does for apps.',
+    args: { databaseId: t.arg.string({ required: true }) },
+    resolve: (_r, { databaseId }) => getDatabaseShellLabel(databaseId),
+  }),
 }));
 
 /* ------------------------------------------------------------------ */
@@ -271,5 +310,15 @@ builder.mutationFields((t) => ({
         input.command,
         input.containerName ?? undefined,
       ),
+  }),
+  execDatabaseConsole: t.field({
+    type: ExecResultRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Run a command in the database's live container (docker exec). Gated on " +
+      "manage_infra — arbitrary code execution inside infrastructure.",
+    args: { input: t.arg({ type: ExecDatabaseConsoleInputType, required: true }) },
+    resolve: (_r, { input }) =>
+      execInDatabase(input.databaseId, input.command),
   }),
 }));

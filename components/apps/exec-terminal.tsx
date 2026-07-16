@@ -34,6 +34,7 @@ export function ExecTerminal({
   prompt,
   banner,
   note,
+  exec,
 }: {
   appId: string;
   containerName: string;
@@ -43,6 +44,17 @@ export function ExecTerminal({
   banner: string[];
   /** Late-resolved distroless caveat, appended once when it arrives. */
   note: string | null;
+  /**
+   * Override how a line is executed — the database console routes through
+   * `execDatabaseConsole`. Default: the app `execConsole` mutation for
+   * `appId`/`containerName`. Must resolve to the same ActionResult contract.
+   */
+  exec?: (
+    command: string,
+  ) => Promise<
+    | { ok: true; data: { output: string; detach?: boolean } }
+    | { ok: false; error: string }
+  >;
 }) {
   const term = React.useRef<XtermApi | null>(null);
   const editor = React.useRef<LineEditor | null>(null);
@@ -98,11 +110,14 @@ export function ExecTerminal({
 
   async function run(command: string) {
     busy.current = true;
-    const res = await gqlAction(
-      `mutation($input: ExecConsoleInput!){ execConsole(input: $input) { output detach } }`,
-      { input: { appId, command, containerName } },
-      (d: { execConsole: { output: string; detach?: boolean } }) => d.execConsole,
-    );
+    const res = exec
+      ? await exec(command)
+      : await gqlAction(
+          `mutation($input: ExecConsoleInput!){ execConsole(input: $input) { output detach } }`,
+          { input: { appId, command, containerName } },
+          (d: { execConsole: { output: string; detach?: boolean } }) =>
+            d.execConsole,
+        );
     busy.current = false;
     const a = term.current;
     const ed = editor.current;

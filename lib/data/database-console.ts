@@ -4,18 +4,26 @@ import { eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { databases as databasesTable } from "../db/schema/control-plane";
-import { requireActiveTeamId } from "../membership";
+import { requireActiveTeamId, requireCapability } from "../membership";
 import { loadDatabaseForTeam } from "./databases";
 import {
   connectAgent,
   AgentUnreachableError,
   type AgentConnection,
+  type AgentConsoleInstance,
 } from "../infra/agent-client";
 import {
   DB_DATA_DIRS,
   effectiveDatabaseImage,
 } from "../deploy/database-compose";
-import type { AppRuntime, RuntimeContainer } from "./console";
+import { isDockerLevelStderr } from "../infra/docker";
+import type {
+  AppRuntime,
+  ConsoleInfo,
+  ConsoleInstance,
+  LogsInfo,
+  RuntimeContainer,
+} from "./console";
 import type { Database } from "../types";
 
 /**
@@ -180,4 +188,239 @@ function unknownDatabaseRuntime(): DatabaseRuntime {
     unreachable: true,
     dataSizeMb: null,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Console / logs seams                                                 */
+/* ------------------------------------------------------------------ */
+
+/** The database's 0-or-1 attachable containers, straight from the owning agent. */
+async function listDatabaseInstances(db: Database): Promise<ConsoleInstance[]> {
+  const conn = await connectAgent(db.serverId);
+  try {
+    const instances: AgentConsoleInstance[] = await conn.listInstances(
+      db.id,
+      db.host,
+      "",
+    );
+    return instances;
+  } finally {
+    conn.close();
+  }
+}
+
+/**
+ * The honest not-running placeholder for a page render when the real list can't
+ * be obtained (unreachable agent, or zero containers — including a pre-labels
+ * container the agent can't see). Same display-only contract as console.ts's
+ * displayFallback: the page loads and says "not running", never a fabricated
+ * "running"; the operational paths still fail clearly.
+ */
+function displayFallback(db: Database): ConsoleInstance {
+  return {
+    name: db.host,
+    service: db.host,
+    image: effectiveDatabaseImage(db),
+    running: false,
+    exposed: false,
+    user: "root",
+    workdir: "/",
+    openStdin: false,
+    tty: false,
+    // Unknown, not "stopped": this entry exists because we could not ask.
+    state: "",
+    health: "",
+    restartCount: 0,
+  };
+}
+
+async function listForDisplay(
+  db: Database,
+): Promise<{ instances: ConsoleInstance[]; real: boolean; unreachable: boolean }> {
+  try {
+    const instances = await listDatabaseInstances(db);
+    return instances.length
+      ? { instances, real: true, unreachable: false }
+      : { instances: [displayFallback(db)], real: false, unreachable: false };
+  } catch (e) {
+    if (e instanceof AgentUnreachableError)
+      return { instances: [displayFallback(db)], real: false, unreachable: true };
+    throw e;
+  }
+}
+
+/** Console page info for a database — same shape as an app's ConsoleInfo. */
+export async function getDatabaseConsoleInfo(
+  id: string,
+): Promise<ConsoleInfo | null> {
+  const teamId = await requireActiveTeamId();
+  const db = await loadDatabaseForTeam(id, teamId);
+  if (!db) return null;
+  const { instances } = await listForDisplay(db);
+  const def = instances[0];
+  return {
+    containerName: def.name,
+    image: def.image,
+    running: instances.some((i) => i.running),
+    instances,
+  };
+}
+
+/** Logs page info for a database — same shape as an app's LogsInfo. */
+export async function getDatabaseLogsInfo(id: string): Promise<LogsInfo | null> {
+  const teamId = await requireActiveTeamId();
+  const db = await loadDatabaseForTeam(id, teamId);
+  if (!db) return null;
+  const found = await listForDisplay(db);
+  return {
+    running: found.instances.some((i) => i.running),
+    streamable: found.real,
+    unreachable: found.unreachable,
+    instances: found.instances,
+  };
+}
+
+/** The container's shell label for the console banner ("/bin/sh", "bash", or
+ *  "raw exec (no shell)"). Degrades to raw when stopped/unreachable. */
+export async function getDatabaseShellLabel(id: string): Promise<string> {
+  const teamId = await requireActiveTeamId();
+  const db = await loadDatabaseForTeam(id, teamId);
+  if (!db) return "raw exec (no shell)";
+  const { instances } = await listForDisplay(db);
+  const pick = instances.find((i) => i.running);
+  if (!pick) return "raw exec (no shell)";
+  const conn = await connectAgent(db.serverId);
+  try {
+    return await conn.shellLabel(db.id, pick.name, pick.image);
+  } catch (e) {
+    if (e instanceof AgentUnreachableError) return "raw exec (no shell)";
+    throw e;
+  } finally {
+    conn.close();
+  }
+}
+
+/**
+ * Authorise an attach and resolve the real container. Attaching stdin to the
+ * live engine is an infra-class operation → `manage_infra` (databases have no
+ * folder/deploy story; manage_infra is the capability every other database
+ * mutation gates on). Same discriminated result contract as
+ * console.ts's resolveAttachTarget.
+ */
+export async function resolveDatabaseAttachTarget(
+  id: string,
+  target?: string,
+): Promise<
+  | { ok: true; instance: ConsoleInstance; serverId: string }
+  | { ok: false; reason: "not-found" | "no-instance" | "stopped" | "unreachable" }
+> {
+  const { teamId } = await requireCapability("manage_infra");
+  const db = await loadDatabaseForTeam(id, teamId);
+  if (!db) return { ok: false, reason: "not-found" };
+
+  let instances: ConsoleInstance[];
+  try {
+    instances = await listDatabaseInstances(db);
+  } catch (e) {
+    if (e instanceof AgentUnreachableError)
+      return { ok: false, reason: "unreachable" };
+    throw e;
+  }
+  // Never trust a raw name from the client — the target must belong to this
+  // database's stack.
+  const pick = target
+    ? instances.find((i) => i.name === target)
+    : (instances.find((i) => i.running) ?? instances[0]);
+  if (!pick) return { ok: false, reason: "no-instance" };
+  if (!pick.running) return { ok: false, reason: "stopped" };
+  return { ok: true, instance: pick, serverId: db.serverId };
+}
+
+/**
+ * Authorise a logs stream and resolve the container. Reads are team-scoped
+ * (parity with app logs — a viewer may read logs, never type into the engine).
+ * Does NOT refuse a stopped container: `docker logs` still has its output.
+ */
+export async function resolveDatabaseLogsTarget(
+  id: string,
+  target?: string,
+): Promise<
+  | { ok: true; instance: ConsoleInstance; serverId: string }
+  | { ok: false; reason: "not-found" | "no-instance" | "unreachable" }
+> {
+  const teamId = await requireActiveTeamId();
+  const db = await loadDatabaseForTeam(id, teamId);
+  if (!db) return { ok: false, reason: "not-found" };
+
+  let instances: ConsoleInstance[];
+  try {
+    instances = await listDatabaseInstances(db);
+  } catch (e) {
+    if (e instanceof AgentUnreachableError)
+      return { ok: false, reason: "unreachable" };
+    throw e;
+  }
+  const pick = target
+    ? instances.find((i) => i.name === target)
+    : instances[0];
+  if (!pick) return { ok: false, reason: "no-instance" };
+  return { ok: true, instance: pick, serverId: db.serverId };
+}
+
+/**
+ * Run one console line inside the database container. RCE into the engine →
+ * `manage_infra` in the data layer (the GraphQL field carries the same scope —
+ * defense in depth). Reuses console.ts's exec semantics verbatim: `exit`/
+ * `logout` detach, `clear` is a form feed, docker-level stderr is classified
+ * apart from the guest's own exit code, and an unreachable agent answers with
+ * a clear line instead of throwing at the terminal.
+ */
+export async function execInDatabase(
+  id: string,
+  rawCommand: string,
+): Promise<{ output: string; detach?: boolean }> {
+  const { teamId } = await requireCapability("manage_infra");
+  const db = await loadDatabaseForTeam(id, teamId);
+  if (!db) return { output: "Error: database not found" };
+
+  const command = rawCommand.trim();
+  if (!command) return { output: "" };
+  if (command === "exit" || command === "logout")
+    return { output: "session closed", detach: true };
+  if (command === "clear") return { output: "\f" };
+
+  try {
+    const instances = await listDatabaseInstances(db);
+    const pick = instances.find((i) => i.running) ?? instances[0];
+    if (!pick) return { output: "! no container on the host — redeploy the database" };
+
+    const conn = await connectAgent(db.serverId);
+    let res;
+    try {
+      res = await conn.exec(db.id, pick.name, command, pick.image);
+    } finally {
+      conn.close();
+    }
+
+    if (isDockerLevelStderr(res.stderr)) {
+      const reason = res.stderr.trim() || `docker exec failed (exit ${res.code})`;
+      return { output: `! ${reason}` };
+    }
+    const body = [res.stdout, res.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .replace(/\n+$/, "");
+    if (res.code !== 0) {
+      const hint = `[exit ${res.code}]`;
+      return { output: body ? `${body}\n${hint}` : hint };
+    }
+    return { output: body };
+  } catch (e) {
+    if (e instanceof AgentUnreachableError) {
+      return { output: `! Server unreachable: ${e.message}` };
+    }
+    return {
+      output: `! ${e instanceof Error ? e.message : "command failed"}`,
+    };
+  }
 }

@@ -26,6 +26,7 @@ export function ContainerAttach({
   openStdin,
   tty,
   embedded = false,
+  apiBase,
 }: {
   appId: string;
   containerName: string;
@@ -33,6 +34,12 @@ export function ContainerAttach({
   tty: boolean;
   /** Drop the outer border/rounding when nested inside the console chrome. */
   embedded?: boolean;
+  /**
+   * Override the attach endpoint — the database console passes
+   * `/api/databases/<id>/attach` (same SSE/POST contract). Default: the app
+   * route for `appId`.
+   */
+  apiBase?: string;
 }) {
   const [status, setStatus] = React.useState<Status>("connecting");
   // Gate the stream on the terminal being mounted + fitted, so the GET can carry
@@ -44,7 +51,7 @@ export function ContainerAttach({
   // Bumped on reattach to retrigger the stream effect with a fresh connection.
   const [attempt, setAttempt] = React.useState(0);
 
-  const base = `/api/apps/${encodeURIComponent(appId)}/attach`;
+  const base = apiBase ?? `/api/apps/${encodeURIComponent(appId)}/attach`;
 
   // One POST helper for both stdin bytes and resize frames — same session route.
   const post = React.useCallback(

@@ -772,6 +772,11 @@ input ExecConsoleInput {
   containerName: String
 }
 
+input ExecDatabaseConsoleInput {
+  command: String!
+  databaseId: String!
+}
+
 """Output of an exec'd console command."""
 type ExecResult {
   detach: Boolean
@@ -1173,6 +1178,11 @@ type Mutation {
   Run a command in the app's live container (docker exec). Gated on the deploy capability — this is arbitrary code execution.
   """
   execConsole(input: ExecConsoleInput!): ExecResult
+
+  """
+  Run a command in the database's live container (docker exec). Gated on manage_infra — arbitrary code execution inside infrastructure.
+  """
+  execDatabaseConsole(input: ExecDatabaseConsoleInput!): ExecResult
 
   """
   Suggest a host port that is currently free on the target server, for the database 'Expose publicly' flow. Requires the publish-ports grant.
@@ -1641,10 +1651,21 @@ type Query {
   consoleInfo(appId: String!): ConsoleInfo
   database(id: String!): Database
 
+  """Attachable container + default target for a database's console."""
+  databaseConsoleInfo(databaseId: String!): ConsoleInfo
+
+  """Container list for a database's logs viewer."""
+  databaseLogsInfo(databaseId: String!): LogsInfo
+
   """
   Live container state for a database (plus its observed data size), straight from the owning agent. Polled by the database's status badge.
   """
   databaseRuntime(databaseId: String!): DatabaseRuntime
+
+  """
+  The database container's shell label — drives the console's "no shell" notice, like shellLabel does for apps.
+  """
+  databaseShellLabel(databaseId: String!): String
 
   """All databases in the active team, newest first."""
   databases: [Database!]

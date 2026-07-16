@@ -68,10 +68,17 @@ export function ContainerLogs({
   appId,
   instances,
   runtime,
+  apiBase,
 }: {
   appId: string;
   instances: ConsoleInstance[];
   runtime?: AppRuntimeView | null;
+  /**
+   * Override the logs endpoint — the database logs viewer passes
+   * `/api/databases/<id>/logs` (same SSE contract). Default: the app route
+   * for `appId`.
+   */
+  apiBase?: string;
 }) {
   // Active instance — default to the server-preferred first entry (the app's own
   // container, even when a sidecar is the only healthy one in the stack).
@@ -120,7 +127,7 @@ export function ContainerLogs({
     comingBackRef.current = comingBack;
   }, [comingBack]);
 
-  const base = `/api/apps/${encodeURIComponent(appId)}/logs`;
+  const base = apiBase ?? `/api/apps/${encodeURIComponent(appId)}/logs`;
 
   React.useEffect(() => {
     const url = `${base}?container=${encodeURIComponent(active.name)}`;
