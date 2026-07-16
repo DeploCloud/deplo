@@ -252,14 +252,16 @@ export function DomainConfigFields({
 
       <Accordion type="single" collapsible>
         <AccordionItem value="advanced" className="border-none">
-          <AccordionTrigger className="py-2">Advanced settings</AccordionTrigger>
+          <AccordionTrigger className="py-2">
+            Advanced settings
+          </AccordionTrigger>
           <AccordionContent className="space-y-4 pt-1 text-foreground">
             <div className="space-y-2">
               <FieldLabel
                 htmlFor={`${idPrefix}-cert`}
                 info="The source of this domain's TLS certificate. Choosing None serves the domain over plain HTTP with no TLS."
               >
-                Certificate provider
+                HTTPS Certificate
               </FieldLabel>
               <Select
                 value={state.certProvider}
@@ -315,7 +317,9 @@ export function DomainConfigFields({
               ) : state.manualEntrypoint ? (
                 <Select
                   value={state.entrypoint}
-                  onValueChange={(v) => set("entrypoint", v as DomainEntrypoint)}
+                  onValueChange={(v) =>
+                    set("entrypoint", v as DomainEntrypoint)
+                  }
                 >
                   <SelectTrigger id={`${idPrefix}-entrypoint`}>
                     <SelectValue />
