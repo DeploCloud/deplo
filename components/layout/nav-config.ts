@@ -474,6 +474,115 @@ export function appSettingsNav(slug: string): NavSection[] {
 }
 
 /**
+ * A database's navigation. When the viewer is under `/storage/databases/<id>`
+ * the sidebar swaps {@link NAV} for this set — the DB twin of {@link appNav}.
+ * Deliberately flag-less (no nav store / sync component): Logs works while
+ * stopped, and the Console/Backups pages guard themselves, so nothing here
+ * depends on live per-database state. Console + Backups are manage_infra-only.
+ */
+export function databaseNav(id: string): NavSection[] {
+  const base = `/storage/databases/${id}`;
+  return [
+    {
+      items: [
+        {
+          label: "Back to storage",
+          href: "/storage",
+          icon: ArrowLeft,
+          tooltip: "Return to storage",
+          exact: true,
+          back: true,
+        },
+      ],
+    },
+    {
+      items: [
+        {
+          label: "Overview",
+          href: base,
+          icon: LayoutDashboard,
+          tooltip: "Database overview",
+          // Every DB route starts with `base`, so Overview must match exactly.
+          exact: true,
+        },
+        {
+          label: "Logs",
+          href: `${base}/logs`,
+          icon: ScrollText,
+          tooltip: "Runtime logs",
+        },
+        {
+          label: "Console",
+          href: `${base}/console`,
+          icon: SquareTerminal,
+          tooltip: "Container console",
+          requires: "manage_infra",
+        },
+        {
+          label: "Backups",
+          href: `${base}/backups`,
+          icon: Archive,
+          tooltip: "Backups & restore",
+          requires: "manage_infra",
+        },
+        {
+          label: "Settings",
+          href: `${base}/settings`,
+          icon: Settings,
+          tooltip: "Database settings",
+        },
+      ],
+    },
+  ];
+}
+
+/**
+ * A database's SETTINGS sub-menu — one level deeper than {@link databaseNav},
+ * the DB twin of {@link appSettingsNav}. "Back to database" goes UP one level to
+ * the overview (a plain link, not a history back, which would exit the section).
+ */
+export function databaseSettingsNav(id: string): NavSection[] {
+  const base = `/storage/databases/${id}/settings`;
+  return [
+    {
+      items: [
+        {
+          label: "Back to database",
+          href: `/storage/databases/${id}`,
+          icon: ArrowLeft,
+          tooltip: "Return to the database overview",
+          exact: true,
+        },
+      ],
+    },
+    {
+      title: "Settings",
+      items: [
+        {
+          label: "General",
+          href: base,
+          icon: Settings2,
+          tooltip: "Network, server & password",
+          exact: true,
+        },
+        {
+          label: "Resources",
+          href: `${base}/resources`,
+          icon: Cpu,
+          tooltip: "RAM, CPU & other limits",
+        },
+        {
+          label: "Advanced",
+          href: `${base}/advanced`,
+          icon: SlidersHorizontal,
+          tooltip: "Image, command & danger zone",
+        },
+      ],
+    },
+  ];
+}
+
+/**
  * The settings routes that are NOT team-scoped — the user's own account and the
  * instance/system pages. On these the topbar hides the team switcher (there is
  * no team context to act in). Everything else under /settings is team-scoped.

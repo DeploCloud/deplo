@@ -170,7 +170,11 @@ export function CreateDatabase({
         setShowPassword(false);
         setExposed(false);
         setPort("");
-        router.refresh();
+        // Straight to the new database's detail page, where the status flips
+        // provisioning → running live (same "follow the thing you just made"
+        // flow as creating an app).
+        if (res.data?.id) router.push(`/storage/databases/${res.data.id}`);
+        else router.refresh();
       } else {
         toast.error(res.error);
       }

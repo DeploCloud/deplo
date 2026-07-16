@@ -146,10 +146,21 @@ export function ResourceLimitsForm({
   appId,
   resources,
   isComposeStack,
+  mutationName = "updateAppResources",
+  savedMessage = "Resource limits saved — applied on the next deploy",
 }: {
   appId: string;
   resources: ResourceLimits | null;
   isComposeStack: boolean;
+  /**
+   * The GraphQL mutation to save through — the database detail page passes
+   * `updateDatabaseResources`. Both take `(id, limits: ResourceLimitsInput!)`
+   * and return `{ id }`, so only the field name differs. Default preserves the
+   * app behavior.
+   */
+  mutationName?: "updateAppResources" | "updateDatabaseResources";
+  /** Success toast copy — databases say "applied on the next redeploy". */
+  savedMessage?: string;
 }) {
   const router = useRouter();
   const [form, setForm] = React.useState<FormState>(() => resourcesToForm(resources));
@@ -174,14 +185,14 @@ export function ResourceLimitsForm({
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $limits: ResourceLimitsInput!) {
-           updateAppResources(id: $id, limits: $limits) { id }
+           ${mutationName}(id: $id, limits: $limits) { id }
          }`,
         { id: appId, limits: formToLimitsInput(form) },
       );
       if (res.ok) {
         setSavedKey(committed);
         router.refresh();
-        toast.success("Resource limits saved — applied on the next deploy");
+        toast.success(savedMessage);
       } else toast.error(res.error);
     });
   }

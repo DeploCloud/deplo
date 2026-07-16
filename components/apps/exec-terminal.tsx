@@ -4,6 +4,7 @@ import * as React from "react";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
+import type { ActionResult } from "@/lib/result";
 import { LineEditor } from "@/lib/exec-line-editor";
 import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
 
@@ -49,12 +50,7 @@ export function ExecTerminal({
    * `execDatabaseConsole`. Default: the app `execConsole` mutation for
    * `appId`/`containerName`. Must resolve to the same ActionResult contract.
    */
-  exec?: (
-    command: string,
-  ) => Promise<
-    | { ok: true; data: { output: string; detach?: boolean } }
-    | { ok: false; error: string }
-  >;
+  exec?: (command: string) => Promise<ActionResult<{ output: string; detach?: boolean }>>;
 }) {
   const term = React.useRef<XtermApi | null>(null);
   const editor = React.useRef<LineEditor | null>(null);

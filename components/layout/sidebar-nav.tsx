@@ -8,6 +8,8 @@ import {
   SETTINGS_NAV,
   appNav,
   appSettingsNav,
+  databaseNav,
+  databaseSettingsNav,
   type NavItem,
   type NavSection,
 } from "./nav-config";
@@ -61,11 +63,14 @@ export function SidebarNav({
       !e.altKey
     ) {
       const slug = pathname.match(/^\/apps\/([^/]+)/)?.[1];
+      const dbId = pathname.match(/^\/storage\/databases\/([^/]+)/)?.[1];
       const prefix = slug
         ? `/apps/${slug}`
-        : pathname.startsWith("/settings")
-          ? "/settings"
-          : null;
+        : dbId
+          ? `/storage/databases/${dbId}`
+          : pathname.startsWith("/settings")
+            ? "/settings"
+            : null;
       // Suppress the href when we handled it (jumped out, or a jump is already
       // running); only "none" — no in-app page outside the section — follows it.
       if (prefix && backOutOf(prefix) !== "none") e.preventDefault();
@@ -79,21 +84,31 @@ export function SidebarNav({
   // the settings sub-menu; otherwise the main dashboard nav. One sidebar system,
   // four left-hand navigations.
   const appSlug = pathname.match(/^\/apps\/([^/]+)/)?.[1] ?? null;
+  // A database detail page swaps to its own sub-menu, one level deeper again
+  // under /settings — the DB twin of the app nav swap.
+  const dbId = pathname.match(/^\/storage\/databases\/([^/]+)/)?.[1] ?? null;
+  const inDbSettings =
+    dbId != null && /^\/storage\/databases\/[^/]+\/settings(?:\/|$)/.test(pathname);
   // An app's own settings live one level deeper than its main nav, so the
   // sidebar swaps again once you're under /apps/<slug>/settings.
   const inAppSettings =
     appSlug != null && /^\/apps\/[^/]+\/settings(?:\/|$)/.test(pathname);
   const inSettings = pathname.startsWith("/settings");
-  const menu: "service-settings" | "service" | "settings" | "main" = appSlug
-    ? inAppSettings
-      ? "service-settings"
-      : "service"
-    : inSettings
-      ? "settings"
-      : "main";
+  const menu: "service-settings" | "service" | "settings" | "main" =
+    appSlug || dbId
+      ? inAppSettings || inDbSettings
+        ? "service-settings"
+        : "service"
+      : inSettings
+        ? "settings"
+        : "main";
 
   let sections: NavSection[];
-  if (appSlug && inAppSettings) {
+  if (dbId && inDbSettings) {
+    sections = databaseSettingsNav(dbId);
+  } else if (dbId) {
+    sections = databaseNav(dbId);
+  } else if (appSlug && inAppSettings) {
     sections = appSettingsNav(appSlug);
   } else if (appSlug) {
     // Capability-gated entries come from the sidebar's own capability list; the
