@@ -69,7 +69,7 @@ minting registration links, the per-user admin editor.
 - **Mutations** mirror every former server action: `createApp`, `redeploy`,
   `stopApp`, `createProject`, `createEnvironment`, `upsertEnvironmentEnv`,
   `addDomain`, `createDatabase`, `updateDatabase`, `restartDatabase`,
-  `redeployDatabase`, `updateDatabaseResources`, `updateDatabaseImage`,
+  `redeployDatabase`, `rebuildDatabase`, `updateDatabaseResources`, `updateDatabaseImage`,
   `rotateDatabasePassword`, `execDatabaseConsole`, `createToken`, `updateTeam`,
   `login`, `logout`, ….
 - **Subscriptions** (SSE via graphql-yoga): `appStatus(slug)` and

@@ -15,6 +15,7 @@ import {
   setDatabaseRunning,
   restartDatabase,
   redeployDatabase,
+  rebuildDatabase,
   rotateDatabasePassword,
   deleteDatabase,
   generateAvailableDbPort,
@@ -255,6 +256,21 @@ builder.mutationFields((t) => ({
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await redeployDatabase(id);
+      return reloadDatabase(id);
+    },
+  }),
+  rebuildDatabase: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "DESTRUCTIVE factory reset: tear down the database container AND its " +
+      "data volume, then re-provision a fresh, empty stack from the current " +
+      "settings — same engine, version and credentials, so the connection " +
+      "string is unchanged. ALL DATA IS ERASED. Use redeployDatabase for the " +
+      "data-preserving recreate.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await rebuildDatabase(id);
       return reloadDatabase(id);
     },
   }),

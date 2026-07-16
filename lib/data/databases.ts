@@ -1129,6 +1129,70 @@ export async function redeployDatabase(id: string): Promise<void> {
 }
 
 /**
+ * DESTRUCTIVE rebuild — the Danger Zone "factory reset". Tears down the
+ * database container AND its data volume on the owning agent (`down -v`, the
+ * same teardown deleteDatabase uses), then re-provisions a fresh stack from
+ * the CURRENT row: same engine, version, credentials, exposure and overrides.
+ * The engine images apply their credential env vars only on first init against
+ * an empty volume — which is exactly what the teardown leaves — so the stored
+ * connection string keeps working on the rebuilt database. ALL DATA IS ERASED;
+ * that is the point (restore a backup afterwards to repopulate). Unlike
+ * redeployDatabase this never preserves the volume — use redeploy for the
+ * data-preserving recreate.
+ *
+ * Failure honesty: a failed teardown throws with the row untouched (the old
+ * container is still there). A teardown that succeeded but a re-provision that
+ * failed flips the row to "error" — the stack is gone, so "running" would lie.
+ */
+export async function rebuildDatabase(id: string): Promise<void> {
+  const teamId = (await requireCapability("manage_infra")).teamId;
+  const user = (await getCurrentUser())!;
+  await withKeyedLock(id, async () => {
+    const cur = await loadDatabase(id, teamId);
+    if (!cur) throw new Error("Not found");
+    if (cur.status === "provisioning")
+      throw new Error(
+        "Database is still provisioning — wait for it to finish before rebuilding it.",
+      );
+    const password = parseConnectionPassword(decryptSecret(cur.connectionStringEnc));
+    const yaml = renderDatabaseStackYaml(cur, password);
+    const conn = await connectAgent(cur.serverId);
+    try {
+      const down = await conn.destroyStack(cur.host, true);
+      if (!down.ok)
+        throw new Error(down.error || "agent failed to tear down the database");
+      const up = await conn.reroute({
+        slug: cur.host,
+        composeYaml: yaml,
+        env: {},
+        mounts: [],
+      });
+      if (!up.ok) {
+        await getDb()
+          .update(databasesTable)
+          .set({ status: "error" })
+          .where(eq(databasesTable.id, id));
+        publishDatabaseChanged(id);
+        throw new Error(up.error || "agent failed to re-provision the database");
+      }
+    } finally {
+      conn.close();
+    }
+    await getDb()
+      .update(databasesTable)
+      .set({ status: "running" })
+      .where(eq(databasesTable.id, id));
+    publishDatabaseChanged(id);
+  });
+  await recordActivity(
+    "database",
+    "Rebuilt database from scratch (data volume wiped)",
+    user.name,
+    null,
+  );
+}
+
+/**
  * The per-engine in-engine rotation step. postgres / mysql / mariadb / mongodb
  * persist their users INSIDE the data volume, so changing the compose env alone
  * is a silent no-op on an initialized volume — the engine must be told first,

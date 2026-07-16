@@ -25,6 +25,7 @@ import {
   updateDatabaseImage,
   restartDatabase,
   redeployDatabase,
+  rebuildDatabase,
   rotateDatabasePassword,
   reorderDatabases,
 } from "./databases";
@@ -231,11 +232,25 @@ test("updateDatabaseImage: set + clear round-trip, syntax rejected", async () =>
   });
 });
 
-test("restart/redeploy: gated while provisioning with the curated message", async () => {
+test("restart/redeploy/rebuild: gated while provisioning with the curated message", async () => {
   await seedDatabase(db, { id: "db_prov", name: "prov", status: "provisioning" });
   await asUser1(async () => {
     await assert.rejects(restartDatabase("db_prov"), /still provisioning/);
     await assert.rejects(redeployDatabase("db_prov"), /still provisioning/);
+    await assert.rejects(rebuildDatabase("db_prov"), /still provisioning/);
+  });
+});
+
+// The destructive rebuild dials the agent BEFORE any write: an unreachable
+// host must fail clearly with the row (and its status) untouched — nothing was
+// torn down, so flipping status would lie.
+test("rebuildDatabase: unreachable agent fails clearly and leaves the row intact", async () => {
+  await seedDatabase(db, { id: "db_rb", name: "rb" });
+  await asUser1(async () => {
+    await assert.rejects(rebuildDatabase("db_rb"));
+    const dto = await getDatabase("db_rb");
+    assert.ok(dto, "row survives the failed rebuild");
+    assert.equal(dto.status, "running", "status untouched — nothing was torn down");
   });
 });
 
@@ -270,6 +285,7 @@ test("focused mutations reject a member without manage_infra", async () => {
     await assert.rejects(updateDatabaseImage("db_cap", { version: "16" }));
     await assert.rejects(restartDatabase("db_cap"));
     await assert.rejects(redeployDatabase("db_cap"));
+    await assert.rejects(rebuildDatabase("db_cap"));
     await assert.rejects(rotateDatabasePassword("db_cap"));
   });
 });

@@ -1221,6 +1221,11 @@ type Mutation {
   """Promote a preview deployment to production."""
   promoteDeployment(id: String!): Boolean
   rebuildApp(id: String!): App
+
+  """
+  DESTRUCTIVE factory reset: tear down the database container AND its data volume, then re-provision a fresh, empty stack from the current settings — same engine, version and credentials, so the connection string is unchanged. ALL DATA IS ERASED. Use redeployDatabase for the data-preserving recreate.
+  """
+  rebuildDatabase(id: String!): Database
   redeploy(appId: String!): Deployment
 
   """

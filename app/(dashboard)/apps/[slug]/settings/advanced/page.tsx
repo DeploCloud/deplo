@@ -4,6 +4,7 @@ import { SlidersHorizontal, SquareTerminal } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DangerSettings } from "@/components/apps/settings/danger-settings";
+import { RebuildContainerCard } from "@/components/apps/settings/rebuild-container-card";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,9 +18,10 @@ export const metadata = { title: "Advanced" };
 
 /**
  * Advanced app settings: the powerful, less-everyday controls in one place — an
- * entry point into the container Console, and the Danger Zone (delete). Folding
- * both under "Advanced" keeps a destructive action off the everyday sections, so
- * it's never one stray click away from Name & logo.
+ * entry point into the container Console, a from-scratch container Rebuild, and
+ * the Danger Zone (delete). Folding these under "Advanced" keeps a destructive
+ * action off the everyday sections, so it's never one stray click away from
+ * Name & logo.
  */
 export default async function AppAdvancedSettingsPage(
   props: PageProps<"/apps/[slug]/settings/advanced">,
@@ -33,7 +35,7 @@ export default async function AppAdvancedSettingsPage(
       <SettingsSection
         icon={SlidersHorizontal}
         title="Advanced"
-        info="Open the container console, or permanently delete this app."
+        info="Open the container console, rebuild the container from scratch, or permanently delete this app."
       />
 
       <Card>
@@ -57,6 +59,8 @@ export default async function AppAdvancedSettingsPage(
           </Button>
         </CardFooter>
       </Card>
+
+      <RebuildContainerCard appId={project.id} slug={slug} />
 
       <DangerSettings appId={project.id} name={project.name} />
     </section>

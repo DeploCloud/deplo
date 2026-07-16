@@ -9,7 +9,7 @@ export const metadata = { title: "Advanced" };
 
 /**
  * Advanced: expert image/command/version overrides (applied on the next
- * Redeploy) and the Danger Zone (delete with artifacts).
+ * Redeploy) and the Danger Zone (rebuild from scratch, delete with artifacts).
  */
 export default async function DatabaseAdvancedSettingsPage(
   props: PageProps<"/storage/databases/[id]/settings/advanced">,
@@ -23,7 +23,7 @@ export default async function DatabaseAdvancedSettingsPage(
       <SettingsSection
         icon={SlidersHorizontal}
         title="Advanced"
-        info="Override the engine image or command, and delete the database."
+        info="Override the engine image or command, rebuild the database from scratch, or delete it."
       />
       <DatabaseImageSettings db={db} />
       <DatabaseDanger db={db} />
