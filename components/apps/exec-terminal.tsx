@@ -4,6 +4,7 @@ import * as React from "react";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
+import { LineEditor } from "@/lib/exec-line-editor";
 import { XtermView, type XtermApi } from "@/components/apps/xterm-lazy";
 
 // SGR wrappers — the exec pane colours its own chrome (prompt/banner/errors);
@@ -21,10 +22,11 @@ const toCrlf = (s: string) => s.replace(/\r?\n/g, "\r\n");
  * persistent shell — a `cd` never sticks), and the response is written straight
  * into the terminal so the container's colours/escapes render for real.
  *
- * The editor handles echo, Backspace, ↑/↓ history, Ctrl-C (cancel line) and
- * Ctrl-L (clear); input is frozen while a command is in flight. Remounted per
- * instance by the parent (keyed on the container name), so its banner/prompt are
- * fixed for the life of a mount.
+ * Line editing (echo, caret movement with ←/→/Home/End, mid-line insert and
+ * delete, ↑/↓ history, Ctrl-C/L and the readline kill/word chords) lives in
+ * `lib/exec-line-editor.ts`; input is frozen while a command is in flight.
+ * Remounted per instance by the parent (keyed on the container name), so its
+ * banner/prompt are fixed for the life of a mount.
  */
 export function ExecTerminal({
   appId,
@@ -43,9 +45,7 @@ export function ExecTerminal({
   note: string | null;
 }) {
   const term = React.useRef<XtermApi | null>(null);
-  const line = React.useRef("");
-  const history = React.useRef<string[]>([]);
-  const histIdx = React.useRef(-1);
+  const editor = React.useRef<LineEditor | null>(null);
   const busy = React.useRef(false);
   const open = React.useRef(true);
   const noteWritten = React.useRef(false);
@@ -53,32 +53,40 @@ export function ExecTerminal({
 
   const promptStr = `${GREEN(prompt)} `;
 
-  const writeBanner = React.useCallback(
-    (a: XtermApi) => {
-      for (const b of banner) a.write(CYAN(b) + "\r\n");
-      if (note) {
-        a.write(CYAN(note) + "\r\n");
-        noteWritten.current = true;
-      }
-      a.write(promptStr);
-    },
-    [banner, note, promptStr],
-  );
+  function writeBanner(a: XtermApi) {
+    for (const b of banner) a.write(CYAN(b) + "\r\n");
+    if (note) {
+      a.write(CYAN(note) + "\r\n");
+      noteWritten.current = true;
+    }
+    editor.current?.freshPrompt();
+  }
 
   function onReady(api: XtermApi) {
     term.current = api;
+    editor.current = new LineEditor(
+      {
+        write: (d) => api.write(d),
+        cols: () => api.getSize().cols,
+        reset: () => api.reset(),
+      },
+      promptStr,
+      // Visible prompt width: the SGR wrapper is zero-width, +1 = the space.
+      prompt.length + 1,
+      (cmd) => void run(cmd),
+    );
     writeBanner(api);
     api.focus();
   }
 
-  // The distroless caveat can land after mount (the shell probe is async). Slot
-  // it in above the live prompt, then redraw the prompt + whatever's typed.
+  // The distroless caveat can land after mount (the shell probe is async).
+  // Slot it in above the live prompt, preserving the line being typed.
   React.useEffect(() => {
-    const a = term.current;
-    if (!note || noteWritten.current || !a || !open.current) return;
+    const ed = editor.current;
+    if (!note || noteWritten.current || !ed || !open.current) return;
     noteWritten.current = true;
-    a.write("\r\x1b[K" + CYAN(note) + "\r\n" + promptStr + line.current);
-  }, [note, promptStr]);
+    ed.insertAbove(CYAN(note));
+  }, [note]);
 
   /** Print command output, guaranteeing a fresh line before the next prompt. */
   function writeOutput(text: string) {
@@ -97,17 +105,18 @@ export function ExecTerminal({
     );
     busy.current = false;
     const a = term.current;
-    if (!a) return;
+    const ed = editor.current;
+    if (!a || !ed) return;
 
     if (!res.ok) {
       writeOutput(RED(res.error));
-      a.write(promptStr);
+      ed.freshPrompt();
       return;
     }
     const out = res.data!;
     if (out.output === "\f") {
       a.reset();
-      a.write(promptStr);
+      ed.freshPrompt();
       return;
     }
     if (out.output) writeOutput(toCrlf(out.output));
@@ -117,82 +126,20 @@ export function ExecTerminal({
       setClosed(true);
       return;
     }
-    a.write(promptStr);
-  }
-
-  function replaceLine(value: string) {
-    line.current = value;
-    // \r → col 0, \x1b[K → clear to EOL, then redraw prompt + value.
-    term.current?.write("\r\x1b[K" + promptStr + value);
+    ed.freshPrompt();
   }
 
   function onData(d: string) {
     if (!open.current || busy.current) return;
-    const a = term.current;
-    if (!a) return;
-
-    switch (d) {
-      case "\r": {
-        a.write("\r\n");
-        const cmd = line.current;
-        line.current = "";
-        if (!cmd.trim()) {
-          a.write(promptStr);
-          return;
-        }
-        history.current.unshift(cmd);
-        histIdx.current = -1;
-        void run(cmd);
-        return;
-      }
-      case "\x7f": // Backspace
-        if (line.current.length > 0) {
-          line.current = line.current.slice(0, -1);
-          a.write("\b \b");
-        }
-        return;
-      case "\x03": // Ctrl-C: abandon the current line
-        a.write("^C\r\n" + promptStr);
-        line.current = "";
-        return;
-      case "\x0c": // Ctrl-L: clear, keep the line being typed
-        a.reset();
-        a.write(promptStr + line.current);
-        return;
-      case "\x1b[A": {
-        // ↑ older
-        const next = Math.min(histIdx.current + 1, history.current.length - 1);
-        if (next < 0) return;
-        histIdx.current = next;
-        replaceLine(history.current[next]);
-        return;
-      }
-      case "\x1b[B": {
-        // ↓ newer (past the newest → empty line)
-        const next = histIdx.current - 1;
-        histIdx.current = next;
-        replaceLine(next >= 0 ? history.current[next] : "");
-        return;
-      }
-    }
-
-    // Ignore every other escape sequence (←/→/Home/Del/F-keys): this editor is
-    // append-only, so honouring mid-line cursor moves would desync the buffer.
-    if (d.charCodeAt(0) === 0x1b) return;
-
-    const printable = [...d].filter((ch) => ch >= " " && ch !== "\x7f").join("");
-    if (!printable) return;
-    line.current += printable;
-    a.write(printable);
+    editor.current?.data(d);
   }
 
   function newSession() {
     const a = term.current;
-    if (!a) return;
+    const ed = editor.current;
+    if (!a || !ed) return;
     open.current = true;
-    line.current = "";
-    history.current = [];
-    histIdx.current = -1;
+    ed.resetSession();
     setClosed(false);
     a.reset();
     writeBanner(a);
