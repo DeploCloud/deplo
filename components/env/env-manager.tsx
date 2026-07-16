@@ -163,7 +163,7 @@ export function EnvManager({
         <EmptyState
           icon={Plus}
           title="No environment variables"
-          description="Add variables to configure your app at runtime."
+          description="Add variables to configure your app — available during builds and at runtime."
           action={addButton}
         />
       ) : !hasMatches ? (

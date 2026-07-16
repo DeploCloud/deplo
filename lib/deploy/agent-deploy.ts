@@ -477,7 +477,7 @@ export async function buildDeployRequest(opts: {
     return {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_GIT,
-      ...noProbeBuildFields(opts.plan.build),
+      ...noProbeBuildFields(opts.plan.build, opts.env),
       git: {
         url: opts.plan.url,
         branch: opts.plan.branch,
@@ -493,7 +493,7 @@ export async function buildDeployRequest(opts: {
     return {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_DEV_WORKSPACE,
-      ...noProbeBuildFields(opts.plan.build),
+      ...noProbeBuildFields(opts.plan.build, opts.env),
       devWorkspaceSubdir: opts.plan.subdir,
     };
   }
@@ -529,7 +529,9 @@ export async function buildDeployRequest(opts: {
     // Legacy/auto: prefer a root Dockerfile, else generate one — exactly as
     // buildGenerated does (builders.ts:168-181). The control plane renders the
     // generated Dockerfile (single source of truth for framework presets); the
-    // agent only writes + builds it.
+    // agent only writes + builds it. The resolved env-var NAMES ride into the
+    // generated body as ARG/ENV declarations so build-time-inlined config
+    // (NEXT_PUBLIC_* et al.) works — the agent feeds the values as build args.
     const hasDockerfile = await fileExists(join(buildDir, "Dockerfile"));
     dockerfile = hasDockerfile
       ? { dockerfilePath: "Dockerfile", contextPath: ".", targetStage: "", generated: false, generatedDockerfile: "" }
@@ -538,7 +540,7 @@ export async function buildDeployRequest(opts: {
           contextPath: ".",
           targetStage: "",
           generated: true,
-          generatedDockerfile: generateDockerfile(normalized),
+          generatedDockerfile: generateDockerfile(normalized, Object.keys(opts.env)),
         };
   }
 
@@ -556,8 +558,13 @@ export async function buildDeployRequest(opts: {
  * materialise on the agent). A heavy method → its BuildKind + a BuildSpec; the
  * Dockerfile family → BUILD_KIND_DOCKERFILE with an explicit descriptor, or
  * generated:true (the agent writes the body only when the tree has no Dockerfile,
- * preserving the prefer-repo-Dockerfile semantics where the tree actually lives). */
-function noProbeBuildFields(build: BuildConfig): Partial<DeployRequest> {
+ * preserving the prefer-repo-Dockerfile semantics where the tree actually lives).
+ * `env` is the deploy's resolved env — its NAMES become the generated body's
+ * ARG/ENV declarations (build-time env parity; the agent feeds the values). */
+function noProbeBuildFields(
+  build: BuildConfig,
+  env: Record<string, string>,
+): Partial<DeployRequest> {
   const normalized = normalizeBuildConfig(build);
   const heavyKind = heavyBuildKind(normalized.buildMethod);
   if (heavyKind !== null) {
@@ -571,7 +578,7 @@ function noProbeBuildFields(build: BuildConfig): Partial<DeployRequest> {
           contextPath: ".",
           targetStage: "",
           generated: true,
-          generatedDockerfile: generateDockerfile(normalized),
+          generatedDockerfile: generateDockerfile(normalized, Object.keys(env)),
         };
   return { buildKind: BuildKind.BUILD_KIND_DOCKERFILE, dockerfile };
 }

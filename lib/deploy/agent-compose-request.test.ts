@@ -161,6 +161,34 @@ test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfil
   assert.equal(req.buildSpec?.runtimeLanguage, "node");
 });
 
+/**
+ * Build-time env parity: when the control plane renders a GENERATED Dockerfile
+ * (legacy/auto method, tree not probeable here), the resolved env-var NAMES must
+ * ride into the body as ARG/ENV declarations — the agent then feeds the values
+ * as build args, so build-time-inlined config (NEXT_PUBLIC_*) works. Values must
+ * never appear in the body (it crosses the wire and lands on disk as text).
+ */
+test("git plan with a legacy/auto method embeds the env NAMES (not values) in the generated Dockerfile", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    plan: {
+      kind: "git",
+      url: "https://x@github.com/o/r.git",
+      branch: "main",
+      subdir: "",
+      // A legacy method string outside today's union: not heavy, not
+      // "dockerfile" → the generated-Dockerfile arm.
+      build: devBuild({ buildMethod: "auto" as BuildConfig["buildMethod"] }),
+    },
+  });
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_DOCKERFILE);
+  assert.equal(req.dockerfile?.generated, true);
+  const body = req.dockerfile?.generatedDockerfile ?? "";
+  assert.match(body, /ARG API_KEY\nENV API_KEY=\$API_KEY/);
+  assert.match(body, /ARG PORT\nENV PORT=\$PORT/);
+  assert.ok(!body.includes("secret"), "env VALUE must not be baked into the Dockerfile");
+});
+
 test("dev-workspace plan with the static method → BUILD_KIND_STATIC + a BuildSpec", async () => {
   const req = await buildDeployRequest({
     ...base,

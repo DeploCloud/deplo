@@ -169,7 +169,7 @@ function EditForm({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <FieldLabel info="The variable's name, exposed to your app at runtime. Renaming it takes effect on the next deploy.">
+            <FieldLabel info="The variable's name, exposed to your app during builds and at runtime. Renaming it takes effect on the next deploy.">
               Key
             </FieldLabel>
             <Input

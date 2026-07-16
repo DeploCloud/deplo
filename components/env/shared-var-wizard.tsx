@@ -304,7 +304,7 @@ export function SharedVarDialog({
         {steps[index] === "variable" && (
           <div className="mx-auto w-full max-w-xl space-y-4">
             <div className="space-y-2">
-              <FieldLabel info="The variable's name, exposed to apps at runtime. It can't be renamed once created.">
+              <FieldLabel info="The variable's name, exposed to apps during builds and at runtime. It can't be renamed once created.">
                 Key
               </FieldLabel>
               <Input

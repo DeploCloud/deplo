@@ -148,7 +148,7 @@ export function SharedVarEditDialog({
               info={
                 editing.masked
                   ? "This value is a secret, so it is only ever shown masked. Leave the mask as it is to keep the stored value; type over it to replace it."
-                  : "The value every app this variable reaches receives at runtime."
+                  : "The value every app this variable reaches receives during builds and at runtime."
               }
             >
               Value
