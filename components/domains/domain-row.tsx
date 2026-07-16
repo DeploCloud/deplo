@@ -233,6 +233,36 @@ export function DomainRow({
               </Badge>
             </SimpleTooltip>
           )}
+          {domain.status === "cloudflare" && (
+            // The domain resolves to Cloudflare's proxy IPs (orange-cloud), which
+            // mask the origin — so we can't match this server's IP directly, but
+            // the setup is correct: Cloudflare forwards to this origin and serves
+            // TLS at its edge. A chip in the config row (not a hint paragraph);
+            // the tooltip carries the one thing the user still controls — that
+            // Cloudflare's origin must target THIS server's IP, and to use a
+            // Full SSL mode so the edge trusts the origin cert.
+            <SimpleTooltip
+              content={
+                <>
+                  Proxied through Cloudflare — DNS is delegated correctly and
+                  TLS is served at Cloudflare’s edge. In Cloudflare, point this
+                  record’s origin at{" "}
+                  {serverIp ? (
+                    <span className="font-mono">{serverIp}</span>
+                  ) : (
+                    <>this app’s server IP</>
+                  )}{" "}
+                  and set SSL/TLS to{" "}
+                  <span className="font-medium">Full</span>.
+                </>
+              }
+            >
+              <Badge variant="outline" className="gap-1">
+                <Cloud className="size-3" />
+                Cloudflare DNS
+              </Badge>
+            </SimpleTooltip>
+          )}
         </div>
         {domain.redirectTo && (
           <p className="text-xs text-muted-foreground">
@@ -277,39 +307,6 @@ export function DomainRow({
                 that server), then Verify.
               </span>
             )}
-          </div>
-        )}
-        {domain.status === "cloudflare" && (
-          // The domain resolves to Cloudflare's proxy IPs (orange-cloud), which
-          // mask the origin — so we can't match this server's IP directly, but
-          // the setup is correct: Cloudflare forwards to this origin and serves
-          // TLS at its edge. Tell the user the one thing they still control —
-          // that Cloudflare's origin must target THIS server's IP, and to use a
-          // Full SSL mode so the edge trusts the origin cert.
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-            <Cloud className="size-3.5 shrink-0" />
-            <span>
-              Proxied through{" "}
-              <span className="font-medium text-foreground">Cloudflare</span> —
-              DNS is delegated correctly and TLS is served at Cloudflare’s edge.
-              In Cloudflare, point this record’s origin at
-            </span>
-            {serverIp ? (
-              <>
-                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
-                  {serverIp}
-                </code>
-                <CopyButton value={serverIp} className="size-6" />
-              </>
-            ) : (
-              <span className="font-medium text-foreground">
-                this app’s server
-              </span>
-            )}
-            <span>
-              and set SSL/TLS to{" "}
-              <span className="font-medium text-foreground">Full</span>.
-            </span>
           </div>
         )}
       </TableCell>
