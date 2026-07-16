@@ -27,9 +27,11 @@ const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
 };
 
 /**
- * The last sweeps, newest first. A run that never reached the host — unprovisioned,
- * agent offline, agent too old — is in here too, as `failed` with the reason: the
- * history records the attempt, not just the successes.
+ * The last sweeps, newest first — at most 3 per server (the retention cap; the data
+ * layer prunes anything older after every sweep, so this is the WHOLE history, not a
+ * page of it). A run that never reached the host — unprovisioned, agent offline,
+ * agent too old — is in here too, as `failed` with the reason: the history records
+ * the attempt, not just the successes.
  *
  * A server component: nothing here is interactive, and the page refreshes the tree
  * after a run, so there is no state to hold.
@@ -41,7 +43,7 @@ export function CleanupHistory({ runs }: { runs: CleanupRunDTO[] }) {
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           <History className="size-4" />
           Recent cleanups
-          <InfoTip content="The last runs on every server — scheduled and manual alike, including the ones that failed before they reached the host." />
+          <InfoTip content="The last three runs per server — scheduled and manual alike, including the ones that failed before they reached the host. About three days at the daily cadence; older runs are pruned automatically." />
         </CardTitle>
       </CardHeader>
       <CardContent>

@@ -23,7 +23,7 @@ import {
 // app and a dangling volume may hold user data — do not add a value here.
 const DockerCleanupScopeEnum = builder.enumType("DockerCleanupScope", {
   description:
-    "A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references (off by default: Deplo pushes to no registry, so a removed image comes back only by a rebuild).",
+    "A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded by keepImagesPerApp (Deplo pushes to no registry, so a removed image comes back only by a rebuild — the newest image per app always survives). All four are on by default.",
   values: [
     "build_cache",
     "dangling_images",
@@ -48,7 +48,7 @@ const DockerCleanupPolicyRef = builder
   .objectRef<CleanupPolicy>("DockerCleanupPolicy")
   .implement({
     description:
-      "The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Reads as the safe defaults (disabled) until it is saved once.",
+      "The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Until it is saved once it reads as the defaults — ENABLED, daily at 04:00 UTC, every scope — so a fresh install sweeps its hosts without anyone finding this setting first; a saved row (including an explicit disable) always wins.",
     fields: (t) => ({
       enabled: t.exposeBoolean("enabled"),
       schedule: t.exposeString("schedule", {
@@ -186,7 +186,7 @@ builder.queryFields((t) => ({
     type: DockerCleanupPolicyRef,
     authScopes: { capability: "manage_infra" },
     description:
-      "The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as disabled, with the safe defaults.",
+      "The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as the defaults — enabled, daily, every scope.",
     resolve: () => getCleanupPolicy(),
   }),
   dockerCleanupRuns: t.field({
@@ -199,7 +199,11 @@ builder.queryFields((t) => ({
         required: false,
         description: "Only this server's runs. Omit for every server's.",
       }),
-      limit: t.arg.int({ required: false, description: "Clamped to [1, 100]. Defaults to 20." }),
+      limit: t.arg.int({
+        required: false,
+        description:
+          "Clamped to [1, 100]. Defaults to the retention cap — 3 × the number of servers — which is also all the store keeps (older runs are pruned after every sweep).",
+      }),
     },
     resolve: (_r, { serverId, limit }) =>
       listCleanupRuns({ serverId: serverId ?? undefined, limit: limit ?? undefined }),

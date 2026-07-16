@@ -124,7 +124,8 @@ const SCOPES: {
       <>
         Old app images that no container — running <em>or</em> stopped — references.
         Deplo pushes to no registry, so a removed image comes back only by rebuilding
-        the app from source. Off by default; keep at least one image per app.
+        the app from source; the newest image per app is always kept (see “Images kept
+        per app”).
       </>
     ),
   },

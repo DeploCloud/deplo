@@ -519,7 +519,7 @@ enum DevStatus {
 }
 
 """
-The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Reads as the safe defaults (disabled) until it is saved once.
+The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Until it is saved once it reads as the defaults — ENABLED, daily at 04:00 UTC, every scope — so a fresh install sweeps its hosts without anyone finding this setting first; a saved row (including an explicit disable) always wins.
 """
 type DockerCleanupPolicy {
   enabled: Boolean
@@ -622,7 +622,7 @@ enum DockerCleanupRunStatus {
 }
 
 """
-A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references (off by default: Deplo pushes to no registry, so a removed image comes back only by a rebuild).
+A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded by keepImagesPerApp (Deplo pushes to no registry, so a removed image comes back only by a rebuild — the newest image per app always survives). All four are on by default.
 """
 enum DockerCleanupScope {
   build_cache
@@ -1672,7 +1672,7 @@ type Query {
   devSshUsers(appId: String!): [DevSshUser!]
 
   """
-  The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as disabled, with the safe defaults.
+  The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as the defaults — enabled, daily, every scope.
   """
   dockerCleanupPolicy: DockerCleanupPolicy
 
@@ -1680,7 +1680,9 @@ type Query {
   Cleanup history, newest first. Not team-scoped: servers are the one shared cross-team resource, so a run belongs to a host.
   """
   dockerCleanupRuns(
-    """Clamped to [1, 100]. Defaults to 20."""
+    """
+    Clamped to [1, 100]. Defaults to the retention cap — 3 × the number of servers — which is also all the store keeps (older runs are pruned after every sweep).
+    """
     limit: Int
 
     """Only this server's runs. Omit for every server's."""

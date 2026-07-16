@@ -9,6 +9,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   dockerCleanupPolicy as policyTable,
   dockerCleanupPolicyScopes as policyScopesTable,
+  dockerCleanupRunItems as runItemsTable,
   dockerCleanupRuns as runsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
@@ -23,6 +24,7 @@ import {
   getCleanupPolicy,
   listCleanupRuns,
   previewCleanup,
+  pruneCleanupRunHistory,
   reconcileInFlightCleanupRuns,
   runCleanupNow,
   updateCleanupPolicy,
@@ -36,9 +38,12 @@ import {
  *    never fire) while the numeric bounds are merely CLAMPED,
  *  - the scopes junction being a whole-set replace (an unchecked scope must not survive
  *    a save, or the sweep deletes things the operator refused),
- *  - the defaults a never-configured instance reads, with `unused_app_images` OFF,
+ *  - the defaults a never-configured instance reads: ENABLED, with EVERY scope — the
+ *    daily sweep is on unless an operator turns it off,
  *  - `manage_infra` gating every entry point, and the "history never lies" invariant:
- *    a sweep that could not even reach an agent still lands as a `failed` run.
+ *    a sweep that could not even reach an agent still lands as a `failed` run,
+ *  - retention: the history is capped at 3 runs × server count, pruned by the executor
+ *    itself, with `running` rows immortal to the pruner.
  *
  * The seeded server has no agent (no cert fingerprint), so the executor fails at the
  * provisioning check without ever dialling — the same trick the backup tests use to
@@ -182,27 +187,33 @@ test("updateCleanupPolicy refuses a scope outside the allow-list", async () => {
 /* (d) A missing policy row reads as the documented defaults           */
 /* ------------------------------------------------------------------ */
 
-test("getCleanupPolicy on a never-configured instance returns the defaults, unused_app_images OFF", async () => {
+test("getCleanupPolicy on a never-configured instance is ENABLED with every scope", async () => {
   const policy = await asOwner(() => getCleanupPolicy());
 
-  assert.equal(policy.enabled, false, "cleanup is opt-in");
+  // Flipped by an explicit owner decision (2026-07): disk hygiene is the platform's
+  // job, so a fresh install sweeps daily without anyone finding the settings page.
+  // The scheduler reads through the same path, so this default is live behavior.
+  assert.equal(policy.enabled, true, "cleanup is ON by default");
   assert.equal(policy.schedule, "0 4 * * *");
   assert.equal(policy.minAgeHours, 168);
   assert.equal(policy.keepImagesPerApp, 1);
   assert.equal(policy.updatedAt, null, "a missing row is legible as 'never saved'");
   assert.deepEqual(policy.excludedServerIds, []);
-  // The three scopes that cannot strand an app. `unused_app_images` is absent BY
-  // DESIGN: nothing pushes to a registry, so a removed app image is recoverable only
-  // by a rebuild — a choice an operator makes, never a default they inherit.
+  // Every scope, `unused_app_images` included: its guardrails (keepImagesPerApp ≥ 1,
+  // a referenced image is never a candidate) make the worst case a rebuild of an OLD
+  // version, never a stranded app.
   assert.deepEqual(policy.scopes, [
     "build_cache",
     "dangling_images",
     "orphan_buildkit_cache",
+    "unused_app_images",
   ]);
-  assert.ok(
-    !policy.scopes.includes("unused_app_images"),
-    "unused_app_images is never on by default",
-  );
+});
+
+test("a saved policy always wins over the defaults — an explicit disable survives", async () => {
+  await seedCleanupPolicy(db, { enabled: false });
+  const policy = await asOwner(() => getCleanupPolicy());
+  assert.equal(policy.enabled, false, "the operator's disable is never overridden");
 });
 
 /* ------------------------------------------------------------------ */
@@ -295,4 +306,64 @@ test("reconcileInFlightCleanupRuns fails a stranded run and leaves a fresh one a
     .where(eq(runsTable.id, "dcr_fresh"));
   assert.equal(freshRow!.status, "running");
   assert.equal(freshRow!.finishedAt, null);
+});
+
+/* ------------------------------------------------------------------ */
+/* (h) Retention: 3 runs per server, pruned by the executor            */
+/* ------------------------------------------------------------------ */
+
+test("pruneCleanupRunHistory keeps the newest 3×servers and never a running row", async () => {
+  // ONE seeded server (beforeEach) → the cap is 3. The oldest row is `running` (a
+  // stranded sweep only the boot reconcile may settle) and five terminal rows follow.
+  await seedCleanupRun(db, {
+    id: "dcr_stuck",
+    status: "running",
+    startedAt: "2026-01-01T00:00:00.000Z",
+  });
+  for (let i = 1; i <= 5; i++) {
+    await seedCleanupRun(db, {
+      id: `dcr_t${i}`,
+      startedAt: `2026-01-0${i + 1}T00:00:00.000Z`,
+      items: [
+        { scope: "build_cache", reclaimedBytes: 1, itemsRemoved: 1, skipped: false, error: null },
+      ],
+    });
+  }
+
+  const removed = await pruneCleanupRunHistory();
+  assert.equal(removed, 2, "t1 and t2 fall past the cap; the running row is immortal");
+
+  const left = (await allRuns()).map((r) => r.id).sort();
+  assert.deepEqual(left, ["dcr_stuck", "dcr_t3", "dcr_t4", "dcr_t5"]);
+
+  // The deleted runs took their per-scope items with them (FK CASCADE) — no orphans.
+  const itemRuns = (await db.select().from(runItemsTable)).map((i) => i.runId).sort();
+  assert.deepEqual(itemRuns, ["dcr_t3", "dcr_t4", "dcr_t5"]);
+});
+
+test("the executor prunes after every sweep — even a failed one", async () => {
+  await seedCleanupPolicy(db, { enabled: true });
+  // Six terminal rows, all older than the run about to happen. Cap (1 server) = 3.
+  for (let i = 1; i <= 6; i++) {
+    await seedCleanupRun(db, {
+      id: `dcr_h${i}`,
+      startedAt: `2026-01-0${i}T00:00:00.000Z`,
+    });
+  }
+
+  // The seeded server has no agent → the sweep fails, but it is still a run…
+  await asOwner(async () => {
+    await assert.rejects(() => runCleanupNow(SERVER_1), /not provisioned yet/);
+  });
+
+  // …and the history is back at the cap: the just-failed run plus the two newest
+  // survivors. Retention rides the executor — there is no janitor to schedule.
+  const runs = await allRuns();
+  assert.equal(runs.length, 3);
+  const ids = runs.map((r) => r.id);
+  assert.ok(ids.includes("dcr_h5") && ids.includes("dcr_h6"), "the newest survivors");
+  assert.ok(
+    runs.some((r) => r.status === "failed" && r.actor === USER_1),
+    "the fresh failed run is the newest kept row",
+  );
 });

@@ -24,7 +24,9 @@ export default async function SettingsCleanupPage() {
     // another team still fills the same disk.
     listAllServers(),
     getCleanupPolicy(),
-    listCleanupRuns({ limit: 20 }),
+    // No limit: the default page IS the retention cap (3 runs × server count, ≈ three
+    // days at the daily cadence) — the store keeps nothing older to show.
+    listCleanupRuns(),
   ]);
 
   return (

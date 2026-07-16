@@ -164,8 +164,10 @@ export async function runCleanupSchedulerTick(
       if (state.lastFired.get(s.id) === key) return false;
       // A host we have never swept is overdue by construction (it is in no window),
       // so enabling the policy sweeps the fleet promptly rather than leaving the
-      // operator to wonder until 04:00 whether it works. The default scopes cannot
-      // strand an app, so an unexpected-but-immediate first sweep is safe.
+      // operator to wonder until 04:00 whether it works. An immediate first sweep is
+      // safe: no scope can strand an app — a referenced image is never a candidate,
+      // and `keepImagesPerApp` keeps every app's newest image(s) even under the
+      // default-on `unused_app_images`.
       return onTime || !sweptRecently.has(s.id);
     });
 

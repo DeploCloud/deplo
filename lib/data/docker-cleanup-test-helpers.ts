@@ -47,7 +47,9 @@ export interface SeedCleanupPolicyOpts {
   schedule?: string;
   minAgeHours?: number;
   keepImagesPerApp?: number;
-  /** Defaults to the three scopes that cannot strand an app (`unused_app_images` is opt-in). */
+  /** Defaults to the three conservative scopes — a deliberate fixture, NOT the
+   *  instance defaults (those are all four): tests that care about `unused_app_images`
+   *  say so explicitly. */
   scopes?: CleanupScopeId[];
   /** Servers the SCHEDULED sweep skips. Seed the servers first — this FKs to them. */
   excludedServerIds?: string[];

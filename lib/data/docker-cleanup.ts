@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, notInArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -138,21 +138,29 @@ const DEFAULT_MIN_AGE_HOURS = 168;
 const DEFAULT_KEEP_IMAGES_PER_APP = 1;
 
 /**
- * The scopes a never-configured instance would reclaim: the three that cannot strand
- * an app. `unused_app_images` is OFF — there is no registry push anywhere in Deplo, so
- * a removed app image is recoverable only by a rebuild. That is a choice an operator
- * makes, never a default they inherit.
+ * The scopes a never-configured instance reclaims: ALL of them, and the schedule ships
+ * ENABLED (see {@link loadPolicy}). Both flipped by an explicit owner decision
+ * (2026-07): disk hygiene is the platform's job — a full disk blocks every build, and
+ * "the operator must remember to turn the janitor on" is exactly the kind of manual
+ * step the north star forbids. `unused_app_images` is included because its guardrails
+ * make the worst case a rebuild of an OLD version, never a stranded app:
+ * `keepImagesPerApp` always keeps the newest image(s), and an image any container —
+ * running or stopped — references is never a candidate. An operator who wants the
+ * conservative set unchecks it once; the saved row wins from then on.
  */
-const DEFAULT_SCOPES: CleanupScopeId[] = [
-  "build_cache",
-  "dangling_images",
-  "orphan_buildkit_cache",
-];
+const DEFAULT_SCOPES: CleanupScopeId[] = [...CLEANUP_SCOPES];
 
 const MIN_AGE_HOURS_MAX = 8760; // a year
 const KEEP_IMAGES_MAX = 20;
 
-const DEFAULT_RUN_LIMIT = 20;
+/**
+ * Retention: how many runs PER SERVER the history keeps — the newest
+ * `3 × serverCount` rows overall. At the default daily cadence that is about three
+ * days of logs, which is all the history is for ("did last night's sweep work, and
+ * the two before it?"); it is also the default page {@link listCleanupRuns} shows,
+ * so what the UI lists and what the store keeps are the same number by construction.
+ */
+const RUNS_KEPT_PER_SERVER = 3;
 const MAX_RUN_LIMIT = 100;
 
 /**
@@ -253,7 +261,12 @@ function toReportScopes(results: CleanupScopeResult[]): CleanupReportScope[] {
 /* ------------------------------------------------------------------ */
 
 /** Assemble the policy from its row + junctions. A MISSING row is legal: the instance
- *  has never configured cleanup, and reads as "disabled, with the safe defaults". */
+ *  has never configured cleanup, and reads as the DEFAULTS — which since 2026-07 are
+ *  "enabled, daily at 04:00 UTC, every scope": a fresh install sweeps its hosts without
+ *  anyone finding the settings page first. The scheduler reads through this same path,
+ *  so the default is live behavior, not just what the form shows. An instance that
+ *  SAVED a policy (row present) always reads its own row — an operator's explicit
+ *  disable survives every upgrade. */
 async function loadPolicy(): Promise<CleanupPolicy> {
   const db = getDb();
   const [rows, scopeRows, excludedRows] = await Promise.all([
@@ -267,7 +280,7 @@ async function loadPolicy(): Promise<CleanupPolicy> {
   const row = rows[0];
   if (!row) {
     return {
-      enabled: false,
+      enabled: true,
       schedule: DEFAULT_SCHEDULE,
       minAgeHours: DEFAULT_MIN_AGE_HOURS,
       keepImagesPerApp: DEFAULT_KEEP_IMAGES_PER_APP,
@@ -319,10 +332,21 @@ export async function listServersWithCleanupRunning(): Promise<string[]> {
   return [...new Set(rows.map((r) => r.serverId).filter((id): id is string => !!id))];
 }
 
+/** The history cap AND the read's default page: `3 × serverCount`, floored at
+ *  {@link RUNS_KEPT_PER_SERVER} so a zero-server instance still shows the failure rows
+ *  it may hold for servers that were since removed. */
+async function runHistoryCap(): Promise<number> {
+  const servers = await getDb().select({ id: serversTable.id }).from(serversTable);
+  return Math.max(RUNS_KEPT_PER_SERVER, servers.length * RUNS_KEPT_PER_SERVER);
+}
+
 /**
  * Cleanup history, newest first. NOT team-scoped — servers are the one shared
  * cross-team resource, so a run belongs to a host, not to a team; the gate is the
  * `manage_infra` capability, checked here.
+ *
+ * The default page is the retention cap itself (3 × the server count) — asking for
+ * "the history" answers with everything retention keeps.
  *
  * `seq` breaks same-millisecond ties so the listing is a total order (two servers swept
  * by one tick start in the same millisecond routinely).
@@ -331,7 +355,8 @@ export async function listCleanupRuns(
   filter: { serverId?: string; limit?: number } = {},
 ): Promise<CleanupRunDTO[]> {
   await requireCapability("manage_infra");
-  const limit = clampInt(filter.limit ?? DEFAULT_RUN_LIMIT, 1, MAX_RUN_LIMIT, DEFAULT_RUN_LIMIT);
+  const fallback = filter.limit ?? (await runHistoryCap());
+  const limit = clampInt(fallback, 1, MAX_RUN_LIMIT, RUNS_KEPT_PER_SERVER);
   const rows = await getDb()
     .select()
     .from(dockerCleanupRuns)
@@ -374,6 +399,49 @@ export async function listCleanupRuns(
 /** Per-scope lines always read in the allow-list's order, whatever order they landed in. */
 function orderItems(items: CleanupRunItem[]): CleanupRunItem[] {
   return CLEANUP_SCOPES.flatMap((s) => items.filter((i) => i.scope === s));
+}
+
+/**
+ * Retention: trim the run history to {@link runHistoryCap} — the newest
+ * `3 × serverCount` rows — deleting the older TERMINAL rows (their per-scope items go
+ * with them via the FK CASCADE). Two rules make this safe rather than merely tidy:
+ *
+ *  - `running` rows are NEVER deleted, whatever their age: the scheduler's
+ *    never-stack-sweeps check and the boot reconcile both read them, and the reconcile
+ *    is the one thing allowed to settle a stranded one — retention silently removing
+ *    it would un-stick that server by lying instead.
+ *  - It runs inside the executor after every sweep (manual and scheduled alike), so
+ *    the table is bounded by construction — not by a janitor someone must remember to
+ *    schedule for the janitor.
+ *
+ * Session-free on purpose: its callers are already gated (`runCleanupNow`) or
+ * lease-held (the scheduler tick). Exported for tests. Returns how many rows it
+ * removed.
+ */
+export async function pruneCleanupRunHistory(): Promise<number> {
+  const db = getDb();
+  const keep = await runHistoryCap();
+  const newest = await db
+    .select({ id: dockerCleanupRuns.id })
+    .from(dockerCleanupRuns)
+    .orderBy(desc(dockerCleanupRuns.startedAt), desc(dockerCleanupRuns.seq))
+    .limit(keep);
+  // Fewer rows than the cap → nothing can be beyond it. Also guards the empty-table
+  // case, where `notInArray` over an empty id list would be malformed SQL.
+  if (newest.length < keep) return 0;
+  const removed = await db
+    .delete(dockerCleanupRuns)
+    .where(
+      and(
+        ne(dockerCleanupRuns.status, "running"),
+        notInArray(
+          dockerCleanupRuns.id,
+          newest.map((r) => r.id),
+        ),
+      ),
+    )
+    .returning({ id: dockerCleanupRuns.id });
+  return removed.length;
 }
 
 /* ------------------------------------------------------------------ */
@@ -640,6 +708,17 @@ async function executeCleanup(args: {
       items: orderItems(items),
     };
   });
+
+  // Retention rides the executor: every finished sweep — success or failure — trims
+  // the history to its cap. Best-effort: a failed trim must never turn a recorded
+  // sweep into a thrown one, so it only warns.
+  try {
+    await pruneCleanupRunHistory();
+  } catch (e) {
+    console.warn(
+      `[cleanup] could not prune the run history: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 
   // Rule (c): outside every transaction, fire-and-forget. A scheduled run passes
   // teamId `null` (a tick has no active team) and recordActivity attributes it to the
