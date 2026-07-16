@@ -62,17 +62,25 @@ minting registration links, the per-user admin editor.
 
 - **Queries** mirror the read layer: `apps`, `app(slug)`, `projects`
   (the containers), `environments(projectId)`, `sharedVars`, `sharedVarsForApp(appId)`,
-  `deployments`, `databases`, `domains`, `servers`, `serverMetrics`, `members`,
-  `apiTokens`, `activity`, `me`, `viewerTeam`, … (79 in total). Object types are
-  navigable — e.g. `App.deployments`, `App.latestDeployment`.
+  `deployments`, `databases`, `database(id)`, `databaseRuntime(databaseId)`,
+  `databaseConsoleInfo`/`databaseLogsInfo`/`databaseShellLabel`, `domains`, `servers`,
+  `serverMetrics`, `members`, `apiTokens`, `activity`, `me`, `viewerTeam`, …. Object
+  types are navigable — e.g. `App.deployments`, `App.latestDeployment`.
 - **Mutations** mirror every former server action: `createApp`, `redeploy`,
   `stopApp`, `createProject`, `createEnvironment`, `upsertEnvironmentEnv`,
-  `addDomain`, `createDatabase`, `createToken`, `updateTeam`, `login`,
-  `logout`, … (179 in total).
+  `addDomain`, `createDatabase`, `updateDatabase`, `restartDatabase`,
+  `redeployDatabase`, `updateDatabaseResources`, `updateDatabaseImage`,
+  `rotateDatabasePassword`, `execDatabaseConsole`, `createToken`, `updateTeam`,
+  `login`, `logout`, ….
+- **Subscriptions** (SSE via graphql-yoga): `appStatus(slug)` and
+  `databaseStatus(id)` — each emits the entity on every state change (initial
+  snapshot, then live), so a client tracks provisioning/start/stop/deploy with
+  no polling.
 
 Mutations return the affected entity where natural (so a client needs no second
 fetch), or `Boolean` for deletes/toggles, or a `String` for reveal-secret
-operations.
+operations (e.g. `revealConnection`, `rotateDatabasePassword` return the
+connection string).
 
 ## Errors
 

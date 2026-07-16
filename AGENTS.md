@@ -131,9 +131,10 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   (no `authScopes`) and keep their rate-limiting; the route owns cookie writes.
 - graphql-armor limits (depth 12 / aliases 30 / cost 5000) live only in `yoga.ts`.
 - **Stays REST** (`app/api/*/route.ts`, cookie auth via `getCurrentUser()`, no bearer token):
-  `apps/[id]/upload` (raw archive), `.../logs` (SSE), `.../attach`, `github/webhook|callback|setup`,
-  `auth/[...all]`, `agent/bootstrap`, `graphql/playground`, `health`, `node-versions`,
-  `railpack-versions`, `registry/images`.
+  `apps/[id]/upload` (raw archive), `.../logs` (SSE), `.../attach`, `databases/[id]/logs` (SSE),
+  `databases/[id]/attach` (SSE siblings of the app routes — reuse `lib/logs/session.ts` +
+  `lib/attach/session.ts`), `github/webhook|callback|setup`, `auth/[...all]`, `agent/bootstrap`,
+  `graphql/playground`, `health`, `node-versions`, `railpack-versions`, `registry/images`.
 
 ## Data & mutations (the security boundary)
 
