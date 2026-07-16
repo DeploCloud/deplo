@@ -16,6 +16,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/shared/status-badge";
+import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
 import type { ServerStatus } from "@/lib/types";
@@ -29,9 +30,16 @@ interface ServerLite {
   dockerVersion: string;
 }
 
-/** How long the live charts look back (samples). At 1s/sample ~40s window. */
-const MAX_POINTS = 40;
+/** Rolling live buffer per server — covers the largest window (~15m at 1s). */
+const MAX_POINTS = 900;
 const POLL_MS = 1000;
+
+/** Lookback presets for the charts' fixed sliding window. */
+const WINDOWS = [
+  { label: "1m", ms: 60_000 },
+  { label: "5m", ms: 300_000 },
+  { label: "15m", ms: 900_000 },
+] as const;
 
 export function MonitoringDashboard({
   servers,
@@ -41,9 +49,14 @@ export function MonitoringDashboard({
   initialMetrics: ServerMetrics[];
 }) {
   const [selectedId, setSelectedId] = React.useState(servers[0]?.id ?? "");
-  const [history, setHistory] = React.useState<Record<string, ServerMetrics[]>>(
-    () => Object.fromEntries(initialMetrics.map((m) => [m.serverId, [m]])),
-  );
+  const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
+  // Chart history holds live MEASUREMENTS only. The SSR hint (stored status,
+  // zeroed net/load) and offline snapshots are placeholders, not measurements —
+  // charting them would draw fake dips to 0. The latest poll result (whatever
+  // its online flag) lives in `live` so the status line can say "agent not
+  // answering" while the charts keep the honest gap.
+  const [live, setLive] = React.useState<Record<string, ServerMetrics | undefined>>({});
+  const [history, setHistory] = React.useState<Record<string, ServerMetrics[]>>({});
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
   // Poll anything that HAS an agent — not just a server whose last stored status was
@@ -72,6 +85,8 @@ export function MonitoringDashboard({
           `query ServerMetrics($serverId: String!) {
             serverMetrics(serverId: $serverId) {
               serverId
+              online
+              ts
               cpu
               cpuCores
               memUsed
@@ -92,6 +107,9 @@ export function MonitoringDashboard({
         );
         if (!active || !res.ok || !res.data) return;
         const sample = res.data;
+        setLive((l) => ({ ...l, [selectedId]: sample }));
+        // Offline snapshot: no measurement to chart — leave a gap, not a zero.
+        if (!sample.online) return;
         setHistory((h) => {
           const prev = h[selectedId] ?? [];
           return { ...h, [selectedId]: [...prev, sample].slice(-MAX_POINTS) };
@@ -110,10 +128,33 @@ export function MonitoringDashboard({
   }, [selectedId, online]);
 
   const samples = history[selectedId] ?? [];
+  const lastPoll = live[selectedId];
+  // Latest measurement for the tiles — while the agent is unreachable they
+  // freeze on the last real values (the status line says so) instead of
+  // zeroing. Until the first poll lands, the SSR hint keeps the tiles warm;
+  // the charts never see it (it's not a measurement).
   const cur =
     samples[samples.length - 1] ??
-    initialMetrics.find((m) => m.serverId === selectedId) ??
+    initialMetrics.find((m) => m.serverId === selectedId && m.online) ??
     null;
+
+  // One shared point list feeds every chart; each panel picks its keys.
+  const points = React.useMemo(
+    () =>
+      samples.map((s) => ({
+        ts: s.ts,
+        values: {
+          cpu: s.cpu,
+          mem: s.memPct,
+          rx: s.netRx,
+          tx: s.netTx,
+          load1: s.load[0],
+          load5: s.load[1],
+          load15: s.load[2],
+        },
+      })),
+    [samples],
+  );
 
   // No servers added yet (e.g. straight after first-run setup): nothing to chart.
   // Point the operator at the Servers page to add this host and run its installer.
@@ -177,13 +218,44 @@ export function MonitoringDashboard({
         </Card>
       ) : (
         <>
-          {/* Live status line */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--success)] opacity-75" />
-              <span className="relative inline-flex size-2 rounded-full bg-[var(--success)]" />
-            </span>
-            Live · sampling every {POLL_MS / 1000}s
+          {/* Live status line + chart time window (scopes every chart below) */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {lastPoll && !lastPoll.online ? (
+              <div className="flex items-center gap-2 text-xs text-[var(--warning)]">
+                <span className="inline-flex size-2 rounded-full bg-[var(--warning)]" />
+                Agent not answering — showing data up to {fmtClock(cur.ts)}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--success)] opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-[var(--success)]" />
+                </span>
+                Live · sampling every {POLL_MS / 1000}s
+              </div>
+            )}
+            <div
+              className="flex items-center gap-0.5 rounded-lg border p-0.5"
+              role="group"
+              aria-label="Chart time window"
+            >
+              {WINDOWS.map((w) => (
+                <button
+                  key={w.label}
+                  type="button"
+                  onClick={() => setWindowMs(w.ms)}
+                  aria-pressed={windowMs === w.ms}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs transition-colors",
+                    windowMs === w.ms
+                      ? "bg-secondary font-medium"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Last {w.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Current-value tiles */}
@@ -229,52 +301,60 @@ export function MonitoringDashboard({
 
           {/* Real-time charts */}
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="CPU usage" caption={`${cur.cpu.toFixed(1)}%`}>
-              <Spark
+            <ChartCard
+              title="CPU usage"
+              caption={`${cur.cpu.toFixed(1)}% of ${cur.cpuCores} cores`}
+            >
+              <TimeSeriesChart
+                unit="percent"
+                windowMs={windowMs}
+                points={points}
                 series={[
-                  {
-                    values: samples.map((s) => s.cpu),
-                    stroke: "stroke-foreground",
-                    fill: "fill-foreground/10",
-                  },
+                  { key: "cpu", label: "CPU", color: "var(--chart-1)", fill: true },
                 ]}
-                max={100}
-              />
-            </ChartCard>
-
-            <ChartCard title="Memory usage" caption={`${cur.memPct.toFixed(1)}%`}>
-              <Spark
-                series={[
-                  {
-                    values: samples.map((s) => s.memPct),
-                    stroke: "stroke-foreground",
-                    fill: "fill-foreground/10",
-                  },
-                ]}
-                max={100}
+                ariaLabel={`CPU usage over time, currently ${cur.cpu.toFixed(1)}%`}
               />
             </ChartCard>
 
             <ChartCard
-              title="Network I/O"
-              caption={`↓ ${formatBytes(cur.netRx)}/s · ↑ ${formatBytes(cur.netTx)}/s`}
-              className="lg:col-span-2"
+              title="Memory usage"
+              caption={`${formatBytes(cur.memUsed)} of ${formatBytes(cur.memTotal)} · ${cur.memPct.toFixed(1)}%`}
             >
-              <Spark
+              <TimeSeriesChart
+                unit="percent"
+                windowMs={windowMs}
+                points={points}
                 series={[
-                  {
-                    values: samples.map((s) => s.netRx),
-                    stroke: "stroke-[var(--success)]",
-                  },
-                  {
-                    values: samples.map((s) => s.netTx),
-                    stroke: "stroke-muted-foreground",
-                  },
+                  { key: "mem", label: "Memory", color: "var(--chart-1)", fill: true },
                 ]}
-                max={Math.max(
-                  ...samples.flatMap((s) => [s.netRx, s.netTx]),
-                  1,
-                )}
+                ariaLabel={`Memory usage over time, currently ${cur.memPct.toFixed(1)}%`}
+              />
+            </ChartCard>
+
+            <ChartCard title="Network I/O">
+              <TimeSeriesChart
+                unit="bytesPerSec"
+                windowMs={windowMs}
+                points={points}
+                series={[
+                  { key: "rx", label: "↓ Received", color: "var(--chart-1)" },
+                  { key: "tx", label: "↑ Sent", color: "var(--chart-2)" },
+                ]}
+                ariaLabel="Network throughput over time, received and sent bytes per second"
+              />
+            </ChartCard>
+
+            <ChartCard title="Load average">
+              <TimeSeriesChart
+                unit="count"
+                windowMs={windowMs}
+                points={points}
+                series={[
+                  { key: "load1", label: "1m", color: "var(--chart-1)" },
+                  { key: "load5", label: "5m", color: "var(--chart-2)" },
+                  { key: "load15", label: "15m", color: "var(--chart-3)" },
+                ]}
+                ariaLabel={`System load average over time, 1, 5 and 15 minutes, across ${cur.cpuCores} cores`}
               />
             </ChartCard>
           </div>
@@ -346,7 +426,8 @@ function ChartCard({
   children,
 }: {
   title: string;
-  caption: string;
+  /** Live current-value readout. Multi-series charts omit it — their legend carries the values. */
+  caption?: string;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -354,7 +435,9 @@ function ChartCard({
     <Card className={className}>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm">{title}</CardTitle>
-        <p className="text-xs text-muted-foreground">{caption}</p>
+        {caption && (
+          <p className="text-xs text-muted-foreground tabular-nums">{caption}</p>
+        )}
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
@@ -381,62 +464,11 @@ function InfoItem({
   );
 }
 
-/** Inline multi-series SVG chart. The first series may render a gradient area. */
-function Spark({
-  series,
-  max,
-}: {
-  series: { values: number[]; stroke: string; fill?: string }[];
-  max: number;
-}) {
-  const W = 600;
-  const H = 140;
-  const pad = 4;
-  const n = Math.max(...series.map((s) => s.values.length), 1);
-  const stepX = n > 1 ? (W - pad * 2) / (n - 1) : 0;
-  const yOf = (v: number) =>
-    pad + (H - pad * 2) * (1 - Math.min(v, max) / (max || 1));
-
-  if (n <= 1) {
-    return <div className="h-32 w-full rounded-lg bg-secondary/40" />;
-  }
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      className="h-32 w-full text-foreground"
-      role="img"
-      aria-label="Live metric chart"
-    >
-      {series.map((s, si) => {
-        if (s.values.length === 0) return null;
-        const coords = s.values.map(
-          (v, i) => [pad + i * stepX, yOf(v)] as const,
-        );
-        const line = coords.map(([x, y]) => `${x},${y}`).join(" ");
-        const area = s.fill
-          ? `M ${coords[0][0]},${H} L ${coords
-              .map(([x, y]) => `${x},${y}`)
-              .join(" L ")} L ${coords[coords.length - 1][0]},${H} Z`
-          : null;
-        return (
-          <g key={si}>
-            {area && <path d={area} className={s.fill} />}
-            <polyline
-              points={line}
-              fill="none"
-              className={s.stroke}
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          </g>
-        );
-      })}
-    </svg>
-  );
+/** Wall-clock HH:MM:SS for "showing data up to …". */
+function fmtClock(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 function fmtUptime(sec: number): string {

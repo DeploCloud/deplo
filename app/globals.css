@@ -38,6 +38,15 @@
   --warning: #a35200;
   --info: #0068d6;
 
+  /* Chart series — categorical, assigned in fixed slot order (1→5), stepped
+     per theme and CVD-validated against the card surface. Marks only; text
+     next to them stays on the text tokens. */
+  --chart-1: #2a78d6;
+  --chart-2: #008300;
+  --chart-3: #e87ba4;
+  --chart-4: #eda100;
+  --chart-5: #1baf7a;
+
   --border: #e4e4e7;
   --input: #e4e4e7;
   --ring: #a1a1aa;
@@ -84,6 +93,12 @@
   --warning: #f5a623;
   --info: #5b9dff;
 
+  --chart-1: #3987e5;
+  --chart-2: #008300;
+  --chart-3: #d55181;
+  --chart-4: #c98500;
+  --chart-5: #199e70;
+
   --border: #242424;
   --input: #2e2e2e;
   --ring: #525252;
@@ -116,6 +131,11 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
