@@ -59,7 +59,6 @@
     "js-yaml": "^4.3.0",
     "lucide-react": "^1.24.0",
     "next": "16.2.9",
-    "next-themes": "^0.4.6",
     "node-pty": "^1.1.0",
     "pg": "^8.22.0",
     "pretty-bytes": "^7.1.1",
