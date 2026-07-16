@@ -160,3 +160,28 @@ one process) · ADR-0006 dec. 6 (one compose renderer, opaque YAML on the wire) 
   An injected section must register there too or it appears in the sidebar but not the breadcrumb
   dropdown.
 - **`NavItem.icon` is typed `LucideIcon`** — a plugin-supplied icon has no representation today.
+
+## Amendments (ticket resolutions)
+
+Corrections to the statements above, settled by closed wayfinder tickets — the ticket's
+resolution comment is authoritative; these lines only point at it.
+
+- **[#26 — Plugin manifest v2](https://github.com/DeploCloud/deplo/issues/26)** (2026-07-16):
+  - Decision 8's `sections[]` sketch loses the `path` field — the section **id is** the dashboard
+    URL segment; the iframe src derives from `(pluginSlug, id)`.
+  - Decision 9's "reproduces dev mode's `devEligible` + `deploy` gate exactly" is wrong as
+    written: today's Dev nav gate is source-bearing **only** (`deploy` is enforced in the
+    mutations). The dev Plugin declares `{ sourceBearing: true, requires: "deploy" }` — a
+    deliberate tightening. "Evaluated server-side" holds for **authority** (and the section route
+    itself); the `running` predicate additionally re-evaluates client-side against the live
+    status store, like every core nav flag.
+  - Decision 11's `volumes[]` = `{ name, mountPath }` with the host name
+    `deplo-plugin-<slug>-<name>` **pinned via an explicit compose `name:` key** — plugin compose
+    runs under `-p deplo-app-<slug>`, so an un-pinned top-level volume would be project-namespaced
+    and invisible to the agreed prefix scan.
+  - Decision 14's severing list is incomplete: it must also **delete the route dir**
+    `app/(dashboard)/apps/[slug]/dev/` (until then `dev` stays a reserved section id) and
+    **re-home `isDevEligible`** out of `lib/data/dev.ts`.
+  - Known-defects addendum: the parallel registries are **three**, not two — `UNSAFE_SECTIONS`
+    in `lib/breadcrumb-model.ts` holds `console`/`dev`/`files` as string literals; and
+    `components/apps/app-tabs.tsx` is dead (zero importers — delete it).
