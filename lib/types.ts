@@ -1091,12 +1091,14 @@ export type DomainEntrypoint = "websecure" | "web";
 /**
  * How a domain's TLS certificate is issued — the user's *choice*, distinct from
  * `ssl` (whether a cert is currently active, derived from DNS verification):
- *  - letsencrypt  the HTTP-01 ACME resolver baked into the proxy (the default,
- *                 resolved via `certResolver()` / `DEPLO_CERT_RESOLVER`).
+ *  - letsencrypt  the HTTP-01 ACME resolver baked into the proxy (resolved via
+ *                 `certResolver()` / `DEPLO_CERT_RESOLVER`).
  *  - cloudflare   a DNS-01 resolver named `cloudflare` for real domains whose
  *                 DNS is on Cloudflare (the proxy must define this resolver).
  *  - none         no certificate — serve plain HTTP on the `web` entrypoint, no
- *                 TLS labels, no forced upgrade.
+ *                 TLS labels, no forced upgrade. The default for every NEW
+ *                 domain (stored explicitly): a cert is only registered when
+ *                 the user — or a template that expects HTTPS — opts in.
  * Absent ⇒ `letsencrypt` (back-compat with domains created before this field).
  */
 export type CertProvider = "letsencrypt" | "cloudflare" | "none";

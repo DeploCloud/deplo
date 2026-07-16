@@ -494,3 +494,53 @@ test("a path row on an UNVERIFIED hostname stays pending (DNS is still unproven)
     assert.deepEqual(await routableRoutes("prj_1"), [], "unproven host is not routed");
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* Certificate defaults — no cert is registered unless opted in        */
+/* ------------------------------------------------------------------ */
+
+test("addDomain without a certProvider is born WITHOUT a certificate (`none`)", async () => {
+  await seedApp(db, { id: "prj_1", status: "active" });
+  await asUser1(async () => {
+    const plain = await addDomain("prj_1", "plain.example.io", {});
+    assert.equal(plain.certProvider, "none", "omitted provider ⇒ no certificate");
+    // An explicit choice is stored verbatim — opting in still works.
+    const secure = await addDomain("prj_1", "secure.example.io", {
+      certProvider: "letsencrypt",
+    });
+    assert.equal(secure.certProvider, "letsencrypt");
+  });
+});
+
+test("auto domains are born plain-HTTP unless the blueprint opted into TLS", async () => {
+  await seedApp(db, { id: "prj_1", slug: "plain" });
+  await seedApp(db, { id: "prj_2", slug: "tls" });
+  await asUser1(async () => {
+    // No TLS choice (a wizard app / template with no https URLs) ⇒ `none`.
+    await ensureAutoDomain("prj_1", { slug: "plain", ip: IP, defaultPort: 80 });
+    // A blueprint that expects HTTPS passes letsencrypt for ALL its hosts.
+    await ensureAutoDomain("prj_2", {
+      slug: "tls",
+      ip: IP,
+      defaultPort: 80,
+      certProvider: "letsencrypt",
+    });
+    await ensureExtraDomain("prj_2", "tls-extra-keen-owl-01020304.nip.io", {
+      port: 81,
+      service: "web",
+      slug: "tls",
+      ip: IP,
+      certProvider: "letsencrypt",
+    });
+  });
+  const plain = await loadDomainsForApp("prj_1");
+  assert.equal(plain.length, 1);
+  assert.equal(plain[0].certProvider, "none", "stored explicitly, not left absent");
+  assert.equal(plain[0].ssl, false, "ssl mirrors the cert-less birth");
+  const tls = await loadDomainsForApp("prj_2");
+  assert.equal(tls.length, 2);
+  for (const d of tls) {
+    assert.equal(d.certProvider, "letsencrypt");
+    assert.equal(d.ssl, true);
+  }
+});

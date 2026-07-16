@@ -77,10 +77,11 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
 /* ------------------------------------------------------------------ */
 
 // The routing knobs a user sets when adding a domain — mirrors DomainConfig in
-// the data layer. All optional; omitted fields fall back to the HTTPS defaults.
+// the data layer. All optional; an omitted certProvider means NO certificate
+// (plain HTTP) — a cert is only registered when explicitly requested.
 const DomainConfigInput = builder.inputType("DomainConfigInput", {
   description:
-    "Per-domain routing config; omitted fields take the HTTPS/letsencrypt defaults.",
+    "Per-domain routing config; an omitted certProvider means no certificate (plain HTTP).",
   fields: (t) => ({
     port: t.int({ required: false }),
     entrypoint: t.field({ type: DomainEntrypointEnum, required: false }),

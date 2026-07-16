@@ -23,6 +23,7 @@ import {
   nipEmbeddedIp,
   rehostNip,
   domainTlsConfig,
+  domainScheme,
 } from "../deploy/domains";
 import { classifyDomainDns, type DomainDnsClass } from "../deploy/cloudflare";
 import { usesComposeStack } from "../utils";
@@ -111,6 +112,10 @@ export async function ensureAutoDomain(
     /** Compose default expose service (null/absent for single-image). Written so
      * a compose auto domain always names the service it routes to. */
     defaultApp?: string | null;
+    /** TLS choice the domain is born with. Absent ⇒ `none` (no certificate is
+     * ever registered by default); createApp passes `letsencrypt` only when the
+     * blueprint itself expects HTTPS (it baked an `https://<own host>` URL). */
+    certProvider?: CertProvider;
   },
 ): Promise<string> {
   const existing = await loadDomainsForApp(appId);
@@ -151,6 +156,10 @@ export async function ensureAutoDomain(
     preferred && !(await domainNameExists(preferred))
       ? preferred
       : await uniqueAutoDomainName(opts.slug, opts.ip);
+  // Born WITHOUT a certificate unless the caller opted in: an absent stored
+  // provider reads as letsencrypt at the deploy edge (pre-field back-compat),
+  // so the default must be stored explicitly, never left off.
+  const certProvider = opts.certProvider ?? "none";
   const domain: Domain = {
     id: newId("dom"),
     appId,
@@ -158,7 +167,7 @@ export async function ensureAutoDomain(
     status: "valid",
     primary: true,
     redirectTo: null,
-    ssl: true,
+    ssl: certProvider !== "none",
     source: "auto",
     // Always born complete: the resolved container port (and, on a compose
     // stack, the service it routes to) so no auto domain is ever portless or
@@ -166,6 +175,7 @@ export async function ensureAutoDomain(
     // compose renderer treats them as the default route (byte-identical YAML).
     port: opts.defaultPort,
     ...(opts.defaultApp ? { service: opts.defaultApp } : {}),
+    certProvider,
     createdAt: nowIso(),
   };
   await insertDomain(getDb(), domain);
@@ -189,7 +199,14 @@ export async function ensureAutoDomain(
 export async function ensureExtraDomain(
   appId: string,
   rawName: string,
-  route: { port: number; service?: string | null; slug: string; ip: string },
+  route: {
+    port: number;
+    service?: string | null;
+    slug: string;
+    ip: string;
+    /** TLS choice — same rule as {@link ensureAutoDomain}: absent ⇒ `none`. */
+    certProvider?: CertProvider;
+  },
 ): Promise<void> {
   const clean = rawName
     .trim()
@@ -208,6 +225,9 @@ export async function ensureExtraDomain(
         route.ip,
       )
     : clean;
+  // Same explicit-store rule as the primary: absent reads as letsencrypt at the
+  // deploy edge (back-compat), so the born-without-a-cert default is written.
+  const certProvider = route.certProvider ?? "none";
   const domain: Domain = {
     id: newId("dom"),
     appId,
@@ -215,13 +235,14 @@ export async function ensureExtraDomain(
     status: "valid",
     primary: false,
     redirectTo: null,
-    ssl: true,
+    ssl: certProvider !== "none",
     source: "auto",
     // The extra host comes from a compose `exposes` entry that carries its own
     // service + port; store both so the row is never appless/portless. They
     // equal that host's default expose, so the renderer keeps it byte-identical.
     port: route.port,
     ...(route.service ? { service: route.service } : {}),
+    certProvider,
     createdAt: nowIso(),
   };
   await insertDomain(getDb(), domain);
@@ -235,9 +256,17 @@ export async function ensureExtraDomain(
  * row, falling back to the first domain (mirrors syncProductionUrl's choice).
  */
 export async function primaryDomainName(appId: string): Promise<string> {
+  return (await primaryDomainRow(appId))?.name ?? "";
+}
+
+/**
+ * The full stored row behind {@link primaryDomainName} — for callers that also
+ * need the domain's config (e.g. its cert provider, to pick the URL scheme).
+ * Same primary-first-then-first fallback; null when the project has no domains.
+ */
+export async function primaryDomainRow(appId: string): Promise<Domain | null> {
   const domains = await loadDomainsForApp(appId);
-  const primary = domains.find((d) => d.primary) ?? domains[0];
-  return primary?.name ?? "";
+  return domains.find((d) => d.primary) ?? domains[0] ?? null;
 }
 
 /**
@@ -287,7 +316,9 @@ export async function listDomains(
 
 /** The per-domain routing config a user sets when adding a domain — the same
  * knobs the Edit dialog exposes (port, entrypoint, cert provider, middlewares).
- * All optional; omitted fields fall back to the long-standing HTTPS defaults. */
+ * All optional. An omitted `certProvider` means NO certificate (`none`): a cert
+ * is only ever registered when explicitly requested. (Only rows created BEFORE
+ * the field existed read an absent stored provider as letsencrypt.) */
 export interface DomainConfig {
   port?: number | null;
   entrypoint?: DomainEntrypoint;
@@ -382,7 +413,7 @@ export async function addDomain(
     // for the `none` provider). Storing it only when given keeps the auto/manual
     // distinction round-trippable and a default domain byte-identical.
     ...(config.entrypoint ? { entrypoint: config.entrypoint } : {}),
-    certProvider: config.certProvider ?? "letsencrypt",
+    certProvider: config.certProvider ?? "none",
     ...(middlewares.length ? { middlewares } : {}),
     ...(pathPrefix ? { pathPrefix } : {}),
     ...(stripPrefix ? { stripPrefix } : {}),
@@ -902,7 +933,9 @@ export async function syncProductionUrl(appId: string): Promise<void> {
   await getDb()
     .update(appsTable)
     .set({
-      productionUrl: primary ? `https://${primary.name}` : null,
+      // Scheme follows the primary's certificate provider: a cert-less (`none`)
+      // domain is served plain-HTTP, so its canonical URL must say so.
+      productionUrl: primary ? `${domainScheme(primary)}://${primary.name}` : null,
       updatedAt: nowIso(),
     })
     .where(eq(appsTable.id, appId));

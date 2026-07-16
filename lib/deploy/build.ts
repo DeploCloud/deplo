@@ -42,13 +42,19 @@ import {
 } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
 import { usesComposeStack, hostVolumeName } from "../utils";
-import { certResolver, previewDomain, resolveServerIp } from "./domains";
+import {
+  certResolver,
+  domainScheme,
+  previewDomain,
+  resolveServerIp,
+} from "./domains";
 import { completePendingAppMigration } from "../data/app-migration";
 import { traefikRouterLabels } from "./routing";
 import { renderResourceLimitsYaml } from "./resources";
 import { buildComposeStack } from "./compose-stack";
 import {
   primaryDomainName,
+  primaryDomainRow,
   routableRoutes,
   defaultRoute,
   pendingPrimaryRoute,
@@ -575,14 +581,20 @@ export async function startDeployment(
   // whose domains were all deleted deploys with NO domain and NO URL — the
   // container runs but is unrouted until the user adds a domain back. Previews
   // are ephemeral and always get their own host.
+  const primaryRow =
+    environment === "production" ? await primaryDomainRow(appId) : null;
   const domain =
     environment === "production"
-      ? await primaryDomainName(appId)
+      ? (primaryRow?.name ?? "")
       : previewDomain(project.slug, newId("").slice(1, 7), ip);
   // No production domain ⇒ no canonical URL. The deployment record's `url` is a
   // plain string (informational), so it carries "" when unrouted; the project's
-  // `productionUrl` is nullable and gets a real null below.
-  const url = domain ? `https://${domain}` : "";
+  // `productionUrl` is nullable and gets a real null below. The scheme follows
+  // the primary's certificate provider — a cert-less (`none`) domain is served
+  // plain-HTTP. A preview host always routes with TLS (defaultRoute), so https.
+  const url = domain
+    ? `${primaryRow ? domainScheme(primaryRow) : "https"}://${domain}`
+    : "";
   const depId = newId("dpl");
 
   const dep: Deployment = {
@@ -1282,7 +1294,13 @@ async function finishComposeStack(
   const { depId, project, domain, environment, started } = opts;
   const buildDurationMs = Date.now() - started;
   // No domain ⇒ no URL: the stack ran but is unrouted until a domain is added.
-  const url = domain ? `https://${domain}` : "";
+  // The scheme follows the domain's rendered route — a cert-less (`none`) host
+  // routes without TLS and is reachable over plain HTTP only. A domain with no
+  // route in this deploy (or a preview's defaultRoute) keeps https.
+  const domainRoute = opts.domainRoutes.find((r) => r.name === domain);
+  const url = domain
+    ? `${domainRoute && !domainRoute.tls ? "http" : "https"}://${domain}`
+    : "";
   // commitOutcome honors a "Stop build" pressed while the stack came up (covers
   // every finishComposeStack caller: success, agent-too-old, unreachable-agent):
   // its CAS keeps the row `canceled` and settles the app to idle, and the

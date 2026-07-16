@@ -29,12 +29,14 @@ export const ENTRYPOINTS: { value: DomainEntrypoint; label: string }[] = [
 ];
 
 /** Certificate providers, including "None" (no TLS — plain HTTP on the web
- * entrypoint). The dropdown is the single TLS control: picking "None" is how a
- * domain opts out of HTTPS (there is no separate checkbox). */
+ * entrypoint). The dropdown is the single TLS control: picking a provider is how
+ * a domain opts INTO HTTPS (there is no separate checkbox). "None" is listed
+ * first because it is the default for a brand-new domain — no certificate is
+ * ever registered unless the user (or a template that expects HTTPS) asks. */
 export const CERT_PROVIDERS: { value: CertProvider; label: string }[] = [
+  { value: "none", label: "None (no certificate)" },
   { value: "letsencrypt", label: "Let's Encrypt" },
   { value: "cloudflare", label: "Cloudflare" },
-  { value: "none", label: "None (no certificate)" },
 ];
 
 /** The editable per-domain routing values, held as form state by the caller. */
@@ -59,6 +61,11 @@ export interface DomainConfigState {
 /** Seed config form state from a domain (or defaults for a brand-new domain).
  * `manualEntrypoint` seeds on whether the domain stored an explicit entrypoint
  * — an absent entrypoint means "auto" (the data layer derived it).
+ *
+ * A BRAND-NEW domain defaults to NO certificate (`none`): a cert is only ever
+ * registered when the user opts in. An existing domain with an absent provider
+ * keeps the legacy `letsencrypt` reading — that is how the deploy edge routes
+ * pre-field rows, so the form must show what actually runs.
  *
  * `defaultPort` pre-fills the port field for a BRAND-NEW domain (the Add dialog,
  * where `domain` is undefined) so single-image domains are created with an
@@ -85,7 +92,7 @@ export function initialDomainConfig(
           : "",
     manualEntrypoint: domain?.entrypoint != null,
     entrypoint: domain?.entrypoint ?? "websecure",
-    certProvider: domain?.certProvider ?? "letsencrypt",
+    certProvider: domain ? (domain.certProvider ?? "letsencrypt") : "none",
     middlewares: (domain?.middlewares ?? []).join(", "),
     path: domain?.pathPrefix ?? "",
     stripPath: Boolean(domain?.stripPrefix),

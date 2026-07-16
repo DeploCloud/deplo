@@ -176,6 +176,45 @@ export function domainTlsConfig(domain: {
 }
 
 /**
+ * URL scheme a domain is served on — `http` for the `none` certificate provider
+ * (its router terminates no TLS, riding the `web` entrypoint), `https` for every
+ * real provider. Same absent-field back-compat reading as {@link domainTlsConfig},
+ * so a pre-field row keeps its long-standing `https`.
+ */
+export function domainScheme(domain: {
+  certProvider?: CertProvider;
+}): "http" | "https" {
+  return domainTlsConfig(domain).tls ? "https" : "http";
+}
+
+/**
+ * Whether a blueprint's auto domains should be born WITH a TLS certificate.
+ *
+ * No certificate is ever registered by default — a fresh app's nip.io host is
+ * served plain-HTTP. The one exception is a template/compose that itself
+ * expects HTTPS: it baked an `https://<one of its own hosts>` URL into an env
+ * value, its compose text, or a materialised config file (e.g. AppFlowy's
+ * `APPFLOWY_BASE_URL=https://${domain}`) — serving that app over plain HTTP
+ * would break it, so its domains get `letsencrypt`. The check is anchored on
+ * the app's OWN hosts: a stray `https://hub.docker.com` in a compose comment
+ * never opts an app into certificate issuance.
+ */
+export function blueprintWantsTls(
+  hosts: (string | null | undefined)[],
+  texts: (string | null | undefined)[],
+): boolean {
+  const haystack = texts.filter(Boolean).join("\n").toLowerCase();
+  return hosts.some((h) => {
+    const host = h
+      ?.trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/$/, "");
+    return !!host && haystack.includes(`https://${host}`);
+  });
+}
+
+/**
  * The IPv4 to use for a given server's domains. The server's recorded IP is
  * authoritative when it is a usable, non-loopback IPv4; otherwise fall back to
  * the instance host (a never-set or stored-loopback IP resolves live). Uniform

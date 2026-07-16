@@ -644,7 +644,7 @@ type Domain {
 }
 
 """
-Per-domain routing config; omitted fields take the HTTPS/letsencrypt defaults.
+Per-domain routing config; an omitted certProvider means no certificate (plain HTTP).
 """
 input DomainConfigInput {
   certProvider: CertProvider

@@ -61,6 +61,7 @@ import {
   rehostNip,
   rehostBlueprintHosts,
   nipEmbeddedIp,
+  blueprintWantsTls,
 } from "../deploy/domains";
 import { teardownApp } from "./deployments";
 import { agentTeardownDev } from "../deploy/agent-dev";
@@ -532,12 +533,27 @@ export async function createApp(
       : input.compose
         ? detectDefaultApp(input.compose)
         : null;
+  // No certificate is registered by default — auto domains are born plain-HTTP
+  // (`none`). The one opt-in: a blueprint that itself expects HTTPS (it baked an
+  // `https://<one of its own hosts>` URL into its env, compose text, or a config
+  // file) would break over plain HTTP, so ALL its auto domains get letsencrypt.
+  const certProvider = blueprintWantsTls(
+    [input.autoDomain, ...(input.extraDomains ?? []).map((e) => e.host)],
+    [
+      input.compose,
+      ...(input.env ?? []).map((e) => e.value),
+      ...(input.mounts ?? []).map((m) => m.content),
+    ],
+  )
+    ? "letsencrypt"
+    : "none";
   const primaryName = await ensureAutoDomain(project.id, {
     slug,
     ip,
     preferred: input.autoDomain ?? undefined,
     defaultPort: detected?.port ?? project.build.port,
     defaultApp: detected?.service ?? null,
+    certProvider,
   });
 
   // Register every EXTRA hostname a multi-domain template declares (e.g. a web
@@ -554,6 +570,9 @@ export async function createApp(
         // Passed so a globally-colliding template host regenerates a unique one.
         slug,
         ip,
+        // Same TLS choice as the primary: a blueprint that expects HTTPS gets it
+        // on every host it declares; anything else is born plain-HTTP.
+        certProvider,
       });
   }
 
