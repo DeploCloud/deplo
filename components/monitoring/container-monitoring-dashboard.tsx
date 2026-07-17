@@ -122,20 +122,30 @@ export function ContainerMonitoringDashboard({
   const idArg = kind === "app" ? "appId" : "databaseId";
   const setMutation = kind === "app" ? "setAppSaveMetrics" : "setDatabaseSaveMetrics";
 
-  // Configured caps. docker's memory % is ALREADY relative to mem_limit, but CPU %
-  // is host-relative (100% = one core), so CPU must be rescaled against the cpus
-  // cap for "100% = the limit" to hold. We use the CONFIGURED caps as the
-  // denominators so the gauges match the note even before a redeploy applies them.
+  // Configured PER-CONTAINER caps. deplo applies the app-level resource limits to
+  // EVERY container in the stack (see mergeResourceLimits), so a stack's aggregate
+  // budget is the cap × its running-container count. The app-total usage we chart
+  // is SUMMED across those same containers, so the "% of limit" gauges must divide
+  // by that aggregate — dividing the summed usage by a SINGLE container's cap
+  // over-reports by ~the container count (a 3-service stack pegged at its caps
+  // would read ~300%, not ~100%). docker's memory % is already relative to the
+  // applied mem_limit, but CPU % is host-relative (100% = one core), so both are
+  // rescaled here against the CONFIGURED cap × running: the gauges match the note
+  // and still read honestly >100% when a cap isn't applied yet (pre-redeploy).
   const cpuLimitCores = resources?.cpuMilli != null ? resources.cpuMilli / 1000 : null;
   const memLimitMb = resources?.memoryMb ?? null;
   const memLimitBytes = memLimitMb != null ? memLimitMb * 1024 * 1024 : null;
   const pidsLimit = resources?.pidsLimit ?? null;
   const hasLimits =
     cpuLimitCores != null || memLimitBytes != null || pidsLimit != null;
-  // % of a limit that is honestly OVER it (cap not yet applied) still reads >100.
-  const cpuOf = (cpu: number) => (cpuLimitCores ? cpu / cpuLimitCores : cpu);
-  const memPctOf = (memUsed: number, dockerPct: number) =>
-    memLimitBytes ? (memUsed / memLimitBytes) * 100 : dockerPct;
+  // Aggregate = per-container cap × how many are running; the app-total usage is
+  // summed over those same containers. running 0 ⇒ leave usage host-relative.
+  const cpuOf = (cpu: number, running: number) =>
+    cpuLimitCores && running > 0 ? cpu / (cpuLimitCores * running) : cpu;
+  const memPctOf = (memUsed: number, running: number, dockerPct: number) =>
+    memLimitBytes && running > 0
+      ? (memUsed / (memLimitBytes * running)) * 100
+      : dockerPct;
 
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
   const [saveMetrics, setSaveMetrics] = React.useState(initialSaveMetrics);
@@ -259,11 +269,18 @@ export function ContainerMonitoringDashboard({
         return {
           ts: s.ts,
           values: {
-            // CPU/mem rescaled to the configured caps so the charts' 0-100% axis
-            // means "% of the limit" when one is set (inlined from cpuOf/memPctOf
-            // so the memo depends only on the primitive caps).
-            cpu: cpuLimitCores ? s.cpu / cpuLimitCores : s.cpu,
-            mem: memLimitBytes ? (s.memUsed / memLimitBytes) * 100 : s.memPct,
+            // CPU/mem rescaled to the aggregate caps (per-container cap × that
+            // sample's running count) so the charts' 0-100% axis means "% of the
+            // limit" when one is set (inlined from cpuOf/memPctOf so the memo
+            // depends only on the primitive caps).
+            cpu:
+              cpuLimitCores && s.running > 0
+                ? s.cpu / (cpuLimitCores * s.running)
+                : s.cpu,
+            mem:
+              memLimitBytes && s.running > 0
+                ? (s.memUsed / (memLimitBytes * s.running)) * 100
+                : s.memPct,
             rx: prev ? rate(s.netRx, prev.netRx, dt) : 0,
             tx: prev ? rate(s.netTx, prev.netTx, dt) : 0,
             bread: prev ? rate(s.blockRead, prev.blockRead, dt) : 0,
@@ -275,12 +292,21 @@ export function ContainerMonitoringDashboard({
   );
 
   const cur = samples[samples.length - 1] ?? null;
-  // Current values, rescaled to the caps where set.
-  const curCpu = cur ? cpuOf(cur.cpu) : 0;
-  const curMemPct = cur ? memPctOf(cur.memUsed, cur.memPct) : 0;
-  // Memory denominator to display: the configured cap, else docker's memLimit
-  // (which is the real applied cap when set, or the host total when uncapped).
-  const memDenom = memLimitBytes ?? (cur?.memLimit ?? 0);
+  // Current values, rescaled to the aggregate caps where set.
+  const curCpu = cur ? cpuOf(cur.cpu, cur.running) : 0;
+  const curMemPct = cur ? memPctOf(cur.memUsed, cur.running, cur.memPct) : 0;
+  // The stack's aggregate budget = per-container cap × running count, for the
+  // labels/captions (so a 3-container stack reads "0.75 cores", not "0.25").
+  // Clamp the multiplier to ≥1 so the label reads sanely between polls.
+  const runningCount = cur?.running ?? 0;
+  const capMult = Math.max(runningCount, 1);
+  const multiContainer = runningCount > 1;
+  const cpuLimitAggCores = cpuLimitCores != null ? cpuLimitCores * capMult : null;
+  const memLimitAggMb = memLimitMb != null ? memLimitMb * capMult : null;
+  const pidsLimitAgg = pidsLimit != null ? pidsLimit * capMult : null;
+  // Memory denominator to display when uncapped: docker's memLimit (the host
+  // total). When capped, the aggregate cap above is used instead.
+  const memDenom = cur?.memLimit ?? 0;
   // Current network / block rates from the last two chart samples.
   const prev = samples[samples.length - 2];
   const dt = cur && prev ? (cur.ts - prev.ts) / 1000 : 0;
@@ -402,7 +428,12 @@ export function ContainerMonitoringDashboard({
                 Resource limits apply
               </span>{" "}
               — the percentages below are relative to this {noun}&apos;s limits,
-              not the whole host&apos;s capacity ({limitParts.join(" · ")}).
+              not the whole host&apos;s capacity.{" "}
+              {multiContainer
+                ? `Each of its ${runningCount} running containers is capped at ${limitParts.join(
+                    " · ",
+                  )}.`
+                : `(${limitParts.join(" · ")})`}
             </p>
           </div>
         )}
@@ -414,8 +445,10 @@ export function ContainerMonitoringDashboard({
             label="CPU"
             value={`${curCpu.toFixed(1)}%`}
             sub={
-              cpuLimitCores != null
-                ? `of ${fmtCores(cpuLimitCores)} limit`
+              cpuLimitAggCores != null
+                ? multiContainer
+                  ? `of ${fmtCores(cpuLimitAggCores)} (${fmtCores(cpuLimitCores!)} × ${runningCount})`
+                  : `of ${fmtCores(cpuLimitAggCores)} limit`
                 : `${cur.running} of ${cur.containers} container${cur.containers === 1 ? "" : "s"} running`
             }
             pct={curCpu}
@@ -425,8 +458,10 @@ export function ContainerMonitoringDashboard({
             label="Memory"
             value={`${curMemPct.toFixed(1)}%`}
             sub={
-              memLimitMb != null
-                ? `${formatBytes(cur.memUsed)} of ${fmtMemMb(memLimitMb)} limit`
+              memLimitAggMb != null
+                ? multiContainer
+                  ? `${formatBytes(cur.memUsed)} of ${fmtMemMb(memLimitAggMb)} (${fmtMemMb(memLimitMb!)} × ${runningCount})`
+                  : `${formatBytes(cur.memUsed)} of ${fmtMemMb(memLimitAggMb)} limit`
                 : memDenom > 0
                   ? `${formatBytes(cur.memUsed)} / ${formatBytes(memDenom)}`
                   : formatBytes(cur.memUsed)
@@ -452,8 +487,14 @@ export function ContainerMonitoringDashboard({
           <StatTile
             icon={ListTree}
             label="Processes"
-            value={pidsLimit != null ? `${cur.pids} / ${pidsLimit}` : `${cur.pids}`}
-            sub={pidsLimit != null ? "PIDs of the limit" : "PIDs across the stack"}
+            value={pidsLimitAgg != null ? `${cur.pids} / ${pidsLimitAgg}` : `${cur.pids}`}
+            sub={
+              pidsLimitAgg != null
+                ? multiContainer
+                  ? `PIDs of ${pidsLimit} × ${runningCount}`
+                  : "PIDs of the limit"
+                : "PIDs across the stack"
+            }
           />
         </div>
 
@@ -462,8 +503,8 @@ export function ContainerMonitoringDashboard({
           <ChartCard
             title="CPU usage"
             caption={
-              cpuLimitCores != null
-                ? `${curCpu.toFixed(1)}% of the ${fmtCores(cpuLimitCores)} limit`
+              cpuLimitAggCores != null
+                ? `${curCpu.toFixed(1)}% of the ${fmtCores(cpuLimitAggCores)} limit`
                 : `${curCpu.toFixed(1)}%`
             }
           >
@@ -472,15 +513,15 @@ export function ContainerMonitoringDashboard({
               windowMs={windowMs}
               points={points}
               series={[{ key: "cpu", label: "CPU", color: "var(--chart-1)", fill: true }]}
-              ariaLabel={`CPU usage over time, currently ${curCpu.toFixed(1)}%${cpuLimitCores != null ? ` of the ${fmtCores(cpuLimitCores)} limit` : ""}`}
+              ariaLabel={`CPU usage over time, currently ${curCpu.toFixed(1)}%${cpuLimitAggCores != null ? ` of the ${fmtCores(cpuLimitAggCores)} limit` : ""}`}
             />
           </ChartCard>
 
           <ChartCard
             title="Memory usage"
             caption={
-              memLimitMb != null
-                ? `${formatBytes(cur.memUsed)} of ${fmtMemMb(memLimitMb)} limit · ${curMemPct.toFixed(1)}%`
+              memLimitAggMb != null
+                ? `${formatBytes(cur.memUsed)} of ${fmtMemMb(memLimitAggMb)} limit · ${curMemPct.toFixed(1)}%`
                 : memDenom > 0
                   ? `${formatBytes(cur.memUsed)} of ${formatBytes(memDenom)} · ${curMemPct.toFixed(1)}%`
                   : formatBytes(cur.memUsed)
@@ -491,7 +532,7 @@ export function ContainerMonitoringDashboard({
               windowMs={windowMs}
               points={points}
               series={[{ key: "mem", label: "Memory", color: "var(--chart-1)", fill: true }]}
-              ariaLabel={`Memory usage over time, currently ${curMemPct.toFixed(1)}%${memLimitMb != null ? ` of the ${fmtMemMb(memLimitMb)} limit` : ""}`}
+              ariaLabel={`Memory usage over time, currently ${curMemPct.toFixed(1)}%${memLimitAggMb != null ? ` of the ${fmtMemMb(memLimitAggMb)} limit` : ""}`}
             />
           </ChartCard>
 
