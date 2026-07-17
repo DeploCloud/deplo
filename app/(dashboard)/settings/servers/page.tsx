@@ -88,8 +88,8 @@ function ServerCard({
   accessTeamIds: string[];
   /**
    * True for the ONE host that also runs the Deplo control plane (dashboard + API),
-   * not just the deploy agent. It gets a distinct accent + badge so an operator can
-   * tell the box they must never tear down apart from the interchangeable remotes.
+   * not just the deploy agent. It gets a distinct role badge so an operator can tell
+   * the box they must never tear down apart from the interchangeable remotes.
    */
   isDeploHost: boolean;
 }) {
@@ -103,16 +103,7 @@ function ServerCard({
   const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
   const num = (n: number) => (n > 0 ? String(n) : "—");
   return (
-    <Card
-      className={
-        isDeploHost
-          ? // The control-plane host is the one box in the fleet an operator must
-            // never casually remove — give it a standing accent ring so it reads as
-            // special at a glance, not just via a badge that scans like the others.
-            "border-primary/40 ring-1 ring-primary/25 transition-colors"
-          : "transition-colors hover:border-foreground/20"
-      }
-    >
+    <Card className="transition-colors hover:border-foreground/20">
       <CardHeader className="space-y-3">
         <div className="flex items-center gap-2">
           {/* The chip owns BOTH the dot and the label: the status and its age are one
