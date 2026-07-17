@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { ElementType } from "react";
 import {
   Server as ServerIcon,
+  ServerCog,
   Cpu,
   MemoryStick,
   HardDrive,
@@ -22,6 +23,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { listAllServers, listAllServerTeamIds } from "@/lib/data/servers";
+import {
+  deploHostSelfAddresses,
+  isDeploHostServer,
+} from "@/lib/deploy/domains";
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
@@ -75,11 +80,18 @@ function ServerCard({
   expectedAgentVersion,
   teams,
   accessTeamIds,
+  isDeploHost,
 }: {
   server: Server;
   expectedAgentVersion: string;
   teams: TeamOption[];
   accessTeamIds: string[];
+  /**
+   * True for the ONE host that also runs the Deplo control plane (dashboard + API),
+   * not just the deploy agent. It gets a distinct accent + badge so an operator can
+   * tell the box they must never tear down apart from the interchangeable remotes.
+   */
+  isDeploHost: boolean;
 }) {
   const agentVersion = reportedAgentVersion(server);
   const outdated = isAgentOutdated(agentVersion, expectedAgentVersion);
@@ -91,13 +103,43 @@ function ServerCard({
   const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
   const num = (n: number) => (n > 0 ? String(n) : "—");
   return (
-    <Card className="transition-colors hover:border-foreground/20">
+    <Card
+      className={
+        isDeploHost
+          ? // The control-plane host is the one box in the fleet an operator must
+            // never casually remove — give it a standing accent ring so it reads as
+            // special at a glance, not just via a badge that scans like the others.
+            "border-primary/40 ring-1 ring-primary/25 transition-colors"
+          : "transition-colors hover:border-foreground/20"
+      }
+    >
       <CardHeader className="space-y-3">
         <div className="flex items-center gap-2">
           {/* The chip owns BOTH the dot and the label: the status and its age are one
               fact, and splitting them across two elements is how a page ends up
               rendering a confident green dot next to a status nobody has verified. */}
           <CardTitle className="truncate">{serverLabel(server)}</CardTitle>
+          {/* Role: the host running Deplo (control plane + deploys) vs a remote that
+              only runs the deploy agent. Made explicit on BOTH so the contrast is the
+              message, not a lone badge you have to know is absent elsewhere. */}
+          {isDeploHost ? (
+            <Badge
+              className="shrink-0 gap-1"
+              title="This host runs the Deplo control plane (the dashboard and API) in addition to your deployments. Removing it takes down Deplo itself."
+            >
+              <ServerCog className="size-3" />
+              Deplo host
+            </Badge>
+          ) : (
+            <Badge
+              variant="muted"
+              className="shrink-0 gap-1"
+              title="A remote host: it runs only the deploy agent, executing deployments Deplo sends it over mTLS."
+            >
+              <ServerIcon className="size-3" />
+              Remote
+            </Badge>
+          )}
           <ServerHealthChip
             serverId={server.id}
             fallback={{
@@ -203,8 +245,19 @@ export default async function ServersPage(
     ]);
   // Fill in capacity specs for the static cards (measures an unmeasured server
   // once, then reuses the persisted values). No per-second polling anymore.
-  const servers = await hydrateServerSpecs(serversRaw);
+  const hydrated = await hydrateServerSpecs(serversRaw);
   const teams: TeamOption[] = teamsRaw.map((t) => ({ id: t.id, name: t.name }));
+
+  // Which server (if any) is the host running Deplo itself — computed once, then
+  // used both to pull it to the front and to badge its card. Sorting it first makes
+  // the "this is the control-plane box" signal impossible to miss without reordering
+  // the interchangeable remotes among themselves (they keep their creation order).
+  const selfAddrs = deploHostSelfAddresses();
+  const servers = [...hydrated].sort(
+    (a, b) =>
+      Number(isDeploHostServer(b, selfAddrs)) -
+      Number(isDeploHostServer(a, selfAddrs)),
+  );
 
   // The LAST OBSERVED health of each server, handed to the client so the cards paint
   // immediately. It is a seed, not the answer: <ServerHealthProvider> re-probes every
@@ -273,6 +326,7 @@ export default async function ServersPage(
                 expectedAgentVersion={expectedAgentVersion}
                 teams={teams}
                 accessTeamIds={serverTeamIds.get(server.id) ?? []}
+                isDeploHost={isDeploHostServer(server, selfAddrs)}
               />
             ))}
           </div>

@@ -48,8 +48,8 @@ function isPrivateIpv4(ip: string): boolean {
   return !!m && Number(m[1]) >= 16 && Number(m[1]) <= 31;
 }
 
-/** First non-internal IPv4 on a network interface, preferring a public one. */
-function detectNicIpv4(): string | null {
+/** Every non-internal IPv4 across all network interfaces (loopback excluded). */
+function allNicIpv4(): string[] {
   const addrs: string[] = [];
   const nets = networkInterfaces();
   for (const key of Object.keys(nets)) {
@@ -61,6 +61,12 @@ function detectNicIpv4(): string | null {
       }
     }
   }
+  return addrs;
+}
+
+/** First non-internal IPv4 on a network interface, preferring a public one. */
+function detectNicIpv4(): string | null {
+  const addrs = allNicIpv4();
   if (addrs.length === 0) return null;
   // Prefer a publicly-routable address on multi-homed hosts; fall back to the
   // first private one (still better than loopback for LAN access).
@@ -116,6 +122,56 @@ export function instanceHost(): string {
       "Set DEPLO_SERVER_IP=<public-IPv4> and restart.",
   );
   return "127.0.0.1";
+}
+
+/**
+ * The addresses that identify the CONTROL-PLANE HOST — the single server in the
+ * fleet that also runs Deplo itself ("agent 0"; CONTEXT.md: "the host running Deplo
+ * is an agent too"). Purely a DISPLAY signal, used to badge that one server apart
+ * from the pure deploy targets on the Servers page — never a security boundary.
+ *
+ * Resolved with ZERO extra config by reusing the very signals that already seed this
+ * instance's public identity: `DEPLO_SERVER_IP` (the operator registers "this host"
+ * with exactly this IP), the host of `DEPLO_PUBLIC_URL`, and every non-internal NIC
+ * IPv4. Everything is lower-cased for a case-insensitive compare against a server
+ * row's operator-declared ip/host. A hostname-valued `DEPLO_PUBLIC_URL` is kept as-is
+ * (it matches only if the operator registered the host under that same hostname).
+ */
+export function deploHostSelfAddresses(): Set<string> {
+  const addrs = new Set<string>();
+  const add = (v?: string | null) => {
+    const s = v?.trim().toLowerCase();
+    if (s) addrs.add(s);
+  };
+  add(process.env.DEPLO_SERVER_IP);
+  const pub = process.env.DEPLO_PUBLIC_URL?.trim();
+  if (pub) {
+    try {
+      add(new URL(pub).hostname);
+    } catch {
+      /* not a URL — ignore */
+    }
+  }
+  for (const nic of allNicIpv4()) add(nic);
+  return addrs;
+}
+
+/**
+ * Whether `server` is the host running Deplo — i.e. one of its operator-declared
+ * addresses matches this instance's own {@link deploHostSelfAddresses}. Pass the
+ * precomputed set when classifying many servers in a loop (compute it once). A
+ * no-match — unusual networking, or the host registered under an address none of the
+ * self-signals name — simply yields `false`: no card is mislabeled as the Deplo host,
+ * at worst the real one goes unbadged.
+ */
+export function isDeploHostServer(
+  server: { ip?: string; host?: string },
+  self: Set<string> = deploHostSelfAddresses(),
+): boolean {
+  if (self.size === 0) return false;
+  const ip = server.ip?.trim().toLowerCase();
+  const host = server.host?.trim().toLowerCase();
+  return (!!ip && self.has(ip)) || (!!host && self.has(host));
 }
 
 /**
