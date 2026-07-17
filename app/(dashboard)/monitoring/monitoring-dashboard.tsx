@@ -366,7 +366,7 @@ export function MonitoringDashboard({
               </div>
             )}
             <div
-              className="flex items-center gap-0.5 rounded-lg border p-0.5"
+              className="flex items-center gap-0.5 rounded-lg p-0.5"
               role="group"
               aria-label="Chart time window"
             >
