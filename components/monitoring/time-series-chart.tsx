@@ -43,6 +43,14 @@ const M_TOP = 10;
 const M_RIGHT = 12;
 const M_BOTTOM = 24;
 
+/** Zoom bounds (the visible span). Floor keeps a zoom-in from collapsing past a
+ *  handful of samples; ceiling is a backstop — the buffered span caps it first. */
+const MIN_WINDOW_MS = 10_000;
+const MAX_WINDOW_MS = 30 * 60_000;
+/** One wheel notch / `+` press narrows the window to this fraction (Grafana-ish);
+ *  its reciprocal widens it. */
+const ZOOM_IN = 0.8;
+
 /** Snap a rough step to the 1/2/5 ladder so tick values read as clean numbers. */
 function niceStep(rough: number): number {
   const pow = 10 ** Math.floor(Math.log10(rough));
@@ -175,9 +183,16 @@ function areaPath(seg: XY[], baseY: number): string {
  * a crosshair + all-series tooltip (pointer AND arrow keys), and — for two
  * or more series — a legend with live values that toggles series on/off.
  *
- * The x domain is a fixed sliding window ending at the newest sample, so
- * "Last 5m" always means exactly that; a freshly-opened page fills leftward
- * as samples accumulate rather than stretching the little it has.
+ * The x domain is a sliding window `windowMs` wide. By default it ends at the
+ * newest sample — "Last 5m" always means exactly that, and a freshly-opened page
+ * fills leftward as samples accumulate. Pass `domainEnd` to pin the window's END
+ * to an absolute time instead (Grafana-style: scrolling to zoom FREEZES the range
+ * so the region under the cursor doesn't slide away as new samples stream in).
+ *
+ * Zoom is driven from here — the panel owns the cursor position and the x scale —
+ * but reported UP via `onZoomChange` so a dashboard can keep every chart on one
+ * shared range. Wheel (anchored under the pointer), `+`/`-` (around centre) and
+ * double-click / `0` (back to live) are the gestures.
  */
 export function TimeSeriesChart({
   series,
@@ -186,6 +201,9 @@ export function TimeSeriesChart({
   unit,
   height = 200,
   ariaLabel,
+  domainEnd,
+  onZoomChange,
+  onResetLive,
 }: {
   series: ChartSeriesDef[];
   points: ChartPoint[];
@@ -193,6 +211,13 @@ export function TimeSeriesChart({
   unit: ChartUnit;
   height?: number;
   ariaLabel: string;
+  /** Absolute end of the window (ms epoch) to FREEZE it; null/undefined = live
+   *  (pinned to the newest sample). */
+  domainEnd?: number | null;
+  /** Report a new frozen window after a zoom gesture (span + absolute end). */
+  onZoomChange?: (next: { windowMs: number; domainEnd: number }) => void;
+  /** Return to live (double-click or `0`). */
+  onResetLive?: () => void;
 }) {
   const wrapRef = React.useRef<HTMLDivElement>(null);
   const [width, setWidth] = React.useState(0);
@@ -214,8 +239,10 @@ export function TimeSeriesChart({
   const last = points.length ? points[points.length - 1] : null;
   const hasData = points.length >= 2;
 
-  // Fixed sliding window ending at the newest sample.
-  const t1 = last?.ts ?? 0;
+  // Sliding window: ends at `domainEnd` when frozen by a zoom, else at the newest
+  // sample (live). `newest` stays the live edge either way — the zoom clamps to it.
+  const newest = last?.ts ?? 0;
+  const t1 = domainEnd ?? newest;
   const t0 = t1 - windowMs;
 
   // Points inside the window, plus one earlier sample so the line enters from
@@ -265,7 +292,70 @@ export function TimeSeriesChart({
     setHoverTs(t0 + frac * windowMs);
   }
 
+  /**
+   * Rescale the window by `scale` (＜1 zooms in) while keeping the timestamp at
+   * plot-fraction `frac` pinned under the anchor. Clamps the span to the buffered
+   * range and never scrolls past the newest/oldest sample, so zoom-out settles on
+   * the whole buffer rather than trailing off into empty space. Freezes the range
+   * (reports an absolute `domainEnd`) — the dashboard flips out of live.
+   */
+  function applyZoom(frac: number, scale: number) {
+    if (!onZoomChange || !hasData || plotW <= 0) return;
+    const anchorTs = t0 + frac * windowMs;
+    const oldest = drawPoints[0]?.ts ?? newest - windowMs;
+    const spanCap = Math.max(MIN_WINDOW_MS, newest - oldest);
+    const nextWin = clamp(
+      windowMs * scale,
+      MIN_WINDOW_MS,
+      Math.min(MAX_WINDOW_MS, spanCap),
+    );
+    let end = anchorTs + (1 - frac) * nextWin;
+    end = Math.min(end, newest); // never reveal a void to the right of "now"
+    const minEnd = oldest + nextWin;
+    if (minEnd <= newest) end = Math.max(end, minEnd); // …nor to the left of oldest
+    onZoomChange({ windowMs: nextWin, domainEnd: end });
+  }
+
+  // Wheel-to-zoom must call preventDefault to stop the page scrolling, but React
+  // registers `onWheel` as a passive root listener where that is a no-op — so bind
+  // a native non-passive listener, routed through a ref that always holds the
+  // latest closure (fresh scale + geometry each render). The ref is refreshed in
+  // an effect, never during render.
+  const wheelRef = React.useRef<(e: WheelEvent) => void>(() => {});
+  React.useEffect(() => {
+    wheelRef.current = (e: WheelEvent) => {
+      if (!onZoomChange || !hasData || plotW <= 0 || !wrapRef.current) return;
+      e.preventDefault();
+      const rect = wrapRef.current.getBoundingClientRect();
+      const frac = clamp((e.clientX - rect.left - mLeft) / plotW, 0, 1);
+      applyZoom(frac, e.deltaY < 0 ? ZOOM_IN : 1 / ZOOM_IN);
+    };
+  });
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => wheelRef.current(e);
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
+
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    // Keyboard parity for the mouse gestures: zoom around the centre, reset to live.
+    if (e.key === "+" || e.key === "=") {
+      e.preventDefault();
+      applyZoom(0.5, ZOOM_IN);
+      return;
+    }
+    if (e.key === "-" || e.key === "_") {
+      e.preventDefault();
+      applyZoom(0.5, 1 / ZOOM_IN);
+      return;
+    }
+    if (e.key === "0") {
+      e.preventDefault();
+      onResetLive?.();
+      return;
+    }
     if (!hoverPoints.length) return;
     const idx = hoverPoint ? hoverPoints.indexOf(hoverPoint) : hoverPoints.length - 1;
     let next: number | null = null;
@@ -304,6 +394,7 @@ export function TimeSeriesChart({
       role="group"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
+      onDoubleClick={() => onResetLive?.()}
       onBlur={() => setHoverTs(null)}
     >
       {width > 0 && hasData ? (
@@ -417,8 +508,11 @@ export function TimeSeriesChart({
             })}
           </g>
 
-          {/* Live edge: latest value of each series, ringed in the surface */}
+          {/* Live edge: latest value of each series, ringed in the surface.
+              Hidden when a zoom has frozen the window past the newest sample. */}
           {last &&
+            last.ts >= t0 &&
+            last.ts <= t1 &&
             visibleSeries.map((s) => {
               const v = last.values[s.key];
               if (v == null || !Number.isFinite(v)) return null;
