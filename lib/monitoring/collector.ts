@@ -4,6 +4,10 @@ import { listAllServers } from "../data/servers";
 import {
   measureServerForCollector,
 } from "../data/monitoring";
+import {
+  listSaveMetricsTargetsForCollector,
+  sampleContainerForCollector,
+} from "../data/container-metrics";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
 import { resolveExpectedAgentVersion } from "../version";
 import {
@@ -11,6 +15,10 @@ import {
   pruneMetricsHistoryTo,
   recordMetricsSample,
 } from "./history";
+import {
+  latestContainerSampleTs,
+  pruneContainerHistoryTo,
+} from "./container-history";
 
 /**
  * The background metrics collector — what makes "save metrics on server" true even
@@ -62,14 +70,31 @@ const state: CollectorState = (g[STATE_KEY] ??= {
 });
 
 /**
- * One collector tick: if saving is on, measure every provisioned server whose
- * buffer has gone stale, in parallel (the fleet poll's shape). Exported for tests;
- * never throws — an unreachable host degrades to an offline snapshot inside
- * `metricsFor`, which the buffer then refuses, leaving the honest gap.
+ * One collector tick: run BOTH history passes, each isolated so one can't take
+ * the other down. Exported for tests; never throws.
+ *  - the fleet HOST pass, gated on the instance-wide "save metrics on server"
+ *    singleton (host-level history, lib/monitoring/history.ts);
+ *  - the per-app / per-database CONTAINER pass, gated per-resource on each row's
+ *    `save_metrics` flag (container history, lib/monitoring/container-history.ts)
+ *    — independent of the singleton, since it is an explicit per-resource opt-in.
  */
 export async function runMetricsCollectorTick(now: number = Date.now()): Promise<void> {
   if (state.ticking) return; // the previous tick is still draining; skip this one.
   state.ticking = true;
+  try {
+    await Promise.all([collectHostMetrics(now), collectContainerMetrics(now)]);
+  } finally {
+    state.ticking = false;
+  }
+}
+
+/**
+ * The fleet host pass: if saving is on, measure every provisioned server whose
+ * buffer has gone stale, in parallel (the fleet poll's shape). Never throws — an
+ * unreachable host degrades to an offline snapshot inside `metricsFor`, which the
+ * buffer then refuses, leaving the honest gap.
+ */
+async function collectHostMetrics(now: number): Promise<void> {
   try {
     if (!(await isMetricsSavingEnabled())) return;
 
@@ -101,10 +126,41 @@ export async function runMetricsCollectorTick(now: number = Date.now()): Promise
     );
   } catch (e) {
     console.warn(
-      `[monitoring] metrics collector tick failed: ${e instanceof Error ? e.message : String(e)}`,
+      `[monitoring] host metrics collector pass failed: ${e instanceof Error ? e.message : String(e)}`,
     );
-  } finally {
-    state.ticking = false;
+  }
+}
+
+/**
+ * The per-app / per-database pass: sample every stack whose `save_metrics` is on
+ * and whose buffer has gone stale (a viewer's 1s poll keeps its own buffer warm,
+ * so a watched tab costs nothing here). Runs on the per-resource opt-in, NOT the
+ * fleet singleton — the two switches are independent. Never throws.
+ */
+async function collectContainerMetrics(now: number): Promise<void> {
+  try {
+    const targets = await listSaveMetricsTargetsForCollector();
+    // Forget ids whose switch was flipped off (or that were deleted) elsewhere.
+    pruneContainerHistoryTo(new Set(targets.map((t) => t.id)));
+
+    const due = targets.filter((t) => now - latestContainerSampleTs(t.id) >= FRESH_MS);
+    if (due.length === 0) return;
+
+    await Promise.all(
+      due.map(async (t) => {
+        try {
+          await sampleContainerForCollector(t.id, t.serverId);
+        } catch (e) {
+          console.warn(
+            `[monitoring] collector sample of container ${t.id} errored: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }),
+    );
+  } catch (e) {
+    console.warn(
+      `[monitoring] container metrics collector pass failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 }
 

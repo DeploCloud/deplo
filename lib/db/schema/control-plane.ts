@@ -678,6 +678,12 @@ export const apps = pgTable(
     resourceUlimitNofile: integer("resource_ulimit_nofile"),
     resourceUlimitNproc: integer("resource_ulimit_nproc"),
     resourceOomScoreAdj: integer("resource_oom_score_adj"),
+    // Opt-in per-app metrics history for the app's Monitoring tab. Default OFF
+    // (unlike the fleet-wide monitoring_settings singleton, which is ON): keeping
+    // a rolling in-RAM window + a background sampler running for EVERY app would
+    // add steady work no one asked for, so it's a debugging switch the operator
+    // flips per app. See lib/data/container-metrics.ts.
+    saveMetrics: boolean("save_metrics").notNull().default(false),
     // Pointer to the service's latest Deployment. `SET NULL` so deleting a
     // deployment can't leave a dangling pointer (the orphan-prevention-as-DB-
     // invariant goal). The value is set in a second backfill pass after
@@ -1226,6 +1232,9 @@ export const databases = pgTable(
     customImage: text("custom_image"),
     customCommand: text("custom_command"),
     sizeMb: bigint("size_mb", { mode: "number" }).notNull(),
+    // Opt-in per-database metrics history for the database's Monitoring tab.
+    // Default OFF — a debugging switch, same as apps.save_metrics above.
+    saveMetrics: boolean("save_metrics").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("databases_team_name_uq").on(t.teamId, t.name)],

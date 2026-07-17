@@ -1663,6 +1663,57 @@ export interface DockerCleanupResponse {
   results: CleanupScopeResult[];
 }
 
+export interface ContainerStatsRequest {
+  /**
+   * The project the containers must belong to (agent re-validates the label
+   * deplo.project=<project_id>). Empty is REJECTED — a blank filter would stat
+   * every container on the host (cross-tenant), exactly like ListInstances.
+   */
+  projectId: string;
+  /**
+   * The container names to stat (resolved control-plane-side from the project's
+   * instances). Any name that does not carry project_id's label is dropped.
+   * Empty => stat all of the project's containers.
+   */
+  containers: string[];
+}
+
+/**
+ * One container's live resource usage, parsed from `docker stats --no-stream`.
+ * net_* / block_* are CUMULATIVE totals since container start (that is what
+ * `docker stats` reports), NOT rates — the control plane derives bytes/sec from
+ * the delta between consecutive samples, which also survives a counter reset on
+ * restart. cpu_pct and mem_* are already instantaneous.
+ */
+export interface ContainerStat {
+  name: string;
+  /** 0-100 (across all cores, like `docker stats`) */
+  cpuPct: number;
+  /** bytes */
+  memUsed: number;
+  /** bytes */
+  memLimit: number;
+  memPct: number;
+  /** cumulative bytes received */
+  netRx: number;
+  /** cumulative bytes transmitted */
+  netTx: number;
+  /** cumulative bytes read from block devices */
+  blockRead: number;
+  /** cumulative bytes written */
+  blockWrite: number;
+  pids: number;
+  /**
+   * False for a container that exists in the project but is not running (stats
+   * are zeroed) — so the tab can distinguish "stopped" from "no such container".
+   */
+  running: boolean;
+}
+
+export interface ContainerStatsResponse {
+  stats: ContainerStat[];
+}
+
 function createBaseHelloRequest(): HelloRequest {
   return { contractVersion: 0, controlPlaneVersion: "" };
 }
@@ -10631,6 +10682,412 @@ export const DockerCleanupResponse: MessageFns<DockerCleanupResponse> = {
   },
 };
 
+function createBaseContainerStatsRequest(): ContainerStatsRequest {
+  return { projectId: "", containers: [] };
+}
+
+export const ContainerStatsRequest: MessageFns<ContainerStatsRequest> = {
+  encode(message: ContainerStatsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.projectId !== "") {
+      writer.uint32(10).string(message.projectId);
+    }
+    for (const v of message.containers) {
+      writer.uint32(18).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ContainerStatsRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseContainerStatsRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.projectId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.containers.push(reader.string());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ContainerStatsRequest {
+    return {
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      containers: globalThis.Array.isArray(object?.containers)
+        ? object.containers.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ContainerStatsRequest): unknown {
+    const obj: any = {};
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.containers?.length) {
+      obj.containers = message.containers;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ContainerStatsRequest>, I>>(base?: I): ContainerStatsRequest {
+    return ContainerStatsRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ContainerStatsRequest>, I>>(object: I): ContainerStatsRequest {
+    const message = createBaseContainerStatsRequest();
+    message.projectId = object.projectId ?? "";
+    message.containers = object.containers?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseContainerStat(): ContainerStat {
+  return {
+    name: "",
+    cpuPct: 0,
+    memUsed: 0,
+    memLimit: 0,
+    memPct: 0,
+    netRx: 0,
+    netTx: 0,
+    blockRead: 0,
+    blockWrite: 0,
+    pids: 0,
+    running: false,
+  };
+}
+
+export const ContainerStat: MessageFns<ContainerStat> = {
+  encode(message: ContainerStat, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.name !== "") {
+      writer.uint32(10).string(message.name);
+    }
+    if (message.cpuPct !== 0) {
+      writer.uint32(17).double(message.cpuPct);
+    }
+    if (message.memUsed !== 0) {
+      writer.uint32(24).int64(message.memUsed);
+    }
+    if (message.memLimit !== 0) {
+      writer.uint32(32).int64(message.memLimit);
+    }
+    if (message.memPct !== 0) {
+      writer.uint32(41).double(message.memPct);
+    }
+    if (message.netRx !== 0) {
+      writer.uint32(48).int64(message.netRx);
+    }
+    if (message.netTx !== 0) {
+      writer.uint32(56).int64(message.netTx);
+    }
+    if (message.blockRead !== 0) {
+      writer.uint32(64).int64(message.blockRead);
+    }
+    if (message.blockWrite !== 0) {
+      writer.uint32(72).int64(message.blockWrite);
+    }
+    if (message.pids !== 0) {
+      writer.uint32(80).int32(message.pids);
+    }
+    if (message.running !== false) {
+      writer.uint32(88).bool(message.running);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ContainerStat {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseContainerStat();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 17) {
+            break;
+          }
+
+          message.cpuPct = reader.double();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.memUsed = longToNumber(reader.int64());
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.memLimit = longToNumber(reader.int64());
+          continue;
+        }
+        case 5: {
+          if (tag !== 41) {
+            break;
+          }
+
+          message.memPct = reader.double();
+          continue;
+        }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.netRx = longToNumber(reader.int64());
+          continue;
+        }
+        case 7: {
+          if (tag !== 56) {
+            break;
+          }
+
+          message.netTx = longToNumber(reader.int64());
+          continue;
+        }
+        case 8: {
+          if (tag !== 64) {
+            break;
+          }
+
+          message.blockRead = longToNumber(reader.int64());
+          continue;
+        }
+        case 9: {
+          if (tag !== 72) {
+            break;
+          }
+
+          message.blockWrite = longToNumber(reader.int64());
+          continue;
+        }
+        case 10: {
+          if (tag !== 80) {
+            break;
+          }
+
+          message.pids = reader.int32();
+          continue;
+        }
+        case 11: {
+          if (tag !== 88) {
+            break;
+          }
+
+          message.running = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ContainerStat {
+    return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      cpuPct: isSet(object.cpuPct)
+        ? globalThis.Number(object.cpuPct)
+        : isSet(object.cpu_pct)
+        ? globalThis.Number(object.cpu_pct)
+        : 0,
+      memUsed: isSet(object.memUsed)
+        ? globalThis.Number(object.memUsed)
+        : isSet(object.mem_used)
+        ? globalThis.Number(object.mem_used)
+        : 0,
+      memLimit: isSet(object.memLimit)
+        ? globalThis.Number(object.memLimit)
+        : isSet(object.mem_limit)
+        ? globalThis.Number(object.mem_limit)
+        : 0,
+      memPct: isSet(object.memPct)
+        ? globalThis.Number(object.memPct)
+        : isSet(object.mem_pct)
+        ? globalThis.Number(object.mem_pct)
+        : 0,
+      netRx: isSet(object.netRx)
+        ? globalThis.Number(object.netRx)
+        : isSet(object.net_rx)
+        ? globalThis.Number(object.net_rx)
+        : 0,
+      netTx: isSet(object.netTx)
+        ? globalThis.Number(object.netTx)
+        : isSet(object.net_tx)
+        ? globalThis.Number(object.net_tx)
+        : 0,
+      blockRead: isSet(object.blockRead)
+        ? globalThis.Number(object.blockRead)
+        : isSet(object.block_read)
+        ? globalThis.Number(object.block_read)
+        : 0,
+      blockWrite: isSet(object.blockWrite)
+        ? globalThis.Number(object.blockWrite)
+        : isSet(object.block_write)
+        ? globalThis.Number(object.block_write)
+        : 0,
+      pids: isSet(object.pids) ? globalThis.Number(object.pids) : 0,
+      running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
+    };
+  },
+
+  toJSON(message: ContainerStat): unknown {
+    const obj: any = {};
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.cpuPct !== 0) {
+      obj.cpuPct = message.cpuPct;
+    }
+    if (message.memUsed !== 0) {
+      obj.memUsed = Math.round(message.memUsed);
+    }
+    if (message.memLimit !== 0) {
+      obj.memLimit = Math.round(message.memLimit);
+    }
+    if (message.memPct !== 0) {
+      obj.memPct = message.memPct;
+    }
+    if (message.netRx !== 0) {
+      obj.netRx = Math.round(message.netRx);
+    }
+    if (message.netTx !== 0) {
+      obj.netTx = Math.round(message.netTx);
+    }
+    if (message.blockRead !== 0) {
+      obj.blockRead = Math.round(message.blockRead);
+    }
+    if (message.blockWrite !== 0) {
+      obj.blockWrite = Math.round(message.blockWrite);
+    }
+    if (message.pids !== 0) {
+      obj.pids = Math.round(message.pids);
+    }
+    if (message.running !== false) {
+      obj.running = message.running;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ContainerStat>, I>>(base?: I): ContainerStat {
+    return ContainerStat.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ContainerStat>, I>>(object: I): ContainerStat {
+    const message = createBaseContainerStat();
+    message.name = object.name ?? "";
+    message.cpuPct = object.cpuPct ?? 0;
+    message.memUsed = object.memUsed ?? 0;
+    message.memLimit = object.memLimit ?? 0;
+    message.memPct = object.memPct ?? 0;
+    message.netRx = object.netRx ?? 0;
+    message.netTx = object.netTx ?? 0;
+    message.blockRead = object.blockRead ?? 0;
+    message.blockWrite = object.blockWrite ?? 0;
+    message.pids = object.pids ?? 0;
+    message.running = object.running ?? false;
+    return message;
+  },
+};
+
+function createBaseContainerStatsResponse(): ContainerStatsResponse {
+  return { stats: [] };
+}
+
+export const ContainerStatsResponse: MessageFns<ContainerStatsResponse> = {
+  encode(message: ContainerStatsResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.stats) {
+      ContainerStat.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ContainerStatsResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseContainerStatsResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.stats.push(ContainerStat.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ContainerStatsResponse {
+    return {
+      stats: globalThis.Array.isArray(object?.stats) ? object.stats.map((e: any) => ContainerStat.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: ContainerStatsResponse): unknown {
+    const obj: any = {};
+    if (message.stats?.length) {
+      obj.stats = message.stats.map((e) => ContainerStat.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ContainerStatsResponse>, I>>(base?: I): ContainerStatsResponse {
+    return ContainerStatsResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ContainerStatsResponse>, I>>(object: I): ContainerStatsResponse {
+    const message = createBaseContainerStatsResponse();
+    message.stats = object.stats?.map((e) => ContainerStat.fromPartial(e)) || [];
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -10659,6 +11116,25 @@ export const AgentService = {
     requestDeserialize: (value: Buffer): MetricsRequest => MetricsRequest.decode(value),
     responseSerialize: (value: HostMetrics): Buffer => Buffer.from(HostMetrics.encode(value).finish()),
     responseDeserialize: (value: Buffer): HostMetrics => HostMetrics.decode(value),
+  },
+  /**
+   * Per-CONTAINER live resource snapshot (`docker stats --no-stream`) for the
+   * named containers of ONE project — the data source for the per-app /
+   * per-database Monitoring tab, next to the host-level Metrics above. Scoped to
+   * a project by label (deplo.project=<project_id>) exactly like the Part C
+   * container RPCs, so a container name off the wire can never stat a sibling
+   * project's container. ADDITIVE: gated by the "container-stats" capability.
+   */
+  containerStats: {
+    path: "/deplo.agent.v1.Agent/ContainerStats" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ContainerStatsRequest): Buffer =>
+      Buffer.from(ContainerStatsRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ContainerStatsRequest => ContainerStatsRequest.decode(value),
+    responseSerialize: (value: ContainerStatsResponse): Buffer =>
+      Buffer.from(ContainerStatsResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ContainerStatsResponse => ContainerStatsResponse.decode(value),
   },
   /**
    * Deploy lifecycle. Server-streaming so build/run logs flow live, in one
@@ -11306,6 +11782,15 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   metrics: handleUnaryCall<MetricsRequest, HostMetrics>;
   /**
+   * Per-CONTAINER live resource snapshot (`docker stats --no-stream`) for the
+   * named containers of ONE project — the data source for the per-app /
+   * per-database Monitoring tab, next to the host-level Metrics above. Scoped to
+   * a project by label (deplo.project=<project_id>) exactly like the Part C
+   * container RPCs, so a container name off the wire can never stat a sibling
+   * project's container. ADDITIVE: gated by the "container-stats" capability.
+   */
+  containerStats: handleUnaryCall<ContainerStatsRequest, ContainerStatsResponse>;
+  /**
    * Deploy lifecycle. Server-streaming so build/run logs flow live, in one
    * connection, into the control plane's existing per-deployment log + status
    * writes (which republish over the GraphQL SSE subscriptions unchanged).
@@ -11637,6 +12122,29 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: HostMetrics) => void,
+  ): ClientUnaryCall;
+  /**
+   * Per-CONTAINER live resource snapshot (`docker stats --no-stream`) for the
+   * named containers of ONE project — the data source for the per-app /
+   * per-database Monitoring tab, next to the host-level Metrics above. Scoped to
+   * a project by label (deplo.project=<project_id>) exactly like the Part C
+   * container RPCs, so a container name off the wire can never stat a sibling
+   * project's container. ADDITIVE: gated by the "container-stats" capability.
+   */
+  containerStats(
+    request: ContainerStatsRequest,
+    callback: (error: ServiceError | null, response: ContainerStatsResponse) => void,
+  ): ClientUnaryCall;
+  containerStats(
+    request: ContainerStatsRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ContainerStatsResponse) => void,
+  ): ClientUnaryCall;
+  containerStats(
+    request: ContainerStatsRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ContainerStatsResponse) => void,
   ): ClientUnaryCall;
   /**
    * Deploy lifecycle. Server-streaming so build/run logs flow live, in one

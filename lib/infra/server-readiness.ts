@@ -344,6 +344,7 @@ export const BUILD_METHODS: readonly BuildMethodSpec[] = [
  */
 export const PLATFORM_FEATURES: readonly { capability: string; name: string }[] = [
   { capability: "metrics", name: "host metrics" },
+  { capability: "container-stats", name: "per-app monitoring" },
   { capability: "checkport", name: "host port checks" },
   { capability: "backup", name: "backups" },
   { capability: "dev", name: "dev containers" },

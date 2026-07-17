@@ -15,6 +15,7 @@ import {
   ContractVersion,
   type HelloResponse,
   type HostMetrics,
+  type ContainerStat,
   type DeployRequest,
   type DeployEvent,
   type ReattachRequest,
@@ -191,6 +192,19 @@ export interface AgentConnection {
    */
   hello(timeoutMs?: number): Promise<HelloResponse>;
   metrics(dataDir?: string): Promise<HostMetrics>;
+  /**
+   * Live per-container resource usage for one project's containers (the
+   * per-app / per-database Monitoring tab). `projectId` is the `deplo.project`
+   * label the agent re-validates; `containers` are the already-resolved names
+   * (empty => every container in the project). Gated by the `container-stats`
+   * Hello capability: an agent too old to serve it rejects with gRPC
+   * UNIMPLEMENTED, which the data layer maps via {@link mapContainerStatsUnsupported}
+   * to the tab's "update the agent" state (no per-poll Hello preflight).
+   */
+  containerStats(
+    projectId: string,
+    containers: string[],
+  ): Promise<ContainerStat[]>;
   /** Stream a deploy; yields DeployEvents until the terminal result. */
   deploy(req: DeployRequest): AsyncGenerator<DeployEvent, void, unknown>;
   /** Reconnect to an in-flight deploy and replay missed events (D5, Part B). */
@@ -451,6 +465,18 @@ export class AgentUpdateUnsupportedError extends Error {}
  * or emitting a confusing UNIMPLEMENTED. Mirrors {@link AgentUpdateUnsupportedError}.
  */
 export class AgentBackupUnsupportedError extends Error {}
+
+/**
+ * The reachable agent does not (yet) implement the {@link AgentConnection.containerStats}
+ * RPC — it predates the `"container-stats"` capability, so it answers with gRPC
+ * UNIMPLEMENTED. The per-app / per-database Monitoring tab needs the agent to
+ * report a container's live CPU/mem/net/block usage; until a server runs a new
+ * enough agent, the data layer surfaces THIS (distinct from
+ * {@link AgentUnreachableError} — the agent IS up, it just can't stat containers
+ * yet) so the tab shows an "update the agent on this server" state rather than a
+ * confusing error. Mirrors {@link AgentBackupUnsupportedError}.
+ */
+export class AgentContainerStatsUnsupportedError extends Error {}
 
 /**
  * The reachable agent does not (yet) implement the {@link AgentConnection.checkPort}
@@ -957,6 +983,19 @@ function dial(target: DialTarget): AgentConnection {
         // be classified unreachable) rather than hang the poll + leak the client.
         client.metrics({ dataDir }, new Metadata(), consoleDeadline(), (err, resp) =>
           err ? reject(toAgentError(err)) : resolve(resp),
+        );
+      });
+    },
+    containerStats(projectId: string, containers: string[]) {
+      return new Promise<ContainerStat[]>((resolve, reject) => {
+        // Same reasoning as metrics(): the Monitoring tab polls ~1s, so an agent
+        // that accepts the dial but never answers must time out, not hang.
+        client.containerStats(
+          { projectId, containers },
+          new Metadata(),
+          consoleDeadline(),
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve(resp.stats),
         );
       });
     },
@@ -1496,6 +1535,31 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
 /** The capability an agent advertises in Hello once it can dump/restore to S3
  *  (mirrors the "backup" entry in the agent's server.Capabilities). */
 const BACKUP_CAPABILITY = "backup";
+
+/** The capability an agent advertises once it can serve per-container
+ *  `docker stats` (ContainerStats) — the per-app/per-database Monitoring tab.
+ *  Mirrors BACKUP_CAPABILITY; the primary gate is the RPC's UNIMPLEMENTED, so
+ *  there is no dedicated connect* preflight (metrics are polled, not one-shot). */
+export const CONTAINER_STATS_CAPABILITY = "container-stats";
+
+/**
+ * Map a {@link AgentConnection.containerStats} error to
+ * {@link AgentContainerStatsUnsupportedError} when it is a gRPC UNIMPLEMENTED (an
+ * agent too old to serve the RPC), passing every other error through unchanged.
+ * The data layer wraps its `conn.containerStats(...)` call with this so the
+ * Monitoring tab can show "update the agent" instead of an opaque failure.
+ * Idempotent on an already-mapped error. Mirrors {@link mapBackupUnsupported}.
+ */
+export function mapContainerStatsUnsupported(e: unknown): Error {
+  if (e instanceof AgentContainerStatsUnsupportedError) return e;
+  if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
+    return new AgentContainerStatsUnsupportedError(
+      `The agent on this server is too old to report per-container metrics. ` +
+        `Update the agent on this server, then try again.`,
+    );
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
 
 /**
  * Open a connection to the agent owning `serverId` AND preflight that it can do

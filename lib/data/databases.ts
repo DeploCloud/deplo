@@ -473,6 +473,7 @@ export async function createDatabase(input: {
     customImage: null,
     customCommand: null,
     sizeMb: 0,
+    saveMetrics: false,
     createdAt: nowIso(),
   };
   // Re-assert server access inside a tx (SHARE-locks the server row) so a

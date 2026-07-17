@@ -455,6 +455,9 @@ export async function createApp(
     productionUrl: null,
     status: isUpload ? "idle" : "queued",
     autoDeploy: input.autoDeploy ?? true,
+    // New apps don't keep metrics history; it's opted in per app from the
+    // Monitoring tab when debugging.
+    saveMetrics: false,
     // New apps start uncapped; limits are set later from Settings → Resources.
     resources: null,
     latestDeploymentId: null,

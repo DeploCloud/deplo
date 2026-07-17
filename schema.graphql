@@ -319,6 +319,67 @@ type ConsoleInstance {
   workdir: String
 }
 
+"""
+Live resource usage for ONE container of an app/database stack — the Monitoring tab's per-container breakdown. net_* / block_* are cumulative byte counters since the container started.
+"""
+type ContainerInstanceMetrics {
+  blockRead: Float
+  blockWrite: Float
+  cpu: Float
+  memLimit: Float
+  memPct: Float
+  memUsed: Float
+  name: String
+  netRx: Float
+  netTx: Float
+  pids: Int
+  running: Boolean
+}
+
+"""
+A fresh live metrics snapshot for one app/database stack: the aggregate across its containers, plus the per-container breakdown and an `unsupported` flag (the owning server's agent is too old for per-container metrics — the tab shows 'update the agent').
+"""
+type ContainerMetrics {
+  blockRead: Float
+  blockWrite: Float
+  containers: Int
+  cpu: Float
+  id: ID
+
+  """Per-container usage (multi-container stacks). Live only."""
+  instances: [ContainerInstanceMetrics!]
+  memLimit: Float
+  memPct: Float
+  memUsed: Float
+  netRx: Float
+  netTx: Float
+  online: Boolean
+  pids: Int
+  running: Int
+  ts: Float
+  unsupported: Boolean
+}
+
+"""
+One buffered aggregate metrics sample for an app/database stack (the sum across its running containers) — what the Monitoring tab's charts seed from. net_* / block_* are cumulative bytes; the client derives bytes/sec from the delta between consecutive samples.
+"""
+type ContainerMetricsSample {
+  blockRead: Float
+  blockWrite: Float
+  containers: Int
+  cpu: Float
+  id: ID
+  memLimit: Float
+  memPct: Float
+  memUsed: Float
+  netRx: Float
+  netTx: Float
+  online: Boolean
+  pids: Int
+  running: Int
+  ts: Float
+}
+
 input CreateAppInput {
   autoDeploy: Boolean
   autoDomain: String
@@ -1377,10 +1438,20 @@ type Mutation {
   setAppEnv(appId: String!, defaultTargets: [EnvTarget!], entries: [EnvEntryInput!]!): Int
 
   """
+  Turn saving THIS app's metrics history on or off. Off also drops its buffered history.
+  """
+  setAppSaveMetrics(appId: String!, enabled: Boolean!): Boolean
+
+  """
   Replace a single-container app's volumes (named, app-files, and host bind mounts).
   """
   setAppVolumes(id: String!, volumes: [VolumeInput!]!): App
   setDatabaseRunning(id: String!, running: Boolean!): Database
+
+  """
+  Turn saving THIS database's metrics history on or off. Off also drops its buffered history.
+  """
+  setDatabaseSaveMetrics(databaseId: String!, enabled: Boolean!): Boolean
 
   """Make an environment the project's default (unsets the previous one)."""
   setDefaultEnvironment(id: ID!): Boolean
@@ -1625,6 +1696,14 @@ type Query {
   """Whether the app has an on-disk files directory (drives the Files tab)."""
   appFilesExist(appId: String!): Boolean
 
+  """A fresh live per-container metrics snapshot for one app."""
+  appMetrics(appId: String!): ContainerMetrics
+
+  """
+  The metrics history buffered for one app (oldest first) — what the app's Monitoring charts seed from. Empty unless the app's Save-metrics switch is on.
+  """
+  appMetricsHistory(appId: String!): [ContainerMetricsSample!]
+
   """
   Live container state for an app, straight from the owning agent — the truth behind the stored status. Polled by the app's status badge.
   """
@@ -1660,6 +1739,14 @@ type Query {
 
   """Container list for a database's logs viewer."""
   databaseLogsInfo(databaseId: String!): LogsInfo
+
+  """A fresh live per-container metrics snapshot for one database."""
+  databaseMetrics(databaseId: String!): ContainerMetrics
+
+  """
+  The metrics history buffered for one database (oldest first). Empty unless the database's Save-metrics switch is on.
+  """
+  databaseMetricsHistory(databaseId: String!): [ContainerMetricsSample!]
 
   """
   Live container state for a database, straight from the owning agent. Polled by the database's status badge (same shape as appRuntime).

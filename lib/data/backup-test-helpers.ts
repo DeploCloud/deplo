@@ -51,6 +51,7 @@ export interface SeedDatabaseOpts {
   username?: string;
   dbName?: string;
   status?: Database["status"];
+  saveMetrics?: boolean;
 }
 
 /** Seed one database row (its `connection_string_enc` is a real encrypted value). */
@@ -83,6 +84,7 @@ export async function seedDatabase(
     customImage: null,
     customCommand: null,
     sizeMb: 0,
+    saveMetrics: opts.saveMetrics ?? false,
     createdAt: T0,
   };
   await db.insert(databasesTable).values(databaseToRow(row));

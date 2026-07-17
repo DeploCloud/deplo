@@ -901,6 +901,13 @@ export interface App {
   status: AppStatus;
   autoDeploy: boolean;
   /**
+   * Whether the control plane keeps a rolling in-RAM metrics history for this
+   * app (the "Save metrics" switch on the app's Monitoring tab). Default false —
+   * a per-app debugging opt-in, unlike the fleet-wide monitoring_settings
+   * singleton which defaults on. See lib/data/container-metrics.ts.
+   */
+  saveMetrics: boolean;
+  /**
    * Per-app resource caps applied at deploy time, or `null` when the app has no
    * limits set (the default). See {@link ResourceLimits}.
    */
@@ -1268,6 +1275,12 @@ export interface Database {
    */
   customCommand: string | null;
   sizeMb: number;
+  /**
+   * Whether the control plane keeps a rolling in-RAM metrics history for this
+   * database (the "Save metrics" switch on its Monitoring tab). Default false —
+   * a per-database debugging opt-in. See lib/data/container-metrics.ts.
+   */
+  saveMetrics: boolean;
   createdAt: string;
 }
 

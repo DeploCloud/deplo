@@ -253,6 +253,13 @@
       "when": 1784324700000,
       "tag": "0035_add_monitoring_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784411100000,
+      "tag": "0036_add_save_metrics",
+      "breakpoints": true
     }
   ]
 }

@@ -76,6 +76,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
     customImage: d.customImage,
     customCommand: d.customCommand,
     sizeMb: d.sizeMb,
+    saveMetrics: d.saveMetrics,
     createdAt: d.createdAt,
   } satisfies Record<
     Exclude<keyof Database, "resources">,
@@ -105,6 +106,8 @@ export function assembleDatabase(row: DatabaseRow): Database {
     customImage: row.customImage,
     customCommand: row.customCommand,
     sizeMb: row.sizeMb,
+    // Opt-in metrics-history switch for the database's Monitoring tab (default false).
+    saveMetrics: row.saveMetrics,
     createdAt: row.createdAt,
   };
 }
