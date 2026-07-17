@@ -574,7 +574,7 @@ export function TimeSeriesChart({
           </p>
           <p className="font-medium text-popover-foreground">No data</p>
           <p className="whitespace-nowrap text-muted-foreground">
-            the agent reported no metrics
+            no sample recorded here
           </p>
         </div>
       )}
