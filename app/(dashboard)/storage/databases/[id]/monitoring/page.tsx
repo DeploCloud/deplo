@@ -31,6 +31,7 @@ export default async function DatabaseMonitoringPage(
         initialSaveMetrics={db.saveMetrics}
         initialHistory={initialHistory}
         canManageInfra={canManageInfra}
+        resources={db.resources}
       />
     </div>
   );

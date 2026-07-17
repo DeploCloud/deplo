@@ -34,6 +34,7 @@ export default async function AppMonitoringPage(
         initialSaveMetrics={project.saveMetrics}
         initialHistory={initialHistory}
         canManageInfra={canManageInfra}
+        resources={project.resources}
       />
     </div>
   );
