@@ -64,14 +64,18 @@ minting registration links, the per-user admin editor.
   (the containers), `environments(projectId)`, `sharedVars`, `sharedVarsForApp(appId)`,
   `deployments`, `databases`, `database(id)`, `databaseRuntime(databaseId)`,
   `databaseConsoleInfo`/`databaseLogsInfo`/`databaseShellLabel`, `domains`, `servers`,
-  `serverMetrics`, `members`, `apiTokens`, `activity`, `me`, `viewerTeam`, …. Object
+  `serverMetrics`, `appMetrics(appId)`/`databaseMetrics(databaseId)` (live per-container
+  resource usage for the Monitoring tab) and their `*MetricsHistory` seeds,
+  `members`, `apiTokens`, `activity`, `me`, `viewerTeam`, …. Object
   types are navigable — e.g. `App.deployments`, `App.latestDeployment`.
 - **Mutations** mirror every former server action: `createApp`, `redeploy`,
   `stopApp`, `createProject`, `createEnvironment`, `upsertEnvironmentEnv`,
   `addDomain`, `createDatabase`, `updateDatabase`, `restartDatabase`,
   `redeployDatabase`, `rebuildDatabase`, `updateDatabaseResources`, `updateDatabaseImage`,
-  `rotateDatabasePassword`, `execDatabaseConsole`, `createToken`, `updateTeam`,
-  `login`, `logout`, ….
+  `rotateDatabasePassword`, `execDatabaseConsole`, `setSaveMetrics`,
+  `setAppSaveMetrics(appId, enabled)`/`setDatabaseSaveMetrics(databaseId, enabled)`
+  (the per-resource "Save metrics" switch, `manage_infra`, default off),
+  `createToken`, `updateTeam`, `login`, `logout`, ….
 - **Subscriptions** (SSE via graphql-yoga): `appStatus(slug)` and
   `databaseStatus(id)` — each emits the entity on every state change (initial
   snapshot, then live), so a client tracks provisioning/start/stop/deploy with

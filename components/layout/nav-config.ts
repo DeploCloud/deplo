@@ -341,6 +341,14 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       icon: ScrollText,
       tooltip: "Runtime & build logs",
     },
+    // Monitoring is always visible (like Logs): live per-container resource
+    // usage while running, an "update the agent" / "not running" state otherwise.
+    {
+      label: "Monitoring",
+      href: `${base}/monitoring`,
+      icon: LineChart,
+      tooltip: "Live resource usage",
+    },
     // Dev Mode — source-bearing apps only.
     ...(f.devEligible || on("/dev")
       ? [
@@ -510,6 +518,12 @@ export function databaseNav(id: string): NavSection[] {
           href: `${base}/logs`,
           icon: ScrollText,
           tooltip: "Runtime logs",
+        },
+        {
+          label: "Monitoring",
+          href: `${base}/monitoring`,
+          icon: LineChart,
+          tooltip: "Live resource usage",
         },
         {
           label: "Console",

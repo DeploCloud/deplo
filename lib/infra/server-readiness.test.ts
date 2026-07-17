@@ -37,6 +37,7 @@ const ALL_CAPS = [
   "deploy.buildpacks",
   "deploy.railpack",
   "metrics",
+  "container-stats",
   "dev",
   "ssh-gateway",
   "tunnel",
