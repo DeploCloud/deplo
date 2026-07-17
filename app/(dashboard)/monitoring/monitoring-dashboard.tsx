@@ -12,7 +12,6 @@ import {
   ServerOff,
   ArrowDown,
   ArrowUp,
-  RadioTower,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
@@ -52,25 +51,6 @@ const WINDOWS = [
   { label: "15m", ms: 900_000 },
 ] as const;
 
-/**
- * The charts' shared x-axis view. `live` follows the newest sample (the window
- * slides); scrolling to zoom on any chart FREEZES it to an absolute `end` so the
- * inspected span stops sliding away as fresh samples stream in. One view drives
- * every panel, so they stay aligned — zoom one, zoom all.
- */
-type TimeView =
-  | { mode: "live"; windowMs: number }
-  | { mode: "fixed"; windowMs: number; end: number };
-
-/** Human span for the frozen-view label, e.g. 90_000 → "1m 30s". */
-function fmtSpan(ms: number): string {
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  return rem ? `${m}m ${rem}s` : `${m}m`;
-}
-
 export function MonitoringDashboard({
   servers,
   initialMetrics,
@@ -85,10 +65,7 @@ export function MonitoringDashboard({
   canManageInfra: boolean;
 }) {
   const [selectedId, setSelectedId] = React.useState(servers[0]?.id ?? "");
-  const [view, setView] = React.useState<TimeView>({
-    mode: "live",
-    windowMs: WINDOWS[0].ms,
-  });
+  const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
   const [saveMetrics, setSaveMetrics] = React.useState(initialSaveMetrics);
   const [savingToggle, setSavingToggle] = React.useState(false);
   // Chart history holds live MEASUREMENTS only. The SSR hint (stored status,
@@ -248,20 +225,6 @@ export function MonitoringDashboard({
     }
   }
 
-  // Scroll/keyboard zoom on any chart freezes the shared window to an absolute
-  // range; presets, double-click and `0` return to live. useCallback so the
-  // handler identity is stable across the 1s poll re-renders.
-  const onZoomChange = React.useCallback(
-    (next: { windowMs: number; domainEnd: number }) =>
-      setView({ mode: "fixed", windowMs: next.windowMs, end: next.domainEnd }),
-    [],
-  );
-  const onResetLive = React.useCallback(
-    () => setView((v) => ({ mode: "live", windowMs: v.windowMs })),
-    [],
-  );
-  const domainEnd = view.mode === "fixed" ? view.end : null;
-
   const samples = history[selectedId] ?? [];
   const lastPoll = live[selectedId];
   // Latest measurement for the tiles — while the agent is unreachable they
@@ -402,55 +365,27 @@ export function MonitoringDashboard({
                 Live · sampling every {POLL_MS / 1000}s
               </div>
             )}
-            <div className="flex items-center gap-2">
-              {/* Frozen by a zoom: show the span and a one-click way back to live. */}
-              {view.mode === "fixed" && (
+            <div
+              className="flex items-center gap-0.5 rounded-lg border p-0.5"
+              role="group"
+              aria-label="Chart time window"
+            >
+              {WINDOWS.map((w) => (
                 <button
+                  key={w.label}
                   type="button"
-                  onClick={onResetLive}
-                  title="Resume live (or double-click a chart)"
-                  className="flex items-center gap-1.5 rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 px-2.5 py-1 text-xs text-[var(--warning)] transition-colors hover:bg-[var(--warning)]/20"
+                  onClick={() => setWindowMs(w.ms)}
+                  aria-pressed={windowMs === w.ms}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs transition-colors",
+                    windowMs === w.ms
+                      ? "bg-secondary font-medium"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
                 >
-                  <RadioTower className="size-3.5" />
-                  Zoomed · {fmtSpan(view.windowMs)} — resume live
+                  Last {w.label}
                 </button>
-              )}
-              <div
-                className="flex items-center gap-0.5 rounded-lg border p-0.5"
-                role="group"
-                aria-label="Chart time window"
-              >
-                {WINDOWS.map((w) => {
-                  const active = view.mode === "live" && view.windowMs === w.ms;
-                  return (
-                    <button
-                      key={w.label}
-                      type="button"
-                      onClick={() => setView({ mode: "live", windowMs: w.ms })}
-                      aria-pressed={active}
-                      className={cn(
-                        "rounded-md px-2.5 py-1 text-xs transition-colors",
-                        active
-                          ? "bg-secondary font-medium"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      Last {w.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <InfoTip
-                label="Chart zoom help"
-                content={
-                  <>
-                    Scroll on any chart to zoom the time axis around the cursor;
-                    <kbd>+</kbd>/<kbd>−</kbd> zoom from the centre. Zooming freezes
-                    the range on every chart — double-click a chart, press{" "}
-                    <kbd>0</kbd>, or pick a preset to resume live.
-                  </>
-                }
-              />
+              ))}
             </div>
           </div>
 
@@ -503,10 +438,7 @@ export function MonitoringDashboard({
             >
               <TimeSeriesChart
                 unit="percent"
-                windowMs={view.windowMs}
-                domainEnd={domainEnd}
-                onZoomChange={onZoomChange}
-                onResetLive={onResetLive}
+                windowMs={windowMs}
                 points={points}
                 series={[
                   { key: "cpu", label: "CPU", color: "var(--chart-1)", fill: true },
@@ -521,10 +453,7 @@ export function MonitoringDashboard({
             >
               <TimeSeriesChart
                 unit="percent"
-                windowMs={view.windowMs}
-                domainEnd={domainEnd}
-                onZoomChange={onZoomChange}
-                onResetLive={onResetLive}
+                windowMs={windowMs}
                 points={points}
                 series={[
                   { key: "mem", label: "Memory", color: "var(--chart-1)", fill: true },
@@ -536,10 +465,7 @@ export function MonitoringDashboard({
             <ChartCard title="Network I/O">
               <TimeSeriesChart
                 unit="bytesPerSec"
-                windowMs={view.windowMs}
-                domainEnd={domainEnd}
-                onZoomChange={onZoomChange}
-                onResetLive={onResetLive}
+                windowMs={windowMs}
                 points={points}
                 series={[
                   { key: "rx", label: "↓ Received", color: "var(--chart-1)" },
@@ -552,10 +478,7 @@ export function MonitoringDashboard({
             <ChartCard title="Load average">
               <TimeSeriesChart
                 unit="count"
-                windowMs={view.windowMs}
-                domainEnd={domainEnd}
-                onZoomChange={onZoomChange}
-                onResetLive={onResetLive}
+                windowMs={windowMs}
                 points={points}
                 series={[
                   { key: "load1", label: "1m", color: "var(--chart-1)" },
