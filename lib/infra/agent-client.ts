@@ -68,6 +68,19 @@ const HELLO_TIMEOUT_MS = 8_000;
 export const HEALTH_HELLO_TIMEOUT_MS = 3_000;
 const DEPLOY_DEADLINE_MS = 30 * 60_000; // a build can be long
 const CONSOLE_TIMEOUT_MS = 30_000; // exec runs in-container; match docker.ts exec
+// The Metrics / ContainerStats POLL deadline — deliberately a fraction of the
+// console class. A normal measurement is ~1.2s (a 1s net-delta window + a 200ms
+// CPU sample + a docker list + statfs), so anything past ~8s means the host is
+// momentarily UNMEASURABLE: its Docker/disk pinned by its own deploy (a buildkit
+// export + container recreate) or otherwise saturated. The dashboards poll on a
+// busy-guard — one in-flight call blocks the next tick — so a LONG deadline here
+// is the amplifier that turns a ~15s host pin into a 30-60s chart hole: the poll
+// hangs the full deadline before it can retry and catch the moment the host frees
+// up. Fail fast instead and let the next 1s tick (or the 5s background collector)
+// recover; a genuinely missed window renders as a small, honest "No data" band,
+// not a minute-long void. Still ~6x the ~1.2s baseline, so a merely slow-but-
+// healthy host is not falsely marked unreachable.
+const METRICS_TIMEOUT_MS = 8_000;
 const FILES_TIMEOUT_MS = 15_000;
 const STREAM_DEADLINE_MS = 30 * 60_000; // logs/attach are long-lived
 // A dump+upload (or download+restore) of a large DB or volume-heavy project can
@@ -898,6 +911,7 @@ function dial(target: DialTarget): AgentConnection {
 
   const filesDeadline = () => ({ deadline: new Date(Date.now() + FILES_TIMEOUT_MS) });
   const consoleDeadline = () => ({ deadline: new Date(Date.now() + CONSOLE_TIMEOUT_MS) });
+  const metricsDeadline = () => ({ deadline: new Date(Date.now() + METRICS_TIMEOUT_MS) });
   const gatewayDeadline = () => ({ deadline: new Date(Date.now() + GATEWAY_TIMEOUT_MS) });
   const toStartDevPb = (r: AgentStartDev): StartDevRequest => ({
     slug: r.slug,
@@ -978,22 +992,26 @@ function dial(target: DialTarget): AgentConnection {
     },
     metrics(dataDir = "") {
       return new Promise<HostMetrics>((resolve, reject) => {
-        // A deadline is mandatory: the dashboard polls metrics ~1s, so a remote
-        // agent that accepts the connection but never replies must time out (and
-        // be classified unreachable) rather than hang the poll + leak the client.
-        client.metrics({ dataDir }, new Metadata(), consoleDeadline(), (err, resp) =>
+        // A SHORT deadline is mandatory (METRICS_TIMEOUT_MS): the dashboard polls
+        // ~1s on a busy-guard, so a remote agent that accepts the connection but
+        // can't finish measuring (host pinned by its own deploy/load) must fail
+        // fast so the next tick can retry — not hang the poll for the full console
+        // deadline and amplify a brief pin into a minute-long chart gap.
+        client.metrics({ dataDir }, new Metadata(), metricsDeadline(), (err, resp) =>
           err ? reject(toAgentError(err)) : resolve(resp),
         );
       });
     },
     containerStats(projectId: string, containers: string[]) {
       return new Promise<ContainerStat[]>((resolve, reject) => {
-        // Same reasoning as metrics(): the Monitoring tab polls ~1s, so an agent
-        // that accepts the dial but never answers must time out, not hang.
+        // Same reasoning as metrics(): the Monitoring tab polls ~1s on a busy-
+        // guard, so an agent that accepts the dial but can't finish stat-ing the
+        // stack (e.g. its containers are mid-recreate during a deploy) must fail
+        // fast and let the next tick recover, not hang the full console deadline.
         client.containerStats(
           { projectId, containers },
           new Metadata(),
-          consoleDeadline(),
+          metricsDeadline(),
           (err, resp) =>
             err ? reject(toAgentError(err)) : resolve(resp.stats),
         );
