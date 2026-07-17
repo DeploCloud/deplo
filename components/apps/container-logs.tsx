@@ -430,6 +430,18 @@ export function ContainerLogs({
             filename={`${active.name}.log`}
             className="size-7"
           />
+          {status === "ended" || status === "error" ? (
+            <SimpleTooltip content="Reconnect">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={reconnect}
+                className="h-7 gap-1.5 px-2 text-xs"
+              >
+                <RotateCcw className="size-3.5" />
+              </Button>
+            </SimpleTooltip>
+          ) : null}
         </div>
       </div>
 
@@ -460,18 +472,6 @@ export function ContainerLogs({
 
         {failure ? (
           <p className="mt-1 text-[11px] text-destructive">{failure}</p>
-        ) : null}
-
-        {status === "ended" || status === "error" ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={reconnect}
-            className="mt-3"
-          >
-            <RotateCcw className="size-4" />
-            Reconnect
-          </Button>
         ) : null}
       </LogLines>
     </div>
