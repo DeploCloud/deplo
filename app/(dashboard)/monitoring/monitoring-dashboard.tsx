@@ -152,7 +152,7 @@ export function MonitoringDashboard({
   React.useEffect(() => {
     if (!selectedId || !online || !saveMetrics) return;
     let active = true;
-    (async () => {
+    const seed = async () => {
       const res = await gqlAction<
         { serverMetricsHistory: ServerMetrics[] },
         ServerMetrics[]
@@ -192,9 +192,24 @@ export function MonitoringDashboard({
           .slice(-MAX_POINTS);
         return { ...h, [selectedId]: merged };
       });
-    })();
+    };
+    void seed();
+    // Re-pull the saved window when the tab returns to the foreground, so coming
+    // back to the page shows the full server-side history immediately instead of
+    // rebuilding it one live poll at a time — a soft-nav back or a bfcache/
+    // Router-Cache restore may not remount this component, so a mount-only seed
+    // would never re-run. `pageshow` covers the bfcache restore.
+    const onWake = () => {
+      if (document.visibilityState !== "hidden") void seed();
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    window.addEventListener("pageshow", onWake);
     return () => {
       active = false;
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("pageshow", onWake);
     };
   }, [selectedId, online, saveMetrics]);
 

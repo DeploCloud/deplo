@@ -197,12 +197,19 @@ export function ContainerMonitoringDashboard({
     };
   }, [id, metricsField, idArg]);
 
-  // Seed the charts from buffered history (when saving is on): a reload starts
-  // from the saved window instead of empty. Merge by ts; live samples win.
+  // Seed the charts from the control plane's buffered history (when saving is
+  // on): a reload — OR returning to the page after navigating away or
+  // backgrounding the tab — starts from the saved server-side window instead of
+  // an empty chart. The seed re-runs whenever the page regains visibility/focus
+  // (and on bfcache restore via `pageshow`): a soft navigation back or a restored
+  // tab may NOT remount this component, so a mount-only seed would leave the
+  // chart to rebuild one live poll at a time — the exact "empty until I look at
+  // it, then it slowly fills" that saving history is meant to prevent. Merge by
+  // ts; live samples win.
   React.useEffect(() => {
     if (!saveMetrics) return;
     let active = true;
-    (async () => {
+    const seed = async () => {
       const res = await gqlAction<Record<string, ContainerSample[]>, ContainerSample[]>(
         `query History($id: String!) {
           ${historyField}(${idArg}: $id) { ${SAMPLE_FIELDS} }
@@ -217,9 +224,20 @@ export function ContainerMonitoringDashboard({
         for (const s of [...seeded, ...prev]) byTs.set(s.ts, s);
         return [...byTs.values()].sort((a, b) => a.ts - b.ts).slice(-MAX_POINTS);
       });
-    })();
+    };
+    void seed();
+    // Re-pull the saved window when the tab comes back to the foreground.
+    const onWake = () => {
+      if (document.visibilityState !== "hidden") void seed();
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    window.addEventListener("pageshow", onWake);
     return () => {
       active = false;
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("pageshow", onWake);
     };
   }, [id, historyField, idArg, saveMetrics]);
 
