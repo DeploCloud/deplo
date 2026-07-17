@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn, formatBytes } from "@/lib/utils";
+import { gapSpans, isInGap } from "@/lib/monitoring/chart-gaps";
 
 /* ------------------------------------------------------------------ */
 /* Public contract                                                     */
@@ -198,7 +199,11 @@ export function TimeSeriesChart({
   const [width, setWidth] = React.useState(0);
   const [hoverTs, setHoverTs] = React.useState<number | null>(null);
   const [hidden, setHidden] = React.useState<Set<string>>(() => new Set());
-  const clipId = `tschart-clip-${React.useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  // One id per instance for both the plot clip and the "No data" hatch, so two
+  // charts on the same page never collide on a shared def id.
+  const uid = React.useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const clipId = `tschart-clip-${uid}`;
+  const hatchId = `tschart-gap-${uid}`;
 
   React.useEffect(() => {
     const el = wrapRef.current;
@@ -223,6 +228,16 @@ export function TimeSeriesChart({
   const firstIdx = points.findIndex((p) => p.ts >= t0);
   const drawPoints = firstIdx >= 0 ? points.slice(Math.max(0, firstIdx - 1)) : [];
   const hoverPoints = firstIdx >= 0 ? points.slice(firstIdx) : [];
+
+  // Stretches with no measurements (the poll skipped: agent busy deploying,
+  // offline, or the tab was throttled). Rendered as an explicit "No data" band,
+  // and answered on hover with "No data" instead of the nearest real sample —
+  // so a genuine hole never reads as a glitch or a dip to zero.
+  const gaps = gapSpans(
+    drawPoints.map((p) => p.ts),
+    GAP_MS,
+  );
+  const hoverInGap = hoverTs != null && isInGap(hoverTs, gaps);
 
   let dataMax = 0;
   for (const p of drawPoints) {
@@ -316,6 +331,30 @@ export function TimeSeriesChart({
           onPointerMove={onPointerMove}
           onPointerLeave={() => setHoverTs(null)}
         >
+          <defs>
+            <clipPath id={clipId}>
+              <rect x={mLeft} y={M_TOP} width={plotW} height={plotH} />
+            </clipPath>
+            {/* Diagonal hatch for "No data" spans — recessive in both themes. */}
+            <pattern
+              id={hatchId}
+              patternUnits="userSpaceOnUse"
+              width={7}
+              height={7}
+              patternTransform="rotate(45)"
+            >
+              <rect width={7} height={7} className="fill-muted-foreground/[0.06]" />
+              <line
+                x1={0}
+                y1={0}
+                x2={0}
+                y2={7}
+                className="stroke-muted-foreground/30"
+                strokeWidth={1}
+              />
+            </pattern>
+          </defs>
+
           {/* Horizontal grid + unit-formatted y ticks */}
           {yTicks.map((t, i) => {
             const y = yOf(t);
@@ -369,9 +408,39 @@ export function TimeSeriesChart({
             );
           })}
 
-          <clipPath id={clipId}>
-            <rect x={mLeft} y={M_TOP} width={plotW} height={plotH} />
-          </clipPath>
+          {/* No-data spans: the sampling cadence broke here. An explicit hatched
+              band (with a label when it's wide enough) makes the break legible,
+              rather than an invisible hole that reads as a glitch. */}
+          {gaps.length > 0 && (
+            <g clipPath={`url(#${clipId})`}>
+              {gaps.map(([a, b], i) => {
+                const gx = xOf(a);
+                const gw = Math.max(0, xOf(b) - gx);
+                return (
+                  <g key={`gap-${i}`}>
+                    <rect
+                      x={gx}
+                      y={M_TOP}
+                      width={gw}
+                      height={plotH}
+                      fill={`url(#${hatchId})`}
+                    />
+                    {gw > 44 && (
+                      <text
+                        x={gx + gw / 2}
+                        y={M_TOP + plotH / 2}
+                        dy="0.32em"
+                        textAnchor="middle"
+                        className="fill-muted-foreground text-[10px]"
+                      >
+                        No data
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          )}
 
           {/* Series marks: ~10% area wash, 2px gap-aware lines, isolated dots */}
           <g clipPath={`url(#${clipId})`}>
@@ -435,8 +504,22 @@ export function TimeSeriesChart({
               );
             })}
 
+          {/* Hovering inside a no-data span: a dashed crosshair at the real
+              pointer time, no snapping and no dots — there is nothing to read. */}
+          {hoverInGap && hoverTs != null && (
+            <line
+              x1={xOf(hoverTs)}
+              x2={xOf(hoverTs)}
+              y1={M_TOP}
+              y2={M_TOP + plotH}
+              className="stroke-foreground/30"
+              strokeWidth={1}
+              strokeDasharray="3 3"
+            />
+          )}
+
           {/* Crosshair snapped to the hovered sample, with per-series dots */}
-          {hoverPoint && (
+          {hoverPoint && !hoverInGap && (
             <g>
               <line
                 x1={xOf(hoverPoint.ts)}
@@ -473,8 +556,31 @@ export function TimeSeriesChart({
         </div>
       )}
 
+      {/* No-data tooltip: the pointer is over a span with no measurements. */}
+      {hoverInGap && hoverTs != null && width > 0 && (
+        <div
+          className="pointer-events-none absolute z-10 rounded-md border bg-popover px-2.5 py-2 text-xs shadow-md"
+          style={{
+            left: xOf(hoverTs),
+            top: M_TOP,
+            transform:
+              xOf(hoverTs) > mLeft + plotW * 0.55
+                ? "translateX(calc(-100% - 10px))"
+                : "translateX(10px)",
+          }}
+        >
+          <p className="mb-0.5 text-muted-foreground tabular-nums">
+            {fmtTime(hoverTs, true)}
+          </p>
+          <p className="font-medium text-popover-foreground">No data</p>
+          <p className="whitespace-nowrap text-muted-foreground">
+            the agent reported no metrics
+          </p>
+        </div>
+      )}
+
       {/* Tooltip: timestamp header, then every visible series at that X */}
-      {hoverPoint && width > 0 && (
+      {hoverPoint && !hoverInGap && width > 0 && (
         <div
           className="pointer-events-none absolute z-10 min-w-36 rounded-md border bg-popover px-2.5 py-2 text-xs shadow-md"
           style={{
