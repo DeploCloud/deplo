@@ -15,8 +15,9 @@ import {
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import {
   StatTile,
@@ -105,6 +106,9 @@ export function ContainerMonitoringDashboard({
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
   const [saveMetrics, setSaveMetrics] = React.useState(initialSaveMetrics);
   const [savingToggle, setSavingToggle] = React.useState(false);
+  // Enabling opens a confirm modal (the switch flips only on confirm); disabling
+  // is safe and immediate.
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
   // Chart history holds live MEASUREMENTS with a running container only (real
   // usage). `last` is the latest poll whatever its flags, so the status line can
   // say "not answering" / "stopped" while the charts keep the honest gap.
@@ -175,11 +179,10 @@ export function ContainerMonitoringDashboard({
     };
   }, [id, historyField, idArg, saveMetrics]);
 
-  // Flip the per-resource "Save metrics" switch. Optimistic with a revert on error.
-  async function toggleSaveMetrics(next: boolean) {
-    setSaveMetrics(next);
-    setSavingToggle(true);
-    try {
+  // Persist the switch; sets local state on success. Returns the ActionResult so
+  // the confirm modal (enable path) can surface an error and stay open.
+  const persistSaveMetrics = React.useCallback(
+    async (next: boolean) => {
       const res = await gqlAction<Record<string, boolean>, boolean>(
         `mutation SetSaveMetrics($id: String!, $enabled: Boolean!) {
           ${setMutation}(${idArg}: $id, enabled: $enabled)
@@ -187,13 +190,29 @@ export function ContainerMonitoringDashboard({
         { id, enabled: next },
         (d) => d[setMutation],
       );
-      if (!res.ok) {
-        setSaveMetrics(!next);
-        toast.error(res.error);
-      }
-    } finally {
-      setSavingToggle(false);
+      if (res.ok) setSaveMetrics(next);
+      return res;
+    },
+    [id, idArg, setMutation],
+  );
+
+  // Enabling opens the confirm modal (deliberate — it has a cost); disabling is
+  // safe, so do it immediately (optimistic, revert on error).
+  function onToggle(next: boolean) {
+    if (next) {
+      setConfirmOpen(true);
+      return;
     }
+    setSaveMetrics(false);
+    setSavingToggle(true);
+    persistSaveMetrics(false)
+      .then((res) => {
+        if (!res.ok) {
+          setSaveMetrics(true);
+          toast.error(res.error);
+        }
+      })
+      .finally(() => setSavingToggle(false));
   }
 
   // One shared point list feeds every chart; net/block are cumulative counters,
@@ -231,28 +250,38 @@ export function ContainerMonitoringDashboard({
         id="save-metrics"
         checked={saveMetrics}
         disabled={!canManageInfra || savingToggle}
-        onCheckedChange={toggleSaveMetrics}
+        onCheckedChange={onToggle}
         aria-label={`Save metrics for this ${noun}`}
       />
-      <FieldLabel
+      <Label
         htmlFor="save-metrics"
         className="text-sm font-normal text-muted-foreground"
-        info={
-          <>
-            Off by default. When on, the control plane keeps a rolling ~15-minute
-            history of this {noun}&apos;s metrics in memory and samples its
-            container in the background every few seconds — even when you&apos;re
-            not on this tab. It&apos;s a small, bounded cost per {noun} (RAM only,
-            nothing hits the database), but it adds steady work on the owning
-            server and memory that adds up across many opted-in{" "}
-            {noun === "app" ? "apps" : "databases"}. Best turned on while
-            you&apos;re actively debugging, and off when you&apos;re done.
-          </>
-        }
       >
         Save metrics
-      </FieldLabel>
+      </Label>
     </div>
+  );
+
+  // Enabling shows a short warning modal (the switch flips only on confirm).
+  const confirmModal = (
+    <ConfirmAction
+      open={confirmOpen}
+      onOpenChange={setConfirmOpen}
+      title={`Save this ${noun}'s metrics?`}
+      variant="default"
+      confirmLabel="Save metrics"
+      description={
+        <>
+          Deplo will keep a rolling ~15-minute history of this {noun}&apos;s
+          metrics in memory and sample its container in the background every few
+          seconds — even when you&apos;re not watching. It&apos;s a small,
+          bounded cost (RAM only, nothing is written to the database), but it
+          adds up when many are enabled, and adds steady work on small hosts.
+          Best turned on while you&apos;re debugging, then off.
+        </>
+      }
+      onConfirm={() => persistSaveMetrics(true)}
+    />
   );
 
   const header = (
@@ -426,6 +455,7 @@ export function ContainerMonitoringDashboard({
     <div className="space-y-6">
       {header}
       {body}
+      {confirmModal}
     </div>
   );
 }
