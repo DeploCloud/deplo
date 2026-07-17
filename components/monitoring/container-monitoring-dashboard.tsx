@@ -11,6 +11,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpCircle,
+  Gauge,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -394,13 +395,16 @@ export function ContainerMonitoringDashboard({
       <>
         {/* When caps are set, the % gauges read against the cap, not the host. */}
         {hasLimits && (
-          <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">
-              Resource limits apply
-            </span>{" "}
-            — the percentages below are relative to this {noun}&apos;s limits, not
-            the whole host&apos;s capacity ({limitParts.join(" · ")}).
-          </p>
+          <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+            <Gauge className="mt-0.5 size-4 shrink-0" />
+            <p>
+              <span className="font-medium text-foreground">
+                Resource limits apply
+              </span>{" "}
+              — the percentages below are relative to this {noun}&apos;s limits,
+              not the whole host&apos;s capacity ({limitParts.join(" · ")}).
+            </p>
+          </div>
         )}
 
         {/* Current-value tiles */}
