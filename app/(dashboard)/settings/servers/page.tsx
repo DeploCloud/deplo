@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import type { ElementType } from "react";
 import {
   Server as ServerIcon,
-  ServerCog,
   Cpu,
   MemoryStick,
   HardDrive,
@@ -12,6 +11,7 @@ import {
 
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { DeploMark } from "@/components/logo";
 import { AddServer } from "@/components/servers/add-server";
 import { ServerActions } from "@/components/servers/server-actions";
 import {
@@ -118,7 +118,9 @@ function ServerCard({
               className="shrink-0 gap-1"
               title="This host runs the Deplo control plane (the dashboard and API) in addition to your deployments. Removing it takes down Deplo itself."
             >
-              <ServerCog className="size-3" />
+              {/* The Deplo mark itself (currentColor, so it takes the badge's
+                  primary-foreground) — this IS the control-plane host, so brand it. */}
+              <DeploMark size={12} className="text-current" />
               Deplo host
             </Badge>
           ) : (
