@@ -25,6 +25,8 @@ import {
   recordContainerSample,
   getContainerHistory,
   clearContainerHistory,
+  markContainerWatched,
+  watchedContainerTargets,
 } from "../monitoring/container-history";
 
 /**
@@ -161,8 +163,10 @@ function aggregate(id: string, stats: PbContainerStat[], ts: number): ContainerM
 function toSample(m: ContainerMetrics): ContainerMetricsSample {
   // Deliberately drop `instances` (the breakdown is a live-only table) and
   // `unsupported` (never true for a recorded, online sample) to keep the RAM
-  // window lean.
-  const { unsupported: _u, instances: _i, ...sample } = m;
+  // window lean — rest-sibling omit, like databases.ts toDTO.
+  const { unsupported, instances, ...sample } = m;
+  void unsupported;
+  void instances;
   return sample;
 }
 
@@ -203,19 +207,27 @@ export async function measureContainerStack(
 /* App reads                                                           */
 /* ------------------------------------------------------------------ */
 
-/** Live metrics for one app (team-scoped). Records a history sample when the
- *  app opted in. Null for an unknown / cross-team app. */
+/**
+ * Live metrics for one app (team-scoped). Null for an unknown / cross-team app.
+ *
+ * Every online measurement is buffered, not just an opted-in app's: a poll is
+ * someone WATCHING this app, and a watched app's chart has to stay continuous
+ * when they navigate away and come back. The `save_metrics` switch is what keeps
+ * sampling running with nobody watching; it is not a precondition for keeping
+ * what we already measured. See `markContainerWatched` / `WATCH_TTL_MS`.
+ */
 export async function getAppMetrics(appId: string): Promise<ContainerMetrics | null> {
   const teamId = await requireActiveTeamId();
   const app = await loadTeamApp(appId, teamId);
   if (!app) return null;
+  markContainerWatched(app.id, app.serverId);
   const m = await measureContainerStack(app.id, app.serverId);
-  if (m.online && app.saveMetrics) recordContainerSample(toSample(m));
+  if (m.online) recordContainerSample(toSample(m));
   return m;
 }
 
-/** The buffered window for one app (team-scoped). Empty when unknown/cross-team
- *  or saving is off. */
+/** The buffered window for one app (team-scoped). Empty for an unknown /
+ *  cross-team app, or before anything has been sampled. */
 export async function getAppMetricsHistory(
   appId: string,
 ): Promise<ContainerMetricsSample[]> {
@@ -229,15 +241,17 @@ export async function getAppMetricsHistory(
 /* Database reads                                                      */
 /* ------------------------------------------------------------------ */
 
-/** Live metrics for one database (team-scoped). */
+/** Live metrics for one database (team-scoped). Buffers + marks watched exactly
+ *  like {@link getAppMetrics}. */
 export async function getDatabaseMetrics(
   databaseId: string,
 ): Promise<ContainerMetrics | null> {
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(databaseId, teamId);
   if (!db) return null;
+  markContainerWatched(db.id, db.serverId);
   const m = await measureContainerStack(db.id, db.serverId);
-  if (m.online && db.saveMetrics) recordContainerSample(toSample(m));
+  if (m.online) recordContainerSample(toSample(m));
   return m;
 }
 
@@ -333,9 +347,22 @@ export async function sampleContainerForCollector(
   if (m.online) recordContainerSample(toSample(m));
 }
 
-/** id + owning server for every app/database whose Save-metrics switch is ON.
- *  Session-free (no request context) — the background collector's opt-in set,
- *  the same justification as `listAllServers`/`measureServerForCollector`. */
+/**
+ * id + owning server for every app/database the collector should sample — the
+ * UNION of two opt-ins:
+ *
+ *  - **stored**: `save_metrics` is ON, so keep sampling with nobody watching;
+ *  - **watched**: someone opened this resource's Monitoring tab recently, so keep
+ *    its window continuous until the watch TTL lapses (see `WATCH_TTL_MS`).
+ *
+ * The watched half is what makes the tab honest by default. `save_metrics`
+ * defaults OFF, so without it the collector ignored ~every app and the tab's
+ * chart could only ever cover the seconds the user sat on the page — every
+ * return showed a hole the platform had caused by not looking.
+ *
+ * Session-free (no request context) — same justification as `listAllServers` /
+ * `measureServerForCollector`.
+ */
 export async function listSaveMetricsTargetsForCollector(): Promise<
   { id: string; serverId: string }[]
 > {
@@ -350,5 +377,10 @@ export async function listSaveMetricsTargetsForCollector(): Promise<
       .from(databasesTable)
       .where(eq(databasesTable.saveMetrics, true)),
   ]);
-  return [...appRows, ...dbRows];
+  // De-dupe: a stored opt-in that is ALSO being watched must be sampled once.
+  const byId = new Map<string, { id: string; serverId: string }>();
+  for (const t of [...appRows, ...dbRows, ...watchedContainerTargets()]) {
+    byId.set(t.id, t);
+  }
+  return [...byId.values()];
 }

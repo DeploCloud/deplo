@@ -31,6 +31,8 @@ import {
   recordContainerSample,
   getContainerHistory,
   clearContainerHistory,
+  markContainerWatched,
+  clearContainerWatches,
 } from "../monitoring/container-history";
 
 /**
@@ -87,6 +89,7 @@ function sample(id: string, ts: number): ContainerMetricsSample {
 
 beforeEach(async () => {
   clearContainerHistory();
+  clearContainerWatches();
   await pg.exec(
     `truncate table apps, databases, servers, activities, users, teams restart identity cascade;`,
   );
@@ -190,4 +193,27 @@ test("listSaveMetricsTargetsForCollector returns only opted-in apps + databases"
   assert.deepEqual(ids, ["db_1", "prj_1"]);
   // Each carries the owning server so the collector can dial it.
   for (const t of targets) assert.equal(t.serverId, SERVER_1);
+});
+
+test("a recently-WATCHED resource is a collector target even with the switch off", async () => {
+  // The default is OFF, so without this the collector ignored ~every app and a
+  // reopened Monitoring tab could only chart the seconds since it mounted.
+  assert.equal((await listSaveMetricsTargetsForCollector()).length, 0);
+
+  markContainerWatched("prj_1", SERVER_1);
+
+  const targets = await listSaveMetricsTargetsForCollector();
+  assert.deepEqual(targets, [{ id: "prj_1", serverId: SERVER_1 }]);
+});
+
+test("a resource both opted in and watched is enumerated once", async () => {
+  await asOwner(() => setAppSaveMetrics("prj_1", true));
+  markContainerWatched("prj_1", SERVER_1);
+
+  const targets = await listSaveMetricsTargetsForCollector();
+  assert.deepEqual(
+    targets.filter((t) => t.id === "prj_1").length,
+    1,
+    "the union must de-dupe or the collector double-samples the same stack",
+  );
 });

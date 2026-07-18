@@ -74,9 +74,10 @@ const state: CollectorState = (g[STATE_KEY] ??= {
  * the other down. Exported for tests; never throws.
  *  - the fleet HOST pass, gated on the instance-wide "save metrics on server"
  *    singleton (host-level history, lib/monitoring/history.ts);
- *  - the per-app / per-database CONTAINER pass, gated per-resource on each row's
- *    `save_metrics` flag (container history, lib/monitoring/container-history.ts)
- *    — independent of the singleton, since it is an explicit per-resource opt-in.
+ *  - the per-app / per-database CONTAINER pass (container history,
+ *    lib/monitoring/container-history.ts), independent of that singleton: its
+ *    target set is the union of resources whose `save_metrics` is ON and those
+ *    someone has looked at recently (see `listSaveMetricsTargetsForCollector`).
  */
 export async function runMetricsCollectorTick(now: number = Date.now()): Promise<void> {
   if (state.ticking) return; // the previous tick is still draining; skip this one.
@@ -132,10 +133,11 @@ async function collectHostMetrics(now: number): Promise<void> {
 }
 
 /**
- * The per-app / per-database pass: sample every stack whose `save_metrics` is on
- * and whose buffer has gone stale (a viewer's 1s poll keeps its own buffer warm,
- * so a watched tab costs nothing here). Runs on the per-resource opt-in, NOT the
- * fleet singleton — the two switches are independent. Never throws.
+ * The per-app / per-database pass: sample every stack that is either opted in
+ * (`save_metrics`) or recently watched, and whose buffer has gone stale (a
+ * viewer's 1s poll keeps its own buffer warm, so the tab someone is actually
+ * looking at costs nothing here — this pass is what keeps the window continuous
+ * once they navigate away). Independent of the fleet singleton. Never throws.
  */
 async function collectContainerMetrics(now: number): Promise<void> {
   try {
