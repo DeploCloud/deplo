@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cn, formatBytes } from "@/lib/utils";
-import { gapSpans, isInGap } from "@/lib/monitoring/chart-gaps";
+import { GAP_MS, isInGap, visibleGapSpans } from "@/lib/monitoring/chart-gaps";
 
 /* ------------------------------------------------------------------ */
 /* Public contract                                                     */
@@ -32,13 +32,11 @@ export type ChartUnit = "percent" | "bytesPerSec" | "count";
 /* Scales & formatting                                                 */
 /* ------------------------------------------------------------------ */
 
-/**
- * Two consecutive samples further apart than this are NOT connected — the poll
- * skipped (agent offline, tab throttled), and drawing through the hole would
- * fabricate data. The gap renders as a break in the line, like Grafana's
- * "connect null values: never".
- */
-const GAP_MS = 10_000;
+/* Two consecutive samples further apart than GAP_MS (lib/monitoring/chart-gaps.ts)
+   are NOT connected — the sampling pipeline missed that window, and drawing
+   through the hole would fabricate data. The gap renders as a break in the line,
+   like Grafana's "connect null values: never". The threshold is shared with the
+   band renderer so a break and its "No data" label always agree. */
 
 const M_TOP = 10;
 const M_RIGHT = 12;
@@ -233,9 +231,16 @@ export function TimeSeriesChart({
   // offline, or the tab was throttled). Rendered as an explicit "No data" band,
   // and answered on hover with "No data" instead of the nearest real sample —
   // so a genuine hole never reads as a glitch or a dip to zero.
-  const gaps = gapSpans(
+  //
+  // Window-aware on purpose: `drawPoints` carries one sample from BEFORE the
+  // window so the line can enter from the left edge, and a straggler that far
+  // back would otherwise band most of the plot as a failure. Where the buffer
+  // simply doesn't reach, the plot stays empty instead (see `visibleGapSpans`).
+  const gaps = visibleGapSpans(
     drawPoints.map((p) => p.ts),
     GAP_MS,
+    t0,
+    t1,
   );
   const hoverInGap = hoverTs != null && isInGap(hoverTs, gaps);
 
