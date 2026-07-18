@@ -28,6 +28,7 @@ import {
   WINDOWS,
   POLL_MS,
   MAX_POINTS,
+  RESEED_MS,
 } from "@/components/monitoring/dashboard-parts";
 import { gqlAction } from "@/lib/graphql-client";
 import { formatBytes } from "@/lib/utils";
@@ -181,8 +182,13 @@ export function ContainerMonitoringDashboard({
         if (!active || !res.ok || !res.data) return;
         const sample = res.data;
         setLast(sample);
-        // Only chart online samples that actually have a running container.
-        if (!sample.online || sample.running === 0) return;
+        // Chart every ONLINE sample, including one with no running container. A
+        // stack that is mid-redeploy (or stopped) genuinely measures zero, and
+        // zero is a measurement — dropping it punched a "No data" band into a
+        // window the agent answered for, and left the chart contradicting the
+        // server-side buffer, which records exactly these samples. Only an
+        // offline answer (no measurement at all) is still skipped.
+        if (!sample.online) return;
         setSamples((prev) => [...prev, sample].slice(-MAX_POINTS));
       } finally {
         busy = false;
@@ -197,17 +203,21 @@ export function ContainerMonitoringDashboard({
     };
   }, [id, metricsField, idArg]);
 
-  // Seed the charts from the control plane's buffered history (when saving is
-  // on): a reload — OR returning to the page after navigating away or
-  // backgrounding the tab — starts from the saved server-side window instead of
-  // an empty chart. The seed re-runs whenever the page regains visibility/focus
-  // (and on bfcache restore via `pageshow`): a soft navigation back or a restored
-  // tab may NOT remount this component, so a mount-only seed would leave the
-  // chart to rebuild one live poll at a time — the exact "empty until I look at
-  // it, then it slowly fills" that saving history is meant to prevent. Merge by
-  // ts; live samples win.
+  // Seed the charts from the control plane's buffered history: a reload — OR
+  // returning to the page after navigating away or backgrounding the tab —
+  // starts from the saved server-side window instead of an empty chart. The seed
+  // re-runs whenever the page regains visibility/focus (and on bfcache restore
+  // via `pageshow`): a soft navigation back or a restored tab may NOT remount
+  // this component, so a mount-only seed would leave the chart to rebuild one
+  // live poll at a time — the exact "empty until I look at it, then it slowly
+  // fills" that buffering history is meant to prevent. Merge by ts; live samples
+  // win.
+  //
+  // Deliberately NOT gated on `saveMetrics`. The control plane now buffers any
+  // resource someone is watching (WATCH_TTL_MS), so the window exists even with
+  // the switch off — and skipping the seed there was what left the tab unable to
+  // show anything but the seconds since mount. An empty response is harmless.
   React.useEffect(() => {
-    if (!saveMetrics) return;
     let active = true;
     const seed = async () => {
       const res = await gqlAction<Record<string, ContainerSample[]>, ContainerSample[]>(
@@ -218,7 +228,10 @@ export function ContainerMonitoringDashboard({
         (d) => d[historyField],
       );
       if (!active || !res.ok || !res.data || res.data.length === 0) return;
-      const seeded = res.data.filter((s) => s.online && s.running > 0);
+      // Keep every recorded measurement, `running: 0` included — the buffer only
+      // ever holds online samples, and filtering the idle ones back out here is
+      // what made a redeploy read as a hole (see the live poll above).
+      const seeded = res.data.filter((s) => s.online);
       setSamples((prev) => {
         const byTs = new Map<number, ContainerSample>();
         for (const s of [...seeded, ...prev]) byTs.set(s.ts, s);
@@ -226,7 +239,12 @@ export function ContainerMonitoringDashboard({
       });
     };
     void seed();
-    // Re-pull the saved window when the tab comes back to the foreground.
+    // Re-pull on a timer, not only on wake: the live poll drops a sample on any
+    // failed request or offline answer and never retries, so without this every
+    // miss is a permanent hole that a wider window later exposes as "No data".
+    // Same reasoning as the fleet dashboard — see RESEED_MS.
+    const iv = setInterval(seed, RESEED_MS);
+    // Re-pull the saved window when the tab comes back to the foreground too.
     const onWake = () => {
       if (document.visibilityState !== "hidden") void seed();
     };
@@ -235,11 +253,12 @@ export function ContainerMonitoringDashboard({
     window.addEventListener("pageshow", onWake);
     return () => {
       active = false;
+      clearInterval(iv);
       document.removeEventListener("visibilitychange", onWake);
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
     };
-  }, [id, historyField, idArg, saveMetrics]);
+  }, [id, historyField, idArg]);
 
   // Persist the switch; sets local state on success. Returns the ActionResult so
   // the confirm modal (enable path) can surface an error and stay open.

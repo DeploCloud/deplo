@@ -27,6 +27,12 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
+import {
+  MAX_POINTS,
+  POLL_MS,
+  RESEED_MS,
+  WINDOWS,
+} from "@/components/monitoring/dashboard-parts";
 import { gqlAction } from "@/lib/graphql-client";
 import type { ServerMetrics } from "@/lib/data/monitoring";
 import type { ServerStatus } from "@/lib/types";
@@ -39,17 +45,6 @@ interface ServerLite {
   ip: string;
   dockerVersion: string;
 }
-
-/** Rolling live buffer per server — covers the largest window (~15m at 1s). */
-const MAX_POINTS = 900;
-const POLL_MS = 1000;
-
-/** Lookback presets for the charts' fixed sliding window. */
-const WINDOWS = [
-  { label: "1m", ms: 60_000 },
-  { label: "5m", ms: 300_000 },
-  { label: "15m", ms: 900_000 },
-] as const;
 
 export function MonitoringDashboard({
   servers,
@@ -194,11 +189,21 @@ export function MonitoringDashboard({
       });
     };
     void seed();
-    // Re-pull the saved window when the tab returns to the foreground, so coming
-    // back to the page shows the full server-side history immediately instead of
-    // rebuilding it one live poll at a time — a soft-nav back or a bfcache/
-    // Router-Cache restore may not remount this component, so a mount-only seed
-    // would never re-run. `pageshow` covers the bfcache restore.
+    // Re-pull the saved window on a TIMER, not just on wake. The live poll is
+    // append-only and silently drops a sample whenever a request fails or the
+    // agent answers offline (see `tick` above) — with no re-seed those holes are
+    // permanent, so the buffer slowly accumulates scar tissue and every widening
+    // of the window reveals more "No data" bands that the server-side ring buffer
+    // could have filled all along. The background collector keeps that buffer
+    // dense at 5s, so re-merging it on a cadence well inside GAP_MS repairs a
+    // hole before it can ever be drawn as a band.
+    const iv = setInterval(seed, RESEED_MS);
+    // Also re-pull when the tab returns to the foreground: a backgrounded tab has
+    // its timers clamped to ~1/min, so this is what makes coming back to the page
+    // show a continuous window immediately instead of rebuilding it one live poll
+    // at a time. A soft-nav back or a bfcache/Router-Cache restore may not remount
+    // this component, so a mount-only seed would never re-run; `pageshow` covers
+    // the bfcache restore.
     const onWake = () => {
       if (document.visibilityState !== "hidden") void seed();
     };
@@ -207,6 +212,7 @@ export function MonitoringDashboard({
     window.addEventListener("pageshow", onWake);
     return () => {
       active = false;
+      clearInterval(iv);
       document.removeEventListener("visibilitychange", onWake);
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
@@ -381,7 +387,7 @@ export function MonitoringDashboard({
               </div>
             )}
             <div
-              className="flex items-center gap-0.5 rounded-lg p-0.5"
+              className="flex items-center gap-0.5 rounded-lg border p-0.5"
               role="group"
               aria-label="Chart time window"
             >

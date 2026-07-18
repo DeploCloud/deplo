@@ -15,8 +15,26 @@ import { cn } from "@/lib/utils";
 
 /** Live poll cadence (ms) shared by every dashboard. */
 export const POLL_MS = 1000;
-/** Rolling live buffer cap — the largest window (~15m at 1s) plus slack. */
-export const MAX_POINTS = 900;
+/**
+ * How often a dashboard re-merges the control plane's server-side ring buffer
+ * into its local point list.
+ *
+ * The live poll is append-only: a failed request or an offline answer is simply
+ * skipped, so without a repair pass every such miss becomes a PERMANENT hole
+ * that later renders as a "No data" band — the more window you show, the more of
+ * them you see. The background collector (5s) keeps the server buffer dense, so
+ * re-seeding on a cadence comfortably inside `GAP_MS` (15s) closes a hole before
+ * the chart can ever band it. Cheap: one small query against an in-RAM buffer,
+ * no agent RPC.
+ */
+export const RESEED_MS = 10_000;
+/**
+ * Rolling live buffer cap. Must hold the largest window (15m) at the DENSEST
+ * cadence the buffer can carry, or the widest preset structurally cannot fill:
+ * the list merges two sample trains — a viewer's ~1-2s poll and the collector's
+ * 5s samples — so 15m needs well over the 900 that a flat 1s assumption gave.
+ */
+export const MAX_POINTS = 1200;
 
 /** Lookback presets for the charts' fixed sliding window. */
 export const WINDOWS = [
