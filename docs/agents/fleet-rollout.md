@@ -251,9 +251,29 @@ Do this before moving to the next server — that is the whole point of going on
    Streaming is the thing a re-exec breaks, so a deploy that both builds *and* streams is the
    strongest single check.
 6. **Logs / console** on an existing App still attach.
+7. **If the release added a NEW path alongside an old one, diff the two on a real host** — same
+   machine, same second, both paths, compare the numbers field by field.
 
 Only then move on. Agent 0 gets the same list, plus: the control plane is still serving `:3000` and
 the dashboard renders.
+
+### Why step 7 exists
+
+It is the check that caught the only real defect in the v1.11.0 rollout, and no test caught it —
+because both paths were individually correct.
+
+`StreamMetrics` shipped reporting `HostMetrics.running_containers` as the count of
+**`deplo.managed`** containers, while the unary `Metrics` RPC has always reported the **unfiltered**
+`docker ps -q` count. Each was self-consistent and each had passing tests. Run against a live host
+they disagreed in the same second — the unary said 3, the stream said 2 — because that host also runs
+Traefik. Left alone, the dashboard's container gauge would have silently dropped on every server as
+its agent was updated, with nothing in the logs and no failing test to point at.
+
+The general shape: **a new path that duplicates an old one is not verified by its own tests, only by
+comparison against the thing it replaces.** Unit tests pin each path to its own author's assumption;
+only a side-by-side run on real data catches the two assumptions differing. Do this before rolling
+past the canary, not after — the fix required a v1.11.1, because a published tag cannot be withdrawn
+(§10).
 
 ## 10. Rollback is forward-only — know this before you start
 
