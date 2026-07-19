@@ -86,7 +86,10 @@ IPv4. In practice: **`servers.ip` equals `DEPLO_SERVER_IP` in `.env`.**
 
 ```sh
 grep '^DEPLO_SERVER_IP=' /root/projects/deplo/.env
-# and, ordering by blast radius (fewest Apps first):
+# and, ordering by blast radius (fewest Apps first). DEPLO_DATABASE_URL lives only
+# in .env — it is NOT in your shell — so pull it in first, or psql silently drops to
+# its socket default and fails as `role "root" does not exist`:
+export $(grep -E '^DEPLO_DATABASE_URL=' /root/projects/deplo/.env | xargs)
 docker exec postgres psql "$DEPLO_DATABASE_URL" -c \
   "select s.id, s.name, s.ip, s.agent_version, count(a.id) as apps
      from servers s left join apps a on a.server_id = s.id
@@ -120,14 +123,25 @@ Self-update `syscall.Exec`s the process **750ms after replying** (`selfUpdateGra
 server and wait it out:
 
 ```sh
+export $(grep -E '^DEPLO_DATABASE_URL=' /root/projects/deplo/.env | xargs)
 docker exec postgres psql "$DEPLO_DATABASE_URL" -c \
-  "select id, app_id, status from deployments
-    where server_id = 'srv_f47d8cba7db4c813'
-      and status in ('queued','building');"
+  "select d.id, d.app_id, d.status
+     from deployments d join apps a on a.id = d.app_id
+    where coalesce(d.server_id, a.server_id) = 'srv_f47d8cba7db4c813'
+      and d.status in ('queued','building');"
 ```
 
 `('queued','building')` is the in-progress set the control plane itself uses (`IN_PROGRESS` in
 `lib/data/deployments.ts`). Non-empty → do not update that server yet.
+
+**Do not simplify that to a bare `where d.server_id = …`.** `deployments.server_id` is nullable by
+design (schema comment in `lib/db/schema/control-plane.ts`: it is a denormalized mirror of
+`apps.server_id`, "backfilled for rows that predate the queue"). The control plane never reads it
+bare either — `onServer` in `lib/data/deployments.ts` is exactly
+`coalesce(deployments.server_id, apps.server_id)`, and the queue-position query uses the same. A
+bare read makes a null-`server_id` deploy *invisible*, so the check returns zero rows, you read it
+as all-clear, and the self-update `syscall.Exec`s 750ms later straight through the live `Deploy`
+stream this section exists to protect. A safety check that fails open is worse than no check.
 
 ## 6. Scripted updates run under real Node, never Bun
 
@@ -176,13 +190,18 @@ await markServerSeen(id, version); // lib/data/servers.ts — ungated, best-effo
 
 Skip it and the badge lags. Note *what* corrects it, because it is not the health prober:
 `recordServerHealth` (`lib/data/server-health.ts`) writes `status` / `statusMessage` /
-`statusCheckedAt` / `lastSeenAt` and never touches `agent_version`. The paths that do refresh it
-from a live Hello are the **metrics poll** (`lib/data/monitoring.ts` → `markServerSeen`) and the
-**deploy preflight** (`agentPreflight`). On a quiet server with nobody on Monitoring, a stale badge
-can persist for a long time.
+`statusCheckedAt`, plus `lastSeenAt` only on an `online`/`warning` probe — and never
+`agent_version`. The paths that do refresh it from a live Hello all go through `markServerSeen`:
+the **metrics poll** (`lib/data/monitoring.ts`), the **deploy preflight** (`agentPreflight`), and —
+on `feat/monitoring-telemetry-stream` — the telemetry **stream supervisor**
+(`lib/monitoring/supervisor.ts`), which does one `markServerSeen` per connection off the opening
+Hello and supersedes the poll for agents advertising `metrics-stream`. On a quiet server with
+nobody on Monitoring, a stale badge can persist for a long time.
 
-`markServerSeen` only pins the version when `agent_port is not null`, so it is a no-op on an
-unprovisioned row.
+`markServerSeen` only pins the *version* when `agent_port is not null` (the `case` wraps just
+`agentVersion`), so it is a no-op for the badge on an unprovisioned row — but the rest of the write
+still lands: `lastSeenAt` unconditionally, and `traefikEnabled` / `dockerVersion` / specs whenever
+the caller passes them.
 
 ## 8. What self-update actually does on the host
 
