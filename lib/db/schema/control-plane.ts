@@ -1881,3 +1881,42 @@ export const monitoringSettings = pgTable("monitoring_settings", {
   saveMetrics: boolean("save_metrics").notNull(),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
+
+/* ================================================================== */
+/* Instance                                                            */
+/* ================================================================== */
+
+/**
+ * Instance settings — a SINGLETON row (`id` fixed at `'default'`), the shape of
+ * {@link monitoringSettings} / {@link dockerCleanupPolicy}. Today it carries one
+ * thing: who owns this Deplo instance.
+ *
+ * `owner_user_id` is the **instance owner** — the instance-level twin of
+ * {@link teams.founderUserId}, and the answer to a real lockout: `is_instance_admin`
+ * is a flat boolean any admin may clear on any OTHER admin, so before this row
+ * existed a single admin you promoted could demote every peer (the last-admin
+ * invariant is satisfied by *themselves*), suspend them, reset their password, and
+ * own the instance — with no user-deletion path and no self-service password reset
+ * to climb back through. The first account had no protection whatsoever.
+ *
+ * The owner is therefore immutable to everyone but the owner: no other admin may
+ * demote, suspend or reset them, and they cannot drop their own admin flag either
+ * (same rule as the team founder, who cannot be demoted even by themselves). It is
+ * not a dead end — the crown TRANSFERS, but only by the hand wearing it.
+ *
+ * NULLABLE, and the FK deliberately has **no `ON DELETE` action** (unlike
+ * `teams.founder_user_id`, which is `SET NULL`): there is no user-deletion path in
+ * the product, and if one is ever added, orphaning the crown should be a loud FK
+ * error rather than a silent slide back into the unowned-instance state this row
+ * exists to end. A missing row / NULL owner means "unowned" — legal, and what an
+ * instance upgraded from before this migration looks like if it somehow had no
+ * admin to backfill from. Recovery for a locked-out owner is the host-side CLI
+ * (`bun run recover`), which is why losing the row is survivable rather than fatal.
+ */
+export const instanceSettings = pgTable("instance_settings", {
+  /** Always `'default'`. The row is a singleton; the PK exists to enforce that. */
+  id: text("id").primaryKey().default("default"),
+  /** The instance owner — see the table comment. NULL means "unowned". */
+  ownerUserId: text("owner_user_id").references(() => users.id),
+  updatedAt: isoTimestamptz("updated_at").notNull(),
+});

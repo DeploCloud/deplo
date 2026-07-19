@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   ShieldOff,
   Ban,
+  Crown,
   UserCheck,
   UserCog,
   MoreHorizontal,
@@ -30,6 +31,8 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
@@ -43,10 +46,13 @@ export function UsersPanel({
   users,
   links,
   currentUserId,
+  viewerIsOwner,
 }: {
   users: GlobalUserDTO[];
   links: RegistrationLinkDTO[];
   currentUserId: string;
+  /** The viewer owns the instance — the only one who may hand the crown on. */
+  viewerIsOwner: boolean;
 }) {
   const [registerOpen, setRegisterOpen] = React.useState(false);
   const pendingLinks = links.filter((l) => l.status === "pending");
@@ -77,6 +83,7 @@ export function UsersPanel({
                 key={u.userId}
                 user={u}
                 isSelf={u.userId === currentUserId}
+                viewerIsOwner={viewerIsOwner}
               />
             ))}
           </div>
@@ -102,11 +109,37 @@ export function UsersPanel({
   );
 }
 
-function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
+function UserRow({
+  user,
+  isSelf,
+  viewerIsOwner,
+}: {
+  user: GlobalUserDTO;
+  isSelf: boolean;
+  viewerIsOwner: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [confirmSuspend, setConfirmSuspend] = React.useState(false);
+  const [confirmTransfer, setConfirmTransfer] = React.useState(false);
+  const [transferPassword, setTransferPassword] = React.useState("");
   const [pending, startTransition] = React.useTransition();
+
+  // The owner's row is closed to everyone, THEMSELVES INCLUDED, for these two
+  // actions: no admin may demote or suspend them, and they may not uncrown
+  // themselves either (ownership leaves only via transfer, which names a
+  // successor). Server-enforced in lib/data/members.ts; this only spares the
+  // operator a click that would toast an error.
+  const ownerLocked = user.isInstanceOwner;
+
+  // Offer the crown only where the server would accept it: owner → an active
+  // admin who isn't already the owner.
+  const canTransferTo =
+    viewerIsOwner &&
+    !isSelf &&
+    !user.isInstanceOwner &&
+    user.isInstanceAdmin &&
+    !user.suspended;
 
   // Quick ⋯-menu actions flip ONE global flag while preserving the rest
   // (updateUserAdmin replaces the whole set). The last-admin and can't-touch-self
@@ -168,11 +201,20 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
               <span className="ml-1 text-xs text-muted-foreground">(you)</span>
             )}
           </p>
-          {user.isInstanceAdmin && (
+          {/* Owner supersedes Admin — the owner IS an admin, so showing both
+              would just be noise on the one row that matters most. */}
+          {user.isInstanceOwner ? (
             <Badge variant="secondary" className="gap-1 px-1.5 py-0">
-              <ShieldCheck className="size-3" />
-              Admin
+              <Crown className="size-3" />
+              Owner
             </Badge>
+          ) : (
+            user.isInstanceAdmin && (
+              <Badge variant="secondary" className="gap-1 px-1.5 py-0">
+                <ShieldCheck className="size-3" />
+                Admin
+              </Badge>
+            )
           )}
           {user.suspended && (
             <Badge variant="destructive" className="gap-1 px-1.5 py-0">
@@ -220,9 +262,16 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
               </DropdownMenuItem>
             </SimpleTooltip>
             <DropdownMenuSeparator />
-            <SimpleTooltip content="Grant or revoke instance-admin" side="left">
+            <SimpleTooltip
+              content={
+                ownerLocked
+                  ? "The instance owner is always an instance admin. Transfer ownership first."
+                  : "Grant or revoke instance-admin"
+              }
+              side="left"
+            >
               <DropdownMenuItem
-                disabled={isSelf || pending}
+                disabled={isSelf || ownerLocked || pending}
                 onSelect={() => flip({ isInstanceAdmin: !user.isInstanceAdmin })}
               >
                 {user.isInstanceAdmin ? (
@@ -236,12 +285,16 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
               </DropdownMenuItem>
             </SimpleTooltip>
             <SimpleTooltip
-              content="Suspend or reactivate this account"
+              content={
+                ownerLocked
+                  ? "The instance owner's account can't be suspended."
+                  : "Suspend or reactivate this account"
+              }
               side="left"
             >
               <DropdownMenuItem
                 variant={user.suspended ? undefined : "destructive"}
-                disabled={isSelf || pending}
+                disabled={isSelf || ownerLocked || pending}
                 onSelect={() => {
                   // Reactivating is safe → apply straight away. Suspending is
                   // guarded by a confirm modal (opened once the menu closes).
@@ -260,6 +313,24 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
                 {user.suspended ? "Reactivate account" : "Suspend account"}
               </DropdownMenuItem>
             </SimpleTooltip>
+            {canTransferTo && (
+              <>
+                <DropdownMenuSeparator />
+                <SimpleTooltip
+                  content="Make this admin the instance owner. You stay an admin, but they take the crown."
+                  side="left"
+                >
+                  <DropdownMenuItem
+                    variant="destructive"
+                    disabled={pending}
+                    onSelect={() => setConfirmTransfer(true)}
+                  >
+                    <Crown className="size-4" />
+                    Transfer ownership
+                  </DropdownMenuItem>
+                </SimpleTooltip>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -273,6 +344,7 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
           }}
           seed={{
             isInstanceAdmin: user.isInstanceAdmin,
+            isInstanceOwner: user.isInstanceOwner,
             suspended: user.suspended,
             canExposePorts: user.canExposePorts,
             canMountHostVolumes: user.canMountHostVolumes,
@@ -306,6 +378,42 @@ function UserRow({ user, isSelf }: { user: GlobalUserDTO; isSelf: boolean }) {
                   canMountHostVolumes: user.canMountHostVolumes,
                 },
               },
+            );
+            if (res.ok) router.refresh();
+            return res;
+          }}
+        />
+      )}
+      {confirmTransfer && (
+        <ConfirmAction
+          open={confirmTransfer}
+          onOpenChange={(v) => {
+            setConfirmTransfer(v);
+            if (!v) setTransferPassword("");
+          }}
+          title={`Make @${user.username} the instance owner?`}
+          description="They become the only person who can edit their own account, transfer ownership, or be locked out of nothing. You stay an instance admin — but they can demote you, and only they can give the crown back."
+          confirmLabel="Transfer ownership"
+          confirmText={user.username}
+          successMessage="Instance ownership transferred"
+          extra={
+            <div className="space-y-2">
+              <Label htmlFor="transfer-password">Your password</Label>
+              <Input
+                id="transfer-password"
+                type="password"
+                autoComplete="current-password"
+                value={transferPassword}
+                onChange={(e) => setTransferPassword(e.target.value)}
+              />
+            </div>
+          }
+          onConfirm={async () => {
+            const res = await gqlAction(
+              `mutation ($userId: String!, $password: String!) {
+                transferInstanceOwner(userId: $userId, password: $password)
+              }`,
+              { userId: user.userId, password: transferPassword },
             );
             if (res.ok) router.refresh();
             return res;

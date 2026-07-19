@@ -18,6 +18,10 @@ import {
   type UserDetailDTO,
   type RegistrationLinkDTO,
 } from "@/lib/data/members";
+import {
+  transferInstanceOwner,
+  viewerIsInstanceOwner,
+} from "@/lib/data/instance-owner";
 
 /* ------------------------------------------------------------------ */
 /* Local enums                                                         */
@@ -87,6 +91,10 @@ export const GlobalUserRef = builder
       avatarColor: t.exposeString("avatarColor"),
       teamCount: t.exposeInt("teamCount"),
       isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
+      isInstanceOwner: t.exposeBoolean("isInstanceOwner", {
+        description:
+          "Owns the instance. Their account is editable only by themselves.",
+      }),
       suspended: t.exposeBoolean("suspended"),
       canExposePorts: t.exposeBoolean("canExposePorts"),
       canMountHostVolumes: t.exposeBoolean("canMountHostVolumes"),
@@ -127,6 +135,10 @@ export const UserDetailRef = builder
       email: t.exposeString("email"),
       avatarColor: t.exposeString("avatarColor"),
       isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
+      isInstanceOwner: t.exposeBoolean("isInstanceOwner", {
+        description:
+          "Owns the instance. Their account is editable only by themselves.",
+      }),
       suspended: t.exposeBoolean("suspended"),
       canExposePorts: t.exposeBoolean("canExposePorts"),
       canMountHostVolumes: t.exposeBoolean("canMountHostVolumes"),
@@ -257,6 +269,13 @@ builder.queryFields((t) => ({
     description: "Pending + recent registration links, newest first.",
     resolve: () => listRegistrationLinks(),
   }),
+  viewerIsInstanceOwner: t.field({
+    type: "Boolean",
+    authScopes: { loggedIn: true },
+    description:
+      "Whether the viewer owns this instance (the tier above instance admin).",
+    resolve: () => viewerIsInstanceOwner(),
+  }),
 }));
 
 /* ------------------------------------------------------------------ */
@@ -349,6 +368,22 @@ builder.mutationFields((t) => ({
         newPassword: input.newPassword ?? undefined,
       });
       return getUserDetail(input.userId);
+    },
+  }),
+  transferInstanceOwner: t.field({
+    type: "Boolean",
+    // instanceAdmin is the FLOOR, not the gate — the data layer additionally
+    // requires the caller to BE the current owner, which no scope can express.
+    authScopes: { instanceAdmin: true },
+    description:
+      "Hand instance ownership to another instance admin. Owner-only; requires the caller's password. Returns true.",
+    args: {
+      userId: t.arg.string({ required: true }),
+      password: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { userId, password }) => {
+      await transferInstanceOwner({ userId, password });
+      return true;
     },
   }),
 }));

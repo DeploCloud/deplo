@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { count, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb, type DbTx } from "./db/client";
 import {
+  instanceSettings as instanceSettingsTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
   teams as teamsTable,
@@ -160,7 +161,11 @@ async function insertUserCore(
  * rows), the whole transaction rolls back, closing the check-create-consume
  * TOCTOU where a concurrent double-submit could mint two accounts from one link.
  * `opts.isInstanceAdmin` marks the account a global admin (the very first
- * account, or an admin-minted one if you choose).
+ * account, or an admin-minted one if you choose). `opts.isInstanceOwner` also
+ * claims the instance-owner crown for it — first-run setup only, written in this
+ * same transaction so an instance is never briefly unowned (see
+ * lib/data/instance-owner.ts for what the crown protects against). The insert is
+ * `ON CONFLICT DO NOTHING`: once claimed, ownership moves only by transfer.
  */
 export async function createAccountWithTeam(
   input: {
@@ -173,6 +178,7 @@ export async function createAccountWithTeam(
   opts: {
     guard?: (tx: DbTx) => Promise<void>;
     isInstanceAdmin?: boolean;
+    isInstanceOwner?: boolean;
   } = {},
 ): Promise<{ user: User; team: Team }> {
   const username = normalizeUsername(input.username);
@@ -211,6 +217,15 @@ export async function createAccountWithTeam(
       { username, name, email, password: input.password },
       { isInstanceAdmin: opts.isInstanceAdmin, userRole: "owner" },
     );
+
+    // The crown, claimed in the same transaction as the account it belongs to.
+    // Written here rather than through lib/data/instance-owner.ts to keep auth.ts
+    // free of a lib/data import (that module reads back through this one).
+    if (opts.isInstanceOwner)
+      await tx
+        .insert(instanceSettingsTable)
+        .values({ id: "default", ownerUserId: user.id, updatedAt: now })
+        .onConflictDoNothing({ target: instanceSettingsTable.id });
 
     // Team name uniqueness + slug dedupe against live rows.
     const teamDup = await tx
@@ -453,8 +468,10 @@ export async function completeSetup(input: {
   let user: User;
   let team: Team;
   try {
-    // First account + its team, with all the username/team-name validation.
-    // The very first account is the instance admin.
+    // First account + its team, with all the username/team-name validation. The
+    // very first account is the instance admin AND the instance owner — the crown
+    // that no other admin can demote, suspend or password-reset (see
+    // lib/data/instance-owner.ts). Claimed in the same transaction as the account.
     ({ user, team } = await createAccountWithTeam(
       {
         username: input.username,
@@ -463,7 +480,7 @@ export async function completeSetup(input: {
         password: input.password,
         teamName: input.teamName.trim() || "Workspace",
       },
-      { isInstanceAdmin: true },
+      { isInstanceAdmin: true, isInstanceOwner: true },
     ));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };

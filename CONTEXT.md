@@ -41,6 +41,21 @@ domains + env; `viewer` = view), but a member's exact set can be tailored beyond
 preset. Enforced server-side on every mutating action via `requireCapability`.
 _Avoid_: permission (use capability), scope, grant.
 
+**Instance owner**:
+The single user who owns the Deplo instance — the tier ABOVE **instance admin**, and the
+instance-level twin of a team's founder "crown". Held on the `instance_settings` singleton
+(`owner_user_id`), claimed by the account created at first-run setup, and **immutable to
+every hand but its own**: no other admin may demote, suspend or password-reset the owner,
+and the owner may not drop their own admin flag either. It exists because
+`is_instance_admin` is a flat boolean any admin can write on any other admin — the
+last-active-admin invariant is satisfied by the attacker themselves — so before the crown a
+single promoted admin could seize the whole instance, first account included. Not a dead
+end: ownership **transfers**, but only by the owner, only to an active instance admin, and
+only with their password re-entered. The sole way back from a locked-out owner is the
+host-side `bun run recover` CLI (the one intended shell path in the product).
+_Avoid_: root user (that is Unix root — see **dev user**), founder (that is the TEAM-level
+crown, `teams.founder_user_id`), super admin, instance admin (a different, lower tier).
+
 **Registration link**:
 A single-use link (`/register/<token>`) that lets a NEW person self-register a brand-new
 account **and their own team** — like first-run setup, not a join. Minted by an instance

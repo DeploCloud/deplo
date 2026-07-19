@@ -85,6 +85,9 @@ const CONTROL_PLANE = [
   // monitoring — instance-wide singleton (the "save metrics on server" switch);
   // the metrics history itself is process RAM, never a table.
   "monitoring_settings",
+  // instance — singleton holding the instance-owner crown (the tier above
+  // instance admin, immutable to every other admin).
+  "instance_settings",
   // services
   "apps",
   "app_build",

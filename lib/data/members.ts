@@ -27,6 +27,7 @@ import { newId, nowIso } from "../ids";
 import { sha256Hex, randomToken, hashPassword } from "../crypto";
 import { getCurrentUser } from "../auth";
 import { recordActivity, listActivityByActor } from "./activity";
+import { instanceOwnerUserId } from "./instance-owner";
 import {
   requireCapability,
   requireActiveTeamId,
@@ -94,6 +95,8 @@ export interface GlobalUserDTO {
   avatarColor: string;
   teamCount: number;
   isInstanceAdmin: boolean;
+  /** Owns the instance — their row is closed to every other admin. */
+  isInstanceOwner: boolean;
   suspended: boolean;
   canExposePorts: boolean;
   canMountHostVolumes: boolean;
@@ -109,6 +112,8 @@ export interface UserDetailDTO {
   email: string;
   avatarColor: string;
   isInstanceAdmin: boolean;
+  /** Owns the instance — their row is closed to every other admin. */
+  isInstanceOwner: boolean;
   suspended: boolean;
   canExposePorts: boolean;
   canMountHostVolumes: boolean;
@@ -592,6 +597,7 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
     .from(membershipsTable)
     .groupBy(membershipsTable.userId);
   const countByUser = new Map(counts.map((c) => [c.userId, Number(c.n)]));
+  const ownerUserId = await instanceOwnerUserId();
   return users.map((u) => ({
     userId: u.id,
     username: u.username,
@@ -599,6 +605,7 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
     avatarColor: u.avatarColor,
     teamCount: countByUser.get(u.id) ?? 0,
     isInstanceAdmin: u.isInstanceAdmin ?? false,
+    isInstanceOwner: u.id === ownerUserId,
     suspended: u.suspended ?? false,
     canExposePorts: u.canExposePorts ?? false,
     canMountHostVolumes: u.canMountHostVolumes ?? false,
@@ -653,6 +660,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     email: u.email,
     avatarColor: u.avatarColor,
     isInstanceAdmin: u.isInstanceAdmin ?? false,
+    isInstanceOwner: u.id === (await instanceOwnerUserId()),
     suspended: u.suspended ?? false,
     canExposePorts: u.canExposePorts ?? false,
     canMountHostVolumes: u.canMountHostVolumes ?? false,
@@ -676,6 +684,11 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
  * race (relational-store PLAN §4), so the candidate admin set is locked with
  * `SELECT … FOR UPDATE` inside the transaction — two concurrent demotions
  * serialize and the second re-evaluates against the post-commit count.
+ *
+ * That invariant alone does NOT stop a takeover, which is what the instance-owner
+ * guards below are for: it only requires one active admin to survive, and the
+ * attacking admin is that survivor. The owner's row is therefore closed to every
+ * other admin outright (see lib/data/instance-owner.ts).
  */
 export async function updateUserAdmin(input: {
   userId: string;
@@ -700,6 +713,31 @@ export async function updateUserAdmin(input: {
         .limit(1)
     )[0];
     if (!target) throw new Error("User not found");
+
+    // The instance owner's crown, read under the same transaction as the write it
+    // vetoes so a concurrent transferInstanceOwner can't slip between the two.
+    const ownerUserId = await instanceOwnerUserId(tx);
+
+    // NOBODY edits the owner's row but the owner. Not "cannot demote" — cannot
+    // touch: demote, suspend and password-reset are three routes to the same
+    // takeover (the last-admin invariant is satisfied by the attacker themselves,
+    // and a reset hash hands over the account outright), and there is no benign
+    // edit left once those are gone — the owner is an admin, so the two grant
+    // flags are already implied for them (see hasGrant in membership.ts). One
+    // rule, no partial states, and a UI message a non-expert can act on.
+    if (ownerUserId !== null && input.userId === ownerUserId && actingUserId !== ownerUserId)
+      throw new Error(
+        "Only the instance owner can edit the instance owner's account",
+      );
+
+    // The owner can't uncrown themselves by dropping their own admin flag — the
+    // same rule the team founder has (a founder cannot be demoted even by
+    // themselves). Ownership leaves only through transferInstanceOwner, which
+    // hands it to a named successor instead of leaving the instance unowned.
+    if (input.userId === ownerUserId && !input.isInstanceAdmin)
+      throw new Error(
+        "The instance owner is always an instance admin. Transfer ownership first.",
+      );
 
     // An admin can't suspend or demote themselves into a lockout corner.
     if (input.userId === actingUserId && input.suspended)

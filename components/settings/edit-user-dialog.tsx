@@ -44,6 +44,8 @@ export interface EditUserSeedUser {
  */
 export interface EditUserSeedFlags {
   isInstanceAdmin: boolean;
+  /** Owns the instance — see the owner lock in the component body. */
+  isInstanceOwner: boolean;
   suspended: boolean;
   canExposePorts: boolean;
   canMountHostVolumes: boolean;
@@ -111,6 +113,7 @@ export function EditUserDialog({
           avatarColor
           createdAt
           isInstanceAdmin
+          isInstanceOwner
           suspended
           canExposePorts
           canMountHostVolumes
@@ -147,6 +150,16 @@ export function EditUserDialog({
   const ready = hasSeed || detail != null;
   const createdAt = seed?.createdAt ?? detail?.createdAt ?? null;
   const teamCount = seed?.teamCount ?? detail?.teams.length ?? 0;
+
+  // The instance owner's account is editable only by the owner themselves — no
+  // other admin may demote, suspend or reset them, because all three are routes
+  // to the same takeover (see lib/data/instance-owner.ts). Server-enforced; the
+  // form goes read-only so the operator sees the rule instead of a toast.
+  const isOwner = seed?.isInstanceOwner ?? detail?.isInstanceOwner ?? false;
+  const ownerLocked = isOwner && !isSelf;
+  // The two flags nobody may flip on the owner, the owner included: ownership
+  // leaves only through a transfer that names a successor.
+  const ownerFlagsLocked = isOwner;
 
   function save() {
     startTransition(async () => {
@@ -214,7 +227,10 @@ export function EditUserDialog({
                   value={createdAt ? timeAgo(createdAt) : "—"}
                 />
                 <Meta label="Teams" value={String(teamCount)} />
-                <Meta label="Instance admin" value={admin ? "Yes" : "No"} />
+                <Meta
+                  label="Instance admin"
+                  value={isOwner ? "Owner" : admin ? "Yes" : "No"}
+                />
                 <Meta
                   label="Status"
                   value={suspended ? "Suspended" : "Active"}
@@ -272,18 +288,33 @@ export function EditUserDialog({
 
             {/* Global permissions */}
             <div className="space-y-4">
+              {ownerLocked && (
+                <p className="rounded-lg border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
+                  This account owns the instance. Only its owner can change it —
+                  no other admin can demote, suspend or reset them. Ownership
+                  moves only when the owner transfers it.
+                </p>
+              )}
               <ToggleRow
                 title="Instance admin"
-                detail="Manage all users, mint registration links, and administer any team."
+                detail={
+                  ownerFlagsLocked
+                    ? "The instance owner is always an instance admin. Transfer ownership first."
+                    : "Manage all users, mint registration links, and administer any team."
+                }
                 checked={admin}
-                disabled={isSelf}
+                disabled={isSelf || ownerFlagsLocked}
                 onChange={setAdmin}
               />
               <ToggleRow
                 title="Suspended"
-                detail="Block this account from signing in. Memberships are kept."
+                detail={
+                  ownerFlagsLocked
+                    ? "The instance owner's account can't be suspended."
+                    : "Block this account from signing in. Memberships are kept."
+                }
                 checked={suspended}
-                disabled={isSelf}
+                disabled={isSelf || ownerFlagsLocked}
                 tone="destructive"
                 // Turning suspension ON asks for confirmation first; turning it
                 // back off (reactivating) is safe and applies immediately.
@@ -301,14 +332,14 @@ export function EditUserDialog({
                 title="Publish ports"
                 detail="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains/routes don't need this. Instance admins always can."
                 checked={admin || exposePorts}
-                disabled={admin}
+                disabled={admin || ownerLocked}
                 onChange={setExposePorts}
               />
               <ToggleRow
                 title="Mount host volumes"
                 detail="Bind-mount host filesystem paths into containers (compose and single-container). Instance admins always can."
                 checked={admin || mountHostVolumes}
-                disabled={admin}
+                disabled={admin || ownerLocked}
                 onChange={setMountHostVolumes}
               />
               {admin && (
@@ -334,8 +365,13 @@ export function EditUserDialog({
                   id="reset-pw"
                   type="password"
                   value={password}
+                  disabled={ownerLocked}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="New password — leave blank to keep current"
+                  placeholder={
+                    ownerLocked
+                      ? "Only the instance owner can reset their own password"
+                      : "New password — leave blank to keep current"
+                  }
                 />
               </div>
             </div>
@@ -367,7 +403,10 @@ export function EditUserDialog({
           <Button
             onClick={save}
             disabled={
-              !ready || pending || (password.length > 0 && password.length < 8)
+              !ready ||
+              pending ||
+              ownerLocked ||
+              (password.length > 0 && password.length < 8)
             }
           >
             {pending ? "Saving…" : "Save changes"}

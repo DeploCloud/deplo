@@ -58,9 +58,15 @@ const DEFAULT_TEAMS: SeedTeam[] = [
 ];
 const DEFAULT_USERS: SeedUser[] = [{ id: USER_1, teamId: TEAM_A, role: "owner" }];
 
-/** Truncate every identity table (call in `beforeEach` before seeding). */
+/**
+ * Truncate every identity table (call in `beforeEach` before seeding).
+ * `instance_settings` is listed explicitly rather than left to the `users`
+ * cascade: the owner crown is identity state, and a row surviving into the next
+ * test would silently arm (or disarm) the owner guards in `updateUserAdmin`.
+ */
 export const TRUNCATE_IDENTITY = `truncate table
-  registration_links, membership_capabilities, memberships, users, teams
+  registration_links, membership_capabilities, memberships, users, teams,
+  instance_settings
   restart identity cascade;`;
 
 /**

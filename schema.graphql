@@ -979,6 +979,9 @@ type GlobalUser {
   canMountHostVolumes: Boolean
   createdAt: String
   isInstanceAdmin: Boolean
+
+  """Owns the instance. Their account is editable only by themselves."""
+  isInstanceOwner: Boolean
   name: String
   suspended: Boolean
   teamCount: Int
@@ -1521,6 +1524,11 @@ type Mutation {
   toggleBackup(enabled: Boolean!, id: String!): Boolean
 
   """
+  Hand instance ownership to another instance admin. Owner-only; requires the caller's password. Returns true.
+  """
+  transferInstanceOwner(password: String!, userId: String!): Boolean
+
+  """
   Uninstall a plugin: destroy its container + Traefik router and drop the row. Revokes nothing (the plugin held no token). Returns true.
   """
   uninstallPlugin(id: String!): Boolean
@@ -1907,6 +1915,9 @@ type Query {
 
   """Full detail (incl. email) for one user."""
   userDetail(userId: String!): UserDetail
+
+  """Whether the viewer owns this instance (the tier above instance admin)."""
+  viewerIsInstanceOwner: Boolean
 
   """The active team."""
   viewerTeam: Team
@@ -2467,6 +2478,9 @@ type UserDetail {
   createdAt: String
   email: String
   isInstanceAdmin: Boolean
+
+  """Owns the instance. Their account is editable only by themselves."""
+  isInstanceOwner: Boolean
   name: String
   recentActivity: [UserActivity!]
   suspended: Boolean

@@ -8,6 +8,7 @@
     "prod": "next build && next start",
     "start": "next start",
     "lint": "eslint",
+    "recover": "node --require ./lib/test/server-only-shim.cjs --import tsx scripts/recover.ts",
     "test": "node --require ./lib/test/server-only-shim.cjs --import tsx --test --test-concurrency=2 \"lib/**/*.test.ts\"",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
