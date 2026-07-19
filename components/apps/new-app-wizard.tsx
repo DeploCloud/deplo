@@ -658,10 +658,10 @@ export function NewAppWizard({
                     htmlFor="repo"
                     info={
                       <>
-                        The HTTPS URL of the public Git repository to deploy.
-                        GitHub, GitLab and Bitbucket links are recognised; a
-                        bare <code className="font-mono">owner/repo</code> is
-                        treated as GitHub.
+                        HTTPS URL of a public repo — GitHub, GitLab or
+                        Bitbucket. A bare{" "}
+                        <code className="font-mono">owner/repo</code> is treated
+                        as GitHub
                       </>
                     }
                   >

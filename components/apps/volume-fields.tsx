@@ -100,15 +100,7 @@ export function VolumeFields({
                   <div className="space-y-1.5">
                     <FieldLabel
                       className="text-xs"
-                      info={
-                        <>
-                          Named volume is a persistent Docker volume that
-                          survives deploys. App file mounts a path inside
-                          this app&apos;s isolated files directory. Host path
-                          binds an absolute path on the deploy host and requires
-                          the host-volume permission.
-                        </>
-                      }
+                      info="Named volume: persistent Docker volume. App file: a path in this app's files. Host path: absolute host path, needs host-volume permission"
                     >
                       Type
                     </FieldLabel>

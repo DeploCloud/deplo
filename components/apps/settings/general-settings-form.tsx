@@ -139,13 +139,7 @@ export function GeneralSettingsForm({
           {/* Logo */}
           <div className="space-y-3">
             <FieldLabel
-              info={
-                <>
-                  Shown for this app on the dashboard. It&apos;s set
-                  automatically from a <code>favicon</code> in your source files
-                  (or a template&apos;s logo) — replace or remove it any time.
-                </>
-              }
+              info="Shown for this app on the dashboard. Set automatically from a favicon in your source files — replace it any time"
             >
               Logo
             </FieldLabel>

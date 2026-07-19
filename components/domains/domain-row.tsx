@@ -467,14 +467,7 @@ export function DomainRow({
               <div className="space-y-2">
                 <FieldLabel
                   htmlFor={`edit-name-${domain.id}`}
-                  info={
-                    <>
-                      The fully-qualified hostname that routes to this app,
-                      e.g. <code className="font-mono">app.example.com</code>.
-                      Its DNS A record must point at this server for the domain
-                      to verify.
-                    </>
-                  }
+                  info="Fully-qualified hostname, e.g. app.example.com. Its DNS A record must point at this server to verify."
                 >
                   Domain
                 </FieldLabel>

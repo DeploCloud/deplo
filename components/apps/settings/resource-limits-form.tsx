@@ -319,7 +319,7 @@ export function ResourceLimitsForm({
                     placeholder="1024"
                     value={form.cpuShares}
                     onChange={set("cpuShares")}
-                    info="Relative CPU weight when the host is busy (default 1024). An app with 2048 gets twice the CPU of one with 1024. Doesn't cap idle-time usage."
+                    info="Relative CPU weight when the host is busy (default 1024) — 2048 gets twice the share of 1024. Doesn't cap idle-time usage."
                   />
                   <LimitField
                     label="CPU pinning"
@@ -357,7 +357,7 @@ export function ResourceLimitsForm({
                     placeholder="e.g. 512"
                     value={form.nproc}
                     onChange={set("nproc")}
-                    info="Maximum processes for the container's user (ulimit nproc). Usually leave to the process limit above; set only if you need the per-user ulimit specifically."
+                    info="Per-user process ceiling (ulimit nproc). Usually redundant with the process limit above"
                   />
                 </LimitGroup>
 
@@ -378,7 +378,7 @@ export function ResourceLimitsForm({
                     placeholder="e.g. 10"
                     value={form.storageGb}
                     onChange={set("storageGb")}
-                    info="⚠ Hard cap on the container's writable-layer disk usage. Requires host support (XFS + pquota, or the devicemapper driver); on other hosts the deploy is rejected. Leave empty unless you know your host supports it — this does not limit named volumes."
+                    info="⚠ Caps the writable layer, not named volumes. Needs host support (XFS + pquota or devicemapper) or the deploy is rejected"
                   />
                 </LimitGroup>
 
@@ -390,7 +390,7 @@ export function ResourceLimitsForm({
                     placeholder="0"
                     value={form.oomScoreAdj}
                     onChange={set("oomScoreAdj")}
-                    info="Range −1000…1000. When the whole host runs out of memory, containers with a higher score are killed first. Use a negative value to protect this app, positive to sacrifice it first."
+                    info="Range −1000…1000. If the host runs out of memory, higher scores are killed first — negative protects this app"
                   />
                 </LimitGroup>
               </AccordionContent>

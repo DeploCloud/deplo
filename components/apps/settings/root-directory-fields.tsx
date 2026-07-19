@@ -27,14 +27,7 @@ export function RootDirectoryFields({
     <div className="space-y-2">
       <FieldLabel
         htmlFor="root-directory"
-        info={
-          <>
-            The directory Deplo builds from, relative to the repository root.
-            Leave as <code className="font-mono">./</code> to build from the
-            repository root; set it to a sub-folder (e.g.{" "}
-            <code className="font-mono">apps/web</code>) for a monorepo.
-          </>
-        }
+        info='Sub-folder to build from, e.g. "apps/web" in a monorepo. Leave as ./ to build from the repository root'
       >
         Root Directory
       </FieldLabel>

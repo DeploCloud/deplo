@@ -92,11 +92,9 @@ export function GitDeployOptions({
         <FieldLabel
           info={
             <>
-              Git submodules embed another repository inside this one, pinned to a
-              specific commit. Enabling this clones them too (
-              <code className="font-mono">git clone --recurse-submodules</code>), so
-              their code is present when your app builds. Leave it off if your
-              repository doesn&apos;t use submodules.
+              Clones nested submodule repos too (
+              <code className="font-mono">git clone --recurse-submodules</code>) so
+              their code is there at build time. Leave off if yours has none
             </>
           }
           infoLabel="What are submodules?"

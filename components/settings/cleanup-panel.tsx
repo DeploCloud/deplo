@@ -97,9 +97,8 @@ const SCOPES: {
     unit: "images",
     info: (
       <>
-        Untagged layers left behind by rebuilds. An image a container still references
-        is never dangling, so a <strong>stopped</strong> app keeps the image it needs to
-        start again.
+        Untagged layers left by rebuilds. Anything a container references is never
+        dangling, so a <strong>stopped</strong> app keeps the image it needs.
       </>
     ),
   },
@@ -109,9 +108,8 @@ const SCOPES: {
     unit: "volumes",
     info: (
       <>
-        Abandoned buildkit volumes — usually the biggest win on a full host. A volume is
-        removed only when the agent finds a <code>buildkitd.lock</code> inside it, so a
-        dangling volume that holds your data is left alone.
+        Abandoned buildkit volumes — often the biggest win on a full host. Removed
+        only if it holds a <code>buildkitd.lock</code>, so your data is safe.
       </>
     ),
   },
@@ -122,10 +120,8 @@ const SCOPES: {
     risky: true,
     info: (
       <>
-        Old app images that no container — running <em>or</em> stopped — references.
-        Deplo pushes to no registry, so a removed image comes back only by rebuilding
-        the app from source; the newest image per app is always kept (see “Images kept
-        per app”).
+        Old images no container — running <em>or</em> stopped — references. Removed
+        ones come back only by rebuilding; the newest per app is always kept.
       </>
     ),
   },
@@ -306,14 +302,7 @@ export function CleanupPanel({
             <div className="space-y-2">
               <FieldLabel
                 htmlFor="cleanup-min-age"
-                info={
-                  <>
-                    Only reclaim objects older than this, so a build that finished
-                    minutes ago keeps its cache. 0 turns the age filter off — and lets
-                    the build-cache sweep clear <em>all</em> of it, not just the stale
-                    part.
-                  </>
-                }
+                info="Only reclaim objects older than this. 0 turns the age filter off — the build-cache sweep then clears all of it, not just the stale part."
               >
                 Minimum age (hours)
               </FieldLabel>
@@ -329,13 +318,7 @@ export function CleanupPanel({
             <div className="space-y-2">
               <FieldLabel
                 htmlFor="cleanup-keep-images"
-                info={
-                  <>
-                    Unused app images only: how many of the newest images to keep for
-                    each app. Deplo pushes to no registry, so a removed image comes back
-                    only by a rebuild — keep at least one.
-                  </>
-                }
+                info="Unused app images only: how many of the newest to keep per app. A removed image comes back only by rebuilding — keep at least one."
               >
                 Images kept per app
               </FieldLabel>
@@ -353,7 +336,7 @@ export function CleanupPanel({
           </div>
 
           <div className="space-y-2.5">
-            <FieldLabel info="What a sweep reclaims — scheduled or manual, it is this list. Everything outside it is left alone: containers, data volumes and networks are never pruned.">
+            <FieldLabel info="Scheduled or manual, a sweep reclaims only this list. Containers, data volumes and networks are never pruned.">
               What to reclaim
             </FieldLabel>
             {SCOPES.map((scope) => (

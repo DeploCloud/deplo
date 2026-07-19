@@ -204,10 +204,9 @@ function ExposureCard({
                 htmlFor="db-port"
                 info={
                   <>
-                    The port on the server clients connect to. Use an unprivileged
-                    port (1024–65535) that is free on the host, or click Generate.
-                    {movingServer &&
-                      " On a move it must be free on the new server — regenerate it if unsure."}
+                    Port clients connect to. Use a free unprivileged port
+                    (1024–65535), or click Generate.
+                    {movingServer && " On a move it must be free on the new server too."}
                   </>
                 }
               >

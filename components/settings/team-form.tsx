@@ -54,13 +54,7 @@ export function TeamForm({
         <div className="space-y-2">
           <FieldLabel
             htmlFor="team-slug"
-            info={
-              <>
-                A short, URL-safe identifier for the team, used in links and to
-                seed the names of installed app containers. Use lowercase
-                letters, numbers, and hyphens.
-              </>
-            }
+            info="URL-safe id used in links and to seed the names of installed app containers. Lowercase letters, numbers and hyphens."
           >
             Slug
           </FieldLabel>

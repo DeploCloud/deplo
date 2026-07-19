@@ -251,7 +251,7 @@ export function CreateDatabase({
               </Select>
             </div>
             <div className="space-y-2">
-              <FieldLabel info="The engine version to provision — the real Docker Hub tag list loads as you type, so new releases appear automatically. Pick the version your application targets, or type any published tag.">
+              <FieldLabel info="Any published Docker Hub tag works — suggestions load as you type. Pick the version your app targets.">
                 Version
               </FieldLabel>
               <DbVersionInput engine={type} value={version} onChange={setVersion} />

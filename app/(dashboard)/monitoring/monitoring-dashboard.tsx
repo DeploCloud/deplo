@@ -281,16 +281,7 @@ export function MonitoringDashboard({
       <FieldLabel
         htmlFor="save-metrics"
         className="text-sm font-normal text-muted-foreground"
-        info={
-          <>
-            Keeps a rolling ~15-minute metrics history for every server in the
-            control plane&apos;s memory, so these charts survive a page reload
-            and keep filling while nobody is watching. RAM only (~0.5&nbsp;MB
-            per server) — nothing is written to the database, and a
-            control-plane restart starts the window over. Turning it off also
-            drops the saved history.
-          </>
-        }
+        info="Keeps ~16 minutes of history in memory, so charts survive a reload. Never stored in the database; turning it off clears it."
       >
         Save metrics on server
       </FieldLabel>
