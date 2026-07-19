@@ -21,7 +21,13 @@ import {
   seedGithubInstallation,
   seedServerRow,
 } from "./infra-test-helpers";
-import { getServer, getServerById, listServers, markServerSeen } from "./servers";
+import {
+  getServer,
+  getServerById,
+  listServers,
+  markServerSeen,
+  observedTraefik,
+} from "./servers";
 import {
   listGithubApps,
   listGithubInstallations,
@@ -128,6 +134,38 @@ test("servers: markServerSeen updates lastSeenAt + traefik, and pins version onl
   const unprov = (await getServerById("srv_unprov"))!;
   assert.equal(unprov.agent, undefined, "unprovisioned server stays agent-less");
   assert.equal(unprov.traefikEnabled, true, "traefik flag still updates");
+});
+
+test("servers: observedTraefik reports nothing when the Hello never looked", () => {
+  assert.equal(observedTraefik({ dockerAvailable: true, traefikRunning: true }), true);
+  assert.equal(observedTraefik({ dockerAvailable: true, traefikRunning: false }), false);
+  // The agent FORCES traefikRunning false when Docker is unreachable — it has no
+  // container list to match against. That is "we didn't look", not "it's off".
+  assert.equal(
+    observedTraefik({ dockerAvailable: false, traefikRunning: false }),
+    undefined,
+    "Docker down means unobserved, never a false verdict",
+  );
+});
+
+test("servers: markServerSeen keeps the last-known traefik flag when nothing was observed", async () => {
+  await seedServerRow(db, {
+    id: "srv_dockerless",
+    traefikEnabled: true,
+    agent: { port: 9443, certFingerprint: "fp", certPem: "p", version: "1.0" },
+  });
+
+  // A Hello that reached the agent but not Docker. Writing its forced-false through
+  // would flip a good badge to "off" for a question nobody actually asked.
+  await markServerSeen(
+    "srv_dockerless",
+    "2.0",
+    observedTraefik({ dockerAvailable: false, traefikRunning: false }),
+  );
+
+  const row = (await getServerById("srv_dockerless"))!;
+  assert.equal(row.traefikEnabled, true, "unobserved leaves the stored flag alone");
+  assert.equal(row.agent?.version, "2.0", "the rest of the heartbeat still lands");
 });
 
 test("servers: markServerSeen swallows an unknown id (best-effort)", async () => {

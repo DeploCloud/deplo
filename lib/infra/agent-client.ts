@@ -42,7 +42,7 @@ import {
   type DockerCleanupResponse,
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
-import { getServerById, markServerSeen } from "../data/servers";
+import { getServerById, markServerSeen, observedTraefik } from "../data/servers";
 import type { Server } from "../types";
 
 /**
@@ -1785,7 +1785,7 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
     // Heartbeat cache (P5): best-effort, behind the live-read. Also refresh the
     // server's traefikEnabled from this live Hello so the badge reflects reality.
     try {
-      void markServerSeen(serverId, resp.agentVersion, resp.traefikRunning);
+      void markServerSeen(serverId, resp.agentVersion, observedTraefik(resp));
     } catch {
       /* unknown id: no row to touch */
     }

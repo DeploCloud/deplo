@@ -9,7 +9,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { timeAgo } from "@/lib/utils";
 import type { ServerStatus } from "@/lib/types";
 import {
-  STATUS_STALE_MS,
+  isObservationFresh,
   useServerHealth,
   type ServerHealthState,
 } from "./server-health-provider";
@@ -19,9 +19,9 @@ import {
  * the other is a lie waiting to happen.
  *
  * The rule this component exists to enforce: **a status we haven't confirmed recently
- * is not painted.** Past {@link STATUS_STALE_MS} the chip goes grey "Unknown" no matter
- * what the row says — never a confident green for a server nobody has spoken to since
- * it called home three weeks ago. Green here means "green, and we checked seconds ago".
+ * is not painted.** Past the provider's staleness window the chip goes grey "Unknown" no
+ * matter what the row says — never a confident green for a server nobody has spoken to
+ * since it called home three weeks ago. Green means "green, and we checked seconds ago".
  *
  * Reaching "Unknown" while the operator sits on the page is therefore a real signal, not
  * a UI timeout: the provider re-sweeps the fleet on an interval well inside the staleness
@@ -44,22 +44,6 @@ const VARIANTS: Record<ServerStatus, "success" | "warning" | "destructive" | "mu
   offline: "destructive",
   provisioning: "warning",
 };
-
-/**
- * Whether an observation is recent enough to paint. `now` is the provider's clock —
- * `null` until mount (during SSR + the first client render we trust the seed rather
- * than branch on a time the two renders would disagree on), a ticking number after.
- */
-function isFresh(checkedAt: string | null, now: number | null): boolean {
-  // "Never observed" is deterministic — it does not depend on the clock — so it is
-  // decided the same way on the server and the client, no hydration risk.
-  if (!checkedAt) return false;
-  // Pre-mount (now null): a server with a checkedAt paints its seed. Branching on the
-  // actual time is deferred to the client, where the provider's tick supplies `now`.
-  if (now === null) return true;
-  const at = Date.parse(checkedAt);
-  return Number.isFinite(at) && now - at < STATUS_STALE_MS;
-}
 
 export function ServerHealthChip({
   serverId,
@@ -87,7 +71,7 @@ export function ServerHealthChip({
     );
   }
 
-  if (!isFresh(state.checkedAt, now)) {
+  if (!isObservationFresh(state.checkedAt, now)) {
     // We genuinely do not know. Say so — and say when we last did know, which is the
     // one useful thing an unverified chip can offer.
     const tip = checking

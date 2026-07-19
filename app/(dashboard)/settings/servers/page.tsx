@@ -6,7 +6,6 @@ import {
   MemoryStick,
   HardDrive,
   Boxes,
-  Network,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -41,6 +40,7 @@ import type { TeamOption } from "@/components/servers/server-team-access";
 import { CheckUpdatesButton } from "./check-updates-button";
 import { AgentVersionBadge } from "./agent-version-badge";
 import { ServerHealthChip } from "./server-health-chip";
+import { ServerTraefikBadge } from "./server-traefik-badge";
 import {
   ServerHealthProvider,
   type ServerHealthState,
@@ -139,6 +139,8 @@ function ServerCard({
               status: server.status,
               checkedAt: server.statusCheckedAt ?? null,
               message: server.statusMessage ?? null,
+              traefikEnabled: server.traefikEnabled,
+              lastReachedAt: server.lastSeenAt ?? null,
             }}
           />
           <Badge variant="muted" title="Which teams can deploy to this server">
@@ -167,10 +169,19 @@ function ServerCard({
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
           <span className="font-mono text-muted-foreground">{server.ip}</span>
-          <Badge variant={server.traefikEnabled ? "success" : "muted"}>
-            <Network className="size-3" />
-            Traefik {server.traefikEnabled ? "on" : "off"}
-          </Badge>
+          {/* Reads the SAME live observation as the health chip above — a stored
+              traefikEnabled rendered on its own would keep claiming "on" for a host
+              that has been offline for weeks. */}
+          <ServerTraefikBadge
+            serverId={server.id}
+            fallback={{
+              status: server.status,
+              checkedAt: server.statusCheckedAt ?? null,
+              message: server.statusMessage ?? null,
+              traefikEnabled: server.traefikEnabled,
+              lastReachedAt: server.lastSeenAt ?? null,
+            }}
+          />
           <AgentVersionBadge
             version={agentVersion}
             expected={expectedAgentVersion}
@@ -265,6 +276,8 @@ export default async function ServersPage(
         status: s.status,
         checkedAt: s.statusCheckedAt ?? null,
         message: s.statusMessage ?? null,
+        traefikEnabled: s.traefikEnabled,
+        lastReachedAt: s.lastSeenAt ?? null,
       },
     ]),
   );

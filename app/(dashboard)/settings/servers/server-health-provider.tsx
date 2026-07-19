@@ -53,6 +53,45 @@ export interface ServerHealthState {
   checkedAt: string | null;
   /** Why it isn't online (instance-admin-scoped in GraphQL). Null when online. */
   message: string | null;
+  /**
+   * Whether a Traefik proxy was running on the host, as of the same observation.
+   *
+   * It rides along with the status for one reason: it is only meaningful WITH it. The
+   * column is a last-known value that no path ever clears on failure, so on its own it
+   * says "Traefik on" for a host that has been unreachable for weeks. Carried here, the
+   * badge can apply the same freshness + reachability rule the chip beside it applies,
+   * and the sweep that keeps one honest keeps the other honest too.
+   */
+  traefikEnabled: boolean;
+  /**
+   * ISO instant the agent last actually ANSWERED, or null if it never has.
+   *
+   * Deliberately not `checkedAt`: that one advances on every probe including the failed
+   * ones, so an offline server's last "check" is seconds old while the last time anyone
+   * reached it may be days. Dating a last-known value with `checkedAt` would reintroduce
+   * the exact lie this state exists to prevent, one layer down in the tooltip.
+   */
+  lastReachedAt: string | null;
+}
+
+/**
+ * Whether an observation is recent enough to paint. `now` is the provider's clock —
+ * `null` until mount (during SSR + the first client render we trust the seed rather
+ * than branch on a time the two renders would disagree on), a ticking number after.
+ *
+ * Shared by the health chip and the Traefik badge: both refuse to assert anything about
+ * a server nobody has reached lately, and they must age out on exactly the same beat or
+ * a card ends up showing a grey "Unknown" status next to a confident "Traefik on".
+ */
+export function isObservationFresh(checkedAt: string | null, now: number | null): boolean {
+  // "Never observed" is deterministic — it does not depend on the clock — so it is
+  // decided the same way on the server and the client, no hydration risk.
+  if (!checkedAt) return false;
+  // Pre-mount (now null): a server with a checkedAt paints its seed. Branching on the
+  // actual time is deferred to the client, where the provider's tick supplies `now`.
+  if (now === null) return true;
+  const at = Date.parse(checkedAt);
+  return Number.isFinite(at) && now - at < STATUS_STALE_MS;
 }
 
 interface HealthContext {
@@ -83,6 +122,8 @@ interface ServerHealthRow {
   status: ServerStatus;
   statusCheckedAt: string | null;
   statusMessage: string | null;
+  traefikEnabled: boolean;
+  lastSeenAt: string | null;
 }
 
 const HEALTH_FIELDS = `
@@ -90,6 +131,8 @@ const HEALTH_FIELDS = `
   status
   statusCheckedAt
   statusMessage
+  traefikEnabled
+  lastSeenAt
 `;
 
 const CHECK_ALL = /* GraphQL */ `
@@ -113,6 +156,8 @@ function toState(row: ServerHealthRow): ServerHealthState {
     status: row.status,
     checkedAt: row.statusCheckedAt,
     message: row.statusMessage,
+    traefikEnabled: row.traefikEnabled,
+    lastReachedAt: row.lastSeenAt,
   };
 }
 

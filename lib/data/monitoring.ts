@@ -3,7 +3,7 @@ import "server-only";
 import { listServersForCurrentTeam, getServer } from "./servers";
 import { hostFacts } from "../infra/host";
 import { connectAgent } from "../infra/agent-client";
-import { markServerSeen } from "./servers";
+import { markServerSeen, observedTraefik } from "./servers";
 import { recordServerHealth } from "./server-health";
 import { classifyServerHealth } from "../infra/server-health";
 import { isAgentOutdated, reportedAgentVersion, resolveExpectedAgentVersion } from "../version";
@@ -133,7 +133,9 @@ async function measureRemote(server: Server, expected: string): Promise<ServerMe
     let liveAgentVersion: string | null = reportedAgentVersion(server);
     try {
       const hello = await conn.hello();
-      traefik = hello.traefikRunning;
+      // `?? traefik` keeps the last-known flag when the Hello observed nothing (Docker
+      // unreachable) — see observedTraefik. Same reason the catch below keeps it.
+      traefik = observedTraefik(hello) ?? traefik;
       if (hello.agentVersion) liveAgentVersion = hello.agentVersion;
       // Persist the live value (read-live-not-stored, like health). The badge's
       // server-rendered render reads this on the next page load; the live payload
@@ -143,7 +145,7 @@ async function measureRemote(server: Server, expected: string): Promise<ServerMe
       await markServerSeen(
         server.id,
         hello.agentVersion,
-        hello.traefikRunning,
+        observedTraefik(hello),
         {
           cpuCores: m.cpuCores,
           memoryMb: Math.round(Number(m.memTotal) / (1024 * 1024)),

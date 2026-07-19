@@ -3,7 +3,7 @@ import "server-only";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import { listAllServers } from "../data/servers";
-import { markServerSeen } from "../data/servers";
+import { markServerSeen, observedTraefik } from "../data/servers";
 import { recordServerHealth } from "../data/server-health";
 import { classifyServerHealth } from "../infra/server-health";
 import {
@@ -299,7 +299,7 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
       await markServerSeen(
         serverId,
         hello.agentVersion,
-        hello.traefikRunning,
+        observedTraefik(hello),
         undefined,
         hello.dockerVersion,
       );

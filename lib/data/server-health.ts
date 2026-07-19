@@ -15,7 +15,7 @@ import {
 } from "../infra/server-health";
 import { requireInstanceAdmin } from "../membership";
 import { nowIso } from "../ids";
-import { getServerById, listAllServers } from "./servers";
+import { getServerById, listAllServers, markServerSeen, observedTraefik } from "./servers";
 import type { HelloResponse } from "../agent/gen/agent";
 import type { Server } from "../types";
 
@@ -273,6 +273,12 @@ async function probeServer(server: Server, force: boolean): Promise<Server | nul
   }
 
   await recordServerHealth(server.id, health, observedAt);
+  // This Hello carries `traefikRunning` too, and the prober is the ONLY thing that dials
+  // a server on a schedule — so before this, the Traefik badge could only ever be
+  // refreshed by a deploy pre-flight or the monitoring stream, and a host nobody deployed
+  // to wore whatever flag it had when it last called home. AWAITED, not fire-and-forget:
+  // the row we read below is what the mutation returns to the card.
+  if (hello) await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
   return getServerById(server.id);
 }
 

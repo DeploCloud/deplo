@@ -765,11 +765,33 @@ export async function completeBootstrap(
 }
 
 /**
+ * What a Hello actually OBSERVED about Traefik — `undefined` when it observed nothing.
+ *
+ * The agent FORCES `traefikRunning` to false whenever Docker is unreachable, because its
+ * only signal is a substring match over running containers and it has no container list
+ * to match against. Passing that straight through to {@link markServerSeen} persists "we
+ * looked and Traefik is off" for a host where we never looked — which then paints a
+ * confident grey "Traefik off" badge. `undefined` means "don't touch the column", so the
+ * last real observation survives and the UI can age it out on its own terms.
+ *
+ * The same tri-state lives in `classifyServerReadiness` (lib/infra/server-readiness.ts),
+ * which renders its unknown as a "skip" row rather than a warning. Kept separate because
+ * that module is pure classification and must not import the data layer.
+ */
+export function observedTraefik(hello: {
+  dockerAvailable: boolean;
+  traefikRunning: boolean;
+}): boolean | undefined {
+  return hello.dockerAvailable ? hello.traefikRunning : undefined;
+}
+
+/**
  * Mark a server seen now (P5 heartbeat cache). A best-effort write behind the
  * live-read health check — never the source of truth for status. Also refreshes
  * `traefikEnabled` from the live Hello (whether a Traefik proxy is running on the
  * host) — read-live-not-stored, so the badge self-corrects if Traefik later stops
- * or is added, instead of the hardcoded false a remote row is born with.
+ * or is added, instead of the hardcoded false a remote row is born with. Callers
+ * pass it through {@link observedTraefik}, never raw.
  *
  * Async + self-swallowing (like `recordActivity`): callers fire-and-forget it
  * (`void markServerSeen(...)`), so a write failure never disrupts the live read.
