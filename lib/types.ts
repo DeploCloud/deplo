@@ -155,6 +155,7 @@ export interface RegistrationLink {
   createdBy: string;
   /** Set once used: the username that registered through it. */
   usedByUsername: string | null;
+  /** Automatic expiry, 24h after minting; enforced on every read and at consume. */
   expiresAt: string;
   createdAt: string;
   usedAt: string | null;
@@ -363,8 +364,7 @@ export interface ServerAgent {
 /**
  * The one-time bootstrap secret for a provisioning server (PLAN P2). Mirrors the
  * registration-link pattern ([[RegistrationLink]]) — only the token's sha256 is
- * stored, never the raw token — but ADDS a short expiry (registration links do
- * not expire; a provisioning token is more dangerous, so it must). Consumed
+ * stored, never the raw token, and both carry a short automatic expiry. Consumed
  * single-use when the agent calls home.
  */
 export interface ServerBootstrap {

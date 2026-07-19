@@ -41,7 +41,12 @@ import type {
   Role,
 } from "../types";
 
-const REGISTRATION_TTL_DAYS = 7;
+/**
+ * How long a freshly minted registration link stays usable. Expiry is automatic:
+ * every read path and the consume `UPDATE` filter on `expires_at >= now()`, so a
+ * stale link dies on its own with no sweep job to run.
+ */
+const REGISTRATION_TTL_HOURS = 24;
 
 /** A team member projected for the client (no password hash, no email). */
 export interface MemberDTO {
@@ -784,7 +789,7 @@ export async function mintRegistrationLink(input: {
   const now = nowIso();
   const linkId = newId("reg");
   const expiresAt = new Date(
-    Date.now() + REGISTRATION_TTL_DAYS * 86400_000,
+    Date.now() + REGISTRATION_TTL_HOURS * 3_600_000,
   ).toISOString();
   const baseRow = {
     id: linkId,

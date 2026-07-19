@@ -192,7 +192,7 @@ export function RegisterUserDialog({
         {link ? (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              Share this link. It works once and expires in 7 days.
+              Share this link. It works once and expires in 24 hours.
             </p>
             <div className="flex gap-2">
               <Input readOnly value={link} className="font-mono text-xs" />

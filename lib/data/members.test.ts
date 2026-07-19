@@ -5,12 +5,14 @@ import type { PGlite } from "@electric-sql/pglite";
 import { and, eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
-import { __setTestDb, __resetTestDb } from "../db/client";
+import { __setTestDb, __resetTestDb, type DbTx } from "../db/client";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
+  registrationLinks as registrationLinksTable,
   users as usersTable,
 } from "../db/schema/control-plane";
+import { sha256Hex } from "../crypto";
 import { runWithIdentity } from "../auth/request-context";
 import {
   seedIdentity,
@@ -20,6 +22,8 @@ import {
 } from "./identity-test-helpers";
 import {
   addExistingMember,
+  consumeRegistrationLink,
+  getRegistrationLinkInfo,
   listMembers,
   mintRegistrationLink,
   removeMember,
@@ -77,6 +81,77 @@ test("mintRegistrationLink refuses an owner role for an existing-teams assignmen
         }),
       ),
     /member or viewer/,
+  );
+});
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * pglite's transaction handle differs from the production node-postgres `DbTx`
+ * only in the driver HKT — the query surface is identical (see `DbTx`'s doc
+ * comment), the same widening `__setTestDb` already relies on.
+ */
+const asDbTx = (tx: unknown): DbTx => tx as DbTx;
+
+/** A pending link row, `hoursFromNow` away from expiry (negative = expired). */
+const linkRow = (id: string, rawToken: string, hoursFromNow: number) => ({
+  id,
+  tokenHash: sha256Hex(rawToken),
+  status: "pending",
+  mode: "own_team",
+  createdBy: "admin",
+  usedByUsername: null,
+  expiresAt: new Date(Date.now() + hoursFromNow * HOUR_MS).toISOString(),
+  createdAt: new Date(Date.now() - HOUR_MS).toISOString(),
+  usedAt: null,
+});
+
+test("mintRegistrationLink stamps an automatic 24h expiry", async () => {
+  await seedIdentity(db);
+  const before = Date.now();
+  // The link row is committed before mint formats its share URL from the request
+  // headers — which don't exist under node:test. Pinning that specific rejection
+  // proves mint got all the way past the write, so the row below is what it stored.
+  await assert.rejects(
+    () => asOwner(() => mintRegistrationLink({ mode: "own_team" })),
+    /request scope/,
+  );
+  const after = Date.now();
+
+  const rows = await db
+    .select({ expiresAt: registrationLinksTable.expiresAt })
+    .from(registrationLinksTable);
+  assert.equal(rows.length, 1);
+  const expiresAt = Date.parse(rows[0]!.expiresAt);
+
+  assert.ok(
+    expiresAt >= before + 24 * HOUR_MS && expiresAt <= after + 24 * HOUR_MS,
+    `expected a 24h TTL, got ${(expiresAt - before) / HOUR_MS}h`,
+  );
+});
+
+test("registration-link expiry is enforced on read and at consume", async () => {
+  await seedIdentity(db);
+  const fresh = "fresh-raw-token";
+  const stale = "stale-raw-token";
+  await db
+    .insert(registrationLinksTable)
+    .values([linkRow("reg_fresh", fresh, 1), linkRow("reg_stale", stale, -1)]);
+
+  assert.equal((await getRegistrationLinkInfo(fresh)).valid, true);
+  assert.equal((await getRegistrationLinkInfo(stale)).valid, false);
+
+  // An expired row keeps status='pending' — nothing sweeps it — so the
+  // conditional consume UPDATE is the thing that actually refuses it.
+  await assert.rejects(
+    () =>
+      db.transaction((tx) =>
+        consumeRegistrationLink(asDbTx(tx), stale, "newbie"),
+      ),
+    /no longer valid/,
+  );
+  await db.transaction((tx) =>
+    consumeRegistrationLink(asDbTx(tx), fresh, "newbie"),
   );
 });
 
