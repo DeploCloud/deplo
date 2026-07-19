@@ -7,13 +7,16 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
+  apps as appsTable,
   monitoringSettings,
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
-import { seedApp } from "../data/app-graph-test-helpers";
+import { seedApp, seedDeployment } from "../data/app-graph-test-helpers";
 import { seedDatabase } from "../data/backup-test-helpers";
 import { __resetMonitoringSettingsMemo } from "../data/monitoring-settings";
+import { telemetrySaysRunning } from "../data/app-status-reconcile";
+import { pubSub } from "../graphql/pubsub";
 import { AgentMetricsStreamUnsupportedError } from "../infra/agent-client";
 import type { AgentConnection } from "../infra/agent-client";
 import type {
@@ -29,6 +32,7 @@ import {
 } from "./container-history";
 import {
   HEALTH_WRITE_MS,
+  APP_STATUS_RECONCILE_MS,
   STREAM_INTERVAL_MS,
   RECONNECT_BACKOFF_CAP_MS,
   __setMetricsConnectorForTest,
@@ -107,7 +111,7 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(
-    `truncate table apps, databases, monitoring_settings, servers, activities, users, teams restart identity cascade;`,
+    `truncate table deployments, apps, databases, monitoring_settings, servers, activities, users, teams restart identity cascade;`,
   );
   await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
   clearMetricsHistory();
@@ -162,7 +166,12 @@ function hello(over: Partial<HelloResponse> = {}): HelloResponse {
   };
 }
 
-function containerStat(projectId: string, name: string, cpu: number): ContainerStat {
+function containerStat(
+  projectId: string,
+  name: string,
+  cpu: number,
+  over: Partial<ContainerStat> = {},
+): ContainerStat {
   return {
     name,
     cpuPct: cpu,
@@ -180,6 +189,7 @@ function containerStat(projectId: string, name: string, cpu: number): ContainerS
     state: "running",
     health: "",
     restartCount: 0,
+    ...over,
   };
 }
 
@@ -308,6 +318,43 @@ async function statusCheckedAt(id: string): Promise<string | null> {
     .from(serversTable)
     .where(eq(serversTable.id, id));
   return row?.at ?? null;
+}
+
+/** An App's stored status + the timestamp that proves whether it was WRITTEN.
+ *  `updatedAt` is the write detector: every writer of the column sets it, so an
+ *  unmoved value is proof no UPDATE matched this row. */
+async function appRow(id: string): Promise<{ status: string; updatedAt: string }> {
+  const [row] = await db
+    .select({ status: appsTable.status, updatedAt: appsTable.updatedAt })
+    .from(appsTable)
+    .where(eq(appsTable.id, id));
+  assert.ok(row, `app ${id} should exist`);
+  return row;
+}
+
+/**
+ * Count `appChanged` pings for one App. The publish is what makes a corrected
+ * badge repaint without a reload, and it is guarded on the UPDATE actually
+ * matching — so both "it fired" and "it did NOT fire" are worth pinning.
+ */
+function countPings(appId: string): { count: () => number; stop: () => void } {
+  const it = pubSub.subscribe("appChanged", appId)[Symbol.asyncIterator]();
+  let n = 0;
+  let stopped = false;
+  void (async () => {
+    while (!stopped) {
+      const { done } = await it.next();
+      if (done) return;
+      n++;
+    }
+  })();
+  return {
+    count: () => n,
+    stop: () => {
+      stopped = true;
+      void it.return?.(undefined);
+    },
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -632,4 +679,399 @@ test("health is written AT MOST once per 10s and AT LEAST once per 15s under a 5
   } finally {
     Date.now = realNow;
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* App status reconcile — the stale "error" self-heal                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The gap these pin: `apps.status` is INTENT (the last thing the control plane
+ * was ASKED to do), and one direction of it went stale silently. A host rebooted
+ * on 2026-07-19, a user pressed Redeploy into the outage, every attempt failed its
+ * agent pre-flight and wrote `error` — and when the host came back and Docker
+ * restarted the containers, the App kept a red "Error" badge sitting directly
+ * above its own live, moving CPU charts. The frame carrying the refutation was
+ * arriving every 5 seconds into this very loop and being thrown away.
+ *
+ * Every test below drives the REAL supervisor loop and the REAL pglite write, so
+ * what is asserted is the whole path: frame -> demux -> guarded UPDATE -> publish.
+ */
+
+/** Bring one enrolled server up in stream mode and hand back its feed. */
+async function streamingServer(id = SRV_A): Promise<Feed> {
+  await seedEnrolledServer(id, "2026-01-01T00:00:00.000Z");
+  const feed = new Feed();
+  __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+  startMetricsStreams();
+  await waitFor(() => __streamModes()[id] === "stream", `${id} to stream`);
+  return feed;
+}
+
+test("a frame reporting a RUNNING container clears a stale `error` — the reboot incident", async () => {
+  await seedEnrolledServer(SRV_A, "2026-01-01T00:00:00.000Z");
+  await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A, status: "error" });
+  const before = await appRow("prj_1");
+
+  const feed = new Feed();
+  __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+  const pings = countPings("prj_1");
+  try {
+    startMetricsStreams();
+    await waitFor(() => __streamModes()[SRV_A] === "stream", "srv_a to stream");
+
+    // ONE frame is enough: the reconcile clock is seeded to 0 on every connect
+    // precisely so a host that just came back corrects its Apps immediately
+    // rather than after another interval of red.
+    await feed.send(frame([containerStat("prj_1", "app-one-web-1", 7)]));
+
+    const after = await appRow("prj_1");
+    assert.equal(after.status, "active", "a running container must refute a stored `error`");
+    assert.notEqual(after.updatedAt, before.updatedAt, "the correction is persisted, not folded at read time");
+    await waitFor(() => pings.count() >= 1, "an appChanged ping for the corrected App");
+  } finally {
+    pings.stop();
+  }
+});
+
+test("only `error` is ever promoted — active/idle/stopping/queued/building are left exactly as stored", async () => {
+  // The status allowlist is the core of the write-war guard, and it is exactly
+  // ONE value wide. Every status here reports a running container in the same
+  // frame, and every one of them must survive it untouched:
+  //  - `queued`/`building` — the PREVIOUS container runs for the whole build, so
+  //    every frame says "running"; promoting would flip the badge off "Building"
+  //    seconds after the user pressed Deploy.
+  //  - `stopping` — written BEFORE an up-to-60s `docker stop`, so frames in that
+  //    window still say "running"; promoting would make the user's Stop bounce.
+  //  - `idle` — the deliberate stop. If `restart: unless-stopped` brings a
+  //    container back, "running" is the FAILURE and `idle` is the truth. This is
+  //    the one status where telemetry cannot tell success from failure.
+  const untouchable = ["active", "idle", "stopping", "queued", "building"] as const;
+  await seedEnrolledServer(SRV_A, "2026-01-01T00:00:00.000Z");
+  for (const status of untouchable) {
+    await seedApp(db, { id: `prj_${status}`, slug: status, serverId: SRV_A, status });
+  }
+  const before = new Map(
+    await Promise.all(untouchable.map(async (s) => [s, await appRow(`prj_${s}`)] as const)),
+  );
+
+  const feed = new Feed();
+  __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+  startMetricsStreams();
+  await waitFor(() => __streamModes()[SRV_A] === "stream", "srv_a to stream");
+
+  await feed.send(
+    frame(untouchable.map((s) => containerStat(`prj_${s}`, `${s}-web-1`, 4))),
+  );
+
+  for (const status of untouchable) {
+    const after = await appRow(`prj_${status}`);
+    assert.equal(after.status, status, `\`${status}\` must not be rewritten by telemetry`);
+    assert.equal(
+      after.updatedAt,
+      before.get(status)!.updatedAt,
+      `\`${status}\` must not even be WRITTEN (updated_at moved)`,
+    );
+  }
+});
+
+test("an App with a deployment in flight is NOT touched, even from `error`", async () => {
+  // The status allowlist alone is not enough. The boot reconcile settles orphaned
+  // `building` deploys to `error` while deliberately leaving sibling `queued` rows
+  // for the deploy queue to re-drain — so `status='error'` WITH a live deployment
+  // is a reachable state, and the old container is still running throughout it.
+  const feed = await streamingServer();
+  await seedApp(db, { id: "prj_q", slug: "queued-one", serverId: SRV_A, status: "error" });
+  await seedApp(db, { id: "prj_b", slug: "building-one", serverId: SRV_A, status: "error" });
+  await seedDeployment(db, { id: "dpl_q", appId: "prj_q", status: "queued" });
+  await seedDeployment(db, { id: "dpl_b", appId: "prj_b", status: "building" });
+  const beforeQ = await appRow("prj_q");
+  const beforeB = await appRow("prj_b");
+
+  await feed.send(
+    frame([
+      containerStat("prj_q", "queued-one-web-1", 3),
+      containerStat("prj_b", "building-one-web-1", 3),
+    ]),
+  );
+
+  const afterQ = await appRow("prj_q");
+  const afterB = await appRow("prj_b");
+  assert.equal(afterQ.status, "error", "a queued deployment owns this App's status");
+  assert.equal(afterB.status, "error", "so does a building one");
+  assert.equal(afterQ.updatedAt, beforeQ.updatedAt);
+  assert.equal(afterB.updatedAt, beforeB.updatedAt);
+});
+
+test("an App ABSENT from the frame is never written — absence is unknown, not failure", async () => {
+  // A missing container means the stream has not reported it (host down, agent
+  // restarting, container not created yet). Writing a status from that would
+  // invent an outage out of silence.
+  const feed = await streamingServer();
+  await seedApp(db, { id: "prj_seen", slug: "seen", serverId: SRV_A, status: "error" });
+  await seedApp(db, { id: "prj_absent", slug: "absent", serverId: SRV_A, status: "error" });
+  const before = await appRow("prj_absent");
+
+  // A frame that carries the OTHER App only, so the reconcile provably ran.
+  await feed.send(frame([containerStat("prj_seen", "seen-web-1", 5)]));
+
+  assert.equal((await appRow("prj_seen")).status, "active", "the reconcile did run");
+  const after = await appRow("prj_absent");
+  assert.equal(after.status, "error", "an App nothing reported on must be left alone");
+  assert.equal(after.updatedAt, before.updatedAt, "and must not be written at all");
+});
+
+test("an empty frame writes nothing — a host with no containers is not a host of failed Apps", async () => {
+  const feed = await streamingServer();
+  await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A, status: "error" });
+  const before = await appRow("prj_1");
+
+  await feed.send(frame([]));
+
+  const after = await appRow("prj_1");
+  assert.equal(after.status, "error");
+  assert.equal(after.updatedAt, before.updatedAt);
+});
+
+test("a crash-looping container is NOT promoted — `restarting` vetoes the whole App", async () => {
+  // A restart loop is not a working App, and `error` is a more honest word for it
+  // than `active`. Promoting would only hand it to `displayStatus` to re-demote to
+  // "restarting", flipping the badge through a state that was never true.
+  const feed = await streamingServer();
+  await seedApp(db, { id: "prj_loop", slug: "loop", serverId: SRV_A, status: "error" });
+
+  await feed.send(
+    frame([
+      containerStat("prj_loop", "loop-web-1", 1, { state: "running" }),
+      containerStat("prj_loop", "loop-worker-1", 0, {
+        state: "restarting",
+        running: false,
+        restartCount: 47,
+      }),
+    ]),
+  );
+
+  assert.equal(
+    (await appRow("prj_loop")).status,
+    "error",
+    "one restarting sibling must veto the promotion of the whole stack",
+  );
+});
+
+test("a container that exists but is EXITED does not promote", async () => {
+  const feed = await streamingServer();
+  await seedApp(db, { id: "prj_dead", slug: "dead", serverId: SRV_A, status: "error" });
+
+  await feed.send(
+    frame([
+      containerStat("prj_dead", "dead-web-1", 0, { state: "exited", running: false }),
+    ]),
+  );
+
+  assert.equal((await appRow("prj_dead")).status, "error");
+});
+
+test("an App mid server-MOVE is skipped — the old host's containers are not evidence", async () => {
+  // A pending move is not representable in `status`: the App has containers on the
+  // OLD host and a fresh stack on the NEW one, and this loop is per-server, so it
+  // would be acting on one of two conflicting truths.
+  const feed = await streamingServer();
+  await seedEnrolledServer(SRV_B, "2026-01-01T00:00:01.000Z");
+  await seedApp(db, { id: "prj_mv", slug: "moving", serverId: SRV_A, status: "error" });
+  await db
+    .update(appsTable)
+    .set({ migrateFromServerId: SRV_B })
+    .where(eq(appsTable.id, "prj_mv"));
+  const before = await appRow("prj_mv");
+
+  await feed.send(frame([containerStat("prj_mv", "moving-web-1", 6)]));
+
+  const after = await appRow("prj_mv");
+  assert.equal(after.status, "error", "a pending migration marker suspends the reconcile");
+  assert.equal(after.updatedAt, before.updatedAt);
+});
+
+test("a frame is only authority over the Apps ITS OWN host runs", async () => {
+  // An App moved to another server can still have containers on the old one (a
+  // failed teardown). The old host's telemetry must never claim the App is up
+  // where it no longer lives.
+  const feed = await streamingServer(SRV_A);
+  await seedEnrolledServer(SRV_B, "2026-01-01T00:00:01.000Z");
+  await seedApp(db, { id: "prj_elsewhere", slug: "elsewhere", serverId: SRV_B, status: "error" });
+  const before = await appRow("prj_elsewhere");
+
+  // SRV_A's frame carries a container still labelled for an App that now lives on SRV_B.
+  await feed.send(frame([containerStat("prj_elsewhere", "elsewhere-web-1", 9)]));
+
+  const after = await appRow("prj_elsewhere");
+  assert.equal(after.status, "error");
+  assert.equal(after.updatedAt, before.updatedAt);
+});
+
+test("a Database id in the frame never touches an App — and is not an error either", async () => {
+  // Databases ride the same `deplo.project` label. They simply match no row in
+  // `apps`, so they need no special case — but that must be true, not assumed.
+  const feed = await streamingServer();
+  await seedDatabase(db, { id: "db_1", serverId: SRV_A });
+  await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A, status: "error" });
+
+  await feed.send(
+    frame([
+      containerStat("db_1", "db-db-1", 2),
+      containerStat("prj_1", "app-one-web-1", 2),
+    ]),
+  );
+
+  assert.equal((await appRow("prj_1")).status, "active");
+  assert.equal(getContainerHistory("db_1").length, 1, "the database still buffers metrics");
+});
+
+test("NOTHING is written when nothing changed — across many frames and many reconcile windows", async () => {
+  // The whole architecture exists to stop per-resource DB churn on the stream's
+  // cadence. A reconcile that wrote (or published) an unchanged row every frame
+  // would put it straight back, plus an SSE frame to every open dashboard.
+  const realNow = Date.now;
+  let clock = realNow();
+  Date.now = () => clock;
+
+  const pings = countPings("prj_ok");
+  try {
+    const feed = await streamingServer();
+    await seedApp(db, { id: "prj_ok", slug: "ok", serverId: SRV_A, status: "active" });
+    const before = await appRow("prj_ok");
+
+    // Step the clock a full reconcile window per frame, so the guarded UPDATE
+    // genuinely RUNS each time rather than being skipped by the throttle — the
+    // point is that a running statement still writes nothing.
+    for (let i = 0; i < 6; i++) {
+      clock += APP_STATUS_RECONCILE_MS;
+      await feed.send(frame([containerStat("prj_ok", "ok-web-1", 5)]));
+    }
+
+    const after = await appRow("prj_ok");
+    assert.equal(after.status, "active");
+    assert.equal(
+      after.updatedAt,
+      before.updatedAt,
+      "6 reconcile windows over an already-correct App must not write the row once",
+    );
+    assert.equal(pings.count(), 0, "and must not publish a single SSE ping");
+  } finally {
+    pings.stop();
+    Date.now = realNow;
+  }
+});
+
+test("a corrected App is written and published EXACTLY once, not once per frame", async () => {
+  const realNow = Date.now;
+  let clock = realNow();
+  Date.now = () => clock;
+
+  const pings = countPings("prj_1");
+  try {
+    const feed = await streamingServer();
+    await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A, status: "error" });
+
+    await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
+    const corrected = await appRow("prj_1");
+    assert.equal(corrected.status, "active");
+    await waitFor(() => pings.count() === 1, "exactly one ping for the correction");
+
+    for (let i = 0; i < 5; i++) {
+      clock += APP_STATUS_RECONCILE_MS;
+      await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
+    }
+
+    const after = await appRow("prj_1");
+    assert.equal(
+      after.updatedAt,
+      corrected.updatedAt,
+      "the correction is idempotent — re-observing a healthy App writes nothing",
+    );
+    assert.equal(pings.count(), 1, "and publishes nothing further");
+  } finally {
+    pings.stop();
+    Date.now = realNow;
+  }
+});
+
+test("the reconcile runs on its OWN clock, not the frame's", async () => {
+  // Pins the throttle behaviourally: an `error` written between two frames is NOT
+  // picked up by the very next frame, but IS once a reconcile window has elapsed.
+  const realNow = Date.now;
+  let clock = realNow();
+  Date.now = () => clock;
+
+  try {
+    const feed = await streamingServer();
+    await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A, status: "active" });
+
+    // Frame 1 consumes the connect-time free reconcile.
+    await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
+
+    await db.update(appsTable).set({ status: "error" }).where(eq(appsTable.id, "prj_1"));
+
+    clock += STREAM_INTERVAL_MS; // one cadence — well inside the window
+    await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
+    assert.equal(
+      (await appRow("prj_1")).status,
+      "error",
+      "a frame inside the throttle window must not run the statement",
+    );
+
+    clock += APP_STATUS_RECONCILE_MS;
+    await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
+    assert.equal(
+      (await appRow("prj_1")).status,
+      "active",
+      "and the first frame past it must",
+    );
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("APP_STATUS_RECONCILE_MS is slower than the frame cadence but still self-heals promptly", () => {
+  // Both bounds matter. Too fast and the reconcile is DB churn on the stream's
+  // cadence — the thing this architecture removed. Too slow and a user watching a
+  // red badge on a working App has to wait it out; the reconnect path covers the
+  // outage case, but a deploy that fails onto a still-running stack is corrected
+  // only by this interval.
+  assert.ok(
+    APP_STATUS_RECONCILE_MS > STREAM_INTERVAL_MS,
+    "the reconcile must not run at the frame cadence",
+  );
+  assert.ok(
+    APP_STATUS_RECONCILE_MS <= 60_000,
+    "a stale red badge must not outlive a minute",
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* The pure verdict                                                    */
+/* ------------------------------------------------------------------ */
+
+test("telemetrySaysRunning: what counts as proof an App is up", () => {
+  const c = (over: Partial<ContainerStat>) => containerStat("prj_1", "x", 0, over);
+
+  assert.equal(telemetrySaysRunning([]), false, "an empty bucket is not an answer");
+  assert.equal(telemetrySaysRunning([c({ state: "running" })]), true);
+  assert.equal(telemetrySaysRunning([c({ state: "exited", running: false })]), false);
+  assert.equal(telemetrySaysRunning([c({ state: "created", running: false })]), false);
+  assert.equal(
+    telemetrySaysRunning([c({ state: "running" }), c({ state: "restarting", running: false })]),
+    false,
+    "a restarting sibling vetoes the whole App",
+  );
+  assert.equal(
+    telemetrySaysRunning([c({ state: "running" }), c({ state: "exited", running: false })]),
+    true,
+    "a partially-up stack is still up — `displayStatus` is what calls that degraded",
+  );
+
+  // An agent too old to send `state` leaves it "" (proto3 default) rather than
+  // lying. Keying strictly on `state` would silently switch this whole feature
+  // off for part of a mixed-version fleet, so the legacy boolean is the fallback.
+  assert.equal(telemetrySaysRunning([c({ state: "", running: true })]), true);
+  assert.equal(telemetrySaysRunning([c({ state: "", running: false })]), false);
 });

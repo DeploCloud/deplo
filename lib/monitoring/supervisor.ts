@@ -18,10 +18,15 @@ import {
   aggregateContainerStats,
   toContainerSample,
 } from "../data/container-metrics";
+import { reconcileAppStatusFromTelemetry } from "../data/app-status-reconcile";
 import { resolveExpectedAgentVersion } from "../version";
 import { isAgentOutdated } from "../version";
 import type { ServerMetrics } from "../data/monitoring";
-import type { HelloResponse, MetricsSample } from "../agent/gen/agent";
+import type {
+  ContainerStat,
+  HelloResponse,
+  MetricsSample,
+} from "../agent/gen/agent";
 import { recordMetricsSample } from "./history";
 import {
   recordContainerInstances,
@@ -51,6 +56,12 @@ import {
  * `unref()`'d intervals, which are free to leak. Open gRPC streams are not — and
  * dev HMR re-runs `register()` on every edit, so without this a day of local work
  * would accumulate dozens of live streams against the same hosts.
+ *
+ * Each frame drives THREE things, on three different clocks, and the separation is
+ * the point — none of them may run at the frame's own cadence except the first:
+ *  - the ring buffers (every frame; they are RAM),
+ *  - the server health heartbeat (HEALTH_WRITE_MS; it replaces a dial),
+ *  - the App status reconcile (APP_STATUS_RECONCILE_MS; it corrects a stale row).
  */
 
 /**
@@ -93,7 +104,32 @@ export const STREAM_INTERVAL_MS = 5_000;
  */
 export const HEALTH_WRITE_MS = 8_000;
 
-/** How often to pick up newly-registered / removed servers. */
+/**
+ * How often a healthy stream re-checks its Apps' STORED status against what the
+ * host is actually reporting — the consumer for the per-container `state` the
+ * frame has been carrying unread. See lib/data/app-status-reconcile.ts.
+ *
+ * Deliberately NOT per frame. The check is one guarded UPDATE that matches zero
+ * rows in the steady state, but a 5s cadence times every host would put a
+ * statement per host per 5s back on the database to correct something that
+ * changes a handful of times a day.
+ *
+ * Deliberately NOT an in-RAM per-App memo either, which would be cheaper still.
+ * A memo fires only on a running/not-running TRANSITION — and the commonest way
+ * an App acquires a stale `error` is a deploy failing while its previous
+ * container keeps running, where the observation never changes at all and a memo
+ * would suppress the correction forever. Re-asking the database is what makes
+ * this self-correcting rather than edge-triggered.
+ *
+ * The timer is seeded to 0 on every (re)connect on purpose — a host that just
+ * came back is precisely the case this exists for, so the first frame after a
+ * reconnect reconciles at once instead of waiting out the interval.
+ */
+export const APP_STATUS_RECONCILE_MS = 30_000;
+
+/** How often to pick up newly-registered / removed servers. Unrelated to
+ *  {@link APP_STATUS_RECONCILE_MS} despite the shared value — this one paces the
+ *  SERVER-list reconcile (`reconcileMetricsStreams`), not any per-App write. */
 const RECONCILE_MS = 30_000;
 
 /** Cadence of the legacy poll used for agents without the capability. */
@@ -212,12 +248,16 @@ function hostSampleFrom(
  * matching today — and the filter is applied HERE, on the record side, never by
  * declining to open the stream: one stream carries both halves, so gating the
  * transport would take container history down as collateral.
+ *
+ * Returns the demuxed buckets so the caller can run the status reconcile off the
+ * same grouping (on its own, much slower clock) instead of walking the frame a
+ * second time.
  */
 async function ingestFrame(
   serverId: string,
   frame: MetricsSample,
   facts: ConnectionFacts,
-): Promise<void> {
+): Promise<Map<string, ContainerStat[]>> {
   const host = hostSampleFrom(serverId, frame, facts);
   if (host && (await isMetricsSavingEnabled())) recordMetricsSample(host);
 
@@ -225,7 +265,7 @@ async function ingestFrame(
   // `deplo.project` label is the demux key and it is the ONLY identity we trust —
   // an unlabelled container is not ours to attribute, so it is skipped rather
   // than guessed at from its name.
-  const byProject = new Map<string, typeof frame.containers>();
+  const byProject = new Map<string, ContainerStat[]>();
   for (const c of frame.containers) {
     if (!c.projectId) continue;
     const bucket = byProject.get(c.projectId);
@@ -240,6 +280,7 @@ async function ingestFrame(
     recordContainerInstances(projectId, agg.instances);
     recordContainerSample(toContainerSample(agg));
   }
+  return byProject;
 }
 
 /* ------------------------------------------------------------------ */
@@ -304,6 +345,11 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
         hello.dockerVersion,
       );
       let lastHealthWriteAt = Date.now();
+      // 0, not `Date.now()`: the first frame after a (re)connect must reconcile
+      // App statuses immediately. A host that just came back is the whole reason
+      // this exists — the Apps it restarted may be wearing an `error` written
+      // while it was away.
+      let lastStatusReconcileAt = 0;
       await recordServerHealth(serverId, classifyServerHealth(hello, null), new Date().toISOString());
 
       for await (const frame of conn.streamMetrics({
@@ -313,7 +359,7 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
       })) {
         if (signal.aborted || state.stopping) break;
 
-        await ingestFrame(serverId, frame, facts);
+        const byProject = await ingestFrame(serverId, frame, facts);
 
         // Health heartbeat, throttled — see HEALTH_WRITE_MS. A received frame IS
         // proof of reachability, so this replaces a dial rather than adding one.
@@ -325,6 +371,16 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
             { status: "online", message: null },
             new Date(now).toISOString(),
           );
+        }
+
+        // Status reconcile, on its own much slower clock — see
+        // APP_STATUS_RECONCILE_MS. The frame reports what each App's containers are
+        // ACTUALLY doing; this is the only thing that ever corrects the stored
+        // status against it. Guarded to one transition (`error` -> `active`) and
+        // to Apps this frame proves are running, inside lib/data.
+        if (now - lastStatusReconcileAt >= APP_STATUS_RECONCILE_MS) {
+          lastStatusReconcileAt = now;
+          await reconcileAppStatusFromTelemetry(serverId, byProject);
         }
       }
 

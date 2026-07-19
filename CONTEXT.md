@@ -125,6 +125,28 @@ _Avoid_: service (that is now a **compose service** inside a stack, or a Traefik
 project (that is now the **container**), plugin (reserved for an installed **Plugin**),
 component (a compose service inside one stack).
 
+**App status**:
+`apps.status` is **INTENT** — the last thing the control plane was *asked* to do — never an
+observation of the host, which is exactly what separates it from **Server health**. Six
+values: **queued**, **building**, **active**, **error**, **stopping**, **idle**. There is no
+"stopped": `idle` **is** the stopped state, and "Stopped" is only the (grey) label it renders
+with. What the UI shows is never the raw column — two folds sit on top of it, split **by
+direction**. **Downward** is live and never persisted: `displayStatus`
+([`lib/apps/display-status.ts`](../lib/apps/display-status.ts)) folds an `active` App with a
+live runtime probe into **restarting** / **degraded** / **unhealthy** / **down**, because
+`active` is the only value that is a claim *about the host* and so the only one worth
+contradicting. **Upward** is persisted and belongs to the telemetry stream:
+([`lib/data/app-status-reconcile.ts`](../lib/data/app-status-reconcile.ts)) clears a stale
+`error` off an App whose containers a `StreamMetrics` frame proves are running — the one
+transition anything reconciles, guarded to Apps with no in-flight **Deployment**, no pending
+server move, and containers on the host that reported them. An App **absent** from a frame is
+**unknown, never failed**. Note that `error` means *the last deploy attempt failed*, which is
+a different fact from *the App is down*: a failed redeploy leaves the previous stack serving,
+and that gap is precisely what the upward reconcile closes.
+_Avoid_: "stopped" as a stored value (it is `idle`), reading `apps.status` as a live fact,
+adding a writer of the column whose guard is not in its own `WHERE`, treating an App missing
+from a telemetry frame as evidence of anything.
+
 **Project**:
 A top-level, team-scoped **advanced folder** (ADR-0008, remodeled by ADR-0009) whose
 contents are scoped per **Environment**: each environment (picked from a dropdown in the
@@ -282,8 +304,9 @@ of the production stack — not a kind of deployment. Runs the app in developmen
 hot reload over a bind-mounted source tree. A app may have a production stack and
 a dev container at once, with independent lifecycles. Its state lives on `app.dev`,
 never in a `Deployment` row. `dev.status` is **push-only** (set by the dev lifecycle
-actions, never reconciled against live docker) — exactly like `app.status`, with the
-same known consequence that a manually-stopped container can show a stale status. All
+actions, never reconciled against live docker), with the known consequence that a
+manually-stopped container can show a stale status — `app.status` used to share that
+consequence and no longer fully does (see **App status**). All
 SSH users of an app **share one** dev container and one workspace — there is no
 per-user isolation *within* an app; the isolation guarantee is strictly **between**
 apps.
