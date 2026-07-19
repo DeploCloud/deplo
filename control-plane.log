@@ -1,0 +1,9 @@
+$ next start
+▲ Next.js 16.2.9
+- Local:         http://localhost:3000
+- Network:       http://152.89.254.140:3000
+✓ Ready in 99ms
+⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+[deplo] backup scheduler started
+[deplo] docker cleanup scheduler started
+[deplo] metrics stream supervisor started

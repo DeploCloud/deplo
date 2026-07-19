@@ -64,7 +64,7 @@ export const RECONNECT_BACKOFF_CAP_MS = 10_000;
 
 /** The cadence we ASK the agent for. It clamps to [1s, 60s] regardless — a
  *  cadence is a hint, never a way for the control plane to pin a host. */
-const STREAM_INTERVAL_MS = 5_000;
+export const STREAM_INTERVAL_MS = 5_000;
 
 /**
  * How often a healthy stream refreshes `status_checked_at`.
@@ -76,8 +76,22 @@ const STREAM_INTERVAL_MS = 5_000;
  * its 15s fleet-wide dial fan-out — reintroducing exactly the per-host RPC churn
  * this architecture exists to remove, while the charts still look perfect and
  * nothing tells you. `supervisor.test.ts` asserts BOTH bounds.
+ *
+ * 8s, NOT 10s, and the difference is not cosmetic — it is an ALIASING guard, and
+ * 10s was measured failing in production.
+ *
+ * The heartbeat can only fire when a frame arrives, so its real period is a
+ * MULTIPLE of the cadence. At 10s with a 5s cadence the second frame lands on the
+ * boundary, and a frame even one millisecond early (4999ms of elapsed, twice, is
+ * 9998) fails `>= 10_000` and defers the write to the THIRD frame — a real period
+ * of 15s, exactly THROTTLE_MS, right where the prober starts re-dialing. Observed
+ * on the live fleet: writes at 14:22:49, 14:23:04, 14:23:19.
+ *
+ * Anything strictly between one and two cadences makes the second frame fire
+ * regardless of jitter, giving a stable 10s period with 5s of headroom under the
+ * throttle. Keep this INSIDE (cadence, 2 x cadence) if either constant moves.
  */
-export const HEALTH_WRITE_MS = 10_000;
+export const HEALTH_WRITE_MS = 8_000;
 
 /** How often to pick up newly-registered / removed servers. */
 const RECONCILE_MS = 30_000;

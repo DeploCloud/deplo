@@ -29,6 +29,7 @@ import {
 } from "./container-history";
 import {
   HEALTH_WRITE_MS,
+  STREAM_INTERVAL_MS,
   RECONNECT_BACKOFF_CAP_MS,
   __setMetricsConnectorForTest,
   __streamModes,
@@ -533,6 +534,28 @@ test("HEALTH_WRITE_MS stays under the prober's 15s THROTTLE_MS, or the prober si
   assert.ok(
     HEALTH_WRITE_MS < PROBER_THROTTLE_MS,
     `HEALTH_WRITE_MS (${HEALTH_WRITE_MS}) must stay under the prober's throttle (${PROBER_THROTTLE_MS})`,
+  );
+
+  // ...and that alone is NOT enough, which we learned the expensive way. The
+  // assertion above passed while production wrote every 15 SECONDS.
+  //
+  // The heartbeat can only fire when a frame arrives, so its real period is a
+  // MULTIPLE of the cadence, never HEALTH_WRITE_MS itself. At 10_000 with a 5s
+  // cadence the second frame lands exactly ON the boundary: two frames 4999ms
+  // apart sum to 9998, fail `>= 10_000`, and defer the write to the third frame.
+  // Real period 15s — precisely the throttle. Observed on the live fleet at
+  // 14:22:49 / 14:23:04 / 14:23:19 before this was fixed.
+  //
+  // So model the jitter and assert the EFFECTIVE period, not the constant.
+  const EARLY_FRAME_TOLERANCE_MS = 100;
+  const effectivePeriod =
+    Math.ceil((HEALTH_WRITE_MS + EARLY_FRAME_TOLERANCE_MS) / STREAM_INTERVAL_MS) *
+    STREAM_INTERVAL_MS;
+  assert.ok(
+    effectivePeriod < PROBER_THROTTLE_MS,
+    `HEALTH_WRITE_MS (${HEALTH_WRITE_MS}) at a ${STREAM_INTERVAL_MS}ms cadence writes every ` +
+      `${effectivePeriod}ms once a frame lands early — that must stay under ${PROBER_THROTTLE_MS}ms. ` +
+      `Keep HEALTH_WRITE_MS strictly BETWEEN one and two cadences.`,
   );
 });
 
