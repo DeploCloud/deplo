@@ -211,8 +211,6 @@ export function assembleApp(
     productionUrl: row.productionUrl,
     status: row.status as App["status"],
     autoDeploy: row.autoDeploy,
-    // Opt-in metrics-history switch for the app's Monitoring tab (default false).
-    saveMetrics: row.saveMetrics,
     // All-NULL resource columns ⇒ no limits set (null), like assembleRepo.
     resources: assembleResources(row),
     latestDeploymentId: row.latestDeploymentId,

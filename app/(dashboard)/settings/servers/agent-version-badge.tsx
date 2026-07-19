@@ -42,7 +42,7 @@ export function AgentVersionBadge({
   if (outdated) {
     return (
       <SimpleTooltip
-        content={`Agent is out of date — latest is v${expected}. Re-provision this server to upgrade.`}
+        content={`Agent is out of date — latest is v${expected}. Use "Update agent" in the server's menu to upgrade in place.`}
       >
         <Badge variant="warning">
           <TriangleAlert className="size-3" />

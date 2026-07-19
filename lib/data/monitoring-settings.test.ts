@@ -23,7 +23,11 @@ import {
   pruneMetricsHistoryTo,
   recordMetricsSample,
 } from "../monitoring/history";
-import { runMetricsCollectorTick } from "../monitoring/collector";
+import {
+  __streamModes,
+  reconcileMetricsStreams,
+  stopMetricsStreams,
+} from "../monitoring/supervisor";
 import type { ServerMetrics } from "./monitoring";
 
 /**
@@ -206,18 +210,22 @@ test("the poll-path memo is busted by a write", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* The collector tick (smoke — no agent to dial in pglite)             */
+/* The supervisor's reconcile (successor to the collector tick)        */
 /* ------------------------------------------------------------------ */
 
-test("a collector tick with saving off records nothing", async () => {
-  await asOwner(() => setSaveMetrics(false));
-  await runMetricsCollectorTick();
+test("a reconcile starts no stream for a server with no enrolled agent", async () => {
+  // The seeded server never called home, so it has no agent cert and there is
+  // nothing to dial. Reconcile must pass over it quietly — opening a stream (or
+  // recording an "offline" snapshot) for a host still provisioning would write a
+  // false failure for a server that has never yet been asked anything.
+  //
+  // The rest of the supervisor's behaviour — mode selection, frame demux, the
+  // reconnect backoff and the health-write throttle — is covered against a fake
+  // agent connection in lib/monitoring/supervisor.test.ts. The two
+  // `runMetricsCollectorTick` smoke tests that used to sit here went with the
+  // collector itself.
+  await reconcileMetricsStreams();
+  assert.deepEqual(__streamModes(), {}, "no loop for an agentless server");
   assert.deepEqual(getMetricsHistory(SERVER_1), []);
-});
-
-test("a collector tick skips servers with no enrolled agent", async () => {
-  // The seeded server has no agent cert, so the tick has nobody to dial — it
-  // must return quietly with an empty buffer rather than fabricate a sample.
-  await runMetricsCollectorTick();
-  assert.deepEqual(getMetricsHistory(SERVER_1), []);
+  await stopMetricsStreams();
 });

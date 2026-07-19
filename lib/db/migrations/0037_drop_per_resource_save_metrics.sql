@@ -1,0 +1,31 @@
+-- Drop the per-app / per-database "Save metrics" switch added in 0036.
+--
+-- 0036's rationale was that keeping a rolling in-RAM window + a background
+-- sampler running for EVERY app/database would be steady work nobody asked for,
+-- so history was a per-resource opt-in. Monitoring has since been re-architected
+-- from "poll each server and each watched resource on a timer" to ONE long-lived
+-- gRPC telemetry stream per host: the agent pushes a frame every cadence that
+-- already carries EVERY Deplo-managed container's stats, and the control plane
+-- demuxes it into the ring buffers. There is no per-resource sampling cost left
+-- to ration, so the toggle's only remaining effect would be declining to keep a
+-- few KB of RAM the frame delivered anyway — while its tooltip promised it was
+-- saving work. A switch that no longer does what it says is worse than no switch.
+--
+-- The instance-wide monitoring_settings.save_metrics singleton (migration 0035)
+-- STAYS — that is the master switch, applied on the RECORD side, and it is
+-- deliberately untouched here.
+--
+-- No data is lost: the samples themselves never lived in Postgres (a per-cadence
+-- time series is ring-buffer data, kept in lib/monitoring/container-history.ts);
+-- these columns only recorded WHICH resources to keep history for, and the answer
+-- is now "all of them". Purely subtractive; nothing to backfill.
+--
+-- `IF EXISTS` so the statement is re-runnable (and a no-op on a database that
+-- never replayed 0036).
+--
+-- Hand-authored: this repo's committed drizzle snapshots stop at 0014, so
+-- `drizzle-kit generate` cannot diff against an up-to-date base. The SQL + journal
+-- entry are what the boot migrator (lib/db/migrate.ts) and the pglite tests
+-- actually replay, matching every migration since 0015.
+ALTER TABLE "apps" DROP COLUMN IF EXISTS "save_metrics";--> statement-breakpoint
+ALTER TABLE "databases" DROP COLUMN IF EXISTS "save_metrics";

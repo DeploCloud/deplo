@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { GAP_MS, gapSpans, isInGap, visibleGapSpans } from "./chart-gaps";
+import { RECONNECT_BACKOFF_CAP_MS } from "./supervisor";
 
 /**
  * Gap detection for the monitoring charts (chart-gaps.ts): which stretches of
@@ -53,16 +54,28 @@ test("isInGap is strict-interior: endpoints (real samples) are not in the gap", 
 /* The threshold                                                       */
 /* ------------------------------------------------------------------ */
 
-test("GAP_MS clears the slowest healthy cadence with real headroom", () => {
-  // The background collector ticks every 5s and its `ticking` guard may skip one
-  // beat, so ~10s between two healthy samples is normal — measured worst case on
-  // a live 3-server fleet was 5.64s, and a skipped tick doubles that. The
-  // threshold must sit ABOVE that or an untroubled server bands itself.
-  const worstHealthySpacing = 2 * 5_000 + 1_000; // skipped tick + latency jitter
+test("GAP_MS is derived from the stream cadence + the supervisor's backoff cap, and cannot drift from it", () => {
+  // Under the telemetry stream there is exactly ONE producer per host — the
+  // agent's own ticker — which removes the poll era's multi-writer arithmetic
+  // entirely. Two terms remain: the 5s cadence, and the reconnect backoff CAP.
+  //
+  // The cap is in play for reasons that are not a host failure at all (a deadline
+  // rotation, an agent self-update, a NAT rebalance), so the worst spacing
+  // between two HEALTHY samples is one cadence plus one full backoff step. The
+  // threshold is that, with 50% headroom.
+  //
+  // RECONNECT_BACKOFF_CAP_MS is imported rather than restated so the two
+  // constants CANNOT drift apart silently: raise the cap without raising GAP_MS
+  // and every healthy reconnect starts painting a "No data" band — the exact
+  // regression fixed three times already (05ebd6a, 81c8239, d0c7bd9).
+  const CADENCE_MS = 5_000; // STREAM_INTERVAL_MS, the cadence we ask the agent for
+  const worstHealthySpacing = CADENCE_MS + RECONNECT_BACKOFF_CAP_MS;
   assert.ok(
-    GAP_MS > worstHealthySpacing,
-    `GAP_MS (${GAP_MS}) must exceed the worst healthy spacing (${worstHealthySpacing})`,
+    GAP_MS >= 1.5 * worstHealthySpacing,
+    `GAP_MS (${GAP_MS}) must be at least 1.5x the worst healthy spacing ` +
+      `(${CADENCE_MS} cadence + ${RECONNECT_BACKOFF_CAP_MS} backoff cap = ${worstHealthySpacing})`,
   );
+  // …and the other side of it: a host that merely reconnected must not band.
   assert.deepEqual(gapSpans([0, worstHealthySpacing], GAP_MS), []);
 });
 

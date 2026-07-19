@@ -1,32 +1,13 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
-
-import { getDb } from "../db/client";
-import {
-  apps as appsTable,
-  databases as databasesTable,
-} from "../db/schema/control-plane";
-import { getCurrentUser } from "../auth";
-import { nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability } from "../membership";
-import { recordActivity } from "./activity";
+import { requireActiveTeamId } from "../membership";
 import { loadTeamApp } from "./app-graph-load";
 import { loadDatabaseForTeam } from "./databases";
-import { requireFolderCapabilityForApp } from "./folder-access";
-import { publishDatabaseChanged } from "../graphql/pubsub";
-import {
-  connectAgent,
-  mapContainerStatsUnsupported,
-  AgentContainerStatsUnsupportedError,
-} from "../infra/agent-client";
 import type { ContainerStat as PbContainerStat } from "../agent/gen/agent";
 import {
-  recordContainerSample,
   getContainerHistory,
-  clearContainerHistory,
-  markContainerWatched,
-  watchedContainerTargets,
+  latestContainerSample,
+  latestContainerInstances,
 } from "../monitoring/container-history";
 
 /**
@@ -133,6 +114,14 @@ function toInstance(s: PbContainerStat): ContainerInstanceMetrics {
 }
 
 /** Fold the agent's per-container stats into the app-total DTO. */
+export function aggregateContainerStats(
+  id: string,
+  stats: PbContainerStat[],
+  ts: number,
+): ContainerMetrics {
+  return aggregate(id, stats, ts);
+}
+
 function aggregate(id: string, stats: PbContainerStat[], ts: number): ContainerMetrics {
   const running = stats.filter((s) => s.running);
   const sum = (f: (s: PbContainerStat) => number) =>
@@ -160,6 +149,13 @@ function aggregate(id: string, stats: PbContainerStat[], ts: number): ContainerM
 }
 
 /** Strip the live-only fields to the buffer sample. */
+/** The two pure folds the telemetry-stream supervisor reuses to demux a
+ *  host-wide frame. Exported (rather than moved) so the poll path and the stream
+ *  path cannot drift into aggregating the same containers two different ways. */
+export function toContainerSample(m: ContainerMetrics): ContainerMetricsSample {
+  return toSample(m);
+}
+
 function toSample(m: ContainerMetrics): ContainerMetricsSample {
   // Deliberately drop `instances` (the breakdown is a live-only table) and
   // `unsupported` (never true for a recorded, online sample) to keep the RAM
@@ -170,38 +166,14 @@ function toSample(m: ContainerMetrics): ContainerMetricsSample {
   return sample;
 }
 
-/**
- * Measure one stack's containers via its owning agent. SESSION-FREE (takes the
- * already-resolved id + serverId), so the background collector reuses it. Never
- * throws: an unreachable agent → online:false; an agent too old for the RPC →
- * online:false + unsupported:true (the tab's "update the agent" state).
+/* `measureContainerStack` lived here: one ContainerStats dial per resource, the
+ * shape the whole telemetry stream exists to replace. It was the last per-resource
+ * agent dial in the control plane and it has no callers left, so it is gone rather
+ * than left lying around — a dead path that still dials an agent reads like the
+ * architecture endorses dialling per resource, and someone will eventually revive
+ * it. The unary ContainerStats RPC itself stays on the agent, serving control
+ * planes older than this change.
  */
-export async function measureContainerStack(
-  id: string,
-  serverId: string,
-): Promise<ContainerMetrics> {
-  const ts = Date.now();
-  let conn;
-  try {
-    conn = await connectAgent(serverId);
-  } catch {
-    return unavailable(id, ts, false);
-  }
-  try {
-    // Empty `containers` => the agent stats every container carrying
-    // deplo.project=<id>, so the control plane needn't resolve names first.
-    const stats = await conn.containerStats(id, []);
-    return aggregate(id, stats, ts);
-  } catch (e) {
-    return unavailable(
-      id,
-      ts,
-      mapContainerStatsUnsupported(e) instanceof AgentContainerStatsUnsupportedError,
-    );
-  } finally {
-    conn.close();
-  }
-}
 
 /* ------------------------------------------------------------------ */
 /* App reads                                                           */
@@ -210,20 +182,36 @@ export async function measureContainerStack(
 /**
  * Live metrics for one app (team-scoped). Null for an unknown / cross-team app.
  *
- * Every online measurement is buffered, not just an opted-in app's: a poll is
- * someone WATCHING this app, and a watched app's chart has to stay continuous
- * when they navigate away and come back. The `save_metrics` switch is what keeps
- * sampling running with nobody watching; it is not a precondition for keeping
- * what we already measured. See `markContainerWatched` / `WATCH_TTL_MS`.
+ * A BUFFER READ, not a measurement. The telemetry-stream supervisor is already
+ * writing this app's samples every cadence from the host-wide frame, so dialling
+ * the agent here would re-measure what we measured moments ago — and it is what
+ * made the old cost model scale with the number of people looking.
+ *
+ * The team-scope gate is unchanged and remains the ONLY thing preventing a
+ * cross-team metrics read: `loadTeamApp` returning null is the boundary, and it
+ * matters more now than it did, because the buffer itself is not team-scoped.
  */
 export async function getAppMetrics(appId: string): Promise<ContainerMetrics | null> {
   const teamId = await requireActiveTeamId();
   const app = await loadTeamApp(appId, teamId);
   if (!app) return null;
-  markContainerWatched(app.id, app.serverId);
-  const m = await measureContainerStack(app.id, app.serverId);
-  if (m.online) recordContainerSample(toSample(m));
-  return m;
+  return fromBuffer(app.id);
+}
+
+/**
+ * Rebuild the live DTO from what the supervisor buffered. `toSample` deliberately
+ * strips `instances` (a live table, not a series) and `unsupported` (never true
+ * for a recorded sample), so they are re-attached here from their own cells
+ * rather than being carried in every point of the window.
+ *
+ * No buffered sample means the stream has not delivered a frame for this resource
+ * yet — the host may be unreachable, or its agent too old to stream. That is an
+ * honest "no data", never a fabricated zero.
+ */
+function fromBuffer(id: string): ContainerMetrics {
+  const s = latestContainerSample(id);
+  if (!s) return unavailable(id, Date.now(), false);
+  return { ...s, unsupported: false, instances: latestContainerInstances(id) };
 }
 
 /** The buffered window for one app (team-scoped). Empty for an unknown /
@@ -241,18 +229,15 @@ export async function getAppMetricsHistory(
 /* Database reads                                                      */
 /* ------------------------------------------------------------------ */
 
-/** Live metrics for one database (team-scoped). Buffers + marks watched exactly
- *  like {@link getAppMetrics}. */
+/** Live metrics for one database (team-scoped). A buffer read, exactly like
+ *  {@link getAppMetrics}. */
 export async function getDatabaseMetrics(
   databaseId: string,
 ): Promise<ContainerMetrics | null> {
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(databaseId, teamId);
   if (!db) return null;
-  markContainerWatched(db.id, db.serverId);
-  const m = await measureContainerStack(db.id, db.serverId);
-  if (m.online) recordContainerSample(toSample(m));
-  return m;
+  return fromBuffer(db.id);
 }
 
 /** The buffered window for one database (team-scoped). */
@@ -266,121 +251,24 @@ export async function getDatabaseMetricsHistory(
 }
 
 /* ------------------------------------------------------------------ */
-/* Toggles (manage_infra, like the fleet monitoring switch)            */
+/* Removed with the polling collector                                  */
 /* ------------------------------------------------------------------ */
 
-/**
- * Flip an app's "Save metrics" switch. `manage_infra` — the same gate as the
- * fleet-wide monitoring toggle and every database mutation (keeping metrics
- * persistence uniformly an infra decision); apps under a folder also clear the
- * per-folder gate. Turning it OFF drops the buffered window: "save" off must
- * mean nothing stays saved, not "stops growing".
+/* This file used to end with two more sections, both deleted.
+ *
+ * The COLLECTOR ENUMERATIONS went first. `sampleContainerForCollector` measured
+ * one stack per tick; the telemetry stream carries every container on a host in
+ * one frame, so per-resource sampling has no caller left.
+ * `listSaveMetricsTargetsForCollector` answered "which resources should we pay to
+ * sample?" — a question that only existed because sampling cost an RPC each.
+ *
+ * The per-resource TOGGLES (`setAppSaveMetrics` / `setDatabaseSaveMetrics`, and
+ * the `apps.save_metrics` / `databases.save_metrics` columns behind them) went
+ * with them. They rationed that same RPC cost. Buffering one more resource now
+ * costs RAM the frame already delivered, so the answer is "all of them" — a
+ * switch whose only remaining effect is declining a few KB, while its tooltip
+ * promises it is saving work, is worse than no switch at all. The instance-wide
+ * `monitoring_settings.saveMetrics` singleton remains the master switch, applied
+ * on the RECORD side. See lib/monitoring/supervisor.ts.
  */
-export async function setAppSaveMetrics(
-  appId: string,
-  enabled: boolean,
-): Promise<{ saveMetrics: boolean }> {
-  const { teamId } = await requireCapability("manage_infra");
-  await requireFolderCapabilityForApp(appId, "manage_infra");
-  const user = (await getCurrentUser())!;
 
-  const updated = await getDb()
-    .update(appsTable)
-    .set({ saveMetrics: enabled, updatedAt: nowIso() })
-    .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
-    .returning({ id: appsTable.id });
-  if (updated.length === 0) throw new Error("App not found");
-
-  if (!enabled) clearContainerHistory(appId);
-  await recordActivity(
-    "app",
-    enabled
-      ? "Enabled saving metrics for this app"
-      : "Disabled saving metrics for this app (buffered history dropped)",
-    user.name,
-    appId,
-  );
-  return { saveMetrics: enabled };
-}
-
-/** Flip a database's "Save metrics" switch. Mirrors {@link setAppSaveMetrics};
- *  databases already gate every mutation on `manage_infra`. */
-export async function setDatabaseSaveMetrics(
-  databaseId: string,
-  enabled: boolean,
-): Promise<{ saveMetrics: boolean }> {
-  const { teamId } = await requireCapability("manage_infra");
-  const user = (await getCurrentUser())!;
-
-  const updated = await getDb()
-    .update(databasesTable)
-    .set({ saveMetrics: enabled })
-    .where(and(eq(databasesTable.id, databaseId), eq(databasesTable.teamId, teamId)))
-    .returning({ id: databasesTable.id });
-  if (updated.length === 0) throw new Error("Not found");
-
-  if (!enabled) clearContainerHistory(databaseId);
-  publishDatabaseChanged(databaseId);
-  await recordActivity(
-    "database",
-    enabled
-      ? "Enabled saving metrics for this database"
-      : "Disabled saving metrics for this database (buffered history dropped)",
-    user.name,
-    null,
-  );
-  return { saveMetrics: enabled };
-}
-
-/* ------------------------------------------------------------------ */
-/* Collector enumerations (session-free)                               */
-/* ------------------------------------------------------------------ */
-
-/** Measure one opted-in stack and record it, for the background collector.
- *  Session-free; never throws (an offline/unsupported answer is simply not
- *  recorded, leaving the honest gap). Keeps `toSample` internal to this module. */
-export async function sampleContainerForCollector(
-  id: string,
-  serverId: string,
-): Promise<void> {
-  const m = await measureContainerStack(id, serverId);
-  if (m.online) recordContainerSample(toSample(m));
-}
-
-/**
- * id + owning server for every app/database the collector should sample — the
- * UNION of two opt-ins:
- *
- *  - **stored**: `save_metrics` is ON, so keep sampling with nobody watching;
- *  - **watched**: someone opened this resource's Monitoring tab recently, so keep
- *    its window continuous until the watch TTL lapses (see `WATCH_TTL_MS`).
- *
- * The watched half is what makes the tab honest by default. `save_metrics`
- * defaults OFF, so without it the collector ignored ~every app and the tab's
- * chart could only ever cover the seconds the user sat on the page — every
- * return showed a hole the platform had caused by not looking.
- *
- * Session-free (no request context) — same justification as `listAllServers` /
- * `measureServerForCollector`.
- */
-export async function listSaveMetricsTargetsForCollector(): Promise<
-  { id: string; serverId: string }[]
-> {
-  const db = getDb();
-  const [appRows, dbRows] = await Promise.all([
-    db
-      .select({ id: appsTable.id, serverId: appsTable.serverId })
-      .from(appsTable)
-      .where(eq(appsTable.saveMetrics, true)),
-    db
-      .select({ id: databasesTable.id, serverId: databasesTable.serverId })
-      .from(databasesTable)
-      .where(eq(databasesTable.saveMetrics, true)),
-  ]);
-  // De-dupe: a stored opt-in that is ALSO being watched must be sampled once.
-  const byId = new Map<string, { id: string; serverId: string }>();
-  for (const t of [...appRows, ...dbRows, ...watchedContainerTargets()]) {
-    byId.set(t.id, t);
-  }
-  return [...byId.values()];
-}

@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { ContainerMetricsSample } from "../data/container-metrics";
+import type {
+  ContainerInstanceMetrics,
+  ContainerMetricsSample,
+} from "../data/container-metrics";
 
 /**
  * Per-CONTAINER (per-app / per-database) metrics HISTORY — the sibling of
@@ -13,14 +16,14 @@ import type { ContainerMetricsSample } from "../data/container-metrics";
  * window is ring-buffer data, not relational state (see the `history.ts` header
  * and migration 0036). The trade: a control-plane restart starts the buffer over.
  *
- * The crucial difference from the server buffer is WHICH ids fill. Two writers
- * feed it — every live tab poll (lib/data/container-metrics.ts) and the
- * background collector (lib/monitoring/collector.ts) — across two opt-ins:
- * `save_metrics` being ON (keep sampling with nobody watching) and the resource
- * having been looked at inside {@link WATCH_TTL_MS} (keep the window continuous
- * for whoever is coming back to it). So RAM here is bounded by what is opted in
- * plus what is being watched, not by the whole fleet; turning the switch off
- * drops that id's buffer, and an expired watch lets the collector prune it.
+ * WHICH ids fill used to be the hard part here, and it no longer is. Under the
+ * telemetry stream (lib/monitoring/supervisor.ts) there is ONE writer per host,
+ * and its frames already carry every Deplo-managed container on that host —
+ * so the marginal cost of buffering one more resource is RAM, not an agent RPC.
+ * We therefore buffer everything the stream reports, and the two opt-ins that
+ * existed purely to ration RPCs (a per-resource `save_metrics` column and a
+ * recently-watched TTL) are gone. What remains is the instance-wide
+ * `monitoring_settings.saveMetrics` master switch, applied on the RECORD side.
  *
  * Singleton on `globalThis` via `Symbol.for(...)`, like the server history, so
  * the GraphQL route and the RSC pages share one buffer across Next's module
@@ -31,47 +34,22 @@ import type { ContainerMetricsSample } from "../data/container-metrics";
 export const CONTAINER_HISTORY_WINDOW_MS = 16 * 60_000;
 
 /**
- * Ignore a sample landing within this of the previous one. The live poll runs
- * per VIEWER, so two open tabs on the same app would otherwise double the
- * buffer's density for no chart benefit.
+ * Ignore a sample landing within this of the previous one. A RATE CEILING, not a
+ * de-dupe — see the identical constant in history.ts for why the distinction
+ * matters and why it sits below the agent's 1000ms cadence clamp floor.
  */
-const MIN_GAP_MS = 700;
+const MIN_GAP_MS = 250;
 
-/** Backstop against unbounded growth if both the window + gap guards misbehave. */
-const HARD_CAP = 1500;
-
-/**
- * How long a resource keeps being sampled after someone last looked at it.
- *
- * `save_metrics` defaults OFF, so without this the ONLY writer for almost every
- * app is the viewer's own poll: open the Monitoring tab and history starts from
- * empty, navigate away and it stops dead, come back and the stretch you were
- * away for is a hole. Widening to "Last 15m" then showed mostly "No data" on a
- * stack that was running perfectly — the platform had simply never looked.
- *
- * So a resource someone actually opened stays sampled by the background
- * collector for one full history window afterwards, and the tab reads
- * continuous when they return. Cost is proportional to what is being LOOKED at
- * (a handful of resources), not to the fleet — which is why this is not just
- * "default save_metrics to ON": that would put every app on a permanent 5s agent
- * RPC nobody asked for. The explicit switch keeps its own meaning: sample this
- * resource even when nobody is watching.
- *
- * Matched to the buffer window: once the TTL lapses the window has aged out
- * anyway, so a longer watch would sample into a buffer that is already empty.
- */
-const WATCH_TTL_MS = CONTAINER_HISTORY_WINDOW_MS;
+/** Backstop against unbounded growth if both the window + gap guards misbehave.
+ *  Sized for the fastest cadence the agent will serve (1s), not the default 5s —
+ *  see history.ts. */
+const HARD_CAP = 1200;
 
 const STATE_KEY = Symbol.for("deplo.monitoring.container-history");
-const WATCH_KEY = Symbol.for("deplo.monitoring.container-watch");
 const g = globalThis as unknown as {
   [STATE_KEY]?: Map<string, ContainerMetricsSample[]>;
-  [WATCH_KEY]?: Map<string, { serverId: string; at: number }>;
 };
 const buffers: Map<string, ContainerMetricsSample[]> = (g[STATE_KEY] ??= new Map());
-/** id -> owning server + when a viewer last polled it. See {@link WATCH_TTL_MS}. */
-const watched: Map<string, { serverId: string; at: number }> = (g[WATCH_KEY] ??=
-  new Map());
 
 /** Drop samples older than the window from the FRONT of one buffer, in place. */
 function evict(buf: ContainerMetricsSample[], now: number): void {
@@ -99,6 +77,44 @@ export function recordContainerSample(sample: ContainerMetricsSample): void {
   buffers.set(sample.id, buf);
 }
 
+/** The newest buffered sample for one app/database, or null. This is what a LIVE
+ *  read returns now: under the telemetry stream the supervisor is already writing
+ *  this buffer every cadence, so dialling the agent again inside a read would be
+ *  a second, redundant measurement of something we just measured. */
+export function latestContainerSample(id: string): ContainerMetricsSample | null {
+  const buf = buffers.get(id);
+  return buf && buf.length > 0 ? buf[buf.length - 1] : null;
+}
+
+/**
+ * The per-container BREAKDOWN behind the Monitoring tab's instances table.
+ *
+ * Kept as a single latest-value cell per resource, NOT in the ring buffer, and
+ * the distinction is the whole point: the breakdown is a live table, not a
+ * series. Nobody charts it, so it needs no history — and putting it in the window
+ * would multiply every sample by the container count, which is what `toSample`
+ * strips it out to avoid. One snapshot per resource is flat in the window length.
+ */
+const INSTANCES_KEY = Symbol.for("deplo.monitoring.container-instances");
+const gi = globalThis as unknown as {
+  [INSTANCES_KEY]?: Map<string, ContainerInstanceMetrics[]>;
+};
+const instances: Map<string, ContainerInstanceMetrics[]> = (gi[INSTANCES_KEY] ??=
+  new Map());
+
+/** Replace one resource's live breakdown (the supervisor calls this per frame). */
+export function recordContainerInstances(
+  id: string,
+  rows: ContainerInstanceMetrics[],
+): void {
+  instances.set(id, rows);
+}
+
+/** The last known breakdown for one resource — empty before the first frame. */
+export function latestContainerInstances(id: string): ContainerInstanceMetrics[] {
+  return instances.get(id) ?? [];
+}
+
 /** The buffered window for one app/database, oldest first (a copy). */
 export function getContainerHistory(id: string): ContainerMetricsSample[] {
   const buf = buffers.get(id);
@@ -107,59 +123,44 @@ export function getContainerHistory(id: string): ContainerMetricsSample[] {
   return [...buf];
 }
 
-/** Epoch ms of the newest buffered sample, or 0 — the collector's "is a viewer
- *  already feeding this id?" probe. */
+/** Epoch ms of the newest buffered sample, or 0. Repurposed from the collector's
+ *  "is a viewer already feeding this id?" freshness probe into the supervisor's
+ *  stream-liveness watchdog: a connection that claims to be up but has produced
+ *  no frame in well over a cadence is wedged, and forcing a reconnect recovers it
+ *  faster than waiting for a transport error that may never arrive. */
 export function latestContainerSampleTs(id: string): number {
   const buf = buffers.get(id);
   return buf && buf.length > 0 ? buf[buf.length - 1].ts : 0;
 }
 
 /**
- * Drop one resource's buffer (or all). Called when the operator turns that
- * resource's "Save metrics" switch OFF — off must mean nothing stays saved, not
- * "stops growing" — when the app/database is deleted, and by tests.
+ * Drop one resource's buffer (or all). Called when the app/database is deleted,
+ * when the instance-wide "Save metrics" master switch goes OFF (off must mean
+ * nothing stays saved, not "stops growing"), and by tests.
  */
 export function clearContainerHistory(id?: string): void {
-  if (id) buffers.delete(id);
-  else buffers.clear();
+  if (id) {
+    buffers.delete(id);
+    instances.delete(id);
+  } else {
+    buffers.clear();
+    instances.clear();
+  }
 }
 
 /**
- * Drop buffers for ids that are no longer opted in (the collector calls this
- * each tick with the live opted-in set), so a resource whose switch was flipped
- * off elsewhere — or that was deleted — doesn't linger until the next restart.
+ * Drop buffers for ids that no longer EXIST — deleted apps/databases. Callers
+ * pass the live set of resource ids.
+ *
+ * A container merely ABSENT from a frame must NOT be pruned here, and that is a
+ * behavioural change from the poll era. A container that stopped is precisely
+ * when its trailing window is worth the most: the operator wants to see the CPU
+ * spike or the memory climb that preceded it. Pruning on absence would erase the
+ * evidence at the exact moment it became interesting. So absence is a GAP in the
+ * series (the chart already renders that honestly), never a reason to forget.
  */
 export function pruneContainerHistoryTo(ids: ReadonlySet<string>): void {
   for (const id of buffers.keys()) {
     if (!ids.has(id)) buffers.delete(id);
   }
-}
-
-/* ------------------------------------------------------------------ */
-/* Recently-watched set (see WATCH_TTL_MS)                             */
-/* ------------------------------------------------------------------ */
-
-/** Note that a viewer just polled this resource, so the collector keeps its
- *  history continuous for {@link WATCH_TTL_MS} after they navigate away. */
-export function markContainerWatched(id: string, serverId: string, now = Date.now()): void {
-  watched.set(id, { serverId, at: now });
-}
-
-/** The resources still inside their watch TTL, with the server to dial. Expired
- *  entries are dropped here (the collector calls this every tick). */
-export function watchedContainerTargets(
-  now = Date.now(),
-): { id: string; serverId: string }[] {
-  const live: { id: string; serverId: string }[] = [];
-  for (const [id, w] of watched) {
-    if (now - w.at > WATCH_TTL_MS) watched.delete(id);
-    else live.push({ id, serverId: w.serverId });
-  }
-  return live;
-}
-
-/** Test-only: forget every watch mark (or one id's). */
-export function clearContainerWatches(id?: string): void {
-  if (id) watched.delete(id);
-  else watched.clear();
 }

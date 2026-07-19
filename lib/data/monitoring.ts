@@ -221,20 +221,6 @@ export async function getServerMetrics(serverId: string): Promise<ServerMetrics>
   return m;
 }
 
-export async function getAllServerMetrics(): Promise<ServerMetrics[]> {
-  // Resolve "latest" once per poll (memoised) and stamp it onto every snapshot —
-  // a "Check for updates" bust resolved a fresh value, so this poll carries it to
-  // every open Servers tab's badge. Team-scoped to the servers this team can see.
-  const expected = await resolveExpectedAgentVersion();
-  const all = await Promise.all(
-    (await listServersForCurrentTeam()).map((s) => metricsFor(s, expected)),
-  );
-  // Same free-history rule as getServerMetrics: the Servers page's fleet poll
-  // keeps every visible server's buffer warm while it is open.
-  if (await isMetricsSavingEnabled()) for (const m of all) recordMetricsSample(m);
-  return all;
-}
-
 /**
  * The buffered metrics HISTORY for one server (lib/monitoring/history.ts) — what
  * the Monitoring page seeds its charts from on load, so a reload no longer starts
@@ -252,7 +238,7 @@ export async function getServerMetricsHistory(serverId: string): Promise<ServerM
  * which has no request context to team-scope against: it takes an already-resolved
  * Server row — never a caller-supplied id — and its result reaches no client
  * directly; the sample lands in the in-memory history buffer only. Every
- * user-facing read goes through {@link getServerMetrics} / {@link getAllServerMetrics}.
+ * user-facing read goes through {@link getServerMetrics}.
  */
 export const measureServerForCollector = metricsFor;
 
@@ -260,7 +246,7 @@ export const measureServerForCollector = metricsFor;
  * Cheap, instant metrics for the initial server render. measureLocal() takes
  * ~1.2s (a 1s network-delta window + a 200ms CPU sample + docker calls), which
  * would block the Monitoring and Servers pages on every load. The client polls
- * the real metrics every second (see ServerMetricsProvider), so the server only
+ * the real metrics every second (see MonitoringDashboard), so the server only
  * needs to supply a sensible hydration fallback: each server's last-known usage
  * from the store. No sampling, no docker, no sleep — the live values arrive on
  * the first client poll and replace these within ~1s.

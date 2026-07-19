@@ -2,14 +2,9 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import {
-  apps as appsTable,
-  databases as databasesTable,
-} from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import {
   seedIdentity,
@@ -17,29 +12,39 @@ import {
   TEAM_B,
   USER_1,
 } from "./identity-test-helpers";
-import { seedServer, seedApp, SERVER_1 } from "./app-graph-test-helpers";
+import { seedServer, seedApp } from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
 import {
-  setAppSaveMetrics,
-  setDatabaseSaveMetrics,
+  getAppMetrics,
+  getDatabaseMetrics,
   getAppMetricsHistory,
   getDatabaseMetricsHistory,
-  listSaveMetricsTargetsForCollector,
   type ContainerMetricsSample,
 } from "./container-metrics";
 import {
   recordContainerSample,
-  getContainerHistory,
+  recordContainerInstances,
   clearContainerHistory,
-  markContainerWatched,
-  clearContainerWatches,
 } from "../monitoring/container-history";
 
 /**
- * Data-layer tests for the per-app / per-database "Save metrics" switch: default
- * OFF, `manage_infra`-gated, team-scoped (a cross-team id hits 0 rows), the OFF
- * flip drops the buffered history, and the session-free collector enumeration.
- * The live measurement path (getAppMetrics) dials the agent and is covered e2e.
+ * Data-layer tests for the per-app / per-database metrics READS.
+ *
+ * Both the live read and the history read are now BUFFER reads — the telemetry
+ * stream supervisor writes lib/monitoring/container-history.ts every cadence, so
+ * nothing here dials an agent. That makes TEAM SCOPING the entire subject of this
+ * file rather than a corner of it: the RAM buffer is keyed by bare resource id
+ * and carries no team at all, so `loadTeamApp` / `loadDatabaseForTeam` returning
+ * null is the ONE thing standing between a member of team B and team A's metrics.
+ * Every read below is therefore asserted from both sides — the owner sees the
+ * buffered window, the other team sees nothing — and a regression that dropped
+ * the gate would still pass a same-team-only test.
+ *
+ * The per-resource "Save metrics" toggles (`setAppSaveMetrics` /
+ * `setDatabaseSaveMetrics`) and the collector enumeration
+ * (`listSaveMetricsTargetsForCollector`) were deleted with the polling collector;
+ * their tests went with them. The instance-wide master switch is covered in
+ * monitoring-settings.test.ts.
  */
 
 let db: TestDb;
@@ -55,25 +60,22 @@ after(async () => {
   await pg.close();
 });
 
-const USER_VIEWER = "user_viewer";
 const USER_B = "user_b";
 
 const asOwner = <T>(fn: () => Promise<T>) =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
-const asViewer = <T>(fn: () => Promise<T>) =>
-  runWithIdentity({ userId: USER_VIEWER, teamId: TEAM_A }, fn);
 const asOtherTeam = <T>(fn: () => Promise<T>) =>
   runWithIdentity({ userId: USER_B, teamId: TEAM_B }, fn);
 
 // Read-time eviction is relative to Date.now(), so use a near-now timestamp.
 const NOW = Date.now();
 
-function sample(id: string, ts: number): ContainerMetricsSample {
+function sample(id: string, ts: number, cpu = 1): ContainerMetricsSample {
   return {
     id,
     online: true,
     ts,
-    cpu: 1,
+    cpu,
     memUsed: 1,
     memLimit: 10,
     memPct: 10,
@@ -89,14 +91,12 @@ function sample(id: string, ts: number): ContainerMetricsSample {
 
 beforeEach(async () => {
   clearContainerHistory();
-  clearContainerWatches();
   await pg.exec(
     `truncate table apps, databases, servers, activities, users, teams restart identity cascade;`,
   );
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: USER_VIEWER, teamId: TEAM_A, role: "viewer", capabilities: ["view"] },
       { id: USER_B, teamId: TEAM_B, role: "owner" },
     ],
   });
@@ -105,115 +105,113 @@ beforeEach(async () => {
   await seedDatabase(db, { id: "db_1" });
 });
 
-test("apps and databases are born with save_metrics OFF", async () => {
-  const [a] = await db
-    .select({ saveMetrics: appsTable.saveMetrics })
-    .from(appsTable)
-    .where(eq(appsTable.id, "prj_1"));
-  const [d] = await db
-    .select({ saveMetrics: databasesTable.saveMetrics })
-    .from(databasesTable)
-    .where(eq(databasesTable.id, "db_1"));
-  assert.equal(a.saveMetrics, false);
-  assert.equal(d.saveMetrics, false);
+/* ------------------------------------------------------------------ */
+/* The live read is a buffer read                                      */
+/* ------------------------------------------------------------------ */
+
+test("getAppMetrics serves the newest buffered sample plus the breakdown cell", async () => {
+  recordContainerSample(sample("prj_1", NOW - 5000, 11));
+  recordContainerSample(sample("prj_1", NOW, 22));
+  recordContainerInstances("prj_1", [
+    {
+      name: "app-one-web-1",
+      running: true,
+      cpu: 22,
+      memUsed: 1,
+      memLimit: 10,
+      memPct: 10,
+      netRx: 0,
+      netTx: 0,
+      blockRead: 0,
+      blockWrite: 0,
+      pids: 1,
+    },
+  ]);
+
+  const m = await asOwner(() => getAppMetrics("prj_1"));
+  assert.ok(m);
+  assert.equal(m.online, true);
+  assert.equal(m.cpu, 22, "the LIVE value is the newest point, not the oldest");
+  assert.equal(m.unsupported, false);
+  assert.deepEqual(m.instances.map((i) => i.name), ["app-one-web-1"]);
 });
 
-test("setAppSaveMetrics toggles the flag and persists", async () => {
-  const res = await asOwner(() => setAppSaveMetrics("prj_1", true));
-  assert.deepEqual(res, { saveMetrics: true });
-  const [row] = await db
-    .select({ saveMetrics: appsTable.saveMetrics })
-    .from(appsTable)
-    .where(eq(appsTable.id, "prj_1"));
-  assert.equal(row.saveMetrics, true);
-
-  await asOwner(() => setAppSaveMetrics("prj_1", false));
-  const [row2] = await db
-    .select({ saveMetrics: appsTable.saveMetrics })
-    .from(appsTable)
-    .where(eq(appsTable.id, "prj_1"));
-  assert.equal(row2.saveMetrics, false);
+test("an app with nothing buffered yet reads offline, never a fabricated zero-sample", async () => {
+  const m = await asOwner(() => getAppMetrics("prj_1"));
+  assert.ok(m);
+  assert.equal(m.online, false, "no frame has arrived — that is an honest 'no data'");
+  assert.deepEqual(m.instances, []);
 });
 
-test("turning an app's switch OFF drops its buffered history", async () => {
-  await asOwner(() => setAppSaveMetrics("prj_1", true));
-  recordContainerSample(sample("prj_1", NOW));
-  assert.equal(getContainerHistory("prj_1").length, 1);
-  await asOwner(() => setAppSaveMetrics("prj_1", false));
-  assert.equal(getContainerHistory("prj_1").length, 0);
+test("getDatabaseMetrics serves the buffer the same way", async () => {
+  recordContainerSample(sample("db_1", NOW, 33));
+  const m = await asOwner(() => getDatabaseMetrics("db_1"));
+  assert.ok(m);
+  assert.equal(m.cpu, 33);
 });
 
-test("setDatabaseSaveMetrics toggles + OFF drops the buffer", async () => {
-  const res = await asOwner(() => setDatabaseSaveMetrics("db_1", true));
-  assert.deepEqual(res, { saveMetrics: true });
-  recordContainerSample(sample("db_1", NOW));
-  await asOwner(() => setDatabaseSaveMetrics("db_1", false));
-  assert.equal(getContainerHistory("db_1").length, 0);
+/* ------------------------------------------------------------------ */
+/* Team scoping — the only boundary left on an unscoped RAM buffer     */
+/* ------------------------------------------------------------------ */
+
+test("getAppMetrics is team-scoped: a cross-team id gets NOTHING, buffer or not", async () => {
+  recordContainerSample(sample("prj_1", NOW, 42));
+  recordContainerInstances("prj_1", [
+    {
+      name: "app-one-web-1",
+      running: true,
+      cpu: 42,
+      memUsed: 1,
+      memLimit: 10,
+      memPct: 10,
+      netRx: 0,
+      netTx: 0,
+      blockRead: 0,
+      blockWrite: 0,
+      pids: 1,
+    },
+  ]);
+
+  // The owning team reads the real measurement…
+  assert.equal((await asOwner(() => getAppMetrics("prj_1")))?.cpu, 42);
+  // …and team B gets null, NOT an offline DTO and certainly not team A's numbers.
+  // Null (rather than a zeroed sample) also keeps the read from confirming that
+  // `prj_1` exists at all.
+  assert.equal(await asOtherTeam(() => getAppMetrics("prj_1")), null);
 });
 
-test("the toggles require manage_infra", async () => {
-  await assert.rejects(() => asViewer(() => setAppSaveMetrics("prj_1", true)), /permission|capab/i);
-  await assert.rejects(
-    () => asViewer(() => setDatabaseSaveMetrics("db_1", true)),
-    /permission|capab/i,
-  );
+test("getDatabaseMetrics is team-scoped: a cross-team id gets NOTHING, buffer or not", async () => {
+  recordContainerSample(sample("db_1", NOW, 43));
+  assert.equal((await asOwner(() => getDatabaseMetrics("db_1")))?.cpu, 43);
+  assert.equal(await asOtherTeam(() => getDatabaseMetrics("db_1")), null);
 });
 
-test("a cross-team id can't be toggled (hits 0 rows / not found)", async () => {
-  await assert.rejects(() => asOtherTeam(() => setAppSaveMetrics("prj_1", true)));
-  await assert.rejects(() => asOtherTeam(() => setDatabaseSaveMetrics("db_1", true)));
-  // The real rows stayed OFF.
-  const [a] = await db
-    .select({ saveMetrics: appsTable.saveMetrics })
-    .from(appsTable)
-    .where(eq(appsTable.id, "prj_1"));
-  assert.equal(a.saveMetrics, false);
+test("an unknown id is null for everyone (no buffer probe before the team gate)", async () => {
+  // The gate runs FIRST. A caller must not be able to learn whether an id is
+  // buffered by timing or by shape of the answer.
+  recordContainerSample(sample("prj_nonexistent", NOW, 99));
+  assert.equal(await asOwner(() => getAppMetrics("prj_nonexistent")), null);
+  assert.equal(await asOwner(() => getDatabaseMetrics("db_nonexistent")), null);
 });
 
-test("metrics history reads are team-scoped", async () => {
+test("metrics HISTORY reads are team-scoped from both sides", async () => {
   recordContainerSample(sample("prj_1", NOW));
   recordContainerSample(sample("db_1", NOW));
   // Same team sees the buffered window…
   assert.equal((await asOwner(() => getAppMetricsHistory("prj_1"))).length, 1);
   assert.equal((await asOwner(() => getDatabaseMetricsHistory("db_1"))).length, 1);
-  // …another team gets nothing (the row isn't theirs).
+  // …another team gets an empty window (the row isn't theirs).
   assert.equal((await asOtherTeam(() => getAppMetricsHistory("prj_1"))).length, 0);
   assert.equal((await asOtherTeam(() => getDatabaseMetricsHistory("db_1"))).length, 0);
 });
 
-test("listSaveMetricsTargetsForCollector returns only opted-in apps + databases", async () => {
-  // Nothing opted in yet.
-  assert.equal((await listSaveMetricsTargetsForCollector()).length, 0);
-
-  await asOwner(() => setAppSaveMetrics("prj_1", true));
-  await asOwner(() => setDatabaseSaveMetrics("db_1", true));
-
-  const targets = await listSaveMetricsTargetsForCollector();
-  const ids = targets.map((t) => t.id).sort();
-  assert.deepEqual(ids, ["db_1", "prj_1"]);
-  // Each carries the owning server so the collector can dial it.
-  for (const t of targets) assert.equal(t.serverId, SERVER_1);
-});
-
-test("a recently-WATCHED resource is a collector target even with the switch off", async () => {
-  // The default is OFF, so without this the collector ignored ~every app and a
-  // reopened Monitoring tab could only chart the seconds since it mounted.
-  assert.equal((await listSaveMetricsTargetsForCollector()).length, 0);
-
-  markContainerWatched("prj_1", SERVER_1);
-
-  const targets = await listSaveMetricsTargetsForCollector();
-  assert.deepEqual(targets, [{ id: "prj_1", serverId: SERVER_1 }]);
-});
-
-test("a resource both opted in and watched is enumerated once", async () => {
-  await asOwner(() => setAppSaveMetrics("prj_1", true));
-  markContainerWatched("prj_1", SERVER_1);
-
-  const targets = await listSaveMetricsTargetsForCollector();
-  assert.deepEqual(
-    targets.filter((t) => t.id === "prj_1").length,
-    1,
-    "the union must de-dupe or the collector double-samples the same stack",
-  );
+test("the app and database gates are not interchangeable", async () => {
+  // Passing a database id to the app read (or vice versa) must miss its gate
+  // rather than fall through to the shared, type-blind buffer.
+  recordContainerSample(sample("db_1", NOW, 50));
+  recordContainerSample(sample("prj_1", NOW, 60));
+  assert.equal(await asOwner(() => getAppMetrics("db_1")), null);
+  assert.equal(await asOwner(() => getDatabaseMetrics("prj_1")), null);
+  assert.equal((await asOwner(() => getAppMetricsHistory("db_1"))).length, 0);
+  assert.equal((await asOwner(() => getDatabaseMetricsHistory("prj_1"))).length, 0);
 });

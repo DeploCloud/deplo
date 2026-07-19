@@ -3,6 +3,7 @@
 import * as React from "react";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GAP_MS } from "@/lib/monitoring/chart-gaps";
 import { cn } from "@/lib/utils";
 
 /**
@@ -13,26 +14,46 @@ import { cn } from "@/lib/utils";
  * Monitoring page without copying its layout. Pure/dumb: no data fetching.
  */
 
-/** Live poll cadence (ms) shared by every dashboard. */
+/**
+ * How often a dashboard re-reads the control plane's ring buffer.
+ *
+ * ITS MEANING CHANGED with the telemetry stream (lib/monitoring/supervisor.ts).
+ * It used to be the AGENT MEASUREMENT RATE: each tick was a per-viewer GraphQL
+ * call that dialled the owning host and made it measure, so the fleet's cost
+ * scaled with how many people had a tab open. Nothing on a host measures because
+ * of this timer any more — the agent samples on its own ticker and pushes frames
+ * — so this is now purely a BUFFER READ RATE: how quickly a chart notices a
+ * frame that already landed in control-plane RAM.
+ *
+ * Kept at 1s rather than matched to the 5s stream cadence deliberately. It is
+ * cheap (an in-RAM read behind one already-authenticated request), it is
+ * decoupled from the cadence — which the agent may clamp anywhere in [1s, 60s],
+ * so pinning the read rate to an assumed 5s would make a faster host render
+ * slower than it reports — and it keeps the freshest frame's latency under a
+ * second instead of adding a beat of its own on top of the agent's.
+ */
 export const POLL_MS = 1000;
 /**
- * How often a dashboard re-merges the control plane's server-side ring buffer
- * into its local point list.
+ * How stale the newest buffered sample may get before a dashboard stops calling
+ * itself live.
  *
- * The live poll is append-only: a failed request or an offline answer is simply
- * skipped, so without a repair pass every such miss becomes a PERMANENT hole
- * that later renders as a "No data" band — the more window you show, the more of
- * them you see. The background collector (5s) keeps the server buffer dense, so
- * re-seeding on a cadence comfortably inside `GAP_MS` (15s) closes a hole before
- * the chart can ever band it. Cheap: one small query against an in-RAM buffer,
- * no agent RPC.
+ * Deliberately the SAME threshold the charts band "No data" at, so the status
+ * line and the chart can never disagree: the moment a gap is wide enough to draw
+ * as a band, the header stops claiming the feed is live. See `GAP_MS` for the
+ * derivation (stream cadence + the supervisor's reconnect backoff cap, plus
+ * headroom) — it moves with the supervisor, and this must not fork from it.
  */
-export const RESEED_MS = 10_000;
+export const STALE_AFTER_MS = GAP_MS;
 /**
- * Rolling live buffer cap. Must hold the largest window (15m) at the DENSEST
- * cadence the buffer can carry, or the widest preset structurally cannot fill:
- * the list merges two sample trains — a viewer's ~1-2s poll and the collector's
- * 5s samples — so 15m needs well over the 900 that a flat 1s assumption gave.
+ * Rolling live buffer cap.
+ *
+ * Sized for the FASTEST CADENCE THE AGENT WILL SERVE, not the 5s default: the
+ * agent clamps `interval_ms` to a 1000ms floor, so a full 16-minute window at 1s
+ * is ~960 points. Mirrors `HARD_CAP` in lib/monitoring/history.ts for exactly
+ * that reason. Trimming this toward the ~200 the default cadence needs would
+ * look like a saving and act as silent truncation — the widest preset would stop
+ * being able to fill the moment anyone lowered the cadence, with nothing
+ * anywhere to say why.
  */
 export const MAX_POINTS = 1200;
 
@@ -164,12 +185,12 @@ export function WindowSelector({
   );
 }
 
-/** "Live · sampling every 1s", or an amber "not answering — showing data up to …". */
+/** "Live · streaming", or an amber "not answering — showing data up to …". */
 export function LiveStatusLine({
   stale,
   asOf,
 }: {
-  /** True when the last poll didn't return a live measurement. */
+  /** True when the buffer has stopped advancing (see `STALE_AFTER_MS`). */
   stale: boolean;
   /** ts (epoch ms) of the newest real sample, for the stale message. */
   asOf: number;
@@ -188,7 +209,12 @@ export function LiveStatusLine({
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--success)] opacity-75" />
         <span className="relative inline-flex size-2 rounded-full bg-[var(--success)]" />
       </span>
-      Live · sampling every {POLL_MS / 1000}s
+      {/* NOT "sampling every Ns": the cadence is the agent's to choose (it
+          clamps our hint into [1s, 60s]) and this timer no longer causes a
+          measurement at all — it only re-reads a buffer the agent is pushing
+          into. Naming a number here would be stating a rate the UI does not
+          know and does not control. */}
+      Live · streaming
     </div>
   );
 }
