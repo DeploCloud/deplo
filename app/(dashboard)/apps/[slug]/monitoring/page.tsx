@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps";
 import { getAppMetricsHistory } from "@/lib/data/container-metrics";
-import { hasCapability } from "@/lib/membership";
 import { PageHeader } from "@/components/shared/page-header";
 import { ContainerMonitoringDashboard } from "@/components/monitoring/container-monitoring-dashboard";
 
@@ -14,13 +13,11 @@ export default async function AppMonitoringPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // History is empty unless this app opted in; the dashboard polls live values
-  // every second regardless. `canManageInfra` cosmetically gates the switch —
-  // the mutation enforces it server-side.
-  const [initialHistory, canManageInfra] = await Promise.all([
-    getAppMetricsHistory(project.id),
-    hasCapability("manage_infra"),
-  ]);
+  // The buffered window, so the charts render full on the first paint instead of
+  // rebuilding themselves client-side. No opt-in gates it: the telemetry stream
+  // carries every container on the host, so history exists for this app whether
+  // or not anyone asked for it.
+  const initialHistory = await getAppMetricsHistory(project.id);
 
   return (
     <div className="space-y-5">
@@ -31,9 +28,7 @@ export default async function AppMonitoringPage(
       <ContainerMonitoringDashboard
         kind="app"
         id={project.id}
-        initialSaveMetrics={project.saveMetrics}
         initialHistory={initialHistory}
-        canManageInfra={canManageInfra}
         resources={project.resources}
       />
     </div>

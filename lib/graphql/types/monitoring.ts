@@ -1,7 +1,6 @@
 import { builder } from "../builder";
 import {
   getServerMetrics,
-  getAllServerMetrics,
   getServerMetricsHistory,
   type ServerMetrics,
 } from "@/lib/data/monitoring";
@@ -15,8 +14,6 @@ import {
   getAppMetricsHistory,
   getDatabaseMetrics,
   getDatabaseMetricsHistory,
-  setAppSaveMetrics,
-  setDatabaseSaveMetrics,
   type ContainerMetrics,
   type ContainerMetricsSample,
   type ContainerInstanceMetrics,
@@ -164,7 +161,7 @@ const MonitoringSettingsRef = builder
   });
 
 /* ------------------------------------------------------------------ */
-/* Queries (the polling actions — serverMetrics + allServerMetrics)    */
+/* Queries (the polling actions — serverMetrics)                       */
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
@@ -174,12 +171,6 @@ builder.queryFields((t) => ({
     description: "A fresh live metrics snapshot for one server.",
     args: { serverId: t.arg.string({ required: true }) },
     resolve: (_r, { serverId }) => getServerMetrics(serverId),
-  }),
-  allServerMetrics: t.field({
-    type: [ServerMetricsRef],
-    authScopes: { loggedIn: true },
-    description: "Fresh live metrics snapshots for every server.",
-    resolve: () => getAllServerMetrics(),
   }),
   serverMetricsHistory: t.field({
     type: [ServerMetricsRef],
@@ -213,7 +204,8 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     description:
       "The metrics history buffered for one app (oldest first) — what the app's " +
-      "Monitoring charts seed from. Empty unless the app's Save-metrics switch is on.",
+      "Monitoring charts seed from. Empty when the owning server's telemetry " +
+      "stream has not delivered a frame for it yet.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => getAppMetricsHistory(appId),
   }),
@@ -229,8 +221,8 @@ builder.queryFields((t) => ({
     type: [ContainerMetricsSampleRef],
     authScopes: { loggedIn: true },
     description:
-      "The metrics history buffered for one database (oldest first). Empty unless " +
-      "the database's Save-metrics switch is on.",
+      "The metrics history buffered for one database (oldest first). Empty when " +
+      "the owning server's telemetry stream has not delivered a frame for it yet.",
     args: { databaseId: t.arg.string({ required: true }) },
     resolve: (_r, { databaseId }) => getDatabaseMetricsHistory(databaseId),
   }),
@@ -253,33 +245,8 @@ builder.mutationFields((t) => ({
     resolve: (_r, { enabled }) => setSaveMetrics(enabled),
   }),
 
-  // Per-app / per-database "Save metrics" switch (default OFF). `manage_infra`,
-  // the same gate as the fleet toggle; enforced again in the data layer. Turning
-  // it off drops that resource's buffered history. Returns the new value.
-  setAppSaveMetrics: t.field({
-    type: "Boolean",
-    authScopes: { capability: "manage_infra" },
-    description:
-      "Turn saving THIS app's metrics history on or off. Off also drops its " +
-      "buffered history.",
-    args: {
-      appId: t.arg.string({ required: true }),
-      enabled: t.arg.boolean({ required: true }),
-    },
-    resolve: async (_r, { appId, enabled }) =>
-      (await setAppSaveMetrics(appId, enabled)).saveMetrics,
-  }),
-  setDatabaseSaveMetrics: t.field({
-    type: "Boolean",
-    authScopes: { capability: "manage_infra" },
-    description:
-      "Turn saving THIS database's metrics history on or off. Off also drops its " +
-      "buffered history.",
-    args: {
-      databaseId: t.arg.string({ required: true }),
-      enabled: t.arg.boolean({ required: true }),
-    },
-    resolve: async (_r, { databaseId, enabled }) =>
-      (await setDatabaseSaveMetrics(databaseId, enabled)).saveMetrics,
-  }),
+  // There is deliberately NO per-app / per-database "Save metrics" mutation. The
+  // telemetry stream carries every container on a host in one frame, so there is
+  // no per-resource sampling cost left to ration — `setSaveMetrics` above is the
+  // one master switch. See lib/data/container-metrics.ts.
 }));

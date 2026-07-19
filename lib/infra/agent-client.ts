@@ -16,6 +16,8 @@ import {
   type HelloResponse,
   type HostMetrics,
   type ContainerStat,
+  type MetricsStreamRequest,
+  type MetricsSample,
   type DeployRequest,
   type DeployEvent,
   type ReattachRequest,
@@ -83,6 +85,23 @@ const CONSOLE_TIMEOUT_MS = 30_000; // exec runs in-container; match docker.ts ex
 const METRICS_TIMEOUT_MS = 8_000;
 const FILES_TIMEOUT_MS = 15_000;
 const STREAM_DEADLINE_MS = 30 * 60_000; // logs/attach are long-lived
+/**
+ * The StreamMetrics deadline — its own constant because {@link STREAM_DEADLINE_MS}
+ * would tear the telemetry stream down every 30 minutes, and this one is meant to
+ * stay open for the life of the process.
+ *
+ * It is still FINITE on purpose, and the supervisor treats DEADLINE_EXCEEDED on it
+ * as NORMAL ROTATION (reconnect immediately, no backoff, no health write). Two
+ * things a rotation buys that an infinite stream cannot: it bounds any leak on
+ * either side, and it forces a periodic fresh mTLS handshake that RE-VALIDATES the
+ * pinned certificate fingerprint — so revoking trust (clearing the pin) takes
+ * effect within an hour instead of never, on a connection that would otherwise
+ * outlive the revocation. Immediate reconnect keeps the rotation gap at ~100ms,
+ * two orders of magnitude under the chart's GAP_MS.
+ */
+const METRICS_STREAM_DEADLINE_MS = 55 * 60_000;
+/** How many unread telemetry frames to hold before dropping the oldest. */
+const METRICS_STREAM_MAX_QUEUED = 4;
 // A dump+upload (or download+restore) of a large DB or volume-heavy project can
 // be long; the agent caps each step at ~30min, this is that plus dial slack.
 const BACKUP_DEADLINE_MS = 60 * 60_000;
@@ -218,6 +237,21 @@ export interface AgentConnection {
     projectId: string,
     containers: string[],
   ): Promise<ContainerStat[]>;
+  /**
+   * ONE long-lived stream carrying this host's metrics AND every Deplo-managed
+   * container's stats, sampled on the AGENT's ticker rather than pulled per
+   * viewer per resource. Yields until the caller breaks out, the transport dies,
+   * or {@link METRICS_STREAM_DEADLINE_MS} rotates it.
+   *
+   * This is what makes telemetry cost O(hosts) instead of O(hosts x containers x
+   * viewers): the control plane holds exactly one of these per server and demuxes
+   * frames into its RAM ring buffers by each stat's `projectId`. Gated by the
+   * `metrics-stream` Hello capability — see {@link connectMetricsStreamAgent},
+   * which preflights it so an old agent falls back to polling instead of erroring.
+   */
+  streamMetrics(
+    req: MetricsStreamRequest,
+  ): AsyncGenerator<MetricsSample, void, unknown>;
   /** Stream a deploy; yields DeployEvents until the terminal result. */
   deploy(req: DeployRequest): AsyncGenerator<DeployEvent, void, unknown>;
   /** Reconnect to an in-flight deploy and replay missed events (D5, Part B). */
@@ -492,6 +526,19 @@ export class AgentBackupUnsupportedError extends Error {}
 export class AgentContainerStatsUnsupportedError extends Error {}
 
 /**
+ * The reachable agent does not (yet) implement {@link AgentConnection.streamMetrics}
+ * — it predates the `"metrics-stream"` capability.
+ *
+ * Unlike its siblings this is NOT a user-facing error state, and nothing should
+ * ever surface it in the UI. The monitoring supervisor catches it specifically and
+ * DEMOTES that one server to the legacy poll path, which still produces correct
+ * charts at a higher cost. That is the whole degradation story for a mixed-version
+ * fleet: a rollout is server-by-server, and a user can register a server running
+ * last year's agent tomorrow.
+ */
+export class AgentMetricsStreamUnsupportedError extends Error {}
+
+/**
  * The reachable agent does not (yet) implement the {@link AgentConnection.checkPort}
  * RPC — it doesn't advertise the `"checkport"` capability in Hello, or it answers
  * with gRPC UNIMPLEMENTED. The database "Expose publicly" flow needs the agent to
@@ -730,14 +777,39 @@ function dial(target: DialTarget): AgentConnection {
     // Large messages: a streamed build context rides inside the Deploy request.
     "grpc.max_receive_message_length": 256 * 1024 * 1024,
     "grpc.max_send_message_length": 256 * 1024 * 1024,
+    // Keepalive, for the LONG-LIVED streams (StreamMetrics runs for the life of
+    // this process; logs/attach for hours). Without it a stream that goes quiet
+    // behind a NAT or stateful firewall gets its mapping reaped and we never
+    // learn: no error, no end event, just a chart that stops updating.
+    //
+    // The agent's server-side EnforcementPolicy sets MinTime 15s, so 30s is
+    // legal. Do NOT lower this below that floor without changing the agent in the
+    // same release — grpc-go answers a too-frequent ping with GOAWAY /
+    // ENHANCE_YOUR_CALM, which presents as random stream drops.
+    "grpc.keepalive_time_ms": 30_000,
+    "grpc.keepalive_timeout_ms": 10_000,
+    // Only ping while an RPC is in flight. Matches the agent's
+    // PermitWithoutStream:false — a ping on a wholly idle channel would be
+    // refused, and we have no reason to send one.
+    "grpc.keepalive_permit_without_calls": 0,
   });
 
   /** Bridge a grpc server-stream into a backpressured async generator. Generic
    *  over the event type so the deploy/reattach/startDev streams AND the
    *  backup/restore streams (same one-request-many-events shape) reuse it. A
-   *  transport-down error is normalised so consumers catch AgentUnreachableError. */
+   *  transport-down error is normalised so consumers catch AgentUnreachableError.
+   *
+   *  `maxQueued` bounds the buffer for a stream that runs for HOURS. The default
+   *  (0, unbounded) is right for the finite deploy/backup streams, where every
+   *  event is a log line the operator must eventually see and dropping one loses
+   *  information permanently. It is wrong for telemetry: if a consumer stalls,
+   *  an unbounded queue grows without limit, and the samples it accumulates are
+   *  worthless by the time they drain — a metrics point that arrives a minute
+   *  late is not late data, it is wrong data. So a bounded queue DROPS THE
+   *  OLDEST rather than pausing the producer or growing. */
   async function* streamEvents<E>(
     stream: ClientReadableStream<E>,
+    maxQueued = 0,
   ): AsyncGenerator<E, void, unknown> {
     const queue: E[] = [];
     let done = false;
@@ -748,6 +820,7 @@ function dial(target: DialTarget): AgentConnection {
       wake = null;
     };
     stream.on("data", (ev: E) => {
+      if (maxQueued > 0 && queue.length >= maxQueued) queue.shift();
       queue.push(ev);
       signal();
     });
@@ -1016,6 +1089,18 @@ function dial(target: DialTarget): AgentConnection {
             err ? reject(toAgentError(err)) : resolve(resp.stats),
         );
       });
+    },
+    streamMetrics(req: MetricsStreamRequest) {
+      return streamEvents(
+        client.streamMetrics(req, {
+          deadline: new Date(Date.now() + METRICS_STREAM_DEADLINE_MS),
+        }),
+        // Bounded, drop-oldest. Four frames is ~20s of history at the default
+        // cadence — enough to ride out a GC pause or a slow buffer write, far
+        // short of anything worth replaying. If the consumer is further behind
+        // than that, the right sample to keep is the newest one.
+        METRICS_STREAM_MAX_QUEUED,
+      );
     },
     deploy(req: DeployRequest) {
       return streamEvents(
@@ -1557,8 +1642,49 @@ const BACKUP_CAPABILITY = "backup";
 /** The capability an agent advertises once it can serve per-container
  *  `docker stats` (ContainerStats) — the per-app/per-database Monitoring tab.
  *  Mirrors BACKUP_CAPABILITY; the primary gate is the RPC's UNIMPLEMENTED, so
- *  there is no dedicated connect* preflight (metrics are polled, not one-shot). */
+ *  there is no dedicated connect* preflight for this one — it is the fallback
+ *  path, reached only for a server whose agent lacks METRICS_STREAM_CAPABILITY. */
 export const CONTAINER_STATS_CAPABILITY = "container-stats";
+
+/** The capability an agent advertises once it can serve the long-lived
+ *  {@link AgentConnection.streamMetrics} telemetry stream. Unlike container-stats
+ *  this one IS preflighted at connect time ({@link connectMetricsStreamAgent}),
+ *  because the answer selects between two entirely different collection
+ *  strategies for that host — and Hello already tells us, so discovering it from
+ *  a failed RPC would mean opening a stream in order to learn we cannot. */
+export const METRICS_STREAM_CAPABILITY = "metrics-stream";
+
+/**
+ * Open a connection for the telemetry stream, preflighting the capability.
+ *
+ * Returns the LIVE connection (the caller owns closing it) together with the
+ * opening Hello, because the supervisor needs that Hello anyway: it is where
+ * `agentVersion` / `traefikRunning` / `dockerVersion` come from for the
+ * once-per-connection `markServerSeen`, and it is a health OBSERVATION carrying
+ * the `trust` flag on a certificate failure — the signal the old metrics poll
+ * structurally could not produce, because it issued `metrics()` first and a
+ * cert-pin rejection there arrives without it.
+ *
+ * Throws {@link AgentMetricsStreamUnsupportedError} when the agent is too old,
+ * which the supervisor reads as "poll this one" rather than as a failure.
+ */
+export async function connectMetricsStreamAgent(
+  serverId: string,
+): Promise<{ conn: AgentConnection; hello: HelloResponse }> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(METRICS_STREAM_CAPABILITY)) {
+      throw new AgentMetricsStreamUnsupportedError(
+        `The agent on this server predates the telemetry stream; polling it instead.`,
+      );
+    }
+    return { conn, hello };
+  } catch (e) {
+    conn.close();
+    throw e;
+  }
+}
 
 /**
  * Map a {@link AgentConnection.containerStats} error to

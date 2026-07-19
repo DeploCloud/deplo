@@ -26,8 +26,8 @@
  *
  * It also STARTS the two schedulers — the backup one (PLAN backups Step 6) and the
  * Docker-cleanup one — each a once-a-minute loop that fires due cron `schedule`s —
- * plus the metrics collector (lib/monitoring/collector.ts), the 5s loop that keeps
- * each server's in-memory metrics history warm for the Monitoring page.
+ * plus the metrics stream supervisor (lib/monitoring/supervisor.ts), which holds
+ * one long-lived telemetry stream per server to keep the Monitoring history warm.
  * Boot is the natural home: it runs once per server instance, after the reconciles
  * have settled any orphaned runs, and each loop is lease-guarded (under its own
  * lease name) so multiple instances don't double-fire.
@@ -89,13 +89,23 @@ export async function register(): Promise<void> {
       "./lib/docker-cleanup/scheduler"
     );
     startDockerCleanupScheduler();
-    // Finally the metrics collector — keeps each server's in-memory metrics
-    // history warm while nobody has the Monitoring page open (no reconcile to
-    // wait on: its state is process RAM, born empty on every boot by design).
-    const { startMetricsCollector } = await import(
-      "./lib/monitoring/collector"
+    // Finally the metrics stream supervisor — holds ONE long-lived telemetry
+    // stream per server, which is what keeps every Monitoring chart warm whether
+    // or not anybody has the page open (no reconcile to wait on: its state is
+    // process RAM, born empty on every boot by design).
+    const { startMetricsStreams, stopMetricsStreams } = await import(
+      "./lib/monitoring/supervisor"
     );
-    startMetricsCollector();
+    startMetricsStreams();
+    // Unlike the interval-based collector this replaced, the streams MUST be torn
+    // down: each holds an open gRPC channel here and a ticker plus a
+    // `docker events` child on the agent. An unref()'d interval could be left to
+    // leak; these cannot — and dev HMR re-runs register() on every edit.
+    for (const sig of ["SIGTERM", "SIGINT"] as const) {
+      process.once(sig, () => {
+        void stopMetricsStreams();
+      });
+    }
   } catch (e) {
     // Never let a boot-time reconcile/scheduler failure crash the server.
     console.error("[deplo] startup reconcile failed:", e);

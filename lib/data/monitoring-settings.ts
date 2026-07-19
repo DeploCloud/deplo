@@ -46,17 +46,6 @@ export async function getMonitoringSettings(): Promise<MonitoringSettings> {
   return loadSettings();
 }
 
-/**
- * The settings, read WITHOUT a session — for the background collector's tick,
- * which has no request context. Same justification as
- * `loadCleanupPolicyForScheduler`: the tick takes no caller input and returns
- * nothing to a client; its authority is the settings row itself, written under
- * `manage_infra`. Every user-facing read gates via {@link getMonitoringSettings}.
- */
-export async function loadMonitoringSettingsForCollector(): Promise<MonitoringSettings> {
-  return loadSettings();
-}
-
 /* ------------------------------------------------------------------ */
 /* Poll-path memo                                                      */
 /* ------------------------------------------------------------------ */

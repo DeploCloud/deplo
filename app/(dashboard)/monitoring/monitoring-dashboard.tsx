@@ -28,9 +28,10 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import {
+  LiveStatusLine,
   MAX_POINTS,
   POLL_MS,
-  RESEED_MS,
+  STALE_AFTER_MS,
   WINDOWS,
 } from "@/components/monitoring/dashboard-parts";
 import { gqlAction } from "@/lib/graphql-client";
@@ -64,39 +65,56 @@ export function MonitoringDashboard({
   const [saveMetrics, setSaveMetrics] = React.useState(initialSaveMetrics);
   const [savingToggle, setSavingToggle] = React.useState(false);
   // Chart history holds live MEASUREMENTS only. The SSR hint (stored status,
-  // zeroed net/load) and offline snapshots are placeholders, not measurements —
-  // charting them would draw fake dips to 0. The latest poll result (whatever
-  // its online flag) lives in `live` so the status line can say "agent not
-  // answering" while the charts keep the honest gap.
-  const [live, setLive] = React.useState<Record<string, ServerMetrics | undefined>>({});
+  // zeroed net/load) is a placeholder, not a measurement — charting it would
+  // draw a fake dip to 0. The server-side buffer only ever admits real
+  // measurements, so an outage arrives here as widened spacing (an honest gap),
+  // never as a row of zeros.
   const [history, setHistory] = React.useState<Record<string, ServerMetrics[]>>({});
+  // A render clock, advanced by the read loop below, so staleness can assert
+  // itself even when reads stop succeeding (nothing else would re-render).
+  const [now, setNow] = React.useState<number>(() => Date.now());
 
   const selected = servers.find((s) => s.id === selectedId) ?? servers[0];
-  // Poll anything that HAS an agent — not just a server whose last stored status was
-  // `online`. The stored status is a timestamped observation now, and it can say
-  // `offline`/`warning`/`error` while the box is answering perfectly well; gating the
-  // live poll on it would blank the metrics for exactly the server an operator opened
-  // this page to diagnose, and — because the poll is what refreshes the status — the
-  // stale value could then never correct itself. `provisioning` is the one real
-  // exclusion: there is no agent on the other end yet.
+  // Read the buffer for anything that HAS an agent — not just a server whose last
+  // stored status was `online`. The stored status is a timestamped observation, and
+  // it can say `offline`/`warning`/`error` while the box is streaming perfectly
+  // well; gating the read on it would blank the charts for exactly the server an
+  // operator opened this page to diagnose, while the supervisor sat there holding a
+  // healthy stream from it. `provisioning` is the one real exclusion: there is no
+  // agent on the other end yet, so no stream and nothing buffered.
   const online = Boolean(selected) && selected.status !== "provisioning";
 
-  // Poll the selected server while it is online; append to its rolling buffer.
-  // A single measurement takes ~1.2s (network sampling window), longer than the
-  // 1s tick, so guard against overlapping requests stacking up: skip a tick if
-  // the previous one is still in flight.
+  // ONE read, on POLL_MS, of the control plane's ring buffer.
+  //
+  // What this replaced: a 1s `serverMetrics` poll whose every tick DIALLED this
+  // host and made it measure — the fleet's telemetry cost scaled with how many
+  // operators had the page open — plus a slower history re-merge beside it to
+  // repair the holes that append-only feed left behind. The telemetry-stream
+  // supervisor now holds one long-lived stream per host and fills the buffer at
+  // the agent's own cadence, so the MERGE is the feed: every point drawn comes
+  // from the buffer, and a failed request, a throttled tab or a stretch when
+  // nobody was watching resolves on the next read instead of scarring the
+  // window permanently.
+  //
+  // Still gated on `online`: nothing streams from a host that has no agent yet.
   React.useEffect(() => {
     if (!selectedId || !online) return;
     let active = true;
+    // A buffer read is cheap but not instant (auth + team scoping). Keep the
+    // in-flight guard so ticks cannot stack into a queue on a slow link and
+    // land out of order.
     let busy = false;
-
-    async function tick() {
+    const seed = async () => {
+      setNow(Date.now());
       if (busy) return;
       busy = true;
       try {
-        const res = await gqlAction<{ serverMetrics: ServerMetrics }, ServerMetrics>(
-          `query ServerMetrics($serverId: String!) {
-            serverMetrics(serverId: $serverId) {
+        const res = await gqlAction<
+          { serverMetricsHistory: ServerMetrics[] },
+          ServerMetrics[]
+        >(
+          `query ServerMetricsHistory($serverId: String!) {
+            serverMetricsHistory(serverId: $serverId) {
               serverId
               online
               ts
@@ -116,94 +134,45 @@ export function MonitoringDashboard({
             }
           }`,
           { serverId: selectedId },
-          (d) => d.serverMetrics,
+          (d) => d.serverMetricsHistory,
         );
-        if (!active || !res.ok || !res.data) return;
-        const sample = res.data;
-        setLive((l) => ({ ...l, [selectedId]: sample }));
-        // Offline snapshot: no measurement to chart — leave a gap, not a zero.
-        if (!sample.online) return;
+        if (!active || !res.ok || !res.data || res.data.length === 0) return;
+        const seeded = res.data;
         setHistory((h) => {
           const prev = h[selectedId] ?? [];
-          return { ...h, [selectedId]: [...prev, sample].slice(-MAX_POINTS) };
+          const byTs = new Map<number, ServerMetrics>();
+          // Buffer samples second so they win a timestamp collision — same
+          // data, authoritative provenance.
+          for (const s of [...prev, ...seeded]) byTs.set(s.ts, s);
+          const merged = [...byTs.values()]
+            .sort((a, b) => a.ts - b.ts)
+            .slice(-MAX_POINTS);
+          // Reads run faster than the agent's cadence, so most of them return a
+          // window identical to the one already on screen. Keep the previous
+          // ARRAY in that case: a fresh identity would invalidate the points
+          // memo and redraw every chart several times per new measurement.
+          if (
+            merged.length === prev.length &&
+            merged[merged.length - 1]?.ts === prev[prev.length - 1]?.ts
+          ) {
+            return h;
+          }
+          return { ...h, [selectedId]: merged };
         });
       } finally {
         busy = false;
       }
-    }
-
-    const iv = setInterval(tick, POLL_MS);
-    tick();
-    return () => {
-      active = false;
-      clearInterval(iv);
-    };
-  }, [selectedId, online]);
-
-  // Seed the charts from the control plane's buffered history (when "save
-  // metrics on server" is on): a reload or a server switch starts from the
-  // saved window instead of an empty chart. Merged by timestamp with whatever
-  // live samples have already landed — the two writers overlap harmlessly.
-  React.useEffect(() => {
-    if (!selectedId || !online || !saveMetrics) return;
-    let active = true;
-    const seed = async () => {
-      const res = await gqlAction<
-        { serverMetricsHistory: ServerMetrics[] },
-        ServerMetrics[]
-      >(
-        `query ServerMetricsHistory($serverId: String!) {
-          serverMetricsHistory(serverId: $serverId) {
-            serverId
-            online
-            ts
-            cpu
-            cpuCores
-            memUsed
-            memTotal
-            memPct
-            diskUsed
-            diskTotal
-            diskPct
-            netRx
-            netTx
-            load
-            uptimeSec
-            containers
-          }
-        }`,
-        { serverId: selectedId },
-        (d) => d.serverMetricsHistory,
-      );
-      if (!active || !res.ok || !res.data || res.data.length === 0) return;
-      const seeded = res.data;
-      setHistory((h) => {
-        const byTs = new Map<number, ServerMetrics>();
-        // Live samples second so they win a timestamp collision (same data,
-        // fresher provenance).
-        for (const s of [...seeded, ...(h[selectedId] ?? [])]) byTs.set(s.ts, s);
-        const merged = [...byTs.values()]
-          .sort((a, b) => a.ts - b.ts)
-          .slice(-MAX_POINTS);
-        return { ...h, [selectedId]: merged };
-      });
     };
     void seed();
-    // Re-pull the saved window on a TIMER, not just on wake. The live poll is
-    // append-only and silently drops a sample whenever a request fails or the
-    // agent answers offline (see `tick` above) — with no re-seed those holes are
-    // permanent, so the buffer slowly accumulates scar tissue and every widening
-    // of the window reveals more "No data" bands that the server-side ring buffer
-    // could have filled all along. The background collector keeps that buffer
-    // dense at 5s, so re-merging it on a cadence well inside GAP_MS repairs a
-    // hole before it can ever be drawn as a band.
-    const iv = setInterval(seed, RESEED_MS);
-    // Also re-pull when the tab returns to the foreground: a backgrounded tab has
-    // its timers clamped to ~1/min, so this is what makes coming back to the page
-    // show a continuous window immediately instead of rebuilding it one live poll
-    // at a time. A soft-nav back or a bfcache/Router-Cache restore may not remount
-    // this component, so a mount-only seed would never re-run; `pageshow` covers
-    // the bfcache restore.
+    const iv = setInterval(seed, POLL_MS);
+    // Read on wake as well as on the timer. A backgrounded tab has its timers
+    // clamped to roughly 1/min, which is PRECISELY the case server-side
+    // buffering exists to cover: the frames kept arriving while the tab slept,
+    // so an immediate read on return paints the whole continuous window at once
+    // instead of showing a false hole that fills in over the next minute. A
+    // soft-nav back or a bfcache/Router-Cache restore may not remount this
+    // component, so a mount-only read would never re-run; `pageshow` covers the
+    // bfcache restore.
     const onWake = () => {
       if (document.visibilityState !== "hidden") void seed();
     };
@@ -217,7 +186,7 @@ export function MonitoringDashboard({
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
     };
-  }, [selectedId, online, saveMetrics]);
+  }, [selectedId, online]);
 
   // Flip the instance-wide "save metrics on server" switch. Optimistic (the
   // switch answers immediately) with a revert + the server's message on failure.
@@ -247,15 +216,19 @@ export function MonitoringDashboard({
   }
 
   const samples = history[selectedId] ?? [];
-  const lastPoll = live[selectedId];
-  // Latest measurement for the tiles — while the agent is unreachable they
-  // freeze on the last real values (the status line says so) instead of
-  // zeroing. Until the first poll lands, the SSR hint keeps the tiles warm;
-  // the charts never see it (it's not a measurement).
+  // Latest measurement for the tiles — while nothing is arriving they freeze on
+  // the last real values (the status line says so) instead of zeroing. Until
+  // the first read lands, the SSR hint keeps the tiles warm; the charts never
+  // see it (it's not a measurement).
   const cur =
     samples[samples.length - 1] ??
     initialMetrics.find((m) => m.serverId === selectedId && m.online) ??
     null;
+  // "Live" is a claim about the FEED, not about the last request: a read that
+  // succeeds and returns the same frame it returned a minute ago is not live.
+  // Judged at the same threshold the charts band "No data" at, so the header
+  // and the chart below it can never contradict each other.
+  const stale = cur ? now - cur.ts > STALE_AFTER_MS : false;
 
   // One shared point list feeds every chart; each panel picks its keys.
   const points = React.useMemo(
@@ -363,8 +336,8 @@ export function MonitoringDashboard({
             <p className="text-sm font-medium">No live metrics</p>
             <p className="max-w-xs text-xs text-muted-foreground">
               {selected?.status === "provisioning"
-                ? "This server is still provisioning. Metrics appear once the agent is online."
-                : "This server's agent isn't answering. Metrics resume as soon as it does."}
+                ? "This server is still provisioning. Metrics appear once its agent is online."
+                : "Nothing has arrived from this server yet. Metrics appear as soon as it starts reporting."}
             </p>
           </CardContent>
         </Card>
@@ -372,20 +345,11 @@ export function MonitoringDashboard({
         <>
           {/* Live status line + chart time window (scopes every chart below) */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {lastPoll && !lastPoll.online ? (
-              <div className="flex items-center gap-2 text-xs text-[var(--warning)]">
-                <span className="inline-flex size-2 rounded-full bg-[var(--warning)]" />
-                Agent not answering — showing data up to {fmtClock(cur.ts)}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="relative flex size-2">
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--success)] opacity-75" />
-                  <span className="relative inline-flex size-2 rounded-full bg-[var(--success)]" />
-                </span>
-                Live · sampling every {POLL_MS / 1000}s
-              </div>
-            )}
+            {/* The shared status line, not a local copy of it: the per-app
+                Monitoring tab shows the same claim, and two hand-maintained
+                versions of "is this feed live?" is exactly how one of them ends
+                up still promising a sampling rate nothing samples at. */}
+            <LiveStatusLine stale={stale} asOf={cur.ts} />
             <div
               className="flex items-center gap-0.5 rounded-lg border p-0.5"
               role="group"
@@ -614,13 +578,6 @@ function InfoItem({
       <p className="truncate font-mono text-sm tabular-nums">{value}</p>
     </div>
   );
-}
-
-/** Wall-clock HH:MM:SS for "showing data up to …". */
-function fmtClock(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 function fmtUptime(sec: number): string {

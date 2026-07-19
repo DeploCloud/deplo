@@ -260,6 +260,13 @@
       "when": 1784411100000,
       "tag": "0036_add_save_metrics",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1784497500000,
+      "tag": "0037_drop_per_resource_save_metrics",
+      "breakpoints": true
     }
   ]
 }

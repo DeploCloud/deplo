@@ -25,17 +25,35 @@ import type { ServerMetrics } from "../data/monitoring";
 export const HISTORY_WINDOW_MS = 16 * 60_000;
 
 /**
- * Ignore a sample landing within this of the previous one. The live poll runs
- * per VIEWER, so two open tabs would otherwise double the buffer's density (and
- * halve its horizon under the hard cap) for no chart benefit.
+ * Ignore a sample landing within this of the previous one.
+ *
+ * ITS MEANING CHANGED with the telemetry stream. It used to be a DE-DUPE: the
+ * live poll ran per VIEWER, so two open tabs would each write the same server's
+ * buffer and double its density for no chart benefit. Under the stream there is
+ * exactly one writer per host (the supervisor), so nothing is duplicated and
+ * this is now a RATE CEILING — the fastest sample rate the buffer will accept.
+ *
+ * That makes it a silent-truncation hazard rather than a de-dupe: at 700ms it
+ * would have quietly discarded every other frame the moment anyone lowered the
+ * agent's `interval_ms` below ~1.4Hz, with no error anywhere and a chart that
+ * merely looked sparse. 250ms sits below the agent's own clamp floor (1000ms),
+ * so at any cadence the agent will actually serve, this guard never fires.
  */
-const MIN_GAP_MS = 700;
+const MIN_GAP_MS = 250;
 
 /**
- * Backstop against the window check ever admitting unbounded growth: the window
- * at the min gap is ~1370 samples, so this only bites if both guards misbehave.
+ * Backstop against the window check ever admitting unbounded growth. This is NOT
+ * the operative limit — the 16-minute window is, and at the default 5s cadence it
+ * retains ~192 samples.
+ *
+ * Sized for the FASTEST CADENCE THE AGENT WILL SERVE, not the default one: the
+ * agent clamps `interval_ms` to a 1000ms floor, and a full window at 1s is ~960
+ * samples. A cap below that would stop being a backstop and start silently
+ * shortening the visible history the moment someone lowered the cadence — the
+ * same class of invisible degradation MIN_GAP_MS above was carrying. 1200 leaves
+ * the window in charge at every legal cadence while still bounding RAM.
  */
-const HARD_CAP = 1500;
+const HARD_CAP = 1200;
 
 const STATE_KEY = Symbol.for("deplo.monitoring.history");
 const g = globalThis as unknown as {

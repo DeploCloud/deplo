@@ -13,12 +13,7 @@ import {
   ArrowUpCircle,
   Gauge,
 } from "lucide-react";
-import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { SimpleTooltip } from "@/components/ui/tooltip";
-import { ConfirmAction } from "@/components/shared/confirm-action";
 import { TimeSeriesChart } from "@/components/monitoring/time-series-chart";
 import {
   StatTile,
@@ -28,7 +23,7 @@ import {
   WINDOWS,
   POLL_MS,
   MAX_POINTS,
-  RESEED_MS,
+  STALE_AFTER_MS,
 } from "@/components/monitoring/dashboard-parts";
 import { gqlAction } from "@/lib/graphql-client";
 import { formatBytes } from "@/lib/utils";
@@ -94,25 +89,27 @@ function rate(cur: number, prev: number, dtSec: number): number {
 
 /**
  * The per-app / per-database Monitoring tab. Mirrors the fleet Monitoring page,
- * but scoped to ONE stack's containers (the agent ContainerStats RPC) and with a
- * per-resource "Save metrics" switch that defaults OFF.
+ * but scoped to ONE stack's containers.
+ *
+ * NOTHING HERE MAKES A HOST MEASURE. Every read below is a read of the control
+ * plane's in-RAM ring buffer, which the telemetry-stream supervisor fills from a
+ * single long-lived stream per host carrying every Deplo-managed container. That
+ * is why this tab no longer owns a "Save metrics" switch: the stream carries this
+ * stack whether or not anyone opted in, so the toggle's only remaining effect
+ * would have been declining ~23KB of RAM while its tooltip described a per-sample
+ * agent cost that no longer exists. The instance-wide switch on the fleet
+ * Monitoring page remains the master control.
  */
 export function ContainerMonitoringDashboard({
   kind,
   id,
-  initialSaveMetrics,
   initialHistory,
-  canManageInfra,
   resources,
 }: {
   kind: "app" | "database";
   id: string;
-  /** The stored per-resource "Save metrics" switch state (default false). */
-  initialSaveMetrics: boolean;
-  /** Buffered history (when saving is on) to seed the charts on load. */
+  /** The buffered window, to render a full chart on the very first paint. */
   initialHistory: ContainerSample[];
-  /** Cosmetic gate for the switch; the mutation enforces `manage_infra` itself. */
-  canManageInfra: boolean;
   /** The stack's configured resource limits, so the % gauges read against the
    *  cap (not the whole host) — null when uncapped. */
   resources: ResourceLimits | null;
@@ -121,7 +118,6 @@ export function ContainerMonitoringDashboard({
   const metricsField = kind === "app" ? "appMetrics" : "databaseMetrics";
   const historyField = kind === "app" ? "appMetricsHistory" : "databaseMetricsHistory";
   const idArg = kind === "app" ? "appId" : "databaseId";
-  const setMutation = kind === "app" ? "setAppSaveMetrics" : "setDatabaseSaveMetrics";
 
   // Configured PER-CONTAINER caps. deplo applies the app-level resource limits to
   // EVERY container in the stack (see mergeResourceLimits), so a stack's aggregate
@@ -149,104 +145,109 @@ export function ContainerMonitoringDashboard({
       : dockerPct;
 
   const [windowMs, setWindowMs] = React.useState<number>(WINDOWS[0].ms);
-  const [saveMetrics, setSaveMetrics] = React.useState(initialSaveMetrics);
-  const [savingToggle, setSavingToggle] = React.useState(false);
-  // Enabling opens a confirm modal (the switch flips only on confirm); disabling
-  // is safe and immediate.
-  const [confirmOpen, setConfirmOpen] = React.useState(false);
-  // Chart history holds live MEASUREMENTS with a running container only (real
-  // usage). `last` is the latest poll whatever its flags, so the status line can
-  // say "not answering" / "stopped" while the charts keep the honest gap.
+  // The live-vs-history split is kept, but both halves now come from the same
+  // buffer: `samples` is the SERIES the charts draw, `last` is the latest-value
+  // CELL — the per-container breakdown and the `unsupported` flag, which are a
+  // live table rather than a series and so are not carried in every point.
+  // Splitting them also lets the header say "not answering" while the charts
+  // keep the honest gap instead of drawing a fake zero.
   const [samples, setSamples] = React.useState<ContainerSample[]>(() =>
     initialHistory.filter((s) => s.online),
   );
   const [last, setLast] = React.useState<ContainerLive | null>(null);
+  // A render clock, advanced by the read loop below. Without it, "live" would be
+  // decided by whatever timestamp the last SUCCESSFUL read returned: if reads
+  // start failing, or the stream stops delivering, nothing re-renders and the
+  // header keeps claiming live against a frozen chart. Ticking it on every
+  // attempt is what lets staleness assert itself.
+  const [now, setNow] = React.useState<number>(() => Date.now());
 
-  // Poll this stack's live metrics. A measurement takes ~1-2s (docker stats
-  // samples a CPU window), so guard against overlapping requests stacking up.
+  // ONE read, on POLL_MS, for both halves.
+  //
+  // What this replaced: a 1s "live" poll that each tick made the owning host
+  // measure, appending its answer as the chart's primary feed, with a slower
+  // history re-merge bolted on beside it to repair the holes the append-only
+  // feed inevitably left. Under the stream the append-only feed is gone: the
+  // MERGE is the feed. Every point the charts draw comes from the server-side
+  // buffer, so a missed request, a slow tab, or a stretch when nobody was
+  // looking simply resolves on the next read instead of scarring the window
+  // permanently — the repair pass and the thing it repaired are now one path.
+  //
+  // Both fields ride ONE document deliberately. They are two reads of the same
+  // in-RAM buffer; splitting them into two timers would double the request rate
+  // for no extra freshness and let the tiles and the charts land a beat apart.
   React.useEffect(() => {
     let active = true;
+    // A read is cheap but not instant (auth + team scoping). Keep the in-flight
+    // guard: on a slow link, ticks would otherwise stack into a queue that
+    // outlives the interval and lands out of order.
     let busy = false;
 
-    async function tick() {
+    const read = async () => {
+      setNow(Date.now());
       if (busy) return;
       busy = true;
       try {
-        const res = await gqlAction<Record<string, ContainerLive | null>, ContainerLive | null>(
+        const res = await gqlAction<
+          Record<string, ContainerLive | ContainerSample[] | null>,
+          { live: ContainerLive | null; history: ContainerSample[] }
+        >(
           `query Metrics($id: String!) {
             ${metricsField}(${idArg}: $id) { ${LIVE_FIELDS} }
+            ${historyField}(${idArg}: $id) { ${SAMPLE_FIELDS} }
           }`,
           { id },
-          (d) => d[metricsField],
+          (d) => ({
+            live: (d[metricsField] as ContainerLive | null) ?? null,
+            history: (d[historyField] as ContainerSample[]) ?? [],
+          }),
         );
         if (!active || !res.ok || !res.data) return;
-        const sample = res.data;
-        setLast(sample);
-        // Chart every ONLINE sample, including one with no running container. A
-        // stack that is mid-redeploy (or stopped) genuinely measures zero, and
-        // zero is a measurement — dropping it punched a "No data" band into a
-        // window the agent answered for, and left the chart contradicting the
-        // server-side buffer, which records exactly these samples. Only an
-        // offline answer (no measurement at all) is still skipped.
-        if (!sample.online) return;
-        setSamples((prev) => [...prev, sample].slice(-MAX_POINTS));
+        setLast(res.data.live);
+        if (res.data.history.length === 0) return;
+        // Keep every recorded measurement, `running: 0` included. The buffer
+        // only ever holds online samples, and filtering the idle ones back out
+        // here is what once made a redeploy read as a hole: a stopped stack
+        // genuinely measures zero, and zero is a measurement.
+        const fresh = res.data.history.filter((s) => s.online);
+        setSamples((prev) => {
+          const byTs = new Map<number, ContainerSample>();
+          // Buffer samples second so they win a timestamp collision — same
+          // data, authoritative provenance.
+          for (const s of [...prev, ...fresh]) byTs.set(s.ts, s);
+          const merged = [...byTs.values()]
+            .sort((a, b) => a.ts - b.ts)
+            .slice(-MAX_POINTS);
+          // Reads run faster than the agent's cadence, so most of them return a
+          // window identical to the one already on screen. Keep the previous
+          // ARRAY in that case: a fresh identity would invalidate the points
+          // memo and redraw every chart several times per new measurement.
+          const head = merged[merged.length - 1];
+          const prevHead = prev[prev.length - 1];
+          if (
+            merged.length === prev.length &&
+            head?.ts === prevHead?.ts
+          ) {
+            return prev;
+          }
+          return merged;
+        });
       } finally {
         busy = false;
       }
-    }
-
-    const iv = setInterval(tick, POLL_MS);
-    tick();
-    return () => {
-      active = false;
-      clearInterval(iv);
     };
-  }, [id, metricsField, idArg]);
 
-  // Seed the charts from the control plane's buffered history: a reload — OR
-  // returning to the page after navigating away or backgrounding the tab —
-  // starts from the saved server-side window instead of an empty chart. The seed
-  // re-runs whenever the page regains visibility/focus (and on bfcache restore
-  // via `pageshow`): a soft navigation back or a restored tab may NOT remount
-  // this component, so a mount-only seed would leave the chart to rebuild one
-  // live poll at a time — the exact "empty until I look at it, then it slowly
-  // fills" that buffering history is meant to prevent. Merge by ts; live samples
-  // win.
-  //
-  // Deliberately NOT gated on `saveMetrics`. The control plane now buffers any
-  // resource someone is watching (WATCH_TTL_MS), so the window exists even with
-  // the switch off — and skipping the seed there was what left the tab unable to
-  // show anything but the seconds since mount. An empty response is harmless.
-  React.useEffect(() => {
-    let active = true;
-    const seed = async () => {
-      const res = await gqlAction<Record<string, ContainerSample[]>, ContainerSample[]>(
-        `query History($id: String!) {
-          ${historyField}(${idArg}: $id) { ${SAMPLE_FIELDS} }
-        }`,
-        { id },
-        (d) => d[historyField],
-      );
-      if (!active || !res.ok || !res.data || res.data.length === 0) return;
-      // Keep every recorded measurement, `running: 0` included — the buffer only
-      // ever holds online samples, and filtering the idle ones back out here is
-      // what made a redeploy read as a hole (see the live poll above).
-      const seeded = res.data.filter((s) => s.online);
-      setSamples((prev) => {
-        const byTs = new Map<number, ContainerSample>();
-        for (const s of [...seeded, ...prev]) byTs.set(s.ts, s);
-        return [...byTs.values()].sort((a, b) => a.ts - b.ts).slice(-MAX_POINTS);
-      });
-    };
-    void seed();
-    // Re-pull on a timer, not only on wake: the live poll drops a sample on any
-    // failed request or offline answer and never retries, so without this every
-    // miss is a permanent hole that a wider window later exposes as "No data".
-    // Same reasoning as the fleet dashboard — see RESEED_MS.
-    const iv = setInterval(seed, RESEED_MS);
-    // Re-pull the saved window when the tab comes back to the foreground too.
+    void read();
+    const iv = setInterval(read, POLL_MS);
+    // Read on wake as well as on the timer. A backgrounded tab has its timers
+    // clamped to roughly 1/min, which is PRECISELY the case server-side
+    // buffering exists to cover: the frames kept arriving while the tab slept,
+    // so an immediate read on return paints the whole continuous window at once
+    // instead of showing a false hole that fills in over the next minute. A
+    // soft-nav back or a bfcache restore may not remount this component, so a
+    // mount-only read would never re-run — `pageshow` covers the bfcache case.
     const onWake = () => {
-      if (document.visibilityState !== "hidden") void seed();
+      if (document.visibilityState !== "hidden") void read();
     };
     document.addEventListener("visibilitychange", onWake);
     window.addEventListener("focus", onWake);
@@ -258,43 +259,7 @@ export function ContainerMonitoringDashboard({
       window.removeEventListener("focus", onWake);
       window.removeEventListener("pageshow", onWake);
     };
-  }, [id, historyField, idArg]);
-
-  // Persist the switch; sets local state on success. Returns the ActionResult so
-  // the confirm modal (enable path) can surface an error and stay open.
-  const persistSaveMetrics = React.useCallback(
-    async (next: boolean) => {
-      const res = await gqlAction<Record<string, boolean>, boolean>(
-        `mutation SetSaveMetrics($id: String!, $enabled: Boolean!) {
-          ${setMutation}(${idArg}: $id, enabled: $enabled)
-        }`,
-        { id, enabled: next },
-        (d) => d[setMutation],
-      );
-      if (res.ok) setSaveMetrics(next);
-      return res;
-    },
-    [id, idArg, setMutation],
-  );
-
-  // Enabling opens the confirm modal (deliberate — it has a cost); disabling is
-  // safe, so do it immediately (optimistic, revert on error).
-  function onToggle(next: boolean) {
-    if (next) {
-      setConfirmOpen(true);
-      return;
-    }
-    setSaveMetrics(false);
-    setSavingToggle(true);
-    persistSaveMetrics(false)
-      .then((res) => {
-        if (!res.ok) {
-          setSaveMetrics(true);
-          toast.error(res.error);
-        }
-      })
-      .finally(() => setSavingToggle(false));
-  }
+  }, [id, metricsField, historyField, idArg]);
 
   // One shared point list feeds every chart; net/block are cumulative counters,
   // so each point's rate is derived from the previous sample's delta.
@@ -357,63 +322,22 @@ export function ContainerMonitoringDashboard({
     pidsLimit != null ? `PIDs ${pidsLimit}` : null,
   ].filter(Boolean) as string[];
 
-  const saveSwitch = (
-    <div className="flex items-center gap-2">
-      <Switch
-        id="save-metrics"
-        checked={saveMetrics}
-        disabled={!canManageInfra || savingToggle}
-        onCheckedChange={onToggle}
-        aria-label={`Save metrics for this ${noun}`}
-      />
-      <Label
-        htmlFor="save-metrics"
-        className="text-sm font-normal text-muted-foreground"
-      >
-        Save metrics
-      </Label>
-    </div>
-  );
-
-  // Enabling shows a short warning modal (the switch flips only on confirm).
-  const confirmModal = (
-    <ConfirmAction
-      open={confirmOpen}
-      onOpenChange={setConfirmOpen}
-      title={`Save this ${noun}'s metrics?`}
-      variant="default"
-      confirmLabel="Save metrics"
-      description={
-        <>
-          Deplo will keep a rolling ~15-minute history of this {noun}&apos;s
-          metrics in memory and sample its container in the background every few
-          seconds — even when you&apos;re not watching. It&apos;s a small,
-          bounded cost (RAM only, nothing is written to the database), but it
-          adds up when many are enabled, and adds steady work on small hosts.
-          Best turned on while you&apos;re debugging, then off.
-        </>
-      }
-      onConfirm={() => persistSaveMetrics(true)}
-    />
-  );
+  // "Live" is a claim about the FEED, not about the last request: a read that
+  // succeeds and returns the same frame it returned a minute ago is not live.
+  // Judge it by how old the newest measurement is, at the same threshold the
+  // charts band "No data" at, so the header and the chart cannot contradict.
+  const stale =
+    Boolean(last && !last.online) ||
+    (cur ? now - cur.ts > STALE_AFTER_MS : false);
 
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       {cur ? (
-        <LiveStatusLine stale={Boolean(last && !last.online)} asOf={cur.ts} />
+        <LiveStatusLine stale={stale} asOf={cur.ts} />
       ) : (
         <span className="text-xs text-muted-foreground">Live container metrics</span>
       )}
-      <div className="flex items-center gap-3">
-        {cur && <WindowSelector windowMs={windowMs} onChange={setWindowMs} />}
-        {canManageInfra ? (
-          saveSwitch
-        ) : (
-          <SimpleTooltip content="Requires the Manage infrastructure capability">
-            <span tabIndex={0}>{saveSwitch}</span>
-          </SimpleTooltip>
-        )}
-      </div>
+      {cur && <WindowSelector windowMs={windowMs} onChange={setWindowMs} />}
     </div>
   );
 
@@ -429,11 +353,17 @@ export function ContainerMonitoringDashboard({
     );
   } else if (!cur) {
     if (last && !last.online) {
+      // "Offline" now means the control plane holds NO frame for this stack.
+      // Under the stream that has two causes it cannot tell apart from here —
+      // the host isn't reachable, or its server agent is too old to stream and
+      // the supervisor fell back to host-only telemetry. So the copy stays
+      // neutral about the cause and points at the one page that shows both
+      // (Servers carries the reachability state and the update button).
       body = (
         <EmptyCard
           icon={ServerOff}
-          title="No live metrics"
-          text={`This ${noun}'s server isn't answering. Metrics resume as soon as its agent does.`}
+          title="No metrics yet"
+          text={`Nothing has arrived for this ${noun}. Metrics appear as soon as its server starts reporting — check that server on the Servers page if this persists.`}
         />
       );
     } else if (last && last.running === 0) {
@@ -449,7 +379,7 @@ export function ContainerMonitoringDashboard({
         <EmptyCard
           icon={Boxes}
           title="Collecting…"
-          text="Waiting for the first measurement from the agent."
+          text="Waiting for the first measurement to arrive from this server."
         />
       );
     }
@@ -612,7 +542,6 @@ export function ContainerMonitoringDashboard({
     <div className="space-y-6">
       {header}
       {body}
-      {confirmModal}
     </div>
   );
 }

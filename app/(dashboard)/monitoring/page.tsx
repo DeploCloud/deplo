@@ -8,8 +8,10 @@ import { MonitoringDashboard } from "./monitoring-dashboard";
 export const metadata = { title: "Monitoring" };
 
 export default async function MonitoringPage() {
-  // Cheap last-known metrics so the page renders instantly; the dashboard polls
-  // live values every second and replaces these (see ServerMetricsProvider).
+  // Cheap last-known metrics so the page renders instantly. MonitoringDashboard
+  // replaces these on its first read of the control plane's ring buffer — which
+  // the telemetry-stream supervisor keeps filled whether or not anyone is here,
+  // so the charts usually arrive already full rather than drawing themselves in.
   const [servers, initialMetrics, settings, canManageInfra] = await Promise.all([
     listServers(),
     getInitialServerMetrics(),

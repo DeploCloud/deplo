@@ -1708,10 +1708,81 @@ export interface ContainerStat {
    * are zeroed) — so the tab can distinguish "stopped" from "no such container".
    */
   running: boolean;
+  /**
+   * The deplo.project label (an App id, prj_*, or a Database id) this container
+   * belongs to — the demux key for the host-wide stream. Identity comes from the
+   * LABEL, never from parsing the container name: name-mangling is how Dokploy
+   * collapses every sibling Compose container of an App into one series.
+   */
+  projectId: string;
+  /**
+   * The full 64-hex Docker id. Stable for a container's lifetime and CHANGES on
+   * recreation, which is exactly what the rate calculator needs in order to drop
+   * a stale previous sample instead of emitting a bogus negative delta.
+   */
+  containerId: string;
+  /**
+   * Raw docker state: "running" | "restarting" | "exited" | "created" |
+   * "paused" | "dead" | "removing". Empty from an agent too old to send it.
+   */
+  state: string;
+  /**
+   * Healthcheck verdict when the image defines one: "healthy" | "unhealthy" |
+   * "starting". Empty when the container has no healthcheck (the common case) —
+   * NOT a synonym for healthy.
+   */
+  health: string;
+  /**
+   * How many times docker has restarted this container. The number that turns
+   * "it is starting" into "it has been dying for an hour".
+   */
+  restartCount: number;
 }
 
 export interface ContainerStatsResponse {
   stats: ContainerStat[];
+}
+
+export interface MetricsStreamRequest {
+  /**
+   * The path whose filesystem to measure for disk usage (the agent's data dir).
+   * Empty => the agent's own --data-dir, exactly like MetricsRequest.
+   */
+  dataDir: string;
+  /**
+   * Sampling cadence. 0 => the agent's default (5000). The agent CLAMPS this to
+   * [1000, 60000]: a cadence is a HINT, never a way for a caller to pin the host
+   * by asking for 10ms samples.
+   */
+  intervalMs: number;
+  /**
+   * False => host metrics only. No container roster, no `docker ps`, no stats —
+   * for a caller that only wants the host gauge.
+   */
+  includeContainers: boolean;
+}
+
+/**
+ * One tick. `host` is always present; `containers` is empty unless the request
+ * asked for them (or nothing Deplo-managed is running on this host).
+ */
+export interface MetricsSample {
+  host?: HostMetrics | undefined;
+  containers: ContainerStat[];
+  /**
+   * The AGENT's clock at sample time. The control plane stamps its OWN receive
+   * time into the ring buffer — clock skew between hosts must never move a point
+   * on a chart — but this makes agent-side sampling gaps diagnosable after the
+   * fact, which a receive timestamp alone cannot do.
+   */
+  sampledAtUnixMs: number;
+  /**
+   * Which backend produced this frame: "cgroup2" | "docker-stats". Diagnostic
+   * only — the numbers mean the same thing either way. It lets the control plane
+   * surface "this host is on the slow path" (~18x the CPU cost) without a second
+   * RPC, and makes an automatic demotion visible instead of silent.
+   */
+  source: string;
 }
 
 function createBaseHelloRequest(): HelloRequest {
@@ -10777,6 +10848,11 @@ function createBaseContainerStat(): ContainerStat {
     blockWrite: 0,
     pids: 0,
     running: false,
+    projectId: "",
+    containerId: "",
+    state: "",
+    health: "",
+    restartCount: 0,
   };
 }
 
@@ -10814,6 +10890,21 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     }
     if (message.running !== false) {
       writer.uint32(88).bool(message.running);
+    }
+    if (message.projectId !== "") {
+      writer.uint32(98).string(message.projectId);
+    }
+    if (message.containerId !== "") {
+      writer.uint32(106).string(message.containerId);
+    }
+    if (message.state !== "") {
+      writer.uint32(114).string(message.state);
+    }
+    if (message.health !== "") {
+      writer.uint32(122).string(message.health);
+    }
+    if (message.restartCount !== 0) {
+      writer.uint32(128).int32(message.restartCount);
     }
     return writer;
   },
@@ -10913,6 +11004,46 @@ export const ContainerStat: MessageFns<ContainerStat> = {
           message.running = reader.bool();
           continue;
         }
+        case 12: {
+          if (tag !== 98) {
+            break;
+          }
+
+          message.projectId = reader.string();
+          continue;
+        }
+        case 13: {
+          if (tag !== 106) {
+            break;
+          }
+
+          message.containerId = reader.string();
+          continue;
+        }
+        case 14: {
+          if (tag !== 114) {
+            break;
+          }
+
+          message.state = reader.string();
+          continue;
+        }
+        case 15: {
+          if (tag !== 122) {
+            break;
+          }
+
+          message.health = reader.string();
+          continue;
+        }
+        case 16: {
+          if (tag !== 128) {
+            break;
+          }
+
+          message.restartCount = reader.int32();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -10967,6 +11098,23 @@ export const ContainerStat: MessageFns<ContainerStat> = {
         : 0,
       pids: isSet(object.pids) ? globalThis.Number(object.pids) : 0,
       running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      containerId: isSet(object.containerId)
+        ? globalThis.String(object.containerId)
+        : isSet(object.container_id)
+        ? globalThis.String(object.container_id)
+        : "",
+      state: isSet(object.state) ? globalThis.String(object.state) : "",
+      health: isSet(object.health) ? globalThis.String(object.health) : "",
+      restartCount: isSet(object.restartCount)
+        ? globalThis.Number(object.restartCount)
+        : isSet(object.restart_count)
+        ? globalThis.Number(object.restart_count)
+        : 0,
     };
   },
 
@@ -11005,6 +11153,21 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     if (message.running !== false) {
       obj.running = message.running;
     }
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.containerId !== "") {
+      obj.containerId = message.containerId;
+    }
+    if (message.state !== "") {
+      obj.state = message.state;
+    }
+    if (message.health !== "") {
+      obj.health = message.health;
+    }
+    if (message.restartCount !== 0) {
+      obj.restartCount = Math.round(message.restartCount);
+    }
     return obj;
   },
 
@@ -11024,6 +11187,11 @@ export const ContainerStat: MessageFns<ContainerStat> = {
     message.blockWrite = object.blockWrite ?? 0;
     message.pids = object.pids ?? 0;
     message.running = object.running ?? false;
+    message.projectId = object.projectId ?? "";
+    message.containerId = object.containerId ?? "";
+    message.state = object.state ?? "";
+    message.health = object.health ?? "";
+    message.restartCount = object.restartCount ?? 0;
     return message;
   },
 };
@@ -11088,6 +11256,226 @@ export const ContainerStatsResponse: MessageFns<ContainerStatsResponse> = {
   },
 };
 
+function createBaseMetricsStreamRequest(): MetricsStreamRequest {
+  return { dataDir: "", intervalMs: 0, includeContainers: false };
+}
+
+export const MetricsStreamRequest: MessageFns<MetricsStreamRequest> = {
+  encode(message: MetricsStreamRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.dataDir !== "") {
+      writer.uint32(10).string(message.dataDir);
+    }
+    if (message.intervalMs !== 0) {
+      writer.uint32(16).int32(message.intervalMs);
+    }
+    if (message.includeContainers !== false) {
+      writer.uint32(24).bool(message.includeContainers);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): MetricsStreamRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseMetricsStreamRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.dataDir = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.intervalMs = reader.int32();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.includeContainers = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): MetricsStreamRequest {
+    return {
+      dataDir: isSet(object.dataDir)
+        ? globalThis.String(object.dataDir)
+        : isSet(object.data_dir)
+        ? globalThis.String(object.data_dir)
+        : "",
+      intervalMs: isSet(object.intervalMs)
+        ? globalThis.Number(object.intervalMs)
+        : isSet(object.interval_ms)
+        ? globalThis.Number(object.interval_ms)
+        : 0,
+      includeContainers: isSet(object.includeContainers)
+        ? globalThis.Boolean(object.includeContainers)
+        : isSet(object.include_containers)
+        ? globalThis.Boolean(object.include_containers)
+        : false,
+    };
+  },
+
+  toJSON(message: MetricsStreamRequest): unknown {
+    const obj: any = {};
+    if (message.dataDir !== "") {
+      obj.dataDir = message.dataDir;
+    }
+    if (message.intervalMs !== 0) {
+      obj.intervalMs = Math.round(message.intervalMs);
+    }
+    if (message.includeContainers !== false) {
+      obj.includeContainers = message.includeContainers;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<MetricsStreamRequest>, I>>(base?: I): MetricsStreamRequest {
+    return MetricsStreamRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<MetricsStreamRequest>, I>>(object: I): MetricsStreamRequest {
+    const message = createBaseMetricsStreamRequest();
+    message.dataDir = object.dataDir ?? "";
+    message.intervalMs = object.intervalMs ?? 0;
+    message.includeContainers = object.includeContainers ?? false;
+    return message;
+  },
+};
+
+function createBaseMetricsSample(): MetricsSample {
+  return { host: undefined, containers: [], sampledAtUnixMs: 0, source: "" };
+}
+
+export const MetricsSample: MessageFns<MetricsSample> = {
+  encode(message: MetricsSample, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.host !== undefined) {
+      HostMetrics.encode(message.host, writer.uint32(10).fork()).join();
+    }
+    for (const v of message.containers) {
+      ContainerStat.encode(v!, writer.uint32(18).fork()).join();
+    }
+    if (message.sampledAtUnixMs !== 0) {
+      writer.uint32(24).int64(message.sampledAtUnixMs);
+    }
+    if (message.source !== "") {
+      writer.uint32(34).string(message.source);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): MetricsSample {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseMetricsSample();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.host = HostMetrics.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.containers.push(ContainerStat.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.sampledAtUnixMs = longToNumber(reader.int64());
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.source = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): MetricsSample {
+    return {
+      host: isSet(object.host) ? HostMetrics.fromJSON(object.host) : undefined,
+      containers: globalThis.Array.isArray(object?.containers)
+        ? object.containers.map((e: any) => ContainerStat.fromJSON(e))
+        : [],
+      sampledAtUnixMs: isSet(object.sampledAtUnixMs)
+        ? globalThis.Number(object.sampledAtUnixMs)
+        : isSet(object.sampled_at_unix_ms)
+        ? globalThis.Number(object.sampled_at_unix_ms)
+        : 0,
+      source: isSet(object.source) ? globalThis.String(object.source) : "",
+    };
+  },
+
+  toJSON(message: MetricsSample): unknown {
+    const obj: any = {};
+    if (message.host !== undefined) {
+      obj.host = HostMetrics.toJSON(message.host);
+    }
+    if (message.containers?.length) {
+      obj.containers = message.containers.map((e) => ContainerStat.toJSON(e));
+    }
+    if (message.sampledAtUnixMs !== 0) {
+      obj.sampledAtUnixMs = Math.round(message.sampledAtUnixMs);
+    }
+    if (message.source !== "") {
+      obj.source = message.source;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<MetricsSample>, I>>(base?: I): MetricsSample {
+    return MetricsSample.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<MetricsSample>, I>>(object: I): MetricsSample {
+    const message = createBaseMetricsSample();
+    message.host = (object.host !== undefined && object.host !== null)
+      ? HostMetrics.fromPartial(object.host)
+      : undefined;
+    message.containers = object.containers?.map((e) => ContainerStat.fromPartial(e)) || [];
+    message.sampledAtUnixMs = object.sampledAtUnixMs ?? 0;
+    message.source = object.source ?? "";
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -11135,6 +11523,35 @@ export const AgentService = {
     responseSerialize: (value: ContainerStatsResponse): Buffer =>
       Buffer.from(ContainerStatsResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): ContainerStatsResponse => ContainerStatsResponse.decode(value),
+  },
+  /**
+   * ONE long-lived stream carrying this host's metrics AND every Deplo-managed
+   * container's stats, sampled on the AGENT's own ticker. Replaces the
+   * per-viewer, per-resource Metrics/ContainerStats poll: the control plane
+   * opens exactly one of these per server and demuxes frames into its RAM ring
+   * buffer, so telemetry cost is O(hosts) — independent of how many containers
+   * run there and how many people are looking.
+   *
+   * The agent is still a pure gRPC SERVER: the control plane dials and the agent
+   * streams, exactly like FollowLogs. There is no agent->control-plane channel.
+   *
+   * Container scoping is by the deplo.managed=true label, NEVER an empty filter
+   * (which would enumerate every container on the host, including ones Deplo
+   * does not own). Each stat carries its deplo.project label so the control
+   * plane demuxes to an App / Database without a second lookup.
+   *
+   * ADDITIVE: gated by the "metrics-stream" capability. An agent without it
+   * keeps serving the unary Metrics / ContainerStats poll unchanged, and the
+   * control plane falls back to polling that ONE server.
+   */
+  streamMetrics: {
+    path: "/deplo.agent.v1.Agent/StreamMetrics" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: MetricsStreamRequest): Buffer => Buffer.from(MetricsStreamRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): MetricsStreamRequest => MetricsStreamRequest.decode(value),
+    responseSerialize: (value: MetricsSample): Buffer => Buffer.from(MetricsSample.encode(value).finish()),
+    responseDeserialize: (value: Buffer): MetricsSample => MetricsSample.decode(value),
   },
   /**
    * Deploy lifecycle. Server-streaming so build/run logs flow live, in one
@@ -11791,6 +12208,27 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   containerStats: handleUnaryCall<ContainerStatsRequest, ContainerStatsResponse>;
   /**
+   * ONE long-lived stream carrying this host's metrics AND every Deplo-managed
+   * container's stats, sampled on the AGENT's own ticker. Replaces the
+   * per-viewer, per-resource Metrics/ContainerStats poll: the control plane
+   * opens exactly one of these per server and demuxes frames into its RAM ring
+   * buffer, so telemetry cost is O(hosts) — independent of how many containers
+   * run there and how many people are looking.
+   *
+   * The agent is still a pure gRPC SERVER: the control plane dials and the agent
+   * streams, exactly like FollowLogs. There is no agent->control-plane channel.
+   *
+   * Container scoping is by the deplo.managed=true label, NEVER an empty filter
+   * (which would enumerate every container on the host, including ones Deplo
+   * does not own). Each stat carries its deplo.project label so the control
+   * plane demuxes to an App / Database without a second lookup.
+   *
+   * ADDITIVE: gated by the "metrics-stream" capability. An agent without it
+   * keeps serving the unary Metrics / ContainerStats poll unchanged, and the
+   * control plane falls back to polling that ONE server.
+   */
+  streamMetrics: handleServerStreamingCall<MetricsStreamRequest, MetricsSample>;
+  /**
    * Deploy lifecycle. Server-streaming so build/run logs flow live, in one
    * connection, into the control plane's existing per-deployment log + status
    * writes (which republish over the GraphQL SSE subscriptions unchanged).
@@ -12146,6 +12584,32 @@ export interface AgentClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: ContainerStatsResponse) => void,
   ): ClientUnaryCall;
+  /**
+   * ONE long-lived stream carrying this host's metrics AND every Deplo-managed
+   * container's stats, sampled on the AGENT's own ticker. Replaces the
+   * per-viewer, per-resource Metrics/ContainerStats poll: the control plane
+   * opens exactly one of these per server and demuxes frames into its RAM ring
+   * buffer, so telemetry cost is O(hosts) — independent of how many containers
+   * run there and how many people are looking.
+   *
+   * The agent is still a pure gRPC SERVER: the control plane dials and the agent
+   * streams, exactly like FollowLogs. There is no agent->control-plane channel.
+   *
+   * Container scoping is by the deplo.managed=true label, NEVER an empty filter
+   * (which would enumerate every container on the host, including ones Deplo
+   * does not own). Each stat carries its deplo.project label so the control
+   * plane demuxes to an App / Database without a second lookup.
+   *
+   * ADDITIVE: gated by the "metrics-stream" capability. An agent without it
+   * keeps serving the unary Metrics / ContainerStats poll unchanged, and the
+   * control plane falls back to polling that ONE server.
+   */
+  streamMetrics(request: MetricsStreamRequest, options?: Partial<CallOptions>): ClientReadableStream<MetricsSample>;
+  streamMetrics(
+    request: MetricsStreamRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<MetricsSample>;
   /**
    * Deploy lifecycle. Server-streaming so build/run logs flow live, in one
    * connection, into the control plane's existing per-deployment log + status

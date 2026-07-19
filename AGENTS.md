@@ -121,7 +121,12 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   folded into resolvers.
 - **A new module registers only if you add `import "./types/<name>";` to `lib/graphql/schema.ts`**
   (alphabetical, side-effect import).
-- **Regenerate SDL after touching any `types/*`:** `bunx tsx scripts/gen-schema.ts`.
+- **Regenerate SDL after touching any `types/*`:**
+  `node --require ./lib/test/server-only-shim.cjs --import tsx scripts/gen-schema.ts`.
+  (The bare `bunx tsx scripts/gen-schema.ts` this used to document **fails** with
+  `MODULE_NOT_FOUND: server-only` — the builder pulls in `lib/data/*`, which is
+  `server-only`, and that package's real entrypoint throws outside a Next build.
+  The shim is the same one the test runner preloads.)
   `schema.graphql` is generated output — **never hand-edit**, and nothing auto-runs it (no hook,
   no CI drift check).
 - Validation = **Pothos arg requiredness** + hand-rolled cleaners (`cleanName`,

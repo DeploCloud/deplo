@@ -25,24 +25,33 @@ export type GapSpan = [startTs: number, endTs: number];
  * jitter — the single threshold the charts, the line segmenter and the bands all
  * share.
  *
- * It has to clear the slowest HEALTHY producer, not the fastest. Two trains feed
- * one buffer at very different rates: a viewer's poll (~2s — a 1s interval whose
- * busy-guard drops every other tick because a measurement takes ~1.2s) and the
- * background collector (5s, lib/monitoring/collector.ts `TICK_MS`). The collector
- * is the floor when nobody is watching, and its own tick can legitimately slip
- * one beat — the `ticking` guard skips a tick whose predecessor is still
- * draining — which puts two healthy samples ~10s apart. Sample `ts` is stamped at
- * RPC COMPLETION, so measurement-latency variance rides on top of that.
+ * It has to clear the slowest HEALTHY producer, not the fastest. Under the
+ * telemetry STREAM (lib/monitoring/supervisor.ts) there is exactly one producer
+ * per host — the agent's own ticker — which removes the old multi-writer
+ * arithmetic entirely. Two terms remain:
  *
- * The old 10s threshold sat exactly ON that worst healthy spacing, so a skipped
- * tick plus a few ms of jitter drew a "No data" band across a server that never
- * missed a beat — the "random No data" this constant exists to prevent. 15s
- * clears it with 50% headroom while still marking a genuinely missed window (the
- * smallest real hole — one 8s RPC deadline plus the next measurement — is ~9.3s
- * and simply is not a failure worth alarming about; anything the operator should
- * care about, like a host pinned by its own deploy, runs tens of seconds).
+ *   - the sampling cadence: 5s, the agent's default `interval_ms`;
+ *   - the reconnect backoff CAP: 10s. A stream can drop for reasons that are not
+ *     a host failure at all — a deadline rotation, an agent self-update, a NAT
+ *     rebalance — and the supervisor's backoff means the worst HEALTHY case is
+ *     one cadence plus one full backoff step before the next frame lands.
+ *
+ * So the worst healthy spacing is 5s + 10s = 15s, and the threshold is that with
+ * the same 50% headroom the poll-era value carried: 22.5s.
+ *
+ * DERIVATION ORDER MATTERS: the backoff cap is the input, not the output. If you
+ * change `RECONNECT_BACKOFF_CAP_MS` in the supervisor, this constant must move
+ * with it, and `chart-gaps.test.ts` asserts exactly that relationship so the two
+ * cannot silently drift apart.
+ *
+ * Getting this wrong is not cosmetic and has bitten three times already
+ * (commits 05ebd6a, 81c8239, d0c7bd9): too low bands a host that never missed a
+ * beat — the "random No data" bug — while too high hides a real outage behind a
+ * connected line. The previous 15s value was derived from a poll model whose
+ * every premise (a viewer's ~2s busy-guarded poll, a 5s collector that could slip
+ * a beat, `ts` stamped at RPC completion) no longer exists.
  */
-export const GAP_MS = 15_000;
+export const GAP_MS = 22_500;
 
 /**
  * The spans between consecutive `timestamps` whose delta STRICTLY exceeds

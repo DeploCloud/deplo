@@ -1438,20 +1438,10 @@ type Mutation {
   setAppEnv(appId: String!, defaultTargets: [EnvTarget!], entries: [EnvEntryInput!]!): Int
 
   """
-  Turn saving THIS app's metrics history on or off. Off also drops its buffered history.
-  """
-  setAppSaveMetrics(appId: String!, enabled: Boolean!): Boolean
-
-  """
   Replace a single-container app's volumes (named, app-files, and host bind mounts).
   """
   setAppVolumes(id: String!, volumes: [VolumeInput!]!): App
   setDatabaseRunning(id: String!, running: Boolean!): Database
-
-  """
-  Turn saving THIS database's metrics history on or off. Off also drops its buffered history.
-  """
-  setDatabaseSaveMetrics(databaseId: String!, enabled: Boolean!): Boolean
 
   """Make an environment the project's default (unsets the previous one)."""
   setDefaultEnvironment(id: ID!): Boolean
@@ -1665,9 +1655,6 @@ type Query {
   """Every app's env vars in the active team, grouped by project."""
   allAppEnv: [AppEnvGroup!]
 
-  """Fresh live metrics snapshots for every server."""
-  allServerMetrics: [ServerMetrics!]
-
   """
   Every team in the instance, for the instance-admin registration-link team picker.
   """
@@ -1700,7 +1687,7 @@ type Query {
   appMetrics(appId: String!): ContainerMetrics
 
   """
-  The metrics history buffered for one app (oldest first) — what the app's Monitoring charts seed from. Empty unless the app's Save-metrics switch is on.
+  The metrics history buffered for one app (oldest first) — what the app's Monitoring charts seed from. Empty when the owning server's telemetry stream has not delivered a frame for it yet.
   """
   appMetricsHistory(appId: String!): [ContainerMetricsSample!]
 
@@ -1744,7 +1731,7 @@ type Query {
   databaseMetrics(databaseId: String!): ContainerMetrics
 
   """
-  The metrics history buffered for one database (oldest first). Empty unless the database's Save-metrics switch is on.
+  The metrics history buffered for one database (oldest first). Empty when the owning server's telemetry stream has not delivered a frame for it yet.
   """
   databaseMetricsHistory(databaseId: String!): [ContainerMetricsSample!]
 
