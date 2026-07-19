@@ -47,3 +47,5 @@ next-env.d.ts
 
 # this is a bun project (bun.lock is the tracked lockfile); never an npm lockfile
 /package-lock.json
+# Local control-plane run log (see docs/agents/fleet-rollout.md)
+control-plane.log
