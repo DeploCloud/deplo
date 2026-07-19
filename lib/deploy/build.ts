@@ -41,7 +41,7 @@ import {
   devWorkspaceDeployAllowed,
 } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
-import { usesComposeStack, hostVolumeName } from "../utils";
+import { usesComposeStack, hostVolumeName, formatBytes } from "../utils";
 import {
   certResolver,
   domainScheme,
@@ -49,6 +49,7 @@ import {
   resolveServerIp,
 } from "./domains";
 import { completePendingAppMigration } from "../data/app-migration";
+import { sweepSupersededAppImages } from "../data/docker-cleanup";
 import { traefikRouterLabels } from "./routing";
 import { renderResourceLimitsYaml } from "./resources";
 import { buildComposeStack } from "./compose-stack";
@@ -207,6 +208,20 @@ async function commitOutcome(
   }
   await setApp(appId, appPatch);
   return true;
+}
+
+/**
+ * Deploy-time image retention: drop the superseded images beyond the policy's
+ * keep-count on this deploy's server NOW, not at the next nightly sweep — a
+ * fast-iterating app mints gigabytes of tagged-but-dead images between ticks
+ * (see {@link sweepSupersededAppImages}). Runs after the deploy is already
+ * `ready`; never throws, and only speaks up in the log when it freed something.
+ */
+async function sweepAfterDeploy(depId: string, serverId: string): Promise<void> {
+  const freed = await sweepSupersededAppImages(serverId);
+  if (freed > 0) {
+    log(depId, "info", `Reclaimed ${formatBytes(freed)} from superseded app images`);
+  }
 }
 
 /**
@@ -1177,6 +1192,7 @@ async function runDeployment(depId: string): Promise<void> {
             log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
           );
         }
+        await sweepAfterDeploy(depId, serverId);
       }
     } else {
       await commitOutcome(
@@ -1288,7 +1304,7 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
 
 /** Apply the terminal status of a compose-stack deploy (via the owning agent). */
 async function finishComposeStack(
-  opts: ComposeStackOpts,
+  opts: ComposeStackOpts & { serverId: string },
   running: boolean,
 ): Promise<void> {
   const { depId, project, domain, environment, started } = opts;
@@ -1332,6 +1348,7 @@ async function finishComposeStack(
           log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
         );
       }
+      await sweepAfterDeploy(depId, opts.serverId);
     }
   } else {
     if (

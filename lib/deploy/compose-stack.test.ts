@@ -475,3 +475,71 @@ services:
   const env = envOf(doc.services.web);
   assert.deepEqual(env, ["EXISTING", "NEWKEY"]);
 });
+
+/* ------------------------------------------------------------------ */
+/* build.labels: tracking labels reach the IMAGES compose builds       */
+/* ------------------------------------------------------------------ */
+
+type BuildSvc = Svc & { build?: { context?: string; labels?: unknown } | string };
+
+test("a service with `build:` gets the tracking labels ON THE IMAGE (build.labels)", () => {
+  // Container labels don't reach the image config, which left compose-BUILT
+  // images invisible to the cleanup's unused_app_images scope forever. The
+  // build.labels below are what makes each rebuilt generation reclaimable —
+  // deplo.service included, so the agent ranks each service's images apart.
+  const doc = buildDoc(`
+services:
+  web:
+    build:
+      context: ./web
+  worker:
+    build: ./worker
+  db:
+    image: postgres:16
+`) as { services: Record<string, BuildSvc> };
+
+  const web = doc.services.web.build;
+  assert.ok(web && typeof web === "object");
+  assert.deepEqual(web.labels, [
+    "deplo.managed=true",
+    "deplo.project=p1",
+    "deplo.slug=demo",
+    "deplo.service=web",
+  ]);
+
+  // The string shorthand normalises to the object form compose treats identically.
+  const worker = doc.services.worker.build;
+  assert.ok(worker && typeof worker === "object");
+  assert.equal(worker.context, "./worker");
+  assert.deepEqual(worker.labels, [
+    "deplo.managed=true",
+    "deplo.project=p1",
+    "deplo.slug=demo",
+    "deplo.service=worker",
+  ]);
+
+  // A pulled image is not ours to mark: no build section is ever invented.
+  assert.equal(doc.services.db.build, undefined);
+});
+
+test("existing build.labels survive (map or list) and colliding keys are replaced", () => {
+  const doc = buildDoc(`
+services:
+  web:
+    build:
+      context: .
+      labels:
+        com.example.team: platform
+        deplo.slug: stale
+`) as { services: Record<string, BuildSvc> };
+
+  const build = doc.services.web.build;
+  assert.ok(build && typeof build === "object");
+  assert.deepEqual(build.labels, [
+    "com.example.team=platform",
+    "deplo.managed=true",
+    "deplo.project=p1",
+    "deplo.slug=demo",
+    "deplo.service=web",
+  ]);
+});

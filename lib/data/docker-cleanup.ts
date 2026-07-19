@@ -133,8 +133,18 @@ export interface CleanupRunDTO {
 /* ------------------------------------------------------------------ */
 
 const DEFAULT_SCHEDULE = "0 4 * * *";
-/** A week. Old enough that nothing a running deploy might still want is in range. */
-const DEFAULT_MIN_AGE_HOURS = 168;
+/**
+ * A day — and it gates only the CACHE scopes (build cache, dangling images, orphan
+ * buildkit volumes). App images are count-based (`keepImagesPerApp` + the agent's
+ * fixed 1h deploy grace) and ignore this on agents ≥ 1.12.
+ *
+ * It was a week (168h), and that default was the root cause of a recurring disk
+ * saturation: a host that redeploys many times a day fills in hours, so nothing
+ * ever aged into eligibility and every sweep "succeeded" with 0 bytes. Anything a
+ * live build still wants is hours old at most; a week protects nothing real.
+ * Migration 0040 moves stored policies still on the old default to this one.
+ */
+const DEFAULT_MIN_AGE_HOURS = 24;
 const DEFAULT_KEEP_IMAGES_PER_APP = 1;
 
 /**
@@ -799,6 +809,66 @@ export async function runScheduledCleanup(
   } catch {
     // The run row + the activity already tell this story; the re-thrown error is for
     // the interactive caller, not for a tick with nobody to tell.
+  }
+}
+
+/** Servers with a deploy-triggered sweep in flight — a second one would only race the
+ *  first's candidate list; the next deploy catches anything it missed. */
+const deploySweepInFlight = new Set<string>();
+
+/**
+ * Remove the superseded app images a deploy just left behind on `serverId` — the
+ * deploy-time half of app-image retention. The nightly sweep alone cannot keep a
+ * fast-iterating host inside its disk: a day of redeploys at 1-2GB per image
+ * accumulates tens of GB BETWEEN ticks (measured: 24 superseded images / 39GB in
+ * 30h on one host), so the moment that mints a new image is the moment the old
+ * ones beyond `keepImagesPerApp` must go.
+ *
+ * Scope is `unused_app_images` ONLY — the cache scopes stay on the schedule where
+ * their age filter belongs. The operator's controls are respected: the scope
+ * being unchecked in the policy turns this off, and an excluded server is skipped
+ * (exclusion means "hands off this host's Docker", and nobody is standing in
+ * front of a button here — unlike {@link runCleanupNow}, which ignores the list).
+ *
+ * Writes NO run row and NO activity: this is deploy hygiene, as much a part of
+ * the deploy as removing the old container — recording ~26 rows/day per busy app
+ * would evict the real history (capped at 3×servers) and spam the feed. The
+ * deploy log carries the outcome instead (the caller logs what we return).
+ *
+ * Session-free and NEVER throws: it runs after the deploy already succeeded, and
+ * a failed sweep must not fail a shipped deploy. Returns the freed bytes (0 when
+ * skipped or failed) so the deploy log can mention it.
+ */
+export async function sweepSupersededAppImages(serverId: string): Promise<number> {
+  if (deploySweepInFlight.has(serverId)) return 0;
+  deploySweepInFlight.add(serverId);
+  try {
+    const policy = await loadPolicy();
+    if (!policy.scopes.includes("unused_app_images")) return 0;
+    if (policy.excludedServerIds.includes(serverId)) return 0;
+    // A full sweep already running on this host will get there itself.
+    if ((await listServersWithCleanupRunning()).includes(serverId)) return 0;
+
+    const resp = await runAgentCleanup(serverId, {
+      scopes: [SCOPE_TO_WIRE.unused_app_images],
+      dryRun: false,
+      // Carried for wire compatibility; agents ≥ 1.12 ignore it for this scope
+      // (count-based retention + their fixed deploy grace decide).
+      minAgeHours: policy.minAgeHours,
+      keepImagesPerApp: policy.keepImagesPerApp,
+    });
+    if (!resp.ok) {
+      console.warn(`[cleanup] deploy-time image sweep on ${serverId} failed: ${resp.error || "unknown"}`);
+      return 0;
+    }
+    return Number(resp.reclaimedBytes ?? 0);
+  } catch (e) {
+    console.warn(
+      `[cleanup] deploy-time image sweep on ${serverId} failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return 0;
+  } finally {
+    deploySweepInFlight.delete(serverId);
   }
 }
 

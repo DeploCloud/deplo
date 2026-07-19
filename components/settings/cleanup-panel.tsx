@@ -120,8 +120,9 @@ const SCOPES: {
     risky: true,
     info: (
       <>
-        Old images no container — running <em>or</em> stopped — references. Removed
-        ones come back only by rebuilding; the newest per app is always kept.
+        Old images no container — running <em>or</em> stopped — references. Also swept
+        right after each deploy. Removed ones come back only by rebuilding; the newest
+        per app is always kept.
       </>
     ),
   },
@@ -302,7 +303,7 @@ export function CleanupPanel({
             <div className="space-y-2">
               <FieldLabel
                 htmlFor="cleanup-min-age"
-                info="Only reclaim objects older than this. 0 turns the age filter off — the build-cache sweep then clears all of it, not just the stale part."
+                info="Caches only: reclaim build cache, dangling images and leaked build volumes older than this. 0 turns the age filter off. App images don't age out — they follow the keep-count below."
               >
                 Minimum age (hours)
               </FieldLabel>
@@ -318,7 +319,7 @@ export function CleanupPanel({
             <div className="space-y-2">
               <FieldLabel
                 htmlFor="cleanup-keep-images"
-                info="Unused app images only: how many of the newest to keep per app. A removed image comes back only by rebuilding — keep at least one."
+                info="How many of the newest images to keep per app. Older ones are removed right after each deploy and by the sweep; a removed image comes back only by rebuilding."
               >
                 Images kept per app
               </FieldLabel>

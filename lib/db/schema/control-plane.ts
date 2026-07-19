@@ -1722,9 +1722,18 @@ export const dockerCleanupPolicy = pgTable("docker_cleanup_policy", {
    * matches, so it would silently mean "never run" rather than fail loudly.
    */
   schedule: text("schedule").notNull(),
-  /** Only reclaim objects older than this (docker's `--filter until=<n>h`). 0 = no age filter. */
+  /**
+   * CACHE scopes only (build cache / dangling images / orphan buildkit volumes):
+   * reclaim objects older than this (docker's `--filter until=<n>h`); 0 = no age
+   * filter. App images ignore it on agents ≥ 1.12 — count-based retention
+   * (`keep_images_per_app`) is what bounds them, because an age floor on a
+   * fast-redeploying host means nothing ever qualifies and the disk saturates
+   * (migration 0040 moved the old 168h default to 24h for exactly that reason).
+   */
   minAgeHours: integer("min_age_hours").notNull(),
-  /** `unused_app_images` only: how many of the newest images to keep per app slug. >= 1. */
+  /** `unused_app_images` only: how many of the newest images to keep per app slug
+   *  (per built service, for compose stacks). Enforced by the nightly sweep AND
+   *  right after each deploy. >= 1. */
   keepImagesPerApp: integer("keep_images_per_app").notNull(),
   createdAt: isoTimestamptz("created_at").notNull(),
   updatedAt: isoTimestamptz("updated_at").notNull(),

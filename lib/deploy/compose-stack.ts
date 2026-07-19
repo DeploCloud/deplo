@@ -272,6 +272,39 @@ function mergeLabels(svc: App, add: string[]): void {
 }
 
 /**
+ * Stamp the Deplo tracking labels ONTO THE IMAGE a `build:` section produces
+ * (`build.labels`), plus `deplo.service=<name>` so the agent can rank each
+ * service's generations apart. Container labels (mergeLabels above) do not reach
+ * the image config, which left compose-BUILT images unlabelled — invisible to the
+ * cleanup's `unused_app_images` scope forever, so every rebuilt generation stayed
+ * on disk. Services without `build:` are untouched (their images are pulled, not
+ * ours to mark); the string shorthand `build: ./dir` is normalised to the object
+ * form, which compose treats identically.
+ */
+function mergeBuildLabels(svc: App, service: string, tracking: string[]): void {
+  const b = (svc as Record<string, unknown>).build;
+  if (b === undefined || b === null) return;
+  const build: Record<string, unknown> =
+    typeof b === "string" ? { context: b } : (b as Record<string, unknown>);
+  const add = [...tracking, `deplo.service=${service}`];
+  const keyOf = (l: string): string => l.split("=")[0];
+  const incoming = new Set(add.map(keyOf));
+  const existing: string[] = [];
+  const labels = build.labels;
+  if (Array.isArray(labels)) {
+    for (const l of labels) {
+      if (typeof l === "string" && !incoming.has(keyOf(l))) existing.push(l);
+    }
+  } else if (labels && typeof labels === "object") {
+    for (const [k, v] of Object.entries(labels as Record<string, unknown>)) {
+      if (!incoming.has(k)) existing.push(`${k}=${String(v)}`);
+    }
+  }
+  build.labels = [...existing, ...add];
+  (svc as Record<string, unknown>).build = build;
+}
+
+/**
  * Inject the project's settings env-var KEYS into a service's `environment:` as
  * bare `- KEY` pass-through entries (the value comes from the `--env-file` at
  * `compose up`), so a var added in settings reaches the container without the
@@ -398,11 +431,14 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // by label — otherwise sidecars/databases are invisible to the container
   // count, console, health wait and teardown.
   const tracking = deploLabels(appId, slug);
-  for (const svc of Object.values(services)) {
+  for (const [serviceName, svc] of Object.entries(services)) {
     if (svc && typeof svc === "object") {
       delete (svc as App).container_name;
       if (input.filesDir) rewriteAppVolumes(svc as App, input.filesDir);
       mergeLabels(svc as App, tracking);
+      // Built images get the same tracking as IMAGE labels (+ the service name)
+      // so the cleanup's count-based retention can see and rank them.
+      mergeBuildLabels(svc as App, serviceName, tracking);
       // Inject the project's settings env vars as bare `- KEY` pass-throughs on
       // EVERY service (the value rides the env-file) — the env analogue of the
       // tracking/routing labels above. A key the service already declares wins.

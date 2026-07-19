@@ -27,6 +27,7 @@ import {
   pruneCleanupRunHistory,
   reconcileInFlightCleanupRuns,
   runCleanupNow,
+  sweepSupersededAppImages,
   updateCleanupPolicy,
 } from "./docker-cleanup";
 
@@ -195,7 +196,11 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
   // The scheduler reads through the same path, so this default is live behavior.
   assert.equal(policy.enabled, true, "cleanup is ON by default");
   assert.equal(policy.schedule, "0 4 * * *");
-  assert.equal(policy.minAgeHours, 168);
+  // A DAY, not a week: the old 168h default was the root cause of a recurring disk
+  // saturation — a fast-redeploying host fills in hours, so nothing ever aged into
+  // eligibility and every sweep "succeeded" with 0 bytes (migration 0040 moves
+  // stored policies off the old default too).
+  assert.equal(policy.minAgeHours, 24);
   assert.equal(policy.keepImagesPerApp, 1);
   assert.equal(policy.updatedAt, null, "a missing row is legible as 'never saved'");
   assert.deepEqual(policy.excludedServerIds, []);
@@ -366,4 +371,32 @@ test("the executor prunes after every sweep — even a failed one", async () => 
     runs.some((r) => r.status === "failed" && r.actor === USER_1),
     "the fresh failed run is the newest kept row",
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* (g) The deploy-time sweep: gated by the policy, silent, deploy-safe */
+/* ------------------------------------------------------------------ */
+
+test("sweepSupersededAppImages honors the policy's controls and never throws", async () => {
+  // `unused_app_images` unchecked → the deploy-time sweep is off. No dial, no rows.
+  await seedCleanupPolicy(db, { scopes: ["build_cache"] });
+  assert.equal(await sweepSupersededAppImages(SERVER_1), 0);
+
+  // Scope on but the server opted out of automatic sweeps → skipped: nobody is
+  // standing in front of a button here (unlike runCleanupNow, which ignores the
+  // exclusion list on purpose).
+  await pg.exec(TRUNCATE_CLEANUP);
+  await seedCleanupPolicy(db, {
+    scopes: ["unused_app_images"],
+    excludedServerIds: [SERVER_1],
+  });
+  assert.equal(await sweepSupersededAppImages(SERVER_1), 0);
+
+  // Scope on and not excluded: the seeded server has no agent, so the dial fails —
+  // swallowed and reported as 0 bytes, because a failed sweep must never fail the
+  // deploy that just succeeded. And history-silent by design: no run row, ever.
+  await pg.exec(TRUNCATE_CLEANUP);
+  await seedCleanupPolicy(db, { scopes: ["unused_app_images"] });
+  assert.equal(await sweepSupersededAppImages(SERVER_1), 0);
+  assert.equal((await allRuns()).length, 0, "the deploy-time sweep writes no history");
 });

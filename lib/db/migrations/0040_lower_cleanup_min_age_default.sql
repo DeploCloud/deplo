@@ -1,0 +1,19 @@
+-- Docker cleanup: lower the stored min_age_hours from the old 168h default to the
+-- new 24h one — the root-cause fix for the recurring disk saturation. A host that
+-- redeploys many times a day fills its disk in hours, so with a week-long floor no
+-- superseded image or cache record EVER aged into eligibility: every nightly sweep
+-- "succeeded" reclaiming 0 bytes while the disk died (measured on neon-s2: 24
+-- tagged-but-dead 1.78GB images, all under 30h old, 39GB total).
+--
+-- From agent v1.12 the floor gates only the CACHE scopes (build cache, dangling
+-- images, orphan buildkit volumes); app images are count-based (keep_images_per_app
+-- + a fixed 1h deploy grace) and additionally swept right after each deploy.
+--
+-- Guarded on the exact old default: an operator who deliberately chose any OTHER
+-- value keeps it. 168 is indistinguishable from "never touched", and keeping it is
+-- indistinguishable from broken, so the default moves.
+--
+-- Hand-authored: the committed drizzle snapshots stop at 0014, so `drizzle-kit
+-- generate` cannot diff against an up-to-date base (matches every migration since
+-- 0015).
+UPDATE "docker_cleanup_policy" SET "min_age_hours" = 24 WHERE "min_age_hours" = 168;
