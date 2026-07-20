@@ -35,6 +35,7 @@ import {
   membershipFor,
 } from "../membership";
 import { cleanCapabilities } from "../membership-shared";
+import { boundedBy, withView } from "./folder-access";
 import { resolvePublicBaseUrl } from "../public-url";
 import type {
   Capability,
@@ -334,7 +335,15 @@ export async function addExistingMember(input: {
   // can add members/viewers but cannot mint an owner above their own rank.
   if (input.role === "owner" && membership.role !== "owner")
     throw new Error("Only an owner can add another owner");
-  const caps = cleanCapabilities(input.capabilities, input.role);
+  // A non-owner can only hand out capabilities they hold THEMSELVES — bounding
+  // the assignment to the actor's own caps (same clamp as folder grants) closes
+  // the escalation where a plain `manage_members` holder mints a member with
+  // capabilities above their own rank.
+  const raw = cleanCapabilities(input.capabilities, input.role);
+  const caps =
+    membership.role === "owner"
+      ? raw
+      : withView(boundedBy(raw, membership.capabilities));
   const db = getDb();
   const targetRows = await db
     .select({
@@ -459,9 +468,23 @@ export async function updateMember(input: {
   role: Role;
   capabilities?: Capability[];
 }): Promise<void> {
-  const { teamId, membership } = await requireCapability("manage_members");
+  const { teamId, userId: actingUserId, membership } = await requireCapability(
+    "manage_members",
+  );
   const actorIsOwner = membership.role === "owner";
-  const caps = cleanCapabilities(input.capabilities, input.role);
+  // A non-owner can't edit their OWN membership (mirrors removeMember): the only
+  // self-edit that would matter to them is an escalation. Owners keep the
+  // legitimate self-edit path (the founder guard below still protects the crown).
+  if (input.userId === actingUserId && !actorIsOwner)
+    throw new Error("You can't change your own role or permissions");
+  // A non-owner can only hand out capabilities they hold THEMSELVES — bounding
+  // the assignment to the actor's own caps (same clamp as folder grants) closes
+  // the escalation where a plain `manage_members` holder grants capabilities
+  // above their own rank.
+  const raw = cleanCapabilities(input.capabilities, input.role);
+  const caps = actorIsOwner
+    ? raw
+    : withView(boundedBy(raw, membership.capabilities));
   await getDb().transaction(async (tx) => {
     const founderId = await teamFounderUserId(tx, teamId);
     const rows = await tx

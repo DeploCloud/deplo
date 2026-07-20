@@ -139,13 +139,20 @@ export const getActiveTeamId = cache(async (): Promise<string | null> => {
   if (!user) return null;
   const teams = await teamsForUser(user.id);
   if (teams.length === 0) return null;
-  // A bearer-token request is scoped to the token's team — provided it is one
-  // the principal actually belongs to (defense-in-depth against a stale token).
+  // A bearer-token request is scoped to the token's team — and ONLY that team.
+  // If the principal no longer belongs to it (a stale token), fail CLOSED with a
+  // clear error: the request must never silently re-scope to another of their
+  // teams (the old teams[0] fallback). authenticateToken already rejects such a
+  // token upstream, so in the live GraphQL path this branch only ever sees a
+  // valid membership; the throw is the defense-in-depth backstop for a stale
+  // identity reaching the data layer directly.
   const override = currentIdentity();
   if (override) {
-    return teams.some((t) => t.id === override.teamId)
-      ? override.teamId
-      : teams[0].id;
+    if (!teams.some((t) => t.id === override.teamId))
+      throw new Error(
+        "This request is scoped to a team the user no longer belongs to.",
+      );
+    return override.teamId;
   }
   const store = await cookies();
   const cookieTeam = store.get(ACTIVE_TEAM_COOKIE)?.value;

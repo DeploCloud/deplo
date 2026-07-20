@@ -15,7 +15,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
-import { getServerById } from "./servers";
+import { getServer, getServerById } from "./servers";
 import { parseCron } from "../backups/cron";
 import { runAgentCleanup } from "../infra/agent-client";
 import { CleanupScope } from "../agent/gen/agent";
@@ -32,9 +32,11 @@ import { formatBytes } from "../utils";
  *    schedule to reason about, and a newly added server cannot silently go un-swept.
  *  - The gate is `manage_infra`, not instance-admin: reclaiming build cache is
  *    operational hygiene, and the operators who run out of disk are the ones who
- *    already hold `manage_infra`. Servers are cross-team infra, so NOTHING in this
- *    module is team-scoped — the `teamId` we resolve is used only to attribute the
- *    activity row.
+ *    already hold `manage_infra`. Servers are cross-team infra, so the policy and
+ *    the run history are NOT team-scoped — the `teamId` we resolve is used only to
+ *    attribute the activity row. The interactive per-server entry points
+ *    (preview / "clean up now") DO resolve their target team-scoped, though: a
+ *    host reserved for another team is not this caller's to prune.
  *
  * WHAT gets deleted is not decided here. The control plane owns the scope SET; the
  * agent owns the deletion, allow-listed (never `system`/`container`/`volume`/`network
@@ -572,7 +574,9 @@ export async function updateCleanupPolicy(
  */
 export async function previewCleanup(serverId: string): Promise<CleanupReport> {
   await requireCapability("manage_infra");
-  const server = await getServerById(serverId);
+  // Team-scoped resolve: a server another team reserved is not this caller's to
+  // preview — it reads as "not found", like every other cross-team id.
+  const server = await getServer(serverId);
   if (!server) throw new Error("Server not found");
   if (!server.agent?.certFingerprint) throw new Error(notProvisionedMessage(server.name));
 
@@ -763,7 +767,10 @@ async function executeCleanup(args: {
 export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
   const { teamId } = await requireCapability("manage_infra");
   const user = (await getCurrentUser())!;
-  const server = await getServerById(serverId);
+  // Team-scoped resolve: a destructive prune on a host reserved for another
+  // team must read as "not found" (the scheduler's session-free path keeps the
+  // unscoped getServerById inside the executor).
+  const server = await getServer(serverId);
   if (!server) throw new Error("Server not found");
 
   const policy = await loadPolicy();

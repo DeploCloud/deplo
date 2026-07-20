@@ -384,7 +384,7 @@ export async function moveFolder(
  */
 export async function deleteFolder(id: string): Promise<void> {
   const { teamId, userName } = await requireFolderCapability(id, "deploy");
-  await getDb().transaction(async (tx) => {
+  const name = await getDb().transaction(async (tx) => {
     const rows = await tx
       .select()
       .from(foldersTable)
@@ -405,8 +405,11 @@ export async function deleteFolder(id: string): Promise<void> {
       .where(and(eq(foldersTable.teamId, teamId), eq(foldersTable.parentId, id)));
     // The team_folder_order row CASCADEs when the folder row is deleted.
     await tx.delete(foldersTable).where(eq(foldersTable.id, id));
-    await recordActivity("app", `Deleted folder ${f.name}`, userName, null, teamId);
+    return f.name;
   });
+  // Record OUTSIDE the transaction: recordActivity opens its own connection, which
+  // would deadlock against the open tx on pglite's single connection.
+  await recordActivity("app", `Deleted folder ${name}`, userName, null, teamId);
 }
 
 /**

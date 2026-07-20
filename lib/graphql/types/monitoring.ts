@@ -167,7 +167,11 @@ const MonitoringSettingsRef = builder
 builder.queryFields((t) => ({
   serverMetrics: t.field({
     type: ServerMetricsRef,
-    authScopes: { loggedIn: true },
+    // Every call dials the owning server's agent (fresh mTLS connect + cert
+    // work) with no rate limit — an infra action, not a dashboard read. The
+    // dashboards seed from `serverMetricsHistory` below, which stays at the
+    // logged-in floor.
+    authScopes: { capability: "manage_infra" },
     description: "A fresh live metrics snapshot for one server.",
     args: { serverId: t.arg.string({ required: true }) },
     resolve: (_r, { serverId }) => getServerMetrics(serverId),

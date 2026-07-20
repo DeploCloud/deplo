@@ -441,9 +441,19 @@ async function executeBackup(
 
     // Retention runs on success only (a failed run wrote no object). Best-effort:
     // a prune failure must never fail the backup the operator asked for.
+    // An AD-HOC run (no owning schedule) enforces NO age-based retention — its
+    // `retentionDays` is a fabricated default, and pruning by it would delete
+    // artifacts of schedules with longer retention on the same
+    // target+destination. Infinity disables the age cutoff; the
+    // MAX_RUNS_PER_TARGET cap still applies.
     if (!failure) {
       try {
-        await pruneRetention(teamId, target, creds.destination.id, opts.retentionDays);
+        await pruneRetention(
+          teamId,
+          target,
+          creds.destination.id,
+          opts.backupId ? opts.retentionDays : Number.POSITIVE_INFINITY,
+        );
       } catch (e) {
         console.warn(
           `[backups] retention prune failed for ${target.label}: ${e instanceof Error ? e.message : String(e)}`,
@@ -666,7 +676,9 @@ export async function runScheduledBackup(backup: Backup): Promise<void> {
 /**
  * Ad-hoc "Back up now" for a project with no owning schedule — shares the
  * executor with `backupId: null`. Used by the project Backups tab (Step 5).
- * `retentionDays` defaults to the conventional 7 (no schedule to read it from).
+ * With no schedule to read a policy from, the executor skips the age-based
+ * prune for ad-hoc runs (only the MAX_RUNS_PER_TARGET cap applies), so
+ * `retentionDays` is carried for the opts shape but never enforced.
  */
 export async function runAppBackup(
   appId: string,
@@ -874,8 +886,9 @@ export async function deleteBackup(id: string): Promise<void> {
  * Delete a target's S3 artifacts in ONE destination (its whole folder) via a
  * single prefix-delete — the "delete artifacts too" branch of DB/project
  * deletion (Step 5). Best-effort + idempotent: returns the count removed, or
- * throws only when no backup-capable agent can be reached. The caller decides
- * whether a failure blocks the target's deletion.
+ * throws when no backup-capable agent can be reached OR the agent reports the
+ * prefix-delete failed. The caller decides whether a failure blocks the
+ * target's deletion.
  *
  * SCOPED TO ONE DESTINATION: the prefix-delete only touches `input.destinationId`
  * bucket, so we only drop the run records that live in THAT bucket — records for
@@ -898,6 +911,12 @@ export async function deleteBackupArtifacts(input: {
   const conn = await connectBackupAgent(input.serverId);
   try {
     const res = await conn.s3Delete(s3TargetFor(creds, prefix), true);
+    // The agent resolves `ok:false` (not a throw) on an S3-side failure — gate
+    // the record delete on it, like pruneRetention: dropping the rows while
+    // their objects survive would orphan the bucket AND erase the history that
+    // lets a retry find them.
+    if (!res.ok)
+      throw new Error(res.error || "the agent could not delete the backup artifacts");
     deleted = res.deleted;
   } finally {
     conn.close();
@@ -975,6 +994,12 @@ export async function deleteAllBackupArtifacts(input: {
   const { teamId } = await requireCapability(
     input.kind === "database" ? "manage_infra" : "deploy",
   );
+  // Folder-scope the project branch like every sibling backup op: wiping a
+  // project's artifacts inside a folder needs `deploy` on that folder too.
+  // (A no-op for a missing/foreign id — the team-scoped server lookup below
+  // stays the authority on existence.)
+  if (input.kind === "app")
+    await requireFolderCapabilityForApp(input.targetId, "deploy");
   // Resolve the owning server straight off the target row — no agent round-trip
   // (a project's full descriptor needs `readStack`, which we don't need just to
   // delete objects). A missing/foreign row yields no server and nothing to do.

@@ -18,7 +18,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import { folderCapabilities, requireFolderCapabilityForApp } from "./folder-access";
 import { appInTeam } from "./app-graph-load";
 import { authorOf, loadUserIdentities } from "./user-identity";
 import { encryptSecret, decryptSecret } from "../crypto";
@@ -325,6 +325,24 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
   const vars = await loadSharedVarsForTeam(teamId);
   // One identity query for every card on the page.
   const authors = await loadUserIdentities(authorIds(vars));
+  // Folder scope, mirroring `listAllAppEnv`: a link into a folder where the
+  // caller lacks `manage_env` is dropped instead of surfacing that app's
+  // applied rows through the aggregate tab (its card is filtered out there
+  // too). A top-level app (no folder) is always included.
+  const linkedAppIds = [...new Set(vars.flatMap((v) => v.appIds))];
+  const appRows = linkedAppIds.length
+    ? await getDb()
+        .select({ id: appsTable.id, folderId: appsTable.folderId })
+        .from(appsTable)
+        .where(and(inArray(appsTable.id, linkedAppIds), eq(appsTable.teamId, teamId)))
+    : [];
+  const folderByApp = new Map(appRows.map((r) => [r.id, r.folderId]));
+  const folderIds = [...new Set(appRows.map((r) => r.folderId).filter((f): f is string => !!f))];
+  const allowedFolders = new Set<string>();
+  for (const folderId of folderIds) {
+    if ((await folderCapabilities(folderId)).includes("manage_env"))
+      allowedFolders.add(folderId);
+  }
   // A var linked to SEVERAL apps repeats below, so decrypt each value once here
   // rather than once per (app, var) pair.
   const shown = new Map(
@@ -336,6 +354,11 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
   const out: AppliedSharedVarDTO[] = [];
   for (const v of vars) {
     for (const appId of v.appIds) {
+      // A dangling/cross-team link reads as no app; a folder the caller can't
+      // manage_env drops the row.
+      if (!folderByApp.has(appId)) continue;
+      const folderId = folderByApp.get(appId);
+      if (folderId && !allowedFolders.has(folderId)) continue;
       out.push({
         appId,
         id: v.id,

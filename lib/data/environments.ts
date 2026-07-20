@@ -88,13 +88,21 @@ async function requireOwnedProject(projectId: string): Promise<string> {
 export async function listEnvironmentsForProject(
   projectId: string,
 ): Promise<Environment[]> {
-  await requireActiveTeamId();
+  const teamId = await requireActiveTeamId();
+  // Team-scope through the owning Project (as listAllEnvironmentsForTeam does):
+  // a foreign or unknown project id yields nothing, never another team's rows.
   const rows = await getDb()
-    .select()
+    .select({ environment: environmentsTable })
     .from(environmentsTable)
-    .where(eq(environmentsTable.projectId, projectId))
+    .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
+    .where(
+      and(
+        eq(environmentsTable.projectId, projectId),
+        eq(projectsTable.teamId, teamId),
+      ),
+    )
     .orderBy(asc(environmentsTable.position));
-  return rows.map(assembleEnvironment);
+  return rows.map((r) => assembleEnvironment(r.environment));
 }
 
 /** An environment labelled with its owning Project (for shared-var scope pickers). */

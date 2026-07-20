@@ -204,6 +204,7 @@ export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
+  await requireFolderCapabilityForApp(appId, "view");
   const found = await listInstancesForDisplay(p);
   return {
     running: found.instances.some((i) => i.running),
@@ -281,6 +282,7 @@ export async function getAppRuntime(appId: string): Promise<AppRuntime | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
+  await requireFolderCapabilityForApp(appId, "view");
 
   const hit = runtimeCache.get(p.id);
   if (hit && Date.now() - hit.at < RUNTIME_TTL_MS) return hit.value;
@@ -390,6 +392,7 @@ export async function getConsoleInfo(appId: string): Promise<ConsoleInfo | null>
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
+  await requireFolderCapabilityForApp(appId, "view");
   const { instances } = await listInstancesForDisplay(p);
   const def = instances[0];
   return {
@@ -414,6 +417,7 @@ export async function getShellLabel(
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return "raw exec (no shell)";
+  await requireFolderCapabilityForApp(appId, "view");
   // Display-grade list: an unreachable remote degrades to a not-running
   // placeholder, so we return "raw exec (no shell)" below rather than throwing.
   const { instances } = await listInstancesForDisplay(p);
@@ -430,6 +434,7 @@ export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
+  await requireFolderCapabilityForApp(appId, "view");
   const { instances } = await listInstancesForDisplay(p);
   // Default target: the app's own container first, thanks to orderInstances.
   const def = instances[0];
@@ -515,6 +520,7 @@ export async function resolveLogsTarget(
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
+  await requireFolderCapabilityForApp(appId, "view");
 
   let instances: ConsoleInstance[];
   try {

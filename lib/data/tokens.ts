@@ -5,7 +5,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { apiTokens } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import { membershipFor, requireActiveTeamId, requireCapability } from "../membership";
 import { sha256Hex, randomToken } from "../crypto";
 
 export interface ApiTokenDTO {
@@ -79,6 +79,10 @@ export async function authenticateToken(
     .limit(1);
   const match = rows[0];
   if (!match) return null;
+  // Fail CLOSED on a stale token: if its creator has since left (or been
+  // removed from) the token's team, the token stops resolving — it must never
+  // re-scope the request to another of the user's teams.
+  if (!(await membershipFor(match.userId, match.teamId))) return null;
   // Fire-and-forget usage stamp; a failed write must not block the request.
   void getDb()
     .update(apiTokens)

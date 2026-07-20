@@ -22,6 +22,7 @@ import {
   isInstanceAdmin,
 } from "../membership";
 import { recordActivity } from "./activity";
+import { requireFolderCapabilityForApp } from "./folder-access";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
 import type { Project, AppStatus } from "../types";
@@ -457,6 +458,10 @@ export async function moveAppToProject(
       .limit(1)
   )[0];
   if (!s) throw new Error("App not found");
+  // Entering a project also pulls the app out of any folder (one home only) —
+  // that eviction needs `deploy` on the source folder too, same as
+  // moveAppToFolder. A no-op for a top-level app.
+  await requireFolderCapabilityForApp(appId, "deploy");
   if ((s.projectId ?? null) === projectId) return;
   let msg: string;
   let environmentId: string | null = null;
@@ -512,6 +517,10 @@ export async function moveAppToEnvironment(
       .limit(1)
   )[0];
   if (!s) throw new Error("App not found");
+  // Entering an environment also leaves any folder — that eviction needs
+  // `deploy` on the source folder too, same as moveAppToFolder. A no-op for a
+  // top-level app.
+  await requireFolderCapabilityForApp(appId, "deploy");
   if ((s.environmentId ?? null) === environmentId) return;
   const env = (
     await getDb()

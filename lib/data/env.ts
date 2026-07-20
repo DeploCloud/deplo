@@ -13,7 +13,10 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import {
+  folderCapabilities,
+  requireFolderCapabilityForApp,
+} from "./folder-access";
 import { encryptSecret, decryptSecret } from "../crypto";
 import {
   insertEnvVars,
@@ -107,7 +110,7 @@ async function loadPrimaryDomains(appIds: string[]): Promise<Map<string, string>
 /** Every project's env vars, grouped by project (for the global Variables tab). */
 export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
   const { teamId } = await requireCapability("manage_env");
-  const apps = await getDb()
+  const rows = await getDb()
     .select({
       id: appsTable.id,
       name: appsTable.name,
@@ -115,9 +118,20 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
       projectId: appsTable.projectId,
       environmentId: appsTable.environmentId,
       logo: appsTable.logo,
+      folderId: appsTable.folderId,
     })
     .from(appsTable)
     .where(eq(appsTable.teamId, teamId));
+  // Folder scope, mirroring the per-app `listEnv` gate: an app inside a folder
+  // where the caller lacks `manage_env` is dropped instead of leaking its values
+  // through the global tab. A top-level app (no folder) is always included.
+  const folderIds = [...new Set(rows.map((p) => p.folderId).filter((f): f is string => !!f))];
+  const allowedFolders = new Set<string>();
+  for (const folderId of folderIds) {
+    if ((await folderCapabilities(folderId)).includes("manage_env"))
+      allowedFolders.add(folderId);
+  }
+  const apps = rows.filter((p) => !p.folderId || allowedFolders.has(p.folderId));
   // Batch-load every var across the team's apps (one pair of queries), then
   // group in memory — no per-project round-trip.
   const all = await loadEnvVarsForApps(apps.map((p) => p.id));
