@@ -592,8 +592,8 @@ export async function setDatabaseRunning(
     if (!cur) throw new Error("Not found");
     // The compose project doesn't exist until provisioning finishes, so start/stop
     // against a still-provisioning DB would fail on the agent with a confusing
-    // "agent failed to…". Gate on the fresh status — idiomatic here (dev.ts/
-    // members.ts). (After waiting behind a provision this reads "running", so a
+    // "agent failed to…". Gate on the fresh status — idiomatic here (members.ts).
+    // (After waiting behind a provision this reads "running", so a
     // queued start/stop proceeds correctly rather than being rejected.)
     if (cur.status === "provisioning")
       throw new Error(

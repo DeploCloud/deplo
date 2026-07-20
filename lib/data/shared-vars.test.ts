@@ -584,7 +584,7 @@ test("a value-only edit leaves the per-app links, the modes and the targets alon
     assert.deepEqual(after.projectIds, [PRJ]);
     assert.deepEqual(after.environmentIds, []);
     assert.equal(after.teamWide, false);
-    // An edit must never WIDEN a production-only variable into the dev container.
+    // An edit must never WIDEN a production-only variable into other runtimes.
     assert.deepEqual(after.targets, ["production"]);
   });
 });
