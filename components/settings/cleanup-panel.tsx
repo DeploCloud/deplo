@@ -18,36 +18,14 @@ import { Switch } from "@/components/ui/switch";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
-import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { formatBytes } from "@/lib/utils";
-import type {
-  CleanupPolicy,
-  CleanupReport,
-  CleanupScopeId,
-} from "@/lib/data/docker-cleanup";
+import type { CleanupPolicy, CleanupScopeId } from "@/lib/data/docker-cleanup";
 
 const UPDATE_POLICY = /* GraphQL */ `
   mutation UpdateDockerCleanupPolicy($input: UpdateDockerCleanupPolicyInput!) {
     updateDockerCleanupPolicy(input: $input) {
       enabled
-    }
-  }
-`;
-
-const PREVIEW_CLEANUP = /* GraphQL */ `
-  mutation PreviewDockerCleanup($serverId: String!) {
-    previewDockerCleanup(serverId: $serverId) {
-      serverId
-      serverName
-      reclaimedBytes
-      scopes {
-        scope
-        reclaimedBytes
-        itemsRemoved
-        skipped
-        error
-      }
     }
   }
 `;
@@ -68,22 +46,20 @@ const RUN_CLEANUP_NOW = /* GraphQL */ `
  * stopped app is a live app (it is started again by `compose start`, so its container
  * must survive) and a dangling volume may hold a database's files.
  *
- * `unit` names what the count counts, so the confirm dialog reads "5 volumes", not
- * "5 items". `risky` marks the one scope whose removal is not free: Deplo pushes to no
- * registry, so an app image that goes comes back only by a rebuild — that is what
- * makes the typed confirmation worth the friction.
+ * Every scope here is safe to reclaim on demand — the agent's allow-list touches no
+ * container, data volume or network — so "Clean up now" runs in one click with no
+ * confirmation. The costliest case, `unused_app_images`, only forces a rebuild of an
+ * image no container references (Deplo pushes to no registry); the newest image per
+ * app always survives, and it is already swept right after every deploy.
  */
 const SCOPES: {
   id: CleanupScopeId;
   label: string;
-  unit: string;
   info: React.ReactNode;
-  risky?: boolean;
 }[] = [
   {
     id: "build_cache",
     label: "Build cache",
-    unit: "records",
     info: (
       <>
         The Docker daemon&apos;s BuildKit cache. Removing it costs nothing but a slower
@@ -94,7 +70,6 @@ const SCOPES: {
   {
     id: "dangling_images",
     label: "Dangling images",
-    unit: "images",
     info: (
       <>
         Untagged layers left by rebuilds. Anything a container references is never
@@ -105,7 +80,6 @@ const SCOPES: {
   {
     id: "orphan_buildkit_cache",
     label: "Orphaned build caches",
-    unit: "volumes",
     info: (
       <>
         Abandoned buildkit volumes — often the biggest win on a full host. Removed
@@ -116,8 +90,6 @@ const SCOPES: {
   {
     id: "unused_app_images",
     label: "Unused app images",
-    unit: "images",
-    risky: true,
     info: (
       <>
         Old images no container — running <em>or</em> stopped — references. Also swept
@@ -127,8 +99,6 @@ const SCOPES: {
     ),
   },
 ];
-
-const SCOPE_META = new Map(SCOPES.map((s) => [s.id, s]));
 
 export interface CleanupServerOption {
   id: string;
@@ -180,9 +150,8 @@ export function CleanupPanel({
   const [saved, setSaved] = React.useState(policy);
   const [form, setForm] = React.useState(() => toForm(policy));
   const [saving, startSave] = React.useTransition();
-  /** The server whose dry run is in flight — one at a time, and the button says so. */
-  const [previewing, setPreviewing] = React.useState<string | null>(null);
-  const [report, setReport] = React.useState<CleanupReport | null>(null);
+  /** The server whose sweep is in flight — one at a time, and the button says so. */
+  const [running, setRunning] = React.useState<string | null>(null);
 
   // A save ends in router.refresh(), which re-renders this tree with the PERSISTED
   // policy. Adopt it as the new baseline (the supported "adjust state during render"
@@ -193,7 +162,6 @@ export function CleanupPanel({
   }
 
   const dirty = !sameForm(form, toForm(policy));
-  const riskySelected = form.scopes.includes("unused_app_images");
   const nothingSelected = form.scopes.length === 0;
 
   function toggleScope(scope: CleanupScopeId, on: boolean) {
@@ -236,17 +204,23 @@ export function CleanupPanel({
   }
 
   /**
-   * Step one of the two-step manual cleanup: ask the agent what it WOULD reclaim
-   * (a dry run — it removes nothing), then open the confirm dialog on the answer. The
-   * operator approves a list of objects and a byte count, never a bare verb.
+   * Manual cleanup is one click, no confirmation: it reclaims exactly the SAVED
+   * policy's scopes on this host now. Nothing here is destructive — the agent's
+   * allow-list never prunes a container, a data volume or a network, so a stopped app,
+   * its data and its network all survive; the worst case is a rebuild of an image no
+   * container references. The RUN's own reclaimed total is toasted (a dry run would
+   * only estimate), and the sweep lands in the history below either way.
    */
-  async function preview(server: CleanupServerOption) {
-    setPreviewing(server.id);
+  async function runNow(server: CleanupServerOption) {
+    setRunning(server.id);
     try {
-      const res = await gqlAction<{ previewDockerCleanup: CleanupReport }, CleanupReport>(
-        PREVIEW_CLEANUP,
+      const res = await gqlAction<
+        { runDockerCleanupNow: { reclaimedBytes: number } },
+        number
+      >(
+        RUN_CLEANUP_NOW,
         { serverId: server.id },
-        (d) => d.previewDockerCleanup,
+        (d) => d.runDockerCleanupNow.reclaimedBytes,
       );
       // An unprovisioned host, an unreachable agent, an agent too old to know how to
       // clean up: each has its own message and each one names the next move.
@@ -254,9 +228,10 @@ export function CleanupPanel({
         toast.error(res.error);
         return;
       }
-      if (res.data) setReport(res.data);
+      toast.success(`Reclaimed ${formatBytes(res.data ?? 0)} on ${server.name}`);
+      router.refresh();
     } finally {
-      setPreviewing(null);
+      setRunning(null);
     }
   }
 
@@ -408,28 +383,28 @@ export function CleanupPanel({
                       />
                     </div>
                     {/* Disabled while the form is dirty: a cleanup runs the SAVED policy,
-                        so the preview would enumerate one scope set while the checkboxes
-                        on screen show another. A wrapping span keeps the tooltip
-                        reachable — a disabled button swallows pointer events. */}
+                        so it would reclaim a different scope set than the checkboxes on
+                        screen show. A wrapping span keeps the tooltip reachable — a
+                        disabled button swallows pointer events. */}
                     <SimpleTooltip
                       content={
                         dirty
                           ? "Save the policy first — a cleanup runs the saved scopes, not the unsaved ones"
                           : nothingSelected
                             ? "Select at least one thing to reclaim"
-                            : `Preview what would be reclaimed on ${server.name}`
+                            : `Reclaim Docker disk on ${server.name} now`
                       }
                     >
                       <span tabIndex={0}>
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => preview(server)}
+                          onClick={() => runNow(server)}
                           disabled={
-                            dirty || nothingSelected || previewing !== null || saving
+                            dirty || nothingSelected || running !== null || saving
                           }
                         >
-                          {previewing === server.id ? (
+                          {running === server.id ? (
                             <Loader2 className="size-4 animate-spin" />
                           ) : (
                             <Brush className="size-4" />
@@ -445,102 +420,6 @@ export function CleanupPanel({
           )}
         </CardContent>
       </Card>
-
-      {/* Step two: the dialog only exists once a dry run has answered, so it can never
-          ask an operator to approve a cleanup nobody has enumerated. */}
-      {report && (
-        <ConfirmAction
-          open
-          onOpenChange={(v) => {
-            if (!v) setReport(null);
-          }}
-          title={`Clean up Docker on ${report.serverName}?`}
-          description="This removes exactly what is listed below — nothing has been removed yet. Stopped apps, their data volumes and their networks are never touched."
-          confirmLabel="Clean up now"
-          // The typed gate is spent where it buys something: `unused_app_images` is the
-          // one scope whose removal is not free (no registry, so a rebuild is the only
-          // way back). Build cache and dangling layers do not warrant the friction, and
-          // a confirmation asked for everything is a confirmation read for nothing.
-          confirmText={riskySelected ? report.serverName : undefined}
-          extra={<CleanupReportTable report={report} />}
-          onConfirm={async () => {
-            const res = await gqlAction<
-              { runDockerCleanupNow: { reclaimedBytes: number } },
-              number
-            >(
-              RUN_CLEANUP_NOW,
-              { serverId: report.serverId },
-              (d) => d.runDockerCleanupNow.reclaimedBytes,
-            );
-            if (res.ok) {
-              // The RUN's own total, never the preview's: a dry run enumerates
-              // candidates and the daemon can free a different number. ConfirmAction
-              // would toast a static `successMessage` — that would be the estimate, so
-              // toast the fact instead.
-              toast.success(
-                `Reclaimed ${formatBytes(res.data ?? 0)} on ${report.serverName}`,
-              );
-              router.refresh();
-            }
-            // A failure is toasted verbatim by ConfirmAction, and the run is already in
-            // the history below as `failed` — the attempt is recorded either way.
-            return res;
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-/** The dry run's per-scope answer: what would go, how many, and how much it frees. */
-function CleanupReportTable({ report }: { report: CleanupReport }) {
-  const lines = report.scopes.filter(
-    (s) => s.itemsRemoved > 0 || s.reclaimedBytes > 0 || s.skipped || s.error,
-  );
-  return (
-    <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
-      {lines.length === 0 ? (
-        <p className="text-muted-foreground">
-          There is nothing to reclaim on this host right now.
-        </p>
-      ) : (
-        <ul className="space-y-1.5">
-          {lines.map((line) => {
-            const meta = SCOPE_META.get(line.scope);
-            return (
-              <li key={line.scope} className="space-y-0.5">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-muted-foreground">
-                    {meta?.label ?? line.scope}
-                  </span>
-                  <span className="flex items-baseline gap-2">
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {line.itemsRemoved} {meta?.unit ?? "items"}
-                    </span>
-                    <span className="font-medium tabular-nums">
-                      {formatBytes(line.reclaimedBytes)}
-                    </span>
-                  </span>
-                </div>
-                {/* A skipped scope is not a failure: the agent declined the one thing it
-                    could not prove was safe and will still sweep the rest. */}
-                {line.skipped && (
-                  <p className="text-xs text-muted-foreground">
-                    Skipped — the agent could not prove this was safe to remove.
-                  </p>
-                )}
-                {line.error && (
-                  <p className="text-xs text-destructive">{line.error}</p>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <div className="flex items-baseline justify-between border-t border-border pt-2 font-medium">
-        <span>Total reclaimed</span>
-        <span className="tabular-nums">{formatBytes(report.reclaimedBytes)}</span>
-      </div>
     </div>
   );
 }

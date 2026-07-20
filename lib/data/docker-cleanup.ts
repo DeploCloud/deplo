@@ -34,9 +34,9 @@ import { formatBytes } from "../utils";
  *    operational hygiene, and the operators who run out of disk are the ones who
  *    already hold `manage_infra`. Servers are cross-team infra, so the policy and
  *    the run history are NOT team-scoped — the `teamId` we resolve is used only to
- *    attribute the activity row. The interactive per-server entry points
- *    (preview / "clean up now") DO resolve their target team-scoped, though: a
- *    host reserved for another team is not this caller's to prune.
+ *    attribute the activity row. The interactive per-server entry point
+ *    ("clean up now") DOES resolve its target team-scoped, though: a host reserved
+ *    for another team is not this caller's to prune.
  *
  * WHAT gets deleted is not decided here. The control plane owns the scope SET; the
  * agent owns the deletion, allow-listed (never `system`/`container`/`volume`/`network
@@ -86,24 +86,6 @@ export interface UpdateCleanupPolicyInput {
   scopes: CleanupScopeId[];
   /** Whole-set replace of the opt-out list; omit to leave it untouched. */
   excludedServerIds?: string[];
-}
-
-/** One scope's line in a preview — what the agent WOULD reclaim, having removed nothing. */
-export interface CleanupReportScope {
-  scope: CleanupScopeId;
-  reclaimedBytes: number;
-  itemsRemoved: number;
-  /** The image ids / volume names in question (agent-bounded to 200; `itemsRemoved` is authoritative). */
-  items: string[];
-  skipped: boolean;
-  error: string | null;
-}
-
-export interface CleanupReport {
-  serverId: string;
-  serverName: string;
-  reclaimedBytes: number;
-  scopes: CleanupReportScope[];
 }
 
 /** A run's per-scope breakdown. No `items`: the history keeps counts, not object ids. */
@@ -256,16 +238,6 @@ function toRunItems(results: CleanupScopeResult[]): CleanupRunItem[] {
     });
   }
   return CLEANUP_SCOPES.filter((s) => byScope.has(s)).map((s) => byScope.get(s)!);
-}
-
-function toReportScopes(results: CleanupScopeResult[]): CleanupReportScope[] {
-  const items = toRunItems(results);
-  const itemNames = new Map<CleanupScopeId, string[]>();
-  for (const r of results) {
-    const scope = WIRE_TO_SCOPE.get(r.scope);
-    if (scope && !itemNames.has(scope)) itemNames.set(scope, r.items ?? []);
-  }
-  return items.map((i) => ({ ...i, items: itemNames.get(i.scope) ?? [] }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -558,44 +530,6 @@ export async function updateCleanupPolicy(
     teamId,
   );
   return loadPolicy();
-}
-
-/* ------------------------------------------------------------------ */
-/* The probe                                                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * Enumerate what a cleanup WOULD reclaim on `serverId` — the agent's dry run: it lists
- * candidates and removes nothing. Writes NO run row: nothing happened, and a history
- * full of previews would drown the sweeps that did.
- *
- * This is what the UI calls before it opens the confirm dialog, which is the whole
- * point of the feature being trustworthy — the operator approves a LIST, not a verb.
- */
-export async function previewCleanup(serverId: string): Promise<CleanupReport> {
-  await requireCapability("manage_infra");
-  // Team-scoped resolve: a server another team reserved is not this caller's to
-  // preview — it reads as "not found", like every other cross-team id.
-  const server = await getServer(serverId);
-  if (!server) throw new Error("Server not found");
-  if (!server.agent?.certFingerprint) throw new Error(notProvisionedMessage(server.name));
-
-  const policy = await loadPolicy();
-  const resp = await runAgentCleanup(serverId, {
-    scopes: policy.scopes.map((s) => SCOPE_TO_WIRE[s]),
-    dryRun: true,
-    minAgeHours: policy.minAgeHours,
-    keepImagesPerApp: policy.keepImagesPerApp,
-  });
-  if (!resp.ok) {
-    throw new Error(resp.error || "the agent could not enumerate what it would reclaim");
-  }
-  return {
-    serverId,
-    serverName: server.name,
-    reclaimedBytes: Number(resp.reclaimedBytes ?? 0),
-    scopes: toReportScopes(resp.results ?? []),
-  };
 }
 
 /* ------------------------------------------------------------------ */

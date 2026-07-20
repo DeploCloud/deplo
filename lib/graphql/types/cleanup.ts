@@ -2,12 +2,9 @@ import { builder } from "../builder";
 import {
   getCleanupPolicy,
   listCleanupRuns,
-  previewCleanup,
   runCleanupNow,
   updateCleanupPolicy,
   type CleanupPolicy,
-  type CleanupReport,
-  type CleanupReportScope,
   type CleanupRunDTO,
   type CleanupRunItem,
 } from "@/lib/data/docker-cleanup";
@@ -73,42 +70,6 @@ const DockerCleanupPolicyRef = builder
         nullable: true,
         description: "Null until the policy has been saved once.",
       }),
-    }),
-  });
-
-const DockerCleanupReportScopeRef = builder
-  .objectRef<CleanupReportScope>("DockerCleanupReportScope")
-  .implement({
-    description: "One scope's line in a preview: what the agent WOULD reclaim, having removed nothing.",
-    fields: (t) => ({
-      scope: t.field({ type: DockerCleanupScopeEnum, resolve: (s) => s.scope }),
-      // Float, not Int — a build cache easily exceeds 2^31 bytes (the BackupRun.sizeBytes rule).
-      reclaimedBytes: t.exposeFloat("reclaimedBytes"),
-      itemsRemoved: t.exposeInt("itemsRemoved"),
-      items: t.exposeStringList("items", {
-        description:
-          "The image ids / volume names in question. Bounded by the agent to 200 entries — `itemsRemoved` is the authoritative count.",
-      }),
-      skipped: t.exposeBoolean("skipped", {
-        description:
-          "The agent declined this scope because it could not prove the removal was safe. Not a failure: the other scopes still run.",
-      }),
-      error: t.exposeString("error", { nullable: true }),
-    }),
-  });
-
-const DockerCleanupReportRef = builder
-  .objectRef<CleanupReport>("DockerCleanupReport")
-  .implement({
-    description:
-      "A live, never-persisted answer to 'what would a cleanup reclaim on this host?' — the agent's dry run. Nothing was removed. This is what the confirm dialog shows, so the operator approves a LIST rather than a verb.",
-    fields: (t) => ({
-      serverId: t.exposeString("serverId"),
-      serverName: t.exposeString("serverName"),
-      reclaimedBytes: t.exposeFloat("reclaimedBytes", {
-        description: "The sum of the per-scope totals.",
-      }),
-      scopes: t.field({ type: [DockerCleanupReportScopeRef], resolve: (r) => r.scopes }),
     }),
   });
 
@@ -232,20 +193,6 @@ builder.mutationFields((t) => ({
           ? [...input.excludedServerIds]
           : undefined,
       }),
-  }),
-  // The preview is a MUTATION, not a query, even though it removes nothing and persists
-  // nothing. It DIALS THE AGENT — and app/api/graphql/route.ts serves GET, so a
-  // side-effecting query would be reachable by a plain link (prefetch, crawler, CSRF)
-  // and would turn the control plane into a fan-out dialer on someone else's click.
-  // Same reasoning as checkServerHealth (types/server.ts:366-371). It takes no host/port,
-  // only an opaque serverId resolved through the pinned dial target.
-  previewDockerCleanup: t.field({
-    type: DockerCleanupReportRef,
-    authScopes: { capability: "manage_infra" },
-    description:
-      "Enumerate what a cleanup WOULD reclaim on this server, removing nothing (the agent's dry run). Writes no run row. This is what the UI calls before it opens the confirm dialog.",
-    args: { serverId: t.arg.string({ required: true }) },
-    resolve: (_r, { serverId }) => previewCleanup(serverId),
   }),
   runDockerCleanupNow: t.field({
     type: DockerCleanupRunRef,

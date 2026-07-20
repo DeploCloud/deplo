@@ -23,7 +23,6 @@ import {
 import {
   getCleanupPolicy,
   listCleanupRuns,
-  previewCleanup,
   pruneCleanupRunHistory,
   reconcileInFlightCleanupRuns,
   runCleanupNow,
@@ -238,7 +237,6 @@ test("an identity without manage_infra is refused by every entry point", async (
       denied,
       "write of the policy",
     );
-    await assert.rejects(() => previewCleanup(SERVER_1), denied, "the dry-run probe");
     await assert.rejects(() => runCleanupNow(SERVER_1), denied, "the sweep itself");
   });
 

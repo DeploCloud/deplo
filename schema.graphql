@@ -568,37 +568,6 @@ type DockerCleanupPolicy {
 }
 
 """
-A live, never-persisted answer to 'what would a cleanup reclaim on this host?' — the agent's dry run. Nothing was removed. This is what the confirm dialog shows, so the operator approves a LIST rather than a verb.
-"""
-type DockerCleanupReport {
-  """The sum of the per-scope totals."""
-  reclaimedBytes: Float
-  scopes: [DockerCleanupReportScope!]
-  serverId: String
-  serverName: String
-}
-
-"""
-One scope's line in a preview: what the agent WOULD reclaim, having removed nothing.
-"""
-type DockerCleanupReportScope {
-  error: String
-
-  """
-  The image ids / volume names in question. Bounded by the agent to 200 entries — `itemsRemoved` is the authoritative count.
-  """
-  items: [String!]
-  itemsRemoved: Int
-  reclaimedBytes: Float
-  scope: DockerCleanupScope
-
-  """
-  The agent declined this scope because it could not prove the removal was safe. Not a failure: the other scopes still run.
-  """
-  skipped: Boolean
-}
-
-"""
 One executed sweep on one server. A run that could not even start — an unprovisioned host, an agent offline or too old — is still recorded, as `failed`: the history never lies about an attempt.
 """
 type DockerCleanupRun {
@@ -1232,11 +1201,6 @@ type Mutation {
   Move a folder under a new parent folder, or to the top level when parentId is omitted/null. Rejects moving a folder into itself or a descendant.
   """
   moveFolder(id: ID!, parentId: ID): Boolean
-
-  """
-  Enumerate what a cleanup WOULD reclaim on this server, removing nothing (the agent's dry run). Writes no run row. This is what the UI calls before it opens the confirm dialog.
-  """
-  previewDockerCleanup(serverId: String!): DockerCleanupReport
 
   """Promote a preview deployment to production."""
   promoteDeployment(id: String!): Boolean
