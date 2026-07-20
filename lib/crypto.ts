@@ -13,17 +13,19 @@ import {
 /**
  * Central secret material.
  * In production set DEPLO_SECRET to a long random string (>= 32 chars).
- * A dev fallback is used otherwise so the app still runs locally  a warning
- * is emitted once because it is NOT safe for production.
+ * Production refuses to boot without it (mirroring the `DEPLO_DATABASE_URL`
+ * guard in lib/db/pg.ts) — silently deriving every key from a public constant
+ * would make all secrets, sessions and the agent CA forgeable. A dev/test
+ * fallback keeps the app runnable locally.
  */
-let warned = false;
 function rootSecret(): string {
   const s = process.env.DEPLO_SECRET;
   if (s && s.length >= 16) return s;
-  if (!warned && process.env.NODE_ENV === "production") {
-    warned = true;
-    console.warn(
-      "[deplo] DEPLO_SECRET is not set or too short  using an insecure dev key. Set DEPLO_SECRET in production.",
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "DEPLO_SECRET is required and must be at least 16 characters. Every " +
+        "crypto key (secret encryption, sessions, CSRF state, the agent mTLS " +
+        "CA) is derived from it; set DEPLO_SECRET to a long random string.",
     );
   }
   return "deplo-dev-insecure-secret-change-me-please-0000";

@@ -7,6 +7,7 @@ import { notificationSettings } from "../db/schema/control-plane";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { defaultNotificationSettings } from "../types";
 import { rowToSettings, settingsToRow } from "./notification-row";
+import { assertSafeOutboundUrl } from "./s3";
 import type { NotificationChannel, NotificationSettings } from "../types";
 
 /** Default config, also used to backfill stores seeded before this feature. */
@@ -34,6 +35,13 @@ export async function updateNotificationSettings(
 ): Promise<NotificationSettings> {
   // Notifications are an infra-level team setting.
   const teamId = (await requireCapability("manage_infra")).teamId;
+  // Webhook URLs are dialed FROM the control plane (test send + alert
+  // dispatch) — reject private/internal targets before they are ever
+  // persisted, so no dispatcher can be fed one (SSRF).
+  if (next.channels.discord.webhookUrl)
+    assertSafeOutboundUrl(next.channels.discord.webhookUrl, "Discord webhook URL");
+  if (next.channels.webhook.url)
+    assertSafeOutboundUrl(next.channels.webhook.url, "Webhook URL");
   const row = settingsToRow(teamId, next);
   // One row per team (team_id PK): upsert so the first save inserts and later
   // saves overwrite — never a duplicate row.
@@ -66,6 +74,9 @@ export async function sendTestNotification(
 
   if (channel === "discord") {
     if (!c.discord.webhookUrl) throw new Error("Add a Discord webhook URL first");
+    // Re-checked at the dial (rows saved before this gate existed): the URL
+    // must never aim inside the network (SSRF).
+    assertSafeOutboundUrl(c.discord.webhookUrl, "Discord webhook URL");
     const res = await fetch(c.discord.webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -77,6 +88,8 @@ export async function sendTestNotification(
 
   if (channel === "webhook") {
     if (!c.webhook.url) throw new Error("Add a webhook URL first");
+    // Re-checked at the dial (rows saved before this gate existed).
+    assertSafeOutboundUrl(c.webhook.url, "Webhook URL");
     const res = await fetch(c.webhook.url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

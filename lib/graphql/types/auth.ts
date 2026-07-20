@@ -107,9 +107,11 @@ builder.mutationFields((t) => ({
       if (!parsed.success)
         throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
       const email = parsed.data.email.toLowerCase().trim();
+      // No global bucket: a shared fixed-window counter lets an anonymous
+      // attacker exhaust it and lock every user out. Limiting is per-email and
+      // per-client-IP only.
       const limited = checkLimits([
         { key: `login:email:${email}`, limit: 8, windowMs: 60_000 },
-        { key: "login:global", limit: 100, windowMs: 60_000 },
         { key: await clientKey("login"), limit: 30, windowMs: 60_000 },
       ]);
       if (limited) throw new Error(limited);

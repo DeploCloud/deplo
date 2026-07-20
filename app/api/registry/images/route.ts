@@ -17,6 +17,13 @@ import {
  * GET /api/registry/images?action=exists&image=nginx:1.27 → existence check
  */
 export async function GET(request: NextRequest) {
+  // Any logged-in user may query — the image inputs this feeds are visible to
+  // every member with `view`, so a capability gate here would break the UI.
+  // This gate is therefore NOT the SSRF defense: lib/registry/client.ts
+  // enforces the egress guard (https only, public addresses only — no
+  // loopback/RFC1918/link-local/metadata targets) on every outbound registry
+  // fetch, including the WWW-Authenticate realm follow. If image hinting is
+  // ever restricted, raise this to a capability check; never drop that guard.
   const user = await getCurrentUser();
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

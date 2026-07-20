@@ -26,6 +26,9 @@ function createAuth() {
     database: drizzleAdapter(db, { provider: "pg", schema }),
     emailAndPassword: {
       enabled: true,
+      // Accounts are created via first-run setup / registration links only —
+      // never through the public /api/auth/sign-up/email endpoint.
+      disableSignUp: true,
       minPasswordLength: 10,
     },
     session: {

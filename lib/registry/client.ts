@@ -15,6 +15,9 @@ import "server-only";
  * Endpoints and response shapes here were verified live against the real APIs.
  */
 
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+
 import { parseImageRef, DOCKER_HUB_REGISTRY } from "./image-ref";
 
 /** Manifest media types to advertise so multi-arch (OCI index / manifest list)
@@ -29,10 +32,104 @@ const MANIFEST_ACCEPT = [
 const UA = "Deplo-Registry-Client";
 const DEFAULT_TIMEOUT = 8000;
 
+// ---------------------------------------------------------------------------
+// SSRF guard
+// ---------------------------------------------------------------------------
+
+/** Private / loopback / link-local IPv4, incl. 169.254.169.254 (cloud metadata). */
+function isPrivateIPv4(addr: string): boolean {
+  const o = addr.split(".").map(Number);
+  if (o.length !== 4 || o.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+    return true;
+  }
+  return (
+    o[0] === 0 || // "this network" (0.0.0.0/8 routes to localhost)
+    o[0] === 127 || // loopback
+    o[0] === 10 || // RFC1918
+    (o[0] === 172 && o[1] >= 16 && o[1] <= 31) || // RFC1918
+    (o[0] === 192 && o[1] === 168) || // RFC1918
+    (o[0] === 169 && o[1] === 254) // link-local, incl. the metadata IP
+  );
+}
+
+/** Loopback / link-local / ULA IPv6, plus IPv4-mapped forms of the above. */
+function isPrivateIPv6(addr: string): boolean {
+  const a = addr.toLowerCase();
+  // Dotted IPv4 tail ("::ffff:10.0.0.1") — judge the embedded IPv4.
+  const dotted = a.match(/(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) return isPrivateIPv4(dotted[1]);
+  // Expand "::" so the prefix checks see real hextets.
+  const halves = a.split("::");
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves[1] ? halves[1].split(":") : [];
+  const groups =
+    halves.length === 2
+      ? [
+          ...head,
+          ...Array(Math.max(0, 8 - head.length - tail.length)).fill("0"),
+          ...tail,
+        ]
+      : head;
+  if (groups.length !== 8) return true; // malformed — refuse rather than guess
+  const n = groups.map((g) => parseInt(g || "0", 16));
+  if (n.slice(0, 7).every((v) => v === 0)) return n[7] <= 1; // "::" and "::1"
+  if (n.slice(0, 5).every((v) => v === 0) && n[5] === 0xffff) {
+    // Hex-form IPv4-mapped ("::ffff:7f00:1").
+    return isPrivateIPv4(`${n[6] >> 8}.${n[6] & 255}.${n[7] >> 8}.${n[7] & 255}`);
+  }
+  if ((n[0] & 0xffc0) === 0xfe80) return true; // link-local fe80::/10
+  if ((n[0] & 0xfe00) === 0xfc00) return true; // ULA fc00::/7 (covers fd00::/8)
+  return false;
+}
+
+function isPrivateAddress(addr: string): boolean {
+  const family = isIP(addr);
+  if (family === 4) return isPrivateIPv4(addr);
+  if (family === 6) return isPrivateIPv6(addr);
+  return true; // not an IP literal — hostnames are resolved by the caller
+}
+
+/**
+ * SSRF guard for every outbound registry fetch. The registry host comes
+ * straight from user input (the image reference) and the token realm from the
+ * probed host's own response, so nothing here may reach a non-public target:
+ * require https, and reject loopback, RFC1918, link-local (incl. the
+ * 169.254.169.254 cloud-metadata IP), and ULA ranges — both as IP literals
+ * and after resolving the hostname.
+ */
+async function isPublicHttpsUrl(url: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  // URL() canonicalizes exotic IPv4 spellings (hex/octal/decimal) for us;
+  // IPv6 literals keep their brackets in `hostname`.
+  const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!host || host === "localhost" || host.endsWith(".localhost")) return false;
+  if (isIP(host)) return !isPrivateAddress(host);
+  try {
+    const addrs = await lookup(host, { all: true });
+    return addrs.length > 0 && addrs.every((a) => !isPrivateAddress(a.address));
+  } catch {
+    return false; // unresolvable — the fetch could not have succeeded anyway
+  }
+}
+
+/** Encode a repository path per-segment so its parts cannot rewrite the URL. */
+function encodeRepoPath(repository: string): string {
+  return repository.split("/").map(encodeURIComponent).join("/");
+}
+
 async function fetchJson<T>(
   url: string,
   init?: RequestInit & { timeoutMs?: number },
 ): Promise<{ status: number; body: T | null }> {
+  // Every fetchJson target derives from user input or a probed host's own
+  // response — refuse anything that is not public https (SSRF guard).
+  if (!(await isPublicHttpsUrl(url))) return { status: 0, body: null };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), init?.timeoutMs ?? DEFAULT_TIMEOUT);
   try {
@@ -133,7 +230,9 @@ async function dockerHubTags(
     ordering: "last_updated",
   });
   if (filter) params.set("name", filter);
-  const url = `https://hub.docker.com/v2/repositories/${repository}/tags?${params.toString()}`;
+  const url = `https://hub.docker.com/v2/repositories/${encodeRepoPath(
+    repository,
+  )}/tags?${params.toString()}`;
   const { body } = await fetchJson<HubTagsResponse>(url);
   if (!body?.results) return [];
   return body.results.map((t) => ({ name: t.name, lastUpdated: t.last_updated }));
@@ -159,11 +258,14 @@ async function ociToken(
   registry: string,
   repository: string,
 ): Promise<string | null | "none"> {
+  const probeUrl = `https://${registry}/v2/`;
+  // `registry` is user input — never probe a non-public target.
+  if (!(await isPublicHttpsUrl(probeUrl))) return null;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
   let challenge: { realm: string; service?: string } | null = null;
   try {
-    const probe = await fetch(`https://${registry}/v2/`, {
+    const probe = await fetch(probeUrl, {
       headers: { "User-Agent": UA },
       signal: ctrl.signal,
       cache: "no-store",
@@ -176,6 +278,9 @@ async function ociToken(
     clearTimeout(t);
   }
   if (!challenge) return null;
+  // The realm URL is dictated by the probed host's response — follow it only
+  // to a public https endpoint, never an arbitrary scheme/host.
+  if (!(await isPublicHttpsUrl(challenge.realm))) return null;
   const params = new URLSearchParams();
   if (challenge.service) params.set("service", challenge.service);
   params.set("scope", `repository:${repository}:pull`);
@@ -206,7 +311,7 @@ async function ociTags(
   filter?: string,
 ): Promise<TagSuggestion[]> {
   const token = await ociToken(registry, repository);
-  const url = `https://${registry}/v2/${repository}/tags/list?n=200`;
+  const url = `https://${registry}/v2/${encodeRepoPath(repository)}/tags/list?n=200`;
   const { body } = await fetchJson<OciTagsResponse>(url, {
     headers: { Accept: "application/json", ...ociAuthHeaders(token) },
   });
@@ -264,13 +369,16 @@ export async function checkImageExists(
     parsed.registry === DOCKER_HUB_REGISTRY ? "registry-1.docker.io" : parsed.registry;
 
   const token = await ociToken(registryHost, parsed.repository);
+  const manifestUrl = `https://${registryHost}/v2/${encodeRepoPath(
+    parsed.repository,
+  )}/manifests/${encodeURIComponent(reference)}`;
+  // `registryHost` is user input — never HEAD a non-public target.
+  if (!(await isPublicHttpsUrl(manifestUrl))) return { status: "unknown" };
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
   try {
     const res = await fetch(
-      `https://${registryHost}/v2/${parsed.repository}/manifests/${encodeURIComponent(
-        reference,
-      )}`,
+      manifestUrl,
       {
         method: "HEAD",
         headers: {

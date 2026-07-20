@@ -43,6 +43,9 @@ export interface ParsedImageRef {
 /** Does the first path component look like a registry host rather than a Hub namespace? */
 function looksLikeHost(component: string): boolean {
   if (component === "localhost") return true;
+  // Only hostname characters may appear ("host" or "host:port"); anything else
+  // ("?", "#", "@", …) is not a host and must never reach a URL as one.
+  if (!/^[A-Za-z0-9.-]+(?::\d+)?$/.test(component)) return false;
   // A host has a dot (registry.example.com) or a port (host:5000). A bare
   // "library" or "user" has neither and is a Docker Hub namespace.
   return component.includes(".") || component.includes(":");

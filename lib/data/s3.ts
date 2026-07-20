@@ -45,6 +45,64 @@ export const S3_PROVIDERS: { id: S3Provider; name: string; endpointHint: string 
 ];
 
 /**
+ * Guard a user-supplied outbound URL (S3 endpoint, notification webhook)
+ * against SSRF: the control plane / the agents dial it, so it must be http(s)
+ * and must never aim INSIDE the deployment. Literal loopback, RFC1918, CGNAT,
+ * link-local (incl. the cloud metadata IP 169.254.169.254) and IPv6
+ * loopback/link-local/ULA hosts are rejected. A DNS name passes — it cannot be
+ * resolved here without racing the actual dial — but every private-address
+ * literal is stopped, which is what turns these fields into a port scan.
+ * (WHATWG URL canonicalizes octal/hex/decimal IPv4 forms, so `0177.0.0.1`
+ * lands on the dotted-decimal checks below.)
+ */
+export function assertSafeOutboundUrl(
+  raw: string,
+  label: string,
+  opts?: { allowHttp?: boolean },
+): void {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${label} must be a valid URL`);
+  }
+  if (url.protocol !== "https:" && !(opts?.allowHttp && url.protocol === "http:"))
+    throw new Error(`${label} must be an ${opts?.allowHttp ? "http(s)" : "https"} URL`);
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (isInternalHost(host))
+    throw new Error(`${label} must not point at a private or internal address`);
+}
+
+/** True for a host literal inside the deployment's own network (see above). */
+function isInternalHost(host: string): boolean {
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return (
+      a === 0 || // "this network"
+      a === 10 || // RFC1918
+      a === 127 || // loopback
+      (a === 100 && b >= 64 && b <= 127) || // CGNAT (100.64/10)
+      (a === 169 && b === 254) || // link-local + the metadata IP
+      (a === 172 && b >= 16 && b <= 31) || // RFC1918
+      (a === 192 && b === 168) // RFC1918
+    );
+  }
+  if (host.includes(":")) {
+    // An IPv6 literal (brackets stripped by the caller).
+    return (
+      host === "::" ||
+      host === "::1" || // loopback
+      /^fe[89ab]/.test(host) || // link-local fe80::/10
+      /^f[cd]/.test(host) || // ULA fc00::/7 (covers fd00::/8)
+      host.startsWith("::ffff:") // v4-mapped — must not dodge the v4 checks
+    );
+  }
+  return false;
+}
+
+/**
  * Whether to address a provider's bucket PATH-style (bucket in the URL path) vs
  * VIRTUAL-HOST style (bucket as a subdomain). AWS S3 is virtual-host; the
  * S3-compatible stores (R2, B2, Spaces, Wasabi, self-hosted MinIO, "other")
@@ -155,6 +213,10 @@ export async function createS3(input: {
   if (!input.bucket.trim()) throw new Error("Bucket is required");
   if (!input.accessKey || !input.secretKey)
     throw new Error("Access key and secret are required");
+  // The endpoint is dialed from the agents (bucket probe, backups) — never let
+  // it aim inside the network. http stays allowed for a self-hosted MinIO
+  // fronted without TLS.
+  assertSafeOutboundUrl(input.endpoint.trim(), "Endpoint", { allowHttp: true });
 
   const s: S3Destination = {
     id: newId("s3"),

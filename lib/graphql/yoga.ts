@@ -34,33 +34,56 @@ const identityPlugin: Plugin<GraphQLContext> = {
 };
 
 /**
- * Never leak internal stack traces. A resolver that throws a plain `Error`
- * (which is how the data layer reports user-facing failures like "You don't
- * have permission to deploy") keeps its message — that was the contract the old
- * `run()`/`ActionResult` wrapper gave. Anything that is NOT already a
- * GraphQLError is re-wrapped with its message preserved but the stack dropped.
+ * An INFRASTRUCTURE error whose message must never reach a client: a Drizzle
+ * wrapper (its message embeds the raw SQL + bound params — which can include
+ * secret values), a Postgres error (SQLSTATE `.code` + table/column identifiers),
+ * or a Node/gRPC transport error (a string `.code` like `ECONNREFUSED` or a
+ * numeric gRPC status — dial addresses, cert fingerprints). These are masked.
  */
-function maskError(error: unknown): GraphQLError {
+function isInternalError(e: unknown): boolean {
+  if (!(e instanceof Error)) return true; // a non-Error throw is never user copy
+  if (e.name === "DrizzleQueryError" || e.message.startsWith("Failed query:"))
+    return true;
+  // pg carries a string SQLSTATE; gRPC/Node carry a string or numeric code. A
+  // plain `new Error("You don't have permission")` has no `code`, so it is kept.
+  const code = (e as { code?: unknown }).code;
+  return typeof code === "string" || typeof code === "number";
+}
+
+/**
+ * Never leak internals, but PRESERVE the repo's "surface the server's message
+ * verbatim" contract for the intentional, user-facing errors resolvers and the
+ * data layer throw ("You don't have permission to deploy", "Too many attempts",
+ * validation messages). Those are plain `Error`s (or `GraphQLError`s) with no
+ * infrastructure `.code`, so their message is forwarded; a Drizzle/pg/transport
+ * error (see {@link isInternalError}) is masked to a generic string and logged
+ * server-side only.
+ */
+function userFacingMessage(error: unknown): string | null {
   if (error instanceof GraphQLError) {
     const orig = error.originalError;
-    if (!orig || orig instanceof GraphQLError) return error;
-    // A resolver threw a normal Error — surface its message, hide the stack.
-    return new GraphQLError(orig.message, {
-      nodes: error.nodes,
-      source: error.source,
-      positions: error.positions,
-      path: error.path,
-    });
+    // A GraphQLError our code threw directly (no non-GraphQL cause) is user copy.
+    if (!orig || orig instanceof GraphQLError) return error.message;
+    error = orig; // otherwise inspect the wrapped cause below
   }
-  return new GraphQLError(
-    error instanceof Error ? error.message : "Something went wrong",
-  );
+  if (error instanceof Error && !isInternalError(error)) return error.message;
+  return null;
+}
+
+function maskError(error: unknown): GraphQLError {
+  const msg = userFacingMessage(error);
+  if (msg != null) return new GraphQLError(msg);
+  console.error("[graphql] masked internal error:", error);
+  return new GraphQLError("Something went wrong");
 }
 
 export const yoga = createYoga({
   schema,
   // Served from the Next route handler at this path; GraphiQL lives here too.
   graphqlEndpoint: "/api/graphql",
+  // The panel is same-origin; never reflect a request Origin back with
+  // credentials allowed (that would let any site read/mutate with the cookie).
+  cors: false,
   context: ({ request }) => buildContext(request),
   plugins: [
     identityPlugin,
