@@ -30,7 +30,7 @@ import {
 } from "../lib/infra/agent-client";
 import { CleanupScope } from "../lib/agent/gen/agent";
 
-const TARGET = "1.12.0";
+const TARGET = "1.12.1";
 /** Rollout order per the runbook: canary first, agent 0 (runs the control plane) last. */
 const ORDER = [
   "srv_f47d8cba7db4c813", // neon-s1 (canary — fewest Apps)

@@ -817,6 +817,19 @@ export async function runScheduledCleanup(
 const deploySweepInFlight = new Set<string>();
 
 /**
+ * Snapshot of {@link deploySweepInFlight}, for the scheduler's never-stack-sweeps
+ * check: the deploy-time sweep writes NO run row on purpose, so without this
+ * in-process signal a tick could start a scheduled sweep on a host whose images a
+ * deploy-sweep is mid-`rmi` on — harmless on disk (the agent skips a failed rmi and
+ * moves on) but it would land a cosmetic error line in the run history. In-memory is
+ * the right scope: the deploy queue and the scheduler run in the same process, and
+ * on a horizontally-scaled control plane the lease already serializes the ticks.
+ */
+export function serversWithDeploySweepInFlight(): string[] {
+  return [...deploySweepInFlight];
+}
+
+/**
  * Remove the superseded app images a deploy just left behind on `serverId` — the
  * deploy-time half of app-image retention. The nightly sweep alone cannot keep a
  * fast-iterating host inside its disk: a day of redeploys at 1-2GB per image

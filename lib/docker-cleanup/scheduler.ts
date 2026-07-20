@@ -18,6 +18,7 @@ import {
   listServersWithCleanupRunning,
   loadCleanupPolicyForScheduler,
   runScheduledCleanup,
+  serversWithDeploySweepInFlight,
 } from "../data/docker-cleanup";
 
 /**
@@ -156,7 +157,10 @@ export async function runCleanupSchedulerTick(
       listServersSweptSince(new Date(now.getTime() - CATCHUP_AFTER_MS)),
     ]);
     const excluded = new Set(policy.excludedServerIds);
-    const inFlight = new Set(running);
+    // Recorded `running` rows AND the history-silent deploy-time sweeps: both are a
+    // sweep already touching that host's images, and stacking a second one only
+    // makes the two race each other's candidate lists.
+    const inFlight = new Set([...running, ...serversWithDeploySweepInFlight()]);
 
     const due = servers.filter((s) => {
       if (excluded.has(s.id)) return false; // the host opted out of the SCHEDULE.

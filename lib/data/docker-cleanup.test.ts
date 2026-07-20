@@ -27,6 +27,7 @@ import {
   pruneCleanupRunHistory,
   reconcileInFlightCleanupRuns,
   runCleanupNow,
+  serversWithDeploySweepInFlight,
   sweepSupersededAppImages,
   updateCleanupPolicy,
 } from "./docker-cleanup";
@@ -399,4 +400,7 @@ test("sweepSupersededAppImages honors the policy's controls and never throws", a
   await seedCleanupPolicy(db, { scopes: ["unused_app_images"] });
   assert.equal(await sweepSupersededAppImages(SERVER_1), 0);
   assert.equal((await allRuns()).length, 0, "the deploy-time sweep writes no history");
+  // The in-flight signal the scheduler reads must be cleaned up on every exit path —
+  // a leaked id would exclude that host from the nightly sweep forever.
+  assert.deepEqual(serversWithDeploySweepInFlight(), [], "no sweep left in flight");
 });
