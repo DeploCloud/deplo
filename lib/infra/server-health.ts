@@ -39,6 +39,8 @@ export interface ServerHealth {
 export const HEALTH_MESSAGES = {
   untrusted:
     "The agent's certificate is not the one we trust for this server. Reissue the install command to re-provision it.",
+  certExpired:
+    "The agent's certificate has expired (or is not yet valid). The host is up — re-run the install command on this server to re-provision the certificate.",
   contract:
     "The agent speaks an unsupported protocol version. Update the agent on this server.",
   agentError: "The agent answered with an error. Check the agent's logs on the host.",
@@ -47,6 +49,42 @@ export const HEALTH_MESSAGES = {
   refused: "The agent did not answer (connection refused). Is it running on the host?",
   timedOut: "The agent did not answer within the health-check deadline.",
 } as const;
+
+/**
+ * Node's TLS layer rejects an EXPIRED (or not-yet-valid) peer certificate with an
+ * error whose code is `CERT_HAS_EXPIRED` / `CERT_NOT_YET_VALID` and whose message is
+ * "certificate has expired" / "certificate is not yet valid". That rejection happens
+ * during standard chain validation, BEFORE `checkServerIdentity` runs — so it never
+ * sets `AgentUnreachableError.trust`, and gRPC flattens it into the SAME opaque
+ * `UNAVAILABLE` a genuinely dead host produces. The two are indistinguishable by
+ * status code alone, which is exactly how an expired agent leaf cert gets misreported
+ * as "connection refused" and sends the operator to debug systemd/firewall on a
+ * healthy box.
+ *
+ * The reason text does survive, though: grpc-js stringifies the TLS error into its
+ * subchannel failure ("No connection established. Last error: Error: certificate has
+ * expired …"), which `toAgentError` copies verbatim into the error's `message`. So we
+ * recover the distinction by matching that text here — the only signal we actually
+ * have. (We also test a string `code`, in case the connect site is later taught to
+ * carry the raw Node TLS code — see the caller note below. A numeric gRPC code, which
+ * is what `AgentUnreachableError.code` holds today, never matches.)
+ *
+ * CALLER NOTE (agent-client.ts, out of scope here): the robust fix is to stop relying
+ * on the message text — in `helloError`, when `(err as { code?: unknown }).code` is a
+ * string `CERT_HAS_EXPIRED`/`CERT_NOT_YET_VALID` from the underlying Node TLS error
+ * (grpc-js surfaces it before flattening in some paths), set a dedicated
+ * `AgentUnreachableError` field (e.g. `certInvalid: true`) the way `trust` is set in
+ * `dial`. This function would then read that field instead of pattern-matching a
+ * message string grpc-js owns and can reword at any release.
+ */
+const CERT_VALIDITY_RE =
+  /CERT_HAS_EXPIRED|CERT_NOT_YET_VALID|certificate has expired|certificate is not yet valid/i;
+
+function isCertValidityError(err: AgentUnreachableError): boolean {
+  const code = (err as { code?: unknown }).code;
+  if (typeof code === "string" && CERT_VALIDITY_RE.test(code)) return true;
+  return CERT_VALIDITY_RE.test(err.message);
+}
 
 /**
  * Classify one Hello outcome. Exactly one of `hello` / `err` is meaningful: pass the
@@ -60,6 +98,12 @@ export const HEALTH_MESSAGES = {
  *    potentially a MITM or a half-finished re-provision. `AgentUnreachableError.trust`
  *    is set by `dial` because gRPC flattens the TLS rejection into an opaque
  *    UNAVAILABLE that is otherwise indistinguishable from a dead box.
+ *  - an EXPIRED / not-yet-valid agent certificate is `error`, never `offline`, for the
+ *    same reason the box is up: the TLS handshake reached the agent and was refused on
+ *    cert VALIDITY, not connectivity. gRPC flattens it into the same opaque UNAVAILABLE
+ *    as a dead host, so left unhandled it reads as "connection refused" and sends the
+ *    operator to debug systemd/firewall on a healthy host instead of re-bootstrapping
+ *    the lapsed cert. See {@link isCertValidityError} for how the signal is recovered.
  *  - a contract mismatch or any application-level gRPC error is `error` for the same
  *    reason: the box is up, its agent is wrong.
  *  - `warning` has exactly ONE member — Docker unreachable — and it means "the agent
@@ -83,6 +127,11 @@ export function classifyServerHealth(
 ): ServerHealth {
   if (err instanceof AgentUnreachableError) {
     if (err.trust) return { status: "error", message: HEALTH_MESSAGES.untrusted };
+    // A cert-validity failure (expired / not-yet-valid) is the host answering with a
+    // stale identity, not a dead host — surface it as its own re-bootstrap `error`
+    // rather than the misleading "connection refused" it flattens into.
+    if (isCertValidityError(err))
+      return { status: "error", message: HEALTH_MESSAGES.certExpired };
     return {
       status: "offline",
       message:

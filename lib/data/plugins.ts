@@ -195,14 +195,13 @@ export async function installPlugin(catalogId: string): Promise<InstalledPluginD
   const slug = existing
     ? await pluginSlugFor(existing)
     : pluginSlug(catalogId, await teamSlug(teamId));
-  await startPluginStack({
-    slug,
-    manifest,
-    resolvedEnv,
-    publicBaseUrl: base,
-    isReinstall: !!existing,
-  });
 
+  // Claim the slug in the DB BEFORE touching Docker. `installed_plugins.slug` is
+  // UNIQUE (installed_plugins_slug_uq), so the INSERT is the arbiter of who owns
+  // a slug — starting the compose stack first let two teams racing a reused slug
+  // `compose up`/`down` against each other's LIVE container before the loser's
+  // INSERT was ever rejected. With the write first, only the team that wins the
+  // constraint goes on to start a stack.
   let row: PluginRow;
   if (existing) {
     row = { ...existing, slug, version: manifest.version };
@@ -220,6 +219,28 @@ export async function installPlugin(catalogId: string): Promise<InstalledPluginD
       createdAt: nowIso(),
     };
     await getDb().insert(installedPluginsTable).values(row);
+  }
+
+  // Now the slug is ours — bring the stack up. If the start fails on a FRESH
+  // install, roll back so a failed start never leaves a half-installed plugin:
+  // tear down any partial container and drop the row we just inserted. A
+  // reinstall keeps its pre-existing row (the plugin was already installed).
+  try {
+    await startPluginStack({
+      slug,
+      manifest,
+      resolvedEnv,
+      publicBaseUrl: base,
+      isReinstall: !!existing,
+    });
+  } catch (err) {
+    if (!existing) {
+      await destroyPluginContainer(slug).catch(() => {});
+      await getDb()
+        .delete(installedPluginsTable)
+        .where(eq(installedPluginsTable.id, row.id));
+    }
+    throw err;
   }
   await recordActivity(
     "member",

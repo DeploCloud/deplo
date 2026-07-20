@@ -194,6 +194,52 @@ export function certResolver(): string {
 }
 
 /**
+ * Per-team cap on `letsencrypt`-backed domains. The whole fleet is fronted by a
+ * SINGLE shared Let's Encrypt ACME account (one resolver — {@link certResolver}),
+ * so every tenant's certificates draw on ONE account's rate limits (LE's
+ * new-order / certificates-per-account budget). Left uncapped, one team
+ * registering hundreds of `letsencrypt` subdomains would exhaust that shared
+ * budget and stall certificate issuance for EVERY other team. 50 sits comfortably
+ * above any realistic single-team footprint while stopping one tenant from
+ * monopolising the shared account. Tune it if the deployment's LE limits differ.
+ */
+export const LETSENCRYPT_DOMAINS_PER_TEAM_CAP = 50;
+
+/**
+ * Guard the shared ACME account: throw when adding one more `letsencrypt` domain
+ * would push a team past {@link LETSENCRYPT_DOMAINS_PER_TEAM_CAP}. `currentCount`
+ * is the team's EXISTING `certProvider="letsencrypt"` domain count (the data layer
+ * supplies it — this module is DB-free); `provider` is the provider of the domain
+ * being added, so the guard is a no-op for `none`/`cloudflare` (only letsencrypt
+ * touches the shared account). Pure + side-effect free so it stays unit-testable
+ * and lives beside the resolver definition it protects.
+ *
+ * NOTE: the quota is ENFORCED in `addDomain` (lib/data/domains.ts) — NOT this
+ * module (lib/deploy/domains.ts is pure/DB-free, and lib/data/domains.ts is not in
+ * this change's file set). There, after resolving `config.certProvider`, count the
+ * active team's existing letsencrypt domains (a teamId-scoped COUNT joining
+ * domains → apps) and call this helper before the insert, e.g.:
+ *
+ *   const provider = config.certProvider ?? "none";
+ *   if (provider === "letsencrypt") {
+ *     const n = // COUNT domains WHERE app.teamId = teamId AND cert_provider='letsencrypt'
+ *     assertLetsencryptQuota(n, provider);
+ *   }
+ */
+export function assertLetsencryptQuota(
+  currentCount: number,
+  provider: CertProvider | undefined,
+): void {
+  if ((provider ?? "none") !== "letsencrypt") return;
+  if (currentCount >= LETSENCRYPT_DOMAINS_PER_TEAM_CAP) {
+    throw new Error(
+      `This team has reached its limit of ${LETSENCRYPT_DOMAINS_PER_TEAM_CAP} Let's Encrypt domains. ` +
+        "Remove a certificate-backed domain, or add the domain with no certificate, before adding another.",
+    );
+  }
+}
+
+/**
  * Name of the Traefik DNS-01 cert resolver used when a domain picks the
  * `cloudflare` certificate provider. A real domain whose DNS lives on
  * Cloudflare validates via DNS-01 (a `_acme-challenge` TXT record) rather than

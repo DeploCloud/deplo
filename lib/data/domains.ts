@@ -1,7 +1,7 @@
 import "server-only";
 
 import { resolve4 } from "node:dns/promises";
-import { and, eq, sql } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -13,6 +13,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
+import { assertLetsencryptQuota } from "../deploy/domains";
 import yaml from "js-yaml";
 import {
   resolveServerIp,
@@ -402,6 +403,25 @@ export async function addDomain(
     throw new Error(
       pathPrefix ? "Domain + path already added" : "Domain already added",
     );
+
+  // Per-team Let's Encrypt quota: the whole fleet shares ONE ACME account/resolver,
+  // so an uncapped tenant registering hundreds of letsencrypt subdomains would
+  // exhaust the shared account's rate limit for every other team. Count this team's
+  // existing letsencrypt domains (across all its apps) and refuse past the cap.
+  const provider = config.certProvider ?? "none";
+  if (provider === "letsencrypt") {
+    const [{ n }] = await getDb()
+      .select({ n: count() })
+      .from(domainsTable)
+      .innerJoin(appsTable, eq(domainsTable.appId, appsTable.id))
+      .where(
+        and(
+          eq(appsTable.teamId, membership.teamId),
+          eq(domainsTable.certProvider, "letsencrypt"),
+        ),
+      );
+    assertLetsencryptQuota(n, provider);
+  }
 
   const service = resolveApp(config.service, project, isCompose);
   // On a compose stack the port is required (the chosen service's container

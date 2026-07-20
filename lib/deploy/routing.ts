@@ -363,7 +363,7 @@ function safe(s: string): string {
  * distinct inputs to the same segment. Deterministic (no crypto/random) so an
  * unchanged routing set re-renders byte-identically. 32-bit FNV-1a, base36,
  * zero-padded to 6 chars. */
-function hash6(s: string): string {
+export function hash6(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);

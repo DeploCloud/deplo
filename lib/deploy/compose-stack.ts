@@ -4,7 +4,7 @@ import yaml from "js-yaml";
 
 import type { ResourceLimits } from "../types";
 import { certResolver } from "./domains";
-import { traefikRouterLabels } from "./routing";
+import { traefikRouterLabels, hash6 } from "./routing";
 import { mergeResourceLimits } from "./resources";
 
 /**
@@ -494,7 +494,12 @@ export function buildComposeStack(input: ComposeStackInput): string {
     mergeLabels(
       services[service] as App,
       traefikLabels({
-        router: keySeed.replace(/[^a-zA-Z0-9_-]/g, "-"),
+        // `safe()` alone collapses `.`/`/` to `-`, so `api.example.com` and
+        // `api-example.com` (or `/api/v1` and `/api-v1`) would produce the SAME
+        // router key and mergeLabels would silently drop one router. Append an
+        // injective hash of the full seed (same discriminator the single-image
+        // renderer uses) so distinct routes never collide.
+        router: `${keySeed.replace(/[^a-zA-Z0-9_-]/g, "-")}-${hash6(keySeed)}`,
         domains: [route.name],
         port,
         pathPrefix: route.pathPrefix,

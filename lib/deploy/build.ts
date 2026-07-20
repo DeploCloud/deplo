@@ -7,6 +7,7 @@ import yaml from "js-yaml";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getServerById } from "../data/servers";
 import { getDb } from "../db/client";
+import { withKeyedLock } from "../data/keyed-mutex";
 import {
   deployments as deploymentsTable,
   apps as appsTable,
@@ -767,29 +768,47 @@ async function tryAgent(opts: {
    * stack may pull several images first. */
   readyTimeoutMs?: number;
 }): Promise<AgentAttempt> {
-  try {
-    const { ready, commitSha } = await runAgentDeploy({
-      serverId: opts.serverId,
-      deployId: opts.depId,
-      slug: opts.project.slug,
-      appId: opts.project.id,
-      imageRef: opts.imageRef,
-      composeYaml: opts.composeYaml,
-      env: opts.env,
-      plan: opts.plan,
-      readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
-      sink: { log: (level, text) => log(opts.depId, level, text) },
-    });
-    return { outcome: ready ? "agent" : "failed", commitSha };
-  } catch (e) {
-    if (e instanceof AgentUnavailableError) {
-      // No in-process build path to fall back to: surface the unreachable agent
-      // as a clear deploy failure (P5 — no hung deploys).
-      log(opts.depId, "error", `Agent unavailable: ${e.message}`);
+  // Serialize the agent bring-up against deleteApp/deleteApps on the app's
+  // lifecycle lock (the same mutex the databases use for provision/delete). Two
+  // races this closes: (1) a delete that COMPLETED while this build ran already
+  // tore down the stack and dropped the row — re-check under the lock and abort
+  // rather than `compose up` an orphan the control plane no longer tracks; (2) a
+  // delete arriving DURING the bring-up waits on the lock, then tears down a
+  // fully-created stack (no untracked leftover).
+  return withKeyedLock(`app-lifecycle:${opts.project.id}`, async () => {
+    const stillExists = await getDb()
+      .select({ id: appsTable.id })
+      .from(appsTable)
+      .where(eq(appsTable.id, opts.project.id))
+      .limit(1);
+    if (stillExists.length === 0) {
+      log(opts.depId, "error", "App was deleted during the build — deploy aborted.");
       return { outcome: "failed", commitSha: "" };
     }
-    throw e;
-  }
+    try {
+      const { ready, commitSha } = await runAgentDeploy({
+        serverId: opts.serverId,
+        deployId: opts.depId,
+        slug: opts.project.slug,
+        appId: opts.project.id,
+        imageRef: opts.imageRef,
+        composeYaml: opts.composeYaml,
+        env: opts.env,
+        plan: opts.plan,
+        readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
+        sink: { log: (level, text) => log(opts.depId, level, text) },
+      });
+      return { outcome: ready ? "agent" : "failed", commitSha };
+    } catch (e) {
+      if (e instanceof AgentUnavailableError) {
+        // No in-process build path to fall back to: surface the unreachable agent
+        // as a clear deploy failure (P5 — no hung deploys).
+        log(opts.depId, "error", `Agent unavailable: ${e.message}`);
+        return { outcome: "failed", commitSha: "" };
+      }
+      throw e;
+    }
+  });
 }
 
 async function runDeployment(depId: string): Promise<void> {

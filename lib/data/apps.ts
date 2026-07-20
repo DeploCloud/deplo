@@ -64,6 +64,7 @@ import {
   blueprintWantsTls,
 } from "../deploy/domains";
 import { teardownApp } from "./deployments";
+import { withKeyedLock } from "./keyed-mutex";
 import { removeUploads } from "../deploy/upload";
 import { isValidLogoValue, isTemplateLogo } from "../apps/logo-shared";
 import { detectAppFavicon } from "../apps/favicon-detect";
@@ -1377,7 +1378,25 @@ export async function deleteApp(id: string): Promise<void> {
   // anyway (P6 spirit: never leave records pinned to a dead box) and warn so the
   // operator cleans up the leftover containers by hand. The agent calls run
   // OUTSIDE any DB transaction (PLAN §1 rule (a): never wrap a gRPC dial in a tx).
-  const tornDown = await teardownApp(project.slug);
+  // Teardown + record delete run under the app's lifecycle lock (the SAME lock
+  // tryAgent takes before `compose up`): a delete issued during an in-flight
+  // deploy WAITS for the agent bring-up, then tears down a fully-created stack;
+  // and once the row is dropped here, a deploy still mid-build re-checks under the
+  // lock and aborts instead of resurrecting the stack. Closes the orphan race the
+  // keyed-mutex already prevents for databases.
+  const tornDown = await withKeyedLock(`app-lifecycle:${id}`, async () => {
+    const ok = await teardownApp(project.slug);
+    // Drop any uploaded archive backing an "upload" source.
+    await removeUploads(id).catch(() => {});
+    // One DELETE — the FK CASCADEs do the rest: deployments (+ logs), env_vars
+    // (+ targets), domains (+ middlewares), the 6 project child tables, the
+    // team_app_order rows, AND shared_env_var_apps (the per-app shared-variable
+    // links — the orphan the old JSONB deleteApp leaked is now impossible — PLAN §7
+    // "the live cascade is fixed in cut-set (c)"). backups.project_id is SET NULL (history outlives the
+    // project), so no project-target backup is orphaned either.
+    await getDb().delete(appsTable).where(eq(appsTable.id, id));
+    return ok;
+  });
   const server = await getServerById(project.serverId);
   if (!tornDown && server) {
     await recordActivity(
@@ -1388,15 +1407,6 @@ export async function deleteApp(id: string): Promise<void> {
       null,
     );
   }
-  // Drop any uploaded archive backing an "upload" source.
-  await removeUploads(id).catch(() => {});
-  // One DELETE — the FK CASCADEs do the rest: deployments (+ logs), env_vars
-  // (+ targets), domains (+ middlewares), the 6 project child tables, the
-  // team_app_order rows, AND shared_env_var_apps (the per-app shared-variable
-  // links — the orphan the old JSONB deleteApp leaked is now impossible — PLAN §7
-  // "the live cascade is fixed in cut-set (c)"). backups.project_id is SET NULL (history outlives the
-  // project), so no project-target backup is orphaned either.
-  await getDb().delete(appsTable).where(eq(appsTable.id, id));
   await recordActivity("app", `Deleted project ${project.name}`, user.name, null);
 }
 
@@ -1427,20 +1437,25 @@ export async function deleteApps(ids: string[]): Promise<number> {
   const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));
   // Tear down stacks ≤4 at a time (agent calls OUTSIDE any tx). A throw/
   // unreachable for one project must not abort the others or the record removal.
+  // Each project's teardown + its OWN record delete run under that project's
+  // lifecycle lock (see deleteApp/tryAgent), so a concurrent deploy of any of
+  // these apps can't resurrect an orphaned stack. FK CASCADEs remove every child
+  // + the shared-group attachments (no orphan); backups.project_id SET NULL keeps
+  // history.
   const unreachable: string[] = [];
   await mapLimit(apps, 4, async (project) => {
-    const tornDown = await teardownApp(project.slug).catch(() => false);
+    const tornDown = await withKeyedLock(`app-lifecycle:${project.id}`, async () => {
+      const ok = await teardownApp(project.slug).catch(() => false);
+      await removeUploads(project.id).catch(() => {});
+      await getDb().delete(appsTable).where(eq(appsTable.id, project.id));
+      return ok;
+    });
     if (!tornDown) {
       const server = serversById.get(project.serverId);
       if (server) unreachable.push(`${project.name} (${server.name})`);
     }
-    await removeUploads(project.id).catch(() => {});
   });
 
-  // One DELETE — FK CASCADEs remove every child + the shared-group attachments
-  // (no orphan); backups.project_id SET NULL keeps history.
-  const gone = apps.map((p) => p.id);
-  await getDb().delete(appsTable).where(inArray(appsTable.id, gone));
   await recordActivity(
     "app",
     `Deleted ${apps.length} project${apps.length === 1 ? "" : "s"}`,

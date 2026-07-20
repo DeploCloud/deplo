@@ -88,8 +88,11 @@ export const DeploymentRef = builder
       creator: t.exposeString("creator"),
       logs: t.field({
         type: [LogLineRef],
-        description: "Build logs for this deployment.",
-        resolve: (d) => getLogs(d.id),
+        description: "Build logs for this deployment (most recent lines, capped).",
+        // Cap the serialized payload so `apps { deployments { logs } }` can't
+        // amplify into unbounded memory; the full stream is available live via
+        // the SSE logs route.
+        resolve: (d) => getLogs(d.id).then((lines) => lines.slice(-5000)),
       }),
       queuePosition: t.field({
         type: "Int",
@@ -168,8 +171,10 @@ export const AppRef = builder
       }),
       deployments: t.field({
         type: [DeploymentRef],
-        description: "All deployments of this app, newest first.",
-        resolve: (p) => listDeployments({ appId: p.id }),
+        description:
+          "The app's most recent deployments, newest first (capped so a nested " +
+          "query can't fan out over the whole history + per-deployment logs).",
+        resolve: (p) => listDeployments({ appId: p.id, limit: 100 }),
       }),
     }),
   });

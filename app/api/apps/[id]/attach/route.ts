@@ -1,7 +1,9 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth";
+import { requireActiveTeamId, requireCapability } from "@/lib/membership";
 import { resolveAttachTarget } from "@/lib/data/console";
+import { requireFolderCapabilityForApp } from "@/lib/data/folder-access";
 import * as attach from "@/lib/attach/session";
 import { connectAgent } from "@/lib/infra/agent-client";
 
@@ -57,6 +59,11 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
+  // Bind the session to the principal + active team that opened it (resolveAttachTarget
+  // just proved both hold `deploy` on this app). POST/DELETE re-check against these so
+  // the id alone can never keep a swapped-out or demoted caller writing to PID 1.
+  const teamId = await requireActiveTeamId();
+
   // Build the backing against the OWNING server's agent: the agent's bidi Attach
   // gives a real PTY for tty:true containers and plain pipes otherwise (cleanup
   // closes the gRPC client). A dial failure fails clearly.
@@ -65,7 +72,7 @@ export async function GET(
   try {
     const conn = await connectAgent(resolved.server!.id);
     const handle = conn.attach(appId, resolved.instance.name, tty, cols, rows);
-    session = attach.open(appId, resolved.instance.name, handle, () =>
+    session = attach.open(appId, teamId, user.id, resolved.instance.name, handle, () =>
       conn.close(),
     );
   } catch {
@@ -172,6 +179,12 @@ export async function POST(
   const session = attach.get(sessionId, appId);
   if (!session) return Response.json({ error: "No such session" }, { status: 404 });
 
+  // The GET authorised this session for one principal holding `deploy`. Re-check
+  // both on every write — same user, still holding the capability — so a demoted
+  // member (or anyone else who got hold of the id) can't keep typing into PID 1.
+  if (!(await stillAuthorized(appId, session, user.id)))
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+
   // A resize frame carries no stdin bytes: apply it to the pty and return. The
   // terminal posts one on every fit (mount + container resize).
   const resize = parseResize(body.resize);
@@ -182,6 +195,30 @@ export async function POST(
 
   session.handle.write(data);
   return Response.json({ ok: true });
+}
+
+/**
+ * Re-authorise an in-flight attach session against the CALLER, not just the
+ * session id. A session is bound to the user + active team that opened it (with
+ * `deploy`); this re-runs that exact gate — same principal, still a member of the
+ * owning team, still holding `deploy` on the app AND its folder — so a demoted or
+ * swapped-out member can't keep driving PID 1 for the session's remaining TTL.
+ * DB-only checks (no per-keystroke agent round trip); any throw ⇒ not authorised.
+ */
+async function stillAuthorized(
+  appId: string,
+  session: attach.AttachSession,
+  userId: string,
+): Promise<boolean> {
+  if (session.userId !== userId) return false;
+  try {
+    const { teamId } = await requireCapability("deploy");
+    if (teamId !== session.teamId) return false;
+    await requireFolderCapabilityForApp(appId, "deploy");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** A query-string dimension → a sane pty size, clamped so a bad client can't ask
@@ -211,6 +248,12 @@ export async function DELETE(
   const { id: appId } = await ctx.params;
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
   const session = sessionId ? attach.get(sessionId, appId) : undefined;
-  if (session) attach.destroy(sessionId);
+  if (session) {
+    // Detach is a mutation on someone's live session: gate it exactly like a
+    // write, so a demoted/foreign caller can't tear down a session on id alone.
+    if (!(await stillAuthorized(appId, session, user.id)))
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    attach.destroy(sessionId);
+  }
   return Response.json({ ok: true });
 }

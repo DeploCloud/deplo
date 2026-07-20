@@ -29,6 +29,17 @@ export interface AttachSession {
   id: string;
   /** App that authorised this session — POST/GET must match it. */
   appId: string;
+  /**
+   * Team the session was opened under. POST/DELETE re-check the caller's active
+   * team against this so an id opened in one team can't be driven from another.
+   */
+  teamId: string;
+  /**
+   * The single user who opened this session and was authorised for it. POST/DELETE
+   * honour ONLY this principal — possession of the id is not authority, so a
+   * different (or since-demoted) user can't keep writing to PID 1 on its TTL.
+   */
+  userId: string;
   /** Real container name being attached. */
   containerName: string;
   handle: AttachHandle;
@@ -83,9 +94,15 @@ function enforceSessionCaps(appId: string) {
  * when the backing exits/closes (e.g. `conn.close()` for a remote gRPC client) —
  * bound here so it can never leak. Returns the session id; the browser passes it
  * back on the GET (to stream) and POST (to send input).
+ *
+ * `teamId` + `userId` bind the session to the principal the caller authorised at
+ * open time. The write/detach routes re-check them (and the live capability) so
+ * the session id alone is never authority for later stdin.
  */
 export function open(
   appId: string,
+  teamId: string,
+  userId: string,
   containerName: string,
   handle: AttachHandle,
   cleanup?: () => void,
@@ -95,6 +112,8 @@ export function open(
   const session: AttachSession = {
     id,
     appId,
+    teamId,
+    userId,
     containerName,
     handle,
     subscribers: new Set(),

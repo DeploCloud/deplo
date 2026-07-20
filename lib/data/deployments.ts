@@ -29,6 +29,9 @@ export async function listDeployments(filter?: {
   appId?: string;
   environment?: DeploymentEnvironment;
   status?: Deployment["status"];
+  /** Cap the number of rows (newest-first). Bounds the nested GraphQL fan-out
+   * (App.deployments) so a small query can't force loading every deployment. */
+  limit?: number;
 }): Promise<
   (Deployment & {
     serviceName: string;
@@ -70,11 +73,12 @@ export async function listDeployments(filter?: {
   if (appIds.length === 0) return [];
 
   // Newest-first with the deterministic seq tie-break, push-down into SQL.
-  const rows = await getDb()
+  const base = getDb()
     .select()
     .from(deploymentsTable)
     .where(inArray(deploymentsTable.appId, appIds))
     .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq));
+  const rows = await (filter?.limit != null ? base.limit(filter.limit) : base);
 
   // Resolve owning-server NAMES for the "Server" column / filter. A deployment's
   // own `serverId` is the host it ran on (may be null on legacy rows) — fall back

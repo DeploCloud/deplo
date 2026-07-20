@@ -104,6 +104,27 @@ export function namedVolumeHostNames(
  * A volume entry that is `null`/`{}` (the common `myvol: {}` shape) has no `name:`
  * and is not external, so it resolves to `deplo-<slug>_<key>`.
  */
+/**
+ * Deplo owns the `deplo-` host-volume namespace: every per-app volume it derives
+ * lives there (`deplo-<slug>_<key>` for compose, `deplo-<slug>-<name>` for single-
+ * container). A user compose that PINS an explicit `name:` — or references an
+ * `external:` volume — inside that namespace could name ANOTHER app's live volume,
+ * so THIS app's backup archive (exfil), restore (stop→wipe→untar) and server-move
+ * (`down -v`) would operate on the victim's data. Because the enumerator can't tell
+ * `deplo-<myslug>-<x>` from `deplo-<otherslug>...` by string shape (both slug and
+ * key allow hyphens), the safe rule is categorical: a user may not pin/reference
+ * ANY `deplo-`-prefixed name — only Deplo's own derived names (emitted below,
+ * never through this guard) may live there.
+ */
+function assertNotReservedVolumeName(slug: string, name: string): void {
+  if (name.startsWith("deplo-"))
+    throw new Error(
+      `App "${slug}" pins a volume name "${name}" inside Deplo's reserved ` +
+        `namespace ("deplo-…"). Use a name of your own, or omit the explicit ` +
+        `name so Deplo derives a per-app one.`,
+    );
+}
+
 export function composeStackVolumeHostNames(
   slug: string,
   renderedYaml: string,
@@ -124,6 +145,7 @@ export function composeStackVolumeHostNames(
     };
     // A top-level `name:` pins the host volume name verbatim (external or not).
     if (typeof s.name === "string" && s.name) {
+      assertNotReservedVolumeName(slug, s.name);
       names.push(s.name);
       continue;
     }
@@ -133,10 +155,13 @@ export function composeStackVolumeHostNames(
     // bare key — NEVER project-prefixed (Compose doesn't prefix externals).
     if (s.external && typeof s.external === "object") {
       const ext = s.external as { name?: unknown };
-      names.push(typeof ext.name === "string" && ext.name ? ext.name : key);
+      const n = typeof ext.name === "string" && ext.name ? ext.name : key;
+      assertNotReservedVolumeName(slug, n);
+      names.push(n);
       continue;
     }
     if (s.external === true) {
+      assertNotReservedVolumeName(slug, key);
       names.push(key);
       continue;
     }
@@ -223,6 +248,7 @@ export function appMoveVolumeNames(
       continue;
     }
     if (typeof s.name === "string" && s.name) {
+      assertNotReservedVolumeName(slug, s.name);
       names.push(s.name);
       continue;
     }

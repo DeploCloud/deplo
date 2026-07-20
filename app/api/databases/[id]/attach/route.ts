@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth";
+import { requireActiveTeamId, requireCapability } from "@/lib/membership";
 import { resolveDatabaseAttachTarget } from "@/lib/data/database-console";
 import * as attach from "@/lib/attach/session";
 import { connectAgent } from "@/lib/infra/agent-client";
@@ -52,12 +53,17 @@ export async function GET(
     return Response.json({ error: resolved.reason }, { status });
   }
 
+  // Bind the session to the principal + active team that opened it (resolveDatabaseAttachTarget
+  // just proved both hold `manage_infra`). POST/DELETE re-check against these so the id alone
+  // can never keep a swapped-out or demoted caller typing into the live engine.
+  const teamId = await requireActiveTeamId();
+
   const tty = resolved.instance.tty;
   let session;
   try {
     const conn = await connectAgent(resolved.serverId);
     const handle = conn.attach(databaseId, resolved.instance.name, tty, cols, rows);
-    session = attach.open(databaseId, resolved.instance.name, handle, () =>
+    session = attach.open(databaseId, teamId, user.id, resolved.instance.name, handle, () =>
       conn.close(),
     );
   } catch {
@@ -158,6 +164,12 @@ export async function POST(
   if (!session)
     return Response.json({ error: "No such session" }, { status: 404 });
 
+  // The GET authorised this session for one principal holding `manage_infra`.
+  // Re-check both on every write — same user, still holding the capability — so a
+  // demoted member (or anyone else with the id) can't keep typing into the engine.
+  if (!(await stillAuthorized(session, user.id)))
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+
   const resize = parseResize(body.resize);
   if (resize) {
     session.handle.resize?.(resize.cols, resize.rows);
@@ -166,6 +178,27 @@ export async function POST(
 
   session.handle.write(data);
   return Response.json({ ok: true });
+}
+
+/**
+ * Re-authorise an in-flight database attach session against the CALLER, not just
+ * the session id. The session is bound to the user + active team that opened it
+ * (with `manage_infra`); this re-runs that gate on every write/detach — same
+ * principal, still a member of the owning team, still holding `manage_infra` — so
+ * possession of the id alone can't keep a demoted member driving the live engine.
+ * DB-only checks (no per-keystroke agent round trip); any throw ⇒ not authorised.
+ */
+async function stillAuthorized(
+  session: attach.AttachSession,
+  userId: string,
+): Promise<boolean> {
+  if (session.userId !== userId) return false;
+  try {
+    const { teamId } = await requireCapability("manage_infra");
+    return teamId === session.teamId;
+  } catch {
+    return false;
+  }
 }
 
 /** A query-string dimension → a sane pty size (a bad client can't ask for a
@@ -195,6 +228,12 @@ export async function DELETE(
   const { id: databaseId } = await ctx.params;
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
   const session = sessionId ? attach.get(sessionId, databaseId) : undefined;
-  if (session) attach.destroy(sessionId);
+  if (session) {
+    // Detach is a mutation on someone's live session: gate it exactly like a
+    // write, so a demoted/foreign caller can't tear down a session on id alone.
+    if (!(await stillAuthorized(session, user.id)))
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    attach.destroy(sessionId);
+  }
   return Response.json({ ok: true });
 }
