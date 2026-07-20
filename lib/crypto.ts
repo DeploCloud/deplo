@@ -228,6 +228,10 @@ export function decryptSecret(payload: string): string {
 export interface SessionPayload {
   uid: string;
   exp: number; // epoch seconds
+  /** The user's `token_version` at sign time. Absent on cookies minted before
+   *  session revocation existed → the reader treats absent as 0 (the column
+   *  default), so old cookies stay valid until the first version bump. */
+  v?: number;
 }
 
 function b64url(buf: Buffer): string {

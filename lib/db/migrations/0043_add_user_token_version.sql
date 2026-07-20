@@ -1,0 +1,12 @@
+-- Session revocation. The deplo_session cookie is a stateless HMAC over
+-- {uid, exp}; before this there was no way to invalidate an outstanding cookie,
+-- so a changed/admin-reset password left a stolen session valid for the full
+-- 7-day TTL. `token_version` is embedded in the signed payload and compared on
+-- every request: bumping it (password change, admin reset, "sign out everywhere")
+-- invalidates every cookie minted at the old version. Defaults to 0 so existing
+-- cookies (which carry no version → read as 0) stay valid until the first bump —
+-- no mass logout on deploy.
+--
+-- Idempotent; the boot migrator auto-applies it. Hand-authored (snapshots stop at
+-- 0014).
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "token_version" integer DEFAULT 0 NOT NULL;

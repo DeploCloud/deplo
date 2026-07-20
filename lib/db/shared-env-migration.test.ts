@@ -83,8 +83,15 @@ before(async () => {
   const files = readdirSync(MIG_DIR)
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();
-  const pre27 = files.filter((f) => Number(f.slice(0, 4)) < 27);
-  const from27 = files.filter((f) => Number(f.slice(0, 4)) >= 27);
+  // token_version (0043) adds a `users` column that seedIdentity's live-drizzle
+  // insert names, so it must exist before the pre-0027 seed. It only depends on
+  // `users` (0001) and touches nothing 0027's backfill reads, so apply it in the
+  // pre-seed batch and exclude it from the post-0027 replay. (Any future
+  // post-freeze column on a seeded table needs the same treatment.)
+  const preSeed = (f: string): boolean =>
+    Number(f.slice(0, 4)) < 27 || f.startsWith("0043_");
+  const pre27 = files.filter(preSeed);
+  const from27 = files.filter((f) => !preSeed(f));
 
   for (const f of pre27) await applyFile(f);
 

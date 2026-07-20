@@ -366,18 +366,29 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   // A bearer-token request (the public GraphQL API) supplies its principal via
   // the request-context override and carries no session cookie.
   const override = currentIdentity();
-  const uid = override
-    ? override.userId
-    : verifySession((await cookies()).get(SESSION_COOKIE)?.value)?.uid;
+  const session = override
+    ? null
+    : verifySession((await cookies()).get(SESSION_COOKIE)?.value);
+  const uid = override ? override.userId : session?.uid;
   if (!uid) return null;
   const rows = await getDb()
-    .select({ ...PUBLIC_USER_COLS, suspended: usersTable.suspended })
+    .select({
+      ...PUBLIC_USER_COLS,
+      suspended: usersTable.suspended,
+      tokenVersion: usersTable.tokenVersion,
+    })
     .from(usersTable)
     .where(eq(usersTable.id, uid))
     .limit(1);
   const user = rows[0];
   // A suspended account loses access immediately, even with a live session.
   if (!user || user.suspended) return null;
+  // Session revocation: a cookie is valid only while its stamped token_version
+  // still matches the user's. A bump (password change / reset / sign-out-
+  // everywhere) invalidates every older cookie. Absent `v` (pre-0043 cookie) is
+  // read as 0, matching the column default, so existing sessions survive until
+  // the first bump. Bearer overrides carry no session version and are unaffected.
+  if (!override && (session?.v ?? 0) !== user.tokenVersion) return null;
   return toPublic(user);
 });
 
@@ -404,9 +415,20 @@ export async function assertUser(): Promise<PublicUser> {
   return user;
 }
 
-async function setSessionCookie(userId: string) {
+/** (Re-)issue the caller's deplo_session cookie for `userId`, stamping the user's
+ *  current token_version. Exported so the data layer can refresh the initiator's
+ *  own cookie right after a token_version bump (e.g. changePassword) — otherwise
+ *  the bump would sign the initiator out along with the sessions it revokes. */
+export async function setSessionCookie(userId: string) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
-  const token = signSession({ uid: userId, exp });
+  // Stamp the user's CURRENT token_version into the cookie so a later bump
+  // (password change / admin reset / sign-out-everywhere) invalidates it.
+  const vRow = await getDb()
+    .select({ v: usersTable.tokenVersion })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  const token = signSession({ uid: userId, exp, v: vRow[0]?.v ?? 0 });
   const store = await cookies();
   // Secure must track the *actual* scheme, not NODE_ENV: a production instance
   // served over http://<ip> (no domain/TLS yet) would otherwise drop the cookie.

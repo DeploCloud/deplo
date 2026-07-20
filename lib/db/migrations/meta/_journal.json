@@ -295,6 +295,20 @@
       "when": 1784584200000,
       "tag": "0041_drop_development_env_target",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1784670600000,
+      "tag": "0042_index_activity_backup_fks",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1784670700000,
+      "tag": "0043_add_user_token_version",
+      "breakpoints": true
     }
   ]
 }

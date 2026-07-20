@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { users as usersTable } from "../db/schema/control-plane";
-import { assertUser } from "../auth";
+import { assertUser, setSessionCookie } from "../auth";
 import { hashPassword, verifyPassword } from "../crypto";
 
 /** Update the current user's display name. */
@@ -76,6 +76,21 @@ export async function changePassword(input: {
     throw new Error("Current password is incorrect");
   await db
     .update(usersTable)
-    .set({ passwordHash: hashPassword(input.newPassword) })
+    .set({
+      passwordHash: hashPassword(input.newPassword),
+      // Revoke every outstanding session: a changed password must log out anyone
+      // holding a stolen/old cookie. The initiator's own cookie is re-issued
+      // below so THEY stay signed in.
+      tokenVersion: sql`${usersTable.tokenVersion} + 1`,
+    })
     .where(eq(usersTable.id, user.id));
+  // Best-effort: re-stamp the initiator's cookie at the new token_version so THEY
+  // stay signed in while other sessions die. Outside a request scope (tests) or on
+  // any failure the change still stands and the initiator simply re-authenticates
+  // with the new password — a safe fallback, never a leak.
+  try {
+    await setSessionCookie(user.id);
+  } catch {
+    /* no request scope / cookie write unavailable — logged out is fine */
+  }
 }

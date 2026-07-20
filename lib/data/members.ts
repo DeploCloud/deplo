@@ -798,7 +798,14 @@ export async function updateUserAdmin(input: {
         suspended: input.suspended,
         canExposePorts: input.canExposePorts,
         canMountHostVolumes: input.canMountHostVolumes,
-        ...(newPassword ? { passwordHash: hashPassword(newPassword) } : {}),
+        // An admin password reset also revokes the target's outstanding sessions
+        // (they no longer control the credential), by bumping token_version.
+        ...(newPassword
+          ? {
+              passwordHash: hashPassword(newPassword),
+              tokenVersion: sql`${usersTable.tokenVersion} + 1`,
+            }
+          : {}),
       })
       .where(eq(usersTable.id, input.userId));
   });

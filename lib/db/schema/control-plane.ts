@@ -96,6 +96,10 @@ export const users = pgTable(
       .notNull()
       .default(false),
     avatarColor: text("avatar_color").notNull(),
+    // Bumped to invalidate every outstanding deplo_session cookie for this user
+    // (password change / admin reset / sign-out-everywhere). The signed session
+    // payload carries this value; a mismatch fails auth (migration 0043).
+    tokenVersion: integer("token_version").notNull().default(0),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
@@ -1303,6 +1307,11 @@ export const backupRuns = pgTable(
     index("backup_runs_running_idx")
       .on(t.status)
       .where(sql`${t.status} = 'running'`),
+    // FK columns are ON DELETE SET NULL — index them so a delete's cascade is a
+    // lookup, not a full-table scan (migration 0042).
+    index("backup_runs_app_idx").on(t.appId),
+    index("backup_runs_database_idx").on(t.databaseId),
+    index("backup_runs_destination_idx").on(t.destinationId),
   ],
 );
 
@@ -1375,6 +1384,9 @@ export const activities = pgTable(
       t.createdAt.desc(),
       t.seq.desc(),
     ),
+    // app_id is ON DELETE SET NULL — index it so deleting an app doesn't scan the
+    // whole activity history (migration 0042).
+    index("activities_app_idx").on(t.appId),
   ],
 );
 
