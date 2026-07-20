@@ -425,6 +425,27 @@ export function cleanupScopeToJSON(object: CleanupScope): string {
   }
 }
 
+export interface RenewalCSRRequest {
+}
+
+export interface RenewalCSRResponse {
+  /**
+   * PEM-encoded PKCS#10 CSR for a freshly generated keypair. The matching private
+   * key is held PENDING on the agent and never leaves the host.
+   */
+  csrPem: string;
+}
+
+export interface InstallRenewedCertRequest {
+  /** The CA-signed leaf certificate (PEM) produced from the last RenewalCSR's CSR. */
+  certPem: string;
+  /**
+   * The CA certificate (PEM); the agent refreshes its trust pool too if non-empty.
+   * Empty ⇒ keep the existing CA (the common case — only the leaf rotates).
+   */
+  caPem: string;
+}
+
 export interface HelloRequest {
   /** The contract version the control plane speaks. */
   contractVersion: ContractVersion;
@@ -995,9 +1016,11 @@ export interface SelfUpdateResponse {
   version: string;
   /**
    * True once the new binary is in place and the agent is about to restart to
-   * exec it. The control plane uses this as the "update applied" signal; the
-   * agent then exits so its supervisor (systemd Restart=on-failure) re-execs the
-   * freshly-swapped binary, which reuses the existing mTLS materials.
+   * exec it. The control plane uses this as the "update applied" signal; shortly
+   * after replying the agent re-execs ITSELF via syscall.Exec — the process is
+   * REPLACED in place (same PID, same argv, same env), it does NOT exit, so no
+   * supervisor (systemd Restart=on-failure) is involved. The freshly-swapped
+   * binary reuses the existing mTLS materials.
    */
   restarting: boolean;
 }
@@ -1784,6 +1807,197 @@ export interface MetricsSample {
    */
   source: string;
 }
+
+function createBaseRenewalCSRRequest(): RenewalCSRRequest {
+  return {};
+}
+
+export const RenewalCSRRequest: MessageFns<RenewalCSRRequest> = {
+  encode(_: RenewalCSRRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RenewalCSRRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRenewalCSRRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): RenewalCSRRequest {
+    return {};
+  },
+
+  toJSON(_: RenewalCSRRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RenewalCSRRequest>, I>>(base?: I): RenewalCSRRequest {
+    return RenewalCSRRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RenewalCSRRequest>, I>>(_: I): RenewalCSRRequest {
+    const message = createBaseRenewalCSRRequest();
+    return message;
+  },
+};
+
+function createBaseRenewalCSRResponse(): RenewalCSRResponse {
+  return { csrPem: "" };
+}
+
+export const RenewalCSRResponse: MessageFns<RenewalCSRResponse> = {
+  encode(message: RenewalCSRResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.csrPem !== "") {
+      writer.uint32(10).string(message.csrPem);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RenewalCSRResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRenewalCSRResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.csrPem = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RenewalCSRResponse {
+    return {
+      csrPem: isSet(object.csrPem)
+        ? globalThis.String(object.csrPem)
+        : isSet(object.csr_pem)
+        ? globalThis.String(object.csr_pem)
+        : "",
+    };
+  },
+
+  toJSON(message: RenewalCSRResponse): unknown {
+    const obj: any = {};
+    if (message.csrPem !== "") {
+      obj.csrPem = message.csrPem;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RenewalCSRResponse>, I>>(base?: I): RenewalCSRResponse {
+    return RenewalCSRResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RenewalCSRResponse>, I>>(object: I): RenewalCSRResponse {
+    const message = createBaseRenewalCSRResponse();
+    message.csrPem = object.csrPem ?? "";
+    return message;
+  },
+};
+
+function createBaseInstallRenewedCertRequest(): InstallRenewedCertRequest {
+  return { certPem: "", caPem: "" };
+}
+
+export const InstallRenewedCertRequest: MessageFns<InstallRenewedCertRequest> = {
+  encode(message: InstallRenewedCertRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.certPem !== "") {
+      writer.uint32(10).string(message.certPem);
+    }
+    if (message.caPem !== "") {
+      writer.uint32(18).string(message.caPem);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InstallRenewedCertRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseInstallRenewedCertRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.certPem = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.caPem = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): InstallRenewedCertRequest {
+    return {
+      certPem: isSet(object.certPem)
+        ? globalThis.String(object.certPem)
+        : isSet(object.cert_pem)
+        ? globalThis.String(object.cert_pem)
+        : "",
+      caPem: isSet(object.caPem)
+        ? globalThis.String(object.caPem)
+        : isSet(object.ca_pem)
+        ? globalThis.String(object.ca_pem)
+        : "",
+    };
+  },
+
+  toJSON(message: InstallRenewedCertRequest): unknown {
+    const obj: any = {};
+    if (message.certPem !== "") {
+      obj.certPem = message.certPem;
+    }
+    if (message.caPem !== "") {
+      obj.caPem = message.caPem;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InstallRenewedCertRequest>, I>>(base?: I): InstallRenewedCertRequest {
+    return InstallRenewedCertRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InstallRenewedCertRequest>, I>>(object: I): InstallRenewedCertRequest {
+    const message = createBaseInstallRenewedCertRequest();
+    message.certPem = object.certPem ?? "";
+    message.caPem = object.caPem ?? "";
+    return message;
+  },
+};
 
 function createBaseHelloRequest(): HelloRequest {
   return { contractVersion: 0, controlPlaneVersion: "" };
@@ -11810,8 +12024,10 @@ export const AgentService = {
    * GitHub release the install path uses) and sends the per-arch download URL +
    * its sha256 here; the agent downloads, VERIFIES the checksum (refusing a
    * mismatch, exactly like the installer's P2 guard), atomically swaps its own
-   * on-disk binary, replies, then restarts so systemd re-execs the new binary
-   * (which finds the existing materials and serves straight away — no call-home).
+   * on-disk binary, replies, then re-execs ITSELF (syscall.Exec — same PID, same
+   * argv, same env; no exit, so a supervisor's Restart policy is not involved).
+   * The re-execed binary finds the existing materials and serves straight away —
+   * no call-home.
    * INVARIANT: trust material is out of scope here; a SelfUpdate can change the
    * code but never the identity. Returns FAILED_PRECONDITION when the agent can't
    * locate/replace its own binary (e.g. a read-only install dir), so the control
@@ -12184,6 +12400,34 @@ export const AgentService = {
     responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
     responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
   },
+  /**
+   * Generate a fresh keypair + CSR for renewal; the new private key is held
+   * PENDING on the host (never sent) until InstallRenewedCert confirms the match.
+   */
+  renewalCsr: {
+    path: "/deplo.agent.v1.Agent/RenewalCSR" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: RenewalCSRRequest): Buffer => Buffer.from(RenewalCSRRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RenewalCSRRequest => RenewalCSRRequest.decode(value),
+    responseSerialize: (value: RenewalCSRResponse): Buffer => Buffer.from(RenewalCSRResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): RenewalCSRResponse => RenewalCSRResponse.decode(value),
+  },
+  /**
+   * Install the CA-signed leaf produced from the last RenewalCSR: the agent
+   * verifies the cert matches the pending key, atomically swaps cert+key on disk,
+   * and hot-reloads its TLS config so new handshakes present the fresh cert.
+   */
+  installRenewedCert: {
+    path: "/deplo.agent.v1.Agent/InstallRenewedCert" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: InstallRenewedCertRequest): Buffer =>
+      Buffer.from(InstallRenewedCertRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): InstallRenewedCertRequest => InstallRenewedCertRequest.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
@@ -12372,8 +12616,10 @@ export interface AgentServer extends UntypedServiceImplementation {
    * GitHub release the install path uses) and sends the per-arch download URL +
    * its sha256 here; the agent downloads, VERIFIES the checksum (refusing a
    * mismatch, exactly like the installer's P2 guard), atomically swaps its own
-   * on-disk binary, replies, then restarts so systemd re-execs the new binary
-   * (which finds the existing materials and serves straight away — no call-home).
+   * on-disk binary, replies, then re-execs ITSELF (syscall.Exec — same PID, same
+   * argv, same env; no exit, so a supervisor's Restart policy is not involved).
+   * The re-execed binary finds the existing materials and serves straight away —
+   * no call-home.
    * INVARIANT: trust material is out of scope here; a SelfUpdate can change the
    * code but never the identity. Returns FAILED_PRECONDITION when the agent can't
    * locate/replace its own binary (e.g. a read-only install dir), so the control
@@ -12519,6 +12765,17 @@ export interface AgentServer extends UntypedServiceImplementation {
   getTunnel: handleUnaryCall<TunnelRequest, TunnelStatus>;
   /** Stop the tunnel process (the CLI download + auth token are kept). */
   stopTunnel: handleUnaryCall<TunnelRequest, StackResult>;
+  /**
+   * Generate a fresh keypair + CSR for renewal; the new private key is held
+   * PENDING on the host (never sent) until InstallRenewedCert confirms the match.
+   */
+  renewalCsr: handleUnaryCall<RenewalCSRRequest, RenewalCSRResponse>;
+  /**
+   * Install the CA-signed leaf produced from the last RenewalCSR: the agent
+   * verifies the cert matches the pending key, atomically swaps cert+key on disk,
+   * and hot-reloads its TLS config so new handshakes present the fresh cert.
+   */
+  installRenewedCert: handleUnaryCall<InstallRenewedCertRequest, StackResult>;
 }
 
 export interface AgentClient extends Client {
@@ -12908,8 +13165,10 @@ export interface AgentClient extends Client {
    * GitHub release the install path uses) and sends the per-arch download URL +
    * its sha256 here; the agent downloads, VERIFIES the checksum (refusing a
    * mismatch, exactly like the installer's P2 guard), atomically swaps its own
-   * on-disk binary, replies, then restarts so systemd re-execs the new binary
-   * (which finds the existing materials and serves straight away — no call-home).
+   * on-disk binary, replies, then re-execs ITSELF (syscall.Exec — same PID, same
+   * argv, same env; no exit, so a supervisor's Restart policy is not involved).
+   * The re-execed binary finds the existing materials and serves straight away —
+   * no call-home.
    * INVARIANT: trust material is out of scope here; a SelfUpdate can change the
    * code but never the identity. Returns FAILED_PRECONDITION when the agent can't
    * locate/replace its own binary (e.g. a read-only install dir), so the control
@@ -13383,6 +13642,45 @@ export interface AgentClient extends Client {
   ): ClientUnaryCall;
   stopTunnel(
     request: TunnelRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  /**
+   * Generate a fresh keypair + CSR for renewal; the new private key is held
+   * PENDING on the host (never sent) until InstallRenewedCert confirms the match.
+   */
+  renewalCsr(
+    request: RenewalCSRRequest,
+    callback: (error: ServiceError | null, response: RenewalCSRResponse) => void,
+  ): ClientUnaryCall;
+  renewalCsr(
+    request: RenewalCSRRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: RenewalCSRResponse) => void,
+  ): ClientUnaryCall;
+  renewalCsr(
+    request: RenewalCSRRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: RenewalCSRResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Install the CA-signed leaf produced from the last RenewalCSR: the agent
+   * verifies the cert matches the pending key, atomically swaps cert+key on disk,
+   * and hot-reloads its TLS config so new handshakes present the fresh cert.
+   */
+  installRenewedCert(
+    request: InstallRenewedCertRequest,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  installRenewedCert(
+    request: InstallRenewedCertRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  installRenewedCert(
+    request: InstallRenewedCertRequest,
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: StackResult) => void,

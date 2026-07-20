@@ -112,6 +112,31 @@ export async function register(): Promise<void> {
   } catch (e) {
     console.error("[deplo] metrics stream supervisor startup failed:", e);
   }
+  // Agent mTLS cert renewal: an agent leaf lives ~365 days, so twice a day sweep
+  // the fleet and renew any leaf within 30 days of expiry (the agent hot-swaps it
+  // without a restart). Off the hot path; a failure just retries next tick with
+  // the still-valid cert pinned, so this can never black out the fleet. Scheduled
+  // ONCE (guarded across dev HMR re-runs) and unref'd so it never keeps the
+  // process alive.
+  {
+    const g = globalThis as { __deploCertSweep?: boolean };
+    if (!g.__deploCertSweep) {
+      g.__deploCertSweep = true;
+      try {
+        const { sweepExpiringAgentCerts } = await import(
+          "./lib/agent/cert-renewal"
+        );
+        const run = () =>
+          void sweepExpiringAgentCerts().catch((e) =>
+            console.error("[cert-renewal] sweep failed:", e),
+          );
+        setInterval(run, 12 * 60 * 60 * 1000).unref?.();
+        setTimeout(run, 60_000).unref?.();
+      } catch (e) {
+        console.error("[deplo] cert-renewal sweep startup failed:", e);
+      }
+    }
+  }
   // Teardown, registered OUTSIDE the fragile blocks above so a failed start can
   // never skip it. Unlike the interval-based collector this replaced, the metrics
   // streams MUST be torn down: each holds an open gRPC channel here and a ticker

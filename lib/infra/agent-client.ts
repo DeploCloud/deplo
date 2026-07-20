@@ -237,6 +237,17 @@ export interface AgentConnection {
     env: Record<string, string>;
     mounts: { path: string; content: string }[];
   }): Promise<{ ok: boolean; error: string }>;
+  /** Cert renewal, step 1: ask the agent for a fresh CSR (it generates a new
+   *  keypair whose private key never leaves the host). Gated on the "cert-renewal"
+   *  Hello capability; a too-old agent rejects with UNIMPLEMENTED. */
+  renewalCsr(): Promise<{ csrPem: string }>;
+  /** Cert renewal, step 2: hand the agent the CA-signed leaf produced from its
+   *  last CSR; the agent verifies it matches the pending key and hot-swaps its TLS
+   *  cert without a restart. `caPem` empty ⇒ the CA is unchanged (leaf-only rotate). */
+  installRenewedCert(req: {
+    certPem: string;
+    caPem: string;
+  }): Promise<{ ok: boolean; error: string }>;
   /** Stream a named Docker volume's gzipped tar OUT of this (source) host, for a
    *  cross-host server move. Yields raw byte chunks until the stream ends. The
    *  caller must have QUIESCED the source (stopped the owning stack) first so the
@@ -1069,6 +1080,30 @@ function dial(target: DialTarget): AgentConnection {
             env: req.env,
             mounts: req.mounts,
           },
+          new Metadata(),
+          { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({ ok: resp.ok, error: resp.error }),
+        );
+      });
+    },
+    renewalCsr() {
+      return new Promise<{ csrPem: string }>((resolve, reject) => {
+        client.renewalCsr(
+          {},
+          new Metadata(),
+          { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve({ csrPem: resp.csrPem }),
+        );
+      });
+    },
+    installRenewedCert(req: { certPem: string; caPem: string }) {
+      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
+        client.installRenewedCert(
+          { certPem: req.certPem, caPem: req.caPem },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
