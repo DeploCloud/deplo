@@ -92,6 +92,9 @@ export function proxy(request: NextRequest) {
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), browsing-topics=()",
   );
+  // Private panel: never let any page enter a search index (belt-and-suspenders
+  // with app/robots.ts and the `robots` metadata in app/layout.tsx).
+  response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   if (isHttps) {
     response.headers.set(
       "Strict-Transport-Security",
@@ -105,7 +108,7 @@ export const config = {
   matcher: [
     {
       source:
-        "/((?!api|_next/static|_next/image|favicon.ico|install|uninstall).*)",
+        "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|install|uninstall).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },
