@@ -27,6 +27,7 @@ import type { ConsoleInstance } from "@/lib/data/console";
 import { stripAnsi } from "@/lib/ansi";
 import { mergeLogBurst } from "@/lib/logs/merge";
 import { detectLogLevel } from "@/lib/log-level-detect";
+import type { LogLevel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Status = "connecting" | "live" | "reattaching" | "ended" | "error";
@@ -49,6 +50,34 @@ const MAX_REATTACHES = 60;
  *  output arriving in this window as that replay and merge it; later output is
  *  live and appended straight. */
 const REPLAY_WINDOW_MS = 3_000;
+/** Retention cap for the log buffer. A chatty app emits tens of MB; keeping it
+ *  all OOMs the tab, so only the newest tail is retained (drop-oldest, cut on
+ *  a line boundary) — the latest logs are what the pane is for. Copy/Download
+ *  hand off the same capped tail. */
+const MAX_BUFFER_CHARS = 512_000;
+/** Hard ceiling on rendered rows, so a flood of tiny lines can't blow up the
+ *  DOM even inside the char cap. */
+const MAX_RENDER_LINES = 5_000;
+/** A single mega-line (a minified bundle dumped to stdout) is classified from
+ *  its head only — the level regexes must not scan megabytes per line. */
+const MAX_DETECT_CHARS = 2_000;
+
+/** Trim `text` to the newest {@link MAX_BUFFER_CHARS}, cutting on a line
+ *  boundary so the pane never shows a torn head line. */
+function capBuffer(text: string): string {
+  if (text.length <= MAX_BUFFER_CHARS) return text;
+  const tail = text.slice(-MAX_BUFFER_CHARS);
+  const nl = tail.indexOf("\n");
+  return nl === -1 ? tail : tail.slice(nl + 1);
+}
+
+/** Classify one raw line, scanning only a bounded head (a pathological line is
+ *  still RENDERED whole; only the level heuristic is capped). */
+function classifyLine(text: string): { level: LogLevel; text: string } {
+  const sample =
+    text.length > MAX_DETECT_CHARS ? text.slice(0, MAX_DETECT_CHARS) : text;
+  return { level: detectLogLevel(stripAnsi(sample)), text };
+}
 
 /**
  * Live runtime logs (`docker logs -f`) for an app's container.
@@ -88,6 +117,11 @@ export function ContainerLogs({
   const [status, setStatus] = React.useState<Status>("connecting");
   const [failure, setFailure] = React.useState<string | null>(null);
   const [output, setOutput] = React.useState("");
+  // Parsed, levelled lines for render — updated incrementally by
+  // `publishLines` below, never re-split from the whole buffer per chunk.
+  const [lines, setLines] = React.useState<
+    { level: LogLevel; text: string }[]
+  >([]);
   // Auto-follow keeps the view pinned to the newest line. Turned off when the
   // user scrolls up, back on when they scroll to the bottom (or hit Resume).
   const [follow, setFollow] = React.useState(true);
@@ -106,6 +140,51 @@ export function ContainerLogs({
   const replayBaseRef = React.useRef<string | null>(null);
   const replayBurstRef = React.useRef("");
   const replayUntilRef = React.useRef(0);
+  // Incremental parse state for `publishLines`: the exact buffer the last pass
+  // saw, how far into it complete lines were parsed, and those parsed lines —
+  // so a new chunk parses only the appended tail instead of re-splitting the
+  // whole buffer (O(n²) across a chatty stream).
+  const parseRef = React.useRef<{
+    text: string;
+    parsedTo: number;
+    lines: { level: LogLevel; text: string }[];
+  }>({ text: "", parsedTo: 0, lines: [] });
+
+  // Split the buffer into lines with a level inferred per line (Docker keeps
+  // no severity) and publish them for render. The buffer normally grows by
+  // appending, so parsing resumes where the last pass stopped; a replay merge
+  // or a cap trim that rewrote the head instead fails the prefix check and
+  // falls back to re-parsing the (capped, so bounded) buffer from scratch. The
+  // trailing partial line (no newline yet) is rendered but never stored — it
+  // reclassifies on the next chunk, once more of it has arrived.
+  const publishLines = React.useCallback(() => {
+    const text = outputRef.current;
+    if (!text) {
+      parseRef.current = { text: "", parsedTo: 0, lines: [] };
+      setLines([]);
+      return;
+    }
+    const prev = parseRef.current;
+    const appended = prev.text !== "" && text.startsWith(prev.text);
+    const acc = appended ? prev.lines : [];
+    let from = appended ? prev.parsedTo : 0;
+    const lastNl = text.lastIndexOf("\n");
+    if (lastNl >= from) {
+      // Blank interior lines are preserved so spacing survives; the final "\n"
+      // is excluded, so no trailing empty entry appears.
+      for (const line of text.slice(from, lastNl).split("\n")) {
+        acc.push(classifyLine(line));
+      }
+      from = lastNl + 1;
+    }
+    // Drop-oldest past the row ceiling, so a flood of tiny lines stays bounded.
+    if (acc.length > MAX_RENDER_LINES) {
+      acc.splice(0, acc.length - MAX_RENDER_LINES);
+    }
+    parseRef.current = { text, parsedTo: from, lines: acc };
+    const partial = text.slice(from);
+    setLines(partial ? [...acc, classifyLine(partial)] : [...acc]);
+  }, []);
   // Consecutive auto-reattaches; reset by any manual action or new output.
   const reattachCount = React.useRef(0);
 
@@ -153,12 +232,21 @@ export function ContainerLogs({
           replayBaseRef.current!,
           replayBurstRef.current,
         );
+        // A "replay" bigger than the whole retention cap is not docker's ~500
+        // replayed lines — it is live flood. Close the window so the burst
+        // accumulator cannot grow without bound.
+        if (replayBurstRef.current.length > MAX_BUFFER_CHARS) {
+          replayBaseRef.current = null;
+          replayBurstRef.current = "";
+        }
       } else {
         replayBaseRef.current = null;
         replayBurstRef.current = "";
         outputRef.current += text;
       }
+      outputRef.current = capBuffer(outputRef.current);
       setOutput(outputRef.current);
+      publishLines();
     };
 
     es.addEventListener("session", (e) => {
@@ -226,7 +314,7 @@ export function ContainerLogs({
       }
       sessionId.current = null;
     };
-  }, [base, active.name, attempt]);
+  }, [base, active.name, attempt, publishLines]);
 
   // Pin to the bottom on new output while following. Flag the scroll as
   // programmatic so onScroll doesn't mistake it for the user scrolling away.
@@ -238,21 +326,9 @@ export function ContainerLogs({
     el.scrollTop = el.scrollHeight;
   }, [output, follow]);
 
-  // Container logs arrive as a raw byte stream with no severity (Docker keeps
-  // none), so we split the buffer into lines and infer a level per line —
-  // letting the runtime pane render the same level pills/tints as the build-log
-  // stream. The RAW line (ANSI escapes and all) goes to LogRow, which parses
-  // SGR colors into styled runs; only the level heuristic gets the stripped
-  // text (escape codes would confuse its regexes). A trailing partial line (no
-  // newline yet) is still shown; it just reclassifies as more bytes arrive.
-  const lines = React.useMemo(() => {
-    if (!output) return [];
-    // Keep a trailing empty entry out (split on "\n" yields one after a final
-    // newline); blank interior lines are preserved so spacing survives.
-    const raw = output.split("\n");
-    if (raw[raw.length - 1] === "") raw.pop();
-    return raw.map((text) => ({ level: detectLogLevel(stripAnsi(text)), text }));
-  }, [output]);
+  // The RAW line (ANSI escapes and all) goes to LogRow, which parses SGR
+  // colors into styled runs; only the level heuristic (in `publishLines`
+  // above) gets the stripped text (escape codes would confuse its regexes).
 
   // Copy/download hand off PLAIN text — pasting `\x1b[33m` into an editor or a
   // bug report is exactly the garbage the pane itself no longer shows.
@@ -275,6 +351,7 @@ export function ContainerLogs({
   function resetStream() {
     setOutput("");
     outputRef.current = "";
+    publishLines();
     replayBaseRef.current = null;
     replayBurstRef.current = "";
     reattachCount.current = 0;
@@ -418,6 +495,7 @@ export function ContainerLogs({
               onClick={() => {
                 setOutput("");
                 outputRef.current = "";
+                publishLines();
               }}
               className="h-7 gap-1.5 px-2 text-xs"
             >

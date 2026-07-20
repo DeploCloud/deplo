@@ -49,3 +49,7 @@ next-env.d.ts
 /package-lock.json
 # Local control-plane run log (see docs/agents/fleet-rollout.md)
 control-plane.log
+
+# Audit report work file (not versioned)
+DEPLO_TEST_OPUS.md
+DEPLO_TEST_FABLE.md

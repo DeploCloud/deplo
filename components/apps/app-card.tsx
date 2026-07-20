@@ -34,11 +34,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { MenuSubTooltip, SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
-import { StatusDot } from "@/components/shared/status-badge";
+import {
+  AppLiveStatusProvider,
+  useLiveStatus,
+} from "@/components/apps/app-live-status";
+import { AppStatusDot } from "@/components/apps/app-status-dot";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppSummary } from "@/lib/data/apps";
+import type { AppStatus } from "@/lib/types";
 
 /**
  * The menu-primitive set used to render the card's action list once and reuse it
@@ -61,6 +66,48 @@ const DROPDOWN_KIT: MenuKit = {
   SubContent: DropdownMenuSubContent,
   Separator: DropdownMenuSeparator,
 };
+
+/**
+ * The card's status dot on the LIVE path the app header uses: an
+ * {@link AppLiveStatusProvider} seeded from the server-rendered summary feeds
+ * {@link AppStatusDot}, which folds the appStatus subscription with the agent
+ * runtime poll — mirroring DatabaseCard's DatabaseStatusDot, so the Overview
+ * never shows a stale green for a container that crashed or was stopped
+ * outside deplo.
+ */
+function LiveCardStatusDot({ project }: { project: AppSummary }) {
+  return (
+    <AppLiveStatusProvider
+      initial={{
+        id: project.id,
+        slug: project.slug,
+        status: project.status,
+        productionUrl: project.productionUrl,
+        latestDeploymentId: project.latestDeployment?.id ?? null,
+        latestDeploymentStatus: project.latestDeployment?.status ?? null,
+      }}
+    >
+      <LiveCardDotInner fallback={project.status} />
+    </AppLiveStatusProvider>
+  );
+}
+
+/** Inside the provider: the dot plus a hover word that tracks the LIVE status
+ *  (the dot's colour carries the state; this only spells it out on hover). */
+function LiveCardDotInner({ fallback }: { fallback: AppStatus }) {
+  const status = useLiveStatus(fallback);
+  const statusLabel =
+    status === "idle"
+      ? "Stopped"
+      : status === "active"
+        ? "Running"
+        : status.charAt(0).toUpperCase() + status.slice(1);
+  return (
+    <span title={statusLabel} className="inline-flex items-center">
+      <AppStatusDot status={status} />
+    </span>
+  );
+}
 
 export function AppCard({
   project,
@@ -105,14 +152,6 @@ export function AppCard({
   // overview, so a refresh after each action keeps the menu in sync).
   const stopped = project.status === "idle";
   const stopping = project.status === "stopping";
-  // Friendly label for the status dot's hover tooltip. The visible text badge is
-  // gone — the dot's colour carries the state; this only spells it out on hover.
-  const statusLabel =
-    project.status === "idle"
-      ? "Stopped"
-      : project.status === "active"
-        ? "Running"
-        : project.status.charAt(0).toUpperCase() + project.status.slice(1);
 
   // Clicking anywhere on the card opens the app overview. The latest commit
   // is shown on the card itself (compact) rather than deep-linking to it.
@@ -413,10 +452,10 @@ export function AppCard({
   const actions = (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
       {/* App status as a bare dot (green / amber / red / grey), no label —
-          the dot's colour is the status; hovering it shows the word. */}
-      <span title={statusLabel} className="inline-flex items-center">
-        <StatusDot status={project.status} />
-      </span>
+          the dot's colour is the status; hovering it shows the word. Folded
+          LIVE (status subscription + runtime poll), never the stored status,
+          so a crashed or externally-stopped app can't sit green here. */}
+      <LiveCardStatusDot project={project} />
       {/* Drag handle is taken out of the flow at rest (display:none) so it
           leaves no empty gap; it appears on hover / keyboard focus. The row's
           single gap-1 then spaces all three icons identically. Going from

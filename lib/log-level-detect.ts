@@ -64,7 +64,11 @@ export function detectLogLevel(message: string): LogLevel {
     ) || // `level=error`
     /\b(?:uncaught|unhandled)\s+(?:exception|error|rejection)\b/i.test(m) ||
     /(?:^|\s)(?:exception|traceback)\b/i.test(m) || // Python `Traceback`, Java `Exception`
-    /^\s*at\s+[\w.$]+\s*\(?.*:\d+(?::\d+)?\)?/.test(m) || // JS/Java stack frame
+    // JS/Java stack frame. Every quantifier after the leading anchor is
+    // bounded: the unbounded `[\w.$]+\s*\(?.*:` form backtracked O(n²) on an
+    // adversarial `at aaaa…` line with no `:<digit>`, and this runs per raw
+    // container log line client-side. Real frames fit the bounds comfortably.
+    /^\s*at\s+[\w.$]{1,200}\s{0,8}\(?[^\n]{0,256}:\d+(?::\d+)?\)?/.test(m) ||
     /\b[A-Za-z.]*(?:Error|Exception)\b\s*:/.test(m) || // `TypeError:` `IOException:`
     /\b(?:errno|code)\s*[:=]\s*(?:-?\d+|E[A-Z]+)\b/.test(m) // `errno=2` `code: ECONNREFUSED`
   ) {
