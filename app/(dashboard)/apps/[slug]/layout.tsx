@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { truncate } from "@/lib/utils";
-import { isDevEligible } from "@/lib/data/dev";
 import { appFilesExist } from "@/lib/data/app-files";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -119,7 +118,6 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
       <AppNavSync
         slug={slug}
         running={project.status === "active"}
-        devEligible={isDevEligible(project.source)}
         showFiles={showFiles}
       />
 

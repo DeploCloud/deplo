@@ -24,13 +24,6 @@ enum ActivityType {
   s3
 }
 
-input AddDevSshUserInput {
-  appId: String!
-  name: String!
-  password: String
-  publicKey: String
-}
-
 input AddMemberInput {
   capabilities: [Capability!]
   role: Role!
@@ -543,43 +536,6 @@ enum DeploymentStatus {
   ready
 }
 
-enum DevImageKind {
-  custom
-  preset
-}
-
-"""A client-safe view of an app's dev config + preview URL."""
-type DevInfo {
-  devCommand: String
-  eligible: Boolean
-  enabled: Boolean
-  image: String
-  imageKind: DevImageKind
-  latestStartAt: String
-  port: Int
-  previewEnabled: Boolean
-  previewUrl: String
-  resolvedImage: String
-  status: DevStatus
-}
-
-"""An SSH credential for an app's dev container."""
-type DevSshUser {
-  createdAt: String
-  hasPassword: Boolean
-  id: ID
-  publicKey: String
-  username: String
-}
-
-enum DevStatus {
-  error
-  off
-  running
-  starting
-  stopped
-}
-
 """
 The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Until it is saved once it reads as the defaults — ENABLED, daily at 04:00 UTC, every scope — so a fresh install sweeps its hosts without anyone finding this setting first; a saved row (including an explicit disable) always wins.
 """
@@ -766,7 +722,6 @@ input EnvEntryInput {
 }
 
 enum EnvTarget {
-  development
   preview
   production
 }
@@ -1064,7 +1019,6 @@ type Mutation {
   Add a basic-auth user to an app. Applies to all its domains on the next deploy or Reload.
   """
   addBasicAuthUser(appId: String!, password: String!, username: String!): BasicAuthUser
-  addDevSshUser(input: AddDevSshUserInput!): DevSshUser
   addDomain(appId: String!, config: DomainConfigInput, name: String!): Domain
 
   """Add an already-registered user to the active team."""
@@ -1216,16 +1170,9 @@ type Mutation {
   deleteTeam(teamId: String!): Boolean
 
   """
-  Deploy the current dev workspace files to production. Returns the deployment id.
-  """
-  deployDevWorkspace(appId: String!): String
-
-  """
   Auto-detect a favicon (SVG/PNG) from the app's GitHub repo or uploaded files and set it as the logo. Errors if none is found.
   """
   detectAppLogo(id: String!): App
-  disableDev(appId: String!): DevInfo
-  enableDev(appId: String!): DevInfo
 
   """
   Run a command in the app's live container (docker exec). Gated on the deploy capability — this is arbitrary code execution.
@@ -1324,9 +1271,6 @@ type Mutation {
   """Remove a basic-auth user. Returns true."""
   removeBasicAuthUser(id: String!): Boolean
 
-  """Remove a dev SSH user. Returns true."""
-  removeDevSshUser(id: String!): Boolean
-
   """Remove the domain so it stops routing. Returns true."""
   removeDomain(id: String!): Boolean
 
@@ -1378,9 +1322,6 @@ type Mutation {
 
   """Set the team-wide display order of Project containers."""
   reorderProjects(projectIds: [ID!]!): Boolean
-
-  """DESTRUCTIVE: replace the workspace with a fresh copy of the source."""
-  resetDevWorkspace(appId: String!): DevInfo
 
   """
   Restart the database container (stop + start) without re-rendering its compose. Use redeployDatabase to apply pending settings.
@@ -1490,7 +1431,6 @@ type Mutation {
   """Link or unlink a shared variable to one app. Returns true."""
   setSharedVarAppLink(appId: String!, linked: Boolean!, varId: String!): Boolean
   startApp(id: String!): App
-  startDev(appId: String!): DevInfo
 
   """
   Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.
@@ -1499,17 +1439,10 @@ type Mutation {
 
   """Start a stopped plugin's container. Returns true."""
   startPlugin(id: String!): Boolean
-
-  """Start the VS Code tunnel and return the device-login link."""
-  startTunnel(appId: String!): VscodeTunnelInfo
   stopApp(id: String!): App
-  stopDev(appId: String!): DevInfo
 
   """Stop a running plugin's container. Returns true."""
   stopPlugin(id: String!): Boolean
-
-  """Stop the VS Code tunnel (dev container keeps running). Returns true."""
-  stopTunnel(appId: String!): Boolean
 
   """Switch the active team (sets a cookie server-side). Returns true."""
   switchTeam(teamId: String!): Boolean
@@ -1563,7 +1496,6 @@ type Mutation {
   Save the database's per-container resource limits. Applied on the next redeploy or settings-driven reroute.
   """
   updateDatabaseResources(id: String!, limits: ResourceLimitsInput!): Database
-  updateDev(appId: String!, patch: UpdateDevInput!): DevInfo
 
   """
   Save the instance-wide cleanup policy. The cron is rejected (not repaired) when it does not parse — an unparseable schedule is a cleanup that silently never runs while the UI says it is enabled. The numeric bounds are clamped instead: there is no dangerous value of 'keep N images', only an unhelpful one.
@@ -1758,15 +1690,6 @@ type Query {
   deployment(id: String!): Deployment
   deployments(appId: String, environment: DeploymentEnvironment, status: DeploymentStatus): [Deployment!]
 
-  """Whether dev mode is available for a given deploy source."""
-  devEligible(source: DeploySource!): Boolean
-
-  """Dev config + computed preview URL for an app."""
-  devInfo(appId: String!): DevInfo
-
-  """SSH credentials for an app's dev container."""
-  devSshUsers(appId: String!): [DevSshUser!]
-
   """
   The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as the defaults — enabled, daily, every scope.
   """
@@ -1904,9 +1827,6 @@ type Query {
   The default (or chosen) container's shell label, e.g. "/bin/sh" or "raw exec (no shell)".
   """
   shellLabel(input: ShellLabelInput!): String
-
-  """Current VS Code tunnel status for an app."""
-  tunnel(appId: String!): VscodeTunnelInfo
 
   """
   Check the upstream repository for a newer Deplo release; cached for an hour.
@@ -2385,15 +2305,6 @@ input UpdateDatabaseInput {
   serverId: ID
 }
 
-"""Partial dev config patch; only the provided fields are changed."""
-input UpdateDevInput {
-  devCommand: String
-  image: String
-  imageKind: DevImageKind
-  port: Int
-  previewEnabled: Boolean
-}
-
 """
 Save the instance-wide cleanup policy. The scopes are a whole-set replace, so a scope left out is a scope no longer reclaimed.
 """
@@ -2549,14 +2460,4 @@ input VolumeInput {
   projectPath: String
   readOnly: Boolean
   type: String
-}
-
-"""VS Code Remote Tunnel status for an app's dev container."""
-type VscodeTunnelInfo {
-  connected: Boolean
-  log: String
-  loginCode: String
-  loginUrl: String
-  running: Boolean
-  tunnelUrl: String
 }

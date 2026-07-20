@@ -3,7 +3,8 @@ import "server-only";
 /**
  * App runtime — the host-container lifecycle for installed apps (ADR-0005).
  *
- * This is the SSH-gateway precedent (`lib/infra/ssh-gateway.ts`) applied to
+ * This is a host-managed singleton (the pattern the retired SSH gateway
+ * pioneered) applied to
  * apps, NOT the project pipeline: Deplo renders a tiny compose for the app's
  * image, brings it up on the `deplo` network directly via the docker socket,
  * and reads live status with `docker inspect`. An app is labelled
@@ -36,7 +37,7 @@ import type { PluginManifest } from "./manifest";
 /** The shared external network every routed runtime joins. */
 const NETWORK = "deplo";
 
-/** App stacks live under their own dir, like the gateway has `ssh-gateway/`. */
+/** App stacks live under their own dir under the data root. */
 const DATA_DIR = process.env.DEPLO_DATA_DIR || "/data";
 const APPS_DIR = join(DATA_DIR, "apps");
 
@@ -84,8 +85,8 @@ function pluginStackFile(slug: string): string {
 /* ------------------------------------------------------------------ */
 
 /**
- * Render an app's docker-compose — PURE (image + resolved env in, YAML out),
- * like `renderGatewayCompose`. One service:
+ * Render an app's docker-compose — PURE (image + resolved env in, YAML out).
+ * One service:
  *   - the manifest `image`, named `deplo-app-<slug>`, `restart: unless-stopped`
  *   - joined to the external `deplo` network
  *   - labelled `deplo.managed=true` + `deplo.role=app` (the first containers to
@@ -234,8 +235,8 @@ export async function stopPluginContainer(slug: string): Promise<void> {
 }
 
 /**
- * Live status of an app container, read at query time (never stored). Mirrors
- * `gatewayRunning()` but reports the three states the UI shows:
+ * Live status of an app container, read at query time (never stored). Reports
+ * the three states the UI shows:
  *   - "running"  — the container exists and `.State.Running == true`
  *   - "stopped"  — the container exists but is not running
  *   - "error"    — no container / daemon unreachable (the truth, not a guess)

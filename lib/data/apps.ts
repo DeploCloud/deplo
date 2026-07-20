@@ -64,9 +64,7 @@ import {
   blueprintWantsTls,
 } from "../deploy/domains";
 import { teardownApp } from "./deployments";
-import { agentTeardownDev } from "../deploy/agent-dev";
 import { removeUploads } from "../deploy/upload";
-import { removeAppDevSshUsers } from "./dev-ssh";
 import { isValidLogoValue, isTemplateLogo } from "../apps/logo-shared";
 import { detectAppFavicon } from "../apps/favicon-detect";
 import { publishAppChanged } from "../graphql/pubsub";
@@ -451,7 +449,6 @@ export async function createApp(
     compose: input.compose ?? null,
     mounts: input.mounts?.length ? input.mounts : null,
     build: buildConfigFor(input.build),
-    dev: null,
     productionUrl: null,
     status: isUpload ? "idle" : "queued",
     autoDeploy: input.autoDeploy ?? true,
@@ -471,7 +468,7 @@ export async function createApp(
       appId: project.id,
       key: e.key.trim(),
       valueEnc: encryptSecret(e.value),
-      targets: ["production", "preview", "development"] as EnvTarget[],
+      targets: ["production", "preview"] as EnvTarget[],
       type: isSecretKey(e.key) ? ("secret" as const) : ("plain" as const),
       // A template's defaults are still an authored write by whoever created the app.
       createdByUserId: userId,
@@ -1354,11 +1351,6 @@ export async function deleteApp(id: string): Promise<void> {
       null,
     );
   }
-  // Dev mode: tear down the dev container + deps volume + WIPE the workspace
-  // (the project is gone), and remove this project's SSH users from the gateway
-  // (which stays up — it is a platform singleton).
-  await agentTeardownDev(project).catch(() => {});
-  await removeAppDevSshUsers(id).catch(() => {});
   // Drop any uploaded archive backing an "upload" source.
   await removeUploads(id).catch(() => {});
   // One DELETE — the FK CASCADEs do the rest: deployments (+ logs), env_vars
@@ -1405,8 +1397,6 @@ export async function deleteApps(ids: string[]): Promise<number> {
       const server = serversById.get(project.serverId);
       if (server) unreachable.push(`${project.name} (${server.name})`);
     }
-    await agentTeardownDev(project).catch(() => {});
-    await removeAppDevSshUsers(project.id).catch(() => {});
     await removeUploads(project.id).catch(() => {});
   });
 

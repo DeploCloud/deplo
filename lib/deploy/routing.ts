@@ -2,21 +2,21 @@
  * Traefik routing labels — the one module that knows the label grammar.
  *
  * Deplo fronts every routed runtime (production single-image stacks, compose
- * stacks, and dev-container previews) with one Traefik proxy via Docker provider
+ * stacks) with one Traefik proxy via Docker provider
  * labels: TLS through Let's Encrypt, one router+service per distinct target port.
  * This grammar used to be re-implemented in four places with subtly divergent
  * rules; it now lives here, and each call site is an adapter that hands it a
  * route list. The differences that DO matter between call sites are explicit
  * options, not forks of the algorithm:
  *
- *  - `dockerNetwork` — emit `traefik.docker.network=<net>`. Compose stacks and
- *    dev containers pin the network (they sit on more than the deplo network);
+ *  - `dockerNetwork` — emit `traefik.docker.network=<net>`. Compose stacks
+ *    pin the network (they sit on more than the deplo network);
  *    a single-image production stack joins only `deplo`, so it omits the label
  *    to stay byte-identical to its long-standing output.
  *  - `alwaysService` — always emit the explicit `.service` label. A single
  *    router auto-binds its same-named service, so the production single-image
  *    path OMITS it when there's exactly one router (byte-identical to its old
- *    output). Compose/dev always emitted it, so they pass `alwaysService: true`.
+ *    output). Compose always emitted it, so it passes `alwaysService: true`.
  *
  * Pure on purpose: no store, no docker, no `server-only`. Inputs in, label
  * strings out — its interface IS its test surface.
@@ -71,7 +71,7 @@ export interface RouterLabelOptions {
   defaultPort: number;
   /** ACME cert resolver name for `tls.certresolver`. */
   certResolver: string;
-  /** Emit `traefik.docker.network=<net>` (compose stacks / dev containers). */
+  /** Emit `traefik.docker.network=<net>` (compose stacks). */
   dockerNetwork?: string;
   /** Always emit the explicit `.service` label, even for a single router. */
   alwaysService?: boolean;

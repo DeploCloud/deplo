@@ -1,31 +1,12 @@
 /**
- * Build-config seeding + dev-image presets. Pure and isomorphic: used both in the
+ * Build-config seeding. Pure and isomorphic: used both in the
  * new-project wizard (client) and on the server when a deployment is created.
  *
  * Framework presets were removed (ADR: the build methods auto-detect the stack),
  * so this module no longer detects frameworks — it just seeds a default
- * BuildConfig and resolves the dev container's base image.
+ * BuildConfig.
  */
-import type { BuildConfig, DevImagePreset } from "./types";
-
-/**
- * Official base image each dev image preset resolves to (ADR-0004). Used
- * directly — Deplo builds no per-language dev images. `node` is the safe
- * fallback (the JS toolchain covers most source-bearing apps).
- */
-export const DEV_PRESET_IMAGE: Record<DevImagePreset, string> = {
-  node: "node:22",
-  python: "python:3.12",
-  go: "golang:1.23",
-  rust: "rust:1",
-  php: "php:8.3",
-  java: "eclipse-temurin:21",
-};
-
-/** Resolve a dev image preset id to the official base image it runs on. */
-export function devPresetImage(preset: DevImagePreset): string {
-  return DEV_PRESET_IMAGE[preset] ?? DEV_PRESET_IMAGE.node;
-}
+import type { BuildConfig } from "./types";
 
 /**
  * Default Node.js MAJOR the auto-detecting Node builders (Nixpacks / Railpack)

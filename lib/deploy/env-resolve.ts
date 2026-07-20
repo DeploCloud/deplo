@@ -1,14 +1,14 @@
 /**
  * The env-gathering rule: which variables reach an app's runtime, and in what
- * order. One target axis (`production | preview | development`) governs both an
+ * order. One target axis (`production | preview`) governs both an
  * app's own vars AND shared vars — a shared var is just an app var that several
  * apps share, so it obeys the same target rule.
  *
  * Pure on purpose: no store, no docker, no `decryptSecret`, no `server-only`.
- * It selects and orders the *encrypted* entries; the deploy/dev callers decrypt
- * at the edge. Keeping selection here (instead of inline in `build.ts` and
- * `dev.ts`) means the production stack and the dev container resolve env through
- * the exact same seam — they can never drift on what a target inherits.
+ * It selects and orders the *encrypted* entries; the deploy callers decrypt
+ * at the edge. Keeping selection here (instead of inline in `build.ts`) means
+ * every runtime resolves env through the exact same seam — callers can never
+ * drift on what a target inherits.
  */
 
 import type { EnvTarget } from "../types";
@@ -41,7 +41,7 @@ export interface GlobalEnvEntryLike {
 export interface SharedVarEntry {
   key: string;
   valueEnc: string;
-  /** Orthogonal runtime axis; the loader defaults an empty set to all three. */
+  /** Orthogonal runtime axis; the loader defaults an empty set to every target. */
   targets: EnvTarget[];
 }
 

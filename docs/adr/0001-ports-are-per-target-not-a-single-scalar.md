@@ -1,5 +1,11 @@
 # Ports are modeled per-target, not as a single scalar
 
+- **Status**: Amended — 2026-07-19. Dev mode was removed from the product, taking the
+  `development` target (and `dev.port`) with it: the axis collapsed to the single
+  image-baked `build.port`. What survives is the load-bearing half of this decision —
+  `portFor` / `effectivePortFor` in `lib/deploy/ports.ts` stay the ONLY port readers,
+  so a future second runtime slots back into the same choke point.
+
 ## Context
 
 A project's container port (`build.port`) was a single scalar: the value baked into

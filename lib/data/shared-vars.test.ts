@@ -40,7 +40,7 @@ let db: TestDb;
 let pg: PGlite;
 
 const T0 = "2026-01-01T00:00:00.000Z";
-const ALL = ["production", "preview", "development"] as const;
+const ALL = ["production", "preview"] as const;
 const PRJ = "prc_1";
 const ENV_DEV = "environ_dev";
 const ENV_PROD = "environ_prod";
@@ -206,7 +206,7 @@ test("a var with neither a mode nor a link is rejected", async () => {
 
 test("an omitted target set means every runtime", async () => {
   // An App belongs to exactly ONE Environment, so the legacy
-  // production/preview/development picker is gone from every dialog. A save that
+  // production/preview picker is gone from every dialog. A save that
   // names no target is no longer an error — it reaches every runtime, which is
   // what the picker defaulted to anyway.
   await asUser1(() =>
@@ -225,8 +225,7 @@ test("an omitted target set means every runtime", async () => {
 
 test("an edit that names no targets PRESERVES the stored ones", async () => {
   // The dialogs no longer send targets. A legacy production-only SECRET must not
-  // silently widen to every runtime on a value rotation — that would inject the
-  // live key into the dev container (lib/deploy/dev.ts).
+  // silently widen to every runtime on a value rotation.
   // Linked to app_p so the deploy-loader assertion below has an injecting row
   // to read (a scope alone no longer injects — ADR-0012).
   const id = await asUser1(() =>
@@ -263,7 +262,7 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
       projectIds: [],
     }),
   );
-  assert.equal((await asUser1(() => listSharedVars()))[0]!.targets.length, 3);
+  assert.equal((await asUser1(() => listSharedVars()))[0]!.targets.length, ALL.length);
 });
 
 test("the appIds whole-set replace is folder-gated on every link it adds or removes", async () => {

@@ -1,10 +1,9 @@
 import "server-only";
 
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   databases as databasesTable,
-  devSshUser as devSshUserTable,
   installedPlugins as installedPluginsTable,
   teams as teamsTable,
 } from "../db/schema/control-plane";
@@ -16,12 +15,10 @@ import {
   teamsForUser,
 } from "../membership";
 import { connectAgent } from "../infra/agent-client";
-import { deprovisionUser } from "../infra/ssh-gateway";
 import { pluginSlug, destroyPluginContainer } from "../plugins/runtime";
 import { mapLimit } from "../utils";
 import { withKeyedLock } from "./keyed-mutex";
 import { loadAppsByTeam } from "./app-graph-load";
-import { agentTeardownDev } from "../deploy/agent-dev";
 import { removeUploads } from "../deploy/upload";
 import type { App } from "../types";
 
@@ -96,8 +93,6 @@ export async function canDeleteTeam(): Promise<{
 /** Everything the post-delete stack teardown needs, captured BEFORE the rows go. */
 interface TeardownPlan {
   services: App[];
-  /** Dev SSH gateway users to evict, resolved to their app's server. */
-  sshUsers: { serverId: string; username: string }[];
   databases: { id: string; host: string; serverId: string }[];
   /** Frozen slugs of the team's installed plugins (containers on the Deplo host). */
   appSlugs: string[];
@@ -134,12 +129,8 @@ function teardownTeamResources(plan: TeardownPlan): void {
             `containers on its host must be removed manually`,
         );
       }
-      await agentTeardownDev(service).catch(() => {});
       await removeUploads(service.id).catch(() => {});
     });
-    for (const u of plan.sshUsers) {
-      await deprovisionUser(u.serverId, u.username).catch(() => {});
-    }
     await mapLimit(plan.databases, 4, async (d) => {
       // Same per-database lifecycle lock as deleteDatabase: a teardown must
       // wait out an in-flight provision, or its `down -v` could interleave
@@ -188,8 +179,8 @@ function teardownTeamResources(plan: TeardownPlan): void {
  * team-scoped: memberships, invites, folders, projects (+ environments),
  * apps (+ deployments, env vars, domains…), databases, backup schedules
  * AND run history, S3 destinations, installed plugins, tokens, activities. The
- * stack teardown (apps, databases including data volumes, dev containers,
- * SSH users, installed plugins) continues in the background from a pre-delete
+ * stack teardown (apps, databases including data volumes, installed plugins)
+ * continues in the background from a pre-delete
  * snapshot. Backup ARCHIVES already uploaded to S3 buckets are kept — only the
  * records go.
  */
@@ -230,17 +221,6 @@ export async function deleteTeam(teamId: string): Promise<void> {
       // caught (rows born after this point are lost to the cascade, but the
       // window is now milliseconds, not the length of the agent fan-out).
       const services = await loadAppsByTeam(ctx.teamId);
-      const byAppId = new Map(services.map((s) => [s.id, s]));
-      const sshRows =
-        services.length === 0
-          ? []
-          : await db
-              .select({
-                appId: devSshUserTable.appId,
-                username: devSshUserTable.username,
-              })
-              .from(devSshUserTable)
-              .where(inArray(devSshUserTable.appId, [...byAppId.keys()]));
       const databases = await db
         .select({
           id: databasesTable.id,
@@ -269,10 +249,6 @@ export async function deleteTeam(teamId: string): Promise<void> {
 
       return {
         services,
-        sshUsers: sshRows.flatMap((r) => {
-          const s = byAppId.get(r.appId);
-          return s ? [{ serverId: s.serverId, username: r.username }] : [];
-        }),
         databases,
         // Prefer the slug frozen at install; legacy rows derive it (the team
         // row was just read, before the delete).

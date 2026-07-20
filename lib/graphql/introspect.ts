@@ -118,7 +118,6 @@ const GROUPS = [
   "team",
   "user",
   "app",
-  "dev",
   "env",
   "s3",
 ];

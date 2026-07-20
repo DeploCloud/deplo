@@ -13,15 +13,12 @@ import {
 export function AppTabs({
   slug,
   running: serverRunning = false,
-  devEligible = false,
   canManageEnv = true,
   showFiles = false,
   canBackup = false,
 }: {
   slug: string;
   running?: boolean;
-  /** Source-bearing apps get a Dev Mode tab (live container + SSH access). */
-  devEligible?: boolean;
   /** The Variables tab is only shown to members with the manage_env capability. */
   canManageEnv?: boolean;
   /** The Files tab is shown only when the app has an on-disk files dir and
@@ -87,16 +84,6 @@ export function AppTabs({
           },
         ]
       : []),
-    // Dev Mode (live editable container + SSH) — only for source-bearing apps.
-    ...(devEligible
-      ? [
-          {
-            label: "Dev Mode",
-            href: `${base}/dev`,
-            active: matchSub("/dev"),
-          },
-        ]
-      : []),
     // Files (browse/edit the app's /data/stacks/files/<slug> tree) — only
     // when that dir exists and the viewer holds the manage_files capability.
     ...(showFiles
@@ -128,7 +115,7 @@ export function AppTabs({
 
   // Single underline that slides to the active tab (instead of each tab toggling
   // its own static underline). Re-measures when the active tab changes or the tab
-  // set changes (Console/Logs/Dev/Files appear and disappear).
+  // set changes (Console/Logs/Files appear and disappear).
   const containerRef = React.useRef<HTMLDivElement>(null);
   const tabRefs = React.useRef(new Map<string, HTMLAnchorElement | null>());
   const activeLabel = tabs.find((t) => t.active)?.label ?? null;

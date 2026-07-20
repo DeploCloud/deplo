@@ -44,7 +44,7 @@ export const DeploymentEnvironmentEnum = builder.enumType(
 );
 
 export const EnvTargetEnum = builder.enumType("EnvTarget", {
-  values: ["production", "preview", "development"] as const,
+  values: ["production", "preview"] as const,
 });
 
 export const DatabaseTypeEnum = builder.enumType("DatabaseType", {

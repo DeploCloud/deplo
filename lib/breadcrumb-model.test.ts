@@ -17,7 +17,6 @@ const ALL_CAPS: BreadcrumbCaps = {
 };
 const NO_FLAGS: BreadcrumbFlags = {
   running: false,
-  devEligible: false,
   showFiles: false,
   slugMatches: false,
 };
@@ -189,7 +188,7 @@ test("flag-gated sections hidden until the store confirms; current always shown"
   assert.ok(last(onConsole).items.map((i) => i.label).includes("Console"));
   const onLogs = svc("/apps/web/logs")!;
   assert.ok(!last(onLogs).items.map((i) => i.label).includes("Console"));
-  const live: BreadcrumbFlags = { running: true, devEligible: false, showFiles: false, slugMatches: true };
+  const live: BreadcrumbFlags = { running: true, showFiles: false, slugMatches: true };
   const onLogsLive = svc("/apps/web/logs", graph(), ALL_CAPS, live)!;
   assert.ok(last(onLogsLive).items.map((i) => i.label).includes("Console"));
 });

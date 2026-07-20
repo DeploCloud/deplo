@@ -31,7 +31,9 @@ UNIT="/etc/systemd/system/deplo-agent.service"
 TRAEFIK_DIR="$AGENT_DATA/traefik"
 
 # Containers Deplo names explicitly (they carry no deplo.managed label, so the
-# label sweep below would miss them): the reverse proxy and the SSH gateway pair.
+# label sweep below would miss them): the reverse proxy and the legacy SSH
+# gateway pair (dev mode was removed from Deplo; hosts provisioned before the
+# removal may still carry the two gateway containers, so the sweep stays).
 NAMED_CONTAINERS=(deplo-traefik deplo-ssh-gateway deplo-ssh-gateway-proxy)
 
 err()  { printf "\033[31m[!!]\033[0m %s\n" "$1" >&2; }
@@ -119,9 +121,9 @@ if [ "$HAVE_DOCKER" = true ]; then
     fi
   done
 
-  # Every stack Deplo deploys — apps, databases and dev containers — carries
-  # deplo.managed=true (lib/deploy/build.ts, lib/deploy/dev.ts). One label sweep
-  # gets all of them, and cannot touch a container Deplo did not create.
+  # Every stack Deplo deploys — apps, databases, plus legacy dev containers from
+  # before dev mode was removed — carries deplo.managed=true (lib/deploy/build.ts).
+  # One label sweep gets all of them, and cannot touch a container Deplo did not create.
   MANAGED="$(docker ps -aq --filter label=deplo.managed=true 2>/dev/null || true)"
   if [ -n "$MANAGED" ]; then
     COUNT="$(printf '%s\n' "$MANAGED" | wc -l | tr -d ' ')"

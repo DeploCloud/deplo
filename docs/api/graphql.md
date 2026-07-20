@@ -48,7 +48,7 @@ Fields are gated by the same capability model as the dashboard:
 
 | Capability        | Covers                                                       |
 | ----------------- | ----------------------------------------------------------- |
-| `deploy`          | create/redeploy/stop/start/delete apps, dev, deployments, projects & environments |
+| `deploy`          | create/redeploy/stop/start/delete apps, deployments, projects & environments |
 | `manage_domains`  | add/verify/route/remove custom domains                      |
 | `manage_env`      | app, environment-scoped, team & shared variables        |
 | `manage_infra`    | servers, databases, S3, registries, backups, GitHub, tokens |

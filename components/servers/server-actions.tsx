@@ -584,7 +584,7 @@ export function ServerActions({
               Removes the deplo-agent service and binary,{" "}
               <code>/var/lib/deplo-agent</code> (its certificates and
               Traefik&rsquo;s issued TLS certs), the <code>deplo-traefik</code>{" "}
-              container, the SSH gateway and the <code>deplo</code> Docker
+              container and the <code>deplo</code> Docker
               network. It leaves Docker itself alone, and it does{" "}
               <strong>not</strong> delete your data — app and database volumes,
               built images and <code>/data</code> survive. Add{" "}

@@ -459,8 +459,9 @@ export async function saveSharedVar(input: {
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
   // An omitted target set defaults to every runtime on INSERT, but on UPDATE it
   // means "leave the stored targets alone" (null below) — the dialogs no longer
-  // ask, and widening a legacy production-only secret to all three would inject
-  // it into the dev container. Only an explicit non-empty set replaces them.
+  // ask, and silently widening a legacy production-only secret would leak it
+  // into runtimes it was never meant to reach. Only an explicit non-empty set
+  // replaces them.
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
 
   // Keep only environments/projects/apps that belong to the active team.

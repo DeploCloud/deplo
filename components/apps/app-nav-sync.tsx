@@ -15,20 +15,18 @@ import { setAppNav } from "./app-nav-store";
 export function AppNavSync({
   slug,
   running: serverRunning,
-  devEligible,
   showFiles,
 }: {
   slug: string;
   /** Server-rendered running state; the live subscription takes over after mount. */
   running: boolean;
-  devEligible: boolean;
   showFiles: boolean;
 }) {
   const running = useLiveRunning(serverRunning);
 
   React.useEffect(() => {
-    setAppNav({ slug, running, devEligible, showFiles });
-  }, [slug, running, devEligible, showFiles]);
+    setAppNav({ slug, running, showFiles });
+  }, [slug, running, showFiles]);
 
   // Clear only on unmount (leaving the app). Keeping this separate from the
   // publish effect above means a live `running` change re-publishes in place

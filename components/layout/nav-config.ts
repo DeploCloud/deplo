@@ -20,7 +20,6 @@ import {
   GitBranch,
   Globe,
   SquareTerminal,
-  Code2,
   FolderTree,
   Archive,
   Bell,
@@ -255,7 +254,7 @@ export const SETTINGS_NAV: NavSection[] = [
 
 /** Per-app facts the sidebar can't derive itself (the URL gives the slug and
  *  the viewer's capabilities gate Environment/Backups, but whether the container
- *  is running and whether the app is dev-eligible / has a files dir are known
+ *  is running and whether the app has a files dir are known
  *  only to the app layout, which publishes them via the app-nav store). */
 export interface AppNavFlags {
   /** Full current pathname — lets a section stay listed while it's the open page
@@ -265,7 +264,6 @@ export interface AppNavFlags {
   canManageEnv: boolean;
   canBackup: boolean;
   running: boolean;
-  devEligible: boolean;
   showFiles: boolean;
   /** The console is an advanced surface: its chip appears only once the user has
    *  confirmed the one-time "I understand" warning (persisted in localStorage). */
@@ -349,17 +347,6 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       icon: LineChart,
       tooltip: "Live resource usage",
     },
-    // Dev Mode — source-bearing apps only.
-    ...(f.devEligible || on("/dev")
-      ? [
-          {
-            label: "Dev Mode",
-            href: `${base}/dev`,
-            icon: Code2,
-            tooltip: "Live dev container & SSH",
-          } as NavItem,
-        ]
-      : []),
     // Files — only when an on-disk files dir exists and the viewer can manage it.
     ...(f.showFiles || on("/files")
       ? [

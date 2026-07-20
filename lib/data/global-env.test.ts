@@ -42,7 +42,7 @@ after(async () => {
   await pg.close();
 });
 
-const ALL = ["production", "preview", "development"] as const;
+const ALL = ["production", "preview"] as const;
 
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
@@ -89,7 +89,7 @@ test("instance upsert updates the existing var (no duplicate)", async () => {
   const list = await asUser1(() => listInstanceEnv());
   assert.equal(list.length, 1);
   assert.equal(list[0]!.value, "2");
-  assert.equal(list[0]!.targets.length, 3);
+  assert.equal(list[0]!.targets.length, ALL.length);
 });
 
 test("a secret instance global is masked in the list and revealed on demand", async () => {
@@ -122,11 +122,11 @@ test("editing a secret with the MASK keeps the stored value (targets-only edit)"
   );
   assert.equal(await asUser1(() => revealInstanceEnv(v!.id)), "real");
   const [v2] = await asUser1(() => listInstanceEnv());
-  assert.equal(v2!.targets.length, 3);
+  assert.equal(v2!.targets.length, ALL.length);
 });
 
 test("an omitted target set means every runtime", async () => {
-  // The production/preview/development picker is gone from the UI (an App belongs
+  // The production/preview picker is gone from the UI (an App belongs
   // to exactly ONE Environment) — a write that names no target reaches them all.
   await asUser1(() => upsertInstanceEnv({ key: "NOTARGET", value: "1", type: "plain" }));
   const [v] = await asUser1(() => listInstanceEnv());
@@ -135,8 +135,7 @@ test("an omitted target set means every runtime", async () => {
 
 test("an edit that names no targets PRESERVES the stored ones", async () => {
   // The dialogs no longer send targets. A legacy production-only SECRET must not
-  // silently widen to every runtime on a value rotation — that would inject the
-  // live key into the dev container (lib/deploy/dev.ts).
+  // silently widen to every runtime on a value rotation.
   await asUser1(() =>
     upsertInstanceEnv({ key: "STRIPE", value: "live", targets: ["production"], type: "secret" }),
   );
@@ -148,7 +147,7 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
   await asUser1(() =>
     upsertInstanceEnv({ key: "STRIPE", value: "rotated", targets: [...ALL], type: "secret" }),
   );
-  assert.equal((await asUser1(() => listInstanceEnv()))[0]!.targets.length, 3);
+  assert.equal((await asUser1(() => listInstanceEnv()))[0]!.targets.length, ALL.length);
 });
 
 test("authorship is stamped on create and only updatedBy changes on edit", async () => {

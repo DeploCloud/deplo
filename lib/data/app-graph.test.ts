@@ -251,7 +251,7 @@ test("an app env var records its author and defaults to every runtime", async ()
     // Environment), so the var reaches every runtime.
     await upsertEnv({ appId: "prj_1", key: "K", value: "v", type: "plain" });
     const [v] = await listEnv("prj_1");
-    assert.deepEqual([...v!.targets].sort(), ["development", "preview", "production"]);
+    assert.deepEqual([...v!.targets].sort(), ["preview", "production"]);
     assert.equal(v!.createdBy?.id, USER_1);
     assert.equal(v!.updatedBy?.id, USER_1);
     assert.equal(v!.createdBy?.username, USER_1);
@@ -260,8 +260,7 @@ test("an app env var records its author and defaults to every runtime", async ()
 
 test("an edit that names no targets PRESERVES the stored ones", async () => {
   // The dialogs no longer send targets. A legacy production-only SECRET must not
-  // silently widen to every runtime on a value rotation — that would inject the
-  // live key into the dev container (lib/deploy/dev.ts).
+  // silently widen to every runtime on a value rotation.
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     await upsertEnv({
@@ -279,11 +278,11 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
       appId: "prj_1",
       key: "STRIPE",
       value: "rotated",
-      targets: ["production", "development"],
+      targets: ["production", "preview"],
       type: "secret",
     });
     const [v2] = await listEnv("prj_1");
-    assert.deepEqual([...v2!.targets].sort(), ["development", "production"]);
+    assert.deepEqual([...v2!.targets].sort(), ["preview", "production"]);
   });
 });
 

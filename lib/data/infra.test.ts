@@ -7,7 +7,6 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   activities as activitiesTable,
-  devSshUser as devSshUserTable,
   githubApps as githubAppsTable,
   githubInstallation as githubInstallationTable,
   servers as serversTable,
@@ -314,21 +313,3 @@ test("activities: listActivityByActor filters by actor across teams", async () =
   );
 });
 
-/* ------------------------------------------------------------------ */
-/* dev_ssh_user FK cascade (project delete already covered; here the table) */
-/* ------------------------------------------------------------------ */
-
-test("dev_ssh_user: a row requires at least one credential (CHECK)", async () => {
-  // Seeding a project FK target would pull in the whole project graph; assert the
-  // CHECK directly on a raw insert (no project FK needed if we point at a seeded
-  // server-less row would FK-violate, so test the CHECK on a present project).
-  // Here we just confirm the CHECK rejects a no-credential row via a raw exec.
-  await assert.rejects(
-    pg.exec(
-      `insert into dev_ssh_user (id, app_id, username, public_key, password_enc, created_at)
-       values ('ssh_x', 'prj_missing', 'u', null, null, '${T0}')`,
-    ),
-    /dev_ssh_user_has_credential|violates|foreign key/,
-  );
-  assert.equal((await db.select().from(devSshUserTable)).length, 0);
-});

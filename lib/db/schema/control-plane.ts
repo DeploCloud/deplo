@@ -40,7 +40,7 @@ import { isoTimestamptz } from "./columns";
  *    (`framework`, `build_method`) — write paths today are unchecked, so a strict
  *    CHECK would reject legacy rows at backfill. A `pgEnum` is used only where the
  *    value set is closed AND legacy values are coerced at backfill
- *    (`deployment_log_level`, `github_account_type`, `dev_status`) (PLAN §1).
+ *    (`deployment_log_level`, `github_account_type`) (PLAN §1).
  *  - **`seq bigint generated always as identity`** on the append-only collections
  *    (`activities`, `deployments`, `backup_runs`) so a same-millisecond timestamp
  *    tie is still totally ordered: every sort is `ORDER BY created_at DESC, seq
@@ -68,15 +68,6 @@ export const deploymentLogLevel = pgEnum("deployment_log_level", [
 export const githubAccountType = pgEnum("github_account_type", [
   "User",
   "Organization",
-]);
-
-/** [DevStatus](../../types.ts) — push-only dev lifecycle; legacy unknown → 'off'. */
-export const devStatus = pgEnum("dev_status", [
-  "off",
-  "starting",
-  "running",
-  "stopped",
-  "error",
 ]);
 
 /* ================================================================== */
@@ -753,29 +744,6 @@ export const appBuildMethodSettings = pgTable(
 );
 
 /**
- * [DevConfig](../../types.ts) → 1-to-1 child (was `apps.dev`). `project_id`
- * PK + FK. **Row ABSENT = dev never enabled** — do NOT seed a default row (the
- * tri-state sentinel, PLAN §1 "Tri-states"). `dev_status` pgEnum, legacy unknown
- * → 'off'. `image_kind` is closed ('preset'|'custom') but coerced at backfill.
- */
-export const appDev = pgTable("app_dev", {
-  appId: text("app_id")
-    .primaryKey()
-    .references(() => apps.id, { onDelete: "cascade" }),
-  enabled: boolean("enabled").notNull(),
-  status: devStatus("status").notNull(),
-  imageKind: text("image_kind").notNull(),
-  image: text("image").notNull(),
-  devCommand: text("dev_command").notNull(),
-  port: integer("port").notNull(),
-  previewEnabled: boolean("preview_enabled").notNull(),
-  // The stored dev preview hostname (random words baked in once); NULLABLE for
-  // legacy rows enabled before this column existed — regenerated on next start.
-  previewHost: text("preview_host"),
-  latestStartAt: isoTimestamptz("latest_start_at"),
-});
-
-/**
  * [VolumeMount](../../types.ts) → ordered child. `type` NULLABLE (the
  * named/`host`/`service` discriminant; absent ⇒ "named"). Backfill runs
  * `normalizeVolumes` first (drops mountless entries) so the NOT NULL child
@@ -820,8 +788,7 @@ export const appMounts = pgTable(
 /**
  * [Deployment](../../types.ts) — fully flat. `seq bigint identity` (PLAN §5) so
  * sorts are `ORDER BY created_at DESC, seq DESC`. `(project_id, created_at DESC,
- * seq DESC)` index. No `team_id` (joined via service). `build_source` is the
- * optional "dev-workspace" intent (absent ⇒ the service's own source).
+ * seq DESC)` index. No `team_id` (joined via service).
  */
 export const deployments = pgTable(
   "deployments",
@@ -848,7 +815,6 @@ export const deployments = pgTable(
     readyAt: isoTimestamptz("ready_at"),
     buildDurationMs: bigint("build_duration_ms", { mode: "number" }),
     creator: text("creator").notNull(),
-    buildSource: text("build_source"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
@@ -922,7 +888,7 @@ export const envVars = pgTable(
   (t) => [uniqueIndex("env_vars_app_key_uq").on(t.appId, t.key)],
 );
 
-/** [EnvVar.targets](../../types.ts) → junction. `target` ∈ production/preview/development. */
+/** [EnvVar.targets](../../types.ts) → junction. `target` ∈ production/preview. */
 export const envVarTargets = pgTable(
   "env_var_targets",
   {
@@ -1043,7 +1009,7 @@ export const domainMiddlewares = pgTable(
  * inject a generated Traefik `basicauth` middleware (built from these users) at
  * the head of every router's middleware chain, so all the service's hostnames
  * sit behind the login prompt. `password_enc` is a REVERSIBLE secret (AES-GCM,
- * like `env_vars.value_enc` and `dev_ssh_users.password_enc`) so the htpasswd
+ * like `env_vars.value_enc`) so the htpasswd
  * line can be re-derived on every stack render; it is write-only over the API
  * (never returned). `UNIQUE(project_id, username)` — one credential per name.
  */
@@ -1065,32 +1031,6 @@ export const appBasicAuthUsers = pgTable(
       t.username,
     ),
     index("app_basic_auth_users_app_idx").on(t.appId),
-  ],
-);
-
-/**
- * [DevSshUser](../../types.ts). `password_enc` reversible secret (write-only,
- * masked as `hasPassword`). `UNIQUE(username)` globally. CHECK `public_key IS NOT
- * NULL OR password_enc IS NOT NULL` (at least one credential) (PLAN §2).
- */
-export const devSshUser = pgTable(
-  "dev_ssh_user",
-  {
-    id: text("id").primaryKey(),
-    appId: text("app_id")
-      .notNull()
-      .references(() => apps.id, { onDelete: "cascade" }),
-    username: text("username").notNull(),
-    publicKey: text("public_key"),
-    passwordEnc: text("password_enc"),
-    createdAt: isoTimestamptz("created_at").notNull(),
-  },
-  (t) => [
-    uniqueIndex("dev_ssh_user_username_uq").on(t.username),
-    check(
-      "dev_ssh_user_has_credential",
-      sql`${t.publicKey} is not null or ${t.passwordEnc} is not null`,
-    ),
   ],
 );
 
@@ -1534,8 +1474,8 @@ export const installedPlugins = pgTable(
  *  - `shared_env_var_environments` — apps whose `apps.environment_id` ∈ the set.
  *  - `shared_env_var_projects` — apps whose `apps.project_id` ∈ the set (whitelist).
  *  - `shared_env_var_apps` — an explicit per-app link attached from the app UI.
- * `shared_env_var_targets` is the orthogonal runtime axis (production/preview/
- * development), defaulting to all three.
+ * `shared_env_var_targets` is the orthogonal runtime axis (production/preview),
+ * defaulting to both.
  *
  * There is deliberately **NO** unique on `(team_id, key)`: a key legitimately
  * repeats with different values across scopes (e.g. `DATABASE_URL` scoped to two
@@ -1575,7 +1515,7 @@ export const sharedEnvVars = pgTable(
   ],
 );
 
-/** [SharedVar.targets](../../types.ts) → junction. `target` ∈ production/preview/development. */
+/** [SharedVar.targets](../../types.ts) → junction. `target` ∈ production/preview. */
 export const sharedEnvVarTargets = pgTable(
   "shared_env_var_targets",
   {

@@ -6,7 +6,7 @@ import * as React from "react";
  * The per-app facts the global sidebar can't work out on its own. The slug
  * comes from the URL and the capability-gated entries (Environment, Backups)
  * come from the sidebar's own capability list — but whether the container is
- * *running* (Console/Logs), whether the app is dev-eligible (Dev Mode) and
+ * *running* (Console/Logs) and
  * whether it has an on-disk files dir (Files) are known only to the app
  * layout. It publishes them here so the sidebar's app sub-menu can offer the
  * same entries the old horizontal tabs did.
@@ -14,7 +14,6 @@ import * as React from "react";
 export type AppNavState = {
   slug: string;
   running: boolean;
-  devEligible: boolean;
   showFiles: boolean;
 };
 

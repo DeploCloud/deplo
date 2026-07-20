@@ -26,7 +26,10 @@ localhost deploy through the agent; Part B makes a remote agent real: call-home 
 remote `agent-client` routing with cert fingerprint pinning, the GIT source (the agent clones
 itself, D3), and reconnection/replay (D5). Part C moves the per-server **observability +
 lifecycle + files** surface onto the owning agent. Part D moves the last per-host singletons —
-**dev containers + the SSH gateway + the VS Code tunnel** — agent-side (below). Two refinements
+**dev containers + the SSH gateway + the VS Code tunnel** — agent-side (below). *(Jul 2026:
+dev mode was later removed from the product; Part D's dev/gateway/tunnel surface is no longer
+called by the control plane, its RPCs staying dormant in the additive-only V1 contract.)*
+Two refinements
 emerged while building Part B and are recorded here:
 
 - **The trust direction inverts for a remote agent.** Part A's control plane minted the agent's

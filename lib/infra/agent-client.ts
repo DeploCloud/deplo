@@ -31,10 +31,6 @@ import {
   type AttachOutput,
   type ConsoleInstance as PbConsoleInstance,
   type FileEntry as PbFileEntry,
-  type StartDevRequest,
-  type GatewayConfig as PbGatewayConfig,
-  type UserSteps as PbUserSteps,
-  type GatewayStep as PbGatewayStep,
   type VolumeChunk,
   type FilesChunk,
   type StackResult,
@@ -108,7 +104,6 @@ const BACKUP_DEADLINE_MS = 60 * 60_000;
 // S3Check/S3Delete are quick bucket ops, but a slow/unreachable S3 endpoint must
 // time out rather than hang the request that triggered it.
 const S3_OP_DEADLINE_MS = 60_000;
-const GATEWAY_TIMEOUT_MS = 4 * 60_000; // gateway compose-up + sshd-wait + reconcile (Part D)
 const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000; // agent downloads + verifies + swaps its own binary
 // Stack lifecycle verbs (reroute/start/stop/destroy). The agent caps its own
 // compose up/down at ~90-120s; this is that plus dial/network slack. A deadline
@@ -172,42 +167,6 @@ export interface AgentExecResult {
   stderr: string;
   code: number;
   rawMode: boolean;
-}
-
-/** Part D: everything the agent needs to start a project's dev container. The
- *  control plane renders all of it (D2); the agent writes files + drives Docker. */
-export interface AgentStartDev {
-  slug: string;
-  appId: string;
-  /** Rendered dev compose YAML (renderDevCompose) — opaque to the agent. */
-  composeYaml: string;
-  /** The dev entrypoint script (DEV_ENTRY_SCRIPT), bind-mounted into the container. */
-  entryScript: string;
-  /** Tokenized clone URL for a git source (staged 0600); "" => not git. */
-  cloneSecretUrl: string;
-  /** The upload archive to seed an upload workspace host-side; empty => none. */
-  uploadTar: Buffer;
-  /** Host-translated `-v` source for the pre-chown helper; "" => plain path. */
-  workspaceHostPath: string;
-}
-/** Part D: a rendered SSH-gateway step (one `docker exec -i <gw> <argv>`). */
-export interface AgentGatewayStep {
-  argv: string[];
-  input: string;
-}
-/** Part D: the rendered SSH-gateway config the agent writes to its bind mount. */
-export interface AgentGatewayConfig {
-  composeYaml: string;
-  sshdConfig: string;
-  wrapperScript: string;
-  entrypointScript: string;
-  socketFilterCfg: string;
-}
-/** Part D: VS Code tunnel status — the agent returns the RAW log; the control
- *  plane parses it (parseTunnelLog) into the device-login link / connected URL. */
-export interface AgentTunnelStatus {
-  running: boolean;
-  log: string;
 }
 
 /** A live, mTLS-secured connection to one agent, with a typed wrapper. */
@@ -408,36 +367,6 @@ export interface AgentConnection {
   deleteFile(slug: string, path: string): Promise<boolean>;
   renameFile(slug: string, path: string, newPath: string): Promise<AgentFileEntry>;
   filesExist(slug: string): Promise<boolean>;
-
-  // ---- Part D: dev containers + SSH gateway + VS Code tunnel ----
-  /** Start (or restart) a project's dev container; streams progress like deploy. */
-  startDev(req: AgentStartDev): AsyncGenerator<DeployEvent, void, unknown>;
-  /** DESTRUCTIVE reset: wipe workspace + deps volume, then reseed (streams). */
-  resetDevWorkspace(req: AgentStartDev): AsyncGenerator<DeployEvent, void, unknown>;
-  /** Stop a project's dev container (reversible; workspace kept). */
-  stopDev(slug: string): Promise<{ ok: boolean; error: string }>;
-  /** Tear down a dev container on project delete (wipes the workspace). */
-  teardownDev(slug: string): Promise<{ ok: boolean; error: string }>;
-  /** Ensure the SSH gateway is up and reconcile every supplied user into it. */
-  ensureGateway(
-    config: AgentGatewayConfig,
-    users: AgentGatewayStep[][],
-  ): Promise<{ ok: boolean; error: string }>;
-  /** Provision a user: ensure the gateway, then reconcile the full user set. */
-  provisionSshUser(
-    config: AgentGatewayConfig,
-    users: AgentGatewayStep[][],
-  ): Promise<{ ok: boolean; error: string }>;
-  /** Remove one user from the gateway (the deprovision steps). */
-  deprovisionSshUser(
-    steps: AgentGatewayStep[],
-  ): Promise<{ ok: boolean; error: string }>;
-  /** Launch the VS Code tunnel (idempotent); returns the raw log + running flag. */
-  startTunnel(slug: string, launchScript: string): Promise<AgentTunnelStatus>;
-  /** Read the current tunnel status (no side effects). */
-  getTunnel(slug: string): Promise<AgentTunnelStatus>;
-  /** Stop the tunnel process (CLI download + auth token kept). */
-  stopTunnel(slug: string): Promise<{ ok: boolean; error: string }>;
 
   close(): void;
 }
@@ -795,7 +724,7 @@ function dial(target: DialTarget): AgentConnection {
   });
 
   /** Bridge a grpc server-stream into a backpressured async generator. Generic
-   *  over the event type so the deploy/reattach/startDev streams AND the
+   *  over the event type so the deploy/reattach streams AND the
    *  backup/restore streams (same one-request-many-events shape) reuse it. A
    *  transport-down error is normalised so consumers catch AgentUnreachableError.
    *
@@ -985,29 +914,6 @@ function dial(target: DialTarget): AgentConnection {
   const filesDeadline = () => ({ deadline: new Date(Date.now() + FILES_TIMEOUT_MS) });
   const consoleDeadline = () => ({ deadline: new Date(Date.now() + CONSOLE_TIMEOUT_MS) });
   const metricsDeadline = () => ({ deadline: new Date(Date.now() + METRICS_TIMEOUT_MS) });
-  const gatewayDeadline = () => ({ deadline: new Date(Date.now() + GATEWAY_TIMEOUT_MS) });
-  const toStartDevPb = (r: AgentStartDev): StartDevRequest => ({
-    slug: r.slug,
-    projectId: r.appId,
-    composeYaml: r.composeYaml,
-    entryScript: r.entryScript,
-    cloneSecretUrl: r.cloneSecretUrl,
-    uploadTar: r.uploadTar,
-    workspaceHostPath: r.workspaceHostPath,
-  });
-  const toGatewayStepPb = (s: AgentGatewayStep): PbGatewayStep => ({
-    argv: s.argv,
-    input: s.input,
-  });
-  const toUserStepsPb = (users: AgentGatewayStep[][]): PbUserSteps[] =>
-    users.map((steps) => ({ steps: steps.map(toGatewayStepPb) }));
-  const toGatewayConfigPb = (c: AgentGatewayConfig): PbGatewayConfig => ({
-    composeYaml: c.composeYaml,
-    sshdConfig: c.sshdConfig,
-    wrapperScript: c.wrapperScript,
-    entrypointScript: c.entrypointScript,
-    socketFilterCfg: c.socketFilterCfg,
-  });
   const mapInstance = (i: PbConsoleInstance): AgentConsoleInstance => ({
     name: i.name,
     service: i.service,
@@ -1528,94 +1434,6 @@ function dial(target: DialTarget): AgentConnection {
       return new Promise<boolean>((resolve, reject) => {
         client.filesExist({ slug }, new Metadata(), filesDeadline(), (err, resp) =>
           err ? reject(toAgentError(err)) : resolve(resp.exists),
-        );
-      });
-    },
-
-    // ---- Part D: dev containers + SSH gateway + VS Code tunnel ----
-    startDev(req: AgentStartDev) {
-      return streamEvents(
-        client.startDev(toStartDevPb(req), {
-          deadline: new Date(Date.now() + DEPLOY_DEADLINE_MS),
-        }),
-      );
-    },
-    resetDevWorkspace(req: AgentStartDev) {
-      return streamEvents(
-        client.resetDevWorkspace(toStartDevPb(req), {
-          deadline: new Date(Date.now() + DEPLOY_DEADLINE_MS),
-        }),
-      );
-    },
-    stopDev(slug: string) {
-      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        client.stopDev({ slug }, (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
-        );
-      });
-    },
-    teardownDev(slug: string) {
-      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        client.teardownDev({ slug }, (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
-        );
-      });
-    },
-    ensureGateway(config: AgentGatewayConfig, users: AgentGatewayStep[][]) {
-      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        client.ensureGateway(
-          { config: toGatewayConfigPb(config), users: toUserStepsPb(users) },
-          new Metadata(),
-          gatewayDeadline(),
-          (err, resp) =>
-            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
-        );
-      });
-    },
-    provisionSshUser(config: AgentGatewayConfig, users: AgentGatewayStep[][]) {
-      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        client.provisionSshUser(
-          { config: toGatewayConfigPb(config), users: toUserStepsPb(users) },
-          new Metadata(),
-          gatewayDeadline(),
-          (err, resp) =>
-            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
-        );
-      });
-    },
-    deprovisionSshUser(steps: AgentGatewayStep[]) {
-      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        client.deprovisionSshUser(
-          { steps: steps.map(toGatewayStepPb) },
-          new Metadata(),
-          gatewayDeadline(),
-          (err, resp) =>
-            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
-        );
-      });
-    },
-    startTunnel(slug: string, launchScript: string) {
-      return new Promise<AgentTunnelStatus>((resolve, reject) => {
-        client.startTunnel(
-          { slug, launchScript },
-          new Metadata(),
-          { deadline: new Date(Date.now() + DEPLOY_DEADLINE_MS) },
-          (err, resp) =>
-            err ? reject(toAgentError(err)) : resolve({ running: resp.running, log: resp.log }),
-        );
-      });
-    },
-    getTunnel(slug: string) {
-      return new Promise<AgentTunnelStatus>((resolve, reject) => {
-        client.getTunnel({ slug, launchScript: "" }, new Metadata(), consoleDeadline(), (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve({ running: resp.running, log: resp.log }),
-        );
-      });
-    },
-    stopTunnel(slug: string) {
-      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
-        client.stopTunnel({ slug, launchScript: "" }, new Metadata(), consoleDeadline(), (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },

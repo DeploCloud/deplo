@@ -13,7 +13,6 @@ import {
   apps,
   appBuild,
   appBuildMethodSettings,
-  appDev,
   appMounts,
   appVolumes,
 } from "../db/schema/control-plane";
@@ -68,20 +67,18 @@ async function loadChildrenByAppIds(
     out.set(id, {
       build: null,
       methodSettings: null,
-      dev: null,
       volumes: [],
       mounts: [],
     });
   if (ids.length === 0) return out;
 
   // One query per child table over the whole id set (NOT per project).
-  const [builds, settings, devs, volumes, mounts] = await Promise.all([
+  const [builds, settings, volumes, mounts] = await Promise.all([
     db.select().from(appBuild).where(inArray(appBuild.appId, ids)),
     db
       .select()
       .from(appBuildMethodSettings)
       .where(inArray(appBuildMethodSettings.appId, ids)),
-    db.select().from(appDev).where(inArray(appDev.appId, ids)),
     db
       .select()
       .from(appVolumes)
@@ -96,7 +93,6 @@ async function loadChildrenByAppIds(
 
   for (const b of builds) out.get(b.appId)!.build = b;
   for (const s of settings) out.get(s.appId)!.methodSettings = s;
-  for (const dv of devs) out.get(dv.appId)!.dev = dv;
   for (const v of volumes) out.get(v.appId)!.volumes.push(v);
   for (const m of mounts) out.get(m.appId)!.mounts.push(m);
   return out;

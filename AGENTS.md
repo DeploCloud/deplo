@@ -51,7 +51,7 @@ deprecation notices. When instinct disagrees with the installed docs, the docs w
 
 **THE RULE (ADR-0006): the control plane NEVER touches a Docker socket or the host directly for
 a per-app / host-coupled action.** Deploy, build, logs, console, metrics, files, stack
-lifecycle, dev containers, tunnels, SSH gateway, backups, S3, volume copy and DB provisioning all
+lifecycle, backups, S3, volume copy and DB provisioning all
 route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 
 - `lib/infra/agent-client.ts` `connectAgent(serverId)` is the sole entry (mTLS, cert-fingerprint
@@ -88,7 +88,7 @@ path** (see Persistence). Deploy execution is the Go agent over gRPC/mTLS.
 - `app/api/graphql/route.ts` — the single API endpoint. Other `app/api/*/route.ts` are the REST exceptions (below).
 - `lib/data/*` — data layer (`import "server-only"`), **the security boundary**.
 - `lib/graphql/*` — Pothos builder, context, schema, and `types/*` domain modules.
-- `lib/deploy/*` — compose/label/port rendering · `lib/infra/*` — agent client, gateway ·
+- `lib/deploy/*` — compose/label/port rendering · `lib/infra/*` — agent client ·
   `lib/agent/*` — mTLS PKI + generated ts-proto stubs.
 - `lib/db/*` — Drizzle client + `schema/` (`control-plane`, `auth`, `scheduler`, `columns`).
 - `components/` — UI: `ui/` (shadcn primitives), `layout/`, feature folders.

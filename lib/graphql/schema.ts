@@ -14,7 +14,6 @@ import "./types/basic-auth";
 import "./types/cleanup";
 import "./types/console";
 import "./types/database";
-import "./types/dev";
 import "./types/domain";
 import "./types/enums";
 import "./types/env";

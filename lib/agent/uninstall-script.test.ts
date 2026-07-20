@@ -30,10 +30,12 @@ test("removes the agent service, binary, state, proxy and network", async () => 
   assert.match(script, /AGENT_BIN="\/usr\/local\/bin\/deplo-agent"/);
   assert.match(script, /rm -rf "\$AGENT_DATA"/);
   assert.match(script, /docker network rm deplo\b/);
-  // Apps, databases and dev containers all carry this label — one sweep gets them
-  // all, and it cannot touch a container Deplo did not create.
+  // Apps, databases and legacy dev containers all carry this label — one sweep
+  // gets them all, and it cannot touch a container Deplo did not create.
   assert.match(script, /--filter label=deplo\.managed=true/);
   assert.match(script, /deplo-traefik/);
+  // The legacy SSH-gateway sweep stays: dev mode was removed from Deplo, but a
+  // host provisioned before the removal may still carry the gateway pair.
   assert.match(script, /deplo-ssh-gateway/);
 });
 

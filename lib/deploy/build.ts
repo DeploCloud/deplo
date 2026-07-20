@@ -35,11 +35,7 @@ import { buildImage } from "./builders";
 import { extractArchive } from "./upload";
 import { detectTreeFavicon, detectGithubFavicon } from "../apps/favicon-detect";
 import { isGithubRepo } from "../apps/favicon-shared";
-import {
-  planDeploySource,
-  resolveBuildDir,
-  devWorkspaceDeployAllowed,
-} from "./source";
+import { planDeploySource, resolveBuildDir } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
 import { usesComposeStack, hostVolumeName, formatBytes } from "../utils";
 import {
@@ -387,7 +383,7 @@ export function renderCompose(opts: {
   }[];
   /**
    * Whether to inject `PORT=<port>` into the container env. True for sources
-   * Deplo BUILDS (git/upload/dockerfile/dev-workspace) — 12-factor apps bind
+   * Deplo BUILDS (git/upload/dockerfile) — 12-factor apps bind
    * to $PORT, so we tell the container where Traefik forwards. FALSE for a
    * prebuilt docker image: that image is deployed as-is and its author already
    * chose where it listens; injecting PORT silently overrides that listen
@@ -581,8 +577,6 @@ export async function startDeployment(
     creator: string;
     commitMessage?: string;
     branch?: string;
-    /** Build PRODUCTION from the dev workspace tree instead of the source. */
-    buildSource?: "dev-workspace";
   },
 ): Promise<string> {
   const project = await loadAppGraph(appId);
@@ -626,7 +620,6 @@ export async function startDeployment(
     readyAt: null,
     buildDurationMs: null,
     creator: opts.creator,
-    ...(opts.buildSource ? { buildSource: opts.buildSource } : {}),
   };
 
   // Insert the deployment, then point the project at it (latestDeployment +
@@ -698,7 +691,7 @@ export async function runDeploymentGuarded(depId: string): Promise<void> {
 /**
  * Build an image from a materialised source tree: resolve rootDirectory the one
  * shared way ({@link resolveBuildDir}) and dispatch to the selected build method.
- * The git / upload / dev-workspace arms all funnel through here, so the
+ * The git / upload arms all funnel through here, so the
  * rootDirectory containment + the buildImage call live in exactly one place.
  */
 async function buildImageFromTree(opts: {
@@ -708,7 +701,7 @@ async function buildImageFromTree(opts: {
   workDir: string;
   root: string;
   imageRef: string;
-  /** Hard-fail on an explicit-but-missing rootDirectory (git/dev); upload doesn't. */
+  /** Hard-fail on an explicit-but-missing rootDirectory (git); upload doesn't. */
   failOnMissing: boolean;
   notFoundMessage?: string;
   /**
@@ -954,8 +947,8 @@ async function runDeployment(depId: string): Promise<void> {
         env,
         basicAuthUsers,
         // A prebuilt image is deployed as-is — never inject PORT and override the
-        // listen address its author baked in. Built sources (git/upload/dockerfile/
-        // dev-workspace) DO get PORT so 12-factor apps bind where Traefik forwards.
+        // listen address its author baked in. Built sources (git/upload/
+        // dockerfile) DO get PORT so 12-factor apps bind where Traefik forwards.
         injectPort: project.source !== "docker-image",
         // The deploy path is the only writer of volumes into the stack — sourced
         // from the project. A reroute reads them back from the file instead.
@@ -967,7 +960,7 @@ async function runDeployment(depId: string): Promise<void> {
       return { composeYaml, env };
     };
 
-    // For a BUILT source (git/upload/dev-workspace): resolve the build dir (one
+    // For a BUILT source (git/upload): resolve the build dir (one
     // shared rootDirectory containment), then ship the materialised tree to the
     // owning agent, which builds + runs it. The agent is the only execution path —
     // an unreachable agent is a hard deploy failure (P5), never a local fallback.
@@ -998,51 +991,12 @@ async function runDeployment(depId: string): Promise<void> {
       agentOutcome = outcome === "agent" ? "agent" : "failed";
     };
 
-    // Decide which source this deployment builds from (dev-workspace intent
-    // overrides the project's own source; see planDeploySource). Each arm
-    // materialises a tree (or pulls an image) then funnels through the shared
-    // buildImageFromTree, so the rootDirectory containment + build dispatch live
-    // in one place.
-    const plan = planDeploySource(project, { buildSource: dep.buildSource });
+    // Decide which source this deployment builds from (see planDeploySource).
+    // Each arm materialises a tree (or pulls an image) then funnels through the
+    // shared buildImageFromTree, so the rootDirectory containment + build
+    // dispatch live in one place.
+    const plan = planDeploySource(project);
     switch (plan.kind) {
-      case "dev-workspace": {
-        // EXPLICIT exception to "deploy never touches the dev workspace"
-        // (CONTEXT.md): build production from the developer's live, edited tree
-        // at /data/dev/<slug> — no git clone, no re-extract, no commit. Dev is
-        // source-bearing only, so this is always a single-image build; guard
-        // against a future source change silently routing a stack through here.
-        if (
-          !devWorkspaceDeployAllowed({
-            usesComposeStack: usesComposeStack(project),
-            source: project.source,
-          })
-        ) {
-          throw new Error(
-            "Deploy from dev workspace is only available for built (git/upload) apps",
-          );
-        }
-        imageRef = `deplo/${slug}:${depId.slice(0, 12)}`;
-        // The dev workspace lives on the OWNING AGENT's host (<dev-dir>/<slug>),
-        // the host running Deplo included. The agent builds from its OWN workspace
-        // via SOURCE_KIND_DEV_WORKSPACE (same exclude-set + symlink-reject guard
-        // copyWorkspaceForBuild applied). No workspace bytes cross the wire.
-        const { composeYaml, env } = await renderStack(imageRef);
-        const { outcome } = await tryAgent({
-          depId,
-          serverId,
-          project: { id: project.id, slug },
-          imageRef,
-          composeYaml,
-          env,
-          plan: {
-            kind: "dev-workspace",
-            build: normalizeBuildConfig(project.build),
-            subdir: project.build.rootDirectory ?? "",
-          },
-        });
-        agentOutcome = outcome === "agent" ? "agent" : "failed";
-        break;
-      }
       case "docker-image": {
         imageRef = plan.image;
         // A prebuilt image: the owning agent pulls + runs it on its host.

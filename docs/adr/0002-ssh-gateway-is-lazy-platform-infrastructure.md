@@ -1,5 +1,11 @@
 # The SSH gateway is lazy platform infrastructure, not reserved at install
 
+- **Status**: Retired — 2026-07-19. Dev mode (the live, editable dev container with
+  SSH access and the VS Code tunnel) was removed from the product wholesale; this
+  decision has no remaining subject. Kept as a historical record. The host-side
+  uninstaller retains a legacy `deplo-ssh-gateway` sweep for hosts provisioned
+  before the removal.
+
 ## Context
 
 Dev mode lets users join their dev container over real SSH. A single platform-wide

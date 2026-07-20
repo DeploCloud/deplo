@@ -178,8 +178,8 @@ export async function upsertEnv(input: {
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
   // `null` ⇒ the caller named no targets: default them on insert, PRESERVE them on
-  // update. Silently widening a legacy production-only secret would inject it into
-  // the dev container (lib/deploy/dev.ts).
+  // update. Silently widening a legacy production-only secret would leak it into
+  // runtimes it was never meant to reach.
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
   if (!(await appInTeam(input.appId, membership.teamId)))
     throw new Error("App not found");

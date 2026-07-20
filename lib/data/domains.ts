@@ -431,7 +431,7 @@ export async function addDomain(
     // already required one above; single-image falls back to the project's
     // production port (build.port) — byte-identical to leaving it null, since
     // the router resolves an absent port to build.port anyway.
-    port: config.port ?? portFor(project, "production"),
+    port: config.port ?? portFor(project),
     // Entrypoint persists only when the user picked it explicitly (manual mode).
     // Absent ⇒ derived at deploy time by domainTlsConfig (websecure for TLS, web
     // for the `none` provider). Storing it only when given keeps the auto/manual

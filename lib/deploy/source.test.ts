@@ -6,7 +6,6 @@ import { join } from "node:path";
 
 import {
   planDeploySource,
-  devWorkspaceDeployAllowed,
   normalizeRootRel,
   isExplicitRoot,
   resolveBuildDir,
@@ -19,62 +18,40 @@ const upload: UploadArchive = { id: "u1", filename: "a.tar.gz", path: "/p", size
 
 // ---- planDeploySource: which source a deployment builds from ----
 
-test("dev-workspace intent overrides the project's own source (checked FIRST)", () => {
-  // A git project asked to deploy its workspace must NOT clone.
-  assert.deepEqual(
-    planDeploySource({ source: "github", repo }, { buildSource: "dev-workspace" }),
-    { kind: "dev-workspace" },
-  );
-  // Even an upload project: workspace wins.
-  assert.deepEqual(
-    planDeploySource({ source: "upload", upload }, { buildSource: "dev-workspace" }),
-    { kind: "dev-workspace" },
-  );
-});
-
 test("docker-image needs an image set, and carries it", () => {
   assert.deepEqual(
-    planDeploySource({ source: "docker-image", dockerImage: "nginx:1" }, {}),
+    planDeploySource({ source: "docker-image", dockerImage: "nginx:1" }),
     { kind: "docker-image", image: "nginx:1" },
   );
   // docker-image source with no image falls through to none.
-  assert.deepEqual(planDeploySource({ source: "docker-image" }, {}), { kind: "none" });
+  assert.deepEqual(planDeploySource({ source: "docker-image" }), { kind: "none" });
 });
 
 test("git wins when a repo is present, and carries the repo", () => {
-  assert.deepEqual(planDeploySource({ source: "github", repo }, {}), {
+  assert.deepEqual(planDeploySource({ source: "github", repo }), {
     kind: "git",
     repo,
   });
 });
 
 test("upload only when source is upload AND an archive is present", () => {
-  assert.deepEqual(planDeploySource({ source: "upload", upload }, {}), {
+  assert.deepEqual(planDeploySource({ source: "upload", upload }), {
     kind: "upload",
     upload,
   });
-  assert.deepEqual(planDeploySource({ source: "upload" }, {}), { kind: "none" });
+  assert.deepEqual(planDeploySource({ source: "upload" }), { kind: "none" });
 });
 
 test("a repo present alongside an upload still prefers git (repo check first)", () => {
   // Mirrors the engine's historical else-if order: repo before upload.
-  assert.deepEqual(planDeploySource({ source: "upload", repo, upload }, {}), {
+  assert.deepEqual(planDeploySource({ source: "upload", repo, upload }), {
     kind: "git",
     repo,
   });
 });
 
 test("nothing deployable → none", () => {
-  assert.deepEqual(planDeploySource({ source: "git" }, {}), { kind: "none" });
-});
-
-// ---- devWorkspaceDeployAllowed: the guard ----
-
-test("dev-workspace deploy is allowed only for built (git/upload) services", () => {
-  assert.equal(devWorkspaceDeployAllowed({ usesComposeStack: false, source: "github" }), true);
-  assert.equal(devWorkspaceDeployAllowed({ usesComposeStack: false, source: "upload" }), true);
-  assert.equal(devWorkspaceDeployAllowed({ usesComposeStack: true, source: "compose" }), false);
-  assert.equal(devWorkspaceDeployAllowed({ usesComposeStack: false, source: "docker-image" }), false);
+  assert.deepEqual(planDeploySource({ source: "git" }), { kind: "none" });
 });
 
 // ---- normalizeRootRel / isExplicitRoot: pure path normalisation ----

@@ -1,13 +1,11 @@
 import {
   activities as activitiesTable,
-  devSshUser as devSshUserTable,
   githubApps as githubAppsTable,
   githubInstallation as githubInstallationTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
 import {
   activityToRow,
-  devSshUserToRow,
   githubAppToRow,
   githubInstallationToRow,
   serverToRow,
@@ -16,7 +14,6 @@ import type { TestDb } from "../db/test-harness";
 import type {
   Activity,
   ActivityType,
-  DevSshUser,
   GithubApp,
   GithubInstallation,
   Server,
@@ -24,13 +21,12 @@ import type {
 
 /**
  * Shared seeding for the infra / integrations cut-set (e) data-layer tests
- * (relational-store PLAN Step 6). `servers`, `github_apps`(+`github_installation`),
- * `dev_ssh_user`, and `activities` are RELATIONAL: the data layer reads pglite. So
+ * (relational-store PLAN Step 6). `servers`, `github_apps`(+`github_installation`)
+ * and `activities` are RELATIONAL: the data layer reads pglite. So
  * this seeds those tables directly, the same way `app-graph-test-helpers` seeds
  * the project graph.
  *
- * Pair with `seedIdentity` (team FKs) and, for dev_ssh_user, a seeded project
- * (its `project_id` FK). Drive the data functions inside
+ * Pair with `seedIdentity` (team FKs). Drive the data functions inside
  * `runWithIdentity({ userId, teamId })`.
  *
  * Not named `*.test.ts` so the `node --test` glob skips it (a helper).
@@ -40,7 +36,7 @@ const T0 = "2026-01-01T00:00:00.000Z";
 
 /** Truncate every infra/integration table (call in `beforeEach` before seeding). */
 export const TRUNCATE_INFRA = `truncate table
-  activities, dev_ssh_user, github_installation, github_apps, servers
+  activities, github_installation, github_apps, servers
   restart identity cascade;`;
 
 /** A full {@link Server} with sensible defaults (override any field). */
@@ -123,23 +119,6 @@ export async function seedGithubInstallation(
     .insert(githubInstallationTable)
     .values(githubInstallationToRow(install));
   return install;
-}
-
-/** Insert a {@link DevSshUser} of a seeded project. */
-export async function seedDevSshUser(
-  db: TestDb,
-  opts: Partial<DevSshUser> & { id: string; appId: string; username: string },
-): Promise<DevSshUser> {
-  const u: DevSshUser = {
-    id: opts.id,
-    appId: opts.appId,
-    username: opts.username,
-    publicKey: opts.publicKey ?? "ssh-ed25519 AAAA",
-    passwordEnc: opts.passwordEnc ?? null,
-    createdAt: opts.createdAt ?? T0,
-  };
-  await db.insert(devSshUserTable).values(devSshUserToRow(u));
-  return u;
 }
 
 /** Insert an {@link Activity} (the DB assigns its `seq` in insertion order). */

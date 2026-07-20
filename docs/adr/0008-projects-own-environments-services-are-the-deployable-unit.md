@@ -111,6 +111,10 @@ environment (bare `<slug>` preserved → zero churn), and it gains the project's
 
 ### 7. The Development environment IS the dev container
 
+> **Void (Jul 2026):** dev mode — the dev container, workspace, SSH gateway and VS Code
+> tunnel — was removed from the product, so this section has no remaining subject. The
+> seeded Development environment survives as an ordinary image-baked Environment.
+
 The seeded **Development** environment's runtime kind = today's mutable, hot-reload **dev container**
 (`deplo-dev-<slug>`, workspace, SSH gateway, VS Code tunnel, preview route) rather than an
 image-baked stack. `DevConfig` becomes that environment's config. This avoids two parallel "dev"

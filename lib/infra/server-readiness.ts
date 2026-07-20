@@ -205,7 +205,7 @@ export const READINESS_DETAILS = {
   versionOutdated: (v: string, expected: string) =>
     `This server runs agent v${v}. v${expected} is available.`,
   featuresAllSupported:
-    "This agent supports every platform feature Deplo uses: backups, dev containers, the SSH gateway, VS Code tunnels, host metrics, host port checks, in-place agent updates, and moving data between servers.",
+    "This agent supports every platform feature Deplo uses: backups, host metrics, host port checks, in-place agent updates, and moving data between servers.",
   featuresMissing: (names: string[]) =>
     `This agent does not support ${names.length} feature${names.length === 1 ? "" : "s"} Deplo uses (${names.join(", ")}). Apps still deploy here, but those features won't work on this server.`,
   dockerOk: (version: string) =>
@@ -347,9 +347,6 @@ export const PLATFORM_FEATURES: readonly { capability: string; name: string }[] 
   { capability: "container-stats", name: "per-app monitoring" },
   { capability: "checkport", name: "host port checks" },
   { capability: "backup", name: "backups" },
-  { capability: "dev", name: "dev containers" },
-  { capability: "ssh-gateway", name: "the SSH gateway" },
-  { capability: "tunnel", name: "VS Code tunnels" },
   { capability: "self-update", name: "in-place agent updates" },
   { capability: "volume-copy", name: "moving data between servers" },
   { capability: "files-copy", name: "moving app files between servers" },

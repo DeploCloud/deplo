@@ -389,7 +389,7 @@ async function assertServerRemovable(id: string): Promise<void> {
  * destroy — and everything that DOES survive (the deplo-agent binary + its
  * systemd unit, /var/lib/deplo-agent with the mTLS certs and Traefik's acme.json,
  * the deplo-traefik container squatting on :80/:443, the `deplo` docker network,
- * the SSH gateway, built images, and Docker itself) has no RPC behind it at all —
+ * built images, and Docker itself) has no RPC behind it at all —
  * and (b) has just revoked our right to call the agent anyway. A sweep here would
  * be theatre. The honest answer is the host-side {@link uninstallCommand}, which
  * we always return so the UI can hand it over the moment the server is gone.

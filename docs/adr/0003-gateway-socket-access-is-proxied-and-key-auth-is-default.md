@@ -1,5 +1,11 @@
 # The gateway never holds the raw docker socket; key auth is the default
 
+- **Status**: Retired — 2026-07-19. Dev mode (the live, editable dev container with
+  SSH access and the VS Code tunnel) was removed from the product wholesale; this
+  decision has no remaining subject. Kept as a historical record. The host-side
+  uninstaller retains a legacy `deplo-ssh-gateway` sweep for hosts provisioned
+  before the removal.
+
 ## Context
 
 The SSH gateway is exposed to the public internet on port `2222`. The only thing between

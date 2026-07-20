@@ -114,14 +114,13 @@ export function SidebarNav({
     // Capability-gated entries come from the sidebar's own capability list; the
     // live/per-app flags come from the store — but only when it matches the
     // slug in the URL, so a stale value from the app you just left can't
-    // leak its Console/Logs/Dev/Files into the next one.
+    // leak its Console/Logs/Files into the next one.
     const matches = service?.slug === appSlug;
     sections = appNav(appSlug, {
       pathname,
       canManageEnv: caps.has("manage_env"),
       canBackup: caps.has("manage_infra"),
       running: matches ? service!.running : false,
-      devEligible: matches ? service!.devEligible : false,
       showFiles: matches ? service!.showFiles : false,
       consoleAcknowledged,
     });

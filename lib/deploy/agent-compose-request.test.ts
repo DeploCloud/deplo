@@ -5,7 +5,7 @@ import { buildDeployRequest } from "./agent-deploy";
 import { SourceKind, BuildKind } from "../agent/gen/agent";
 import type { BuildConfig } from "../types";
 
-function devBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
+function baseBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
   return {
     buildMethod: "dockerfile",
     methodSettings: {},
@@ -89,55 +89,11 @@ test("compose plan with no mounts sends an empty mounts list", async () => {
 });
 
 /**
- * "Deploy from dev workspace" on a REMOTE server (Part D). The agent builds from
- * its OWN <dev-dir>/<slug> (SOURCE_KIND_DEV_WORKSPACE) — no tree crosses the wire.
- * These pin the request mapping: source kind, Dockerfile dispatch, and the
- * rootDirectory subdir the agent re-validates against its build dir.
- */
-test("dev-workspace plan → SOURCE_KIND_DEV_WORKSPACE, Dockerfile build, no tar", async () => {
-  const req = await buildDeployRequest({
-    ...base,
-    imageRef: "deplo/myapp:dep_1",
-    plan: { kind: "dev-workspace", build: devBuild(), subdir: "" },
-  });
-  assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_DEV_WORKSPACE);
-  assert.equal(req.buildKind, BuildKind.BUILD_KIND_DOCKERFILE);
-  // The workspace lives on the agent — no context is tarred here.
-  assert.equal(req.contextTar.length, 0);
-  assert.equal(req.devWorkspaceSubdir, "");
-});
-
-test("dev-workspace plan carries the rootDirectory as the subdir", async () => {
-  const req = await buildDeployRequest({
-    ...base,
-    plan: { kind: "dev-workspace", build: devBuild(), subdir: "packages/api" },
-  });
-  assert.equal(req.devWorkspaceSubdir, "packages/api");
-});
-
-test("dev-workspace plan with the explicit dockerfile method honours methodSettings", async () => {
-  const req = await buildDeployRequest({
-    ...base,
-    plan: {
-      kind: "dev-workspace",
-      build: devBuild({
-        buildMethod: "dockerfile",
-        methodSettings: { dockerfilePath: "ops/Dockerfile", dockerBuildStage: "prod" },
-      }),
-      subdir: "",
-    },
-  });
-  assert.equal(req.dockerfile?.dockerfilePath, "ops/Dockerfile");
-  assert.equal(req.dockerfile?.targetStage, "prod");
-  assert.equal(req.dockerfile?.generated, false);
-});
-
-/**
  * Heavy build methods (static/nixpacks/buildpacks/railpack) now run agent-side.
  * buildDeployRequest must map them to the matching heavy BuildKind + a BuildSpec
  * (NOT BUILD_KIND_DOCKERFILE + a dockerfile descriptor) so the agent dispatches to
- * the ported builder. The git + dev-workspace arms can't probe the tree, so they
- * key purely off the method — these pin that mapping.
+ * the ported builder. The git arm can't probe the tree, so it
+ * keys purely off the method — these pin that mapping.
  */
 
 test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfile", async () => {
@@ -148,7 +104,7 @@ test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfil
       url: "https://x@github.com/o/r.git",
       branch: "main",
       subdir: "",
-      build: devBuild({ buildMethod: "nixpacks", installCommand: "npm ci" }),
+      build: baseBuild({ buildMethod: "nixpacks", installCommand: "npm ci" }),
     },
   });
   assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_GIT);
@@ -178,7 +134,7 @@ test("git plan with a legacy/auto method embeds the env NAMES (not values) in th
       subdir: "",
       // A legacy method string outside today's union: not heavy, not
       // "dockerfile" → the generated-Dockerfile arm.
-      build: devBuild({ buildMethod: "auto" as BuildConfig["buildMethod"] }),
+      build: baseBuild({ buildMethod: "auto" as BuildConfig["buildMethod"] }),
     },
   });
   assert.equal(req.buildKind, BuildKind.BUILD_KIND_DOCKERFILE);
@@ -189,17 +145,19 @@ test("git plan with a legacy/auto method embeds the env NAMES (not values) in th
   assert.ok(!body.includes("secret"), "env VALUE must not be baked into the Dockerfile");
 });
 
-test("dev-workspace plan with the static method → BUILD_KIND_STATIC + a BuildSpec", async () => {
+test("git plan with the static method → BUILD_KIND_STATIC + a BuildSpec", async () => {
   const req = await buildDeployRequest({
     ...base,
     plan: {
-      kind: "dev-workspace",
-      build: devBuild({
+      kind: "git",
+      url: "https://x@github.com/o/r.git",
+      branch: "main",
+      subdir: "",
+      build: baseBuild({
         buildMethod: "static",
         outputDirectory: "dist",
         methodSettings: { staticSinglePageApp: true },
       }),
-      subdir: "",
     },
   });
   assert.equal(req.buildKind, BuildKind.BUILD_KIND_STATIC);

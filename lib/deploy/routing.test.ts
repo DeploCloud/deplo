@@ -140,11 +140,11 @@ test("compose-stack flavour: docker.network pinned, service always explicit", ()
   );
 });
 
-test("dev-preview flavour: single router on its own host, network pinned, service explicit", () => {
+test("pinned-network flavour: single router on its own host, network pinned, service explicit", () => {
   assert.deepEqual(
     traefikRouterLabels({
-      baseKey: "deplo-dev-app",
-      routes: [{ name: "dev-app.1.2.3.4.sslip.io", port: null }],
+      baseKey: "deplo-aux-app",
+      routes: [{ name: "aux-app.1.2.3.4.sslip.io", port: null }],
       defaultPort: 3000,
       certResolver: CR,
       dockerNetwork: "deplo",
@@ -153,12 +153,12 @@ test("dev-preview flavour: single router on its own host, network pinned, servic
     [
       "traefik.enable=true",
       "traefik.docker.network=deplo",
-      "traefik.http.routers.deplo-dev-app.rule=Host(`dev-app.1.2.3.4.sslip.io`)",
-      "traefik.http.routers.deplo-dev-app.entrypoints=websecure",
-      "traefik.http.routers.deplo-dev-app.tls=true",
-      "traefik.http.routers.deplo-dev-app.tls.certresolver=letsencrypt",
-      "traefik.http.routers.deplo-dev-app.service=deplo-dev-app",
-      "traefik.http.services.deplo-dev-app.loadbalancer.server.port=3000",
+      "traefik.http.routers.deplo-aux-app.rule=Host(`aux-app.1.2.3.4.sslip.io`)",
+      "traefik.http.routers.deplo-aux-app.entrypoints=websecure",
+      "traefik.http.routers.deplo-aux-app.tls=true",
+      "traefik.http.routers.deplo-aux-app.tls.certresolver=letsencrypt",
+      "traefik.http.routers.deplo-aux-app.service=deplo-aux-app",
+      "traefik.http.services.deplo-aux-app.loadbalancer.server.port=3000",
     ],
   );
 });

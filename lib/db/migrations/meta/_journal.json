@@ -274,6 +274,27 @@
       "when": 1784583900000,
       "tag": "0038_add_instance_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1784584000000,
+      "tag": "0039_drop_dev_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1784584100000,
+      "tag": "0040_lower_cleanup_min_age_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1784584200000,
+      "tag": "0041_drop_development_env_target",
+      "breakpoints": true
     }
   ]
 }

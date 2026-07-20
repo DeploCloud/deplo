@@ -9,7 +9,7 @@ import type {
 } from "./env-resolve";
 
 const APP = "prj-1";
-const ALL = ["production", "preview", "development"] as const;
+const ALL = ["production", "preview"] as const;
 
 function envVar(
   key: string,
@@ -47,8 +47,8 @@ const fold = (es: { key: string; valueEnc: string }[]) => {
 test("production picks only production-tagged app vars", () => {
   const vars = [
     envVar("PROD_ONLY", ["production"]),
-    envVar("DEV_ONLY", ["development"]),
-    envVar("BOTH", ["production", "development"]),
+    envVar("PREVIEW_ONLY", ["preview"]),
+    envVar("BOTH", ["production", "preview"]),
   ];
   assert.deepEqual(keys(resolveEnvEntries("production", APP, vars, [])), [
     "PROD_ONLY",
@@ -66,7 +66,7 @@ test("vars from a different app are ignored", () => {
 test("a linked shared var reaches a runtime only when it targets it", () => {
   const s = [shared("SHARED", ["production"])];
   assert.deepEqual(keys(resolveEnvEntries("production", APP, [], s)), ["SHARED"]);
-  assert.deepEqual(resolveEnvEntries("development", APP, [], s), []);
+  assert.deepEqual(resolveEnvEntries("preview", APP, [], s), []);
 });
 
 /* --- precedence (the correctness spine, ADR-0012) --- */

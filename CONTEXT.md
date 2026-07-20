@@ -16,7 +16,7 @@ team** from the topbar; everything in the dashboard is scoped to it. **Servers a
 one shared resource** — instance-wide infrastructure any team's apps can target
 (one host, many teams). A team has a `plan` (`pro` | `enterprise`; the old `hobby` plan
 was removed). Created at first-run setup and via the topbar "Create team".
-_Avoid_: organization, workspace (that is the dev-mode source tree), tenant, account.
+_Avoid_: organization, workspace, tenant, account.
 
 **Active team**:
 The team a request operates in, resolved server-side from the `deplo_team` cookie
@@ -53,7 +53,7 @@ single promoted admin could seize the whole instance, first account included. No
 end: ownership **transfers**, but only by the owner, only to an active instance admin, and
 only with their password re-entered. The sole way back from a locked-out owner is the
 host-side `bun run recover` CLI (the one intended shell path in the product).
-_Avoid_: root user (that is Unix root — see **dev user**), founder (that is the TEAM-level
+_Avoid_: root user (that is Unix root), founder (that is the TEAM-level
 crown, `teams.founder_user_id`), super admin, instance admin (a different, lower tier).
 
 **Registration link**:
@@ -73,16 +73,16 @@ An optional, self-contained feature a team **installs** from the **plugin reposi
 extend the platform (like an MCP server). An installed plugin is a **host-managed container**
 (Deplo owns the Docker socket → real start/stop/restart + true status) — but it is
 **not an "App"**: it never appears on the Overview, in the app count, or the
-`apps` API. It is platform infrastructure that happens to run a container, like the
-**SSH gateway**. It is **not** deployed through the deploy pipeline and gets **no per-plugin
+`apps` API. It is platform infrastructure that happens to run a container, like Traefik.
+It is **not** deployed through the deploy pipeline and gets **no per-plugin
 domain, sslip.io, or TLS cert**; when a plugin needs to be reached it is served on the **plugin
 path** under Deplo's own public URL. The first plugin is the **MCP plugin** — a **stateless relay**
 that serves MCP over that path and **holds no credential of its own**: it forwards the
 caller's `deplo_` token verbatim to Deplo's GraphQL API, so a caller can only ever do what
 *their own* token's team capabilities allow. Its **status is never stored** — it is read
 **live** from the container
-at query time and exposed through the GraphQL API, like the Preview route's URL is "computed,
-not managed." The UI never touches Docker: status and start/stop flow **UI → GraphQL → data
+at query time and exposed through the GraphQL API — computed, not managed. The UI never
+touches Docker: status and start/stop flow **UI → GraphQL → data
 layer → socket**, never UI → socket.
 _Avoid_: App (a plugin runs on host container machinery but is never an App, nor a
 Project container), extension, add-on. (The container/label identity `deplo-app-<slug>` and
@@ -131,8 +131,8 @@ the event), trigger.
 **App**:
 The **deployable unit** (formerly *Project*, then *Service*, now **App** — the Project→Service step is [ADR-0008](../docs/adr/0008-projects-own-environments-services-are-the-deployable-unit.md)):
 a repository or template turned into a Docker stack `deplo-<slug>` fronted by Traefik.
-Owns its build/dev config, source, domains, env vars, deployments, and an optional dev
-container. It may sit at the team top level, inside a **Folder**, and/or belong to a
+Owns its build config, source, domains, env vars, and deployments. It may sit at the
+team top level, inside a **Folder**, and/or belong to a
 **Project** container (at most one). Its id keeps the historical `prj_` prefix (opaque;
 not migrated). The agent wire (`deplo.project=<id>` label, `deplo-<slug>` stack naming) also
 keeps the legacy token — it carries the App id.
@@ -223,13 +223,10 @@ host-coupled surface onto the owning agent: live **logs** (`FollowLogs`), **cons
 `Attach`, pty now Go `creack/pty`), the **console exec + introspection**
 (`Exec`/`ListInstances`/`ShellLabel`), per-server **metrics** (`Metrics`), the **lifecycle verbs**
 (`Stop`/`Start`/`DestroyStack`), and the **Files** tab (`ListFiles`/`ReadFile`/`WriteFile`/…,
-re-enabled for remote). **Part D** moves the last per-host singletons (ADR-0002): the **dev
-container** lifecycle (`StartDev`/`StopDev`/`ResetDevWorkspace`/`TeardownDev` — `StartDev` streams
-like a deploy), the **SSH gateway** (`EnsureGateway`/`ProvisionSshUser`/`DeprovisionSshUser` — the
-store's `DevSshUser[]` stays the source of truth, the control plane renders the config + the
-per-user exec-step plan, the agent applies them), the **VS Code tunnel**
-(`StartTunnel`/`GetTunnel`/`StopTunnel`), and a new **`SOURCE_KIND_DEV_WORKSPACE`** so "deploy from
-dev workspace" builds on the owning host. The browser GraphQL + SSE contracts
+re-enabled for remote). **Part D** moved the last per-host singletons (the dev-container lifecycle, the SSH
+gateway, the VS Code tunnel) onto the agent; **dev mode was later removed from the
+product entirely**, so the control plane no longer calls that surface — the RPCs stay
+dormant in the Go binary because the V1 contract is additive-only. The browser GraphQL + SSE contracts
 are unchanged — only the backing is repointed. Every container RPC label-checks
 `deplo.project=<id>` agent-side; the files sandbox is re-enforced agent-side; an agent that is
 unreachable **fails clearly with NO in-process fallback** (no synthetic container, no host metrics,
@@ -244,8 +241,7 @@ capability and degrades with `AgentBackupUnsupportedError` until it ships
 Agent
 code in its own repo (**DeploCloud/deplo-agent**), contract in
 [`proto/agent.proto`](../proto/agent.proto), control-plane side in [`lib/agent/`](../lib/agent/) +
-[`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts) +
-[`lib/deploy/agent-dev.ts`](../lib/deploy/agent-dev.ts).)*
+[`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts).)*
 _Avoid_: agent (ambiguous — say "server agent"), node, worker, runner (CI term), daemon
 (reserve for the Docker daemon it drives), deplo agent on the remote being a "second Deplo".
 
@@ -313,64 +309,10 @@ cloning the repo to a temp dir, building an image, then discarding the clone —
 source is not editable at runtime.
 _Avoid_: deployment (that is the build event, not the runtime), production container.
 
-**Dev container**:
-A app's mutable, long-lived development runtime (`deplo-dev-<slug>`), a sibling
-of the production stack — not a kind of deployment. Runs the app in development with
-hot reload over a bind-mounted source tree. A app may have a production stack and
-a dev container at once, with independent lifecycles. Its state lives on `app.dev`,
-never in a `Deployment` row. `dev.status` is **push-only** (set by the dev lifecycle
-actions, never reconciled against live docker), with the known consequence that a
-manually-stopped container can show a stale status — `app.status` used to share that
-consequence and no longer fully does (see **App status**). All
-SSH users of an app **share one** dev container and one workspace — there is no
-per-user isolation *within* an app; the isolation guarantee is strictly **between**
-apps.
-_Avoid_: dev deployment, dev mode (the feature is "dev mode"; the running thing is a
-"dev container"), dev server (that is the process inside it).
-
-**Workspace**:
-The persistent, bind-mounted source tree of a dev container (`/data/dev/<slug>` on the
-host → `/workspace` in the container). Seeded once on first start — cloned for
-`github`/`git` sources, extracted from the archive for `upload`; survives
-restart/redeploy; user edits land here. The unit of persistence for dev mode. `git` is
-installed regardless of source, so an `upload` workspace can be `git init`'d and
-committed locally even with no upstream. **Never auto-pulled** — a production redeploy
-is orthogonal and never touches it; the tree is the developer's. Preserved when dev mode
-is **disabled** (re-enabling resumes the edited tree); wiped only on full **app
-delete**. Disable is reversible; delete is not.
-_Avoid_: clone, source dir, working tree.
-
-**Dev image preset**:
-The coarse base-language image a dev container runs on — `node | python | go | rust |
-php | java` — or a free-text custom image string. A *different, coarser* axis than
-`framework` (app type) and `runtimeVersion` (language version): a Next.js app's
-preset is `node`. **Derived by default from `framework`** so the user rarely picks it,
-overridable only for the custom-image case. Resolves to an **official base image**
-(`node:22`, `python:3.12`, …) used directly — Deplo builds no per-language dev images.
-_Avoid_: dev base image (when you mean the preset id), language.
-
-**Source-bearing source**:
-A `DeploySource` that puts editable source on the server — `github`, `git`, `upload`.
-Dev mode is eligible **only** for these. `docker-image` (a prebuilt image) and
-`compose` (a multi-service stack, no single repo) have no runnable source tree, so dev
-mode is disabled for them.
-_Avoid_: git-based source (excludes upload), buildable source.
-
 **Deployment**:
 A single build-and-release event that produces or updates the production stack (or a
-preview). Always image-based; recorded as a `Deployment` row. Dev containers are
-explicitly **not** deployments and produce no `Deployment` rows.
+preview). Always image-based; recorded as a `Deployment` row.
 _Avoid_: build (the build is one phase of a deployment), release.
-
-**Preview route**:
-The dev container's public URL, `dev-<slug>.<ip>.sslip.io`. A **Traefik-label-only
-route** computed at render time from slug + server IP — **not** a `Domain` row. It is
-ephemeral (exists only while the dev container runs), derived (the user never
-adds/verifies it), and never appears in the Domains tab. `DevConfig` stores only
-`previewEnabled` (default on); the URL is computed, not managed. Distinct host from the
-production primary domain, so the two routers never collide.
-_Avoid_: preview domain (it is not a `Domain`), dev domain, auto domain (that is the
-production sslip.io domain).
 
 **Database**:
 A managed datastore container (`postgres`/`mysql`/`mariadb`/`mongodb`/`redis`/`clickhouse`)
@@ -404,48 +346,13 @@ destructive** — DB drop-and-recreate per engine, app wipe-and-untar (stop → 
 _Avoid_: backup (that is the schedule), artifact (use for the S3 object specifically),
 restore point.
 
-### SSH access
-
-**SSH gateway**:
-A single platform-wide container (`deplo-ssh-gateway`) that publishes the one SSH port
-(`2222`) and fans every dev SSH user into *their own* app's dev container via an
-un-bypassable `ForceCommand`. Platform infrastructure, like Traefik or the `deplo`
-network — not an app, not a database. Created lazily on the first SSH user (never at
-install), and a disposable **projection** of the store: its Linux accounts, keys, and
-maps are rebuilt from `DevSshUser[]`, which is the sole source of truth.
-_Avoid_: SSH server, bastion, jump host, per-service sshd.
-
-**Dev SSH user**:
-A Linux account on the SSH gateway, scoped to exactly **one** app. Namespaced
-gateway-globally as `<slug>-<name>`. Authenticates by key and/or password — **at least
-one is required** (the "neither" state is rejected at both action and data layers; key
-is the default, password an opt-in). The password is stored **reversibly** (encrypted,
-not scrypt-hashed like `User.passwordHash`) only because `chpasswd` needs the cleartext;
-it is **write-only from the dashboard** — masked in the DTO with no reveal path, so a
-app owner who forgets it must reset it, not retrieve it. Always lands inside that
-app's dev container as `devuser` (the gateway always `docker exec -u devuser`) — the
-exec target is fixed, never user-configurable.
-_Avoid_: dev user (that is the in-container account this resolves to), SSH account.
-
-**devuser**:
-The single in-container identity for a dev container, fixed at **UID 1000**. The host
-workspace dir is `chown 1000`, the image creates `devuser` as UID 1000, the dev server
-runs **as** `devuser` (not root-PID-1), and every SSH session execs in as `devuser`. One
-UID end-to-end so the dev server and the developer never fight over file ownership across
-the bind mount. There is no configurable exec target and no root path inside the
-container.
-_Avoid_: target user (removed), non-root user (be specific: it is `devuser`/UID 1000).
-
 ### Configuration
 
 **Env target**:
-The axis (`production` | `preview` | `development`) that decides which runtime an env
-var reaches. It applies to per-app vars, instance globals, and **Shared variables** (the
-orthogonal runtime axis, alongside their sharing modes). A dev container inherits **only**
-entries that target `development` — its own `development`-tagged vars plus any shared
-variable that reaches it and targets `development` — never production/preview-only entries.
-Nothing is inherited implicitly: a fresh app's dev container is empty until a `development`
-var is added.
+The axis (`production` | `preview`) that decides which runtime an env var reaches. It
+applies to per-app vars, instance globals, and **Shared variables** (the orthogonal
+runtime axis, alongside their sharing modes). The third value, `development`, died with
+dev mode (migration 0041): its only consumer was the dev container's env resolution.
 _Avoid_: environment (that is the per-Project entity); scope.
 
 **Shared variable** (ADR-0010, opt-in per ADR-0012):
@@ -458,22 +365,20 @@ three non-exclusive **availability scopes** — **team-wide** (every app in the 
 in one of the selected **Projects**) — only say who the variable is SUGGESTED to; they
 never auto-apply, and they don't gate linking (any team var is linkable from any app).
 At least one scope or link is required. An orthogonal **env target** axis gates the
-runtime (defaults to all three). Deploy precedence (low→high): instance globals < an
+runtime (defaults to both). Deploy precedence (low→high): instance globals < an
 app's own var < linked shared var. Managed on the Variables page's **Shared** tab
 (create / edit / assign the scopes). Stored in `shared_env_vars` (+ target / environment
 / project / app junctions). id prefix `svar_`.
 _Avoid_: shared env group (the old model), sharing mode (pre-0012 auto-apply language),
 shared variables as Coolify's whole-set concept.
 
-**Port target**:
-The runtime a port belongs to: `production` or `development` (a two-valued narrowing
-of env target — preview reuses the production port). Each target has exactly one port;
-this is a per-target *map*, not a list, so two ports can never claim the same target.
-Realized as `build.port` (production, image-baked) + `dev.port` (development), read
-through a single `portFor(service, target)` accessor in `lib/deploy/ports.ts`. A
-hostname's *effective port* — its per-domain override (single-image apps only)
-folded onto the target default — comes from `effectivePortFor` in the same module.
-_Avoid_: container port (ambiguous about which runtime), exposed port.
+**Port**:
+An app has **one** container port — the image-baked `build.port` (`preview` reuses it) —
+read through the single `portFor(app)` accessor in `lib/deploy/ports.ts` (ADR-0001's
+choke point, kept through the collapse of the old per-target axis). A hostname's
+*effective port* — its per-domain override (single-image apps only) folded onto the
+default — comes from `effectivePortFor` in the same module.
+_Avoid_: port target (the old per-target axis died with dev mode), exposed port.
 
 **Volume**:
 A persistent **docker-managed named volume** a user mounts into a **single-container**

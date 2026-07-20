@@ -39,7 +39,7 @@ export const TRUNCATE_PROJECT_GRAPH = `truncate table
   shared_env_var_targets, shared_env_vars,
   deployment_logs, deployments, env_var_targets, env_vars,
   domain_middlewares, domains,
-  app_mounts, app_volumes, app_dev,
+  app_mounts, app_volumes,
   app_build_method_settings, app_build, apps,
   folders, servers
   restart identity cascade;`;
@@ -102,7 +102,6 @@ export async function seedApp(
     mounts: null,
     volumes: null,
     build,
-    dev: null,
     productionUrl: null,
     status: opts.status ?? "active",
     autoDeploy: true,

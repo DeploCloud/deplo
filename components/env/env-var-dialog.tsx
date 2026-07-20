@@ -135,7 +135,7 @@ function EditForm({
         }
       }
       // No `targets`: an App has no Environment of its own — it inherits exactly
-      // one from its Project — so the server defaults every variable to all three.
+      // one from its Project — so the server defaults every variable to every runtime.
       const res = await gqlAction<{ upsertEnv: { id: string } }>(
         `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,
         {
@@ -437,7 +437,7 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
     startTransition(async () => {
       // No `targets` on either path: an App has no Environment of its own — it
       // inherits exactly one from its Project — so the server defaults every
-      // variable to all three.
+      // variable to every runtime.
       if (filled.length === 1) {
         const res = await gqlAction<{ upsertEnv: { id: string } }>(
           `mutation($input: UpsertEnvInput!) { upsertEnv(input: $input) { id } }`,

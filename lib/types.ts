@@ -6,7 +6,7 @@ export type Role = "owner" | "member" | "viewer";
  * A single thing a member is allowed to do within a team. Roles
  * (owner/member/viewer) are presets over this set; an admin can additionally
  * grant/revoke individual capabilities per member (see {@link Membership}).
- *  - deploy          create/redeploy/stop/start apps & dev environments
+ *  - deploy          create/redeploy/stop/start apps
  *  - manage_domains  add/verify/route/remove custom domains
  *  - manage_env      edit project & shared environment variables
  *  - manage_files    browse/edit/upload/delete a project's files dir
@@ -626,100 +626,6 @@ export interface BuildConfig {
 }
 
 /**
- * Push-only lifecycle state of a project's dev container. Never reconciled
- * against live docker (there is no monitor loop) — exactly like
- * `AppStatus`, with the same known consequence that a manually-stopped
- * container can show a stale status.
- */
-export type DevStatus = "off" | "starting" | "running" | "stopped" | "error";
-
-/**
- * Coarse base-language image a dev container runs on. A *different, coarser*
- * axis than `runtimeVersion` (language version). Defaults to `node`; resolves to
- * an OFFICIAL base image (node:22, python:3.12, …) used directly.
- */
-export type DevImagePreset = "node" | "python" | "go" | "rust" | "php" | "java";
-
-/**
- * The runtime a port belongs to — a two-valued narrowing of `EnvTarget`
- * (`preview` reuses the production port). Each target has exactly one port;
- * read through `portFor(project, target)` in `lib/deploy/ports.ts` (and
- * `effectivePortFor` to fold in a per-domain override).
- */
-export type PortTarget = "production" | "development";
-
-/**
- * A project's dev-mode configuration. Absent (`null`/`undefined`) ⇒ dev mode
- * was never enabled (back-compat). Offered only for source-bearing apps
- * (`github`/`git`/`upload`). State lives here, never in a `Deployment` row.
- */
-export interface DevConfig {
-  enabled: boolean;
-  /** Push-only, like project.status — not reconciled against live docker. */
-  status: DevStatus;
-  /** "preset" → `image` is a DevImagePreset id; "custom" → `image` is raw. */
-  imageKind: "preset" | "custom";
-  /** Preset id (resolved to an official base) or a raw custom image string. */
-  image: string;
-  /** Dev command; default from the framework's `dev` command (e.g. "next dev"). */
-  devCommand: string;
-  /** The development PortTarget. Defaults to build.port. */
-  port: number;
-  /**
-   * Preview route on by default. A LABEL-only route, never a Domain row.
-   */
-  previewEnabled: boolean;
-  /**
-   * The dev preview hostname (`dev-<slug>-<adjective>-<animal>-<hexip>.nip.io`),
-   * generated once with fresh random words when dev mode is first enabled and
-   * STORED here so the env var, the Traefik router label, and the displayed URL
-   * all use one identical host across restarts (the words are random, so they
-   * can't be recomputed consistently — the stored value IS the source of truth).
-   * Null on a legacy row enabled before this field existed; lazily generated and
-   * persisted on the next dev start.
-   */
-  previewHost: string | null;
-  latestStartAt: string | null;
-}
-
-/**
- * A Linux account on the SSH gateway, scoped to exactly one project. The
- * password is stored REVERSIBLY (encrypted, not scrypt-hashed like
- * `User.passwordHash`) only because `chpasswd` needs the cleartext — and is
- * write-only from the dashboard (masked in the DTO, no reveal path). At least
- * one credential (key or password) is required; "neither" is rejected at both
- * the action and data layers.
- */
-export interface DevSshUser {
-  id: ID; // newId("ssh")
-  /** The ONE project this user may reach. */
-  appId: ID;
-  /** Gateway-global login, namespaced `<slug>-<name>` to keep it unique. */
-  username: string;
-  /** authorized_keys line(s); plaintext (public). Null when password-only. */
-  publicKey: string | null;
-  /**
-   * encryptSecret(password). Reversible ONLY because chpasswd needs cleartext.
-   * Write-only: masked in the DTO with no reveal path. Null when key-only.
-   */
-  passwordEnc: string | null;
-  // NOTE: no targetUser — the gateway always execs as `devuser` (UID 1000).
-  // A configurable exec target is a privilege-escalation footgun (ADR-0003).
-  createdAt: string;
-}
-
-/** DTO sent to the client: the password is masked with NO reveal path. */
-export interface DevSshUserDTO {
-  id: ID;
-  username: string;
-  /** The public key, shown verbatim (it is public). Null when password-only. */
-  publicKey: string | null;
-  /** Whether a password is set. The password itself is never sent. */
-  hasPassword: boolean;
-  createdAt: string;
-}
-
-/**
  * A persistent volume mounted into a SINGLE-CONTAINER project's one service (the
  * renderCompose path — github/git/docker-image/upload, never compose-stack
  * apps, which declare volumes in their own YAML). Gated in the UI by
@@ -891,12 +797,6 @@ export interface App {
    */
   volumes?: VolumeMount[] | null;
   build: BuildConfig;
-  /**
-   * Dev-mode configuration. Absent ⇒ dev mode was never enabled (back-compat).
-   * A sibling of the production stack with an independent lifecycle; never a
-   * `Deployment`. Offered only for source-bearing sources.
-   */
-  dev?: DevConfig | null;
   productionUrl: string | null;
   status: AppStatus;
   autoDeploy: boolean;
@@ -933,16 +833,6 @@ export interface Deployment {
   readyAt: string | null;
   buildDurationMs: number | null;
   creator: string;
-  /**
-   * Where this deployment's image is built FROM. Absent ⇒ the project's own
-   * `source` (git clone / upload archive / docker pull) — the normal path.
-   * "dev-workspace" is the explicit exception (CONTEXT.md): build PRODUCTION
-   * from the developer's live, edited tree at /data/dev/<slug> instead of
-   * re-cloning the source. Persisted on the row because runDeployment re-reads
-   * the deployment by id across the fire-and-forget boundary and must recover
-   * the intent (a side map would not survive a process restart).
-   */
-  buildSource?: "dev-workspace";
 }
 
 export type LogLevel =
@@ -959,19 +849,16 @@ export interface LogLine {
   text: string;
 }
 
-export type EnvTarget = "production" | "preview" | "development";
+export type EnvTarget = "production" | "preview";
 
-/** Canonical ordered list of every env target. */
-export const ALL_ENV_TARGETS: EnvTarget[] = [
-  "production",
-  "preview",
-  "development",
-];
+/** Canonical ordered list of every env target. (`development` died with dev
+ * mode — migration 0041 stripped its junction rows.) */
+export const ALL_ENV_TARGETS: EnvTarget[] = ["production", "preview"];
 
 /**
- * Keep only valid targets, deduped and in canonical order; fall back to all three
- * if none survive. The UI no longer offers a target picker (an App belongs to
- * exactly ONE Environment — the production/preview/development axis is a legacy
+ * Keep only valid targets, deduped and in canonical order; fall back to every
+ * target if none survive. The UI no longer offers a target picker (an App
+ * belongs to exactly ONE Environment — the production/preview axis is a legacy
  * storage detail), so a write that names no target means "every runtime".
  */
 export function sanitizeTargets(targets: EnvTarget[]): EnvTarget[] {
@@ -1409,8 +1296,8 @@ export interface Activity {
  *  - `environmentIds` — apps living in one of these {@link Environment}s.
  *  - `projectIds` — apps in one of these {@link Project} containers (whitelist).
  *  - `appIds` — an explicit per-app link attached from the app UI.
- * `targets` is the orthogonal runtime axis (production/preview/development),
- * defaulting to all three. Deploy selection/precedence: lib/deploy/env-resolve.ts.
+ * `targets` is the orthogonal runtime axis (production/preview),
+ * defaulting to both. Deploy selection/precedence: lib/deploy/env-resolve.ts.
  */
 export interface SharedVar {
   id: ID;

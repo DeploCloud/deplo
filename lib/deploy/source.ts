@@ -2,8 +2,8 @@
  * The deploy-source seam: decide WHICH source a deployment builds from, and the
  * shared rootDirectory resolution every built source uses.
  *
- * `runDeployment` used to inline a 5-way `if/else` over the source (dev-workspace
- * / docker-image / git / upload / compose) with the rootDirectory logic copied
+ * `runDeployment` used to inline a multi-way `if/else` over the source
+ * (docker-image / git / upload / compose) with the rootDirectory logic copied
  * into three arms. The DECISION (which path, and why) is pulled out here as a
  * pure function so it can be exercised without a clone, an archive, or docker;
  * the EXECUTION of each plan stays in the engine (it needs the filesystem and
@@ -19,16 +19,13 @@ import { realpath } from "node:fs/promises";
 import { safeBuildDir } from "./path-safety";
 import type { GitRepo, UploadArchive } from "../types";
 
-/** What a deployment builds from, decided from the project + deployment intent.
+/** What a deployment builds from, decided from the project.
  * Each variant CARRIES the data its execution needs, so the engine never
  * re-derives (or non-null-asserts) what the decision already proved present.
- *  - `dev-workspace` — build PRODUCTION from the live dev tree (explicit intent,
- *    overrides the project's own source; CONTEXT.md exception).
  *  - `docker-image`  — pull a prebuilt image; no build, no tree.
  *  - `git` / `upload` — materialise a tree, then build it.
  *  - `none`          — nothing deployable; the engine errors. */
 export type SourcePlan =
-  | { kind: "dev-workspace" }
   | { kind: "docker-image"; image: string }
   | { kind: "git"; repo: GitRepo }
   | { kind: "upload"; upload: UploadArchive }
@@ -44,17 +41,11 @@ export interface SourcePlanApp {
 }
 
 /**
- * Decide which source a deployment builds from. `buildSource: "dev-workspace"`
- * is checked FIRST because it is an explicit intent that OVERRIDES the project's
- * own source (a git/upload project deploys its edited workspace here, not a
- * fresh clone). Otherwise the project's `source` drives the choice; a
- * docker-image needs an image set, git needs a repo, upload needs an archive.
+ * Decide which source a deployment builds from. The project's `source` drives
+ * the choice; a docker-image needs an image set, git needs a repo, upload needs
+ * an archive.
  */
-export function planDeploySource(
-  project: SourcePlanApp,
-  opts: { buildSource?: "dev-workspace" },
-): SourcePlan {
-  if (opts.buildSource === "dev-workspace") return { kind: "dev-workspace" };
+export function planDeploySource(project: SourcePlanApp): SourcePlan {
   if (project.source === "docker-image" && project.dockerImage) {
     return { kind: "docker-image", image: project.dockerImage };
   }
@@ -63,19 +54,6 @@ export function planDeploySource(
     return { kind: "upload", upload: project.upload };
   }
   return { kind: "none" };
-}
-
-/**
- * Whether a "deploy from dev workspace" intent is allowed for this project. Dev
- * is source-bearing only (git/upload), so this is always a single-image build; a
- * compose stack or a docker-image project has no buildable workspace tree. Guards
- * against a future source change silently routing a stack through the dev arm.
- */
-export function devWorkspaceDeployAllowed(opts: {
-  usesComposeStack: boolean;
-  source: string;
-}): boolean {
-  return !opts.usesComposeStack && opts.source !== "docker-image";
 }
 
 /** Normalise a user-supplied rootDirectory to a clean forward-slash relative
@@ -100,7 +78,7 @@ export class RootDirectoryNotFound extends Error {}
  * Resolve the directory to build from inside a materialised tree (`root`),
  * containing a user-supplied `rootDirectory` against it via {@link safeBuildDir}
  * (realpath-based, defeats symlink escape). The one place every built source
- * (git, upload, dev-workspace) resolves rootDirectory, so they can never drift.
+ * (git, upload) resolves rootDirectory, so they can never drift.
  *
  * When `failOnMissing` is set and an EXPLICIT rootDirectory resolves back to the
  * tree root (i.e. it wasn't found / escaped), throws {@link RootDirectoryNotFound}

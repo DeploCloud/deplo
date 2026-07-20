@@ -28,7 +28,7 @@ import type { BuildConfig, BuildMethod, LogLevel } from "../types";
  * DeployRequest and streams its events back into the existing log/status writes.
  *
  * The agent handles EVERY build method — the Dockerfile/auto family, prebuilt
- * images, git clones, dev-workspace builds, multi-service compose stacks, AND the
+ * images, git clones, multi-service compose stacks, AND the
  * heavy builders (static/nixpacks/buildpacks/railpack, ported to deplo-agent). The
  * only per-server gate is whether THIS server's agent is new enough to carry the
  * method's capability ({@link agentCapabilityForMethod}); an older agent is a clear
@@ -80,22 +80,6 @@ export type AgentBuildPlan =
       kind: "compose";
       /** Template config files the stack bind-mounts (project.mounts); may be empty. */
       mounts: { filePath: string; content: string }[];
-    }
-  | {
-      /**
-       * "Deploy from dev workspace" on a REMOTE server (Part D). The developer's
-       * live tree lives on the AGENT's host (<dev-dir>/<slug>), so the control
-       * plane never copies it — the agent builds from its OWN workspace
-       * (SOURCE_KIND_DEV_WORKSPACE), applying the same exclude-set + symlink-reject
-       * guard copyWorkspaceForBuild does on localhost. No workspace bytes cross the
-       * wire. The build dispatch mirrors the git arm (no tree to probe here).
-       */
-      kind: "dev-workspace";
-      /** Build config (drives the Dockerfile dispatch, same as the git plan). */
-      build: BuildConfig;
-      /** rootDirectory within the workspace (validated against the build dir on
-       *  the agent). Mirrors the git plan's subdir. */
-      subdir: string;
     };
 
 /**
@@ -226,7 +210,7 @@ export interface AgentDeployResult {
 /**
  * Run a deploy through the agent. Performs the mandatory Hello pre-flight (P5),
  * builds the DeployRequest (taring the context for a Dockerfile/upload build, a
- * GIT source the agent clones itself, a dev-workspace, or an IMAGE source),
+ * GIT source the agent clones itself, or an IMAGE source),
  * streams events into `sink`, and resolves `ready: true` on a ready result.
  * Throws {@link AgentUnavailableError} on agent-unreachable / transport errors
  * BEFORE any work began (the caller turns it into a hard deploy failure — there
@@ -436,6 +420,7 @@ export async function buildDeployRequest(opts: {
     contextTar: new Uint8Array(0),
     pullImage: false,
     mounts: [],
+    // Dead V1 wire field (dev mode removed); the generated type still requires it.
     devWorkspaceSubdir: "",
     buildSpec: undefined,
   };
@@ -484,17 +469,6 @@ export async function buildDeployRequest(opts: {
         subdir: opts.plan.subdir,
         token: "", // the url is already authenticated by the control plane
       },
-    };
-  }
-
-  if (opts.plan.kind === "dev-workspace") {
-    // DEV_WORKSPACE source (Part D, remote): the agent builds from its OWN
-    // <dev-dir>/<slug> (no tree crosses the wire). Same no-probe dispatch as git.
-    return {
-      ...base,
-      sourceKind: SourceKind.SOURCE_KIND_DEV_WORKSPACE,
-      ...noProbeBuildFields(opts.plan.build, opts.env),
-      devWorkspaceSubdir: opts.plan.subdir,
     };
   }
 
@@ -554,8 +528,8 @@ export async function buildDeployRequest(opts: {
 }
 
 /** The build-dispatch fields (buildKind + dockerfile|buildSpec) for a source whose
- * tree the control plane CANNOT probe here (git clone / dev workspace both
- * materialise on the agent). A heavy method → its BuildKind + a BuildSpec; the
+ * tree the control plane CANNOT probe here (a git clone
+ * materialises on the agent). A heavy method → its BuildKind + a BuildSpec; the
  * Dockerfile family → BUILD_KIND_DOCKERFILE with an explicit descriptor, or
  * generated:true (the agent writes the body only when the tree has no Dockerfile,
  * preserving the prefer-repo-Dockerfile semantics where the tree actually lives).

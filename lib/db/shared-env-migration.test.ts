@@ -231,7 +231,7 @@ test("the only mode-less/link-less var is the one whose group reached no app", a
 
 test("the unattached group's var reaches nothing, on every app and target", async () => {
   for (const app of ["app_p", "app_top"]) {
-    for (const target of ["production", "preview", "development"] as EnvTarget[]) {
+    for (const target of ["production", "preview"] as EnvTarget[]) {
       assert.equal(
         (await resolved(app, target)).UNUSED,
         undefined,
@@ -250,12 +250,6 @@ test("app_p production: linked (old group) vars inject, link overrides app-own; 
     // now opt-in — available on the app's Environment tab, injected only once
     // the app links them.
   });
-});
-
-test("app_p development: nothing injects (the only dev-targeted var is scope-only)", async () => {
-  // The env var EE (targets=all) used to reach dev via membership; it is now
-  // opt-in. TG/app-own/group all target production only.
-  assert.deepEqual(await resolved("app_p", "development"), {});
 });
 
 test("app_top production: nothing injects (the team-wide global became opt-in)", async () => {

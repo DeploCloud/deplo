@@ -1,5 +1,11 @@
 # Dev containers run on official base images, set up by a bind-mounted entrypoint
 
+- **Status**: Retired — 2026-07-19. Dev mode (the live, editable dev container with
+  SSH access and the VS Code tunnel) was removed from the product wholesale; this
+  decision has no remaining subject. Kept as a historical record. The host-side
+  uninstaller retains a legacy `deplo-ssh-gateway` sweep for hosts provisioned
+  before the removal.
+
 ## Context
 
 A dev container needs `git`, a UID-1000 `devuser`, and a default dev command on top of a

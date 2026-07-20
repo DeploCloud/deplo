@@ -2,7 +2,6 @@ import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 
 import {
   activities,
-  devSshUser,
   githubApps,
   githubInstallation,
   servers,
@@ -10,7 +9,6 @@ import {
 import type {
   Activity,
   ActivityType,
-  DevSshUser,
   GithubApp,
   GithubInstallation,
   Server,
@@ -20,8 +18,8 @@ import type {
 /**
  * The ONE relational-rows ↔ domain-objects mapping for the infra/integrations
  * tables (relational-store PLAN Step 6 cut-set (e)): `servers`, `github_apps`,
- * `github_installation`, `dev_ssh_user`, `activities`. Every reader and writer in
- * the data layer (`lib/data/{servers,github,dev-ssh,activity}.ts`,
+ * `github_installation`, `activities`. Every reader and writer in
+ * the data layer (`lib/data/{servers,github,activity}.ts`,
  * `lib/github/app.ts`) goes through here, so reads and writes can't drift on how a
  * row folds into a domain object — the same anti-drift seam `backup-rows.ts` is
  * for the backups tables, `app-graph-rows.ts` for the project graph, and
@@ -51,8 +49,6 @@ export type GithubInstallationRow = InferSelectModel<typeof githubInstallation>;
 export type GithubInstallationInsert = InferInsertModel<
   typeof githubInstallation
 >;
-export type DevSshUserRow = InferSelectModel<typeof devSshUser>;
-export type DevSshUserInsert = InferInsertModel<typeof devSshUser>;
 export type ActivityRow = InferSelectModel<typeof activities>;
 export type ActivityInsert = InferInsertModel<typeof activities>;
 
@@ -248,34 +244,6 @@ export function assembleGithubInstallation(
     accountLogin: row.accountLogin,
     accountType: row.accountType as GithubInstallation["accountType"],
     avatarUrl: row.avatarUrl,
-    createdAt: row.createdAt,
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/* dev_ssh_user                                                        */
-/* ------------------------------------------------------------------ */
-
-/** Explode a {@link DevSshUser} into its `dev_ssh_user` row. */
-export function devSshUserToRow(u: DevSshUser): DevSshUserInsert {
-  return {
-    id: u.id,
-    appId: u.appId,
-    username: u.username,
-    publicKey: u.publicKey,
-    passwordEnc: u.passwordEnc,
-    createdAt: u.createdAt,
-  } satisfies Record<keyof DevSshUser, unknown> as DevSshUserInsert;
-}
-
-/** Reassemble a `dev_ssh_user` row into a {@link DevSshUser}. */
-export function assembleDevSshUser(row: DevSshUserRow): DevSshUser {
-  return {
-    id: row.id,
-    appId: row.appId,
-    username: row.username,
-    publicKey: row.publicKey,
-    passwordEnc: row.passwordEnc,
     createdAt: row.createdAt,
   };
 }

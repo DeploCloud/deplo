@@ -45,7 +45,7 @@ test("no volumes: output is byte-identical with [], undefined, and missing key",
 });
 
 test("PORT is injected for a built source (default) but NOT for a prebuilt image", () => {
-  // Built sources (git/upload/dockerfile/dev-workspace): PORT tells the 12-factor
+  // Built sources (git/upload/dockerfile): PORT tells the 12-factor
   // app where Traefik forwards. Default behaviour, so the flag is omitted.
   const built = renderCompose(base);
   assert.match(built, /PORT: "3000"/, "built source gets PORT injected");

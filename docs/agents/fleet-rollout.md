@@ -119,7 +119,7 @@ disprove the release. Let it sit long enough to Hello, serve a deploy and stream
 
 Self-update `syscall.Exec`s the process **750ms after replying** (`selfUpdateGrace` in
 `internal/server/selfupdate.go`). Every open stream on that agent dies with it: an in-flight deploy
-(server-streaming `Deploy`), log tails, console attach, dev containers, tunnels. Check before each
+(server-streaming `Deploy`), log tails, console attach. Check before each
 server and wait it out:
 
 ```sh

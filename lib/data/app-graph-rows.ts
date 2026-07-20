@@ -4,7 +4,6 @@ import type {
   BuildConfig,
   BuildMethodSettings,
   Deployment,
-  DevConfig,
   Domain,
   EnvTarget,
   EnvVar,
@@ -25,7 +24,6 @@ import type {
   apps,
   appBuild,
   appBuildMethodSettings,
-  appDev,
   appMounts,
   appVolumes,
 } from "../db/schema/control-plane";
@@ -54,7 +52,6 @@ export type AppRow = typeof apps.$inferSelect;
 export type AppBuildRow = typeof appBuild.$inferSelect;
 export type AppBuildMethodSettingsRow =
   typeof appBuildMethodSettings.$inferSelect;
-export type AppDevRow = typeof appDev.$inferSelect;
 export type AppVolumeRow = typeof appVolumes.$inferSelect;
 export type AppMountRow = typeof appMounts.$inferSelect;
 export type DeploymentRow = typeof deployments.$inferSelect;
@@ -69,7 +66,6 @@ type AppInsert = typeof apps.$inferInsert;
 type AppBuildInsert = typeof appBuild.$inferInsert;
 type AppBuildMethodSettingsInsert =
   typeof appBuildMethodSettings.$inferInsert;
-type AppDevInsert = typeof appDev.$inferInsert;
 type AppVolumeInsert = typeof appVolumes.$inferInsert;
 type AppMountInsert = typeof appMounts.$inferInsert;
 type DomainInsert = typeof domains.$inferInsert;
@@ -83,13 +79,12 @@ type EnvVarTargetInsert = typeof envVarTargets.$inferInsert;
 
 /**
  * Every child row of a single project, as the row-batch-loader hands them to
- * {@link assembleApp}. `build`/`dev` are 1-to-1 (absent ⇒ null, the
- * tri-state for `dev`); the lists arrive pre-sorted by `position`.
+ * {@link assembleApp}. `build` is 1-to-1 (absent ⇒ null); the lists arrive
+ * pre-sorted by `position`.
  */
 export interface AppChildRows {
   build: AppBuildRow | null;
   methodSettings: AppBuildMethodSettingsRow | null;
-  dev: AppDevRow | null;
   volumes: AppVolumeRow[];
   mounts: AppMountRow[];
 }
@@ -148,21 +143,6 @@ export function assembleMethodSettings(
   return out;
 }
 
-/** Reassemble a {@link DevConfig} from the `app_dev` row (null ⇒ absent). */
-export function assembleDev(dev: AppDevRow): DevConfig {
-  return {
-    enabled: dev.enabled,
-    status: dev.status,
-    imageKind: dev.imageKind as DevConfig["imageKind"],
-    image: dev.image,
-    devCommand: dev.devCommand,
-    port: dev.port,
-    previewEnabled: dev.previewEnabled,
-    previewHost: dev.previewHost,
-    latestStartAt: dev.latestStartAt,
-  };
-}
-
 /**
  * Fold a project's flat row + its child rows into a {@link App}. A
  * NULL/absent optional column becomes the long-standing null/absent shape. The
@@ -206,8 +186,6 @@ export function assembleApp(
     mounts: mounts.length ? mounts : null,
     volumes: volumes.length ? volumes : null,
     build: assembleBuild(children.build, children.methodSettings),
-    // Row ABSENT = dev mode never enabled (the tri-state sentinel) ⇒ null.
-    dev: children.dev ? assembleDev(children.dev) : null,
     productionUrl: row.productionUrl,
     status: row.status as App["status"],
     autoDeploy: row.autoDeploy,
@@ -346,7 +324,6 @@ export interface AppRowSet {
   project: AppInsert;
   build: AppBuildInsert;
   methodSettings: AppBuildMethodSettingsInsert | null;
-  dev: AppDevInsert | null;
   volumes: AppVolumeInsert[];
   mounts: AppMountInsert[];
 }
@@ -458,21 +435,6 @@ export function methodSettingsToRow(
   return { appId, ...cols };
 }
 
-export function devToRow(appId: string, dev: DevConfig): AppDevInsert {
-  return {
-    appId,
-    enabled: dev.enabled,
-    status: dev.status,
-    imageKind: dev.imageKind,
-    image: dev.image,
-    devCommand: dev.devCommand,
-    port: dev.port,
-    previewEnabled: dev.previewEnabled,
-    previewHost: dev.previewHost ?? null,
-    latestStartAt: dev.latestStartAt ?? null,
-  };
-}
-
 export function volumesToRows(
   appId: string,
   volumes: App["volumes"],
@@ -511,7 +473,6 @@ export function appToRowSet(p: App): AppRowSet {
     project: appToRow(p),
     build: buildToRow(p.id, p.build),
     methodSettings: ms,
-    dev: p.dev ? devToRow(p.id, p.dev) : null,
     volumes: volumesToRows(p.id, p.volumes),
     mounts: mountsToRows(p.id, p.mounts),
   };
@@ -643,9 +604,6 @@ export function assembleDeployment(row: DeploymentRow): Deployment {
     readyAt: row.readyAt,
     buildDurationMs: row.buildDurationMs,
     creator: row.creator,
-    ...(row.buildSource != null
-      ? { buildSource: row.buildSource as Deployment["buildSource"] }
-      : {}),
   };
 }
 
@@ -664,7 +622,6 @@ export function deploymentToRow(d: Deployment): typeof deployments.$inferInsert 
     readyAt: d.readyAt ?? null,
     buildDurationMs: d.buildDurationMs ?? null,
     creator: d.creator,
-    buildSource: d.buildSource ?? null,
     createdAt: d.createdAt,
   };
 }

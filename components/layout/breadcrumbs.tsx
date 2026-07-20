@@ -62,7 +62,7 @@ export function Breadcrumbs({
   const openProjectId = searching ? null : params.get("project");
   const view = params.get("view") === "list" ? "list" : "grid";
 
-  // Live per-app facts (Console/Dev/Files visibility) — null until the app
+  // Live per-app facts (Console/Files visibility) — null until the app
   // layout publishes them, so the section menus fill in after first paint. The
   // sibling/folder menus need none of this and are complete from SSR.
   const service = useAppNav();
@@ -83,7 +83,6 @@ export function Breadcrumbs({
     caps,
     {
       running: service?.running ?? false,
-      devEligible: service?.devEligible ?? false,
       showFiles: service?.showFiles ?? false,
       slugMatches: service?.slug === slug,
     },

@@ -92,7 +92,6 @@ const CONTROL_PLANE = [
   "apps",
   "app_build",
   "app_build_method_settings",
-  "app_dev",
   "app_volumes",
   "app_mounts",
   "deployments",
@@ -104,7 +103,6 @@ const CONTROL_PLANE = [
   "domains",
   "domain_middlewares",
   "app_basic_auth_users",
-  "dev_ssh_user",
   // data
   "databases",
   "team_database_order",
@@ -149,7 +147,7 @@ test("schema: every designed table exists and there are no extras", async () => 
   assert.deepEqual(extra, [], `unexpected tables: ${extra.join(", ")}`);
 });
 
-test("schema: the three control-plane enums exist with the designed values", async () => {
+test("schema: the two control-plane enums exist with the designed values", async () => {
   const r = await pg.query<{ enum_name: string; values: string }>(
     `select t.typname as enum_name,
             string_agg(e.enumlabel, ',' order by e.enumsortorder) as values
@@ -164,7 +162,6 @@ test("schema: the three control-plane enums exist with the designed values", asy
     "info,warn,error,debug,command,success",
   );
   assert.equal(byName.get("github_account_type"), "User,Organization");
-  assert.equal(byName.get("dev_status"), "off,starting,running,stopped,error");
 });
 
 test("schema: the load-bearing constraints from PLAN §2 are present", async () => {
@@ -184,13 +181,12 @@ test("schema: the load-bearing constraints from PLAN §2 are present", async () 
     assert.ok(indexes.has(name), `index ${name} should exist`);
   }
 
-  // CHECK constraints (the XOR target + the dev-ssh credential).
+  // CHECK constraints (the XOR target).
   const chk = await pg.query<{ conname: string }>(
     `select conname from pg_constraint where contype='c'`,
   );
   const checks = new Set(chk.rows.map((x) => x.conname));
   assert.ok(checks.has("backups_target_kind_xor"), "backups XOR check");
-  assert.ok(checks.has("dev_ssh_user_has_credential"), "dev_ssh credential check");
 });
 
 test("schema: the append-only tables carry a bigint identity seq", async () => {

@@ -90,13 +90,12 @@ export interface BreadcrumbCaps {
 
 /**
  * Live per-app facts the section dropdown needs (Console only while running,
- * Dev/Files only when eligible). Sourced from the app-nav store; `slugMatches`
+ * Files only when present). Sourced from the app-nav store; `slugMatches`
  * is false until it confirms the store is for the app in the URL (so a stale
  * value from the app you just left never leaks its sections in).
  */
 export interface BreadcrumbFlags {
   running: boolean;
-  devEligible: boolean;
   showFiles: boolean;
   slugMatches: boolean;
 }
@@ -106,7 +105,7 @@ const MAIN_SECTIONS: {
   seg: string;
   label: string;
   requires?: keyof BreadcrumbCaps;
-  flag?: "running" | "devEligible" | "showFiles";
+  flag?: "running" | "showFiles";
 }[] = [
   { seg: "", label: "Overview" },
   { seg: "deployments", label: "Deployments" },
@@ -114,7 +113,6 @@ const MAIN_SECTIONS: {
   { seg: "domains", label: "Domains" },
   { seg: "console", label: "Console", flag: "running" },
   { seg: "logs", label: "Logs" },
-  { seg: "dev", label: "Dev Mode", flag: "devEligible" },
   { seg: "files", label: "Files", flag: "showFiles" },
   { seg: "backups", label: "Backups", requires: "manageInfra" },
   { seg: "settings", label: "Settings" },
@@ -233,10 +231,10 @@ export function buildBreadcrumb(
   }
 
   // Section preservation for sibling app links (Vercel-style: switch app,
-  // keep your tab). Console/Dev/Files hinge on per-app runtime facts a sibling
+  // keep your tab). Console/Files hinge on per-app runtime facts a sibling
   // may not share, so those never carry over; deeper detail (a deployment id) is
   // dropped — only the section (+ settings subsection) is kept.
-  const UNSAFE_SECTIONS = new Set(["console", "dev", "files"]);
+  const UNSAFE_SECTIONS = new Set(["console", "files"]);
   const siblingSuffix =
     rest.length > 0 && !UNSAFE_SECTIONS.has(rest[0])
       ? rest[0] === "settings" && rest[1]
