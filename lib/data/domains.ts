@@ -167,22 +167,38 @@ export async function ensureAutoDomain(
     .toLowerCase()
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
+  // Only honor a preferred host that is one of our OWN generated nip.io hosts or
+  // at least a syntactically valid hostname; a garbage value is dropped and a
+  // fresh nip.io host is generated instead of being persisted.
+  const preferredOk =
+    !!preferred && (nipEmbeddedIp(preferred) != null || DOMAIN_RE.test(preferred));
   const name =
-    preferred && !(await domainNameExists(preferred))
-      ? preferred
+    preferredOk && !(await domainNameExists(preferred!))
+      ? preferred!
       : await uniqueAutoDomainName(opts.slug, opts.ip);
+  // Our own generated nip.io hosts point at the server IP by construction, so
+  // they are born routable ("valid"). A caller-supplied CUSTOM host must NOT be
+  // trusted as valid on sight — that would let a create squat or capture another
+  // team's hostname on the shared server — so derive its status from DNS
+  // (pending until it actually resolves to this server), exactly like addDomain.
+  const status =
+    nipEmbeddedIp(name) != null
+      ? ("valid" as const)
+      : await checkDomainDns(name, opts.ip);
   // Born WITHOUT a certificate unless the caller opted in: an absent stored
   // provider reads as letsencrypt at the deploy edge (pre-field back-compat),
-  // so the default must be stored explicitly, never left off.
+  // so the default must be stored explicitly, never left off. Only mark ssl when
+  // the host is actually routable, so we don't try to issue a cert for a pending
+  // (unverified) custom host.
   const certProvider = opts.certProvider ?? "none";
   const domain: Domain = {
     id: newId("dom"),
     appId,
     name,
-    status: "valid",
+    status,
     primary: true,
     redirectTo: null,
-    ssl: certProvider !== "none",
+    ssl: certProvider !== "none" && (status === "valid" || status === "cloudflare"),
     source: "auto",
     // Always born complete: the resolved container port (and, on a compose
     // stack, the service it routes to) so no auto domain is ever portless or
@@ -465,7 +481,11 @@ export function normalizePath(input?: string | null): string {
       /* not a URL — fall through and treat it as a raw path */
     }
   }
-  p = p.replace(/`/g, "");
+  // Strip the backtick (the value is interpolated into a Traefik backtick literal
+  // inside a router rule) plus double-quotes and control characters (incl.
+  // newlines): the rule is emitted into a compose label, and although the label
+  // emitter now JSON-escapes, keeping these out preserves a clean rule grammar.
+  p = p.replace(/[`"\u0000-\u001f]/g, "");
   if (!p.startsWith("/")) p = `/${p}`;
   p = p.replace(/\/+$/, "");
   return p; // "" for a bare "/" (the trailing-slash strip leaves "")
@@ -515,10 +535,17 @@ export function normalizeMiddlewares(input?: string[] | null): string[] {
   const out: string[] = [];
   for (const raw of input ?? []) {
     const m = raw.trim();
-    if (m && !seen.has(m)) {
-      seen.add(m);
-      out.push(m);
-    }
+    if (!m || seen.has(m)) continue;
+    // A middleware name is emitted verbatim into a Traefik `middlewares=` label,
+    // which is rendered into the compose YAML. Restrict it to the characters a
+    // real Traefik middleware reference uses (name, optional `@provider`) so a
+    // crafted value can't carry quotes/newlines/`:` toward the renderer. The
+    // label emitter also JSON-escapes as a backstop, but rejecting here gives the
+    // user a clear error instead of a silently-broken router.
+    if (!/^[A-Za-z0-9._@-]+$/.test(m))
+      throw new Error(`Invalid middleware name: ${m}`);
+    seen.add(m);
+    out.push(m);
   }
   return out;
 }

@@ -345,10 +345,36 @@ export interface CreateAppInput {
   mounts?: { filePath: string; content: string }[] | null;
 }
 
+/** An env-var name: same grammar env.ts (`upsertEnv`/`renameEnv`) enforces.
+ *  Validated here too so the createApp path can't smuggle a key with newlines /
+ *  quotes into the string-templated compose env block (`build.ts` renderCompose). */
+const ENV_KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
+/** A docker image reference the compose can carry as a plain YAML scalar. Mirrors
+ *  the guard the database path already applies (`databases.ts` isValidImageRef):
+ *  anything with whitespace / quotes / YAML metacharacters is rejected, since an
+ *  image ref never legitimately contains them and `image: ${ref}` is unquoted. */
+const IMAGE_REF_RE = /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/;
+/** Cap the app name like Project/Folder/Environment do (they route through
+ *  `cleanName`), so a multi-MB name can't bloat every RSC payload / activity row. */
+const APP_NAME_MAX = 60;
+
+function cleanAppName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("App name is required.");
+  if (trimmed.length > APP_NAME_MAX)
+    throw new Error(`App name must be ${APP_NAME_MAX} characters or fewer.`);
+  return trimmed;
+}
+
 export async function createApp(
   input: CreateAppInput
 ): Promise<AppSummary> {
   const { membership, userId } = await requireCapability("deploy");
+  input = { ...input, name: cleanAppName(input.name) };
+  // A prebuilt image ref is interpolated raw into the compose `image:` scalar, so
+  // reject anything that isn't a plain reference before it can inject service keys.
+  if (input.source === "docker-image" && input.dockerImage && !IMAGE_REF_RE.test(input.dockerImage))
+    throw new Error("Enter a valid image reference (e.g. nginx:1.27 or ghcr.io/org/app@sha256:…).");
   // Publishing container ports — a service's `ports:` (bound to the host) or
   // `expose:` (advertised to linked containers) — needs the expose-ports grant.
   // Giving a service a public Traefik DOMAIN (composeService/composePort/exposes)
@@ -463,10 +489,15 @@ export async function createApp(
   const now = nowIso();
   const appEnvVars: EnvVar[] = (input.env ?? [])
     .filter((e) => e.key.trim())
-    .map((e) => ({
+    .map((e) => {
+      const key = e.key.trim();
+      // Same gate as upsertEnv: a key with a newline/quote/`:` would break out of
+      // the string-templated `environment:` block in renderCompose.
+      if (!ENV_KEY_RE.test(key)) throw new Error(`Invalid variable name: ${key}`);
+      return {
       id: newId("env"),
       appId: project.id,
-      key: e.key.trim(),
+      key,
       valueEnc: encryptSecret(e.value),
       targets: ["production", "preview"] as EnvTarget[],
       type: isSecretKey(e.key) ? ("secret" as const) : ("plain" as const),
@@ -475,7 +506,8 @@ export async function createApp(
       updatedByUserId: userId,
       createdAt: now,
       updatedAt: now,
-    }));
+      } satisfies EnvVar;
+    });
 
   // One transaction: the project + its FK-coupled children (build,
   // method-settings, exposes, mounts) + initial env (PLAN cut-set (c) Decision 15).
@@ -647,6 +679,10 @@ export async function updateAppSource(
   input: UpdateSourceInput
 ): Promise<void> {
   const { membership } = await requireCapability("deploy");
+  // A prebuilt image ref is interpolated raw into the compose `image:` scalar, so
+  // reject anything that isn't a plain reference before it can inject service keys.
+  if (input.source === "docker-image" && input.dockerImage && !IMAGE_REF_RE.test(input.dockerImage))
+    throw new Error("Enter a valid image reference (e.g. nginx:1.27 or ghcr.io/org/app@sha256:…).");
   // Saving compose YAML that publishes ports (`ports:`/`expose:`) requires the
   // expose-ports grant. Routing (the Traefik domains) lives in the `domains`
   // table, not here, and is NOT port publishing — so it isn't gated here.
@@ -1160,11 +1196,12 @@ export async function renameApp(id: string, name: string): Promise<void> {
   const { membership } = await requireCapability("deploy");
   await requireFolderCapabilityForApp(id, "deploy");
   const user = (await getCurrentUser())!;
+  const clean = cleanAppName(name);
   await updateAppOwned(id, membership.teamId, {
-    name: name.trim(),
+    name: clean,
     updatedAt: nowIso(),
   });
-  await recordActivity("app", `Renamed project to ${name}`, user.name, id);
+  await recordActivity("app", `Renamed project to ${clean}`, user.name, id);
 }
 
 /**

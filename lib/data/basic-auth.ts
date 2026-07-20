@@ -38,8 +38,10 @@ export interface BasicAuthUserDTO {
 }
 
 /** Usernames are HTTP Basic Auth identities: no `:` (the htpasswd separator),
- * no commas (the Traefik `users=` list separator), no whitespace, non-empty. */
-const USERNAME_RE = /^[^\s:,]+$/;
+ * no commas (the Traefik `users=` list separator), no whitespace, and no `"` or
+ * backtick (the username is embedded in a compose YAML label / Traefik rule and
+ * a quote would break the scalar), non-empty. */
+const USERNAME_RE = /^[^\s:,"`]+$/;
 
 function toDTO(u: BasicAuthUser): BasicAuthUserDTO {
   return {
@@ -202,7 +204,22 @@ export async function basicAuthUsersValue(appId: string): Promise<string> {
     .orderBy(asc(basicAuthTable.username));
   if (rows.length === 0) return "";
   return rows
-    .map((r) => htpasswdLine(r.username, decryptSecret(r.passwordEnc)))
+    .map((r) => {
+      const password = decryptSecret(r.passwordEnc);
+      // decryptSecret fails CLOSED to "" (wrong/rotated key, restored DB, corrupt
+      // ciphertext). For a normal secret that is fine, but here an empty password
+      // would be hashed into a VALID apr1 hash of the empty string — the basic-auth
+      // middleware would stay active and accept an empty password (fail OPEN). A
+      // credential we cannot decrypt must REMOVE access, never grant it, so fail
+      // the render loudly instead. (Empty passwords can't be stored — addBasicAuthUser
+      // rejects them — so "" here always means a decrypt failure.)
+      if (password === "")
+        throw new Error(
+          `Cannot render basic-auth for user "${r.username}": its stored password could not be decrypted. ` +
+            `Re-set the basic-auth credentials for this app.`,
+        );
+      return htpasswdLine(r.username, password);
+    })
     .join(",");
 }
 

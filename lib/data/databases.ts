@@ -333,7 +333,11 @@ export async function getDatabase(id: string): Promise<DatabaseDTO | null> {
 }
 
 export async function getConnectionString(id: string): Promise<string> {
-  const teamId = await requireActiveTeamId();
+  // This returns the plaintext connection string (embeds the DB password), so it
+  // must enforce the capability at the data-layer boundary itself — not lean on
+  // the revealConnection field's authScope alone (keep BOTH gates). Matches
+  // revealEnv/rotateDatabasePassword, which self-gate their secret reveals.
+  const { teamId } = await requireCapability("manage_infra");
   const db = await loadDatabase(id, teamId);
   if (!db) throw new Error("Not found");
   return decryptSecret(db.connectionStringEnc);
@@ -378,6 +382,11 @@ export async function createDatabase(input: {
   const user = (await getCurrentUser())!;
   const name = input.name.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
   if (!name) throw new Error("Name is required");
+  // The version is interpolated raw into the compose `image:` scalar
+  // (`postgres:${version}-alpine`), so validate it as an image tag up front — the
+  // update path (updateDatabaseImage) already does; the create path had the gap.
+  if (!/^[A-Za-z0-9._-]+$/.test(input.version))
+    throw new Error("Version must be a valid image tag.");
   // Validate a supplied password up front — it is cheap, local input validation,
   // so fail fast (before any server lookup or agent probe) with a clear message
   // rather than surfacing it only after slower checks.
@@ -395,6 +404,24 @@ export async function createDatabase(input: {
   // to this team (every `all_teams` server + its grants), and be provisioned
   // (have a live agent) — provisioning routes through that agent.
   const server = await resolveTeamServer(teamId, input.serverId);
+
+  // The stack slug `db-<name>`, its container_name and its data volume are a
+  // GLOBAL namespace on the host, but the DB name is only unique per-team — and
+  // servers are shared cross-team. Two teams landing the same name on one server
+  // would collide on the same compose project/volume, so one team's reroute could
+  // adopt the other's live volume and its delete/rebuild would wipe it. Reject a
+  // create whose host slug already exists on the target server (any team). Apps
+  // dodge this with a globally-unique slug; databases still key on the name, so
+  // this is the interim guard until the slug is derived from the row id.
+  const slugCollision = await getDb()
+    .select({ id: databasesTable.id })
+    .from(databasesTable)
+    .where(and(eq(databasesTable.serverId, server.id), eq(databasesTable.name, name)))
+    .limit(1);
+  if (slugCollision.length > 0)
+    throw new Error(
+      `A database named "${name}" already exists on ${server.name}. Database stacks share a per-host namespace — pick a different name.`,
+    );
 
   // Validate + reserve the host port up front when exposing. A collision here is
   // a hard STOP — no container is created — so the operator gets a clear error
@@ -740,22 +767,6 @@ export async function updateDatabase(
   )
     return;
 
-  // Re-derive the connection string around the UNCHANGED create-only password.
-  // The password is never regenerated on an edit — the running container's
-  // credentials are fixed at first init — so recover it from the old string. When
-  // exposed the host is the TARGET server's (a move changes it); when internal it
-  // is the stable service DNS name, unaffected by a move (same `deplo` network).
-  const password = parseConnectionPassword(decryptSecret(db.connectionStringEnc));
-  const conn = buildConnectionString({
-    type: db.type,
-    username: db.username,
-    password,
-    host: newExposedPort != null ? targetServer.host : db.host,
-    port: newExposedPort != null ? newExposedPort : db.port,
-    dbName: db.dbName,
-  });
-  const connEnc = encryptSecret(conn);
-
   // The reroute + teardown + row write happen under the DB's lifecycle lock, the
   // SAME lock create/start-stop/delete use: an edit issued during provisioning
   // WAITS, then reroutes a now-running DB; a delete issued during an edit WAITS for
@@ -773,6 +784,24 @@ export async function updateDatabase(
       throw new Error(
         "Database is still provisioning — wait for it to finish before editing it.",
       );
+    // Re-derive the connection string around the UNCHANGED create-only password,
+    // from the LOCK-FRESH row. Recovering it pre-lock raced a concurrent
+    // rotateDatabasePassword (which also takes this lock): the rotation would
+    // commit the new password, then this write would clobber it back to the stale
+    // one. Deriving from `cur` here means we always re-encrypt the current
+    // password. Host is the TARGET server's when exposed (a move changes it),
+    // else the stable service DNS name (unaffected by a move — same `deplo` net).
+    const password = parseConnectionPassword(decryptSecret(cur.connectionStringEnc));
+    const connEnc = encryptSecret(
+      buildConnectionString({
+        type: cur.type,
+        username: cur.username,
+        password,
+        host: newExposedPort != null ? targetServer.host : cur.host,
+        port: newExposedPort != null ? newExposedPort : cur.port,
+        dbName: cur.dbName,
+      }),
+    );
     // Render from the FRESH row (with the new exposure overlaid) so the reroute
     // also applies any pending row edits — resource limits, image/command
     // overrides — saved since the pre-lock read ("the row is truth").
@@ -830,8 +859,20 @@ export async function updateDatabase(
             `The move was rolled back — the database is still on its original server.`,
         );
       }
-      // Copy succeeded — start the new stack on the migrated data.
-      await startStackOn(targetServer.id, cur.host);
+      // Copy succeeded — start the new stack on the migrated data. A failure here
+      // leaves the data safely on the new host (already copied) but the container
+      // down; surface it as a warning and still repoint the row below (the data is
+      // on the target now) rather than throwing, which would abort before the row
+      // write and leave the DB pointing at the old, already-stopped host with an
+      // orphaned volume on the new one.
+      try {
+        await startStackOn(targetServer.id, cur.host);
+      } catch (e) {
+        moveWarning =
+          `Moved ${cur.name}'s data to ${targetServer.name}, but its stack did not ` +
+          `start there (${e instanceof Error ? e.message : String(e)}). ` +
+          `Redeploy the database to bring it up.`;
+      }
 
       // Tear down the OLD host's stack + its (now-migrated) data volume so it isn't
       // left running and orphaned. Best-effort, exactly like deleteDatabase: the data

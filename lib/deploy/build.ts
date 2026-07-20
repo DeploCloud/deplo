@@ -445,7 +445,13 @@ export function renderCompose(opts: {
     `deplo.project=${appId}`,
     `deplo.slug=${slug}`,
   ];
-  const labelsYaml = labels.map((l) => `      - "${l}"`).join("\n");
+  // Each label is emitted as a JSON-encoded (⇒ valid YAML) double-quoted scalar
+  // rather than a raw `"${l}"`. For every label the corpus actually produces
+  // (no embedded quotes/newlines/backslashes) JSON.stringify yields byte-identical
+  // output — so the reroute contract holds — but a user-controlled label value
+  // (a Traefik middleware name, a basic-auth username) carrying a `"` or newline
+  // is escaped instead of breaking out of the scalar and injecting service keys.
+  const labelsYaml = labels.map((l) => `      - ${JSON.stringify(l)}`).join("\n");
   const envYaml = Object.keys(env).length
     ? "    environment:\n" +
       Object.entries(env)
