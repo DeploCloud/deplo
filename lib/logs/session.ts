@@ -66,6 +66,28 @@ function armIdleReaper(s: LogsSession) {
   }, IDLE_MS);
 }
 
+// Hard ceilings on live sessions. The idle reaper only fires at zero
+// subscribers, so a client that holds its EventSource open forever is never
+// reclaimed by it — without a cap each open() pins a backing (and its gRPC
+// client) for good. Oldest-first eviction (the Map preserves insertion order);
+// firing onExit first lets the evicted GET stream close instead of hanging.
+const MAX_SESSIONS = 64;
+const MAX_SESSIONS_PER_APP = 8;
+
+function evict(s: LogsSession) {
+  s.onExit?.();
+  destroy(s.id);
+}
+
+function enforceSessionCaps(appId: string) {
+  const forApp = [...sessions.values()].filter((s) => s.appId === appId);
+  if (forApp.length >= MAX_SESSIONS_PER_APP) evict(forApp[0]);
+  if (sessions.size >= MAX_SESSIONS) {
+    const oldest = sessions.values().next().value;
+    if (oldest) evict(oldest);
+  }
+}
+
 /**
  * Open a new logs session over a pre-built backing handle. The caller MUST have
  * already verified the container belongs to `appId` AND built the handle
@@ -81,6 +103,7 @@ export function open(
   handle: AttachHandle,
   cleanup?: () => void,
 ): LogsSession {
+  enforceSessionCaps(appId);
   const id = `log_${randomBytes(12).toString("hex")}`;
   const session: LogsSession = {
     id,

@@ -23,6 +23,12 @@ import { connectAgent } from "@/lib/infra/agent-client";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+// Queued-chunk ceiling before a stalled SSE client is cut off. The controller's
+// default queuing strategy counts chunks, so desiredSize goes one more negative
+// per undelivered enqueue; past this backlog we drop the connection instead of
+// buffering the log firehose in memory without bound.
+const MAX_QUEUED_CHUNKS = 1024;
+
 export async function GET(
   request: NextRequest,
   ctx: RouteContext<"/api/databases/[id]/logs">,
@@ -66,7 +72,26 @@ export async function GET(
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      // Assigned below once the subscription exists; closeStream needs it earlier.
+      let unsubscribe: () => void = () => {};
+      const closeStream = () => {
+        unsubscribe();
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
+      };
       const send = (event: string, data: string) => {
+        // Back-pressure: desiredSize is null once the stream errors/closes and
+        // goes negative when the client stops reading. Skip writes on a dead
+        // stream; cut off a stalled client rather than grow the heap unbounded.
+        const size = controller.desiredSize;
+        if (size === null) return;
+        if (size < -MAX_QUEUED_CHUNKS) {
+          closeStream();
+          return;
+        }
         // SSE frame: data is JSON so arbitrary log bytes survive newlines.
         controller.enqueue(
           encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
@@ -79,7 +104,7 @@ export async function GET(
       // Streaming decoder so a multi-byte UTF-8 glyph split across two docker
       // chunks isn't mangled into �.
       const decoder = new StringDecoder("utf8");
-      const unsubscribe = logs.subscribe(session, (chunk) => {
+      unsubscribe = logs.subscribe(session, (chunk) => {
         try {
           const text = decoder.write(chunk);
           if (text) send("data", text);
@@ -100,15 +125,14 @@ export async function GET(
         }
       };
 
-      const onAbort = () => {
-        unsubscribe();
-        try {
-          controller.close();
-        } catch {
-          /* already closed */
-        }
-      };
-      request.signal.addEventListener("abort", onAbort);
+      // A signal that aborted DURING the pre-start awaits never fires "abort"
+      // again — check it explicitly so an already-gone client is cleaned up
+      // immediately (the idle reaper then kills the backing).
+      if (request.signal.aborted) {
+        closeStream();
+        return;
+      }
+      request.signal.addEventListener("abort", closeStream);
     },
   });
 

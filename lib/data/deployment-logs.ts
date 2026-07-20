@@ -38,6 +38,16 @@ import type { LogLine } from "../types";
 const FLUSH_MS = 250;
 const MAX_BUFFER = 200;
 
+/**
+ * Backstop against unbounded growth while the DB flush keeps FAILING: the failed
+ * batch stays at the buffer head for an in-order retry, but a persistent outage
+ * under a verbose build would otherwise buffer the whole log forever. Cap the
+ * retained head, dropping oldest first (the same drop-from-the-front shape as
+ * container-history's HARD_CAP) — the tail is what the operator still gets when
+ * the DB comes back; the hole is the loss "best-effort" always meant.
+ */
+const MAX_RETAINED = 2_000;
+
 interface DeploymentBuffer {
   lines: LogLine[];
   /** Bumped by clearDeploymentLogs; a flush captured under an old epoch is dropped. */
@@ -124,10 +134,33 @@ function scheduleFlush(depId: string, immediate: boolean): Promise<void> {
       // the buffer head (we never removed them), so a later flush retries them IN
       // ORDER. Nothing to re-queue.
       console.error(`[deplo] deployment_logs flush failed for ${depId}:`, err);
+      // ...but cap what a flush OUTAGE may retain (epoch-checked: a clear that
+      // landed mid-insert already emptied the buffer, and fresh post-clear lines
+      // are not ours to drop).
+      const cur = bufferFor(depId);
+      if (cur.epoch === epochAtDrain && cur.lines.length > MAX_RETAINED) {
+        cur.lines.splice(0, cur.lines.length - MAX_RETAINED);
+      }
     }
   });
   void immediate;
   return b.chain;
+}
+
+/**
+ * Drop a deployment's buffer entry once it holds nothing — the missing half of
+ * the Map's lifecycle (the same deletion-forgets shape as container-history's
+ * prune; activity re-creates). Without it every deployment ever appended — or
+ * merely READ, since {@link bufferFor} mints on access — keeps a permanent
+ * entry. Guarded against the append race: an entry that re-acquired lines or a
+ * timer since its final flush stays for the next flush to drain. Any chained
+ * flush callback has settled before this runs (the callers await the chain
+ * first), so no in-flight epoch can be orphaned.
+ */
+function evictIfIdle(depId: string): void {
+  const s = state();
+  const b = s.buffers.get(depId);
+  if (b && b.lines.length === 0 && b.timer === null) s.buffers.delete(depId);
 }
 
 /**
@@ -138,6 +171,7 @@ function scheduleFlush(depId: string, immediate: boolean): Promise<void> {
 export async function finalizeDeploymentLogs(depId: string): Promise<void> {
   await scheduleFlush(depId, true);
   await bufferFor(depId).chain;
+  evictIfIdle(depId);
 }
 
 /**
@@ -158,6 +192,7 @@ export async function clearDeploymentLogs(depId: string): Promise<void> {
   // then DELETE the persisted rows.
   await b.chain;
   await getDb().delete(deploymentLogs).where(eq(deploymentLogs.deploymentId, depId));
+  evictIfIdle(depId);
 }
 
 /**

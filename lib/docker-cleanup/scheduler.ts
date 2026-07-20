@@ -176,6 +176,12 @@ export async function runCleanupSchedulerTick(
     });
 
     for (const s of due) {
+      // Heartbeat mid-drain: a fleet's worth of sequential sweeps can outlast
+      // LEASE_STALE_MS, and a lease whose heartbeat only advances at tick start
+      // would go stale — free for another instance to steal and double-sweep.
+      // Renew per host (real wall-clock, not the tick's `now`); losing the renewal
+      // means the lease WAS stolen, so stop draining rather than race the new owner.
+      if (!(await acquireLease(DOCKER_CLEANUP_LEASE, state.owner))) break;
       // Stamp BEFORE awaiting so a re-entrant/overlapping tick in the same minute
       // can't double-sweep this host even before the run resolves.
       state.lastFired.set(s.id, key);
@@ -226,6 +232,17 @@ export function startDockerCleanupScheduler(): void {
   // full day. Floated; its own try/finally contains any failure.
   void runCleanupSchedulerTick();
   console.log("[deplo] docker cleanup scheduler started");
+}
+
+/**
+ * Release this process's hold on the cleanup lease. Called from
+ * `instrumentation.ts` on SIGTERM/SIGINT so a clean restart hands the sweep to the
+ * next instance immediately, instead of leaving the lease to age out over
+ * LEASE_STALE_MS (2h of no cleanup). Best-effort and safe when we never held it —
+ * the lease layer ignores a release by a non-holder.
+ */
+export async function releaseDockerCleanupLease(): Promise<void> {
+  await releaseLease(DOCKER_CLEANUP_LEASE, state.owner);
 }
 
 /** Test-only: stop the loop, drop the lease, and reset the per-process state. */

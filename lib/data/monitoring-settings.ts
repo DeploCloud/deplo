@@ -7,6 +7,7 @@ import { nowIso } from "../ids";
 import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { clearMetricsHistory } from "../monitoring/history";
+import { clearContainerHistory } from "../monitoring/container-history";
 
 /**
  * Monitoring settings — the instance-wide singleton behind the Monitoring page's
@@ -93,7 +94,10 @@ export async function setSaveMetrics(enabled: boolean): Promise<MonitoringSettin
     });
 
   memo = { value: enabled, at: Date.now() };
-  if (!enabled) clearMetricsHistory();
+  if (!enabled) {
+    clearMetricsHistory();
+    clearContainerHistory();
+  }
 
   await recordActivity(
     "monitoring",

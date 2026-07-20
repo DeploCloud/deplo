@@ -1124,9 +1124,20 @@ function dial(target: DialTarget): AgentConnection {
         const writeChunk = (v: VolumeChunk) =>
           new Promise<void>((res, rej) => {
             // grpc-js write() returns false under backpressure; wait for drain.
+            // Remove BOTH listeners on settle — a bare once() per chunk leaves
+            // the loser registered, leaking one listener+closure per
+            // backpressured frame for the life of the call.
             if (call.write(v)) return res();
-            call.once("drain", res);
-            call.once("error", rej);
+            const onDrain = () => {
+              call.off("error", onError);
+              res();
+            };
+            const onError = (e: Error) => {
+              call.off("drain", onDrain);
+              rej(e);
+            };
+            call.once("drain", onDrain);
+            call.once("error", onError);
           });
 
         void (async () => {
@@ -1181,9 +1192,18 @@ function dial(target: DialTarget): AgentConnection {
 
         const writeChunk = (v: FilesChunk) =>
           new Promise<void>((res, rej) => {
+            // Paired listeners, both removed on settle (see importVolume).
             if (call.write(v)) return res();
-            call.once("drain", res);
-            call.once("error", rej);
+            const onDrain = () => {
+              call.off("error", onError);
+              res();
+            };
+            const onError = (e: Error) => {
+              call.off("drain", onDrain);
+              rej(e);
+            };
+            call.once("drain", onDrain);
+            call.once("error", onError);
           });
 
         void (async () => {

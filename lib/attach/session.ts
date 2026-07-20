@@ -53,6 +53,28 @@ function armIdleReaper(s: AttachSession) {
   }, IDLE_MS);
 }
 
+// Hard ceilings on live sessions. The idle reaper only fires at zero
+// subscribers, so a client that holds its EventSource open forever is never
+// reclaimed by it — without a cap each open() pins a backing (and its gRPC
+// client) for good. Oldest-first eviction (the Map preserves insertion order);
+// firing onExit first lets the evicted GET stream close instead of hanging.
+const MAX_SESSIONS = 64;
+const MAX_SESSIONS_PER_APP = 8;
+
+function evict(s: AttachSession) {
+  s.onExit?.();
+  destroy(s.id);
+}
+
+function enforceSessionCaps(appId: string) {
+  const forApp = [...sessions.values()].filter((s) => s.appId === appId);
+  if (forApp.length >= MAX_SESSIONS_PER_APP) evict(forApp[0]);
+  if (sessions.size >= MAX_SESSIONS) {
+    const oldest = sessions.values().next().value;
+    if (oldest) evict(oldest);
+  }
+}
+
 /**
  * Open a new attach session over a pre-built backing handle. The caller MUST
  * have already verified the container belongs to `appId`, chosen the tty
@@ -68,6 +90,7 @@ export function open(
   handle: AttachHandle,
   cleanup?: () => void,
 ): AttachSession {
+  enforceSessionCaps(appId);
   const id = `att_${randomBytes(12).toString("hex")}`;
   const session: AttachSession = {
     id,

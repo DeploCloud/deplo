@@ -163,4 +163,9 @@ export function pruneContainerHistoryTo(ids: ReadonlySet<string>): void {
   for (const id of buffers.keys()) {
     if (!ids.has(id)) buffers.delete(id);
   }
+  // The breakdown CELL rides the same lifecycle: a deleted resource must not
+  // keep last week's containers renderable beside a forgotten chart.
+  for (const id of instances.keys()) {
+    if (!ids.has(id)) instances.delete(id);
+  }
 }

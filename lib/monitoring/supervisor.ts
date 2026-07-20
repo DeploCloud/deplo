@@ -14,6 +14,11 @@ import {
 } from "../infra/agent-client";
 import { isMetricsSavingEnabled } from "../data/monitoring-settings";
 import { measureServerForCollector } from "../data/monitoring";
+import { getDb } from "../db/client";
+import {
+  apps as appsTable,
+  databases as databasesTable,
+} from "../db/schema/control-plane";
 import {
   aggregateContainerStats,
   toContainerSample,
@@ -27,8 +32,9 @@ import type {
   HelloResponse,
   MetricsSample,
 } from "../agent/gen/agent";
-import { recordMetricsSample } from "./history";
+import { pruneMetricsHistoryTo, recordMetricsSample } from "./history";
 import {
+  pruneContainerHistoryTo,
   recordContainerInstances,
   recordContainerSample,
 } from "./container-history";
@@ -76,6 +82,17 @@ export const RECONNECT_BACKOFF_CAP_MS = 10_000;
 /** The cadence we ASK the agent for. It clamps to [1s, 60s] regardless — a
  *  cadence is a hint, never a way for the control plane to pin a host. */
 export const STREAM_INTERVAL_MS = 5_000;
+
+/**
+ * The lifetime under which a stream did not really RUN. Every end path in
+ * {@link runStreamLoop} classifies by stream lifetime against this floor: an end
+ * this quick — however polite the status code — is a failure to back off from,
+ * never the benign 55-min deadline rotation. Without it a fast-failing agent
+ * (or a DEADLINE_EXCEEDED from a black-holed connect) re-dials with no delay,
+ * a hot livelock hammering both the host and the health table. One cadence: a
+ * healthy stream has always produced a frame by then, a rotation runs ~55min.
+ */
+const MIN_STREAM_MS = STREAM_INTERVAL_MS;
 
 /**
  * How often a healthy stream refreshes `status_checked_at`.
@@ -320,17 +337,33 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
 
   while (!signal.aborted && !state.stopping) {
     let conn: AgentConnection | null = null;
+    // Stamped once the dial succeeds; null means the failure was AT connect.
+    // Stream LIFETIME against MIN_STREAM_MS is the classifier for every end
+    // path below — status codes alone cannot tell a rotation from an outage.
+    let openedAt: number | null = null;
+    // `streamMetrics` takes no AbortSignal (the RPC deadline is the agent
+    // contract's only cancel), so the abort is wired to the CHANNEL instead:
+    // closing it ends the frame iterator promptly, rather than the loop only
+    // noticing the abort at the next frame or backoff wake-up.
+    const onAbort = () => conn?.close();
+    signal.addEventListener("abort", onAbort, { once: true });
     try {
       const opened = await connector(serverId);
       conn = opened.conn;
       const hello: HelloResponse = opened.hello;
-      attempt = 0;
+      openedAt = Date.now();
 
       const facts: ConnectionFacts = {
         agentVersion: hello.agentVersion || null,
         traefik: hello.traefikRunning,
         expectedAgentVersion: await resolveExpectedAgentVersion(),
       };
+
+      // The honest health of this connection, computed ONCE from the Hello and
+      // reused by every heartbeat below. A host streaming with Docker down
+      // classifies as `warning`, and the heartbeat must keep saying so — a
+      // hardcoded online literal would clobber it 8s after every connect.
+      const connHealth = classifyServerHealth(hello, null);
 
       // On OPEN: persist what the Hello told us, and record health. This Hello is
       // a health observation as good as the prober's own, and — unlike the old
@@ -350,7 +383,7 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
       // this exists — the Apps it restarted may be wearing an `error` written
       // while it was away.
       let lastStatusReconcileAt = 0;
-      await recordServerHealth(serverId, classifyServerHealth(hello, null), new Date().toISOString());
+      await recordServerHealth(serverId, connHealth, new Date().toISOString());
 
       for await (const frame of conn.streamMetrics({
         dataDir: "",
@@ -358,6 +391,10 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
         includeContainers: true,
       })) {
         if (signal.aborted || state.stopping) break;
+        // A received frame is the proof the stream is genuinely up — only now
+        // does the reconnect backoff reset. Resetting at connect let a stream
+        // that dies straight after the dial zero it and re-dial hot forever.
+        attempt = 0;
 
         const byProject = await ingestFrame(serverId, frame, facts);
 
@@ -368,7 +405,7 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
           lastHealthWriteAt = now;
           await recordServerHealth(
             serverId,
-            { status: "online", message: null },
+            connHealth,
             new Date(now).toISOString(),
           );
         }
@@ -384,10 +421,21 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
         }
       }
 
-      // A clean end is the deadline rotation (or a shutdown). Reconnect at once:
-      // no backoff, no health write, ~100ms of gap — two orders of magnitude
-      // under GAP_MS, so it never draws a band.
+      // A clean end at full lifetime is the deadline rotation (or a shutdown).
+      // Reconnect at once: no backoff, no health write, ~100ms of gap — two
+      // orders of magnitude under GAP_MS, so it never draws a band. But a clean
+      // end within seconds of opening is a fast-failing agent, and re-dialling
+      // it with no delay is a hot livelock — back off like the failure it is.
+      if (!signal.aborted && !state.stopping && Date.now() - openedAt < MIN_STREAM_MS) {
+        const delay = backoffFor(attempt);
+        attempt = Math.min(attempt + 1, 16);
+        await sleep(delay, signal);
+      }
     } catch (e) {
+      // Aborted mid-flight (the server was removed, or shutdown): the channel we
+      // closed surfaces as a transport error — a teardown, not a health event.
+      if (signal.aborted || state.stopping) return;
+
       if (e instanceof AgentMetricsStreamUnsupportedError) {
         // Not a failure — this one server's agent predates the stream. Demote it
         // alone and keep the rest of the fleet streaming.
@@ -396,8 +444,15 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
         return;
       }
 
+      // DEADLINE_EXCEEDED is only the benign 55-min rotation when the stream
+      // actually LIVED. The same status code from a black-holed connect (or a
+      // stream that died within seconds) is an outage — calling it a rotation
+      // would re-dial the dead host with no backoff and no health record.
+      const lifetime = openedAt === null ? 0 : Date.now() - openedAt;
       const rotation =
-        e instanceof AgentUnreachableError && e.code === GrpcStatus.DEADLINE_EXCEEDED;
+        e instanceof AgentUnreachableError &&
+        e.code === GrpcStatus.DEADLINE_EXCEEDED &&
+        lifetime >= MIN_STREAM_MS;
 
       if (!rotation) {
         // A real failure. Record it once, then back off. Deliberately do NOT
@@ -415,6 +470,7 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
         await sleep(delay, signal);
       }
     } finally {
+      signal.removeEventListener("abort", onAbort);
       conn?.close();
     }
   }
@@ -500,6 +556,25 @@ export async function reconcileMetricsStreams(): Promise<void> {
     if (live.has(id)) continue;
     entry.abort.abort();
     state.servers.delete(id);
+  }
+
+  // The PRUNE half of the RAM buffers' lifecycle, on the same 30s tick: only
+  // DELETION forgets a resource's window (absence from a frame never does — see
+  // container-history.ts), and this is where deletion becomes visible. Server
+  // ids come from the fleet list already in hand — every existing server keeps
+  // its history, enrolled or not — and app/database ids are one cheap
+  // two-column read. Without this the maps only ever grow.
+  pruneMetricsHistoryTo(new Set(servers.map((s) => s.id)));
+  try {
+    const [appRows, dbRows] = await Promise.all([
+      getDb().select({ id: appsTable.id }).from(appsTable),
+      getDb().select({ id: databasesTable.id }).from(databasesTable),
+    ]);
+    pruneContainerHistoryTo(
+      new Set([...appRows.map((r) => r.id), ...dbRows.map((r) => r.id)]),
+    );
+  } catch {
+    // DB blip; the next tick prunes.
   }
 }
 

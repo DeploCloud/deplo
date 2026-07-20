@@ -48,14 +48,15 @@ export async function register(): Promise<void> {
     console.error("[deplo] DB migration failed at boot — refusing to serve on an out-of-date schema:", e);
     throw e;
   }
+  // Each reconcile/start below runs in ITS OWN try/catch: these are independent
+  // subsystems, and one transient failure (say, the backup reconcile losing its
+  // connection) must not silently skip every startup after it — which is exactly
+  // what a single shared block would do. Never let any of them crash the server.
   try {
-    // The deployment reconcile is now async (relational). It marks orphaned
-    // queued/building deploys error; it may be floated (genuinely fire-and-forget
-    // — nothing downstream at boot depends on it). The BACKUP reconcile, by
-    // contrast, MUST complete before the scheduler's first tick (its comment), so
-    // it stays ordered before startBackupScheduler in cut-set (d).
     const { reconcileInFlightDeployments } = await import("./lib/deploy/build");
     const { startDeployQueue } = await import("./lib/deploy/deploy-queue");
+    // The deployment reconcile is now async (relational); it may be floated
+    // (genuinely fire-and-forget — nothing downstream at boot depends on it).
     // Error orphaned `building` deploys, THEN re-drain the DURABLE `queued` backlog
     // per server (deploys that never started — a restart mid-queue resumes instead
     // of discarding them). Chained so the queue never dispatches alongside a
@@ -66,14 +67,23 @@ export async function register(): Promise<void> {
       .catch((e) =>
         console.error("[deplo] deployment reconcile/redrain failed:", e),
       );
+  } catch (e) {
+    console.error("[deplo] deployment reconcile/redrain failed to start:", e);
+  }
+  try {
     const { reconcileInFlightBackupRuns } = await import("./lib/data/backups");
     // AWAITED (now relational/async): the backup reconcile MUST complete before
-    // the scheduler's first tick reads a `running` run it never settled.
+    // the scheduler's first tick reads a `running` run it never settled — the two
+    // stay ordered inside ONE block, so a failed reconcile also skips the start.
     await reconcileInFlightBackupRuns();
     // Start the backup scheduler after the reconcile so a boot tick never trips
     // over an orphaned `running` run. Idempotent + lease-guarded internally.
     const { startBackupScheduler } = await import("./lib/backups/scheduler");
     startBackupScheduler();
+  } catch (e) {
+    console.error("[deplo] backup reconcile/scheduler startup failed:", e);
+  }
+  try {
     const { reconcileInFlightCleanupRuns } = await import(
       "./lib/data/docker-cleanup"
     );
@@ -89,25 +99,39 @@ export async function register(): Promise<void> {
       "./lib/docker-cleanup/scheduler"
     );
     startDockerCleanupScheduler();
+  } catch (e) {
+    console.error("[deplo] docker-cleanup reconcile/scheduler startup failed:", e);
+  }
+  try {
     // Finally the metrics stream supervisor — holds ONE long-lived telemetry
     // stream per server, which is what keeps every Monitoring chart warm whether
     // or not anybody has the page open (no reconcile to wait on: its state is
     // process RAM, born empty on every boot by design).
-    const { startMetricsStreams, stopMetricsStreams } = await import(
-      "./lib/monitoring/supervisor"
-    );
+    const { startMetricsStreams } = await import("./lib/monitoring/supervisor");
     startMetricsStreams();
-    // Unlike the interval-based collector this replaced, the streams MUST be torn
-    // down: each holds an open gRPC channel here and a ticker plus a
-    // `docker events` child on the agent. An unref()'d interval could be left to
-    // leak; these cannot — and dev HMR re-runs register() on every edit.
-    for (const sig of ["SIGTERM", "SIGINT"] as const) {
-      process.once(sig, () => {
-        void stopMetricsStreams();
-      });
-    }
   } catch (e) {
-    // Never let a boot-time reconcile/scheduler failure crash the server.
-    console.error("[deplo] startup reconcile failed:", e);
+    console.error("[deplo] metrics stream supervisor startup failed:", e);
+  }
+  // Teardown, registered OUTSIDE the fragile blocks above so a failed start can
+  // never skip it. Unlike the interval-based collector this replaced, the metrics
+  // streams MUST be torn down: each holds an open gRPC channel here and a ticker
+  // plus a `docker events` child on the agent. An unref()'d interval could be left
+  // to leak; these cannot — and dev HMR re-runs register() on every edit. The two
+  // scheduler leases are handed back too, so the NEXT instance's first tick claims
+  // them immediately — a lease left behind blocks backups + cleanup for up to the
+  // 2h staleness window. Fire-and-forget (Next's own signal handler owns the
+  // actual exit); each teardown is guarded so one failure never blocks the others.
+  for (const sig of ["SIGTERM", "SIGINT"] as const) {
+    process.once(sig, () => {
+      void import("./lib/monitoring/supervisor")
+        .then(({ stopMetricsStreams }) => stopMetricsStreams())
+        .catch(() => {});
+      void import("./lib/backups/scheduler")
+        .then(({ releaseBackupSchedulerLease }) => releaseBackupSchedulerLease())
+        .catch(() => {});
+      void import("./lib/docker-cleanup/scheduler")
+        .then(({ releaseDockerCleanupLease }) => releaseDockerCleanupLease())
+        .catch(() => {});
+    });
   }
 }

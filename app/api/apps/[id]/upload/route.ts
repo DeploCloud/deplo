@@ -1,9 +1,11 @@
 import { type NextRequest } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/auth";
+import { requireCapability } from "@/lib/membership";
 import { getDb } from "@/lib/db/client";
 import { deployments as deploymentsTable } from "@/lib/db/schema/control-plane";
 import { getAppById, setAppUpload } from "@/lib/data/apps";
+import { requireFolderCapabilityForApp } from "@/lib/data/folder-access";
 import {
   storeUpload,
   pruneUploads,
@@ -52,6 +54,18 @@ export async function POST(
   const { id: appId } = await ctx.params;
   const project = await getAppById(appId);
   if (!project) return Response.json({ error: "App not found" }, { status: 404 });
+
+  // Gate BEFORE any bytes hit disk: setAppUpload re-checks `deploy` (plus the
+  // folder gate), but only after a potentially 512 MiB stream has already been
+  // written. A viewer-only member must be refused here, not after the write.
+  try {
+    await requireCapability("deploy");
+    await requireFolderCapabilityForApp(appId, "deploy");
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "You don't have permission to deploy";
+    return Response.json({ error: message }, { status: 403 });
+  }
 
   // Refuse to clobber an archive a build is still extracting: one deploy at a
   // time per project. The client surfaces this 409 message. Deployments are
@@ -118,8 +132,15 @@ export async function POST(
 
     // Commit the new pointer FIRST, then prune older upload dirs — the app
     // never points at a deleted archive, and a rejected upload above leaves the
-    // previous one intact (its subdir was pruned only on success here).
-    await setAppUpload(appId, upload);
+    // previous one intact (its subdir was pruned only on success here). If the
+    // commit itself fails, drop the just-written archive (keeping the previous,
+    // still-pointed-at one) so it can't orphan on disk.
+    try {
+      await setAppUpload(appId, upload);
+    } catch {
+      await pruneUploads(appId, project.upload?.id ?? "").catch(() => {});
+      return Response.json({ error: "Upload failed" }, { status: 500 });
+    }
     await pruneUploads(appId, upload.id).catch(() => {});
 
     // No deploy here — the archive is stored and the app points at it. The

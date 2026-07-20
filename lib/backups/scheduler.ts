@@ -14,6 +14,7 @@ import {
   acquireLease,
   releaseLease,
   BACKUP_SCHEDULER_LEASE,
+  LEASE_STALE_MS,
 } from "./lease";
 
 /**
@@ -58,6 +59,10 @@ interface SchedulerState {
   lastFired: Map<string, string>;
   /** True while a tick is in flight, so a slow tick never overlaps the next. */
   ticking: boolean;
+  /** The `now` of the last tick that reached the lease check (held or not), so a
+   *  tick after a long drain can replay the cron minutes the drain stepped over.
+   *  Null on a fresh process — restarts never replay (no persisted last run). */
+  lastTickAt: Date | null;
 }
 
 const STATE_KEY = Symbol.for("deplo.backup.scheduler");
@@ -68,6 +73,7 @@ const state: SchedulerState = (g[STATE_KEY] ??= {
   owner: makeOwner(),
   lastFired: new Map(),
   ticking: false,
+  lastTickAt: null,
 });
 
 /** Minute-precision key for the dedup guard, e.g. "2026-06-23T17:45". */
@@ -89,6 +95,26 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
     if (!held) return;
 
     const key = minuteKey(now);
+    // CATCH-UP over an overrun drain: one slow dump holds `state.ticking`, so the
+    // interval ticks under it are SKIPPED — which used to step straight past every
+    // schedule whose exact cron minute fell inside the drain, silently losing that
+    // run until tomorrow. So evaluate THIS minute plus every whole minute since the
+    // last tick that reached the lease check (ours alone — reset on restart, and
+    // advanced even on a denied lease, so a foreign instance's minutes are never
+    // replayed), bounded by the staleness window beyond which another instance may
+    // have driven the schedule. A schedule matching several skipped minutes still
+    // fires ONCE — late rather than not at all, never N times.
+    const minutes: Date[] = [];
+    if (state.lastTickAt) {
+      const floor = Math.max(
+        state.lastTickAt.getTime() + TICK_MS,
+        now.getTime() - LEASE_STALE_MS,
+      );
+      for (let t = floor; t < now.getTime(); t += TICK_MS) {
+        minutes.push(new Date(t));
+      }
+    }
+    minutes.push(now);
     // Snapshot the enabled, well-formed schedules due this minute. The enabled
     // filter is pushed into SQL; `cronMatches` (and the per-minute dedup) stay in
     // memory. Capture the list up front, then await each run.
@@ -96,16 +122,19 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
       .select()
       .from(backupsTable)
       .where(eq(backupsTable.enabled, true));
-    const due = enabledRows
-      .map(assembleBackup)
-      .filter(
-        (b) =>
-          b.schedule &&
-          cronMatches(b.schedule, now) &&
-          state.lastFired.get(b.id) !== key,
-      );
+    const due = enabledRows.map(assembleBackup).filter((b) => {
+      const cron = b.schedule;
+      if (!cron || state.lastFired.get(b.id) === key) return false;
+      return minutes.some((m) => cronMatches(cron, m));
+    });
 
     for (const b of due) {
+      // Heartbeat mid-drain: one slow dump can outlast LEASE_STALE_MS, and a lease
+      // whose heartbeat only advances at tick start would go stale — free for
+      // another instance to steal and double-fire. Renew per item (real wall-clock,
+      // not the tick's `now`); losing the renewal means the lease WAS stolen, so
+      // stop draining rather than race the new owner.
+      if (!(await acquireLease(BACKUP_SCHEDULER_LEASE, state.owner))) break;
       // Stamp BEFORE awaiting so a re-entrant/overlapping tick in the same minute
       // can't double-fire this schedule even before the run resolves.
       state.lastFired.set(b.id, key);
@@ -125,8 +154,22 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
       if (k !== key) state.lastFired.delete(id);
     }
   } finally {
+    // Advance even when the lease was denied: those minutes were the OTHER
+    // instance's to fire, so they must never enter OUR replay window.
+    state.lastTickAt = now;
     state.ticking = false;
   }
+}
+
+/**
+ * Release this process's hold on the scheduler lease. Called from
+ * `instrumentation.ts` on SIGTERM/SIGINT so a clean restart hands the schedule to
+ * the next instance immediately, instead of leaving the lease to age out over
+ * LEASE_STALE_MS (2h of no backups). Best-effort and safe when we never held it —
+ * the lease layer ignores a release by a non-holder.
+ */
+export async function releaseBackupSchedulerLease(): Promise<void> {
+  await releaseLease(BACKUP_SCHEDULER_LEASE, state.owner);
 }
 
 /**
@@ -157,5 +200,6 @@ export async function __stopBackupScheduler(): Promise<void> {
   state.started = false;
   state.ticking = false;
   state.lastFired.clear();
+  state.lastTickAt = null;
   await releaseLease(BACKUP_SCHEDULER_LEASE, state.owner);
 }

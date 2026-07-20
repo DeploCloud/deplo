@@ -171,6 +171,14 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
         startOne(serverId, next.id, next.appId);
       }
     }
+  } catch (e) {
+    // concurrencyFor/pickNext hit the DB; a transient failure (a Postgres
+    // blip) must not strand the queued backlog with nothing left to re-arm
+    // the lane — `dirty` was already cleared when the await rejected. Log and
+    // re-drain after a short backoff (the startOne .catch().finally()
+    // contract, applied to the pump itself).
+    console.error("[deplo] deploy queue pump failed:", e);
+    setTimeout(() => scheduleServer(serverId), 5_000);
   } finally {
     lane.pumping = false;
     if (lane.dirty) {
