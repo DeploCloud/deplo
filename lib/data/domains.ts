@@ -500,6 +500,11 @@ export async function addDomain(
     createdAt: nowIso(),
   };
   await insertDomain(getDb(), domain);
+  // The FIRST domain is the app's canonical URL from this second on (before it,
+  // the card reads "No domain yet"); a later one can still change the scheme of
+  // the fallback the app is showing. Cheap, and it keeps apps.production_url a
+  // faithful mirror of the domains table rather than a deploy-time snapshot.
+  await syncProductionUrl(appId);
   await recordActivity("domain", `Added domain ${clean}`, user.name, appId);
   return domain;
 }
@@ -739,6 +744,9 @@ export async function updateDomain(
     if (mwRows.length > 0) await tx.insert(domainMiddlewaresTable).values(mwRows);
   });
   const dom = next;
+  // A rename moves the canonical host; a certificate-provider change moves its
+  // scheme (http ⇄ https). Both are visible in the URL, so re-derive it.
+  await syncProductionUrl(dom.appId);
   await recordActivity(
     "domain",
     renamed
@@ -830,6 +838,11 @@ export async function verifyDomain(
     .where(eq(domainsTable.id, id))
     .returning();
   if (updated.length === 0) throw new Error("Not found");
+  // A provider move flips the canonical URL's scheme (a proxied host is served
+  // https:// from now on), so the stored URL follows. Only when something
+  // actually changed: the domains page re-checks on an interval, and a settled
+  // check must not write on every tick.
+  if (providerChanged) await syncProductionUrl(dom.appId);
   return { ...dom, status, ssl, certProvider, statusChanged };
 }
 
@@ -1022,9 +1035,10 @@ export async function pendingPrimaryRoute(
  * Flip which domain is primary for its project. Returns the affected appId
  * so the caller can re-apply routing (the running container's Traefik labels
  * are baked at deploy time, so the switch only takes effect once the stack is
- * re-rendered and `docker compose up -d` recreates it). `productionUrl` is NOT
- * advanced here — the caller updates it only after routing is confirmed, so the
- * dashboard never points at a host the container isn't serving yet.
+ * re-rendered and `docker compose up -d` recreates it). `productionUrl` follows
+ * the new primary right away ({@link syncProductionUrl}): the canonical URL is
+ * the user's choice, not a deploy artifact, and the reroute that makes the
+ * container serve it happens moments later in the same click.
  */
 export async function setPrimaryDomain(id: string): Promise<string> {
   const { membership } = await requireCapability("manage_domains");
@@ -1065,17 +1079,23 @@ export async function setPrimaryDomain(id: string): Promise<string> {
       .set({ isPrimary: true })
       .where(eq(domainsTable.id, id));
   });
+  await syncProductionUrl(dom.appId);
   return dom.appId;
 }
 
 /**
  * Point a project's canonical `productionUrl` at its current primary domain.
- * The primary domain IS the canonical URL the moment the user picks it, so the
- * domain actions call this on every successful change regardless of whether the
- * running container has been rerouted yet — the title-bar URL must reflect the
- * chosen primary immediately, not lag a deploy behind. Falls back to the first
- * remaining domain when none is flagged primary (e.g. the primary was removed),
- * and clears the URL when the last domain is gone.
+ * The primary domain IS the canonical URL the moment the user picks it, so every
+ * domain mutation below calls this on success regardless of whether the running
+ * container has been rerouted yet — the title-bar URL (and the app card's
+ * subtitle) must reflect the domains that exist NOW, not lag a deploy behind.
+ * Falls back to the first remaining domain when none is flagged primary, and
+ * clears the URL when the last domain is gone.
+ *
+ * This runs in the data layer, not at the API edge, on purpose: the reroute that
+ * follows a domain write talks to an agent and can fail, and the dashboard must
+ * never keep advertising a hostname the user just deleted merely because a host
+ * was unreachable.
  */
 export async function syncProductionUrl(appId: string): Promise<void> {
   const domains = await loadDomainsForApp(appId);
@@ -1091,6 +1111,59 @@ export async function syncProductionUrl(appId: string): Promise<void> {
     .where(eq(appsTable.id, appId));
 }
 
+/**
+ * Which of the remaining domains inherits `primary` when the current primary is
+ * deleted. An app must never be left primary-less: the primary is the canonical
+ * host — the URL on the app card, in the title bar, and the one a deploy routes
+ * FIRST — so dropping it has to hand the crown over, not vacate the throne.
+ *
+ * The heir is the remaining domain that most looks like the one being removed,
+ * in this order:
+ *
+ *  1. **same compose service** — on a multi-service stack the service IS "which
+ *     app this is": if `app.com` fronted `web`, `www.app.com → web` is the same
+ *     site, while `api.app.com → api` is a different one.
+ *  2. **same port** — the single-image equivalent of the above (`:3000` is the
+ *     UI, `:9000` the admin panel), and the tie-breaker within one service.
+ *  3. **routability** — a `valid`/`cloudflare` host outranks one still `pending`,
+ *     which outranks a `misconfigured` one. It only ever breaks a tie: a
+ *     same-service host with broken DNS is still a better canonical URL than an
+ *     unrelated host that happens to resolve, and its DNS can be fixed.
+ *  4. oldest first, then name — so the outcome is deterministic (the domains
+ *     table has no inherent order) rather than "whatever Postgres returned".
+ *
+ * Null when nothing remains: the app legitimately has no domain and its URL is
+ * cleared (`No domain yet`) rather than left pointing at a deleted host.
+ *
+ * Pure — the caller does the writing.
+ */
+export function successorPrimary(
+  remaining: Domain[],
+  removed: { service?: string | null; port?: number | null },
+): Domain | null {
+  if (remaining.length === 0) return null;
+  const service = removed.service ?? null;
+  const port = removed.port ?? null;
+  // Routability rank: routed > not resolving yet > pointing somewhere else.
+  const reach = (d: Domain): number =>
+    d.status === "valid" || d.status === "cloudflare"
+      ? 2
+      : d.status === "misconfigured"
+        ? 0
+        : 1;
+  const rank = (d: Domain): [number, number, number] => [
+    (d.service ?? null) === service ? 1 : 0,
+    (d.port ?? null) === port ? 1 : 0,
+    reach(d),
+  ];
+  return [...remaining].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return rb[i] - ra[i];
+    return a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name);
+  })[0]!;
+}
+
 export async function removeDomain(id: string): Promise<string> {
   const { membership } = await requireCapability("manage_domains");
   const user = (await getCurrentUser())!;
@@ -1099,8 +1172,30 @@ export async function removeDomain(id: string): Promise<string> {
   if (!(await appInTeam(dom.appId, membership.teamId)))
     throw new Error("App not found");
   await requireFolderCapabilityForApp(dom.appId, "manage_domains");
-  // The domain_middlewares child rows CASCADE on the domain delete.
-  await getDb().delete(domainsTable).where(eq(domainsTable.id, id));
+  // Removing the PRIMARY hands the crown to the closest remaining domain, in the
+  // same transaction as the delete: an app with domains must always have exactly
+  // one primary, and a half-applied succession would leave the canonical host
+  // undefined (`primaryDomainRow` would fall back to an arbitrary row, and the
+  // "Primary" badge would vanish from the domains list).
+  const heir = dom.primary
+    ? successorPrimary(
+        (await loadDomainsForApp(dom.appId)).filter((d) => d.id !== id),
+        dom,
+      )
+    : null;
+  await getDb().transaction(async (tx) => {
+    // The domain_middlewares child rows CASCADE on the domain delete.
+    await tx.delete(domainsTable).where(eq(domainsTable.id, id));
+    if (heir)
+      await tx
+        .update(domainsTable)
+        .set({ isPrimary: true })
+        .where(eq(domainsTable.id, heir.id));
+  });
+  // The canonical URL follows immediately — either onto the heir, or to null when
+  // that was the last domain. Otherwise the app card and the title bar keep
+  // advertising the hostname the user just deleted until the next deploy.
+  await syncProductionUrl(dom.appId);
   await recordActivity(
     "domain",
     `Removed domain ${dom.name}`,

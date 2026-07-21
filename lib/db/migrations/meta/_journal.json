@@ -309,6 +309,13 @@
       "when": 1784670700000,
       "tag": "0043_add_user_token_version",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1784670800000,
+      "tag": "0044_heal_orphaned_primary_domain",
+      "breakpoints": true
     }
   ]
 }
