@@ -44,7 +44,14 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
     id: t.exposeID("id"),
     appId: t.exposeID("appId"),
     name: t.exposeString("name"),
-    status: t.field({ type: DomainStatusEnum, resolve: (d) => d.status }),
+    status: t.field({
+      type: DomainStatusEnum,
+      description:
+        "DNS verification state. Only `valid` is confirmed: `cloudflare` means " +
+        "the host is proxied and its origin cannot be checked from DNS, so it " +
+        "is routed but unverified. See the DomainStatus enum.",
+      resolve: (d) => d.status,
+    }),
     primary: t.exposeBoolean("primary"),
     redirectTo: t.exposeString("redirectTo", { nullable: true }),
     ssl: t.exposeBoolean("ssl"),

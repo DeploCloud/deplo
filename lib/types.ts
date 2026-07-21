@@ -953,9 +953,13 @@ export interface GlobalEnvVarDTO {
  * A custom domain's DNS verification state.
  *  - valid          an A record points straight at this project's server.
  *  - cloudflare     proxied through Cloudflare's orange-cloud: the A records are
- *                   Cloudflare's anycast IPs (the origin is masked), which is a
- *                   correct, working setup — routed and TLS-terminated at the
- *                   edge, distinct from a genuine misconfiguration.
+ *                   Cloudflare's anycast IPs, which mask the origin. UNVERIFIED,
+ *                   not a success — those IPs are identical for every proxied
+ *                   domain on the internet, so DNS shows only that the host is
+ *                   proxied, never that Cloudflare forwards it to this app's
+ *                   server. Routed anyway (excluding it would break every
+ *                   correctly-proxied domain) but surfaced as an open question,
+ *                   distinct from both `valid` and a genuine misconfiguration.
  *  - pending        added but not yet verified (no DNS check has run).
  *  - misconfigured  resolves nowhere useful, or to an unrelated address.
  *  - error          a check failed unexpectedly (reserved).

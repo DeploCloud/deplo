@@ -74,7 +74,9 @@ type App {
   compose: String
   createdAt: String
 
-  """All deployments of this app, newest first."""
+  """
+  The app's most recent deployments, newest first (capped so a nested query can't fan out over the whole history + per-deployment logs).
+  """
   deployments: [Deployment!]
   dockerImage: String
   domainCount: Int
@@ -514,7 +516,7 @@ type Deployment {
   environment: DeploymentEnvironment
   id: ID
 
-  """Build logs for this deployment."""
+  """Build logs for this deployment (most recent lines, capped)."""
   logs: [LogLine!]
 
   """
@@ -644,6 +646,10 @@ type Domain {
   serviceName: String
   source: String
   ssl: Boolean
+
+  """
+  DNS verification state. Only `valid` is confirmed: `cloudflare` means the host is proxied and its origin cannot be checked from DNS, so it is routed but unverified. See the DomainStatus enum.
+  """
   status: DomainStatus
   stripPrefix: Boolean
 }
@@ -680,11 +686,29 @@ input DomainPatchInput {
   stripPrefix: Boolean
 }
 
+"""A custom domain's DNS verification state."""
 enum DomainStatus {
+  """
+  Proxied through Cloudflare's orange-cloud. UNVERIFIED — treat as an open question, not a success. The host resolves to Cloudflare's anycast IPs, which are shared by every proxied domain on the internet and mask the origin, so public DNS can show only that the domain is proxied — never whether Cloudflare forwards it to this app's server or to somebody else's. The domain is routed regardless (it must be, or a correct setup could never work), but nothing has been confirmed.
+  """
   cloudflare
+
+  """A check failed unexpectedly (reserved)."""
   error
+
+  """
+  Resolves to an address that is neither this app's server nor a Cloudflare edge. Not routed.
+  """
   misconfigured
+
+  """
+  No A record resolves yet — the normal state of a record just created. Re-checked automatically.
+  """
   pending
+
+  """
+  An A record resolves straight to this app's server: confirmed, and routed.
+  """
   valid
 }
 

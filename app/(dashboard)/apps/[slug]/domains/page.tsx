@@ -49,6 +49,12 @@ export default async function AppDomainsPage(
   // `error` after an unexpected failure. Those are filtered out of the router on
   // purpose; while any exist, the auto-check callout below re-verifies them on
   // an interval so they start routing on their own the moment DNS resolves.
+  //
+  // `cloudflare` is excluded despite rendering amber/unverified: it is settled
+  // as far as DNS is concerned. Re-resolving a proxied host returns Cloudflare's
+  // anycast IPs every time, so the poller could never learn anything new and the
+  // "Waiting for DNS" callout would sit there forever on a domain that is very
+  // likely working. Its caveat is carried per-row instead (DomainRow).
   const unsettledDomains = domains
     .filter((d) => d.status !== "valid" && d.status !== "cloudflare")
     .map((d) => ({ id: d.id, name: d.name, status: d.status }));

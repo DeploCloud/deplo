@@ -4,10 +4,22 @@
  * A domain proxied through Cloudflare's "orange-cloud" no longer resolves (via
  * its public A records) to the origin server's IP — it resolves to one of
  * Cloudflare's shared anycast addresses, so a bare "does an A record equal this
- * server's IP?" check reads a perfectly-configured proxied domain as
- * misconfigured. This module supplies the two pure primitives the check needs to
- * tell those apart: membership in Cloudflare's published IP ranges, and the
- * three-way classification of a resolved A-record set.
+ * server's IP?" check reads every proxied domain as misconfigured, the
+ * correctly-configured ones included. This module supplies the two pure
+ * primitives the check needs to tell those apart: membership in Cloudflare's
+ * published IP ranges, and the three-way classification of a resolved A-record
+ * set.
+ *
+ * What this CANNOT do is a property of DNS, not a gap to be filled later: those
+ * anycast addresses are IDENTICAL for every proxied domain on the internet, so
+ * public DNS can prove a domain is proxied and NOTHING about where Cloudflare
+ * forwards it afterwards — that origin lives in the zone's private
+ * configuration. `cloudflare` therefore means "plausible but unverified", never
+ * "confirmed": the domain may just as well be forwarded to somebody else's
+ * server. Proving the rest needs a reachability probe (fetch the host and look
+ * for a per-server fingerprint), which is a separate feature; until it exists,
+ * every layer above must present this status as an open question — see
+ * {@link classifyDomainDns}.
  *
  * Pure and dependency-free (no `node:dns`, no `server-only`) so the DNS-resolving
  * caller stays the only I/O boundary and the classification is unit-testable
@@ -156,11 +168,19 @@ export type DomainDnsClass = "valid" | "cloudflare" | "misconfigured";
  *   - `valid`         an A record points straight at this server. Traefik gets
  *                     the request directly and issues its own certificate. (The
  *                     long-standing check — unchanged for direct/grey-cloud DNS.)
- *   - `cloudflare`    no record points here, but every/any resolved address is a
+ *   - `cloudflare`    no record points here, but a resolved address is a
  *                     Cloudflare edge IP: the domain is proxied through
  *                     Cloudflare, which INTENTIONALLY hides the origin behind its
- *                     anycast IPs. That is a correct, working setup — not the
- *                     false "misconfigured" a bare server-IP match would report.
+ *                     anycast IPs. UNVERIFIED — deliberately its own status
+ *                     rather than either neighbour: the DNS is delegated exactly
+ *                     as a working proxied setup looks, so calling it
+ *                     "misconfigured" would flash red at users who did
+ *                     everything right; but the anycast IPs are the same for
+ *                     every proxied domain alive, so nothing here shows that
+ *                     Cloudflare forwards to THIS server, and calling it `valid`
+ *                     would claim a fact we cannot see. It exists to stop a
+ *                     correct setup reading as broken — not to certify a
+ *                     possibly-wrong one as working.
  *   - `misconfigured` no record points here and none is a Cloudflare edge: the
  *                     domain resolves nowhere useful (NXDOMAIN / empty ⇒ `[]`) or
  *                     to some unrelated address, so it genuinely isn't set up.

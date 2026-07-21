@@ -234,40 +234,22 @@ export function DomainRow({
             </SimpleTooltip>
           )}
           {domain.status === "cloudflare" && (
-            // The domain resolves to Cloudflare's proxy IPs (orange-cloud), which
-            // mask the origin — so we can't match this server's IP directly, but
-            // the setup is correct: Cloudflare forwards to this origin and serves
-            // TLS at its edge. A chip in the config row (not a hint paragraph);
-            // the tooltip carries the one thing the user still controls — that
-            // Cloudflare's origin must target THIS server's IP, and to use a
-            // Full SSL mode so the edge trusts the origin cert.
-            <SimpleTooltip
-              content={
-                <>
-                  Proxied through Cloudflare — DNS is delegated correctly and
-                  TLS is served at Cloudflare’s edge. In Cloudflare, point this
-                  record’s origin at{" "}
-                  {serverIp ? (
-                    <span className="font-mono">{serverIp}</span>
-                  ) : (
-                    <>this app’s server IP</>
-                  )}{" "}
-                  and set SSL/TLS to{" "}
-                  <span className="font-medium">Full</span>.
-                </>
-              }
+            // Marks WHO sits in front of the domain, nothing more. What that
+            // proxy hides — and the two things the user has to check because of
+            // it — is the notice below the row, not a tooltip here: the chip and
+            // the notice are inches apart in the same cell, so saying it twice
+            // would just teach people to ignore both.
+            //
+            // Cloudflare's brand orange — a deliberate brand-color exception to
+            // the token-only rule. Alpha tints keep the fill/border legible on
+            // both the light and dark theme.
+            <Badge
+              variant="outline"
+              className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
             >
-              {/* Cloudflare's brand orange — a deliberate brand-color exception
-                  to the token-only rule. Alpha tints keep the fill/border
-                  legible on both the light and dark theme. */}
-              <Badge
-                variant="outline"
-                className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
-              >
-                <Cloud className="size-3" />
-                Cloudflare DNS
-              </Badge>
-            </SimpleTooltip>
+              <Cloud className="size-3" />
+              Cloudflare DNS
+            </Badge>
           )}
         </div>
         {domain.redirectTo && (
@@ -319,6 +301,46 @@ export function DomainRow({
                 <span className="font-medium text-foreground">A record</span>{" "}
                 at the IP of the server this app is deployed on (unique to
                 that server). It’s re-checked automatically.
+              </span>
+            )}
+          </div>
+        )}
+        {domain.status === "cloudflare" && (
+          // The one status deplo cannot settle for the user. Cloudflare's
+          // anycast IPs are shared by every proxied domain alive, so the origin
+          // behind them is invisible from DNS (lib/deploy/cloudflare.ts) — this
+          // row looks identical whether Cloudflare forwards here or to a
+          // stranger's server. Rather than imply a verification that never
+          // happened, say so and hand over the two things only the user can
+          // check, both in the Cloudflare dashboard: the record's origin IP and
+          // the SSL/TLS mode. Same shape as the pending/misconfigured hint
+          // above, and deliberately one quiet line — the likely case is that
+          // everything is fine, so this is a "confirm this", not an alarm.
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+            <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+            {serverIp ? (
+              <>
+                <span>
+                  Proxied through Cloudflare, which hides where this domain
+                  really points — deplo can’t confirm it reaches this app. In
+                  Cloudflare, this record’s origin must be
+                </span>
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">
+                  {serverIp}
+                </code>
+                <CopyButton value={serverIp} className="size-6" />
+                <span>
+                  with SSL/TLS set to{" "}
+                  <span className="font-medium text-foreground">Full</span>.
+                </span>
+              </>
+            ) : (
+              <span>
+                Proxied through Cloudflare, which hides where this domain really
+                points — deplo can’t confirm it reaches this app. In Cloudflare,
+                point this record’s origin at the IP of the server this app runs
+                on, with SSL/TLS set to{" "}
+                <span className="font-medium text-foreground">Full</span>.
               </span>
             )}
           </div>
@@ -382,8 +404,8 @@ export function DomainRow({
                     if (status === "valid")
                       toast.success("Domain verified — routing is live");
                     else if (status === "cloudflare")
-                      toast.success(
-                        "Domain verified — proxied through Cloudflare",
+                      toast.warning(
+                        "Proxied through Cloudflare — deplo can’t confirm this domain reaches this app; check its origin IP on the row",
                       );
                     else if (status === "misconfigured")
                       toast.warning(

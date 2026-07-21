@@ -160,7 +160,12 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
         if (status === "valid")
           toast.success("Domain added — DNS already points here, routing is live");
         else if (status === "cloudflare")
-          toast.success("Domain added — proxied through Cloudflare, routing is live");
+          // Not a success toast: the host is proxied, so nothing about where
+          // Cloudflare forwards it is visible to us. Claiming "routing is live"
+          // here would be a guess the user then trusts.
+          toast.warning(
+            "Domain added — proxied through Cloudflare, so deplo can’t confirm it reaches this app; check its origin IP on the row",
+          );
         else if (status === "misconfigured")
           toast.warning(
             "Domain added, but its DNS points at another address — see the hint on its row",

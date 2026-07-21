@@ -33,10 +33,6 @@ const COLORS: Record<string, string> = {
   running: "bg-[var(--success)]",
   online: "bg-[var(--success)]",
   valid: "bg-[var(--success)]",
-  // A domain proxied through Cloudflare is a working, routable state (Cloudflare
-  // forwards to this origin, TLS at the edge) — green, like `valid`, not an
-  // error. The "Cloudflare" label + the row hint say it's proxied.
-  cloudflare: "bg-[var(--success)]",
   connected: "bg-[var(--success)]",
   active: "bg-[var(--success)]",
   success: "bg-[var(--success)]",
@@ -49,6 +45,14 @@ const COLORS: Record<string, string> = {
   provisioning: "bg-[var(--warning)]",
   pending: "bg-[var(--warning)]",
   unverified: "bg-[var(--warning)]",
+  // A domain proxied through Cloudflare, sitting beside `unverified` for the
+  // same reason: it IS unverified. Cloudflare's shared anycast IPs mask the
+  // origin, so deplo can see that the host is proxied and never whether
+  // Cloudflare forwards it here — green would certify a fact no DNS lookup can
+  // produce. Not red either: this is equally what a correct setup looks like.
+  // Amber says the true thing — "working as far as we can see, unconfirmed" —
+  // and the row's notice says what to double-check. Labelled "Proxied" below.
+  cloudflare: "bg-[var(--warning)]",
   // Docker is restart-looping the container: it is neither up nor off, it is
   // dying and being started again. Amber + a pulse, like every other "something
   // is happening" state — the red is saved for the deploy that failed outright.
@@ -97,7 +101,6 @@ const VARIANTS: Record<string, "success" | "warning" | "destructive" | "muted"> 
   running: "success",
   online: "success",
   valid: "success",
-  cloudflare: "success",
   connected: "success",
   active: "success",
   success: "success",
@@ -107,6 +110,7 @@ const VARIANTS: Record<string, "success" | "warning" | "destructive" | "muted"> 
   provisioning: "warning",
   pending: "warning",
   unverified: "warning",
+  cloudflare: "warning",
   warning: "warning",
   restarting: "warning",
   degraded: "warning",
@@ -150,10 +154,8 @@ export function StatusDot({
 }
 
 /**
- * Friendlier labels for a few raw status keys. Only the app-lifecycle states
- * are remapped — a user-stopped app reads "Stopped" (not "Idle") and a
- * running one "Running" (not "Active"); every other status falls back to its
- * capitalized key.
+ * Friendlier labels for a few raw status keys — the ones whose raw key would
+ * read as the wrong thing. Every other status falls back to its capitalized key.
  */
 const LABELS: Record<string, string> = {
   idle: "Stopped",
@@ -161,6 +163,12 @@ const LABELS: Record<string, string> = {
   // "Not running", never "Stopped": the app is supposed to be up. The wording
   // has to make an unasked-for outage impossible to mistake for a deliberate one.
   down: "Not running",
+  // A domain whose DNS lands on Cloudflare. The raw key would render "Cloudflare",
+  // which states a vendor and quietly implies it works; "Proxied" names what deplo
+  // actually established — the host goes through a proxy, so what's behind it is
+  // out of view. It also stops the status column echoing the row's "Cloudflare
+  // DNS" chip word for word.
+  cloudflare: "Proxied",
 };
 
 export function StatusBadge({

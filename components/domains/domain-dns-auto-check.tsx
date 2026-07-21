@@ -42,7 +42,11 @@ export function DomainDnsAutoCheck({
   domains,
   serverIp,
 }: {
-  /** The page's unsettled (non-`valid`, non-`cloudflare`) domains. */
+  /** The page's unsettled (non-`valid`, non-`cloudflare`) domains — i.e. the
+   * ones a further DNS check could still move. A proxied (`cloudflare`) host is
+   * excluded even though it is unverified: re-resolving it can only ever return
+   * Cloudflare's anycast IPs again, so polling it would spin forever without
+   * ever learning anything. */
   domains: UnsettledDomain[];
   /** The public IPv4 these domains' A records must point at (this app's
    * server), shown in the callout. Absent when no usable IP is recorded. */
@@ -93,7 +97,9 @@ export function DomainDnsAutoCheck({
           if (status === "valid")
             toast.success(`${d.name} verified — routing is live`);
           else if (status === "cloudflare")
-            toast.success(`${d.name} verified — proxied through Cloudflare`);
+            toast.warning(
+              `${d.name} is proxied through Cloudflare — routed, but deplo can’t confirm it reaches this app`,
+            );
         }
       }
       running = false;

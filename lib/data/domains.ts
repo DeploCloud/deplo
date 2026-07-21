@@ -732,10 +732,14 @@ export async function updateDomain(
  *   - `cloudflare`    the domain is proxied through Cloudflare's orange-cloud:
  *                     its A records are Cloudflare's shared anycast IPs, which
  *                     INTENTIONALLY mask the origin, so a bare server-IP match
- *                     can never see this server. That is a correct, working setup
- *                     — not a misconfiguration — so it gets its own status and is
- *                     treated as routable (see {@link routableRoutes}). TLS is
- *                     served at Cloudflare's edge, so `ssl` is on.
+ *                     can never see this server. UNVERIFIED, not verified: this
+ *                     is what a correct proxied setup looks like, but it is also
+ *                     exactly what a domain forwarded to somebody ELSE's server
+ *                     looks like — the anycast IPs are shared by every proxied
+ *                     domain alive. Routed regardless (see
+ *                     {@link routableRoutes}) and `ssl` is on (TLS really is
+ *                     terminated at Cloudflare's edge), but every surface above
+ *                     must present it as an open question, never a green tick.
  *   - `misconfigured` its A records point at some unrelated address (a different
  *                     server, an unrelated site).
  *   - `pending`       it doesn't resolve at all yet (no A record) — the normal
@@ -765,10 +769,12 @@ export async function verifyDomain(
   // panel host: a project on a remote server needs its A record on that server.
   const target = await appServerIp(dom.appId);
   const status = await checkDomainDns(dom.name, target);
-  // `valid` (points straight here) and `cloudflare` (proxied — DNS correctly
-  // delegated to Cloudflare, origin masked) are both working, routable states,
-  // so `ssl` (a cert is in effect for end users) is on for those two only — a
-  // `pending`/`misconfigured` host has no working DNS and thus no live cert.
+  // `valid` (points straight here) and `cloudflare` (proxied — DNS delegated to
+  // Cloudflare, origin masked) are the two routable states, so `ssl` (a cert is
+  // in effect for end users) is on for those two only — a `pending`/
+  // `misconfigured` host has no working DNS and thus no live cert. `ssl` stays
+  // true for a proxied host even though the origin is unverifiable: Cloudflare
+  // really does terminate TLS at its edge, which is the fact this flag reports.
   const ssl = status === "valid" || status === "cloudflare";
   const statusChanged = status !== dom.status || ssl !== dom.ssl;
 
@@ -832,8 +838,12 @@ async function checkDomainDns(
  * Only `valid` and `cloudflare` domains are returned: a pending/misconfigured
  * host has no working DNS, so routing to it would make Traefik fail HTTP-01
  * issuance and (because all hosts share one cert order) could jeopardise the
- * cert for the domains that *do* work. A `cloudflare` (proxied) host DOES route
- * — Cloudflare forwards to this origin — so it must be included. The primary is
+ * cert for the domains that *do* work. A `cloudflare` (proxied) host is included
+ * even though its origin is unverifiable: the router has to carry the host
+ * BEFORE any traffic can arrive, so withholding it until we're sure would
+ * guarantee the failure it's meant to prevent — every correctly-proxied domain
+ * would 404 at this Traefik. Unverified is routed; only unresolvable is not. The
+ * primary is
  * sorted first so it stays the canonical host. Store-direct (no auth) so the
  * deploy engine can call it like [[ensure-auto-domain]] does. Empty when the
  * project has no working domain.
@@ -907,8 +917,9 @@ export async function routableRoutes(
 ): Promise<RoutableDomain[]> {
   return (await loadDomainsForApp(appId))
     // `valid` (points straight here) and `cloudflare` (proxied — Cloudflare
-    // forwards to this origin) are both working, routable hosts; a
-    // pending/misconfigured host has no working DNS and is left off the router.
+    // may or may not forward here, which DNS cannot tell us) are both routable
+    // hosts; a pending/misconfigured host has no working DNS at all and is left
+    // off the router.
     .filter((d) => d.status === "valid" || d.status === "cloudflare")
     .sort((a, b) => Number(b.primary) - Number(a.primary))
     .map(toRoutableDomain);
