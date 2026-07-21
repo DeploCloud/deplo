@@ -47,9 +47,10 @@ export interface BasicAuthUserDTO {
  * pipeline puts a generated Traefik `basicauth` middleware in front of all the
  * app's hostnames. Passwords are write-only (never shown after saving).
  *
- * Like every other domain change in Deplo, edits apply on the NEXT deploy — or
- * instantly via the app's "Reload" action (which re-renders the routing
- * labels without a rebuild).
+ * Edits are LIVE: every add/change/delete re-applies the app's routing to the
+ * running container (the same label-only reroute the "Reload" action performs —
+ * no rebuild), so the copy here promises immediacy and means it. Nothing to
+ * redeploy, nothing to remember.
  */
 export function BasicAuthManager({
   appId,
@@ -70,7 +71,7 @@ export function BasicAuthManager({
           <div>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               HTTP Basic Auth
-              <InfoTip content="Protect every domain of this app behind a username and password. Changes apply on the next deploy, or instantly via Reload." />
+              <InfoTip content="Protect every domain of this app behind a username and password. Changes take effect within seconds — no redeploy." />
             </CardTitle>
           </div>
           <Button
@@ -156,15 +157,18 @@ export function BasicAuthManager({
         open={deleteId !== null}
         onOpenChange={(v) => !v && setDeleteId(null)}
         title="Delete basic-auth user?"
-        description="This removes the credential. The login it grants stops working after the next deploy or Reload."
+        description="This removes the credential. The login it grants stops working within seconds; if it was the last one, the app's domains stop asking for a login at all."
         confirmLabel="Delete"
-        successMessage="User deleted"
+        successMessage="User deleted — that login no longer works"
         onConfirm={async () => {
           const res = await gqlAction<{ removeBasicAuthUser: boolean }>(
             `mutation($id: String!) { removeBasicAuthUser(id: $id) }`,
             { id: deleteId! },
           );
-          if (res.ok) router.refresh();
+          // Refresh either way: the delete commits BEFORE the routing is
+          // re-applied, so an error can still mean the row is gone. Re-reading
+          // is the only way the list stays honest about what exists.
+          router.refresh();
           return res;
         }}
       />
@@ -204,11 +208,20 @@ function BasicAuthDialog({
             { appId, username, password },
           );
       if (res.ok) {
-        toast.success(editing ? "Password updated" : "User added");
+        toast.success(
+          editing
+            ? "Password updated — live on every domain"
+            : "User added — every domain now asks for this login",
+        );
         onOpenChange(false);
         router.refresh();
       } else {
+        // The dialog stays open (a rejected username/password must keep what was
+        // typed), but the list behind it is refreshed anyway: the row is written
+        // before the routing is applied, so an error can still leave a saved
+        // credential the user needs to see.
         toast.error(res.error);
+        router.refresh();
       }
     });
   }

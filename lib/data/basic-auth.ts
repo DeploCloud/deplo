@@ -19,11 +19,20 @@ import type { BasicAuthUser } from "../types";
  * Per-project HTTP Basic Auth users.
  *
  * A project's basic-auth users gate EVERY one of its domains: the deploy/reroute
- * renderers read them via {@link basicAuthForApp} and inject a generated
+ * renderers read them via {@link basicAuthUsersValue} and inject a generated
  * Traefik `basicauth` middleware (built from all of them) at the head of every
  * router's middleware chain. Stored passwords are AES-GCM-encrypted (reversible,
  * like env secrets) so the htpasswd credentials can be re-derived on every
  * render; they are write-only over the API and never returned to a client.
+ *
+ * Every mutation here is DB-only — the labels live on the running container, so
+ * a write takes effect only once the stack is re-rendered. The API edge does
+ * that for the caller (`lib/graphql/types/basic-auth.ts` re-applies routing after
+ * each mutation, exactly as the domain mutations do), so a credential is live
+ * seconds after it is saved. That reroute is NOT invoked from here: this module
+ * is imported BY the deploy engine (`lib/deploy/build.ts` reads
+ * {@link basicAuthUsersValue} when rendering), so calling back into it would
+ * close an import cycle.
  *
  * Gated on `manage_domains` — basic auth is a routing/edge concern attached to a
  * project's domains, so it shares the capability that governs them.
@@ -32,6 +41,10 @@ import type { BasicAuthUser } from "../types";
 /** A masked DTO for the UI — the password is never sent to the client. */
 export interface BasicAuthUserDTO {
   id: string;
+  /** The owning app. Not exposed over GraphQL (the client already knows which
+   * app it is looking at); it is here so the mutation edge can re-apply that
+   * app's routing without a second lookup. */
+  appId: string;
   username: string;
   createdAt: string;
   updatedAt: string;
@@ -46,6 +59,7 @@ const USERNAME_RE = /^[^\s:,"`]+$/;
 function toDTO(u: BasicAuthUser): BasicAuthUserDTO {
   return {
     id: u.id,
+    appId: u.appId,
     username: u.username,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,

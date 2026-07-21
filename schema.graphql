@@ -1016,7 +1016,7 @@ input MountInput {
 
 type Mutation {
   """
-  Add a basic-auth user to an app. Applies to all its domains on the next deploy or Reload.
+  Add a basic-auth user to an app. The login is required on every one of its domains within seconds — the routing is re-applied to the running container, no redeploy needed.
   """
   addBasicAuthUser(appId: String!, password: String!, username: String!): BasicAuthUser
   addDomain(appId: String!, config: DomainConfigInput, name: String!): Domain
@@ -1263,7 +1263,9 @@ type Mutation {
   """
   reloadApp(id: String!): String
 
-  """Remove a basic-auth user. Returns true."""
+  """
+  Remove a basic-auth user, so its login stops working within seconds. Removing the last one drops the login prompt entirely. Returns true.
+  """
   removeBasicAuthUser(id: String!): Boolean
 
   """Remove the domain so it stops routing. Returns true."""
@@ -1474,7 +1476,9 @@ type Mutation {
   """
   updateBackup(id: String!, input: UpdateBackupInput!): Boolean
 
-  """Change a basic-auth user's password."""
+  """
+  Change a basic-auth user's password. The new password is live on every domain of the app within seconds (the old one stops working).
+  """
   updateBasicAuthUserPassword(id: String!, password: String!): BasicAuthUser
 
   """
