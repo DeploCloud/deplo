@@ -27,10 +27,38 @@ Consequences that bind every design and review decision:
   URLs — the platform should do the operator's job for them, using infrastructure they already
   have (e.g. the fleet itself), not ask them to stand up more (an S3 bucket, an external DB) as a
   precondition.
+- **Every feature must earn its place in the UX and name its audience — one of exactly two.**
+  Either it is **for the non-expert** (on by default, obvious, safe, delivers value with zero
+  configuration) or it is **for the expert** (*advanced mode*: opt-in, behind an "Advanced"
+  affordance, never on the first-run path). If you can't say which of the two a feature is for,
+  it isn't designed yet.
+- **Don't build what nobody will realistically use.** Losing focus on deplo's principles looks
+  exactly like a stream of individually-defensible features that, long-term, almost no one turns
+  on. Breadth is not the goal — being *far simpler than every competing self-hosted platform* is.
+  "Coolify/Dokploy have that setting too" is an argument *against* shipping it, not for.
 
 When weighing a design, ask: *would a competent developer who has never touched Docker or SSH
 succeed on the happy path, with the platform doing the operational heavy lifting?* If not,
 reconsider.
+
+### First run should sell the price tag, not a settings audit
+
+Someone moving off Vercel/Railway to self-hosting must, on first launch, be struck by **the pricing
+difference** — not by having to inspect and configure a mountain of options, with advanced settings
+staring at them by default. Ship opinionated defaults, keep the default surface as small as it can
+be while still useful, and put everything else behind advanced mode. Every knob visible at first
+run is a tax on the one thing that makes the switch worth it.
+
+### Everything must be easy to turn into a managed service
+
+Beyond self-hosted — where deplo aims at enterprise-grade, more scalable features than the
+competition — the intent is to eventually run **deplo's own proprietary cloud**. The idea is still
+rough, but the constraint it puts on today's code is concrete: **whatever we build should one day be
+easy to offer as a managed service.** In practice that means multi-tenant-safe by construction, no
+assumption that the operator and the end user are the same person, and no dependence on the user
+having shell/root on the box (which the core mission already forbids). This never displaces the
+priorities: **self-hosted and open source stay first-class**, and the cloud is an additional
+distribution of the same system — never a fork, never a reason to starve the self-hosted path.
 
 ## This is NOT the Next.js you know
 
