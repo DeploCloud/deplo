@@ -250,12 +250,18 @@ enum BackupTargetKind {
 }
 
 """
-An HTTP Basic Auth credential that gates every domain of an app. The password is write-only and never returned.
+An HTTP Basic Auth credential that gates every domain of an app. The password is never a field — read one back with revealBasicAuthPassword.
 """
 type BasicAuthUser {
   createdAt: String
+
+  """Who added the credential."""
+  createdBy: VarAuthor
   id: ID
   updatedAt: String
+
+  """Who last changed its password."""
+  updatedBy: VarAuthor
   username: String
 }
 
@@ -1329,6 +1335,11 @@ type Mutation {
   Restore a backup run in place (overwrites the live target). Returns true.
   """
   restoreBackup(runId: String!): Boolean
+
+  """
+  Reveal one credential's password. A basic-auth login is handed to a person, so whoever may change it may also read it back — otherwise the only answer to “what is the password?” is to reset it and lock everyone out. A mutation, not a query, so it is never cached or prefetched.
+  """
+  revealBasicAuthPassword(id: String!): String
 
   """Reveal the full (unmasked) connection string for a database."""
   revealConnection(id: String!): String

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -13,7 +13,8 @@ import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
 import { appInTeam } from "./app-graph-load";
 import { requireFolderCapabilityForApp } from "./folder-access";
-import type { BasicAuthUser } from "../types";
+import { authorOf, loadUserIdentities } from "./user-identity";
+import type { BasicAuthUser, VarAuthor } from "../types";
 
 /**
  * Per-project HTTP Basic Auth users.
@@ -23,7 +24,12 @@ import type { BasicAuthUser } from "../types";
  * Traefik `basicauth` middleware (built from all of them) at the head of every
  * router's middleware chain. Stored passwords are AES-GCM-encrypted (reversible,
  * like env secrets) so the htpasswd credentials can be re-derived on every
- * render; they are write-only over the API and never returned to a client.
+ * render. A password is NEVER part of a DTO; the only way back to the plaintext
+ * is {@link revealBasicAuthPassword}, one credential at a time, behind the same
+ * `manage_domains` gate as every write here. That reveal exists — where an app
+ * secret has none — because a basic-auth login is a credential you HAND TO A
+ * PERSON: without it, "what is the password again?" can only be answered by
+ * overwriting it, which locks out everyone already using it.
  *
  * Every mutation here is DB-only — the labels live on the running container, so
  * a write takes effect only once the stack is re-rendered. The API edge does
@@ -46,6 +52,12 @@ export interface BasicAuthUserDTO {
    * app's routing without a second lookup. */
   appId: string;
   username: string;
+  /** Who added the credential, and who last changed its password. Identity
+   * metadata — safe to project while the password itself never is. Null when the
+   * row predates migration 0045 or its author's account is gone; the UI renders
+   * "—" rather than guessing. */
+  createdBy: VarAuthor | null;
+  updatedBy: VarAuthor | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,11 +68,16 @@ export interface BasicAuthUserDTO {
  * a quote would break the scalar), non-empty. */
 const USERNAME_RE = /^[^\s:,"`]+$/;
 
-function toDTO(u: BasicAuthUser): BasicAuthUserDTO {
+function toDTO(
+  u: BasicAuthUser,
+  authors: Map<string, VarAuthor> = new Map(),
+): BasicAuthUserDTO {
   return {
     id: u.id,
     appId: u.appId,
     username: u.username,
+    createdBy: authorOf(u.createdByUserId, authors),
+    updatedBy: authorOf(u.updatedByUserId, authors),
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
   };
@@ -72,9 +89,24 @@ function assemble(row: typeof basicAuthTable.$inferSelect): BasicAuthUser {
     appId: row.appId,
     username: row.username,
     passwordEnc: row.passwordEnc,
+    createdByUserId: row.createdByUserId,
+    updatedByUserId: row.updatedByUserId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+/**
+ * Resolve one credential's authors for the DTO a mutation hands back.
+ *
+ * A mutation returns a single row, so the batched {@link loadUserIdentities} of
+ * the list path would be one query for one or two ids either way — but going
+ * through it keeps ONE resolution path, so a mutation's DTO can never disagree
+ * with what the next list render shows.
+ */
+async function withAuthors(u: BasicAuthUser): Promise<BasicAuthUserDTO> {
+  const authors = await loadUserIdentities([u.createdByUserId, u.updatedByUserId]);
+  return toDTO(u, authors);
 }
 
 /**
@@ -92,7 +124,48 @@ export async function listBasicAuthUsers(
     .from(basicAuthTable)
     .where(eq(basicAuthTable.appId, appId))
     .orderBy(asc(basicAuthTable.username));
-  return rows.map(assemble).map(toDTO);
+  const users = rows.map(assemble);
+  // ONE identity query for the whole page, never one per credential.
+  const authors = await loadUserIdentities(
+    users.flatMap((u) => [u.createdByUserId, u.updatedByUserId]),
+  );
+  return users.map((u) => toDTO(u, authors));
+}
+
+/**
+ * The plaintext password of ONE credential, for the person who may change it.
+ *
+ * The deliberate exception to "secrets are write-only": a basic-auth login is
+ * meant to be given to a human, so a platform that cannot tell you what it is
+ * forces you to reset it — locking out everyone who already has it — every time
+ * someone asks. Same gate as every write here (`manage_domains` + the app's team
+ * + its folder), one credential per call, and never part of a list DTO: the
+ * plaintext leaves the server only when someone deliberately asks for that one
+ * password.
+ *
+ * Fails LOUDLY when the ciphertext can't be decrypted (rotated `DEPLO_SECRET`,
+ * restored dump): `decryptSecret` fails closed to `""`, and showing an empty
+ * password as if it were the real one would send someone off to try a login that
+ * cannot work. Empty passwords are rejected at write time, so `""` here always
+ * means a decrypt failure — the same reasoning as {@link basicAuthUsersValue}.
+ */
+export async function revealBasicAuthPassword(id: string): Promise<string> {
+  const { teamId } = await requireCapability("manage_domains");
+  const [row] = await getDb()
+    .select()
+    .from(basicAuthTable)
+    .where(eq(basicAuthTable.id, id))
+    .limit(1);
+  if (!row) throw new Error("Not found");
+  if (!(await appInTeam(row.appId, teamId))) throw new Error("Not found");
+  await requireFolderCapabilityForApp(row.appId, "manage_domains");
+  const password = decryptSecret(row.passwordEnc);
+  if (password === "")
+    throw new Error(
+      `The stored password for "${row.username}" could not be decrypted. ` +
+        `Set a new password for this credential.`,
+    );
+  return password;
 }
 
 export async function addBasicAuthUser(
@@ -130,6 +203,11 @@ export async function addBasicAuthUser(
     appId,
     username: name,
     passwordEnc: encryptSecret(password),
+    // Both stamped on create: "added by" is the author of record until someone
+    // rotates the password, and the Access page reads `updatedBy ?? createdBy`
+    // exactly as the variables table does.
+    createdByUserId: user.id,
+    updatedByUserId: user.id,
     createdAt: now,
     updatedAt: now,
   };
@@ -140,7 +218,7 @@ export async function addBasicAuthUser(
     user.name,
     appId,
   );
-  return toDTO(assemble(row));
+  return withAuthors(assemble(row));
 }
 
 /** Change a basic-auth user's password (the username is immutable — it is the
@@ -161,10 +239,19 @@ export async function updateBasicAuthUserPassword(
   if (!(await appInTeam(existing.appId, membership.teamId)))
     throw new Error("Not found");
   await requireFolderCapabilityForApp(existing.appId, "manage_domains");
-  const updated = { ...existing, passwordEnc: encryptSecret(password), updatedAt: nowIso() };
+  const updated = {
+    ...existing,
+    passwordEnc: encryptSecret(password),
+    updatedByUserId: user.id,
+    updatedAt: nowIso(),
+  };
   await getDb()
     .update(basicAuthTable)
-    .set({ passwordEnc: updated.passwordEnc, updatedAt: updated.updatedAt })
+    .set({
+      passwordEnc: updated.passwordEnc,
+      updatedByUserId: updated.updatedByUserId,
+      updatedAt: updated.updatedAt,
+    })
     .where(eq(basicAuthTable.id, id));
   await recordActivity(
     "domain",
@@ -172,7 +259,7 @@ export async function updateBasicAuthUserPassword(
     user.name,
     existing.appId,
   );
-  return toDTO(assemble(updated));
+  return withAuthors(assemble(updated));
 }
 
 export async function removeBasicAuthUser(id: string): Promise<string> {

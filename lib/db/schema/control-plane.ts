@@ -1014,8 +1014,16 @@ export const domainMiddlewares = pgTable(
  * the head of every router's middleware chain, so all the service's hostnames
  * sit behind the login prompt. `password_enc` is a REVERSIBLE secret (AES-GCM,
  * like `env_vars.value_enc`) so the htpasswd
- * line can be re-derived on every stack render; it is write-only over the API
- * (never returned). `UNIQUE(project_id, username)` — one credential per name.
+ * line can be re-derived on every stack render; it is read back only through the
+ * `manage_domains`-gated reveal (a shared login has to be handed to a human, so
+ * unlike an app secret it is readable by the people who may change it).
+ * `UNIQUE(project_id, username)` — one credential per name.
+ *
+ * Authorship (`created_by_user_id` / `updated_by_user_id`) is METADATA, never a
+ * value — exposable in a DTO while `password_enc` stays out of it. Same shape and
+ * same reasoning as the variable tables (migration 0029): nullable, `ON DELETE
+ * SET NULL`, and NOT backfilled — a credential written before migration 0045
+ * renders "—" rather than naming a user who may never have touched it.
  */
 export const appBasicAuthUsers = pgTable(
   "app_basic_auth_users",
@@ -1026,6 +1034,12 @@ export const appBasicAuthUsers = pgTable(
       .references(() => apps.id, { onDelete: "cascade" }),
     username: text("username").notNull(),
     passwordEnc: text("password_enc").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },

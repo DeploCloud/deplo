@@ -1,9 +1,11 @@
 import { builder } from "../builder";
+import { VarAuthorRef } from "./env";
 import {
   listBasicAuthUsers,
   addBasicAuthUser,
   updateBasicAuthUserPassword,
   removeBasicAuthUser,
+  revealBasicAuthPassword,
   type BasicAuthUserDTO,
 } from "@/lib/data/basic-auth";
 import { rerouteApp } from "@/lib/deploy/build";
@@ -12,16 +14,32 @@ import { rerouteApp } from "@/lib/deploy/build";
 /* Object type                                                         */
 /* ------------------------------------------------------------------ */
 
-// The password is never exposed — only the username + timestamps reach the
-// client. Mutations take a plaintext password in; nothing sends one back.
+// The password is never a FIELD — the username, its authorship and its
+// timestamps are all that ride the object. Reading a password back is a separate,
+// deliberate `revealBasicAuthPassword` call for one credential (see below).
 const BasicAuthUserRef = builder
   .objectRef<BasicAuthUserDTO>("BasicAuthUser")
   .implement({
     description:
-      "An HTTP Basic Auth credential that gates every domain of an app. The password is write-only and never returned.",
+      "An HTTP Basic Auth credential that gates every domain of an app. The password is never a field — read one back with revealBasicAuthPassword.",
     fields: (t) => ({
       id: t.exposeID("id"),
       username: t.exposeString("username"),
+      // Identity metadata, never a value. Null for credentials created before
+      // authorship was tracked (migration 0045 does not backfill) or once the
+      // author's account is deleted — the UI renders "—".
+      createdBy: t.field({
+        type: VarAuthorRef,
+        nullable: true,
+        description: "Who added the credential.",
+        resolve: (u) => u.createdBy,
+      }),
+      updatedBy: t.field({
+        type: VarAuthorRef,
+        nullable: true,
+        description: "Who last changed its password.",
+        resolve: (u) => u.updatedBy,
+      }),
       createdAt: t.exposeString("createdAt"),
       updatedAt: t.exposeString("updatedAt"),
     }),
@@ -80,6 +98,17 @@ builder.mutationFields((t) => ({
       await applyRouting(user.appId);
       return user;
     },
+  }),
+  revealBasicAuthPassword: t.field({
+    type: "String",
+    authScopes: { capability: "manage_domains" },
+    description:
+      "Reveal one credential's password. A basic-auth login is handed to a " +
+      "person, so whoever may change it may also read it back — otherwise the " +
+      "only answer to “what is the password?” is to reset it and lock everyone " +
+      "out. A mutation, not a query, so it is never cached or prefetched.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => revealBasicAuthPassword(id),
   }),
   removeBasicAuthUser: t.field({
     type: "Boolean",

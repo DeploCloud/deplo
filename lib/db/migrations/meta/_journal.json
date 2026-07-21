@@ -316,6 +316,13 @@
       "when": 1784670800000,
       "tag": "0044_heal_orphaned_primary_domain",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1784670900000,
+      "tag": "0045_add_basic_auth_authorship",
+      "breakpoints": true
     }
   ]
 }

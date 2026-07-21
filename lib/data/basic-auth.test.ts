@@ -18,6 +18,7 @@ import {
   listBasicAuthUsers,
   updateBasicAuthUserPassword,
   removeBasicAuthUser,
+  revealBasicAuthPassword,
   basicAuthUsersValue,
   appHasBasicAuth,
 } from "./basic-auth";
@@ -26,7 +27,7 @@ import {
  * HTTP Basic Auth credentials — the rows the deploy/reroute renderers turn into a
  * Traefik `basicauth` middleware in front of every one of an app's domains.
  *
- * Two contracts are locked here, because the feature is only as good as they are:
+ * Four contracts are locked here, because the feature is only as good as they are:
  *
  *  - **Every mutation hands back the owning app.** The API edge re-applies the
  *    app's routing right after each write (that is what makes a credential live
@@ -38,6 +39,15 @@ import {
  *    renderers embed; a credential it cannot decrypt must abort the render, never
  *    quietly hash the empty string into a middleware that accepts a blank
  *    password.
+ *  - **The password reveal is the ONLY way back to a plaintext, and it is gated.**
+ *    The Access page shows a credential's password on demand (a basic-auth login
+ *    is handed to a person). It must stay out of every list DTO, refuse another
+ *    team, and — like the render — fail loudly rather than hand back the empty
+ *    string a failed decrypt produces.
+ *  - **Authorship is recorded and never fabricated.** The page answers "who set
+ *    this login up, and who last rotated it": add stamps both columns, a password
+ *    change moves `updatedBy` only, and nothing back-fills a name onto a row that
+ *    predates the tracking.
  *
  * `DEPLO_SECRET` is read lazily by lib/crypto, so setting it after the (hoisted)
  * imports is fine.
@@ -50,6 +60,12 @@ let pg: PGlite;
 
 const OWNER_A = "u_owner_a";
 const OWNER_B = "u_owner_b";
+/** A second manage_domains holder in TEAM_A — "who added it" and "who changed it
+ *  last" can only be told apart when two different people did them. */
+const MATE_A = "u_mate_a";
+/** A TEAM_A member with `view` only: the Access page is hidden from them, and the
+ *  password reveal has to refuse them even on a direct call. */
+const VIEWER_A = "u_viewer_a";
 const APP_A = "app_a";
 const APP_B = "app_b";
 
@@ -79,6 +95,8 @@ beforeEach(async () => {
     ],
     users: [
       { id: OWNER_A, teamId: TEAM_A, role: "owner" },
+      { id: MATE_A, teamId: TEAM_A, role: "owner" },
+      { id: VIEWER_A, teamId: TEAM_A, role: "viewer" },
       { id: OWNER_B, teamId: TEAM_B, role: "owner" },
     ],
   });
@@ -219,4 +237,126 @@ test("another team's credentials are invisible and untouchable", async () => {
   const after = await as(OWNER_A, TEAM_A, () => listBasicAuthUsers(APP_A));
   assert.equal(after.length, 1);
   assert.equal(after[0].username, "alice");
+});
+
+/* ------------------------------------------------------------------ */
+/* Authorship — "who set this login up, and who last rotated it"       */
+/* ------------------------------------------------------------------ */
+
+test("add names the creator; a password change moves only “modified by”", async () => {
+  const added = await as(OWNER_A, TEAM_A, () =>
+    addBasicAuthUser(APP_A, "alice", "hunter2"),
+  );
+  assert.equal(added.createdBy?.id, OWNER_A);
+  assert.equal(
+    added.updatedBy?.id,
+    OWNER_A,
+    "a brand-new credential was last touched by whoever added it",
+  );
+  // The DTO carries the display identity, not just an id — the card renders it.
+  assert.equal(added.createdBy?.username, OWNER_A);
+  assert.equal(added.createdBy?.avatarColor, "#abc");
+
+  const rotated = await as(MATE_A, TEAM_A, () =>
+    updateBasicAuthUserPassword(added.id, "hunter3"),
+  );
+  assert.equal(
+    rotated.createdBy?.id,
+    OWNER_A,
+    "who ADDED the credential never changes",
+  );
+  assert.equal(rotated.updatedBy?.id, MATE_A);
+
+  // What a mutation returns and what the next page render reads must agree.
+  const [listed] = await as(OWNER_A, TEAM_A, () => listBasicAuthUsers(APP_A));
+  assert.equal(listed.createdBy?.id, OWNER_A);
+  assert.equal(listed.updatedBy?.id, MATE_A);
+});
+
+test("a credential from before authorship tracking is never attributed to anyone", async () => {
+  const added = await as(OWNER_A, TEAM_A, () =>
+    addBasicAuthUser(APP_A, "alice", "hunter2"),
+  );
+  // Exactly what migration 0045 leaves behind: it does NOT backfill, because
+  // naming someone as the author of a credential they may never have touched is
+  // a fabricated audit claim.
+  await db
+    .update(appBasicAuthUsers)
+    .set({ createdByUserId: null, updatedByUserId: null })
+    .where(eq(appBasicAuthUsers.id, added.id));
+
+  const [row] = await as(OWNER_A, TEAM_A, () => listBasicAuthUsers(APP_A));
+  assert.equal(row.createdBy, null, "the UI renders “—”, not a guess");
+  assert.equal(row.updatedBy, null);
+});
+
+/* ------------------------------------------------------------------ */
+/* Reveal — the one way back to a plaintext password                   */
+/* ------------------------------------------------------------------ */
+
+test("no DTO ever carries the password — the reveal is the only way to it", async () => {
+  const u = await as(OWNER_A, TEAM_A, () =>
+    addBasicAuthUser(APP_A, "alice", "hunter2"),
+  );
+  const [listed] = await as(OWNER_A, TEAM_A, () => listBasicAuthUsers(APP_A));
+  // A field-by-field assertion, not a substring scan: this is the contract the
+  // GraphQL object type mirrors, and a new column must not join it by accident.
+  const EXPECTED = [
+    "appId",
+    "createdAt",
+    "createdBy",
+    "id",
+    "updatedAt",
+    "updatedBy",
+    "username",
+  ];
+  assert.deepEqual(Object.keys(u).sort(), EXPECTED);
+  assert.deepEqual(Object.keys(listed).sort(), EXPECTED);
+});
+
+test("the reveal returns the current password, and follows a rotation", async () => {
+  await as(OWNER_A, TEAM_A, async () => {
+    const u = await addBasicAuthUser(APP_A, "alice", "hunter2");
+    assert.equal(await revealBasicAuthPassword(u.id), "hunter2");
+    await updateBasicAuthUserPassword(u.id, "hunter3");
+    assert.equal(
+      await revealBasicAuthPassword(u.id),
+      "hunter3",
+      "the reveal reads the stored credential, never a cached one",
+    );
+  });
+});
+
+test("the reveal refuses another team, and a member without manage_domains", async () => {
+  const u = await as(OWNER_A, TEAM_A, () =>
+    addBasicAuthUser(APP_A, "alice", "hunter2"),
+  );
+  await assert.rejects(
+    () => as(OWNER_B, TEAM_B, () => revealBasicAuthPassword(u.id)),
+    /not found/i,
+    "a cross-team id must not even confirm the credential exists",
+  );
+  await assert.rejects(
+    () => as(VIEWER_A, TEAM_A, () => revealBasicAuthPassword(u.id)),
+    /manage_domains|permission|capability/i,
+    "reading a password back is gated exactly like changing it",
+  );
+});
+
+test("a password that cannot be decrypted fails the reveal (never returns empty)", async () => {
+  const u = await as(OWNER_A, TEAM_A, () =>
+    addBasicAuthUser(APP_A, "alice", "hunter2"),
+  );
+  // Rotated DEPLO_SECRET / restored dump. decryptSecret fails closed to "" —
+  // showing that as "the password" would send someone off to try a login that
+  // cannot work, so the reveal must say what actually happened.
+  await db
+    .update(appBasicAuthUsers)
+    .set({ passwordEnc: "not-a-valid-ciphertext" })
+    .where(eq(appBasicAuthUsers.id, u.id));
+
+  await assert.rejects(
+    () => as(OWNER_A, TEAM_A, () => revealBasicAuthPassword(u.id)),
+    /could not be decrypted/i,
+  );
 });

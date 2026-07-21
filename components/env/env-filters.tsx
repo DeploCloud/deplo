@@ -57,13 +57,27 @@ export const EMPTY_ENV_FILTERS: EnvFilterState = {
   facets: {},
 };
 
-/** Row shape every facet can count on. Any variable DTO satisfies it. */
+/**
+ * Row shape every facet can count on. Any variable DTO satisfies it — and so does
+ * anything else with a name, a last-touched timestamp and an author, which is why
+ * the App → Settings → Access credentials reuse this whole toolbar rather than
+ * growing a second search/filter/sort of their own.
+ *
+ * `key` is the row's IDENTIFYING NAME — a variable's key, a basic-auth
+ * credential's username. It is what the search box matches and what the A–Z sort
+ * orders by.
+ */
 export interface FilterableVar {
   key: string;
-  type: "plain" | "secret";
   updatedAt: string;
   createdBy?: VarAuthor | null;
   updatedBy?: VarAuthor | null;
+}
+
+/** A {@link FilterableVar} that is plain-or-secret — what {@link typeFacet} needs.
+ *  Split out so rows with no such distinction (credentials) still fit the kit. */
+export interface TypedVar extends FilterableVar {
+  type: "plain" | "secret";
 }
 
 /** One choice inside a facet. `hint` disambiguates repeated labels ("Production"
@@ -216,7 +230,7 @@ export function facetCounts<T extends FilterableVar>(
 /* ------------------------------------------------------------------ */
 
 /** Plain vs secret. */
-export function typeFacet<T extends FilterableVar>(rows: T[]): EnvFacet<T> {
+export function typeFacet<T extends TypedVar>(rows: T[]): EnvFacet<T> {
   const seen = new Set(rows.map((r) => r.type));
   return {
     id: "type",
@@ -232,23 +246,32 @@ export function typeFacet<T extends FilterableVar>(rows: T[]): EnvFacet<T> {
 }
 
 /**
- * Who touched the variable LAST — the person in the "Modified by" column. Tick
- * several people to see everything any of them changed. The control is an
- * autocomplete input (`searchable`) and every person leads with their avatar, so
- * a long team narrows by typing and a face is recognised before a handle is read.
+ * A people filter over one authorship column. Both the "Modified by" and the
+ * "Added by" facets are this: the control is an autocomplete input (`searchable`)
+ * and every person leads with their avatar, so a long team narrows by typing and
+ * a face is recognised before a handle is read.
  *
- * `persistent`: this one is always on the toolbar. It is the filter people go
- * looking for ("what did Ada change?"), and hiding it on a team where one person
- * happens to have written everything reads as a missing feature, not as tidiness.
+ * `persistent` by default: a people filter is the one people go looking for
+ * ("what did Ada change?"), and hiding it on a team where one person happens to
+ * have written everything reads as a missing feature, not as tidiness.
  */
-export function editorFacet<T extends FilterableVar>(rows: T[]): EnvFacet<T> {
+function authorFacet<T extends FilterableVar>(spec: {
+  rows: T[];
+  id: string;
+  label: string;
+  info: React.ReactNode;
+  /** The authorship column this facet reads. */
+  pick: (row: T) => VarAuthor | null;
+  persistent?: boolean;
+}): EnvFacet<T> {
+  const { rows, pick } = spec;
   const byId = new Map<string, VarAuthor>();
   // Rows written before authorship was recorded (and shared rows whose editor
   // left the team) carry no author — they get their own bucket rather than
   // silently dropping out of every person's filter.
   let anonymous = false;
   for (const row of rows) {
-    const author = lastEditor(row);
+    const author = pick(row);
     if (author) {
       if (!byId.has(author.id)) byId.set(author.id, author);
     } else {
@@ -268,19 +291,57 @@ export function editorFacet<T extends FilterableVar>(rows: T[]): EnvFacet<T> {
     ...(anonymous ? [{ value: FACET_NONE, label: "Unknown" }] : []),
   ];
   return {
-    id: "editor",
-    label: "Modified by",
+    id: spec.id,
+    label: spec.label,
     allLabel: "Anyone",
     icon: UserRound,
-    persistent: true,
+    persistent: spec.persistent ?? true,
     searchable: true,
-    info: "Who last changed the variable — the user in the “Modified by” column. Type a name straight into the box to narrow the list; pick more than one to see everything any of them touched.",
+    info: spec.info,
     options,
     match: (row, value) =>
-      value === FACET_NONE
-        ? lastEditor(row) == null
-        : lastEditor(row)?.id === value,
+      value === FACET_NONE ? pick(row) == null : pick(row)?.id === value,
   };
+}
+
+/**
+ * Who touched the row LAST — the person in the "Modified by" column. Tick several
+ * people to see everything any of them changed.
+ */
+export function editorFacet<T extends FilterableVar>(
+  rows: T[],
+  /** What the rows are, for the help text — "variable" (default) or e.g. "credential". */
+  noun = "variable",
+): EnvFacet<T> {
+  return authorFacet({
+    rows,
+    id: "editor",
+    label: "Modified by",
+    pick: lastEditor,
+    info: `Who last changed the ${noun} — the user in the “Modified by” column. Type a name straight into the box to narrow the list; pick more than one to see everything any of them touched.`,
+  });
+}
+
+/**
+ * Who CREATED the row, whatever happened to it since. The complement of
+ * {@link editorFacet}: "who set this up?" and "who touched it last?" are
+ * different questions, and on a shared credential both get asked.
+ */
+export function creatorFacet<T extends FilterableVar>(
+  rows: T[],
+  noun = "variable",
+): EnvFacet<T> {
+  return authorFacet({
+    rows,
+    id: "creator",
+    label: "Added by",
+    pick: (row) => row.createdBy ?? null,
+    info: `Who originally added the ${noun}, even if someone else has changed it since. Type a name straight into the box to narrow the list.`,
+    // NOT persistent, unlike "Modified by". On a table where one person added
+    // everything this facet can only answer "yes, them" — it earns its place on
+    // the toolbar the moment a second person has added something.
+    persistent: false,
+  });
 }
 
 const DAY = 86_400_000;
@@ -399,6 +460,8 @@ export function EnvFilters<T extends FilterableVar>({
   counts,
   actions,
   className,
+  noun = "variables",
+  keySortLabel = "Key (A–Z)",
 }: {
   state: EnvFilterState;
   onChange: (next: EnvFilterState) => void;
@@ -413,6 +476,11 @@ export function EnvFilters<T extends FilterableVar>({
    */
   actions?: React.ReactNode;
   className?: string;
+  /** What this table lists, PLURAL — drives the search placeholder and the
+   *  screen-reader labels ("Search credentials"). */
+  noun?: string;
+  /** How the A–Z sort names the row's identifying column ("Username (A–Z)"). */
+  keySortLabel?: string;
 }) {
   const picked = Object.values(state.facets).filter((v) => v?.length).length;
   const hasFilter = Boolean(state.q.trim()) || picked > 0;
@@ -440,8 +508,8 @@ export function EnvFilters<T extends FilterableVar>({
         <Input
           value={state.q}
           onChange={(e) => onChange({ ...state, q: e.target.value })}
-          placeholder="Search variables…"
-          aria-label="Search variables"
+          placeholder={`Search ${noun}…`}
+          aria-label={`Search ${noun}`}
           className="h-9 pl-9"
         />
       </div>
@@ -482,7 +550,7 @@ export function EnvFilters<T extends FilterableVar>({
       >
         <SelectTrigger
           className="w-[11.5rem] shrink-0"
-          aria-label="Sort variables"
+          aria-label={`Sort ${noun}`}
         >
           {/* `flex!` is load-bearing: SelectTrigger applies `[&>span]:line-clamp-1`
               to its direct-child spans, whose `display:-webkit-box` outranks a
@@ -497,7 +565,7 @@ export function EnvFilters<T extends FilterableVar>({
         <SelectContent>
           <SelectItem value="recent">Recently modified</SelectItem>
           <SelectItem value="oldest">Oldest first</SelectItem>
-          <SelectItem value="key">Key (A–Z)</SelectItem>
+          <SelectItem value="key">{keySortLabel}</SelectItem>
         </SelectContent>
       </Select>
 
