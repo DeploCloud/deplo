@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isHexColor, normalizeHexColor, readableTextColor } from "./utils";
+import {
+  appTypeLabel,
+  isHexColor,
+  normalizeHexColor,
+  readableTextColor,
+} from "./utils";
 import { FOLDER_COLORS } from "./folder-colors";
 
 test("isHexColor accepts 3/6-digit hex (with or without #, any case), rejects junk", () => {
@@ -32,6 +37,28 @@ test("readableTextColor picks the higher-contrast foreground (auto-contrast)", (
   assert.equal(readableTextColor("#000"), "#ffffff");
   // An unparseable value falls back to a safe dark foreground (never throws).
   assert.equal(readableTextColor("nope"), "#000000");
+});
+
+test("appTypeLabel names the App kind, tracking usesComposeStack", () => {
+  const base = { source: "github", compose: null, repo: null, dockerImage: null };
+  assert.equal(appTypeLabel(base), "Application");
+  assert.equal(appTypeLabel({ ...base, source: "git" }), "Application");
+  assert.equal(
+    appTypeLabel({ ...base, source: "docker-image", dockerImage: "nginx" }),
+    "Application",
+  );
+  // An upload keeps a stale compose around for switching back — still a
+  // single-image build, so it must not read as a stack.
+  assert.equal(
+    appTypeLabel({ ...base, source: "upload", compose: "services: {}" }),
+    "Application",
+  );
+  assert.equal(appTypeLabel({ ...base, source: "compose" }), "Compose app");
+  // Legacy template apps: a stored compose with no repo/image.
+  assert.equal(
+    appTypeLabel({ ...base, source: "git", compose: "services: {}" }),
+    "Compose app",
+  );
 });
 
 test("readableTextColor returns a valid foreground for every curated folder colour", () => {

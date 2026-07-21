@@ -8,7 +8,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
 import { timeAgo } from "@/lib/utils";
-import { ENGINE_CREDS } from "@/components/storage/db-engines";
+import { DB_NAMES, ENGINE_CREDS } from "@/components/storage/db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
@@ -94,8 +94,10 @@ export function DatabaseOverview({
 
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
             <Field label="Engine">
-              <span className="capitalize">
-                {db.type} · v{db.version}
+              {/* Engine display name, not the raw id — `capitalize` used to
+                  render "Mysql · V8.4" (it title-cases the version's "v" too). */}
+              <span>
+                {DB_NAMES[db.type] ?? db.type} · v{db.version}
               </span>
             </Field>
             {creds.username && (

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getDatabase } from "@/lib/data/databases";
-import { truncate } from "@/lib/utils";
-import { DB_ICONS } from "@/components/storage/db-engines";
+import { titleCase, truncate } from "@/lib/utils";
+import { DB_ICONS, DB_NAMES } from "@/components/storage/db-engines";
 import {
   DatabaseLiveStatusProvider,
   type LiveDatabase,
@@ -56,8 +56,11 @@ export default async function DatabaseLayout(
                 <h1 className="text-xl font-semibold tracking-tight">{db.name}</h1>
                 <DatabaseStatusBadge id={db.id} status={db.status} />
               </div>
-              <p className="text-sm capitalize text-muted-foreground">
-                {db.type} · v{db.version}
+              {/* Same slot the App header uses for its URL: a database has no
+                  domain, so it always says what it is (engine display name, not
+                  the raw id — "PostgreSQL", never "postgres"). */}
+              <p className="text-sm text-muted-foreground">
+                {DB_NAMES[db.type] ?? titleCase(db.type)} database · v{db.version}
               </p>
             </div>
           </div>

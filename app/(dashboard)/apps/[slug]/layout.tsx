@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
-import { truncate } from "@/lib/utils";
+import { appTypeLabel, truncate } from "@/lib/utils";
 import { appFilesExist } from "@/lib/data/app-files";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -76,7 +76,10 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
                     deployment status shown further down the page. */}
                 <AppStatusBadge status={project.status} />
               </div>
-              {project.productionUrl && (
+              {/* The subtitle slot: the live URL when a domain is linked,
+                  otherwise what this App *is* — never an empty line under the
+                  name. */}
+              {project.productionUrl ? (
                 <a
                   href={project.productionUrl}
                   target="_blank"
@@ -85,6 +88,10 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
                 >
                   {project.productionUrl.replace(/^https?:\/\//, "")}
                 </a>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {appTypeLabel(project)}
+                </p>
               )}
             </div>
           </div>

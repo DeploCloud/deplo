@@ -126,6 +126,24 @@ export function usesComposeStack(project: {
 }
 
 /**
+ * What KIND of thing an App is, in one short human phrase — the contextual
+ * subtitle its management header falls back to when the App has no domain
+ * linked (and therefore no URL to show in that slot). Deliberately coarse: it
+ * answers "what am I looking at", not "where does the code come from" (that is
+ * {@link deploySourceLabel} / `describeAppSource`, shown on the Overview). The
+ * only distinction worth drawing here is single-container vs. multi-service,
+ * because that is the one that changes what the rest of the UI does.
+ */
+export function appTypeLabel(app: {
+  source: string;
+  compose: string | null;
+  repo: unknown | null;
+  dockerImage: string | null;
+}): string {
+  return usesComposeStack(app) ? "Compose app" : "Application";
+}
+
+/**
  * The host-global docker volume name for a single-container project's named
  * volume. A volume name is GLOBAL on the daemon (like container_name was —
  * compose strips it to avoid collisions) and the host is shared across teams,
