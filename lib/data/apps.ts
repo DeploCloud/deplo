@@ -17,6 +17,9 @@ import {
   appBuildMethodSettings as appBuildMethodSettingsTable,
   appMounts as appMountsTable,
   appVolumes as appVolumesTable,
+  environments as environmentsTable,
+  folders as foldersTable,
+  projects as projectsTable,
   teamAppOrder,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
@@ -55,6 +58,8 @@ import {
   startContainer,
 } from "../deploy/build";
 import { ensureAutoDomain, ensureExtraDomain } from "./domains";
+import { requireFolderCapability } from "./folder-access";
+import { defaultEnvironmentFor } from "./projects";
 import {
   resolveServerIp,
   instanceHost,
@@ -344,6 +349,87 @@ export interface CreateAppInput {
   autoDomain?: string | null;
   /** Template config files to materialise at deploy time. */
   mounts?: { filePath: string; content: string }[] | null;
+  /** WHERE the app is born. The Overview drill-ins (an open folder, or a
+   *  project's selected environment) thread their context through `/new`, so an
+   *  app created while standing inside a folder lands IN that folder instead of
+   *  at the team top level. Omitted ⇒ top level. See {@link resolveNewAppPlacement}. */
+  folderId?: string | null;
+  projectId?: string | null;
+  environmentId?: string | null;
+}
+
+/**
+ * Resolve (and authorize) where a brand-new app is filed.
+ *
+ * ADR-0009: an app lives in exactly ONE place — a folder, or one environment of
+ * a project, or the top level. The folder and project drill-ins are mutually
+ * exclusive on the Overview, so if both somehow arrive the folder wins.
+ *
+ * Authorized exactly like a MOVE into the same destination (`moveAppToFolder` /
+ * `moveAppToEnvironment`): the destination must belong to the active team, and
+ * filing into a folder additionally needs `deploy` ON THAT FOLDER — otherwise
+ * the create path would be a way to smuggle an app into a folder the caller
+ * doesn't control. Errors mirror the move path's ("Folder not found") so a
+ * foreign id never leaks existence.
+ */
+async function resolveNewAppPlacement(
+  input: CreateAppInput,
+  teamId: string,
+): Promise<{
+  folderId: string | null;
+  projectId: string | null;
+  environmentId: string | null;
+}> {
+  if (input.folderId) {
+    const f = (
+      await getDb()
+        .select({ id: foldersTable.id })
+        .from(foldersTable)
+        .where(
+          and(eq(foldersTable.id, input.folderId), eq(foldersTable.teamId, teamId)),
+        )
+        .limit(1)
+    )[0];
+    if (!f) throw new Error("Folder not found");
+    await requireFolderCapability(f.id, "deploy");
+    return { folderId: f.id, projectId: null, environmentId: null };
+  }
+  if (input.environmentId) {
+    const env = (
+      await getDb()
+        .select({
+          id: environmentsTable.id,
+          projectId: environmentsTable.projectId,
+          teamId: projectsTable.teamId,
+        })
+        .from(environmentsTable)
+        .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
+        .where(eq(environmentsTable.id, input.environmentId))
+        .limit(1)
+    )[0];
+    if (!env || env.teamId !== teamId) throw new Error("Environment not found");
+    // An explicitly passed project must agree with the environment it names —
+    // a mismatched pair is a bug (or a crafted payload), never a placement.
+    if (input.projectId && input.projectId !== env.projectId)
+      throw new Error("Environment not found");
+    return { folderId: null, projectId: env.projectId, environmentId: env.id };
+  }
+  if (input.projectId) {
+    const p = (
+      await getDb()
+        .select({ id: projectsTable.id })
+        .from(projectsTable)
+        .where(
+          and(eq(projectsTable.id, input.projectId), eq(projectsTable.teamId, teamId)),
+        )
+        .limit(1)
+    )[0];
+    if (!p) throw new Error("Project not found");
+    // No environment named: land in the project's default one, same as a move.
+    const env = await defaultEnvironmentFor(p.id);
+    return { folderId: null, projectId: p.id, environmentId: env?.id ?? null };
+  }
+  return { folderId: null, projectId: null, environmentId: null };
 }
 
 /** An env-var name: same grammar env.ts (`upsertEnv`/`renameEnv`) enforces.
@@ -387,6 +473,10 @@ export async function createApp(
   if (input.compose != null && composeHasHostBindMount(input.compose)) {
     await requireMountHostVolumes();
   }
+  // Where the app is filed (folder / project environment / top level) — resolved
+  // and authorized BEFORE anything is written, so an unusable destination fails
+  // the create outright instead of silently stranding the app at the top level.
+  const placement = await resolveNewAppPlacement(input, membership.teamId);
   const user = (await getCurrentUser())!;
   const slugBase = input.name
     .toLowerCase()
@@ -462,9 +552,12 @@ export async function createApp(
     name: input.name.trim(),
     slug,
     teamId: membership.teamId,
-    // New apps start ungrouped (top level); a folder is assigned later from
-    // the Overview (drag-into-folder or the card's "Move to folder" menu).
-    folderId: null,
+    // Born where the user created it: the folder / project environment they had
+    // open on the Overview, or the top level when created from nowhere in
+    // particular. Re-filing later still goes through the move actions.
+    folderId: placement.folderId,
+    projectId: placement.projectId,
+    environmentId: placement.environmentId,
     serverId: server.id,
     // Defaulted from a template's logo (a /templates path); ignore anything that
     // isn't a valid inline logo so a crafted create payload can't store a URL.

@@ -419,7 +419,7 @@ export async function reorderProjects(orderedIds: string[]): Promise<void> {
 }
 
 /** A project's default environment (falls back to the first by position). */
-async function defaultEnvironmentFor(
+export async function defaultEnvironmentFor(
   projectId: string,
 ): Promise<{ id: string; name: string } | null> {
   const rows = await getDb()

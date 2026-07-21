@@ -382,10 +382,13 @@ input CreateAppInput {
   composeService: String
   dockerImage: String
   env: [AppEnvInput!]
+  environmentId: String
   extraDomains: [ExtraDomainInput!]
+  folderId: String
   logo: String
   mounts: [MountInput!]
   name: String!
+  projectId: String
   repo: GitRepoInput
   serverId: String
   source: DeploySource!

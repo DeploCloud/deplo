@@ -15,14 +15,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { titleCase } from "@/lib/utils";
+import { newAppHref, type OverviewPlacement } from "@/lib/overview-links";
 import type { CatalogTemplate } from "@/lib/templates";
 
 export function TemplatesBrowser({
   templates,
   tags,
+  placement = null,
 }: {
   templates: CatalogTemplate[];
   tags: string[];
+  /** The Overview drill-in the catalogue was opened from — handed to the wizard
+   *  so a template deployed from inside a folder is created IN that folder. */
+  placement?: OverviewPlacement | null;
 }) {
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState<string>("all");
@@ -156,7 +161,7 @@ export function TemplatesBrowser({
             </div>
 
             <Button asChild size="sm" variant="outline" className="mt-1 w-full">
-              <Link href={`/new?template=${t.id}`}>
+              <Link href={newAppHref(placement, { template: t.id })}>
                 Deploy
                 <ArrowUpRight className="size-4" />
               </Link>

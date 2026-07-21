@@ -32,6 +32,11 @@ import { CreateFolderDialog } from "@/components/apps/create-folder-dialog";
 import { CreateProjectDialog } from "@/components/apps/create-project-dialog";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
+import {
+  newAppHref,
+  templatesHref,
+  type OverviewPlacement,
+} from "@/lib/overview-links";
 
 /**
  * Overview "Add new" menu: a single entry point to create an app, a team, a
@@ -48,6 +53,7 @@ export function AddNewMenu({
   canCreateFolder,
   isAdmin,
   parentFolder = null,
+  placement = null,
 }: {
   canManageMembers: boolean;
   /** Whether the viewer may create folders (has the deploy capability, or is an
@@ -59,6 +65,10 @@ export function AddNewMenu({
    *  top level, or inside a project — folders never live in a project, so one made
    *  there stays at the top level. Projects always create at the top level. */
   parentFolder?: { id: string; name: string } | null;
+  /** The drill-in the menu was opened in (open folder, or project + selected
+   *  environment). Carried into the app-creation flows so an app created from
+   *  inside a folder is created IN it, not at the team top level. */
+  placement?: OverviewPlacement | null;
 }) {
   const [teamOpen, setTeamOpen] = React.useState(false);
   const [folderOpen, setFolderOpen] = React.useState(false);
@@ -84,13 +94,13 @@ export function AddNewMenu({
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuItem asChild>
-                <Link href="/new" className="cursor-pointer">
+                <Link href={newAppHref(placement)} className="cursor-pointer">
                   <Sparkles className="size-4" />
                   From Scratch
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/templates" className="cursor-pointer">
+                <Link href={templatesHref(placement)} className="cursor-pointer">
                   <LayoutTemplate className="size-4" />
                   From Template
                 </Link>

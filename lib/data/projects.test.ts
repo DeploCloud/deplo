@@ -8,6 +8,8 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   folders as foldersTable,
   apps as appsTable,
+  projects as projectsTable,
+  environments as environmentsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
@@ -24,6 +26,7 @@ import {
   moveAppToEnvironment,
 } from "./projects";
 import { createFolder, moveAppToFolder } from "./folders";
+import { createApp } from "./apps";
 import {
   listEnvironmentsForProject,
   createEnvironment,
@@ -315,4 +318,110 @@ test("reorderProjects persists a team-wide order and is self-healing", async () 
     const order = (await listProjects()).map((p) => p.id);
     assert.deepEqual(order, [b.id, a.id, c.id]);
   });
+});
+
+/* ------------------------------------------------------------------ */
+/* Creating an app INSIDE a project environment (placement at birth)   */
+/* ------------------------------------------------------------------ */
+
+/** A hermetic create: "upload" is born idle, so nothing dials an agent. */
+const newApp = (
+  placement: {
+    folderId?: string | null;
+    projectId?: string | null;
+    environmentId?: string | null;
+  },
+  name = "Made here",
+) => createApp({ name, source: "upload" as const, repo: null, ...placement });
+
+const placementOf = async (appId: string) =>
+  (
+    await db
+      .select({
+        folderId: appsTable.folderId,
+        projectId: appsTable.projectId,
+        environmentId: appsTable.environmentId,
+      })
+      .from(appsTable)
+      .where(eq(appsTable.id, appId))
+  )[0];
+
+test("createApp lands in the environment it was created from", async () => {
+  await asOwner(async () => {
+    const p = await createProject("Container");
+    const dev = (await listEnvironmentsForProject(p.id)).find(
+      (e) => e.slug === "development",
+    )!;
+    const app = await newApp({ projectId: p.id, environmentId: dev.id });
+    const row = await placementOf(app.id);
+    assert.equal(row.projectId, p.id, "the project follows the environment");
+    assert.equal(row.environmentId, dev.id);
+    assert.equal(row.folderId, null, "one home only");
+    // It shows up in the project's live count, i.e. in the drill-in the user
+    // was standing in — the whole point of placing at birth.
+    assert.equal((await listProjects())[0].appCount, 1);
+  });
+});
+
+test("createApp with a project but no environment uses the default one", async () => {
+  await asOwner(async () => {
+    const p = await createProject("Container");
+    const app = await newApp({ projectId: p.id });
+    const prod = (await listEnvironmentsForProject(p.id)).find((e) => e.isDefault)!;
+    assert.equal((await placementOf(app.id)).environmentId, prod.id);
+  });
+});
+
+test("createApp rejects a project/environment pair that disagree", async () => {
+  await asOwner(async () => {
+    const a = await createProject("A");
+    const b = await createProject("B");
+    const bDev = (await listEnvironmentsForProject(b.id))[0]!;
+    await assert.rejects(
+      () => newApp({ projectId: a.id, environmentId: bDev.id }),
+      /environment not found/i,
+    );
+  });
+});
+
+test("createApp rejects another team's environment", async () => {
+  // A project + environment owned by TEAM_B, seeded directly (USER_1 is only a
+  // member of TEAM_A, so it is unreachable through the data layer).
+  const T0 = "2026-01-01T00:00:00.000Z";
+  await db.insert(projectsTable).values({
+    id: "prc_foreign",
+    teamId: TEAM_B,
+    name: "Foreign",
+    slug: "foreign",
+    color: null,
+    ownerUserId: null,
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await db.insert(environmentsTable).values({
+    id: "environ_foreign",
+    projectId: "prc_foreign",
+    name: "Production",
+    slug: "production",
+    kind: "production",
+    isDefault: true,
+    position: 0,
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await asOwner(async () => {
+    await assert.rejects(
+      () => newApp({ environmentId: "environ_foreign" }),
+      /environment not found/i,
+    );
+    await assert.rejects(
+      () => newApp({ projectId: "prc_foreign" }),
+      /project not found/i,
+    );
+  });
+  assert.equal(
+    (await db.select().from(appsTable)).length,
+    0,
+    "nothing was created for the foreign placements",
+  );
 });

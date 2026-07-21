@@ -84,6 +84,20 @@ export interface WizardTemplate {
   mounts: { filePath: string; content: string }[];
 }
 
+/**
+ * Where the new app lands (ADR-0009 — one home only): the folder, or the
+ * project environment, the user had open on the Overview when they hit "New
+ * app". Resolved server-side by the /new page from the `?folder=` / `?project=`
+ * / `?env=` drill-in params; absent ⇒ the app is created at the top level.
+ */
+export interface WizardPlacement {
+  /** What the summary rail shows, e.g. "Marketing" or "Shop · Production". */
+  label: string;
+  folderId?: string | null;
+  projectId?: string | null;
+  environmentId?: string | null;
+}
+
 function parseRepo(
   url: string,
 ): {
@@ -129,12 +143,15 @@ export function NewAppWizard({
   presetRepo,
   presetName,
   installations,
+  placement,
 }: {
   servers: WizardServer[];
   template?: WizardTemplate;
   presetRepo?: string;
   presetName?: string;
   installations: GithubInstallationDTO[];
+  /** Drill-in context: the folder / project environment the app is created in. */
+  placement?: WizardPlacement | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -340,6 +357,12 @@ export function NewAppWizard({
               : null,
             autoDomain: templateCompose ? template!.autoDomain : null,
             mounts: templateCompose ? template!.mounts : null,
+            // File the app where it was created from (an open folder or project
+            // environment on the Overview) instead of dropping it at the top
+            // level; the server re-validates the destination.
+            folderId: placement?.folderId ?? null,
+            projectId: placement?.projectId ?? null,
+            environmentId: placement?.environmentId ?? null,
           },
         },
         (d: {
@@ -884,6 +907,14 @@ export function NewAppWizard({
                 <dt className="shrink-0 text-muted-foreground">Domain</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium">
                   {domainSummary}
+                </dd>
+              </div>
+              {/* Where it lands — so creating from inside a folder/environment
+                  visibly stays there instead of silently going top level. */}
+              <div className="flex items-center gap-3">
+                <dt className="shrink-0 text-muted-foreground">Location</dt>
+                <dd className="min-w-0 flex-1 truncate text-right font-medium">
+                  {placement?.label ?? "Overview"}
                 </dd>
               </div>
             </dl>

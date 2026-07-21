@@ -14,7 +14,7 @@ import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedS3 } from "./backup-test-helpers";
-import { renameApp } from "./apps";
+import { createApp, renameApp } from "./apps";
 import { createBackup, runAppBackup, deleteBackup } from "./backups";
 import {
   folderCapabilities,
@@ -244,6 +244,65 @@ test("listFolders hides folders the caller can't see", async () => {
   await as(OWNER, () => setFolderGrant(FLD, MEMBER, ["deploy"]));
   const afterGrant = await as(MEMBER, () => listFolders());
   assert.deepEqual(afterGrant.map((f) => f.id), [FLD], "a grantee now sees the shared folder");
+});
+
+/* ------------------------------------------------------------------ */
+/* Creating an app INSIDE a folder (placement at birth)                */
+/* ------------------------------------------------------------------ */
+
+/** A hermetic create: "upload" is born idle, so nothing dials an agent. */
+const newAppIn = (folderId: string | null, name = "Made here") =>
+  createApp({ name, source: "upload" as const, repo: null, folderId });
+
+test("createApp files the new app IN the folder it was created from", async () => {
+  const app = await as(OWNER, () => newAppIn(FLD));
+  const row = (await db.select().from(appsTable).where(eq(appsTable.id, app.id)))[0]!;
+  assert.equal(row.folderId, FLD, "an app created inside a folder must stay in it");
+  assert.equal(row.projectId, null, "one home only — no project link");
+  assert.equal(row.environmentId, null);
+  // …and the DTO the wizard redirects on agrees with the row.
+  assert.equal(app.folderId, FLD);
+});
+
+test("createApp with no placement still lands at the top level", async () => {
+  const app = await as(OWNER, () => newAppIn(null, "Top level"));
+  const row = (await db.select().from(appsTable).where(eq(appsTable.id, app.id)))[0]!;
+  assert.equal(row.folderId, null);
+});
+
+test("creating into a folder needs `deploy` ON THAT FOLDER, not just team deploy", async () => {
+  // MEMBER holds team `deploy` but no access to FLD.
+  await as(MEMBER, async () => {
+    await assert.rejects(
+      () => newAppIn(FLD, "Sneaky"),
+      /not found|permission/i,
+      "team deploy alone must not create an app inside someone else's folder",
+    );
+  });
+  // The whole create was refused — no orphan app row left behind.
+  const rows = await db.select().from(appsTable).where(eq(appsTable.folderId, FLD));
+  assert.deepEqual(rows.map((r) => r.id), [PRJ_IN], "only the pre-seeded app is in the folder");
+});
+
+test("a grantee with folder `deploy` CAN create an app inside the folder", async () => {
+  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy"]));
+  const app = await as(GRANTEE, () => newAppIn(FLD, "Grantee app"));
+  const row = (await db.select().from(appsTable).where(eq(appsTable.id, app.id)))[0]!;
+  assert.equal(row.folderId, FLD);
+});
+
+test("createApp rejects an unknown folder id instead of silently creating top level", async () => {
+  await as(OWNER, async () => {
+    await assert.rejects(
+      () => newAppIn("fld_does_not_exist", "Nowhere"),
+      /folder not found/i,
+    );
+  });
+  assert.equal(
+    (await db.select().from(appsTable)).length,
+    2,
+    "only the two seeded apps exist — nothing was created",
+  );
 });
 
 test("only the owner/super-user can administer grants; a grantee can't re-share", async () => {

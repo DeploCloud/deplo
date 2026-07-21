@@ -7,7 +7,13 @@ import { getTemplate } from "@/lib/templates";
 import { getTemplateBlueprint } from "@/lib/templates-blueprint";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
+import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { instanceHost, productionDomain } from "@/lib/deploy/domains";
+import {
+  placementFromSearchParams,
+  placementHref,
+  templatesHref,
+} from "@/lib/overview-links";
 
 export const metadata = { title: "New App" };
 
@@ -15,6 +21,13 @@ export default async function NewAppPage(props: PageProps<"/new">) {
   const sp = await props.searchParams;
   const templateId = Array.isArray(sp.template) ? sp.template[0] : sp.template;
   const repoParam = Array.isArray(sp.repo) ? sp.repo[0] : sp.repo;
+
+  // The Overview drill-in this wizard was opened from (?folder= / ?project= &
+  // ?env=): the app is CREATED THERE rather than at the team top level. Ids are
+  // resolved against what this caller can actually see, so a stale or foreign
+  // id degrades to "top level" instead of erroring on deploy — and the data
+  // layer re-authorizes the destination on create either way.
+  const placement = await resolveOverviewPlacement(placementFromSearchParams(sp));
 
   const template = templateId ? getTemplate(templateId) : undefined;
   const presetName = template?.name
@@ -48,17 +61,30 @@ export default async function NewAppPage(props: PageProps<"/new">) {
           asChild
           className="mb-2 -ml-2 text-muted-foreground"
         >
-          <Link href={template ? "/templates" : "/"}>
+          <Link
+            href={
+              template
+                ? templatesHref(placement)
+                : placementHref(placement)
+            }
+          >
             <ArrowLeft className="size-4" />
-            {template ? "Back to templates" : "Back to overview"}
+            {template
+              ? "Back to templates"
+              : placement
+                ? `Back to ${placement.label}`
+                : "Back to overview"}
           </Link>
         </Button>
         <PageHeader
           title={template ? `Deploy ${template.name}` : "Create a new App"}
           description={
-            template
+            (template
               ? "Choose a server, edit the docker-compose and environment variables, then deploy. Deplo configures Docker + Traefik automatically."
-              : "Deploy from Git, a Docker image, a Dockerfile or an upload. Deplo builds it and configures Docker + Traefik for you."
+              : "Deploy from Git, a Docker image, a Dockerfile or an upload. Deplo builds it and configures Docker + Traefik for you.") +
+            // Say up front where it lands, so creating from inside a folder is
+            // visibly a create-in-folder and not a create-at-top-level.
+            (placement ? ` It will be created in ${placement.label}.` : "")
           }
         />
       </div>
@@ -84,6 +110,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
         }
         presetRepo={repoParam}
         presetName={presetName}
+        placement={placement}
       />
     </div>
   );

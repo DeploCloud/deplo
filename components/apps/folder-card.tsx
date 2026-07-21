@@ -41,6 +41,7 @@ import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { ShareFolderDialog } from "@/components/apps/share-folder-dialog";
 import { cn, readableTextColor } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
+import { folderHref } from "@/lib/overview-links";
 
 export interface FolderCardData {
   id: string;
@@ -64,13 +65,10 @@ export interface FolderCardData {
   parentId?: string | null;
 }
 
-/** Build the Overview URL that opens a folder, preserving the list/grid view. */
-export function folderHref(id: string, view: "grid" | "list"): string {
-  const params = new URLSearchParams();
-  params.set("folder", id);
-  if (view === "list") params.set("view", "list");
-  return `/?${params.toString()}`;
-}
+// The folder drill-in URL lives in lib/overview-links (shared with the RSC
+// Overview, which can't call into a client module); re-exported here so the
+// grid's existing import site keeps working.
+export { folderHref };
 
 /** Menu-primitive set so the actions render once for both the ⋯ dropdown and the
  *  right-click context menu (see the note in app-card.tsx). */

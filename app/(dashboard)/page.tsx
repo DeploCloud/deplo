@@ -24,7 +24,12 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { AppsGrid, FolderTrail } from "@/components/apps/apps-grid";
 import { AppSearch } from "@/components/apps/app-search";
 import { EnvironmentSwitcher } from "@/components/apps/environment-switcher";
-import { projectHref } from "@/lib/overview-links";
+import {
+  projectHref,
+  newAppHref,
+  templatesHref,
+  type OverviewPlacement,
+} from "@/lib/overview-links";
 import { AddNewMenu } from "@/components/shared/add-new-menu";
 import { timeAgo } from "@/lib/utils";
 
@@ -166,6 +171,15 @@ export default async function OverviewPage(props: PageProps<"/">) {
       ]
     : folderPath;
 
+  // The drill-in the user is standing in, threaded into every creation flow
+  // (Add New menu, empty-state buttons) so an app created from here is born
+  // HERE — in the open folder, or in the open project's selected environment.
+  const placement: OverviewPlacement | null = openFolder
+    ? { folderId: openFolder.id }
+    : openProject
+      ? { projectId: openProject.id, environmentId: selectedEnv?.id ?? null }
+      : null;
+
   const allFolders = folders.map((f) => ({ id: f.id, name: f.name }));
   const allAppIds = services.map((p) => p.id);
 
@@ -247,6 +261,10 @@ export default async function OverviewPage(props: PageProps<"/">) {
             parentFolder={
               openFolder ? { id: openFolder.id, name: openFolder.name } : null
             }
+            // …and so a NEW APP created from here is created IN the open folder
+            // (or the selected environment of the open project) instead of
+            // landing at the team top level.
+            placement={placement}
           />
         </div>
 
@@ -297,13 +315,23 @@ export default async function OverviewPage(props: PageProps<"/">) {
               <EmptyState
                 icon={Folder}
                 title={`${openFolder.name} is empty`}
-                description="Drag apps onto this folder from the Overview, or use an app’s “Move to folder” menu."
+                description="Create an app here, drag apps onto this folder from the Overview, or use an app’s “Move to folder” menu."
                 action={
-                  <Button asChild variant="outline">
-                    <Link href={view === "list" ? "/?view=list" : "/"}>
-                      Back to overview
-                    </Link>
-                  </Button>
+                  <div className="flex gap-2">
+                    {/* Creating from inside the folder creates IN the folder —
+                        the drill-in rides along as ?folder=. */}
+                    <Button asChild>
+                      <Link href={newAppHref(placement)}>
+                        <Plus className="size-4" />
+                        New app
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline">
+                      <Link href={view === "list" ? "/?view=list" : "/"}>
+                        Back to overview
+                      </Link>
+                    </Button>
+                  </div>
                 }
               />
             </div>
@@ -319,13 +347,22 @@ export default async function OverviewPage(props: PageProps<"/">) {
                     ? `No apps in ${selectedEnv.name}`
                     : `${openProject.name} is empty`
                 }
-                description="Drag apps onto this project from the Overview, or use an app’s “Move to folder” menu."
+                description="Create an app here, drag apps onto this project from the Overview, or use an app’s “Move to folder” menu."
                 action={
-                  <Button asChild variant="outline">
-                    <Link href={view === "list" ? "/?view=list" : "/"}>
-                      Back to overview
-                    </Link>
-                  </Button>
+                  <div className="flex gap-2">
+                    {/* Created in the SELECTED environment of this project. */}
+                    <Button asChild>
+                      <Link href={newAppHref(placement)}>
+                        <Plus className="size-4" />
+                        New app
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline">
+                      <Link href={view === "list" ? "/?view=list" : "/"}>
+                        Back to overview
+                      </Link>
+                    </Button>
+                  </div>
                 }
               />
             </div>
@@ -337,13 +374,13 @@ export default async function OverviewPage(props: PageProps<"/">) {
               action={
                 <div className="flex gap-2">
                   <Button asChild>
-                    <Link href="/new">
+                    <Link href={newAppHref(placement)}>
                       <Plus className="size-4" />
                       Import App
                     </Link>
                   </Button>
                   <Button asChild variant="outline">
-                    <Link href="/templates">
+                    <Link href={templatesHref(placement)}>
                       Browse Templates
                       <ArrowUpRight className="size-4" />
                     </Link>

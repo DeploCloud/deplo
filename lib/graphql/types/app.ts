@@ -308,6 +308,12 @@ const CreateAppInputType = builder.inputType("CreateAppInput", {
     extraDomains: t.field({ type: [ExtraDomainInput], required: false }),
     autoDomain: t.string({ required: false }),
     mounts: t.field({ type: [MountInput], required: false }),
+    // Where the app is created (ADR-0009 — one home only): the folder, or the
+    // project environment, the user had open on the Overview. Omitted ⇒ top
+    // level. Authorized like a move into the same destination.
+    folderId: t.string({ required: false }),
+    projectId: t.string({ required: false }),
+    environmentId: t.string({ required: false }),
   }),
 });
 
@@ -439,6 +445,9 @@ builder.mutationFields((t) => ({
         mounts: input.mounts
           ? input.mounts.map((m) => ({ filePath: m.filePath, content: m.content }))
           : null,
+        folderId: input.folderId ?? null,
+        projectId: input.projectId ?? null,
+        environmentId: input.environmentId ?? null,
       }),
   }),
   renameApp: t.field({
