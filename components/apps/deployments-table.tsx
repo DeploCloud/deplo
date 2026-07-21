@@ -54,6 +54,14 @@ const IN_PROGRESS = new Set<DeploymentStatus>(["queued", "building"]);
 /** Sentinel for the "no filter" option — shadcn `SelectItem` can't hold "". */
 const ALL = "__all__";
 
+/** Anything inside a row that owns its own click: links (commit sha, the App
+ *  name, the row's action buttons), the selection checkbox (`role=checkbox`),
+ *  and any cell explicitly opted out with `data-no-row-nav` (the checkbox cell,
+ *  whose padding is aimed at while selecting). A click landing on one of these
+ *  never falls through to the row's "open this deployment" navigation. */
+const ROW_NAV_EXEMPT =
+  'a, button, input, label, select, textarea, [role="checkbox"], [role="menuitem"], [data-no-row-nav]';
+
 /** Rows shown per page (client-side pagination over the filtered set). */
 const PAGE_SIZE = 10;
 
@@ -210,6 +218,10 @@ export interface DeploymentRow {
  * pure ordering — it never changes the swept set. Only FINISHED deployments
  * (ready/error/canceled) are selectable; an in-progress one must be canceled first.
  * Everything is capability-gated server-side; `canManage` only hides the affordances.
+ *
+ * A row is clickable as a whole: clicking anywhere that isn't a dedicated control
+ * (a link, an action button, the selection checkbox and its cell) opens that
+ * deployment's page — see `openDeployment` / `ROW_NAV_EXEMPT`.
  */
 export function DeploymentsTable({
   deployments,
@@ -435,6 +447,26 @@ export function DeploymentsTable({
     setStatusFilter(null);
     setEnvFilter(null);
     setPage(0);
+  }
+
+  // Whole-row navigation: clicking a row anywhere that isn't a dedicated control
+  // opens that deployment (its build logs & details) — the same destination as the
+  // row's ScrollText button and its commit-message link. Bails on a click that
+  // landed on an own-click element, and on a click that merely ended a text
+  // selection (drag-to-select inside the row must not navigate). A modified or
+  // middle click opens a new tab, matching what an anchor would do.
+  function openDeployment(
+    d: DeploymentRow,
+    e: React.MouseEvent<HTMLTableRowElement>,
+  ) {
+    if ((e.target as HTMLElement | null)?.closest(ROW_NAV_EXEMPT)) return;
+    if (window.getSelection()?.toString()) return;
+    const href = `/apps/${d.appSlug}/deployments/${d.id}`;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+      window.open(href, "_blank", "noopener,noreferrer");
+      return;
+    }
+    router.push(href);
   }
 
   function toggleAll(checked: boolean) {
@@ -727,9 +759,20 @@ export function DeploymentsTable({
                 const inProgress = IN_PROGRESS.has(d.status);
                 const checked = selectableSet.has(d.id) && selected.has(d.id);
                 return (
-                  <TableRow key={d.id} data-state={checked ? "selected" : undefined}>
+                  <TableRow
+                    key={d.id}
+                    data-state={checked ? "selected" : undefined}
+                    className="cursor-pointer"
+                    onClick={(e) => openDeployment(d, e)}
+                    onAuxClick={(e) => {
+                      if (e.button === 1) openDeployment(d, e);
+                    }}
+                  >
                     {canManage && (
-                      <TableCell>
+                      /* The checkbox cell opts out of row navigation entirely —
+                         its padding is aimed at while selecting, and a near-miss
+                         must not navigate away from the selection. */
+                      <TableCell data-no-row-nav>
                         <SimpleTooltip
                           content={
                             inProgress
@@ -750,9 +793,15 @@ export function DeploymentsTable({
                     )}
 
                     <TableCell className="max-w-[280px]">
-                      <p className="truncate font-medium text-foreground">
+                      {/* The commit message is a real link to the deployment —
+                          the keyboard/screen-reader path to what the whole row
+                          does on click (a <tr> can't be a link itself). */}
+                      <Link
+                        href={`/apps/${d.appSlug}/deployments/${d.id}`}
+                        className="block truncate font-medium text-foreground hover:underline focus-visible:underline"
+                      >
                         {d.commitMessage}
-                      </p>
+                      </Link>
                       <CommitLink
                         sha={d.commitSha}
                         url={d.commitUrl}
