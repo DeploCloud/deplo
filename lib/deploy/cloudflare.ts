@@ -23,8 +23,11 @@
  *
  * Pure and dependency-free (no `node:dns`, no `server-only`) so the DNS-resolving
  * caller stays the only I/O boundary and the classification is unit-testable
- * without a network.
+ * without a network. (The two imports below are TYPE-only — erased at compile,
+ * so nothing runtime comes with them.)
  */
+
+import type { CertProvider, DomainStatus } from "../types";
 
 /**
  * Cloudflare's published proxy **IPv4** ranges — the anycast addresses a domain
@@ -195,4 +198,38 @@ export function classifyDomainDns(
   if (resolvedIps.includes(target)) return "valid";
   if (resolvedIps.some(isCloudflareIp)) return "cloudflare";
   return "misconfigured";
+}
+
+/**
+ * The certificate provider a domain carries once a DNS check has settled its
+ * status — the ONE place the "proxied ⇒ Cloudflare issues the certificate" rule
+ * lives, so adding, verifying and renaming a domain all reach the same answer.
+ *
+ * A domain behind the orange-cloud is served to the public BY Cloudflare, which
+ * terminates TLS at its edge and presents its own certificate: the visitor gets
+ * HTTPS whatever the origin does. Leaving such a domain on `none` — the
+ * born-with default — therefore produced a row that contradicted itself: an
+ * "HTTP" badge and an `http://` link for a site every browser loads over HTTPS,
+ * and a router parked on `web` (:80) even though the row's own advice (and
+ * Cloudflare's) is SSL/TLS **Full**, which dials the origin on :443. Selecting
+ * `cloudflare` settles both at once — the router moves to `websecure` and every
+ * URL deplo prints says `https` — with no trip into Advanced settings.
+ *
+ * Deliberately ONE-WAY, and only out of `none`:
+ *   - `letsencrypt` is never touched. That is an explicit request for the origin
+ *     to hold its own certificate, which stays a legitimate choice behind a proxy.
+ *   - a domain that STOPS being proxied KEEPS `cloudflare`, because that provider
+ *     is equally the expert choice for a grey-clouded domain (DNS-01 through
+ *     Cloudflare's API); flipping it back to `none` would silently strip TLS from
+ *     a working origin. The user changes it from the Edit dialog like any other
+ *     setting — this rule only ever picks the first value, never overrules one.
+ *
+ * An ABSENT provider (a row written before the field existed, which the deploy
+ * edge reads as `letsencrypt`) is likewise left alone.
+ */
+export function certProviderForDns<T extends CertProvider | undefined>(
+  status: DomainStatus,
+  current: T,
+): T | "cloudflare" {
+  return status === "cloudflare" && current === "none" ? "cloudflare" : current;
 }

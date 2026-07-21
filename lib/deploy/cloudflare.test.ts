@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   isCloudflareIp,
   classifyDomainDns,
+  certProviderForDns,
   CLOUDFLARE_IPV4_RANGES,
 } from "./cloudflare";
 
@@ -102,6 +103,40 @@ test("classifyDomainDns: a direct hit wins even alongside a Cloudflare IP", () =
 test("classifyDomainDns: an unrelated IP or no record is misconfigured", () => {
   assert.equal(classifyDomainDns(["9.9.9.9"], "5.6.7.8"), "misconfigured");
   assert.equal(classifyDomainDns([], "5.6.7.8"), "misconfigured");
+});
+
+// --- certProviderForDns: proxied ⇒ Cloudflare issues the certificate ---
+
+test("certProviderForDns: a proxied, cert-less domain moves onto cloudflare", () => {
+  assert.equal(certProviderForDns("cloudflare", "none"), "cloudflare");
+});
+
+test("certProviderForDns: every other status leaves a cert-less domain alone", () => {
+  for (const status of ["valid", "pending", "misconfigured", "error"] as const) {
+    assert.equal(
+      certProviderForDns(status, "none"),
+      "none",
+      `${status} must not opt a domain into a certificate`,
+    );
+  }
+});
+
+test("certProviderForDns: an explicit provider is never overruled", () => {
+  // letsencrypt is a deliberate "give the ORIGIN its own certificate", which
+  // stays legitimate behind a proxy — the rule only ever fills in a blank.
+  assert.equal(certProviderForDns("cloudflare", "letsencrypt"), "letsencrypt");
+  // Already there ⇒ idempotent (the domains page re-checks on an interval).
+  assert.equal(certProviderForDns("cloudflare", "cloudflare"), "cloudflare");
+  // A pre-field row (absent provider, routed as letsencrypt) is left absent.
+  assert.equal(certProviderForDns("cloudflare", undefined), undefined);
+});
+
+test("certProviderForDns: un-proxying a domain does NOT strip its certificate", () => {
+  // One-way by design: `cloudflare` is also the expert choice for a grey-clouded
+  // domain (DNS-01 via Cloudflare's API), so a status flip must never silently
+  // drop a working origin back to plain HTTP.
+  assert.equal(certProviderForDns("valid", "cloudflare"), "cloudflare");
+  assert.equal(certProviderForDns("misconfigured", "cloudflare"), "cloudflare");
 });
 
 // --- range list sanity ---

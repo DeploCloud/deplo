@@ -984,12 +984,18 @@ export type DomainEntrypoint = "websecure" | "web";
  * `ssl` (whether a cert is currently active, derived from DNS verification):
  *  - letsencrypt  the HTTP-01 ACME resolver baked into the proxy (resolved via
  *                 `certResolver()` / `DEPLO_CERT_RESOLVER`).
- *  - cloudflare   a DNS-01 resolver named `cloudflare` for real domains whose
- *                 DNS is on Cloudflare (the proxy must define this resolver).
+ *  - cloudflare   Cloudflare fronts the domain: it terminates TLS at its edge and
+ *                 presents the public certificate, so the origin is served over
+ *                 HTTPS (`websecure`) with a DNS-01 resolver named `cloudflare`
+ *                 when the proxy defines one. Chosen AUTOMATICALLY the moment the
+ *                 DNS check finds a cert-less domain proxied (status
+ *                 `cloudflare`) — see `certProviderForDns` — and freely
+ *                 changeable afterwards, like any other domain setting.
  *  - none         no certificate — serve plain HTTP on the `web` entrypoint, no
  *                 TLS labels, no forced upgrade. The default for every NEW
  *                 domain (stored explicitly): a cert is only registered when
- *                 the user — or a template that expects HTTPS — opts in.
+ *                 the user — or a template that expects HTTPS, or the Cloudflare
+ *                 detection above — opts in.
  * Absent ⇒ `letsencrypt` (back-compat with domains created before this field).
  */
 export type CertProvider = "letsencrypt" | "cloudflare" | "none";

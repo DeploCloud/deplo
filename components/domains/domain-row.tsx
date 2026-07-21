@@ -103,6 +103,14 @@ export function DomainRow({
   const effectiveProvider = domain.certProvider ?? "letsencrypt";
   const scheme = effectiveProvider === "none" ? "http" : "https";
   const middlewares = domain.middlewares ?? [];
+  const proxied = domain.status === "cloudflare";
+  // A proxied domain is now put on the Cloudflare certificate provider
+  // automatically, so the certificate chip and the DNS chip would BOTH read
+  // "Cloudflare" — two badges, inches apart, saying the same word. They collapse
+  // into one: Cloudflare fronts this domain and issues its certificate. The pair
+  // only splits back apart when the two genuinely differ (a proxied domain the
+  // user moved onto Let's Encrypt), which is exactly when it's worth two chips.
+  const oneCloudflareChip = proxied && effectiveProvider === "cloudflare";
 
   function call(
     fn: () => Promise<{ ok: boolean; error?: string; data?: string }>,
@@ -196,7 +204,19 @@ export function DomainRow({
               <Network className="size-3" />:{domain.port}
             </Badge>
           )}
-          {effectiveProvider === "none" ? (
+          {oneCloudflareChip ? (
+            // The merged chip — see `oneCloudflareChip`. Cloudflare's brand
+            // orange (a deliberate exception to the token-only rule) marks who
+            // is in front of the domain; the `https://` link above it and the
+            // notice below carry the rest, so this stays a label, not a lecture.
+            <Badge
+              variant="outline"
+              className="gap-1 border-[#f38020]/40 bg-[#f38020]/15 text-[#f38020]"
+            >
+              <Cloud className="size-3" />
+              Cloudflare
+            </Badge>
+          ) : effectiveProvider === "none" ? (
             <Badge variant="outline" className="gap-1">
               <ShieldOff className="size-3 text-muted-foreground" />
               HTTP
@@ -233,12 +253,16 @@ export function DomainRow({
               </Badge>
             </SimpleTooltip>
           )}
-          {domain.status === "cloudflare" && (
+          {proxied && !oneCloudflareChip && (
             // Marks WHO sits in front of the domain, nothing more. What that
             // proxy hides — and the two things the user has to check because of
             // it — is the notice below the row, not a tooltip here: the chip and
             // the notice are inches apart in the same cell, so saying it twice
             // would just teach people to ignore both.
+            //
+            // Only rendered when the certificate chip does NOT already say
+            // "Cloudflare" (the user moved this proxied domain onto Let's
+            // Encrypt); otherwise the merged chip above stands for both.
             //
             // Cloudflare's brand orange — a deliberate brand-color exception to
             // the token-only rule. Alpha tints keep the fill/border legible on
@@ -305,7 +329,7 @@ export function DomainRow({
             )}
           </div>
         )}
-        {domain.status === "cloudflare" && (
+        {proxied && (
           // The one status deplo cannot settle for the user. Cloudflare's
           // anycast IPs are shared by every proxied domain alive, so the origin
           // behind them is invisible from DNS (lib/deploy/cloudflare.ts) — this
@@ -506,6 +530,7 @@ export function DomainRow({
                 onChange={setConfig}
                 services={services}
                 idPrefix={`edit-${domain.id}`}
+                proxied={proxied}
               />
             </div>
             <DialogFooter>

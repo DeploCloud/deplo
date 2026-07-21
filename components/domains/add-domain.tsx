@@ -196,8 +196,9 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
           <DialogTitle>Add a domain</DialogTitle>
           <DialogDescription>
             Point a custom domain at{" "}
-            <span className="font-medium">{project.name}</span>. Deplo issues TLS
-            automatically via Let&apos;s Encrypt.
+            <span className="font-medium">{project.name}</span>. Deplo checks its
+            DNS as you add it — a domain already proxied through Cloudflare is
+            set up for HTTPS on its own.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

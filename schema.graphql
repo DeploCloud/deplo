@@ -632,6 +632,10 @@ enum DockerCleanupTrigger {
 type Domain {
   appId: ID
   appSlug: String
+
+  """
+  How this domain's TLS certificate is issued. Set to `cloudflare` automatically when a DNS check finds the host proxied and it still had no certificate — Cloudflare already serves it over HTTPS. Null on rows written before the field existed (they route as `letsencrypt`).
+  """
   certProvider: CertProvider
   createdAt: String
   entrypoint: DomainEntrypoint
@@ -655,7 +659,7 @@ type Domain {
 }
 
 """
-Per-domain routing config; an omitted certProvider means no certificate (plain HTTP).
+Per-domain routing config; an omitted certProvider means no certificate (plain HTTP), unless the add-time DNS check finds the host proxied through Cloudflare — then it is stored as `cloudflare`.
 """
 input DomainConfigInput {
   certProvider: CertProvider
@@ -1529,7 +1533,9 @@ type Mutation {
   """
   upsertInstanceEnv(input: UpsertGlobalEnvInput!): GlobalEnvVar
 
-  """Re-check the domain's DNS and (re)issue its certificate."""
+  """
+  Re-check the domain's DNS and (re)issue its certificate. A check that finds the host proxied through Cloudflare also moves a certificate-less domain onto the `cloudflare` provider.
+  """
   verifyDomain(id: String!): Domain
 
   """Create or overwrite a text file in the app files tree."""

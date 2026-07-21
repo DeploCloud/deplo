@@ -26,7 +26,11 @@ import {
   domainTlsConfig,
   domainScheme,
 } from "../deploy/domains";
-import { classifyDomainDns, type DomainDnsClass } from "../deploy/cloudflare";
+import {
+  classifyDomainDns,
+  certProviderForDns,
+  type DomainDnsClass,
+} from "../deploy/cloudflare";
 import { usesComposeStack } from "../utils";
 import { portFor } from "../deploy/ports";
 import {
@@ -191,7 +195,12 @@ export async function ensureAutoDomain(
   // so the default must be stored explicitly, never left off. Only mark ssl when
   // the host is actually routable, so we don't try to issue a cert for a pending
   // (unverified) custom host.
-  const certProvider = opts.certProvider ?? "none";
+  //
+  // The one automatic opt-in is a caller-supplied CUSTOM host the check above
+  // found PROXIED: Cloudflare already serves it over HTTPS, so it is born with
+  // the `cloudflare` provider rather than cert-less (see certProviderForDns).
+  // Our own generated nip.io hosts are never proxied, so they keep the default.
+  const certProvider = certProviderForDns(status, opts.certProvider ?? "none");
   const domain: Domain = {
     id: newId("dom"),
     appId,
@@ -349,8 +358,11 @@ export async function listDomains(
 /** The per-domain routing config a user sets when adding a domain — the same
  * knobs the Edit dialog exposes (port, entrypoint, cert provider, middlewares).
  * All optional. An omitted `certProvider` means NO certificate (`none`): a cert
- * is only ever registered when explicitly requested. (Only rows created BEFORE
- * the field existed read an absent stored provider as letsencrypt.) */
+ * is only ever registered when explicitly requested — the one exception being a
+ * host the add-time DNS check finds proxied through Cloudflare, which is served
+ * over HTTPS by Cloudflare already and so is stored as `cloudflare`
+ * ({@link certProviderForDns}). (Only rows created BEFORE the field existed read
+ * an absent stored provider as letsencrypt.) */
 export interface DomainConfig {
   port?: number | null;
   entrypoint?: DomainEntrypoint;
@@ -455,6 +467,13 @@ export async function addDomain(
   const status =
     sibling?.status ??
     (await checkDomainDns(clean, await appServerIp(appId)));
+  // A host the check found PROXIED is served over HTTPS by Cloudflare, so it is
+  // born with the `cloudflare` provider instead of the cert-less default — the
+  // user never has to open Advanced settings to match what Cloudflare already
+  // does. An explicit `letsencrypt` (or a pre-existing sibling row's provider,
+  // which the caller passes back in) is left exactly as asked; see
+  // certProviderForDns for why this only ever fires out of `none`.
+  const certProvider = certProviderForDns(status, config.certProvider ?? "none");
   const domain: Domain = {
     id: newId("dom"),
     appId,
@@ -473,7 +492,7 @@ export async function addDomain(
     // for the `none` provider). Storing it only when given keeps the auto/manual
     // distinction round-trippable and a default domain byte-identical.
     ...(config.entrypoint ? { entrypoint: config.entrypoint } : {}),
-    certProvider: config.certProvider ?? "none",
+    certProvider,
     ...(middlewares.length ? { middlewares } : {}),
     ...(pathPrefix ? { pathPrefix } : {}),
     ...(stripPrefix ? { stripPrefix } : {}),
@@ -700,6 +719,16 @@ export async function updateDomain(
   if (renamed && next.source !== "auto") {
     next.status = await checkDomainDns(nextName, await appServerIp(current.appId));
     next.ssl = next.status === "valid" || next.status === "cloudflare";
+    // The rename's check can discover the NEW host is proxied, so it gets the
+    // same automatic Cloudflare provider an add would have given it — UNLESS this
+    // edit deliberately moved the provider, which always wins. The Edit dialog
+    // posts the whole config every time, so "deliberately" means the submitted
+    // value actually DIFFERS from the stored one; an untouched dropdown must not
+    // read as a decision to stay cert-less.
+    const chosen =
+      patch.certProvider !== undefined &&
+      patch.certProvider !== current.certProvider;
+    if (!chosen) next.certProvider = certProviderForDns(next.status, next.certProvider);
   }
 
   await getDb().transaction(async (tx) => {
@@ -751,9 +780,14 @@ export async function updateDomain(
  * broken. A domain whose DNS is on Cloudflare but NOT proxied (grey-cloud)
  * resolves straight to the origin and so verifies as `valid` exactly as before.
  *
+ * A check that lands on `cloudflare` also settles the domain's CERTIFICATE: a
+ * cert-less host moves onto the `cloudflare` provider, because the proxy that
+ * masks its origin is also what serves it over HTTPS ({@link certProviderForDns}).
+ *
  * Returns the settled domain plus `statusChanged`, so the caller can skip the
  * routing re-apply (an agent round-trip) when a check settles on the status the
  * row already had — the common case for the page's automatic interval checks.
+ * A provider move counts as a change: it rewrites the router's TLS labels.
  */
 export async function verifyDomain(
   id: string,
@@ -776,15 +810,27 @@ export async function verifyDomain(
   // true for a proxied host even though the origin is unverifiable: Cloudflare
   // really does terminate TLS at its edge, which is the fact this flag reports.
   const ssl = status === "valid" || status === "cloudflare";
-  const statusChanged = status !== dom.status || ssl !== dom.ssl;
+  // Discovering the host is proxied also settles WHO issues its certificate:
+  // Cloudflare does, at its edge. A cert-less domain is moved onto the
+  // `cloudflare` provider here so the very check that discovers the proxy also
+  // makes the origin match it (HTTPS on `websecure`, `https://` URLs) — the user
+  // is never sent into Advanced settings to finish the job. One-way and only out
+  // of `none`; see certProviderForDns.
+  const certProvider = certProviderForDns(status, dom.certProvider);
+  const providerChanged = certProvider !== dom.certProvider;
+  // `statusChanged` is what tells the caller a routing re-apply is worth an agent
+  // round-trip — a provider move rewrites the router's entrypoint and TLS labels,
+  // so it counts as a change even when the status itself didn't budge.
+  const statusChanged =
+    status !== dom.status || ssl !== dom.ssl || providerChanged;
 
   const updated = await getDb()
     .update(domainsTable)
-    .set({ status, ssl })
+    .set({ status, ssl, ...(providerChanged ? { certProvider } : {}) })
     .where(eq(domainsTable.id, id))
     .returning();
   if (updated.length === 0) throw new Error("Not found");
-  return { ...dom, status, ssl, statusChanged };
+  return { ...dom, status, ssl, certProvider, statusChanged };
 }
 
 /** The public IPv4 a project's custom domains must resolve to: the IP of the

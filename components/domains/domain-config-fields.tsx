@@ -32,7 +32,9 @@ export const ENTRYPOINTS: { value: DomainEntrypoint; label: string }[] = [
  * entrypoint). The dropdown is the single TLS control: picking a provider is how
  * a domain opts INTO HTTPS (there is no separate checkbox). "None" is listed
  * first because it is the default for a brand-new domain — no certificate is
- * ever registered unless the user (or a template that expects HTTPS) asks. */
+ * ever registered unless the user (or a template that expects HTTPS) asks, or
+ * the DNS check finds the domain proxied through Cloudflare, which serves it
+ * over HTTPS anyway and so selects "Cloudflare" on its own. */
 export const CERT_PROVIDERS: { value: CertProvider; label: string }[] = [
   { value: "none", label: "None (no certificate)" },
   { value: "letsencrypt", label: "Let's Encrypt" },
@@ -183,12 +185,19 @@ export function DomainConfigFields({
   onChange,
   idPrefix,
   services = [],
+  proxied = false,
 }: {
   state: DomainConfigState;
   onChange: (next: DomainConfigState) => void;
   idPrefix: string;
   /** Compose service names for the service selector; empty ⇒ single-image. */
   services?: string[];
+  /** Whether this domain's DNS check found it proxied through Cloudflare
+   * (status `cloudflare`). Only the Edit dialog knows — an Add hasn't resolved
+   * the host yet — and it exists solely to explain why the certificate provider
+   * is already on Cloudflare, so the user reads it as a decision deplo made for
+   * them rather than one they have to second-guess. */
+  proxied?: boolean;
 }) {
   const set = <K extends keyof DomainConfigState>(
     key: K,
@@ -259,7 +268,7 @@ export function DomainConfigFields({
             <div className="space-y-2">
               <FieldLabel
                 htmlFor={`${idPrefix}-cert`}
-                info="The source of this domain's TLS certificate. Choosing None serves the domain over plain HTTP with no TLS."
+                info="The source of this domain's TLS certificate. A domain proxied through Cloudflare is set to Cloudflare automatically, since Cloudflare already serves it over HTTPS. Choosing None serves the domain over plain HTTP with no TLS."
               >
                 HTTPS Certificate
               </FieldLabel>
@@ -278,12 +287,21 @@ export function DomainConfigFields({
                   ))}
                 </SelectContent>
               </Select>
-              {noCert && (
+              {proxied && state.certProvider === "cloudflare" ? (
+                // Named as deplo's own doing, not a mystery default: the DNS
+                // check found the proxy and picked the matching provider. Said
+                // once, here, where the dropdown that can undo it lives.
+                <p className="text-xs text-muted-foreground">
+                  Selected automatically — this domain is proxied through
+                  Cloudflare, which issues its certificate. Change it only to
+                  give the origin a certificate of its own.
+                </p>
+              ) : noCert ? (
                 <p className="text-xs text-muted-foreground">
                   No certificate — this domain is served over plain HTTP on the{" "}
                   <span className="font-mono">web</span> entrypoint.
                 </p>
-              )}
+              ) : null}
             </div>
 
             <div className="space-y-2">

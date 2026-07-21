@@ -65,6 +65,11 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
     certProvider: t.field({
       type: CertProviderEnum,
       nullable: true,
+      description:
+        "How this domain's TLS certificate is issued. Set to `cloudflare` " +
+        "automatically when a DNS check finds the host proxied and it still had " +
+        "no certificate — Cloudflare already serves it over HTTPS. Null on rows " +
+        "written before the field existed (they route as `letsencrypt`).",
       resolve: (d) => d.certProvider ?? null,
     }),
     middlewares: t.exposeStringList("middlewares", { nullable: true }),
@@ -88,7 +93,9 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
 // (plain HTTP) — a cert is only registered when explicitly requested.
 const DomainConfigInput = builder.inputType("DomainConfigInput", {
   description:
-    "Per-domain routing config; an omitted certProvider means no certificate (plain HTTP).",
+    "Per-domain routing config; an omitted certProvider means no certificate " +
+    "(plain HTTP), unless the add-time DNS check finds the host proxied through " +
+    "Cloudflare — then it is stored as `cloudflare`.",
   fields: (t) => ({
     port: t.int({ required: false }),
     entrypoint: t.field({ type: DomainEntrypointEnum, required: false }),
@@ -192,7 +199,10 @@ builder.mutationFields((t) => ({
   verifyDomain: t.field({
     type: DomainRef,
     authScopes: { capability: "manage_domains" },
-    description: "Re-check the domain's DNS and (re)issue its certificate.",
+    description:
+      "Re-check the domain's DNS and (re)issue its certificate. A check that " +
+      "finds the host proxied through Cloudflare also moves a certificate-less " +
+      "domain onto the `cloudflare` provider.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       // Verifying is what flips a host to `valid` — i.e. what makes it routable
