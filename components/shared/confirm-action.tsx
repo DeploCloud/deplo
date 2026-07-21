@@ -74,6 +74,16 @@ export function ConfirmAction({
 
   const typedOk = !confirmText || typed === confirmText;
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    // This dialog is routinely rendered INSIDE another dialog's <form> (a row's
+    // delete action, the `extra` slot). Radix portals it out of that form in the
+    // DOM, but React still bubbles the submit up the React tree — so without
+    // this the outer form would silently submit too.
+    e.stopPropagation();
+    handleConfirm();
+  }
+
   function handleConfirm() {
     if (!typedOk) return;
     startTransition(async () => {
@@ -95,40 +105,38 @@ export function ConfirmAction({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {extra}
-        {confirmText && (
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">
-              Type{" "}
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
-                {confirmText}
-              </code>{" "}
-              to confirm
-            </Label>
-            <Input
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              // Submit on Enter when the phrase matches — mirrors a normal form.
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && typedOk && !pending) handleConfirm();
-              }}
-            />
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button
-            variant={variant}
-            onClick={handleConfirm}
-            disabled={pending || !typedOk}
-          >
-            {pending ? "Working…" : confirmLabel}
-          </Button>
-        </DialogFooter>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          {extra}
+          {confirmText && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">
+                Type{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
+                  {confirmText}
+                </code>{" "}
+                to confirm
+              </Label>
+              <Input
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant={variant}
+              disabled={pending || !typedOk}
+            >
+              {pending ? "Working…" : confirmLabel}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

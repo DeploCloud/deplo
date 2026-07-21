@@ -26,6 +26,11 @@ export function WelcomeCreateTeam({ userName }: { userName: string }) {
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    create();
+  }
+
   function create() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -49,27 +54,26 @@ export function WelcomeCreateTeam({ userName }: { userName: string }) {
             using Deplo, or ask a teammate to invite you.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="welcome-team-name">Team name</Label>
-            <Input
-              id="welcome-team-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Acme Inc"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim() && !pending) create();
-              }}
-            />
-          </div>
-          <Button
-            className="w-full"
-            onClick={create}
-            disabled={pending || !name.trim()}
-          >
-            {pending ? "Creating…" : "Create team"}
-          </Button>
+        <CardContent>
+          <form className="space-y-4" onSubmit={onSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor="welcome-team-name">Team name</Label>
+              <Input
+                id="welcome-team-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Acme Inc"
+                autoFocus
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={pending || !name.trim()}
+            >
+              {pending ? "Creating…" : "Create team"}
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </div>

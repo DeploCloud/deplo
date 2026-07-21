@@ -223,6 +223,14 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   (`toast.error(res.error)`), don't invent generic copy.
 - **Field help lives in the tooltip:** `FieldLabel info={…}` / `InfoTip` (`components/ui/info-tip.tsx`)
   — don't duplicate it as helper text below the input.
+- **Every dialog with fields is a real `<form>` — Enter submits.** Wrap the body + `DialogFooter`
+  in `<form className="grid gap-4" onSubmit={…}>` (matching `DialogContent`'s own grid, so the
+  layout is unchanged), `preventDefault()`, and give the primary button `type="submit"` instead of
+  an `onClick`. Keep its `disabled` guard — a disabled default button is exactly what makes Enter a
+  no-op while the form is invalid. **Never fake it** with `onKeyDown={(e) => e.key === "Enter" && …}`.
+  `Button` defaults to `type="button"`, so Cancel never submits by accident; a raw `<button>` you
+  add inside a form must spell out `type="button"` itself. Pattern reference:
+  `components/apps/create-folder-dialog.tsx`.
 - **Status is shown LIVE** via `AppStatusBadge`/`AppStatusDot` (a `useLiveStatus`
   subscription), not the raw stored `status`. `idle`/`stopped` render **grey ("Stopped")**; red is
   reserved for `error`/`failed`.

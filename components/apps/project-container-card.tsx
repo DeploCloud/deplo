@@ -94,6 +94,11 @@ export function ProjectContainerCard({
     ? { backgroundColor: `${project.color}1a`, borderColor: `${project.color}40` }
     : undefined;
 
+  function onRenameSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    rename();
+  }
+
   function rename() {
     const next = name.trim();
     if (!next || next === project.name) {
@@ -111,6 +116,11 @@ export function ProjectContainerCard({
         router.refresh();
       } else toast.error(res.error);
     });
+  }
+
+  function onColorSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    changeColor();
   }
 
   function changeColor() {
@@ -233,24 +243,25 @@ export function ProjectContainerCard({
           <DialogHeader>
             <DialogTitle>Rename project</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor={`rename-project-${project.id}`}>Project name</Label>
-            <Input
-              id={`rename-project-${project.id}`}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && rename()}
-              autoFocus
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameOpen(false)} disabled={pending}>
-              Cancel
-            </Button>
-            <Button onClick={rename} disabled={pending || !name.trim()}>
-              {pending ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
+          <form className="grid gap-4" onSubmit={onRenameSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor={`rename-project-${project.id}`}>Project name</Label>
+              <Input
+                id={`rename-project-${project.id}`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRenameOpen(false)} disabled={pending}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !name.trim()}>
+                {pending ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -265,19 +276,21 @@ export function ProjectContainerCard({
           <DialogHeader>
             <DialogTitle>Project colour</DialogTitle>
           </DialogHeader>
-          <FolderColorPicker
-            value={draftColor}
-            onChange={setDraftColor}
-            idPrefix={`project-${project.id}`}
-          />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setColorOpen(false)} disabled={pending}>
-              Cancel
-            </Button>
-            <Button onClick={changeColor} disabled={pending}>
-              {pending ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
+          <form className="grid gap-4" onSubmit={onColorSubmit}>
+            <FolderColorPicker
+              value={draftColor}
+              onChange={setDraftColor}
+              idPrefix={`project-${project.id}`}
+            />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setColorOpen(false)} disabled={pending}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending}>
+                {pending ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

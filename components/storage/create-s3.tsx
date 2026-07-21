@@ -63,6 +63,11 @@ export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -106,75 +111,77 @@ export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
             Credentials are encrypted at rest.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input value={form.name} onChange={set("name")} placeholder="Backups bucket" />
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input value={form.name} onChange={set("name")} placeholder="Backups bucket" />
+              </div>
+              <div className="space-y-2">
+                <FieldLabel info="Picks the S3-compatible service. Choosing one pre-fills the matching endpoint format below.">Provider</FieldLabel>
+                <Select value={provider} onValueChange={(v) => setProvider(v as S3Provider)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROVIDERS.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2">
-              <FieldLabel info="Picks the S3-compatible service. Choosing one pre-fills the matching endpoint format below.">Provider</FieldLabel>
-              <Select value={provider} onValueChange={(v) => setProvider(v as S3Provider)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROVIDERS.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FieldLabel info="The S3 API URL for your bucket. Leave blank to use the default endpoint for the selected provider.">Endpoint</FieldLabel>
+              <Input
+                value={form.endpoint}
+                onChange={set("endpoint")}
+                placeholder={hint}
+                className="font-mono text-xs"
+              />
             </div>
-          </div>
-          <div className="space-y-2">
-            <FieldLabel info="The S3 API URL for your bucket. Leave blank to use the default endpoint for the selected provider.">Endpoint</FieldLabel>
-            <Input
-              value={form.endpoint}
-              onChange={set("endpoint")}
-              placeholder={hint}
-              className="font-mono text-xs"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <FieldLabel info={<>The bucket&apos;s region. Use <code className="font-mono">auto</code> for providers like Cloudflare R2 that don&apos;t require a specific region.</>}>Region</FieldLabel>
-              <Input value={form.region} onChange={set("region")} placeholder="auto" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <FieldLabel info={<>The bucket&apos;s region. Use <code className="font-mono">auto</code> for providers like Cloudflare R2 that don&apos;t require a specific region.</>}>Region</FieldLabel>
+                <Input value={form.region} onChange={set("region")} placeholder="auto" />
+              </div>
+              <div className="space-y-2">
+                <Label>Bucket</Label>
+                <Input value={form.bucket} onChange={set("bucket")} placeholder="my-bucket" />
+              </div>
             </div>
             <div className="space-y-2">
-              <Label>Bucket</Label>
-              <Input value={form.bucket} onChange={set("bucket")} placeholder="my-bucket" />
+              <Label>Access Key ID</Label>
+              <Input
+                value={form.accessKey}
+                onChange={set("accessKey")}
+                className="font-mono text-xs"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Secret Access Key</Label>
+              <Input
+                type="password"
+                value={form.secretKey}
+                onChange={set("secretKey")}
+                className="font-mono text-xs"
+                autoComplete="off"
+              />
             </div>
           </div>
-          <div className="space-y-2">
-            <Label>Access Key ID</Label>
-            <Input
-              value={form.accessKey}
-              onChange={set("accessKey")}
-              className="font-mono text-xs"
-              autoComplete="off"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Secret Access Key</Label>
-            <Input
-              type="password"
-              value={form.secretKey}
-              onChange={set("secretKey")}
-              className="font-mono text-xs"
-              autoComplete="off"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending}>
-            {pending ? "Connecting…" : "Connect"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? "Connecting…" : "Connect"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

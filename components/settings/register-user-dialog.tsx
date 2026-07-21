@@ -131,6 +131,14 @@ export function RegisterUserDialog({
 
   const selectedCount = Object.keys(assign).length;
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    // Once the link is minted the form only shows it (the footer's single button
+    // just closes), so Enter must not re-mint a second link.
+    if (link) return;
+    mint();
+  }
+
   function mint() {
     startTransition(async () => {
       // No team selected ⇒ an "own team" link (the registrant creates their own
@@ -189,103 +197,105 @@ export function RegisterUserDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {link ? (
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              Share this link. It works once and expires in 24 hours.
-            </p>
-            <div className="flex gap-2">
-              <Input readOnly value={link} className="font-mono text-xs" />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={copy}
-                aria-label="Copy link"
-              >
-                <Copy className="size-4" />
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm font-medium">Add to your teams (optional)</p>
-
-            {loadingTeams &&
-              [0, 1].map((i) => (
-                <div key={i} className="rounded-lg border border-border p-3">
-                  <div className="flex items-center gap-2">
-                    <Skeleton shimmer className="size-4 rounded" />
-                    <Skeleton shimmer className="h-4 w-32 rounded" />
-                  </div>
-                </div>
-              ))}
-
-            {!loadingTeams &&
-              teams.map((tm) => {
-                const a = assign[tm.id];
-                return (
-                  <div
-                    key={tm.id}
-                    className="rounded-lg border border-border p-3"
-                  >
-                    <label
-                      htmlFor={`regteam-${tm.id}`}
-                      className="flex cursor-pointer items-center gap-2"
-                    >
-                      <Checkbox
-                        id={`regteam-${tm.id}`}
-                        checked={!!a}
-                        onCheckedChange={(v) => toggleTeam(tm.id, v === true)}
-                      />
-                      <span className="text-sm font-medium">{tm.name}</span>
-                    </label>
-                    {a && (
-                      <div className="mt-3">
-                        <CapabilityPicker
-                          role={a.role}
-                          capabilities={a.capabilities}
-                          availableRoles={["member", "viewer"]}
-                          onRoleChange={(role) =>
-                            setAssign((p) => ({
-                              ...p,
-                              [tm.id]: { ...p[tm.id], role },
-                            }))
-                          }
-                          onCapabilitiesChange={(capabilities) =>
-                            setAssign((p) => ({
-                              ...p,
-                              [tm.id]: { ...p[tm.id], capabilities },
-                            }))
-                          }
-                          idPrefix={`regteam-${tm.id}`}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-            {/* "faglielo notare se non seleziona nulla" — make the own-team
-                outcome explicit whenever no team is selected. */}
-            {!loadingTeams && teamsLoaded && selectedCount === 0 && (
-              <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-                No team selected — the new user will create and own their own team
-                when they open the link.
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          {link ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Share this link. It works once and expires in 24 hours.
               </p>
-            )}
-          </div>
-        )}
+              <div className="flex gap-2">
+                <Input readOnly value={link} className="font-mono text-xs" />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={copy}
+                  aria-label="Copy link"
+                >
+                  <Copy className="size-4" />
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Add to your teams (optional)</p>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={close}>
-            {link ? "Done" : "Cancel"}
-          </Button>
-          {!link && (
-            <Button onClick={mint} disabled={pending || loadingTeams}>
-              {pending ? "Generating…" : "Generate link"}
-            </Button>
+              {loadingTeams &&
+                [0, 1].map((i) => (
+                  <div key={i} className="rounded-lg border border-border p-3">
+                    <div className="flex items-center gap-2">
+                      <Skeleton shimmer className="size-4 rounded" />
+                      <Skeleton shimmer className="h-4 w-32 rounded" />
+                    </div>
+                  </div>
+                ))}
+
+              {!loadingTeams &&
+                teams.map((tm) => {
+                  const a = assign[tm.id];
+                  return (
+                    <div
+                      key={tm.id}
+                      className="rounded-lg border border-border p-3"
+                    >
+                      <label
+                        htmlFor={`regteam-${tm.id}`}
+                        className="flex cursor-pointer items-center gap-2"
+                      >
+                        <Checkbox
+                          id={`regteam-${tm.id}`}
+                          checked={!!a}
+                          onCheckedChange={(v) => toggleTeam(tm.id, v === true)}
+                        />
+                        <span className="text-sm font-medium">{tm.name}</span>
+                      </label>
+                      {a && (
+                        <div className="mt-3">
+                          <CapabilityPicker
+                            role={a.role}
+                            capabilities={a.capabilities}
+                            availableRoles={["member", "viewer"]}
+                            onRoleChange={(role) =>
+                              setAssign((p) => ({
+                                ...p,
+                                [tm.id]: { ...p[tm.id], role },
+                              }))
+                            }
+                            onCapabilitiesChange={(capabilities) =>
+                              setAssign((p) => ({
+                                ...p,
+                                [tm.id]: { ...p[tm.id], capabilities },
+                              }))
+                            }
+                            idPrefix={`regteam-${tm.id}`}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+              {/* "faglielo notare se non seleziona nulla" — make the own-team
+                  outcome explicit whenever no team is selected. */}
+              {!loadingTeams && teamsLoaded && selectedCount === 0 && (
+                <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+                  No team selected — the new user will create and own their own
+                  team when they open the link.
+                </p>
+              )}
+            </div>
           )}
-        </DialogFooter>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={close}>
+              {link ? "Done" : "Cancel"}
+            </Button>
+            {!link && (
+              <Button type="submit" disabled={pending || loadingTeams}>
+                {pending ? "Generating…" : "Generate link"}
+              </Button>
+            )}
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

@@ -170,6 +170,11 @@ export function FolderCard({
     ? { backgroundColor: `${folder.color}1a`, borderColor: `${folder.color}40` }
     : undefined;
 
+  function onColorSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    changeColor();
+  }
+
   function changeColor() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -197,6 +202,11 @@ export function FolderCard({
         router.refresh();
       } else toast.error(res.error);
     });
+  }
+
+  function onRenameSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    rename();
   }
 
   function rename() {
@@ -387,28 +397,29 @@ export function FolderCard({
           <DialogHeader>
             <DialogTitle>Rename folder</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor={`rename-folder-${folder.id}`}>Folder name</Label>
-            <Input
-              id={`rename-folder-${folder.id}`}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && rename()}
-              autoFocus
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setRenameOpen(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={rename} disabled={pending || !name.trim()}>
-              {pending ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
+          <form className="grid gap-4" onSubmit={onRenameSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor={`rename-folder-${folder.id}`}>Folder name</Label>
+              <Input
+                id={`rename-folder-${folder.id}`}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setRenameOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !name.trim()}>
+                {pending ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -423,23 +434,25 @@ export function FolderCard({
           <DialogHeader>
             <DialogTitle>Folder colour</DialogTitle>
           </DialogHeader>
-          <FolderColorPicker
-            value={draftColor}
-            onChange={setDraftColor}
-            idPrefix={`folder-${folder.id}`}
-          />
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setColorOpen(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={changeColor} disabled={pending}>
-              {pending ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
+          <form className="grid gap-4" onSubmit={onColorSubmit}>
+            <FolderColorPicker
+              value={draftColor}
+              onChange={setDraftColor}
+              idPrefix={`folder-${folder.id}`}
+            />
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setColorOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending}>
+                {pending ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

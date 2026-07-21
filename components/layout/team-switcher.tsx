@@ -48,7 +48,7 @@ export function TeamSwitcher({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent">
+          <button type="button" className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent">
             <Avatar className="size-6">
               <AvatarFallback className="bg-foreground text-[10px] text-background">
                 {team.name.slice(0, 2).toUpperCase()}

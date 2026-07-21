@@ -161,6 +161,11 @@ export function EditUserDialog({
   // leaves only through a transfer that names a successor.
   const ownerFlagsLocked = isOwner;
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    save();
+  }
+
   function save() {
     startTransition(async () => {
       const res = await gqlAction<
@@ -212,206 +217,212 @@ export function EditUserDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {!ready ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            Loading user…
-          </div>
-        ) : (
-          <>
-            {/* General information */}
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-2 rounded-lg border border-border p-3">
-                <Meta
-                  label="Joined"
-                  value={createdAt ? timeAgo(createdAt) : "—"}
-                />
-                <Meta label="Teams" value={String(teamCount)} />
-                <Meta
-                  label="Instance admin"
-                  value={isOwner ? "Owner" : admin ? "Yes" : "No"}
-                />
-                <Meta
-                  label="Status"
-                  value={suspended ? "Suspended" : "Active"}
-                />
-              </div>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          {!ready ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Loading user…
+            </div>
+          ) : (
+            <>
+              {/* General information */}
+              <div className="space-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-2 rounded-lg border border-border p-3">
+                  <Meta
+                    label="Joined"
+                    value={createdAt ? timeAgo(createdAt) : "—"}
+                  />
+                  <Meta label="Teams" value={String(teamCount)} />
+                  <Meta
+                    label="Instance admin"
+                    value={isOwner ? "Owner" : admin ? "Yes" : "No"}
+                  />
+                  <Meta
+                    label="Status"
+                    value={suspended ? "Suspended" : "Active"}
+                  />
+                </div>
 
-              {detail && (
-                <div className="rounded-lg border border-border p-3">
-                  <p className="mb-2 text-xs font-medium uppercase text-muted-foreground">
-                    Teams &amp; roles
-                  </p>
-                  {detail.teams.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No teams.</p>
-                  ) : (
+                {detail && (
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="mb-2 text-xs font-medium uppercase text-muted-foreground">
+                      Teams &amp; roles
+                    </p>
+                    {detail.teams.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No teams.</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {detail.teams.map((t) => (
+                          <li
+                            key={t.teamId}
+                            className="flex items-center justify-between"
+                          >
+                            <span>{t.teamName}</span>
+                            <Badge variant="outline" className="capitalize">
+                              {t.role}
+                            </Badge>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {detail && detail.recentActivity.length > 0 && (
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="mb-2 text-xs font-medium uppercase text-muted-foreground">
+                      Recent activity
+                    </p>
                     <ul className="space-y-1">
-                      {detail.teams.map((t) => (
+                      {detail.recentActivity.map((a, i) => (
                         <li
-                          key={t.teamId}
-                          className="flex items-center justify-between"
+                          key={i}
+                          className="flex items-center justify-between gap-2 text-xs"
                         >
-                          <span>{t.teamName}</span>
-                          <Badge variant="outline" className="capitalize">
-                            {t.role}
-                          </Badge>
+                          <span className="truncate">{a.message}</span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {timeAgo(a.createdAt)}
+                          </span>
                         </li>
                       ))}
                     </ul>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
 
-              {detail && detail.recentActivity.length > 0 && (
-                <div className="rounded-lg border border-border p-3">
-                  <p className="mb-2 text-xs font-medium uppercase text-muted-foreground">
-                    Recent activity
+              <Separator />
+
+              {/* Global permissions */}
+              <div className="space-y-4">
+                {ownerLocked && (
+                  <p className="rounded-lg border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
+                    This account owns the instance. Only its owner can change it
+                    — no other admin can demote, suspend or reset them.
+                    Ownership moves only when the owner transfers it.
                   </p>
-                  <ul className="space-y-1">
-                    {detail.recentActivity.map((a, i) => (
-                      <li
-                        key={i}
-                        className="flex items-center justify-between gap-2 text-xs"
-                      >
-                        <span className="truncate">{a.message}</span>
-                        <span className="shrink-0 text-muted-foreground">
-                          {timeAgo(a.createdAt)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-
-            <Separator />
-
-            {/* Global permissions */}
-            <div className="space-y-4">
-              {ownerLocked && (
-                <p className="rounded-lg border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
-                  This account owns the instance. Only its owner can change it —
-                  no other admin can demote, suspend or reset them. Ownership
-                  moves only when the owner transfers it.
-                </p>
-              )}
-              <ToggleRow
-                title="Instance admin"
-                detail={
-                  ownerFlagsLocked
-                    ? "The instance owner is always an instance admin. Transfer ownership first."
-                    : "Manage all users, mint registration links, and administer any team."
-                }
-                checked={admin}
-                disabled={isSelf || ownerFlagsLocked}
-                onChange={setAdmin}
-              />
-              <ToggleRow
-                title="Suspended"
-                detail={
-                  ownerFlagsLocked
-                    ? "The instance owner's account can't be suspended."
-                    : "Block this account from signing in. Memberships are kept."
-                }
-                checked={suspended}
-                disabled={isSelf || ownerFlagsLocked}
-                tone="destructive"
-                // Turning suspension ON asks for confirmation first; turning it
-                // back off (reactivating) is safe and applies immediately.
-                onChange={(v) =>
-                  v ? setConfirmSuspend(true) : setSuspended(false)
-                }
-              />
-              {isSelf && (
-                <p className="text-xs text-muted-foreground">
-                  You can&apos;t change your own admin status or suspend
-                  yourself.
-                </p>
-              )}
-              <ToggleRow
-                title="Publish ports"
-                detail="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains/routes don't need this. Instance admins always can."
-                checked={admin || exposePorts}
-                disabled={admin || ownerLocked}
-                onChange={setExposePorts}
-              />
-              <ToggleRow
-                title="Mount host volumes"
-                detail="Bind-mount host filesystem paths into containers (compose and single-container). Instance admins always can."
-                checked={admin || mountHostVolumes}
-                disabled={admin || ownerLocked}
-                onChange={setMountHostVolumes}
-              />
-              {admin && (
-                <p className="text-xs text-muted-foreground">
-                  Instance admins hold the publish-ports and host-volume grants
-                  implicitly.
-                </p>
-              )}
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="reset-pw"
-                  info={
-                    <>
-                      Sets a new password for this account. Leave blank to keep
-                      the current one; a new password must be at least 8
-                      characters.
-                    </>
+                )}
+                <ToggleRow
+                  title="Instance admin"
+                  detail={
+                    ownerFlagsLocked
+                      ? "The instance owner is always an instance admin. Transfer ownership first."
+                      : "Manage all users, mint registration links, and administer any team."
                   }
-                >
-                  Reset password (optional)
-                </FieldLabel>
-                <Input
-                  id="reset-pw"
-                  type="password"
-                  value={password}
-                  disabled={ownerLocked}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={
-                    ownerLocked
-                      ? "Only the instance owner can reset their own password"
-                      : "New password — leave blank to keep current"
+                  checked={admin}
+                  disabled={isSelf || ownerFlagsLocked}
+                  onChange={setAdmin}
+                />
+                <ToggleRow
+                  title="Suspended"
+                  detail={
+                    ownerFlagsLocked
+                      ? "The instance owner's account can't be suspended."
+                      : "Block this account from signing in. Memberships are kept."
+                  }
+                  checked={suspended}
+                  disabled={isSelf || ownerFlagsLocked}
+                  tone="destructive"
+                  // Turning suspension ON asks for confirmation first; turning it
+                  // back off (reactivating) is safe and applies immediately.
+                  onChange={(v) =>
+                    v ? setConfirmSuspend(true) : setSuspended(false)
                   }
                 />
+                {isSelf && (
+                  <p className="text-xs text-muted-foreground">
+                    You can&apos;t change your own admin status or suspend
+                    yourself.
+                  </p>
+                )}
+                <ToggleRow
+                  title="Publish ports"
+                  detail="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains/routes don't need this. Instance admins always can."
+                  checked={admin || exposePorts}
+                  disabled={admin || ownerLocked}
+                  onChange={setExposePorts}
+                />
+                <ToggleRow
+                  title="Mount host volumes"
+                  detail="Bind-mount host filesystem paths into containers (compose and single-container). Instance admins always can."
+                  checked={admin || mountHostVolumes}
+                  disabled={admin || ownerLocked}
+                  onChange={setMountHostVolumes}
+                />
+                {admin && (
+                  <p className="text-xs text-muted-foreground">
+                    Instance admins hold the publish-ports and host-volume grants
+                    implicitly.
+                  </p>
+                )}
+                <div className="space-y-2">
+                  <FieldLabel
+                    htmlFor="reset-pw"
+                    info={
+                      <>
+                        Sets a new password for this account. Leave blank to keep
+                        the current one; a new password must be at least 8
+                        characters.
+                      </>
+                    }
+                  >
+                    Reset password (optional)
+                  </FieldLabel>
+                  <Input
+                    id="reset-pw"
+                    type="password"
+                    value={password}
+                    disabled={ownerLocked}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={
+                      ownerLocked
+                        ? "Only the instance owner can reset their own password"
+                        : "New password — leave blank to keep current"
+                    }
+                  />
+                </div>
               </div>
-            </div>
+            </>
+          )}
 
-            {/* Extra safety gate for the one destructive toggle. It only stages
-                the change (the switch flips on); "Save changes" still commits. */}
-            <ConfirmAction
-              open={confirmSuspend}
-              onOpenChange={setConfirmSuspend}
-              title={`Suspend @${user.username}?`}
-              description="This blocks the account from signing in. Team memberships are kept and you can reactivate at any time. Takes effect when you save your changes."
-              confirmLabel="Suspend account"
-              onConfirm={async () => {
-                setSuspended(true);
-                return { ok: true };
-              }}
-            />
-          </>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={
+                !ready ||
+                pending ||
+                ownerLocked ||
+                (password.length > 0 && password.length < 8)
+              }
+            >
+              {pending ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+
+        {/* Extra safety gate for the one destructive toggle. It only stages
+            the change (the switch flips on); "Save changes" still commits.
+            Kept OUTSIDE the form above: it renders its own form, and a submit
+            from a portalled subtree still propagates up the React tree. */}
+        {ready && (
+          <ConfirmAction
+            open={confirmSuspend}
+            onOpenChange={setConfirmSuspend}
+            title={`Suspend @${user.username}?`}
+            description="This blocks the account from signing in. Team memberships are kept and you can reactivate at any time. Takes effect when you save your changes."
+            confirmLabel="Suspend account"
+            onConfirm={async () => {
+              setSuspended(true);
+              return { ok: true };
+            }}
+          />
         )}
-
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={save}
-            disabled={
-              !ready ||
-              pending ||
-              ownerLocked ||
-              (password.length > 0 && password.length < 8)
-            }
-          >
-            {pending ? "Saving…" : "Save changes"}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

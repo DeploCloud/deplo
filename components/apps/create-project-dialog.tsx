@@ -35,6 +35,11 @@ export function CreateProjectDialog({
   const [name, setName] = React.useState("");
   const [color, setColor] = React.useState<string | null>(null);
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    create();
+  }
+
   function create() {
     if (!name.trim()) return;
     startTransition(async () => {
@@ -74,28 +79,29 @@ export function CreateProjectDialog({
             into it afterward.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="new-project-name">Project name</Label>
-            <Input
-              id="new-project-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && create()}
-              placeholder="e.g. Acme Platform"
-              autoFocus
-            />
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-project-name">Project name</Label>
+              <Input
+                id="new-project-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Acme Platform"
+                autoFocus
+              />
+            </div>
+            <FolderColorPicker value={color} onChange={setColor} idPrefix="new-project" />
           </div>
-          <FolderColorPicker value={color} onChange={setColor} idPrefix="new-project" />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={create} disabled={pending || !name.trim()}>
-            {pending ? "Creating…" : "Create project"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending || !name.trim()}>
+              {pending ? "Creating…" : "Create project"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

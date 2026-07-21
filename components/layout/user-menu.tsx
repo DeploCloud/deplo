@@ -28,6 +28,7 @@ export function UserMenu({ user }: { user: PublicUser }) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
+          type="button"
           className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Account menu"
         >

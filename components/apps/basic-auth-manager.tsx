@@ -192,6 +192,11 @@ function BasicAuthDialog({
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       const res = editing
@@ -239,44 +244,46 @@ function BasicAuthDialog({
               : "This credential will be required on every domain of the app."}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Username</Label>
-            <Input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="alice"
-              className="font-mono text-sm"
-              disabled={!!editing}
-              autoComplete="off"
-            />
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Username</Label>
+              <Input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="alice"
+                className="font-mono text-sm"
+                disabled={!!editing}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Password</Label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={editing ? "Enter a new password" : "Password"}
+                autoComplete="new-password"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Password</Label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={editing ? "Enter a new password" : "Password"}
-              autoComplete="new-password"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={submit}
-            disabled={pending || !password.trim() || (!editing && !username.trim())}
-          >
-            {pending ? "Saving…" : "Save"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={pending || !password.trim() || (!editing && !username.trim())}
+            >
+              {pending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

@@ -41,6 +41,11 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
   const [createdToken, setCreatedToken] = React.useState<string | null>(null);
   const [revokeId, setRevokeId] = React.useState<string | null>(null);
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    create();
+  }
+
   function create() {
     startTransition(async () => {
       const res = await gqlAction<
@@ -85,27 +90,29 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
                 Give it a descriptive name so you can revoke it later.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-2">
-              <Label htmlFor="token-name">Name</Label>
-              <Input
-                id="token-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="CI deploy token"
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setCreateOpen(false)}
-                disabled={pending}
-              >
-                Cancel
-              </Button>
-              <Button onClick={create} disabled={pending || !name.trim()}>
-                {pending ? "Creating…" : "Create token"}
-              </Button>
-            </DialogFooter>
+            <form className="grid gap-4" onSubmit={onSubmit}>
+              <div className="space-y-2">
+                <Label htmlFor="token-name">Name</Label>
+                <Input
+                  id="token-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="CI deploy token"
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setCreateOpen(false)}
+                  disabled={pending}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={pending || !name.trim()}>
+                  {pending ? "Creating…" : "Create token"}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </div>

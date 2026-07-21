@@ -143,6 +143,11 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
 
   const meta = TYPE_META[type];
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -175,83 +180,85 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
           Use an access token where possible instead of a password.
         </DialogDescription>
       </DialogHeader>
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Label>Name</Label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="My registry"
-          />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
+      <form className="grid gap-4" onSubmit={onSubmit}>
+        <div className="space-y-4">
           <div className="space-y-2">
-            <FieldLabel info="The registry provider. Selecting one sets the default host and a matching username placeholder.">
-              Type
-            </FieldLabel>
-            <Select value={type} onValueChange={(v) => setType(v as RegistryType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(Object.keys(TYPE_META) as RegistryType[]).map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {TYPE_META[t].label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My registry"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <FieldLabel info="The registry provider. Selecting one sets the default host and a matching username placeholder.">
+                Type
+              </FieldLabel>
+              <Select value={type} onValueChange={(v) => setType(v as RegistryType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(TYPE_META) as RegistryType[]).map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {TYPE_META[t].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <FieldLabel
+                info={
+                  <>
+                    Hostname of the registry to authenticate against, such as{" "}
+                    <code className="font-mono">ghcr.io</code>. Leave blank to use
+                    the selected provider&apos;s default host.
+                  </>
+                }
+              >
+                Registry host
+              </FieldLabel>
+              <Input
+                value={registryUrl}
+                onChange={(e) => setRegistryUrl(e.target.value)}
+                placeholder={meta.host || "registry.example.com"}
+                className="font-mono text-sm"
+              />
+            </div>
           </div>
           <div className="space-y-2">
-            <FieldLabel
-              info={
-                <>
-                  Hostname of the registry to authenticate against, such as{" "}
-                  <code className="font-mono">ghcr.io</code>. Leave blank to use
-                  the selected provider&apos;s default host.
-                </>
-              }
-            >
-              Registry host
+            <FieldLabel info="The account name used to sign in to the selected registry.">
+              Username
             </FieldLabel>
             <Input
-              value={registryUrl}
-              onChange={(e) => setRegistryUrl(e.target.value)}
-              placeholder={meta.host || "registry.example.com"}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder={meta.userPlaceholder}
+              className="font-mono text-sm"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Password or access token</Label>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
               className="font-mono text-sm"
             />
           </div>
         </div>
-        <div className="space-y-2">
-          <FieldLabel info="The account name used to sign in to the selected registry.">
-            Username
-          </FieldLabel>
-          <Input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder={meta.userPlaceholder}
-            className="font-mono text-sm"
-          />
-        </div>
-        <div className="space-y-2">
-          <Label>Password or access token</Label>
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            className="font-mono text-sm"
-          />
-        </div>
-      </div>
-      <DialogFooter>
-        <Button
-          onClick={submit}
-          disabled={pending || !name.trim() || !username.trim() || !password}
-        >
-          {pending ? "Adding…" : "Add registry"}
-        </Button>
-      </DialogFooter>
+        <DialogFooter>
+          <Button
+            type="submit"
+            disabled={pending || !name.trim() || !username.trim() || !password}
+          >
+            {pending ? "Adding…" : "Add registry"}
+          </Button>
+        </DialogFooter>
+      </form>
     </DialogContent>
   );
 }

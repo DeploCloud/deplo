@@ -50,6 +50,11 @@ export function CreateFolderDialog({
     setColor(null);
   }
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    create();
+  }
+
   function create() {
     if (!name.trim()) return;
     startTransition(async () => {
@@ -89,39 +94,40 @@ export function CreateFolderDialog({
               "Folders group apps on the Overview. Drag an app onto a folder — or use a card's menu — to move it in."}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="new-folder-name">Folder name</Label>
-            <Input
-              id="new-folder-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && create()}
-              placeholder="Production, Clients, Internal…"
-              autoFocus
-            />
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-folder-name">Folder name</Label>
+              <Input
+                id="new-folder-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Production, Clients, Internal…"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Colour</Label>
+              <FolderColorPicker
+                value={color}
+                onChange={setColor}
+                idPrefix="new-folder"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Colour</Label>
-            <FolderColorPicker
-              value={color}
-              onChange={setColor}
-              idPrefix="new-folder"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button onClick={create} disabled={pending || !name.trim()}>
-            {pending ? "Creating…" : "Create folder"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending || !name.trim()}>
+              {pending ? "Creating…" : "Create folder"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

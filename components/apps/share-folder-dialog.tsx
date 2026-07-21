@@ -194,6 +194,14 @@ export function ShareFolderDialog({
     });
   }
 
+  // Enter submits the step the dialog is actually on: `save` no-ops until a
+  // candidate is picked, so Enter in the search field just stays put (the
+  // candidate buttons handle their own Enter natively — they're type="button").
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    save();
+  }
+
   function save() {
     if (!picked) return;
     // `view` is always implied by the server; send the ticked caps as-is.
@@ -342,172 +350,183 @@ export function ShareFolderDialog({
           )}
         </div>
 
-        {/* Add a person */}
-        <div className="space-y-3 border-t border-border pt-4">
-          {!picked ? (
-            <>
-              <Label>Add someone</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search by username…"
-                  className="pl-9"
-                />
-              </div>
-              <div className="min-h-20 max-h-44 space-y-1 overflow-y-auto">
-                {searching && (
-                  <div className="space-y-1" aria-hidden>
-                    {[0, 1].map((i) => (
-                      <div key={i} className="flex items-center gap-3 px-2 py-2">
-                        <Skeleton
-                          shimmer
-                          className="size-8 shrink-0 rounded-full"
-                        />
-                        <Skeleton shimmer className="h-3.5 w-28 rounded" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {!searching && candidates.length === 0 && (
-                  <p className="px-1 py-2 text-sm text-muted-foreground">
-                    {query.trim()
-                      ? "No matching members."
-                      : "No members left to add."}
-                  </p>
-                )}
-                {candidates.map((c) => (
-                  <button
-                    key={c.userId}
-                    onClick={() => pickCandidate(c)}
-                    className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left hover:border-border hover:bg-accent"
-                  >
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          {/* Add a person */}
+          <div className="space-y-3 border-t border-border pt-4">
+            {!picked ? (
+              <>
+                <Label>Add someone</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search by username…"
+                    className="pl-9"
+                  />
+                </div>
+                <div className="min-h-20 max-h-44 space-y-1 overflow-y-auto">
+                  {searching && (
+                    <div className="space-y-1" aria-hidden>
+                      {[0, 1].map((i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-3 px-2 py-2"
+                        >
+                          <Skeleton
+                            shimmer
+                            className="size-8 shrink-0 rounded-full"
+                          />
+                          <Skeleton shimmer className="h-3.5 w-28 rounded" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!searching && candidates.length === 0 && (
+                    <p className="px-1 py-2 text-sm text-muted-foreground">
+                      {query.trim()
+                        ? "No matching members."
+                        : "No members left to add."}
+                    </p>
+                  )}
+                  {candidates.map((c) => (
+                    <button
+                      type="button"
+                      key={c.userId}
+                      onClick={() => pickCandidate(c)}
+                      className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left hover:border-border hover:bg-accent"
+                    >
+                      <Avatar className="size-8">
+                        <AvatarFallback
+                          style={{
+                            backgroundColor: c.avatarColor,
+                            color: "#000",
+                          }}
+                        >
+                          {initials(c.username)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="flex flex-col">
+                        <span className="text-sm font-medium">
+                          @{c.username}
+                        </span>
+                        {c.name && (
+                          <span className="text-xs text-muted-foreground">
+                            {c.name}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                  <div className="flex items-center gap-3">
                     <Avatar className="size-8">
                       <AvatarFallback
-                        style={{ backgroundColor: c.avatarColor, color: "#000" }}
+                        style={{
+                          backgroundColor: picked.avatarColor,
+                          color: "#000",
+                        }}
                       >
-                        {initials(c.username)}
+                        {initials(picked.username)}
                       </AvatarFallback>
                     </Avatar>
-                    <span className="flex flex-col">
-                      <span className="text-sm font-medium">@{c.username}</span>
-                      {c.name && (
-                        <span className="text-xs text-muted-foreground">
-                          {c.name}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div className="flex items-center gap-3">
-                  <Avatar className="size-8">
-                    <AvatarFallback
-                      style={{
-                        backgroundColor: picked.avatarColor,
-                        color: "#000",
-                      }}
-                    >
-                      {initials(picked.username)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="text-sm font-medium">@{picked.username}</p>
-                    {picked.name && (
-                      <p className="text-xs text-muted-foreground">
-                        {picked.name}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setPicked(null)}
-                >
-                  Change
-                </Button>
-              </div>
-
-              <div className="space-y-2">
-                <FieldLabel info="You can only grant capabilities you hold yourself on this folder. View access is always included and can't be removed.">
-                  What can they do?
-                </FieldLabel>
-                {/* `view` is implied, always on — shown as a fixed, disabled row
-                    rather than a togglable box. */}
-                <div className="flex items-start gap-3 rounded-md px-1 py-1.5 opacity-70">
-                  <input
-                    type="checkbox"
-                    checked
-                    disabled
-                    className="mt-0.5 size-4 accent-primary"
-                  />
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-medium leading-none">
-                      {CAPABILITY_META.view.label}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {CAPABILITY_META.view.description}
-                    </p>
-                  </div>
-                </div>
-                {togglableCaps.map((cap) => {
-                  const id = `sharecap-${folderId}-${cap}`;
-                  return (
-                    <label
-                      key={cap}
-                      htmlFor={id}
-                      className="flex cursor-pointer items-start gap-3 rounded-md px-1 py-1.5 hover:bg-accent"
-                    >
-                      <input
-                        id={id}
-                        type="checkbox"
-                        checked={caps.has(cap)}
-                        onChange={(e) => toggleCap(cap, e.target.checked)}
-                        className="mt-0.5 size-4 accent-primary"
-                      />
-                      <div className="space-y-0.5">
-                        <p className="text-sm font-medium leading-none">
-                          {CAPABILITY_META[cap].label}
-                        </p>
+                    <div>
+                      <p className="text-sm font-medium">@{picked.username}</p>
+                      {picked.name && (
                         <p className="text-xs text-muted-foreground">
-                          {CAPABILITY_META[cap].description}
+                          {picked.name}
                         </p>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPicked(null)}
+                  >
+                    Change
+                  </Button>
+                </div>
 
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
-            Close
-          </Button>
-          {picked && (
-            <Button onClick={save} disabled={pending}>
-              {pending ? (
-                "Sharing…"
-              ) : (
-                <>
-                  <Check className="size-4" />
-                  Share
-                </>
-              )}
+                <div className="space-y-2">
+                  <FieldLabel info="You can only grant capabilities you hold yourself on this folder. View access is always included and can't be removed.">
+                    What can they do?
+                  </FieldLabel>
+                  {/* `view` is implied, always on — shown as a fixed, disabled row
+                      rather than a togglable box. */}
+                  <div className="flex items-start gap-3 rounded-md px-1 py-1.5 opacity-70">
+                    <input
+                      type="checkbox"
+                      checked
+                      disabled
+                      className="mt-0.5 size-4 accent-primary"
+                    />
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium leading-none">
+                        {CAPABILITY_META.view.label}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {CAPABILITY_META.view.description}
+                      </p>
+                    </div>
+                  </div>
+                  {togglableCaps.map((cap) => {
+                    const id = `sharecap-${folderId}-${cap}`;
+                    return (
+                      <label
+                        key={cap}
+                        htmlFor={id}
+                        className="flex cursor-pointer items-start gap-3 rounded-md px-1 py-1.5 hover:bg-accent"
+                      >
+                        <input
+                          id={id}
+                          type="checkbox"
+                          checked={caps.has(cap)}
+                          onChange={(e) => toggleCap(cap, e.target.checked)}
+                          className="mt-0.5 size-4 accent-primary"
+                        />
+                        <div className="space-y-0.5">
+                          <p className="text-sm font-medium leading-none">
+                            {CAPABILITY_META[cap].label}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {CAPABILITY_META[cap].description}
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
+              Close
             </Button>
-          )}
-        </DialogFooter>
+            {picked && (
+              <Button type="submit" disabled={pending}>
+                {pending ? (
+                  "Sharing…"
+                ) : (
+                  <>
+                    <Check className="size-4" />
+                    Share
+                  </>
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

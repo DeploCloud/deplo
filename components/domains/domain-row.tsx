@@ -137,6 +137,11 @@ export function DomainRow({
     setEditOpen(true);
   }
 
+  function onSubmitEdit(e: React.FormEvent) {
+    e.preventDefault();
+    saveEdit();
+  }
+
   function saveEdit() {
     const trimmedName = name.trim();
     if (trimmedName.length < 3) {
@@ -509,42 +514,44 @@ export function DomainRow({
                 otherwise on the next deploy.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor={`edit-name-${domain.id}`}
-                  info="Fully-qualified hostname, e.g. app.example.com. Its DNS A record must point at this server to verify."
-                >
-                  Domain
-                </FieldLabel>
-                <Input
-                  id={`edit-name-${domain.id}`}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="app.example.com"
-                  className="font-mono text-sm"
+            <form className="grid gap-4" onSubmit={onSubmitEdit}>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <FieldLabel
+                    htmlFor={`edit-name-${domain.id}`}
+                    info="Fully-qualified hostname, e.g. app.example.com. Its DNS A record must point at this server to verify."
+                  >
+                    Domain
+                  </FieldLabel>
+                  <Input
+                    id={`edit-name-${domain.id}`}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="app.example.com"
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <DomainConfigFields
+                  state={config}
+                  onChange={setConfig}
+                  services={services}
+                  idPrefix={`edit-${domain.id}`}
+                  proxied={proxied}
                 />
               </div>
-              <DomainConfigFields
-                state={config}
-                onChange={setConfig}
-                services={services}
-                idPrefix={`edit-${domain.id}`}
-                proxied={proxied}
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setEditOpen(false)}
-                disabled={pending}
-              >
-                Cancel
-              </Button>
-              <Button onClick={saveEdit} disabled={pending || !name.trim()}>
-                {pending ? "Saving…" : "Save changes"}
-              </Button>
-            </DialogFooter>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setEditOpen(false)}
+                  disabled={pending}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={pending || !name.trim()}>
+                  {pending ? "Saving…" : "Save changes"}
+                </Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </TableCell>

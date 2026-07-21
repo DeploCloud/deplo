@@ -33,6 +33,11 @@ export function CreateTeamDialog({
   const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    create();
+  }
+
   function create() {
     startTransition(async () => {
       const res = await gqlAction<{ createTeam: Team }, Team>(
@@ -68,28 +73,30 @@ export function CreateTeamDialog({
             members. You&apos;ll be its owner and it becomes your active team.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-2">
-          <Label htmlFor="new-team-name">Team name</Label>
-          <Input
-            id="new-team-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Acme Inc"
-            autoFocus
-          />
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button onClick={create} disabled={pending || !name.trim()}>
-            {pending ? "Creating…" : "Create team"}
-          </Button>
-        </DialogFooter>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-2">
+            <Label htmlFor="new-team-name">Team name</Label>
+            <Input
+              id="new-team-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Acme Inc"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending || !name.trim()}>
+              {pending ? "Creating…" : "Create team"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

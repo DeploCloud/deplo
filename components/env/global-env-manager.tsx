@@ -250,6 +250,11 @@ function GlobalEnvDialog({
   );
   const [secret, setSecret] = React.useState(editing?.type === "secret");
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       const res = await gqlAction<Record<string, { id: string }>>(
@@ -277,75 +282,77 @@ function GlobalEnvDialog({
             Injected into every app of every team on this instance.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor="ge-key"
-              info={
-                <>
-                  The environment variable name injected into deployments, e.g.{" "}
-                  <code className="font-mono">API_BASE_URL</code>. It can&apos;t
-                  be renamed after the variable is created.
-                </>
-              }
-            >
-              Key
-            </FieldLabel>
-            {/* An explicit autoFocus keeps the Dialog's own "focus the first
-                tabbable element" from landing on the label's info button. */}
-            <Input
-              id="ge-key"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder="API_BASE_URL"
-              className="font-mono text-sm"
-              disabled={!!editing}
-              autoFocus={!editing}
-            />
-          </div>
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor="ge-value"
-              info={
-                editing?.masked
-                  ? "Leave the mask to keep the current secret; type to replace it."
-                  : undefined
-              }
-            >
-              Value
-            </FieldLabel>
-            <Input
-              id="ge-value"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              className="font-mono text-sm"
-              // Editing: the key is disabled, so the value is the first thing to
-              // put the caret in.
-              autoFocus={!!editing}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="ge-secret">Secret</Label>
-              <p className="text-xs text-muted-foreground">
-                Encrypted at rest and never shown again.
-              </p>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="ge-key"
+                info={
+                  <>
+                    The environment variable name injected into deployments, e.g.{" "}
+                    <code className="font-mono">API_BASE_URL</code>. It can&apos;t
+                    be renamed after the variable is created.
+                  </>
+                }
+              >
+                Key
+              </FieldLabel>
+              {/* An explicit autoFocus keeps the Dialog's own "focus the first
+                  tabbable element" from landing on the label's info button. */}
+              <Input
+                id="ge-key"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                placeholder="API_BASE_URL"
+                className="font-mono text-sm"
+                disabled={!!editing}
+                autoFocus={!editing}
+              />
             </div>
-            <Switch id="ge-secret" checked={secret} onCheckedChange={setSecret} />
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="ge-value"
+                info={
+                  editing?.masked
+                    ? "Leave the mask to keep the current secret; type to replace it."
+                    : undefined
+                }
+              >
+                Value
+              </FieldLabel>
+              <Input
+                id="ge-value"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                className="font-mono text-sm"
+                // Editing: the key is disabled, so the value is the first thing to
+                // put the caret in.
+                autoFocus={!!editing}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="ge-secret">Secret</Label>
+                <p className="text-xs text-muted-foreground">
+                  Encrypted at rest and never shown again.
+                </p>
+              </div>
+              <Switch id="ge-secret" checked={secret} onCheckedChange={setSecret} />
+            </div>
           </div>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending || !key.trim() || !value}>
-            {pending ? "Saving…" : "Save"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending || !key.trim() || !value}>
+              {pending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

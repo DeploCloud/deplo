@@ -219,6 +219,11 @@ export function FileExplorer({ appId }: { appId: string }) {
     }
   }
 
+  function onCreateSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    create();
+  }
+
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow re-selecting the same file
@@ -302,6 +307,7 @@ export function FileExplorer({ appId }: { appId: string }) {
         {/* Breadcrumb */}
         <div className="flex items-center gap-1 text-sm text-muted-foreground">
           <button
+            type="button"
             className="flex cursor-pointer items-center gap-1 hover:text-foreground"
             onClick={() => setDir("")}
           >
@@ -315,6 +321,7 @@ export function FileExplorer({ appId }: { appId: string }) {
               <React.Fragment key={target}>
                 <ChevronRight className="size-3.5" />
                 <button
+                  type="button"
                   className={cn(
                     "cursor-pointer hover:text-foreground",
                     isLast && "text-foreground",
@@ -400,6 +407,7 @@ export function FileExplorer({ appId }: { appId: string }) {
               )}
             >
               <button
+                type="button"
                 className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
                 onClick={() =>
                   entry.kind === "dir" ? setDir(entry.path) : openFile(entry)
@@ -446,29 +454,28 @@ export function FileExplorer({ appId }: { appId: string }) {
               .
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="new-entry-name">Name</Label>
-            <Input
-              id="new-entry-name"
-              autoFocus
-              value={newName}
-              placeholder={
-                creating === "folder" ? "config" : "config.toml"
-              }
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") create();
-              }}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreating(null)}>
-              Cancel
-            </Button>
-            <Button onClick={create} disabled={!newName.trim()}>
-              Create
-            </Button>
-          </DialogFooter>
+          <form className="grid gap-4" onSubmit={onCreateSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor="new-entry-name">Name</Label>
+              <Input
+                id="new-entry-name"
+                autoFocus
+                value={newName}
+                placeholder={
+                  creating === "folder" ? "config" : "config.toml"
+                }
+                onChange={(e) => setNewName(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreating(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!newName.trim()}>
+                Create
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

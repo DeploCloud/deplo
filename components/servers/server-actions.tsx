@@ -164,6 +164,11 @@ export function ServerActions({
     setAccessOpen(true);
   }
 
+  function onSubmitAccess(e: React.FormEvent) {
+    e.preventDefault();
+    saveAccess();
+  }
+
   function saveAccess() {
     startTransition(async () => {
       const res = await gqlAction<{ setServerTeams: { id: string } }>(
@@ -196,6 +201,11 @@ export function ServerActions({
   function openConcurrency() {
     setConcurrency(String(deployConcurrency));
     setConcurrencyOpen(true);
+  }
+
+  function onSubmitConcurrency(e: React.FormEvent) {
+    e.preventDefault();
+    saveConcurrency();
   }
 
   function saveConcurrency() {
@@ -424,24 +434,26 @@ export function ServerActions({
               delete those first.
             </DialogDescription>
           </DialogHeader>
-          <ServerTeamAccess
-            value={access}
-            teams={teams}
-            onChange={setAccess}
-            disabled={pending}
-          />
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setAccessOpen(false)}
+          <form className="grid gap-4" onSubmit={onSubmitAccess}>
+            <ServerTeamAccess
+              value={access}
+              teams={teams}
+              onChange={setAccess}
               disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={() => saveAccess()} disabled={pending}>
-              {pending ? "Saving…" : "Save access"}
-            </Button>
-          </DialogFooter>
+            />
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setAccessOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending}>
+                {pending ? "Saving…" : "Save access"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -459,36 +471,38 @@ export function ServerActions({
               are unaffected and run in parallel.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor="deploy-concurrency"
-              info="1 means one deploy at a time on this server (the safe default). Two deploys of the same app never run at once regardless of this value."
-            >
-              Concurrent deployments
-            </FieldLabel>
-            <Input
-              id="deploy-concurrency"
-              type="number"
-              min={1}
-              max={50}
-              value={concurrency}
-              onChange={(e) => setConcurrency(e.target.value)}
-              disabled={pending}
-              className="w-28"
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConcurrencyOpen(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={() => saveConcurrency()} disabled={pending}>
-              {pending ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
+          <form className="grid gap-4" onSubmit={onSubmitConcurrency}>
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="deploy-concurrency"
+                info="1 means one deploy at a time on this server (the safe default). Two deploys of the same app never run at once regardless of this value."
+              >
+                Concurrent deployments
+              </FieldLabel>
+              <Input
+                id="deploy-concurrency"
+                type="number"
+                min={1}
+                max={50}
+                value={concurrency}
+                onChange={(e) => setConcurrency(e.target.value)}
+                disabled={pending}
+                className="w-28"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setConcurrencyOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending}>
+                {pending ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

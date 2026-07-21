@@ -247,6 +247,11 @@ function EditBackupDialog({
   const [schedule, setSchedule] = React.useState(backup.schedule);
   const [retention, setRetention] = React.useState(backup.retentionDays);
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -277,67 +282,69 @@ function EditBackupDialog({
             can&apos;t be changed.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <FieldLabel info="Where backup files are uploaded, chosen from your configured storage destinations.">
-              Destination
-            </FieldLabel>
-            <Select value={destinationId} onValueChange={setDestinationId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {destinations.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
             <div className="space-y-2">
-              <FieldLabel info="Standard cron expression (UTC).">
-                Schedule (cron)
-              </FieldLabel>
-              <Input
-                value={schedule}
-                onChange={(e) => setSchedule(e.target.value)}
-                className="font-mono text-xs"
-              />
+              <Label>Name</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <FieldLabel info="How many days to keep each backup before it's pruned.">
-                Retention (days)
+              <FieldLabel info="Where backup files are uploaded, chosen from your configured storage destinations.">
+                Destination
               </FieldLabel>
-              <Input
-                type="number"
-                value={retention}
-                onChange={(e) => setRetention(Number(e.target.value) || 7)}
-                min={1}
-              />
+              <Select value={destinationId} onValueChange={setDestinationId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {destinations.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <FieldLabel info="Standard cron expression (UTC).">
+                  Schedule (cron)
+                </FieldLabel>
+                <Input
+                  value={schedule}
+                  onChange={(e) => setSchedule(e.target.value)}
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="space-y-2">
+                <FieldLabel info="How many days to keep each backup before it's pruned.">
+                  Retention (days)
+                </FieldLabel>
+                <Input
+                  type="number"
+                  value={retention}
+                  onChange={(e) => setRetention(Number(e.target.value) || 7)}
+                  min={1}
+                />
+              </div>
             </div>
           </div>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={submit}
-            disabled={pending || !name.trim() || !destinationId}
-          >
-            {pending ? "Saving…" : "Save changes"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={pending || !name.trim() || !destinationId}
+            >
+              {pending ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

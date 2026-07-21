@@ -90,6 +90,11 @@ export function EnvironmentSwitcher({
     router.replace(`/?${params.toString()}`);
   }
 
+  function onAddSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    add();
+  }
+
   function add() {
     if (!addName.trim()) return;
     startTransition(async () => {
@@ -104,6 +109,11 @@ export function EnvironmentSwitcher({
         router.refresh();
       } else toast.error(res.error);
     });
+  }
+
+  function onRenameSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    rename();
   }
 
   function rename() {
@@ -240,29 +250,30 @@ export function EnvironmentSwitcher({
           <DialogHeader>
             <DialogTitle>New environment</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="add-env-name">Environment name</Label>
-            <Input
-              id="add-env-name"
-              value={addName}
-              onChange={(e) => setAddName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && add()}
-              placeholder="e.g. Staging"
-              autoFocus
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setAddOpen(false)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={add} disabled={pending || !addName.trim()}>
-              {pending ? "Adding…" : "Add"}
-            </Button>
-          </DialogFooter>
+          <form className="grid gap-4" onSubmit={onAddSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor="add-env-name">Environment name</Label>
+              <Input
+                id="add-env-name"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="e.g. Staging"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setAddOpen(false)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !addName.trim()}>
+                {pending ? "Adding…" : "Add"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -274,28 +285,29 @@ export function EnvironmentSwitcher({
           <DialogHeader>
             <DialogTitle>Rename environment</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="rename-env-name">Environment name</Label>
-            <Input
-              id="rename-env-name"
-              value={renameName}
-              onChange={(e) => setRenameName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && rename()}
-              autoFocus
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setRenameFor(null)}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={rename} disabled={pending || !renameName.trim()}>
-              {pending ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
+          <form className="grid gap-4" onSubmit={onRenameSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor="rename-env-name">Environment name</Label>
+              <Input
+                id="rename-env-name"
+                value={renameName}
+                onChange={(e) => setRenameName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setRenameFor(null)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending || !renameName.trim()}>
+                {pending ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

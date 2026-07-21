@@ -140,6 +140,11 @@ export function CreateDatabase({
     Number.isInteger(parsedPort) && parsedPort >= 1024 && parsedPort <= 65535;
   const exposeReady = !exposed || portValid;
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       const res = await gqlAction<{ createDatabase: { id: string } }, { id: string }>(
@@ -221,202 +226,204 @@ export function CreateDatabase({
             Spin up a managed database container on your server.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="db-name">Name</Label>
-            <Input
-              id="db-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="my-database"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Engine</Label>
-              <Select value={type} onValueChange={onTypeChange}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TYPES.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      <span className="flex items-center gap-2">
-                        <t.icon className="size-4 text-muted-foreground" />
-                        {t.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="db-name">Name</Label>
+              <Input
+                id="db-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="my-database"
+              />
             </div>
-            <div className="space-y-2">
-              <FieldLabel info="Any published Docker Hub tag works — suggestions load as you type. Pick the version your app targets.">
-                Version
-              </FieldLabel>
-              <DbVersionInput engine={type} value={version} onChange={setVersion} />
-            </div>
-          </div>
-          <div className="space-y-3 rounded-lg border border-border p-3">
-            <div>
-              <p className="text-sm font-medium">Credentials</p>
-              <p className="text-xs text-muted-foreground">
-                Optional. Leave blank to use generated defaults. These are set
-                only when the database is first created and can&apos;t be changed
-                later.
-              </p>
-            </div>
-            {creds.username && (
-              <div className="space-y-1.5">
-                <Label htmlFor="db-user">Username</Label>
-                <Input
-                  id="db-user"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder={creds.userDefault}
-                  autoComplete="off"
-                  className="font-mono"
-                />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Engine</Label>
+                <Select value={type} onValueChange={onTypeChange}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TYPES.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        <span className="flex items-center gap-2">
+                          <t.icon className="size-4 text-muted-foreground" />
+                          {t.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-            {creds.dbName && (
-              <div className="space-y-1.5">
-                <Label htmlFor="db-dbname">Database name</Label>
-                <Input
-                  id="db-dbname"
-                  value={dbName}
-                  onChange={(e) => setDbName(e.target.value)}
-                  placeholder={`db-${name || "my-database"}`}
-                  autoComplete="off"
-                  className="font-mono"
-                />
+              <div className="space-y-2">
+                <FieldLabel info="Any published Docker Hub tag works — suggestions load as you type. Pick the version your app targets.">
+                  Version
+                </FieldLabel>
+                <DbVersionInput engine={type} value={version} onChange={setVersion} />
               </div>
-            )}
-            {creds.password && (
-              <div className="space-y-1.5">
-                <Label htmlFor="db-pass">Password</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="db-pass"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="auto-generated"
-                    autoComplete="new-password"
-                    className="font-mono"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowPassword((s) => !s)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="size-4" />
-                    ) : (
-                      <Eye className="size-4" />
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setPassword(generatePassword());
-                      setShowPassword(true);
-                    }}
-                  >
-                    Generate
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-          {servers.length > 1 && (
-            <div className="space-y-2">
-              <Label>Server</Label>
-              <Select value={serverId} onValueChange={setServerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {servers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
-          )}
-          <div className="space-y-3 rounded-lg border border-border p-3">
-            <div className="flex items-center justify-between">
+            <div className="space-y-3 rounded-lg border border-border p-3">
               <div>
-                <p className="text-sm font-medium">Expose publicly</p>
+                <p className="text-sm font-medium">Credentials</p>
                 <p className="text-xs text-muted-foreground">
-                  Publish the port to the internet. Keep off unless required.
+                  Optional. Leave blank to use generated defaults. These are set
+                  only when the database is first created and can&apos;t be changed
+                  later.
                 </p>
               </div>
-              {canExposePorts ? (
-                <Switch checked={exposed} onCheckedChange={setExposed} />
-              ) : (
-                // No permission: the switch is disabled and can never be turned
-                // on, so the port field below never appears. A tooltip explains why.
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span tabIndex={0}>
-                      <Switch checked={false} disabled />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    You don&apos;t have permission to publish ports
-                  </TooltipContent>
-                </Tooltip>
+              {creds.username && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="db-user">Username</Label>
+                  <Input
+                    id="db-user"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder={creds.userDefault}
+                    autoComplete="off"
+                    className="font-mono"
+                  />
+                </div>
+              )}
+              {creds.dbName && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="db-dbname">Database name</Label>
+                  <Input
+                    id="db-dbname"
+                    value={dbName}
+                    onChange={(e) => setDbName(e.target.value)}
+                    placeholder={`db-${name || "my-database"}`}
+                    autoComplete="off"
+                    className="font-mono"
+                  />
+                </div>
+              )}
+              {creds.password && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="db-pass">Password</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="db-pass"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="auto-generated"
+                      autoComplete="new-password"
+                      className="font-mono"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowPassword((s) => !s)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="size-4" />
+                      ) : (
+                        <Eye className="size-4" />
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setPassword(generatePassword());
+                        setShowPassword(true);
+                      }}
+                    >
+                      Generate
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
-            {exposed && (
-              <div className="space-y-1.5">
-                <FieldLabel
-                  htmlFor="db-port"
-                  info="The port on the server clients connect to. Use an unprivileged port (1024–65535) that is free on the host, or click Generate."
-                >
-                  Host port
-                </FieldLabel>
-                <div className="flex gap-2">
-                  <Input
-                    id="db-port"
-                    inputMode="numeric"
-                    value={port}
-                    onChange={(e) =>
-                      setPort(e.target.value.replace(/[^0-9]/g, ""))
-                    }
-                    placeholder="e.g. 25432"
-                    aria-invalid={port !== "" && !portValid}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={generatePort}
-                    disabled={generatingPort || pending || !effectiveServerId}
-                  >
-                    {generatingPort ? "Finding…" : "Generate"}
-                  </Button>
-                </div>
+            {servers.length > 1 && (
+              <div className="space-y-2">
+                <Label>Server</Label>
+                <Select value={serverId} onValueChange={setServerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {servers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Expose publicly</p>
+                  <p className="text-xs text-muted-foreground">
+                    Publish the port to the internet. Keep off unless required.
+                  </p>
+                </div>
+                {canExposePorts ? (
+                  <Switch checked={exposed} onCheckedChange={setExposed} />
+                ) : (
+                  // No permission: the switch is disabled and can never be turned
+                  // on, so the port field below never appears. A tooltip explains why.
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span tabIndex={0}>
+                        <Switch checked={false} disabled />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      You don&apos;t have permission to publish ports
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+              {exposed && (
+                <div className="space-y-1.5">
+                  <FieldLabel
+                    htmlFor="db-port"
+                    info="The port on the server clients connect to. Use an unprivileged port (1024–65535) that is free on the host, or click Generate."
+                  >
+                    Host port
+                  </FieldLabel>
+                  <div className="flex gap-2">
+                    <Input
+                      id="db-port"
+                      inputMode="numeric"
+                      value={port}
+                      onChange={(e) =>
+                        setPort(e.target.value.replace(/[^0-9]/g, ""))
+                      }
+                      placeholder="e.g. 25432"
+                      aria-invalid={port !== "" && !portValid}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={generatePort}
+                      disabled={generatingPort || pending || !effectiveServerId}
+                    >
+                      {generatingPort ? "Finding…" : "Generate"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button
-            onClick={submit}
-            disabled={pending || !name.trim() || !effectiveServerId || !exposeReady}
-          >
-            {pending ? "Creating…" : "Create database"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={pending || !name.trim() || !effectiveServerId || !exposeReady}
+            >
+              {pending ? "Creating…" : "Create database"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

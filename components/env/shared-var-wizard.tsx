@@ -251,6 +251,17 @@ export function SharedVarDialog({
     );
   }
 
+  // Enter runs whatever the current step's primary button does: "Next" until the
+  // last step, "Save" on it.
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (last) {
+      if (canSave && !pending) save();
+    } else if (canGoOn) {
+      setStep(steps[index + 1]);
+    }
+  }
+
   function save() {
     startTransition(async () => {
       const res = await gqlAction<{ saveSharedVar: { id: string } }>(
@@ -282,7 +293,7 @@ export function SharedVarDialog({
           height is FIXED (not content-driven) so the stepper and the Back/Next
           buttons hold their place instead of jumping around as you move between a
           three-field form and a hundred app cards — only the middle row scrolls. */}
-      <DialogContent className="h-[min(90vh,52rem)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-3xl">
+      <DialogContent className="h-[min(90vh,52rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {editing ? "Edit shared variable" : "New shared variable"}
@@ -293,165 +304,167 @@ export function SharedVarDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Stepper
-          steps={steps}
-          current={steps[index]}
-          // A step is reachable once every step before it is complete — which,
-          // when editing, is all of them from the first render.
-          reachable={(s) => steps.slice(0, steps.indexOf(s)).every((p) => valid[p])}
-          onSelect={setStep}
-        />
+        <form
+          onSubmit={onSubmit}
+          className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-4 overflow-hidden"
+        >
+          <Stepper
+            steps={steps}
+            current={steps[index]}
+            // A step is reachable once every step before it is complete — which,
+            // when editing, is all of them from the first render.
+            reachable={(s) => steps.slice(0, steps.indexOf(s)).every((p) => valid[p])}
+            onSelect={setStep}
+          />
 
-        {/* The one scrolling row. The form steps keep a readable measure inside the
-            wide dialog; only Details (the card grids) uses the full width. */}
-        <div className="overflow-y-auto pr-1">
-        {steps[index] === "variable" && (
-          <div className="mx-auto w-full max-w-xl space-y-4">
-            <div className="space-y-2">
-              <FieldLabel info="The variable's name, exposed to apps during builds and at runtime. It can't be renamed once created.">
-                Key
-              </FieldLabel>
-              <Input
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                placeholder="DATABASE_URL"
-                aria-invalid={keyInvalid}
-                className={cn(
-                  "font-mono text-sm",
-                  keyInvalid && "border-destructive focus-visible:ring-destructive",
+          {/* The one scrolling row. The form steps keep a readable measure inside the
+              wide dialog; only Details (the card grids) uses the full width. */}
+          <div className="overflow-y-auto pr-1">
+          {steps[index] === "variable" && (
+            <div className="mx-auto w-full max-w-xl space-y-4">
+              <div className="space-y-2">
+                <FieldLabel info="The variable's name, exposed to apps during builds and at runtime. It can't be renamed once created.">
+                  Key
+                </FieldLabel>
+                <Input
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  placeholder="DATABASE_URL"
+                  aria-invalid={keyInvalid}
+                  className={cn(
+                    "font-mono text-sm",
+                    keyInvalid && "border-destructive focus-visible:ring-destructive",
+                  )}
+                  disabled={!!editing}
+                  autoFocus={!editing}
+                />
+                {keyInvalid && (
+                  <p className="text-xs text-destructive">
+                    “{key.trim()}” isn&apos;t a valid variable name. Names must start
+                    with a letter or underscore and contain only letters, digits and
+                    underscores.
+                  </p>
                 )}
-                disabled={!!editing}
-                autoFocus={!editing}
-              />
-              {keyInvalid && (
-                <p className="text-xs text-destructive">
-                  “{key.trim()}” isn&apos;t a valid variable name. Names must start
-                  with a letter or underscore and contain only letters, digits and
-                  underscores.
-                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Value</label>
+                <Textarea
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder={editing ? "Enter a new value" : "value"}
+                  rows={3}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div>
+                  <p className="text-sm font-medium">Secret</p>
+                  <p className="text-xs text-muted-foreground">
+                    Hide the value in the UI after saving. It can never be read back.
+                  </p>
+                </div>
+                <Switch checked={secret} onCheckedChange={setSecret} />
+              </div>
+            </div>
+          )}
+
+          {steps[index] === "scope" && (
+            <div className="mx-auto w-full max-w-xl space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Who is this variable for? Pick one or more — you&apos;ll fill in
+                the details next. Only “Specific apps” adds it somewhere right
+                away; the other scopes suggest it and each app opts in itself.
+              </p>
+              <div role="group" aria-label="Shared with" className="space-y-2">
+                {SCOPES.map((s) => (
+                  <ScopeCard
+                    key={s.id}
+                    title={s.title}
+                    blurb={s.blurb}
+                    icon={s.icon}
+                    selected={scopes.includes(s.id)}
+                    disabled={
+                      (s.id === "projects" && projects.length === 0) ||
+                      (s.id === "apps" && apps.length === 0)
+                    }
+                    disabledNote={
+                      s.id === "projects" ? "No projects yet." : "No apps yet."
+                    }
+                    onSelect={() => toggleScope(s.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {steps[index] === "details" && (
+            <div className="space-y-6">
+              {picked.projects && (
+                <ProjectsSection
+                  projects={projects}
+                  envsByProject={envsByProject}
+                  scopes={projectScopes}
+                  onChange={setProjectScopes}
+                />
+              )}
+              {picked.projects && picked.apps && (
+                <hr className="border-border" />
+              )}
+              {picked.apps && (
+                <AppsSection
+                  apps={apps}
+                  selected={appIds}
+                  onChange={setAppIds}
+                />
               )}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Value</label>
-              <Textarea
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder={editing ? "Enter a new value" : "value"}
-                rows={3}
-              />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div>
-                <p className="text-sm font-medium">Secret</p>
-                <p className="text-xs text-muted-foreground">
-                  Hide the value in the UI after saving. It can never be read back.
-                </p>
-              </div>
-              <Switch checked={secret} onCheckedChange={setSecret} />
-            </div>
-          </div>
-        )}
+          )}
 
-        {steps[index] === "scope" && (
-          <div className="mx-auto w-full max-w-xl space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Who is this variable for? Pick one or more — you&apos;ll fill in
-              the details next. Only “Specific apps” adds it somewhere right
-              away; the other scopes suggest it and each app opts in itself.
-            </p>
-            <div role="group" aria-label="Shared with" className="space-y-2">
-              {SCOPES.map((s) => (
-                <ScopeCard
-                  key={s.id}
-                  title={s.title}
-                  blurb={s.blurb}
-                  icon={s.icon}
-                  selected={scopes.includes(s.id)}
-                  disabled={
-                    (s.id === "projects" && projects.length === 0) ||
-                    (s.id === "apps" && apps.length === 0)
-                  }
-                  disabledNote={
-                    s.id === "projects" ? "No projects yet." : "No apps yet."
-                  }
-                  onSelect={() => toggleScope(s.id)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {steps[index] === "details" && (
-          <div className="space-y-6">
-            {picked.projects && (
-              <ProjectsSection
+          {steps[index] === "review" && (
+            <div className="mx-auto w-full max-w-xl">
+              <Review
+                varKey={key}
+                secret={secret}
+                teamWide={scoped.teamWide}
                 projects={projects}
-                envsByProject={envsByProject}
-                scopes={projectScopes}
-                onChange={setProjectScopes}
-              />
-            )}
-            {picked.projects && picked.apps && (
-              <hr className="border-border" />
-            )}
-            {picked.apps && (
-              <AppsSection
+                environments={environments}
+                projectScopes={picked.projects ? projectScopes : {}}
                 apps={apps}
-                selected={appIds}
-                onChange={setAppIds}
+                appIds={scoped.appIds}
               />
-            )}
+            </div>
+          )}
           </div>
-        )}
 
-        {steps[index] === "review" && (
-          <div className="mx-auto w-full max-w-xl">
-            <Review
-              varKey={key}
-              secret={secret}
-              teamWide={scoped.teamWide}
-              projects={projects}
-              environments={environments}
-              projectScopes={picked.projects ? projectScopes : {}}
-              apps={apps}
-              appIds={scoped.appIds}
-            />
-          </div>
-        )}
-        </div>
-
-        <DialogFooter className="sm:justify-between">
-          <Button
-            variant="ghost"
-            onClick={() => setStep(steps[index - 1])}
-            disabled={index === 0 || pending}
-          >
-            <ChevronLeft className="size-4" />
-            Back
-          </Button>
-          <div className="flex gap-2">
+          <DialogFooter className="sm:justify-between">
             <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={pending}
+              variant="ghost"
+              onClick={() => setStep(steps[index - 1])}
+              disabled={index === 0 || pending}
             >
-              Cancel
+              <ChevronLeft className="size-4" />
+              Back
             </Button>
-            {last ? (
-              <Button onClick={save} disabled={pending || !canSave}>
-                {pending ? "Saving…" : "Save"}
-              </Button>
-            ) : (
+            <div className="flex gap-2">
               <Button
-                onClick={() => setStep(steps[index + 1])}
-                disabled={!canGoOn}
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={pending}
               >
-                Next
-                <ChevronRight className="size-4" />
+                Cancel
               </Button>
-            )}
-          </div>
-        </DialogFooter>
+              {last ? (
+                <Button type="submit" disabled={pending || !canSave}>
+                  {pending ? "Saving…" : "Save"}
+                </Button>
+              ) : (
+                <Button type="submit" disabled={!canGoOn}>
+                  Next
+                  <ChevronRight className="size-4" />
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -632,6 +645,9 @@ function ProjectsSection({
           placeholder="Search projects…"
           aria-label="Search projects"
           className="h-9 pl-9"
+          // A filter box, not a field of the form: Enter here would otherwise
+          // advance the wizard mid-search.
+          onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
         />
       </div>
       {shown.length === 0 && (
@@ -811,6 +827,9 @@ function AppsSection({
           placeholder="Search apps by name or domain…"
           aria-label="Search apps"
           className="h-9 pl-9"
+          // A filter box, not a field of the form: Enter here would otherwise
+          // advance the wizard mid-search.
+          onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
         />
       </div>
       {shown.length === 0 ? (

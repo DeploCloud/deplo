@@ -76,6 +76,7 @@ export function DatabaseOverview({
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>Connection string</span>
               <button
+                type="button"
                 onClick={reveal}
                 disabled={pending}
                 className="flex cursor-pointer items-center gap-1 hover:text-foreground"

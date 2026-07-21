@@ -212,6 +212,11 @@ function BackUpNow({
   );
   const noDeps = destinations.length === 0;
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -262,31 +267,33 @@ function BackUpNow({
             immediately — no schedule needed.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-2">
-          <FieldLabel info="The S3 destination this backup is uploaded to.">
-            Destination
-          </FieldLabel>
-          <Select value={destinationId} onValueChange={setDestinationId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select…" />
-            </SelectTrigger>
-            <SelectContent>
-              {destinations.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending || !destinationId}>
-            {pending ? "Starting…" : "Start backup"}
-          </Button>
-        </DialogFooter>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-2">
+            <FieldLabel info="The S3 destination this backup is uploaded to.">
+              Destination
+            </FieldLabel>
+            <Select value={destinationId} onValueChange={setDestinationId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select…" />
+              </SelectTrigger>
+              <SelectContent>
+                {destinations.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending || !destinationId}>
+              {pending ? "Starting…" : "Start backup"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -313,6 +320,11 @@ function ScheduleBackup({
     retention: 14,
   });
   const noDeps = destinations.length === 0;
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
 
   function submit() {
     startTransition(async () => {
@@ -371,22 +383,24 @@ function ScheduleBackup({
             Periodically back up this app to an S3 destination.
           </DialogDescription>
         </DialogHeader>
-        <ScheduleFormFields
-          fields={fields}
-          onChange={setFields}
-          destinations={destinations}
-        />
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button
-            onClick={submit}
-            disabled={pending || !fields.name.trim() || !fields.destinationId}
-          >
-            {pending ? "Creating…" : "Create schedule"}
-          </Button>
-        </DialogFooter>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <ScheduleFormFields
+            fields={fields}
+            onChange={setFields}
+            destinations={destinations}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={pending || !fields.name.trim() || !fields.destinationId}
+            >
+              {pending ? "Creating…" : "Create schedule"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -497,6 +511,11 @@ function EditScheduleDialog({
     retention: schedule.retentionDays,
   });
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -531,22 +550,24 @@ function EditScheduleDialog({
             project it backs up can&apos;t be changed.
           </DialogDescription>
         </DialogHeader>
-        <ScheduleFormFields
-          fields={fields}
-          onChange={setFields}
-          destinations={destinations}
-        />
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button
-            onClick={submit}
-            disabled={pending || !fields.name.trim() || !fields.destinationId}
-          >
-            {pending ? "Saving…" : "Save changes"}
-          </Button>
-        </DialogFooter>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <ScheduleFormFields
+            fields={fields}
+            onChange={setFields}
+            destinations={destinations}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={pending || !fields.name.trim() || !fields.destinationId}
+            >
+              {pending ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

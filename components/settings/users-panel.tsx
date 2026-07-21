@@ -183,6 +183,7 @@ function UserRow({
 
   const card = (
     <button
+      type="button"
       onClick={() => setOpen(true)}
       className="flex min-w-0 flex-1 items-center gap-3 text-left"
     >

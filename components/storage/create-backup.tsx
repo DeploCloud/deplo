@@ -78,6 +78,11 @@ export function CreateBackup({
   // would point at nothing.
   const targetId = targetKind === "database" ? databaseId : appId;
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -139,145 +144,147 @@ export function CreateBackup({
             Periodically back up a database or an app to an S3 destination.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nightly Postgres backup"
-            />
-          </div>
-          {/* Target-kind toggle: a schedule backs up either a database or a
-              whole project (volumes + files + compose/env snapshot). */}
-          <div className="space-y-2">
-            <FieldLabel
-              info={
-                <>
-                  Choose whether this schedule backs up a database or an app.
-                  An app backup captures its volumes, files, and compose/env
-                  snapshot.
-                </>
-              }
-            >
-              Target
-            </FieldLabel>
-            <div className="grid grid-cols-2 gap-1 rounded-lg border border-border p-1">
-              <Button
-                type="button"
-                size="sm"
-                variant={targetKind === "database" ? "secondary" : "ghost"}
-                onClick={() => setTargetKind("database")}
-              >
-                Database
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={targetKind === "app" ? "secondary" : "ghost"}
-                onClick={() => setTargetKind("app")}
-              >
-                App
-              </Button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
             <div className="space-y-2">
-              {targetKind === "database" ? (
-                <>
-                  <Label>Database</Label>
-                  <Select value={databaseId} onValueChange={setDatabaseId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {databases.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </>
-              ) : (
-                <>
-                  <Label>App</Label>
-                  <Select value={appId} onValueChange={setAppId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {services.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </>
-              )}
+              <Label>Name</Label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nightly Postgres backup"
+              />
             </div>
-            <div className="space-y-2">
-              <FieldLabel info="The S3 destination where backup archives are uploaded and stored.">
-                Destination
-              </FieldLabel>
-              <Select value={destinationId} onValueChange={setDestinationId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {destinations.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+            {/* Target-kind toggle: a schedule backs up either a database or a
+                whole project (volumes + files + compose/env snapshot). */}
             <div className="space-y-2">
               <FieldLabel
                 info={
                   <>
-                    Standard cron expression (UTC). Defaults to{" "}
-                    <code className="font-mono">0 3 * * *</code> — daily at
-                    03:00.
+                    Choose whether this schedule backs up a database or an app.
+                    An app backup captures its volumes, files, and compose/env
+                    snapshot.
                   </>
                 }
               >
-                Schedule (cron)
+                Target
               </FieldLabel>
-              <Input
-                value={schedule}
-                onChange={(e) => setSchedule(e.target.value)}
-                className="font-mono text-xs"
-              />
+              <div className="grid grid-cols-2 gap-1 rounded-lg border border-border p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={targetKind === "database" ? "secondary" : "ghost"}
+                  onClick={() => setTargetKind("database")}
+                >
+                  Database
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={targetKind === "app" ? "secondary" : "ghost"}
+                  onClick={() => setTargetKind("app")}
+                >
+                  App
+                </Button>
+              </div>
             </div>
-            <div className="space-y-2">
-              <FieldLabel info="Number of days to keep each backup before it is automatically deleted.">
-                Retention (days)
-              </FieldLabel>
-              <Input
-                type="number"
-                value={retention}
-                onChange={(e) => setRetention(Number(e.target.value) || 7)}
-                min={1}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                {targetKind === "database" ? (
+                  <>
+                    <Label>Database</Label>
+                    <Select value={databaseId} onValueChange={setDatabaseId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {databases.map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                ) : (
+                  <>
+                    <Label>App</Label>
+                    <Select value={appId} onValueChange={setAppId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {services.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+              </div>
+              <div className="space-y-2">
+                <FieldLabel info="The S3 destination where backup archives are uploaded and stored.">
+                  Destination
+                </FieldLabel>
+                <Select value={destinationId} onValueChange={setDestinationId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {destinations.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <FieldLabel
+                  info={
+                    <>
+                      Standard cron expression (UTC). Defaults to{" "}
+                      <code className="font-mono">0 3 * * *</code> — daily at
+                      03:00.
+                    </>
+                  }
+                >
+                  Schedule (cron)
+                </FieldLabel>
+                <Input
+                  value={schedule}
+                  onChange={(e) => setSchedule(e.target.value)}
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="space-y-2">
+                <FieldLabel info="Number of days to keep each backup before it is automatically deleted.">
+                  Retention (days)
+                </FieldLabel>
+                <Input
+                  type="number"
+                  value={retention}
+                  onChange={(e) => setRetention(Number(e.target.value) || 7)}
+                  min={1}
+                />
+              </div>
             </div>
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button
-            onClick={submit}
-            disabled={pending || !name.trim() || !destinationId || !targetId}
-          >
-            {pending ? "Creating…" : "Create schedule"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={pending || !name.trim() || !destinationId || !targetId}
+            >
+              {pending ? "Creating…" : "Create schedule"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

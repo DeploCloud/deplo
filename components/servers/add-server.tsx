@@ -65,6 +65,14 @@ export function AddServer({
     setCommand(null);
   }
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    // Step two only reveals the install command (its footer button just closes),
+    // so Enter must not register the server a second time.
+    if (command) return;
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       const res = await gqlAction<{
@@ -123,69 +131,71 @@ export function AddServer({
           </DialogDescription>
         </DialogHeader>
 
-        {command ? (
-          <div className="space-y-2">
-            <Label>Install command (shown once)</Label>
-            <CommandLine command={command} />
-            <p className="text-muted-foreground text-xs">
-              The command embeds a single-use token that expires in about an
-              hour. It is shown only now; if you lose it, re-mint one from the
-              server&rsquo;s menu.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="srv-name">Display name</Label>
-              <Input
-                id="srv-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="eu-west-1"
-              />
-            </div>
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor="srv-host"
-                info="The address this control plane will reach the agent at, and where deployed apps for this server will be routed."
-              >
-                Host or IP
-              </FieldLabel>
-              <Input
-                id="srv-host"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                placeholder="203.0.113.24"
-                className="font-mono text-sm"
-              />
-            </div>
-            <ServerTeamAccess
-              value={access}
-              teams={teams}
-              onChange={setAccess}
-              disabled={pending}
-            />
-          </div>
-        )}
-
-        <DialogFooter>
+        <form className="grid gap-4" onSubmit={onSubmit}>
           {command ? (
-            <Button onClick={() => setOpen(false)}>Done</Button>
+            <div className="space-y-2">
+              <Label>Install command (shown once)</Label>
+              <CommandLine command={command} />
+              <p className="text-muted-foreground text-xs">
+                The command embeds a single-use token that expires in about an
+                hour. It is shown only now; if you lose it, re-mint one from the
+                server&rsquo;s menu.
+              </p>
+            </div>
           ) : (
-            <>
-              <Button
-                variant="outline"
-                onClick={() => setOpen(false)}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="srv-name">Display name</Label>
+                <Input
+                  id="srv-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="eu-west-1"
+                />
+              </div>
+              <div className="space-y-2">
+                <FieldLabel
+                  htmlFor="srv-host"
+                  info="The address this control plane will reach the agent at, and where deployed apps for this server will be routed."
+                >
+                  Host or IP
+                </FieldLabel>
+                <Input
+                  id="srv-host"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  placeholder="203.0.113.24"
+                  className="font-mono text-sm"
+                />
+              </div>
+              <ServerTeamAccess
+                value={access}
+                teams={teams}
+                onChange={setAccess}
                 disabled={pending}
-              >
-                Cancel
-              </Button>
-              <Button onClick={submit} disabled={pending || !host.trim()}>
-                {pending ? "Registering…" : "Register server"}
-              </Button>
-            </>
+              />
+            </div>
           )}
-        </DialogFooter>
+
+          <DialogFooter>
+            {command ? (
+              <Button onClick={() => setOpen(false)}>Done</Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setOpen(false)}
+                  disabled={pending}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={pending || !host.trim()}>
+                  {pending ? "Registering…" : "Register server"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

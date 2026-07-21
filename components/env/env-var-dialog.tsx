@@ -116,6 +116,11 @@ function EditForm({
   const keyValid = KEY_RE.test(trimmedKey);
   const renamed = trimmedKey !== editing.key;
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
+  }
+
   function submit() {
     startTransition(async () => {
       // A rename moves the row to its new key FIRST — it's keyed by id, so it can't
@@ -166,53 +171,55 @@ function EditForm({
             Update this variable&apos;s name or value.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <FieldLabel info="The variable's name, exposed to your app during builds and at runtime. Renaming it takes effect on the next deploy.">
-              Key
-            </FieldLabel>
-            <Input
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              spellCheck={false}
-              aria-invalid={trimmedKey !== "" && !keyValid}
-              className={cn(
-                "font-mono text-sm",
-                trimmedKey !== "" &&
-                  !keyValid &&
-                  "border-destructive text-destructive focus-visible:ring-destructive",
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <FieldLabel info="The variable's name, exposed to your app during builds and at runtime. Renaming it takes effect on the next deploy.">
+                Key
+              </FieldLabel>
+              <Input
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                spellCheck={false}
+                aria-invalid={trimmedKey !== "" && !keyValid}
+                className={cn(
+                  "font-mono text-sm",
+                  trimmedKey !== "" &&
+                    !keyValid &&
+                    "border-destructive text-destructive focus-visible:ring-destructive",
+                )}
+              />
+              {trimmedKey !== "" && !keyValid && (
+                <p className="text-xs text-destructive">
+                  Names must start with a letter or underscore and contain only
+                  letters, digits and underscores.
+                </p>
               )}
-            />
-            {trimmedKey !== "" && !keyValid && (
-              <p className="text-xs text-destructive">
-                Names must start with a letter or underscore and contain only
-                letters, digits and underscores.
-              </p>
-            )}
+            </div>
+            <div className="space-y-2">
+              <Label>Value</Label>
+              {/* Focus lands on the value, not the key: an edit far more often
+                  changes the value than renames — and it keeps the Dialog's initial
+                  focus off the info button next to the Key label. */}
+              <Textarea
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder="Enter a new value"
+                rows={3}
+                autoFocus
+              />
+            </div>
+            <SecretRow secret={secret} onChange={setSecret} />
           </div>
-          <div className="space-y-2">
-            <Label>Value</Label>
-            {/* Focus lands on the value, not the key: an edit far more often
-                changes the value than renames — and it keeps the Dialog's initial
-                focus off the info button next to the Key label. */}
-            <Textarea
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="Enter a new value"
-              rows={3}
-              autoFocus
-            />
-          </div>
-          <SecretRow secret={secret} onChange={setSecret} />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending || !keyValid}>
-            {pending ? "Saving…" : "Save"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending || !keyValid}>
+              {pending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -433,6 +440,11 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
     });
   }
 
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    save();
+  }
+
   function save() {
     startTransition(async () => {
       // No `targets` on either path: an App has no Environment of its own — it
@@ -480,7 +492,7 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
   }
 
   return (
-    <>
+    <form onSubmit={onSubmit}>
       {/* The body — the only thing that scrolls. */}
       <div className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}>
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
@@ -599,13 +611,13 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
           Cancel
         </Button>
         <Button
-          onClick={save}
+          type="submit"
           disabled={pending || filled.length === 0 || invalid.length > 0}
         >
           {pending ? "Saving…" : filled.length > 1 ? `Add ${filled.length}` : "Add"}
         </Button>
       </DialogFooter>
-    </>
+    </form>
   );
 }
 
