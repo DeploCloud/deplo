@@ -256,6 +256,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
               onChange={setConfig}
               services={services}
               idPrefix="add-domain"
+              hostname={name}
             />
           </div>
           <DialogFooter>

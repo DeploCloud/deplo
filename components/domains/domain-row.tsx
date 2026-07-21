@@ -537,6 +537,7 @@ export function DomainRow({
                   services={services}
                   idPrefix={`edit-${domain.id}`}
                   proxied={proxied}
+                  hostname={name}
                 />
               </div>
               <DialogFooter>
