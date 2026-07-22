@@ -1424,6 +1424,11 @@ type Mutation {
   revealInstanceEnv(id: String!): String
 
   """
+  The full registration URL of a link that is still pending — so the admin who minted it can hand it over again instead of minting a second one. Errors, rather than returning a dead URL, when the link was used, revoked, expired, or minted before the token was stored encrypted.
+  """
+  revealRegistrationLink(id: String!): String
+
+  """
   Reveal one shared variable's decrypted value (the `manage_env`-gated reveal; the UI keeps secrets masked).
   """
   revealSharedVar(id: String!): String
@@ -1935,10 +1940,19 @@ type Query {
 
 """A single-use link to register a new account."""
 type RegistrationLink {
+  """
+  The link can still be read back with revealRegistrationLink — pending, unexpired, and minted after the token started being stored encrypted.
+  """
+  canReveal: Boolean
   createdAt: String
   createdBy: String
   expiresAt: String
   id: ID
+
+  """
+  The link with its token blanked, for display while it is covered. Never carries the token.
+  """
+  linkMasked: String
   mode: RegistrationMode
   status: RegistrationLinkStatus
   teamNames: [String!]

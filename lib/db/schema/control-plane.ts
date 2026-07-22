@@ -423,6 +423,13 @@ export const registrationLinks = pgTable(
   {
     id: text("id").primaryKey(),
     tokenHash: text("token_hash").notNull(),
+    // The same token, encrypted, so the admin can copy the link again instead of
+    // minting a second one because they lost the first. The HASH is what the
+    // register page looks up (constant-time, and the only thing consulted when a
+    // link is consumed); this is a read-back path for the person who created it,
+    // gated on instance-admin like everything else about a link. NULL on links
+    // minted before migration 0048 — those can only be revoked and re-minted.
+    tokenEnc: text("token_enc"),
     status: text("status").notNull(),
     // How the registrant's team is decided: 'own_team' (they name + own a fresh
     // team at registration, the historical behavior) or 'existing_teams' (an

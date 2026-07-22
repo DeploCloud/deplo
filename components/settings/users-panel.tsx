@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   UserPlus,
-  LinkIcon,
   ShieldCheck,
   ShieldOff,
   Ban,
@@ -39,6 +38,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { EditUserDialog } from "@/components/settings/edit-user-dialog";
 import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
+import { RegistrationLinkRow } from "@/components/settings/registration-link-row";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
@@ -97,12 +97,12 @@ export function UsersPanel({
           <CardHeader>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
               Pending registration links
-              <InfoTip content="Single-use links that haven't been used yet." />
+              <InfoTip content="Single-use links that haven't been used yet. Each one works for 24 hours from the moment it was minted — copy it as often as you need until then, and revoke it if it goes astray." />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {pendingLinks.map((l) => (
-              <LinkRow key={l.id} link={l} />
+              <RegistrationLinkRow key={l.id} link={l} />
             ))}
           </CardContent>
         </Card>
@@ -338,7 +338,7 @@ function UserRow({
                 onSelect={() => setConfirmDelete(true)}
               >
                 <Trash2 className="size-4" />
-                Delete user…
+                Delete user
               </DropdownMenuItem>
             </SimpleTooltip>
             {canTransferTo && (
@@ -460,39 +460,3 @@ function UserRow({
   );
 }
 
-function LinkRow({ link }: { link: RegistrationLinkDTO }) {
-  const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  function revoke() {
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation ($id: String!) { revokeRegistrationLink(id: $id) }`,
-        { id: link.id },
-      );
-      if (res.ok) {
-        toast.success("Link revoked");
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
-  }
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-border p-3">
-      <div className="flex items-center gap-3">
-        <div className="flex size-9 items-center justify-center rounded-full bg-muted">
-          <LinkIcon className="size-4 text-muted-foreground" />
-        </div>
-        <div>
-          <p className="text-sm font-medium">Registration link</p>
-          <p className="text-xs text-muted-foreground">
-            Created by {link.createdBy}
-          </p>
-        </div>
-      </div>
-      <Button variant="ghost" size="sm" onClick={revoke} disabled={pending}>
-        Revoke
-      </Button>
-    </div>
-  );
-}

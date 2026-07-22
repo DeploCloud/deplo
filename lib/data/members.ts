@@ -24,7 +24,13 @@ import {
   users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
-import { sha256Hex, randomToken, hashPassword } from "../crypto";
+import {
+  sha256Hex,
+  randomToken,
+  hashPassword,
+  encryptSecret,
+  decryptSecret,
+} from "../crypto";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
 import { instanceOwnerUserId } from "./instance-owner";
@@ -142,6 +148,19 @@ export interface RegistrationLinkDTO {
   usedByUsername: string | null;
   expiresAt: string;
   createdAt: string;
+  /**
+   * The link can still be read back with {@link revealRegistrationLink} — it is
+   * pending, unexpired, and was minted after the token started being stored
+   * encrypted. False ⇒ the UI offers no reveal at all rather than a button that
+   * only errors.
+   */
+  canReveal: boolean;
+  /**
+   * What to show while the link is covered: the real URL with the token blanked
+   * (`https://deplo.example.com/register/••••••••`), so the host still reads at a
+   * glance. The token itself is NEVER in this string.
+   */
+  linkMasked: string;
 }
 
 /** Public, display-only view of a registration link for the /register page. */
@@ -856,6 +875,9 @@ export async function mintRegistrationLink(input: {
   const baseRow = {
     id: linkId,
     tokenHash: sha256Hex(rawToken),
+    // Kept beside the hash so the admin can copy the link again for the 24 hours
+    // it lives — see `revealRegistrationLink`. The hash stays the lookup key.
+    tokenEnc: encryptSecret(rawToken),
     status: "pending",
     createdBy,
     usedByUsername: null,
@@ -947,6 +969,8 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
       usedByUsername: registrationLinksTable.usedByUsername,
       expiresAt: registrationLinksTable.expiresAt,
       createdAt: registrationLinksTable.createdAt,
+      // Presence only — the ciphertext never leaves this function.
+      tokenEnc: registrationLinksTable.tokenEnc,
     })
     .from(registrationLinksTable)
     .orderBy(desc(registrationLinksTable.createdAt));
@@ -971,6 +995,8 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
     }
   }
 
+  const maskedBase = `${await publicBaseUrl()}/register/`;
+  const now = Date.now();
   return rows.map((l) => ({
     id: l.id,
     status: l.status as RegistrationLink["status"],
@@ -980,7 +1006,62 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
     usedByUsername: l.usedByUsername,
     expiresAt: l.expiresAt,
     createdAt: l.createdAt,
+    canReveal:
+      !!l.tokenEnc && l.status === "pending" && Date.parse(l.expiresAt) > now,
+    linkMasked: `${maskedBase}${"•".repeat(12)}`,
   }));
+}
+
+/**
+ * The public base URL, or "" when there is no request to read it from (the
+ * scheduler, a test). Only ever used for DISPLAY here — a mint that needs a real
+ * URL still lets the failure through.
+ */
+async function publicBaseUrl(): Promise<string> {
+  try {
+    return resolvePublicBaseUrl(await headers());
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Read a pending registration link back, in full, so the admin who minted it can
+ * hand it over again — the alternative was minting a second link because the
+ * first one got lost between the clipboard and the chat window.
+ *
+ * The checks run BEFORE the token is decrypted, so a spent link says why instead
+ * of leaking that it still exists in readable form. Instance-admin only, like
+ * every other operation on a link.
+ */
+export async function revealRegistrationLink(id: string): Promise<string> {
+  await requireInstanceAdmin();
+  const [row] = await getDb()
+    .select()
+    .from(registrationLinksTable)
+    .where(eq(registrationLinksTable.id, id))
+    .limit(1);
+  if (!row) throw new Error("Link not found");
+  if (row.status === "used")
+    throw new Error(
+      `This link was already used${row.usedByUsername ? ` by @${row.usedByUsername}` : ""} — registration links work once. Mint a new one.`,
+    );
+  if (row.status !== "pending")
+    throw new Error("This link was revoked. Mint a new one.");
+  if (Date.parse(row.expiresAt) <= Date.now())
+    throw new Error("This link has expired. Mint a new one.");
+  if (!row.tokenEnc)
+    throw new Error(
+      "This link was created before links could be shown again. Revoke it and mint a new one.",
+    );
+  const rawToken = decryptSecret(row.tokenEnc);
+  // Fails closed to "" (a rotated DEPLO_SECRET), and a half-URL is worse than a
+  // clear error — the admin can always mint a fresh link.
+  if (rawToken === "")
+    throw new Error(
+      "This link could not be decrypted. Revoke it and mint a new one.",
+    );
+  return `${resolvePublicBaseUrl(await headers())}/register/${rawToken}`;
 }
 
 /** Revoke a pending registration link. */

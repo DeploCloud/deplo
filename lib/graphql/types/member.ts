@@ -11,6 +11,7 @@ import {
   updateUserAdmin,
   mintRegistrationLink,
   listRegistrationLinks,
+  revealRegistrationLink,
   revokeRegistrationLink,
   type MemberDTO,
   type UserSearchResult,
@@ -243,6 +244,14 @@ export const RegistrationLinkRef = builder
       usedByUsername: t.exposeString("usedByUsername", { nullable: true }),
       expiresAt: t.exposeString("expiresAt"),
       createdAt: t.exposeString("createdAt"),
+      canReveal: t.exposeBoolean("canReveal", {
+        description:
+          "The link can still be read back with revealRegistrationLink — pending, unexpired, and minted after the token started being stored encrypted.",
+      }),
+      linkMasked: t.exposeString("linkMasked", {
+        description:
+          "The link with its token blanked, for display while it is covered. Never carries the token.",
+      }),
     }),
   });
 
@@ -432,6 +441,14 @@ builder.mutationFields((t) => ({
       });
       return link;
     },
+  }),
+  revealRegistrationLink: t.field({
+    type: "String",
+    authScopes: { instanceAdmin: true },
+    description:
+      "The full registration URL of a link that is still pending — so the admin who minted it can hand it over again instead of minting a second one. Errors, rather than returning a dead URL, when the link was used, revoked, expired, or minted before the token was stored encrypted.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => revealRegistrationLink(id),
   }),
   revokeRegistrationLink: t.field({
     type: "Boolean",

@@ -12,7 +12,7 @@ import {
   registrationLinks as registrationLinksTable,
   users as usersTable,
 } from "../db/schema/control-plane";
-import { sha256Hex } from "../crypto";
+import { sha256Hex, decryptSecret } from "../crypto";
 import { runWithIdentity } from "../auth/request-context";
 import {
   seedIdentity,
@@ -26,6 +26,7 @@ import {
   getRegistrationLinkInfo,
   listMembers,
   mintRegistrationLink,
+  revealRegistrationLink,
   removeMember,
   updateMember,
   updateUserAdmin,
@@ -127,6 +128,72 @@ test("mintRegistrationLink stamps an automatic 24h expiry", async () => {
   assert.ok(
     expiresAt >= before + 24 * HOUR_MS && expiresAt <= after + 24 * HOUR_MS,
     `expected a 24h TTL, got ${(expiresAt - before) / HOUR_MS}h`,
+  );
+});
+
+test("mintRegistrationLink keeps the token readable back, and the hash still matches", async () => {
+  await seedIdentity(db);
+  // Same trick as above: the row is written before mint formats the share URL,
+  // which needs request headers node:test has none of.
+  await assert.rejects(
+    () => asOwner(() => mintRegistrationLink({ mode: "own_team" })),
+    /request scope/,
+  );
+
+  const [row] = await db
+    .select({
+      tokenHash: registrationLinksTable.tokenHash,
+      tokenEnc: registrationLinksTable.tokenEnc,
+    })
+    .from(registrationLinksTable);
+
+  assert.ok(row!.tokenEnc, "the token is kept encrypted so it can be shown again");
+  const token = decryptSecret(row!.tokenEnc!);
+  assert.notEqual(token, "", "and it decrypts");
+  // The pair has to stay consistent: the HASH is what /register looks the link up
+  // by, so a token read back that doesn't hash to it would be a link that shows
+  // one URL and accepts another.
+  assert.equal(sha256Hex(token), row!.tokenHash);
+});
+
+test("revealRegistrationLink refuses a link that can no longer be used", async () => {
+  await seedIdentity(db);
+  await db.insert(registrationLinksTable).values([
+    { ...linkRow("reg_used", "used-token", 12), status: "used", usedByUsername: "bob" },
+    { ...linkRow("reg_revoked", "revoked-token", 12), status: "revoked" },
+    linkRow("reg_expired", "expired-token", -1),
+    // Pending and alive, but minted before token_enc existed (migration 0048).
+    linkRow("reg_legacy", "legacy-token", 12),
+  ]);
+
+  await asOwner(async () => {
+    // Each check runs BEFORE the token is decrypted, so the message says which
+    // dead end this is — and none of them leaks a URL.
+    await assert.rejects(
+      () => revealRegistrationLink("reg_used"),
+      /already used by @bob/,
+    );
+    await assert.rejects(() => revealRegistrationLink("reg_revoked"), /revoked/);
+    await assert.rejects(() => revealRegistrationLink("reg_expired"), /expired/);
+    await assert.rejects(
+      () => revealRegistrationLink("reg_legacy"),
+      /before links could be shown again/,
+    );
+    await assert.rejects(() => revealRegistrationLink("reg_nope"), /not found/i);
+  });
+});
+
+test("revealRegistrationLink is instance-admin only", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "user_plain", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
+    ],
+  });
+  await db.insert(registrationLinksTable).values(linkRow("reg_1", "raw", 12));
+  await assert.rejects(
+    () => asUser("user_plain", () => revealRegistrationLink("reg_1")),
+    /Only an instance admin/,
   );
 });
 

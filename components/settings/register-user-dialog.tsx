@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Copy } from "lucide-react";
+import { Copy, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,8 +17,10 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CapabilityPicker } from "@/components/settings/capability-picker";
+import { atClock } from "@/components/settings/registration-link-row";
 import { gqlAction } from "@/lib/graphql-client";
 import { capabilitiesForRole } from "@/lib/membership-shared";
+import { cn } from "@/lib/utils";
 import type { Capability, Role } from "@/lib/types";
 
 type TeamOption = { id: string; name: string };
@@ -54,6 +56,7 @@ export function RegisterUserDialog({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [link, setLink] = React.useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = React.useState<string | null>(null);
   const [teams, setTeams] = React.useState<TeamOption[]>([]);
   const [teamsLoaded, setTeamsLoaded] = React.useState(false);
   const [loadingTeams, setLoadingTeams] = React.useState(false);
@@ -61,6 +64,7 @@ export function RegisterUserDialog({
 
   function reset() {
     setLink(null);
+    setExpiresAt(null);
     setAssign({});
     setTeams([]);
     setTeamsLoaded(false);
@@ -166,6 +170,10 @@ export function RegisterUserDialog({
       );
       if (res.ok && res.data) {
         setLink(res.data.link);
+        // The server stamps the TTL from the same instant it answered, so a
+        // clock started here is right to the second — and it saves a round trip
+        // just to read back the row we minted.
+        setExpiresAt(new Date(Date.now() + 24 * 3_600_000).toISOString());
         router.refresh();
       } else if (!res.ok) {
         toast.error(res.error);
@@ -201,7 +209,9 @@ export function RegisterUserDialog({
           {link ? (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                Share this link. It works once and expires in 24 hours.
+                Share this link. It works once and expires in 24 hours
+                {expiresAt ? ` — ${atClock(expiresAt)}` : ""}. You can copy it
+                again from Settings &rarr; Users until then.
               </p>
               <div className="flex gap-2">
                 <Input readOnly value={link} className="font-mono text-xs" />
@@ -290,8 +300,23 @@ export function RegisterUserDialog({
               {link ? "Done" : "Cancel"}
             </Button>
             {!link && (
-              <Button type="submit" disabled={pending || loadingTeams}>
-                {pending ? "Generating…" : "Generate link"}
+              <Button
+                type="submit"
+                disabled={pending || loadingTeams}
+                aria-busy={pending}
+              >
+                {/* Spinner over the label rather than "Generating…" — the button
+                    keeps its width and the footer doesn't jump. */}
+                <span className="grid place-items-center">
+                  <span
+                    className={cn("col-start-1 row-start-1", pending && "invisible")}
+                  >
+                    Generate link
+                  </span>
+                  {pending && (
+                    <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
+                  )}
+                </span>
               </Button>
             )}
           </DialogFooter>
