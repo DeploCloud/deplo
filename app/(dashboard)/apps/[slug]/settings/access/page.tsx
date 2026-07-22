@@ -5,6 +5,7 @@ import { listBasicAuthUsers } from "@/lib/data/basic-auth";
 import { listDomains } from "@/lib/data/domains";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { BasicAuthManager } from "@/components/apps/basic-auth-manager";
+import { PendingCreateProvider } from "@/components/shared/pending-create";
 
 export const metadata = { title: "Access" };
 
@@ -32,11 +33,16 @@ export default async function AppAccessSettingsPage(
   return (
     <section className="space-y-4">
       <SettingsSection icon={ShieldCheck} title="Access" />
-      <BasicAuthManager
-        appId={project.id}
-        users={basicAuthUsers}
-        domains={domains.map((d) => d.name)}
-      />
+      {/* Adding a credential closes its dialog immediately and shows the new
+          card pulsing in the grid while the routing is applied — the provider
+          holds that placeholder, so it has to sit above the manager. */}
+      <PendingCreateProvider count={basicAuthUsers.length}>
+        <BasicAuthManager
+          appId={project.id}
+          users={basicAuthUsers}
+          domains={domains.map((d) => d.name)}
+        />
+      </PendingCreateProvider>
     </section>
   );
 }

@@ -42,6 +42,10 @@ import {
   useEnvFilters,
 } from "@/components/env/env-filters";
 import { BasicAuthPasswordCell } from "@/components/apps/basic-auth-password-cell";
+import {
+  PendingCards,
+  usePendingCreate,
+} from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
 import type { BasicAuthUserDTO } from "@/lib/data/basic-auth";
@@ -86,6 +90,9 @@ export function BasicAuthManager({
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState<BasicAuthUserDTO | null>(null);
   const router = useRouter();
+  // Credentials being created right now: the dialog already closed, and each
+  // one holds its place in the grid as a pulsing card until the routing is live.
+  const { pending } = usePendingCreate();
 
   const rows = React.useMemo<CredentialRow[]>(
     () => users.map((u) => ({ ...u, key: u.username })),
@@ -159,14 +166,14 @@ export function BasicAuthManager({
         />
       )}
 
-      {!hasUsers ? (
+      {!hasUsers && pending.length === 0 ? (
         <EmptyState
           icon={ShieldOff}
           title="No login required"
           description="Add a credential to put a username and password in front of every domain of this app."
           action={addButton}
         />
-      ) : !hasMatches ? (
+      ) : !hasMatches && pending.length === 0 ? (
         <EmptyState
           icon={SearchX}
           title="No matching credentials"
@@ -190,6 +197,7 @@ export function BasicAuthManager({
               onDelete={() => setDeleting(row)}
             />
           ))}
+          <PendingCards lines={1} />
         </div>
       )}
 
@@ -452,6 +460,7 @@ function BasicAuthDialog({
   const [password, setPassword] = React.useState("");
   const [visible, setVisible] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
+  const { create } = usePendingCreate();
   const router = useRouter();
 
   function onSubmit(e: React.FormEvent) {
@@ -460,37 +469,59 @@ function BasicAuthDialog({
   }
 
   function submit() {
-    startTransition(async () => {
-      const res = editing
-        ? await gqlAction<{ updateBasicAuthUserPassword: { id: string } }>(
-            `mutation($id: String!, $password: String!) {
+    // Changing a password has nowhere to show progress — the card looks
+    // identical before and after — so that one still resolves in the dialog.
+    if (editing) {
+      startTransition(async () => {
+        const res = await gqlAction<{
+          updateBasicAuthUserPassword: { id: string };
+        }>(
+          `mutation($id: String!, $password: String!) {
               updateBasicAuthUserPassword(id: $id, password: $password) { id }
             }`,
-            { id: editing.id, password },
-          )
-        : await gqlAction<{ addBasicAuthUser: { id: string } }>(
-            `mutation($appId: String!, $username: String!, $password: String!) {
+          { id: editing.id, password },
+        );
+        if (res.ok) {
+          toast.success("Password updated — live on every domain");
+          onOpenChange(false);
+        } else {
+          // The dialog stays open (a rejected password must keep what was
+          // typed), but the list behind it is refreshed anyway: the row is
+          // written before the routing is applied, so an error can still leave
+          // a change the user needs to see.
+          toast.error(res.error);
+        }
+        router.refresh();
+      });
+      return;
+    }
+
+    // Adding: the credential belongs in the grid, so it goes there NOW as a
+    // pulsing placeholder and the dialog gets out of the way. What was typed is
+    // kept aside — an error puts the form back exactly as it was.
+    const typed = { username: username.trim(), password };
+    onOpenChange(false);
+    setUsername("");
+    setPassword("");
+    setVisible(false);
+    create(
+      { label: typed.username, note: "Adding credential…" },
+      () =>
+        gqlAction<{ addBasicAuthUser: { id: string } }>(
+          `mutation($appId: String!, $username: String!, $password: String!) {
               addBasicAuthUser(appId: $appId, username: $username, password: $password) { id }
             }`,
-            { appId, username, password },
-          );
-      if (res.ok) {
-        toast.success(
-          editing
-            ? "Password updated — live on every domain"
-            : "Credential added — every domain now asks for this login",
-        );
-        onOpenChange(false);
-        router.refresh();
-      } else {
-        // The dialog stays open (a rejected username/password must keep what was
-        // typed), but the list behind it is refreshed anyway: the row is written
-        // before the routing is applied, so an error can still leave a saved
-        // credential the user needs to see.
-        toast.error(res.error);
-        router.refresh();
-      }
-    });
+          { appId, username: typed.username, password: typed.password },
+        ),
+      {
+        success: "Credential added — every domain now asks for this login",
+        onError: () => {
+          setUsername(typed.username);
+          setPassword(typed.password);
+          onOpenChange(true);
+        },
+      },
+    );
   }
 
   return (

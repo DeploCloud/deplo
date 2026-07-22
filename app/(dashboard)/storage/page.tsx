@@ -27,6 +27,11 @@ import { CreateS3 } from "@/components/storage/create-s3";
 import { S3Card } from "@/components/storage/s3-card";
 import { CreateBackup } from "@/components/storage/create-backup";
 import { BackupRow } from "@/components/storage/backup-row";
+import {
+  PendingCards,
+  PendingCreateProvider,
+  PendingList,
+} from "@/components/shared/pending-create";
 
 export const metadata = { title: "Storage" };
 
@@ -105,64 +110,83 @@ export default async function StoragePage(props: PageProps<"/storage">) {
 
         {/* Databases */}
         <TabsContent value="databases" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              PostgreSQL, MySQL, MongoDB, Redis and more provisioned on your
-              servers.
-            </p>
-            <CreateDatabase
-              servers={dbServers}
-              canExposePorts={mayExposePorts}
-              autoOpen={autoOpenDatabase}
-            />
-          </div>
-          {databases.length === 0 ? (
-            <EmptyState
-              icon={Database}
-              title="No databases yet"
-              description="Create a managed database to connect to your apps."
-              action={
-                <CreateDatabase
-                  servers={dbServers}
-                  canExposePorts={mayExposePorts}
+          {/* Creating a database closes the dialog at once and shows the card
+              pulsing in the grid while the host port is probed and the row is
+              written; the real card then takes over and reports provisioning
+              live. */}
+          <PendingCreateProvider count={databases.length}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                PostgreSQL, MySQL, MongoDB, Redis and more provisioned on your
+                servers.
+              </p>
+              <CreateDatabase
+                servers={dbServers}
+                canExposePorts={mayExposePorts}
+                autoOpen={autoOpenDatabase}
+              />
+            </div>
+            <PendingList
+              empty={databases.length === 0}
+              emptyState={
+                <EmptyState
+                  icon={Database}
+                  title="No databases yet"
+                  description="Create a managed database to connect to your apps."
+                  action={
+                    <CreateDatabase
+                      servers={dbServers}
+                      canExposePorts={mayExposePorts}
+                    />
+                  }
                 />
               }
-            />
-          ) : (
-            <DatabasesGrid
-              // Remount only when the SET of databases changes (create/delete),
-              // so a reorder — same set — never remounts and its optimistic
-              // order survives the drop (mirrors the Overview grid's gridKey).
-              key={[...databases.map((d) => d.id)].sort().join(",")}
-              databases={databases}
-              serverNames={serverNames}
-              canReorder={canManageDatabases}
-            />
-          )}
+            >
+              <DatabasesGrid
+                // Remount only when the SET of databases changes (create/delete),
+                // so a reorder — same set — never remounts and its optimistic
+                // order survives the drop (mirrors the Overview grid's gridKey).
+                key={[...databases.map((d) => d.id)].sort().join(",")}
+                databases={databases}
+                serverNames={serverNames}
+                canReorder={canManageDatabases}
+              />
+            </PendingList>
+          </PendingCreateProvider>
         </TabsContent>
 
         {/* S3 destinations */}
         <TabsContent value="s3" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Connect any S3-compatible storage for backups and assets.
-            </p>
-            <CreateS3 autoOpen={autoOpenS3} />
-          </div>
-          {destinations.length === 0 ? (
-            <EmptyState
-              icon={Cloud}
-              title="No S3 destinations"
-              description="Add a bucket (R2, S3, B2, MinIO…) to store backups and assets."
-              action={<CreateS3 />}
-            />
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {destinations.map((dest) => (
-                <S3Card key={dest.id} dest={dest} />
-              ))}
+          {/* Connecting a bucket closes the dialog at once and shows the
+              destination pulsing in the grid while the credentials are verified
+              against it. Its own provider, so a pending database never leaks
+              into this grid. */}
+          <PendingCreateProvider count={destinations.length}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Connect any S3-compatible storage for backups and assets.
+              </p>
+              <CreateS3 autoOpen={autoOpenS3} />
             </div>
-          )}
+            <PendingList
+              empty={destinations.length === 0}
+              emptyState={
+                <EmptyState
+                  icon={Cloud}
+                  title="No S3 destinations"
+                  description="Add a bucket (R2, S3, B2, MinIO…) to store backups and assets."
+                  action={<CreateS3 />}
+                />
+              }
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                {destinations.map((dest) => (
+                  <S3Card key={dest.id} dest={dest} />
+                ))}
+                <PendingCards />
+              </div>
+            </PendingList>
+          </PendingCreateProvider>
         </TabsContent>
 
         {/* Backups */}

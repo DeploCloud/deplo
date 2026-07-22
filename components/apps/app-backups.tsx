@@ -54,6 +54,11 @@ import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { formatBytes, timeAgo } from "@/lib/utils";
+import {
+  PendingList,
+  PendingRows,
+  usePendingCreate,
+} from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import type { BackupDTO } from "@/lib/data/backups";
 import type { BackupRun } from "@/lib/types";
@@ -155,13 +160,16 @@ export function AppBackups({
       {/* Artifacts (runs) */}
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Backup artifacts</h2>
-        {runs.length === 0 ? (
-          <EmptyState
-            icon={Archive}
-            title="No backups yet"
-            description="Run a backup or set up a schedule — completed runs and their restore points appear here."
-          />
-        ) : (
+        <PendingList
+          empty={runs.length === 0}
+          emptyState={
+            <EmptyState
+              icon={Archive}
+              title="No backups yet"
+              description="Run a backup or set up a schedule — completed runs and their restore points appear here."
+            />
+          }
+        >
           <div className="rounded-xl border border-border">
             <Table>
               <TableHeader>
@@ -184,10 +192,11 @@ export function AppBackups({
                     }
                   />
                 ))}
+                <PendingRows columns={5} />
               </TableBody>
             </Table>
           </div>
-        )}
+        </PendingList>
       </section>
     </div>
   );
@@ -204,9 +213,8 @@ function BackUpNow({
   appId: string;
   destinations: Destination[];
 }) {
-  const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const [pending, startTransition] = React.useTransition();
+  const { create } = usePendingCreate();
   const [destinationId, setDestinationId] = React.useState(
     destinations[0]?.id ?? "",
   );
@@ -218,21 +226,25 @@ function BackUpNow({
   }
 
   function submit() {
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($appId: String!, $destinationId: String!) {
+    // The mutation runs the WHOLE dump — it resolves only once the archive is on
+    // S3. So the dialog closes now and the artifact holds its place in the table
+    // as a pulsing row for exactly as long as the backup really takes.
+    const dest = destinations.find((d) => d.id === destinationId);
+    setOpen(false);
+    create(
+      { label: dest?.name ?? "Backup", note: "Backing up…" },
+      () =>
+        gqlAction(
+          `mutation($appId: String!, $destinationId: String!) {
           runAppBackup(appId: $appId, destinationId: $destinationId)
         }`,
-        { appId, destinationId },
-      );
-      if (res.ok) {
-        toast.success("Backup started");
-        setOpen(false);
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
+          { appId, destinationId },
+        ),
+      {
+        success: "Backup finished",
+        onError: () => setOpen(true),
+      },
+    );
   }
 
   return (
@@ -286,11 +298,11 @@ function BackUpNow({
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending || !destinationId}>
-              {pending ? "Starting…" : "Start backup"}
+            <Button type="submit" disabled={!destinationId}>
+              Start backup
             </Button>
           </DialogFooter>
         </form>

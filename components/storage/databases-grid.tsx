@@ -32,6 +32,10 @@ import {
 } from "@/components/ui/select";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
+import {
+  PendingCards,
+  usePendingCreate,
+} from "@/components/shared/pending-create";
 import { DatabaseCard } from "@/components/storage/database-card";
 import { DB_TYPES } from "@/components/storage/db-engines";
 import { gqlAction } from "@/lib/graphql-client";
@@ -65,6 +69,9 @@ export function DatabasesGrid({
   canReorder: boolean;
 }) {
   const router = useRouter();
+  // Databases being created right now: their dialog already closed, and each
+  // holds its place in the grid as a pulsing card until the row exists.
+  const { pending } = usePendingCreate();
   const [query, setQuery] = React.useState("");
   const [engine, setEngine] = React.useState<DatabaseType | "all">("all");
   const [status, setStatus] = React.useState<DatabaseStatus | "all">("all");
@@ -142,7 +149,7 @@ export function DatabasesGrid({
         onView={setView}
       />
 
-      {filtered.length === 0 ? (
+      {filtered.length === 0 && pending.length === 0 ? (
         <EmptyState
           icon={Database}
           title="No matching databases"
@@ -166,6 +173,7 @@ export function DatabasesGrid({
                   )}
                 </SortableCard>
               ))}
+              <PendingCards />
             </div>
           </SortableContext>
         </DndContext>
@@ -180,6 +188,7 @@ export function DatabasesGrid({
               pollMs={view === "list" ? 20000 : 15000}
             />
           ))}
+          <PendingCards />
         </div>
       )}
     </div>

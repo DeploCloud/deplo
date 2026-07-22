@@ -30,9 +30,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useRouter } from "next/navigation";
+import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { generatePassword } from "@/lib/utils";
-import { DB_TYPES as TYPES, ENGINE_CREDS } from "./db-engines";
+import { DB_NAMES, DB_TYPES as TYPES, ENGINE_CREDS } from "./db-engines";
 import { DbVersionInput } from "./db-version-input";
 import type { DatabaseType } from "@/lib/types";
 
@@ -59,6 +60,7 @@ export function CreateDatabase({
   const router = useRouter();
   const [open, setOpen] = React.useState(autoOpen && servers.length > 0);
   const [pending, startTransition] = React.useTransition();
+  const { create } = usePendingCreate();
 
   // Arrived via ?new=database → drop the param so a refresh or Back doesn't
   // reopen the dialog. router.replace is not a setState, so this stays clear of
@@ -146,48 +148,60 @@ export function CreateDatabase({
   }
 
   function submit() {
-    startTransition(async () => {
-      const res = await gqlAction<{ createDatabase: { id: string } }, { id: string }>(
-        `mutation($input: CreateDatabaseInput!) {
+    // The database takes its place in the grid straight away, pulsing, while
+    // the host port is probed and the row written. The card that replaces it
+    // then reports provisioning → running live, which is the same "follow the
+    // thing you just made" payoff the old redirect to the detail page gave —
+    // without hijacking the user's page a second after the dialog closed.
+    const typed = {
+      name: name.trim(),
+      type,
+      version,
+      serverId: effectiveServerId || null,
+      // Send a credential only when the engine supports it AND the user
+      // filled it in; null keeps the server's generated default.
+      username: creds.username && username.trim() ? username.trim() : null,
+      dbName: creds.dbName && dbName.trim() ? dbName.trim() : null,
+      password: creds.password && password ? password : null,
+      exposedPublicly: exposed,
+      // Only send a port when exposing; null keeps it internal-only.
+      exposedPort: exposed ? parsedPort : null,
+    };
+    const restore = { username, dbName, password, showPassword, exposed, port };
+    setOpen(false);
+    setName("");
+    setUsername("");
+    setDbName("");
+    setPassword("");
+    setShowPassword(false);
+    setExposed(false);
+    setPort("");
+    create(
+      { label: typed.name, note: `Creating ${DB_NAMES[type]}…` },
+      () =>
+        gqlAction<{ createDatabase: { id: string } }, { id: string }>(
+          `mutation($input: CreateDatabaseInput!) {
           createDatabase(input: $input) { id }
         }`,
-        {
-          input: {
-            name,
-            type,
-            version,
-            serverId: effectiveServerId || null,
-            // Send a credential only when the engine supports it AND the user
-            // filled it in; null keeps the server's generated default.
-            username: creds.username && username.trim() ? username.trim() : null,
-            dbName: creds.dbName && dbName.trim() ? dbName.trim() : null,
-            password: creds.password && password ? password : null,
-            exposedPublicly: exposed,
-            // Only send a port when exposing; null keeps it internal-only.
-            exposedPort: exposed ? parsedPort : null,
-          },
+          { input: typed },
+          (d) => d.createDatabase,
+        ),
+      {
+        success: `Database ${typed.name} is provisioning`,
+        onError: () => {
+          setName(typed.name);
+          setType(typed.type);
+          setVersion(typed.version);
+          setUsername(restore.username);
+          setDbName(restore.dbName);
+          setPassword(restore.password);
+          setShowPassword(restore.showPassword);
+          setExposed(restore.exposed);
+          setPort(restore.port);
+          setOpen(true);
         },
-        (d) => d.createDatabase,
-      );
-      if (res.ok) {
-        toast.success(`Database ${name} is provisioning`);
-        setOpen(false);
-        setName("");
-        setUsername("");
-        setDbName("");
-        setPassword("");
-        setShowPassword(false);
-        setExposed(false);
-        setPort("");
-        // Straight to the new database's detail page, where the status flips
-        // provisioning → running live (same "follow the thing you just made"
-        // flow as creating an app).
-        if (res.data?.id) router.push(`/storage/databases/${res.data.id}`);
-        else router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
+      },
+    );
   }
 
   return (
@@ -413,14 +427,18 @@ export function CreateDatabase({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
+            {/* `pending` is only the port generator now — submitting no longer
+                waits here, it hands the work to the pulsing card in the grid. */}
             <Button
               type="submit"
-              disabled={pending || !name.trim() || !effectiveServerId || !exposeReady}
+              disabled={
+                pending || !name.trim() || !effectiveServerId || !exposeReady
+              }
             >
-              {pending ? "Creating…" : "Create database"}
+              Create database
             </Button>
           </DialogFooter>
         </form>

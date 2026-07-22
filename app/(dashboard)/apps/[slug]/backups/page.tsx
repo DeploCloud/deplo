@@ -5,6 +5,7 @@ import { hasCapability } from "@/lib/membership";
 import { listBackups, listBackupRuns } from "@/lib/data/backups";
 import { listS3 } from "@/lib/data/s3";
 import { AppBackups } from "@/components/apps/app-backups";
+import { PendingCreateProvider } from "@/components/shared/pending-create";
 import { EmptyState } from "@/components/shared/empty-state";
 
 export const metadata = { title: "Backups" };
@@ -40,12 +41,17 @@ export default async function AppBackupsPage(
   );
 
   return (
-    <AppBackups
-      appId={project.id}
-      serviceName={project.name}
-      schedules={schedules}
-      runs={runs}
-      destinations={destinations.map((d) => ({ id: d.id, name: d.name }))}
-    />
+    // "Back up now" used to hold the dialog open for the WHOLE backup — minutes,
+    // for a large volume. It now closes at once and the artifact takes its place
+    // in the table as a pulsing row for as long as the dump really runs.
+    <PendingCreateProvider count={runs.length}>
+      <AppBackups
+        appId={project.id}
+        serviceName={project.name}
+        schedules={schedules}
+        runs={runs}
+        destinations={destinations.map((d) => ({ id: d.id, name: d.name }))}
+      />
+    </PendingCreateProvider>
   );
 }

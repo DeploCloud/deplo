@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import yaml from "js-yaml";
 import { toast } from "sonner";
 import {
@@ -28,6 +27,7 @@ import {
   resolveDomainConfig,
   type DomainConfigState,
 } from "@/components/domains/domain-config-fields";
+import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 
 /** A project as the dialog needs it: id, name, its compose YAML (when it is a
@@ -99,9 +99,8 @@ function regenerateNipDomain(suggested: string): string {
 }
 
 export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
-  const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const [pending, startTransition] = React.useTransition();
+  const { create } = usePendingCreate();
   const [name, setName] = React.useState("");
   // The nip.io host shown in the field-help example. Tracks the most recently
   // generated suggestion so the tooltip stays in sync with what Generate dropped
@@ -134,58 +133,68 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
       toast.error(resolved.error);
       return;
     }
-    startTransition(async () => {
-      const res = await gqlAction<{
-        addDomain: { id: string; status: string };
-      }>(
-        `mutation AddDomain($appId: String!, $name: String!, $config: DomainConfigInput) {
+    // The domain takes its place in the table straight away, pulsing, while the
+    // DNS check and the reroute run in the background. What was typed is kept
+    // aside so a rejected add can hand the form back untouched.
+    const typed = { name: name.trim(), config };
+    setOpen(false);
+    reset();
+    create(
+      { label: typed.name, note: "Adding domain…" },
+      () =>
+        gqlAction<{ addDomain: { id: string; status: string } }>(
+          `mutation AddDomain($appId: String!, $name: String!, $config: DomainConfigInput) {
           addDomain(appId: $appId, name: $name, config: $config) { id status }
         }`,
-        {
-          appId: project.id,
-          name,
-          config: {
-            port: resolved.port,
-            // Add takes the auto entrypoint by omitting it (null ⇒ undefined).
-            entrypoint: resolved.entrypoint ?? undefined,
-            certProvider: resolved.certProvider,
-            middlewares: resolved.middlewares,
-            pathPrefix: resolved.pathPrefix,
-            stripPrefix: resolved.stripPrefix,
-            service: resolved.service,
+          {
+            appId: project.id,
+            name: typed.name,
+            config: {
+              port: resolved.port,
+              // Add takes the auto entrypoint by omitting it (null ⇒ undefined).
+              entrypoint: resolved.entrypoint ?? undefined,
+              certProvider: resolved.certProvider,
+              middlewares: resolved.middlewares,
+              pathPrefix: resolved.pathPrefix,
+              stripPrefix: resolved.stripPrefix,
+              service: resolved.service,
+            },
           },
+        ),
+      {
+        onSuccess: (data) => {
+          // DNS was checked as part of the add, so the toast reports the real
+          // outcome: a pre-pointed host is already live; an unpointed one is
+          // watched automatically from the domains page — never a generic
+          // "now go verify" chore.
+          const status = data?.addDomain.status;
+          if (status === "valid")
+            toast.success(
+              "Domain added — DNS already points here, routing is live",
+            );
+          else if (status === "cloudflare")
+            // Not a success toast: the host is proxied, so nothing about where
+            // Cloudflare forwards it is visible to us. Claiming "routing is live"
+            // here would be a guess the user then trusts.
+            toast.warning(
+              "Domain added — proxied through Cloudflare, so deplo can’t confirm it reaches this app; check its origin IP on the row",
+            );
+          else if (status === "misconfigured")
+            toast.warning(
+              "Domain added, but its DNS points at another address — see the hint on its row",
+            );
+          else
+            toast.success(
+              "Domain added — point its DNS at the server and it verifies automatically",
+            );
         },
-      );
-      if (res.ok) {
-        // DNS was checked as part of the add, so the toast reports the real
-        // outcome: a pre-pointed host is already live; an unpointed one is
-        // watched automatically from the domains page — never a generic
-        // "now go verify" chore.
-        const status = res.data?.addDomain.status;
-        if (status === "valid")
-          toast.success("Domain added — DNS already points here, routing is live");
-        else if (status === "cloudflare")
-          // Not a success toast: the host is proxied, so nothing about where
-          // Cloudflare forwards it is visible to us. Claiming "routing is live"
-          // here would be a guess the user then trusts.
-          toast.warning(
-            "Domain added — proxied through Cloudflare, so deplo can’t confirm it reaches this app; check its origin IP on the row",
-          );
-        else if (status === "misconfigured")
-          toast.warning(
-            "Domain added, but its DNS points at another address — see the hint on its row",
-          );
-        else
-          toast.success(
-            "Domain added — point its DNS at the server and it verifies automatically",
-          );
-        setOpen(false);
-        reset();
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
+        onError: () => {
+          setName(typed.name);
+          setConfig(typed.config);
+          setOpen(true);
+        },
+      },
+    );
   }
 
   return (
@@ -260,15 +269,11 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
             />
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={pending}
-            >
+            <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending || !name.trim()}>
-              {pending ? "Adding…" : "Add domain"}
+            <Button type="submit" disabled={!name.trim()}>
+              Add domain
             </Button>
           </DialogFooter>
         </form>

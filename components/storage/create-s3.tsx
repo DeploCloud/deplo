@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import {
   Dialog,
@@ -24,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useRouter } from "next/navigation";
+import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import type { S3Provider } from "@/lib/types";
 
@@ -41,7 +41,7 @@ const PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
 export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
   const router = useRouter();
   const [open, setOpen] = React.useState(autoOpen);
-  const [pending, startTransition] = React.useTransition();
+  const { create } = usePendingCreate();
 
   // Arrived via ?new=s3 (e.g. the global "New ▸ S3 destination" menu) → drop the
   // param so a refresh or Back doesn't reopen the dialog. Mirrors CreateDatabase.
@@ -69,30 +69,43 @@ export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
   }
 
   function submit() {
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($input: CreateS3Input!) { createS3(input: $input) { id } }`,
-        {
-          input: {
-            name: form.name,
-            provider: provider.toUpperCase().replace(/-/g, "_"),
-            endpoint: form.endpoint || hint,
-            region: form.region,
-            bucket: form.bucket,
-            accessKey: form.accessKey,
-            secretKey: form.secretKey,
+    // The destination shows up in the grid immediately, pulsing, while the
+    // credentials are checked against the bucket. The whole form is kept aside:
+    // this is the create most likely to be rejected (a wrong key, a wrong
+    // endpoint), and retyping six fields would be the worst possible answer.
+    const typed = { ...form, provider };
+    setOpen(false);
+    setForm({ name: "", endpoint: "", region: "auto", bucket: "", accessKey: "", secretKey: "" });
+    create(
+      {
+        label: typed.name || typed.bucket,
+        note: "Connecting destination…",
+      },
+      () =>
+        gqlAction(
+          `mutation($input: CreateS3Input!) { createS3(input: $input) { id } }`,
+          {
+            input: {
+              name: typed.name,
+              provider: typed.provider.toUpperCase().replace(/-/g, "_"),
+              endpoint: typed.endpoint || hint,
+              region: typed.region,
+              bucket: typed.bucket,
+              accessKey: typed.accessKey,
+              secretKey: typed.secretKey,
+            },
           },
+        ),
+      {
+        success: "S3 destination connected",
+        onError: () => {
+          const { provider: p, ...fields } = typed;
+          setProvider(p);
+          setForm(fields);
+          setOpen(true);
         },
-      );
-      if (res.ok) {
-        toast.success("S3 destination connected");
-        setOpen(false);
-        setForm({ name: "", endpoint: "", region: "auto", bucket: "", accessKey: "", secretKey: "" });
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
+      },
+    );
   }
 
   return (
@@ -174,11 +187,11 @@ export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Connecting…" : "Connect"}
+            <Button type="submit" disabled={!form.bucket.trim()}>
+              Connect
             </Button>
           </DialogFooter>
         </form>

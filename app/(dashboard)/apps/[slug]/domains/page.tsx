@@ -15,6 +15,11 @@ import {
 import { AddDomain } from "@/components/domains/add-domain";
 import { DomainDnsAutoCheck } from "@/components/domains/domain-dns-auto-check";
 import { DomainRow } from "@/components/domains/domain-row";
+import {
+  PendingCreateProvider,
+  PendingList,
+  PendingRows,
+} from "@/components/shared/pending-create";
 
 export const metadata = { title: "App Domains" };
 
@@ -60,64 +65,73 @@ export default async function AppDomainsPage(
     .map((d) => ({ id: d.id, name: d.name, status: d.status }));
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-medium">Domains</h3>
-          <p className="text-sm text-muted-foreground">
-            Custom domains routed to this app with automatic TLS.
-          </p>
+    // Adding a domain closes its dialog at once and puts the hostname in the
+    // table as a pulsing row while the DNS check and the reroute run — the
+    // provider holds that row, so it wraps both the dialog and the table.
+    <PendingCreateProvider count={domains.length}>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium">Domains</h3>
+            <p className="text-sm text-muted-foreground">
+              Custom domains routed to this app with automatic TLS.
+            </p>
+          </div>
+          <AddDomain
+            project={{
+              id: project.id,
+              name: project.name,
+              compose: project.compose,
+              defaultPort: project.build.port,
+            }}
+            suggestedDomain={suggestedDomain}
+          />
         </div>
-        <AddDomain
-          project={{
-            id: project.id,
-            name: project.name,
-            compose: project.compose,
-            defaultPort: project.build.port,
-          }}
-          suggestedDomain={suggestedDomain}
-        />
+
+        {/* Only a host that has NOT checked out is off the router (see
+            `unsettledDomains`). While any exist, this client component both
+            explains the wait AND re-checks their DNS automatically on an
+            interval — the moment a record resolves, the same server path a
+            manual Verify uses flips the domain routable and applies routing. */}
+        {unsettledDomains.length > 0 && (
+          <DomainDnsAutoCheck domains={unsettledDomains} serverIp={serverIp} />
+        )}
+
+        <PendingList
+          empty={domains.length === 0}
+          emptyState={
+            <EmptyState
+              icon={Globe}
+              title="No domains"
+              description="Add a custom domain to this app."
+            />
+          }
+        >
+          <div className="rounded-xl border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Domain</TableHead>
+                  <TableHead>App</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {domains.map((d) => (
+                  <DomainRow
+                    key={d.id}
+                    domain={d}
+                    compose={project.compose}
+                    serverIp={serverIp}
+                  />
+                ))}
+                <PendingRows columns={4} />
+              </TableBody>
+            </Table>
+          </div>
+        </PendingList>
       </div>
-
-      {/* Only a host that has NOT checked out is off the router (see
-          `unsettledDomains`). While any exist, this client component both
-          explains the wait AND re-checks their DNS automatically on an
-          interval — the moment a record resolves, the same server path a
-          manual Verify uses flips the domain routable and applies routing. */}
-      {unsettledDomains.length > 0 && (
-        <DomainDnsAutoCheck domains={unsettledDomains} serverIp={serverIp} />
-      )}
-
-      {domains.length === 0 ? (
-        <EmptyState
-          icon={Globe}
-          title="No domains"
-          description="Add a custom domain to this app."
-        />
-      ) : (
-        <div className="rounded-xl border border-border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Domain</TableHead>
-                <TableHead>App</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {domains.map((d) => (
-                <DomainRow
-                  key={d.id}
-                  domain={d}
-                  compose={project.compose}
-                  serverIp={serverIp}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-    </div>
+    </PendingCreateProvider>
   );
 }
