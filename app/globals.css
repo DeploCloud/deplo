@@ -206,6 +206,21 @@
   padding-inline: 1.5rem;
 }
 
+/* A scroll box whose rows are focusable (option lists, pickers, wizard bodies).
+   Focus indicators paint OUTSIDE the element — the base rule above is a 2px
+   outline at a 2px offset, and a field's ring reaches just as far — while a
+   scroll container clips everything at its padding edge. A full-width row in a
+   zero-padding scroll box therefore comes out with its focus ring sliced down
+   both sides. This reserves exactly that much room inline and hands it straight
+   back to the layout with a matching negative margin, so nothing moves; the
+   scroll-padding does the same for keyboard navigation, landing a row tabbed
+   into view just inside the box instead of flush against its edge. */
+@utility focus-safe-scroll {
+  padding-inline: 0.25rem;
+  margin-inline: -0.25rem;
+  scroll-padding-block: 0.25rem;
+}
+
 /* Subtle grid / shimmer helpers reused across pages */
 .deplo-grid-bg {
   background-image: radial-gradient(

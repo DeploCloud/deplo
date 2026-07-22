@@ -365,7 +365,7 @@ export function ShareFolderDialog({
                     className="pl-9"
                   />
                 </div>
-                <div className="min-h-20 max-h-44 space-y-1 overflow-y-auto">
+                <div className="min-h-20 max-h-44 space-y-1 overflow-y-auto focus-safe-scroll">
                   {searching && (
                     <div className="space-y-1" aria-hidden>
                       {[0, 1].map((i) => (

@@ -165,8 +165,9 @@ export function AddMemberDialog({
                   autoFocus
                 />
               </div>
-              {/* Shows ~3 rows (the most recent users) and scrolls for the rest. */}
-              <div className="min-h-24 max-h-44 space-y-1 overflow-y-auto">
+              {/* Shows ~3 rows (the most recent users) and scrolls for the rest.
+                  focus-safe-scroll keeps the rows' focus ring out of the clip. */}
+              <div className="min-h-24 max-h-44 space-y-1 overflow-y-auto focus-safe-scroll">
                 {searching && (
                   <div className="space-y-1" aria-hidden>
                     {[0, 1, 2].map((i) => (

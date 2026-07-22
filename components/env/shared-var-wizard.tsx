@@ -319,7 +319,7 @@ export function SharedVarDialog({
 
           {/* The one scrolling row. The form steps keep a readable measure inside the
               wide dialog; only Details (the card grids) uses the full width. */}
-          <div className="overflow-y-auto pr-1">
+          <div className="overflow-y-auto focus-safe-scroll">
           {steps[index] === "variable" && (
             <div className="mx-auto w-full max-w-xl space-y-4">
               <div className="space-y-2">
