@@ -7,7 +7,6 @@ import {
   Dices,
   Eye,
   EyeOff,
-  Globe,
   Pencil,
   Plus,
   SearchX,
@@ -23,7 +22,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -76,14 +74,9 @@ type CredentialRow = BasicAuthUserDTO & { key: string };
 export function BasicAuthManager({
   appId,
   users,
-  domains,
 }: {
   appId: string;
   users: BasicAuthUserDTO[];
-  /** Hostnames this login gates — every domain of the app, primary first. Empty
-   *  when the app has none yet, which is worth SAYING: the credential is stored
-   *  and correct, it just has nothing to stand in front of. */
-  domains: string[];
 }) {
   const [editing, setEditing] = React.useState<BasicAuthUserDTO | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -149,12 +142,6 @@ export function BasicAuthManager({
           a time.
         </p>
       </div>
-
-      {/* Only once a login exists: with none, the empty state below already says
-          the app takes no login, and a bare hostname list would just restate the
-          Domains tab. The first credential being created counts — its card is
-          already in the grid. */}
-      {(hasUsers || pending.length > 0) && <CoveredDomains domains={domains} />}
 
       {hasUsers && (
         <EnvFilters
@@ -236,58 +223,6 @@ export function BasicAuthManager({
           return res;
         }}
       />
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Coverage                                                            */
-/* ------------------------------------------------------------------ */
-
-/**
- * Which hostnames the login stands in front of. Read from the app's real domains
- * — never a stored flag — so it cannot drift from what Traefik is enforcing.
- *
- * It says only that. Whether the app is protected is not worth a banner: the
- * cards below ARE the credentials, so counting them back ("Protected — 1
- * credential can sign in") only restates what is already on screen, and with no
- * credential at all the empty state says it better.
- */
-function CoveredDomains({ domains }: { domains: string[] }) {
-  const listed = domains.slice(0, 3);
-  const rest = domains.length - listed.length;
-
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-muted/40 px-4 py-3">
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        {domains.length === 0 ? (
-          <span className="text-xs text-muted-foreground">
-            This app has no domain yet — the login will cover every domain you
-            add.
-          </span>
-        ) : (
-          <>
-            <Globe aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-            {listed.map((d) => (
-              <Badge
-                key={d}
-                variant="muted"
-                // A long hostname is cut to keep the strip on one line; the full
-                // one is a hover away, so the chip never becomes a riddle.
-                title={d}
-                className="max-w-[13rem] truncate font-mono text-[10px] font-normal"
-              >
-                {d}
-              </Badge>
-            ))}
-            {rest > 0 && (
-              <SimpleTooltip content={domains.slice(3).join(", ")}>
-                <span className="text-xs text-muted-foreground">+{rest} more</span>
-              </SimpleTooltip>
-            )}
-          </>
-        )}
-      </div>
     </div>
   );
 }
