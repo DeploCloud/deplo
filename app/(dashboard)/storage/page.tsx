@@ -150,6 +150,9 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 databases={databases}
                 serverNames={serverNames}
                 canReorder={canManageDatabases}
+                // Same capability the reveal mutation is gated on: without it a
+                // card shows the masked string and no reveal/copy affordance.
+                canReveal={canManageDatabases}
               />
             </PendingList>
           </PendingCreateProvider>

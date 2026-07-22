@@ -13,8 +13,6 @@ import {
   Server as ServerIcon,
   Globe,
   Lock,
-  Copy,
-  Check,
   Database as DatabaseIcon,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -26,8 +24,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
+import { DatabaseConnectionString } from "@/components/storage/database-connection-string";
 import { DatabaseLiveStatusProvider } from "@/components/storage/database-live-status";
 import {
   DatabaseStatusBadge,
@@ -59,6 +57,7 @@ export function DatabaseCard({
   dragHandle,
   dragActive = false,
   pollMs = 15000,
+  canReveal = true,
 }: {
   db: DatabaseDTO;
   serverName?: string;
@@ -69,6 +68,8 @@ export function DatabaseCard({
   dragActive?: boolean;
   /** Runtime-poll cadence for the status badge (slower on the list to stay light). */
   pollMs?: number;
+  /** The viewer holds `manage_infra` — the capability `revealConnection` needs. */
+  canReveal?: boolean;
 }) {
   return (
     <DatabaseLiveStatusProvider
@@ -81,6 +82,7 @@ export function DatabaseCard({
           dragHandle={dragHandle}
           dragActive={dragActive}
           pollMs={pollMs}
+          canReveal={canReveal}
         />
       ) : (
         <DatabaseCardGrid
@@ -89,6 +91,7 @@ export function DatabaseCard({
           dragHandle={dragHandle}
           dragActive={dragActive}
           pollMs={pollMs}
+          canReveal={canReveal}
         />
       )}
     </DatabaseLiveStatusProvider>
@@ -101,9 +104,17 @@ interface Inner {
   dragHandle?: React.ReactNode;
   dragActive: boolean;
   pollMs: number;
+  canReveal: boolean;
 }
 
-function DatabaseCardGrid({ db, serverName, dragHandle, dragActive, pollMs }: Inner) {
+function DatabaseCardGrid({
+  db,
+  serverName,
+  dragHandle,
+  dragActive,
+  pollMs,
+  canReveal,
+}: Inner) {
   const href = `/storage/databases/${db.id}`;
   const Icon = DB_ICONS[db.type] ?? DatabaseIcon;
   return (
@@ -129,15 +140,11 @@ function DatabaseCardGrid({ db, serverName, dragHandle, dragActive, pollMs }: In
         </div>
 
         {/* Connection box — the databases analogue of the app card's
-            latest-deployment box: the endpoint up top (with a copy affordance),
-            placement + exposure below it. */}
+            latest-deployment box: the connection string up top as the same
+            click-to-reveal chip the Variables page uses (masked, so the
+            endpoint still reads at a glance), placement + exposure below it. */}
         <div className="rounded-lg border border-border bg-secondary/40 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <code className="min-w-0 truncate font-mono text-xs text-foreground">
-              {db.host}:{db.port}
-            </code>
-            <CopyEndpoint endpoint={`${db.host}:${db.port}`} />
-          </div>
+          <ConnectionChip db={db} canReveal={canReveal} />
           <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
             <ServerIcon className="size-3.5 shrink-0" />
             <span className="min-w-0 truncate">{serverName ?? "—"}</span>
@@ -230,41 +237,31 @@ function OverlayLink({
   );
 }
 
-/** Copies the connection endpoint without leaving the grid. Sits above the
- *  overlay link and swallows pointer-downs so it never starts a reorder drag
- *  (the same opt-out contract as the ⋯ menu). */
-function CopyEndpoint({ endpoint }: { endpoint: string }) {
-  const [copied, setCopied] = React.useState(false);
-  const timer = React.useRef<number | undefined>(undefined);
-  React.useEffect(() => () => window.clearTimeout(timer.current), []);
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(endpoint);
-      setCopied(true);
-      window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast.error("Couldn't copy to the clipboard");
-    }
-  }
-
+/** The connection string, revealable and copyable without leaving the grid.
+ *  Sits above the overlay link (so a click opens the chip instead of navigating)
+ *  and swallows pointer-downs so it never starts a reorder drag — the same
+ *  opt-out contract as the ⋯ menu. */
+function ConnectionChip({
+  db,
+  canReveal,
+}: {
+  db: DatabaseDTO;
+  canReveal: boolean;
+}) {
   return (
-    <SimpleTooltip content={copied ? "Copied" : "Copy endpoint"}>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Copy endpoint"
-        data-card-actions
-        className="pointer-events-auto size-6 shrink-0 text-muted-foreground hover:text-foreground"
-        onPointerDown={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-        onClick={copy}
-      >
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-      </Button>
-    </SimpleTooltip>
+    <div
+      data-card-actions
+      className="pointer-events-auto relative z-10"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
+      <DatabaseConnectionString
+        id={db.id}
+        masked={db.connectionStringMasked}
+        canReveal={canReveal}
+      />
+    </div>
   );
 }
 

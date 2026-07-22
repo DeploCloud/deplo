@@ -61,23 +61,21 @@ export default function Loading() {
                     </div>
                   </div>
 
-                  {/* connection string */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <Skeleton className="h-3 w-28" />
-                      <Skeleton className="h-3 w-14" />
+                  {/* connection box: the reveal chip + copy, then server ·
+                      exposure */}
+                  <div className="rounded-lg border border-border bg-secondary/40 p-3">
+                    <div className="flex items-center gap-1.5">
+                      <Skeleton className="h-7 flex-1 rounded-md" />
+                      <Skeleton className="size-7 rounded-md" />
                     </div>
-                    <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-2.5 py-1.5">
-                      <Skeleton className="h-4 w-full" />
+                    <div className="mt-2 flex items-center gap-4">
+                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className="h-3 w-16" />
                     </div>
                   </div>
 
-                  {/* meta: host:port · size · age */}
-                  <div className="flex items-center gap-4">
-                    <Skeleton className="h-3 w-28" />
-                    <Skeleton className="h-3 w-12" />
-                    <Skeleton className="ml-auto h-3 w-16" />
-                  </div>
+                  {/* created */}
+                  <Skeleton className="h-3 w-28" />
                 </CardContent>
               </Card>
             ))}

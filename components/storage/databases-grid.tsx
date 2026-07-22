@@ -63,10 +63,13 @@ export function DatabasesGrid({
   databases,
   serverNames,
   canReorder,
+  canReveal,
 }: {
   databases: DatabaseDTO[];
   serverNames: Record<string, string>;
   canReorder: boolean;
+  /** The viewer holds `manage_infra` — the capability `revealConnection` needs. */
+  canReveal: boolean;
 }) {
   const router = useRouter();
   // Databases being created right now: their dialog already closed, and each
@@ -169,6 +172,7 @@ export function DatabasesGrid({
                       dragHandle={handle}
                       dragActive={dragActive}
                       pollMs={view === "list" ? 20000 : 15000}
+                      canReveal={canReveal}
                     />
                   )}
                 </SortableCard>
@@ -186,6 +190,7 @@ export function DatabasesGrid({
               serverName={serverNames[d.serverId]}
               view={view}
               pollMs={view === "list" ? 20000 : 15000}
+              canReveal={canReveal}
             />
           ))}
           <PendingCards />

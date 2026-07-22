@@ -1,10 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Eye, EyeOff, Server as ServerIcon, TriangleAlert } from "lucide-react";
+import { Server as ServerIcon, TriangleAlert } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { CopyButton } from "@/components/shared/copy-button";
-import { gqlAction } from "@/lib/graphql-client";
+import { DatabaseConnectionString } from "@/components/storage/database-connection-string";
 import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
 import { timeAgo } from "@/lib/utils";
@@ -12,22 +11,24 @@ import { DB_NAMES, ENGINE_CREDS } from "@/components/storage/db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
- * The database detail Overview: masked connection string with reveal + copy, the
- * create-only engine facts, network/exposure, a LIVE data size and container
- * summary from the runtime poll, and the "provisioned before labels" callout
- * that steers a pre-labels database to Redeploy (so logs/console/runtime work).
+ * The database detail Overview: the connection string as a click-to-reveal chip
+ * (the same one the Variables page uses for a value), the create-only engine
+ * facts, network/exposure, a LIVE data size and container summary from the
+ * runtime poll, and the "provisioned before labels" callout that steers a
+ * pre-labels database to Redeploy (so logs/console/runtime work).
  */
 export function DatabaseOverview({
   db,
   serverName,
+  canReveal,
 }: {
   db: DatabaseDTO;
   serverName: string;
+  /** The viewer holds `manage_infra` — the capability `revealConnection` needs. */
+  canReveal: boolean;
 }) {
   const status = useLiveDatabaseStatus(db.status);
   const runtime = useDatabaseRuntime(db.id, { enabled: status === "running" });
-  const [revealed, setRevealed] = React.useState<string | null>(null);
-  const [pending, startTransition] = React.useTransition();
   const creds = ENGINE_CREDS[db.type];
 
   // A database the row calls running but the agent can't see any container for
@@ -38,21 +39,6 @@ export function DatabaseOverview({
     !!runtime &&
     !runtime.unreachable &&
     runtime.total === 0;
-
-  function reveal() {
-    if (revealed) {
-      setRevealed(null);
-      return;
-    }
-    startTransition(async () => {
-      const res = await gqlAction<{ revealConnection: string }, string>(
-        `mutation($id: String!) { revealConnection(id: $id) }`,
-        { id: db.id },
-        (d) => d.revealConnection,
-      );
-      if (res.ok && res.data) setRevealed(res.data);
-    });
-  }
 
   return (
     <div className="space-y-5">
@@ -73,24 +59,12 @@ export function DatabaseOverview({
       <Card>
         <CardContent className="space-y-4 p-5">
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Connection string</span>
-              <button
-                type="button"
-                onClick={reveal}
-                disabled={pending}
-                className="flex cursor-pointer items-center gap-1 hover:text-foreground"
-              >
-                {revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                {revealed ? "Hide" : "Reveal"}
-              </button>
-            </div>
-            <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-2.5 py-1.5">
-              <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
-                {revealed ?? db.connectionStringMasked}
-              </code>
-              {revealed && <CopyButton value={revealed} />}
-            </div>
+            <p className="text-xs text-muted-foreground">Connection string</p>
+            <DatabaseConnectionString
+              id={db.id}
+              masked={db.connectionStringMasked}
+              canReveal={canReveal}
+            />
           </div>
 
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
