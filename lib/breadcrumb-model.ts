@@ -31,6 +31,9 @@ export interface BreadcrumbApp {
   folderId: string | null;
   projectId: string | null;
   environmentId: string | null;
+  /** The app's own logo, so the menu shows the same avatar its card and header
+   *  do instead of a generic glyph. Optional: absent ⇒ the generic glyph. */
+  logo?: string | null;
 }
 
 export interface BreadcrumbProject {
@@ -66,6 +69,9 @@ export interface DropItem {
   kind: "folder" | "app" | "project" | "section";
   /** The entry that IS the current path at this level (checkmarked, non-navigating). */
   current: boolean;
+  /** An app entry's logo (see BreadcrumbApp.logo) — the renderer shows it in
+   *  place of the generic glyph. Null/absent on every other kind. */
+  logo?: string | null;
   /** Optional group heading the renderer buckets items under ("Folders" / "Apps"). */
   group?: string;
 }
@@ -282,6 +288,7 @@ export function buildBreadcrumb(
         label: s.name,
         href: svcHref(s),
         kind: "app" as const,
+        logo: s.logo ?? null,
         current: s.id === rootAppId,
         group: "Apps",
       }))
@@ -319,6 +326,7 @@ export function buildBreadcrumb(
         label: s.name,
         href: svcHref(s),
         kind: "app" as const,
+        logo: s.logo ?? null,
         // Only the LEAF folder's open app is "current"; a deeper app sits
         // below the next folder, not this crumb.
         current: isLeaf && service != null && s.id === service.id,
@@ -355,6 +363,7 @@ export function buildBreadcrumb(
           label: s.name,
           href: svcHref(s),
           kind: "app" as const,
+          logo: s.logo ?? null,
           current: service != null && s.id === service.id,
         }))
         .sort(byNameThenId),
@@ -384,6 +393,7 @@ export function buildBreadcrumb(
           label: s.name,
           href: svcHref(s),
           kind: "app" as const,
+          logo: s.logo ?? null,
           current: s.id === service!.id,
         }))
         .sort(byNameThenId),

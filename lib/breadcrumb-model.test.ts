@@ -121,6 +121,38 @@ test("app crumb lists sibling apps in the same folder", () => {
   assert.equal(service.items.find((i) => i.label === "Web")!.current, true);
 });
 
+test("app entries carry the app's logo, wherever they are listed", () => {
+  const g = graph();
+  g.apps.find((a) => a.slug === "web")!.logo = "https://cdn.test/web.png";
+  g.apps.find((a) => a.slug === "shop")!.logo = "https://cdn.test/shop.png";
+
+  // Sibling menu on the app crumb, and the folder crumb that holds it.
+  const segs = svc("/apps/api", g)!;
+  const siblings = segs.find((s) => s.kind === "app")!.items;
+  assert.equal(
+    siblings.find((i) => i.label === "Web")!.logo,
+    "https://cdn.test/web.png",
+  );
+  // No logo set ⇒ null, so the renderer falls back to the generic glyph.
+  assert.equal(siblings.find((i) => i.label === "Api")!.logo, null);
+  assert.equal(
+    segs[2].items.find((i) => i.label === "Web")!.logo,
+    "https://cdn.test/web.png",
+  );
+
+  // Project crumb + the Overview root's ungrouped apps.
+  const proj = svc("/apps/shop", g)!.find((s) => s.kind === "project")!;
+  assert.equal(
+    proj.items.find((i) => i.label === "Shop")!.logo,
+    "https://cdn.test/shop.png",
+  );
+  const root = overview(null, null, "grid", g)![0];
+  assert.equal(root.items.find((i) => i.label === "Loose")!.logo, null);
+  // Folders and projects have no logo of their own — the field stays absent.
+  assert.equal(root.items.find((i) => i.kind === "folder")!.logo, undefined);
+  assert.equal(root.items.find((i) => i.kind === "project")!.logo, undefined);
+});
+
 test("ungrouped app: Overview → app; Overview marks it current", () => {
   const segs = svc("/apps/loose")!;
   assert.deepEqual(shape(segs), [

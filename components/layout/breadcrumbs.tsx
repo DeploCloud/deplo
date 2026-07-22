@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AppLogo } from "@/components/shared/project-logo";
 import { useAppNav } from "@/components/apps/app-nav-store";
 import {
   buildBreadcrumb,
@@ -243,6 +244,16 @@ function MenuRow({ item }: { item: DropItem }) {
         : item.kind === "app"
           ? Box
           : null;
+  // An app wears its own logo here — the same avatar its card, its header and
+  // the Environment tab show — so the menu reads as the apps you recognise
+  // rather than a column of identical boxes. Logo-less apps keep the glyph,
+  // which is exactly what AppLogo falls back to.
+  const icon =
+    item.kind === "app" && item.logo ? (
+      <AppLogo logo={item.logo} size={16} className="rounded-[4px]" />
+    ) : Icon ? (
+      <Icon className="size-4 text-muted-foreground" />
+    ) : null;
   if (item.current) {
     // The entry you're already on: a non-navigating marker, kept full-opacity
     // (the variant-scoped override beats the base data-[disabled]:opacity-50).
@@ -252,7 +263,7 @@ function MenuRow({ item }: { item: DropItem }) {
         aria-current="true"
         className="data-[disabled]:opacity-100"
       >
-        {Icon && <Icon className="size-4 text-muted-foreground" />}
+        {icon}
         <span className="truncate">{item.label}</span>
         <span className="sr-only">(current)</span>
         <Check className="ml-auto size-4 text-muted-foreground" />
@@ -262,7 +273,7 @@ function MenuRow({ item }: { item: DropItem }) {
   return (
     <DropdownMenuItem asChild className="cursor-pointer">
       <Link href={item.href}>
-        {Icon && <Icon className="size-4 text-muted-foreground" />}
+        {icon}
         <span className="truncate">{item.label}</span>
       </Link>
     </DropdownMenuItem>
