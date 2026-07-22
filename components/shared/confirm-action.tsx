@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ActionResult } from "@/lib/result";
+import { cn } from "@/lib/utils";
 
 export function ConfirmAction({
   trigger,
@@ -132,8 +134,22 @@ export function ConfirmAction({
               type="submit"
               variant={variant}
               disabled={pending || !typedOk}
+              aria-busy={pending}
+              aria-label={pending ? confirmLabel : undefined}
             >
-              {pending ? "Working…" : confirmLabel}
+              {/* While the action runs, a spinner stands in for the label. The
+                  label stays mounted (just hidden) so the button keeps its
+                  width and the footer doesn't jump mid-action. */}
+              <span className="grid place-items-center">
+                <span
+                  className={cn("col-start-1 row-start-1", pending && "invisible")}
+                >
+                  {confirmLabel}
+                </span>
+                {pending && (
+                  <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
+                )}
+              </span>
             </Button>
           </DialogFooter>
         </form>
