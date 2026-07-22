@@ -33,7 +33,7 @@ import {
   upsertInstallation,
   removeGithubApp,
 } from "./github";
-import { recordActivity, listActivity, listActivityByActor } from "./activity";
+import { recordActivity, listActivity } from "./activity";
 
 /**
  * Data-layer tests for the infra / integrations cut-set (e) against pglite
@@ -298,18 +298,5 @@ test("activities: listActivity is team-scoped, newest-first, and seq breaks a sa
       "newest-first by (createdAt DESC, seq DESC)",
     );
   });
-});
-
-test("activities: listActivityByActor filters by actor across teams", async () => {
-  await seedActivity(db, { id: "a1", teamId: TEAM_A, actor: "alice", createdAt: "2026-01-01T00:00:00.000Z" });
-  await seedActivity(db, { id: "a2", teamId: TEAM_B, actor: "alice", createdAt: "2026-01-02T00:00:00.000Z" });
-  await seedActivity(db, { id: "a3", teamId: TEAM_A, actor: "bob", createdAt: "2026-01-03T00:00:00.000Z" });
-
-  const alice = await listActivityByActor("alice", 10);
-  assert.deepEqual(
-    alice.map((a) => a.id),
-    ["a2", "a1"],
-    "alice's events across teams, newest-first",
-  );
 });
 

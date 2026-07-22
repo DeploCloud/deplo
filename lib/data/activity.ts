@@ -24,20 +24,6 @@ export async function listActivity(limit = 20): Promise<Activity[]> {
   return rows.map(assembleActivity);
 }
 
-/** Activity attributed to a given actor (username), newest-first, capped. */
-export async function listActivityByActor(
-  actor: string,
-  limit = 10,
-): Promise<Activity[]> {
-  const rows = await getDb()
-    .select()
-    .from(activitiesTable)
-    .where(eq(activitiesTable.actor, actor))
-    .orderBy(desc(activitiesTable.createdAt), desc(activitiesTable.seq))
-    .limit(limit);
-  return rows.map(assembleActivity);
-}
-
 /**
  * Internal: record an event. Caller is expected to be authorized already.
  *

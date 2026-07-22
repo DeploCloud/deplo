@@ -73,11 +73,18 @@ export function DeleteUserDialog({
   username,
   open,
   onOpenChange,
+  onDeleted,
 }: {
   userId: string;
   username: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /**
+   * Fired once the account is actually gone. For a caller that is itself a view
+   * OF that account (the user editor's danger zone) this is how it closes
+   * instead of sitting there pointed at a user who no longer exists.
+   */
+  onDeleted?: () => void;
 }) {
   const router = useRouter();
   const [impact, setImpact] = React.useState<Impact | null>(null);
@@ -375,6 +382,7 @@ export function DeleteUserDialog({
               (removed.length ? ` · removed ${removed.join(", ")}` : ""),
           );
           router.refresh();
+          onDeleted?.();
         }
         return res;
       }}

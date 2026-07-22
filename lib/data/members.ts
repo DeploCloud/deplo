@@ -26,7 +26,7 @@ import {
 import { newId, nowIso } from "../ids";
 import { sha256Hex, randomToken, hashPassword } from "../crypto";
 import { getCurrentUser } from "../auth";
-import { recordActivity, listActivityByActor } from "./activity";
+import { recordActivity } from "./activity";
 import { instanceOwnerUserId } from "./instance-owner";
 import {
   requireCapability,
@@ -120,7 +120,6 @@ export interface UserDetailDTO {
   canMountHostVolumes: boolean;
   createdAt: string;
   teams: { teamId: string; teamName: string; role: Role }[];
-  recentActivity: { message: string; createdAt: string }[];
 }
 
 /** How a registration link decides the registrant's team(s). */
@@ -638,8 +637,9 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
 
 /**
  * Full detail for one user, for the admin editor: teams & roles, account
- * metadata, the email (admin-only — never in lists/search), and recent
- * activity by that user across the instance. Instance-admin only.
+ * metadata and the email (admin-only — never in lists/search). Instance-admin
+ * only. Deliberately no activity feed: the editor is where an admin changes what
+ * an account may do, and `/activity` is where the log is read.
  */
 export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
   await requireInstanceAdmin();
@@ -671,11 +671,6 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     .from(membershipsTable)
     .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId))
     .where(eq(membershipsTable.userId, userId));
-  // Activity is relational (cut-set e); attributed by actor = username.
-  const recentActivity = (await listActivityByActor(u.username, 10)).map((a) => ({
-    message: a.message,
-    createdAt: a.createdAt,
-  }));
   return {
     userId: u.id,
     username: u.username,
@@ -693,7 +688,6 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
       teamName: t.teamName ?? "(unknown)",
       role: t.role as Role,
     })),
-    recentActivity,
   };
 }
 

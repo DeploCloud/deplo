@@ -2464,11 +2464,6 @@ input UpsertGlobalEnvInput {
   value: String!
 }
 
-type UserActivity {
-  createdAt: String
-  message: String
-}
-
 """
 Full per-user detail for the admin editor — the email IS included here.
 """
@@ -2483,7 +2478,6 @@ type UserDetail {
   """Owns the instance. Their account is editable only by themselves."""
   isInstanceOwner: Boolean
   name: String
-  recentActivity: [UserActivity!]
   suspended: Boolean
   teams: [UserDetailTeam!]
   userId: ID

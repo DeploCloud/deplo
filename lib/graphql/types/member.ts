@@ -121,15 +121,6 @@ const UserDetailTeamRef = builder
     }),
   });
 
-const UserActivityRef = builder
-  .objectRef<UserDetailDTO["recentActivity"][number]>("UserActivity")
-  .implement({
-    fields: (t) => ({
-      message: t.exposeString("message"),
-      createdAt: t.exposeString("createdAt"),
-    }),
-  });
-
 export const UserDetailRef = builder
   .objectRef<UserDetailDTO>("UserDetail")
   .implement({
@@ -151,10 +142,6 @@ export const UserDetailRef = builder
       canMountHostVolumes: t.exposeBoolean("canMountHostVolumes"),
       createdAt: t.exposeString("createdAt"),
       teams: t.field({ type: [UserDetailTeamRef], resolve: (u) => u.teams }),
-      recentActivity: t.field({
-        type: [UserActivityRef],
-        resolve: (u) => u.recentActivity,
-      }),
     }),
   });
 
