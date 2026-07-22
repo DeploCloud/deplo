@@ -5,18 +5,18 @@ import { CleanupPanel } from "@/components/settings/cleanup-panel";
 import { CleanupHistory } from "@/components/settings/cleanup-history";
 import { getCleanupPolicy, listCleanupRuns } from "@/lib/data/docker-cleanup";
 import { listAllServers } from "@/lib/data/servers";
-import { hasCapability } from "@/lib/membership";
+import { isInstanceAdmin } from "@/lib/membership";
 import { serverLabel } from "@/lib/utils";
 
 export const metadata = { title: "Settings · Docker cleanup" };
 
 export default async function SettingsCleanupPage() {
   // Gate BEFORE the reads: getCleanupPolicy/listCleanupRuns each call
-  // requireCapability("manage_infra") and throw, which would surface as a crashed
-  // page rather than a missing one. The nav entry is hidden without the capability;
-  // this guards the direct link, and 404s (like its sibling /settings/servers) so a
-  // system page doesn't advertise its own existence to a member who can't use it.
-  if (!(await hasCapability("manage_infra"))) notFound();
+  // requireInstanceAdmin() and throw, which would surface as a crashed page rather
+  // than a missing one. The nav entry is hidden for non-admins; this guards the
+  // direct link, and 404s (like its sibling /settings/servers) so a system page
+  // doesn't advertise its own existence to someone who can't use it.
+  if (!(await isInstanceAdmin())) notFound();
 
   const [servers, policy, runs] = await Promise.all([
     // The UNSCOPED server list on purpose: the sweep is host-coupled and the policy

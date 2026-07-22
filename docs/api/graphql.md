@@ -56,7 +56,9 @@ Fields are gated by the same capability model as the dashboard:
 | `manage_team`     | rename/edit/delete the team                                 |
 
 Some queries/mutations require **instance admin** (global): managing all users,
-minting registration links, the per-user admin editor.
+minting registration links, the per-user admin editor, and Docker cleanup
+(`dockerCleanupPolicy`, `dockerCleanupRuns`, `updateDockerCleanupPolicy`,
+`runDockerCleanupNow`) — one instance-wide policy over hosts every team shares.
 
 ## Shape of the API
 

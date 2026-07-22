@@ -235,11 +235,11 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/cleanup",
         icon: Brush,
         tooltip: "Reclaim Docker disk on your servers",
-        // NOT `requiresAdmin`, unlike its neighbours: reclaiming build cache is
-        // operational hygiene, and the people who run out of disk at 3am are the
-        // manage_infra holders — the same capability the page and
-        // lib/data/docker-cleanup gate on.
-        requires: "manage_infra",
+        // Instance admins, like its neighbours: the policy is ONE instance-wide
+        // schedule and a sweep deletes on hosts every team shares, so holding
+        // manage_infra in one team is not authority over it. Matches the page and
+        // lib/data/docker-cleanup, which both gate on instance-admin.
+        requiresAdmin: true,
       },
       {
         label: "Users",

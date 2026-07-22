@@ -13,9 +13,9 @@ import {
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireCapability } from "../membership";
+import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import { recordActivity } from "./activity";
-import { getServer, getServerById } from "./servers";
+import { getServerById } from "./servers";
 import { parseCron } from "../backups/cron";
 import { runAgentCleanup } from "../infra/agent-client";
 import { CleanupScope } from "../agent/gen/agent";
@@ -30,13 +30,13 @@ import { formatBytes } from "../utils";
  *  - The SCHEDULE is instance-wide (one {@link dockerCleanupPolicy} singleton) and a
  *    host opts OUT via {@link dockerCleanupExcludedServers}. There is exactly one
  *    schedule to reason about, and a newly added server cannot silently go un-swept.
- *  - The gate is `manage_infra`, not instance-admin: reclaiming build cache is
- *    operational hygiene, and the operators who run out of disk are the ones who
- *    already hold `manage_infra`. Servers are cross-team infra, so the policy and
- *    the run history are NOT team-scoped — the `teamId` we resolve is used only to
- *    attribute the activity row. The interactive per-server entry point
- *    ("clean up now") DOES resolve its target team-scoped, though: a host reserved
- *    for another team is not this caller's to prune.
+ *  - The gate is INSTANCE-ADMIN, like every other server-level operation in
+ *    `servers.ts` (add, remove, update the agent, re-team). The policy is one
+ *    instance-wide row and a sweep deletes on hosts shared by every team, so a
+ *    per-team capability was the wrong shape: `manage_infra` in one team is not
+ *    authority over another team's host. Servers are cross-team infra, so the
+ *    policy and the run history are NOT team-scoped either — the `teamId` we
+ *    resolve alongside the gate is used only to attribute the activity row.
  *
  * WHAT gets deleted is not decided here. The control plane owns the scope SET; the
  * agent owns the deletion, allow-listed (never `system`/`container`/`volume`/`network
@@ -286,15 +286,15 @@ async function loadPolicy(): Promise<CleanupPolicy> {
 
 /** The instance-wide cleanup policy (the settings page's read). */
 export async function getCleanupPolicy(): Promise<CleanupPolicy> {
-  await requireCapability("manage_infra");
+  await requireInstanceAdmin();
   return loadPolicy();
 }
 
 /**
  * The policy, read WITHOUT a session — for the scheduler tick, which has no request
  * context to gate against (no cookies, no active team). This is not a hole in the
- * `manage_infra` gate: the tick takes no caller input, returns nothing to a client, and
- * its authority is the enabled policy row itself (written earlier under `manage_infra`)
+ * instance-admin gate: the tick takes no caller input, returns nothing to a client, and
+ * its authority is the enabled policy row itself (written earlier by an instance admin)
  * plus the cross-process lease it already holds. Every USER-facing read of the policy
  * goes through {@link getCleanupPolicy}, which gates.
  */
@@ -326,8 +326,8 @@ async function runHistoryCap(): Promise<number> {
 
 /**
  * Cleanup history, newest first. NOT team-scoped — servers are the one shared
- * cross-team resource, so a run belongs to a host, not to a team; the gate is the
- * `manage_infra` capability, checked here.
+ * cross-team resource, so a run belongs to a host, not to a team; the gate is
+ * instance-admin, checked here.
  *
  * The default page is the retention cap itself (3 × the server count) — asking for
  * "the history" answers with everything retention keeps.
@@ -338,7 +338,7 @@ async function runHistoryCap(): Promise<number> {
 export async function listCleanupRuns(
   filter: { serverId?: string; limit?: number } = {},
 ): Promise<CleanupRunDTO[]> {
-  await requireCapability("manage_infra");
+  await requireInstanceAdmin();
   const fallback = filter.limit ?? (await runHistoryCap());
   const limit = clampInt(fallback, 1, MAX_RUN_LIMIT, RUNS_KEPT_PER_SERVER);
   const rows = await getDb()
@@ -448,7 +448,9 @@ export async function pruneCleanupRunHistory(): Promise<number> {
 export async function updateCleanupPolicy(
   input: UpdateCleanupPolicyInput,
 ): Promise<CleanupPolicy> {
-  const { teamId } = await requireCapability("manage_infra");
+  await requireInstanceAdmin();
+  // Only to attribute the activity row — the policy itself is instance-wide.
+  const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
 
   const schedule = input.schedule.trim();
@@ -699,12 +701,15 @@ async function executeCleanup(args: {
  * verbatim — "update the agent on this server" must reach the person who can act on it.
  */
 export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
-  const { teamId } = await requireCapability("manage_infra");
+  await requireInstanceAdmin();
+  // Only to attribute the activity row — the sweep belongs to a host, not a team.
+  const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
-  // Team-scoped resolve: a destructive prune on a host reserved for another
-  // team must read as "not found" (the scheduler's session-free path keeps the
-  // unscoped getServerById inside the executor).
-  const server = await getServer(serverId);
+  // UNSCOPED resolve, and correct now that the gate is instance-admin: this page
+  // lists every host (a server reserved for another team fills the same disk), and
+  // an instance admin already administers all of them. It was team-scoped while a
+  // per-team `manage_infra` could reach here — that was the escalation to block.
+  const server = await getServerById(serverId);
   if (!server) throw new Error("Server not found");
 
   const policy = await loadPolicy();
@@ -727,7 +732,7 @@ export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
  * The session-free twin of {@link runCleanupNow}, for the scheduler tick. There is no
  * request context to gate on: the tick has already claimed the cross-process lease and
  * read the enabled policy straight off the store, so its authority is that policy row
- * (written earlier under `manage_infra`) and a synthetic "Scheduler" actor.
+ * (written earlier by an instance admin) and a synthetic "Scheduler" actor.
  *
  * NEVER throws. {@link executeCleanup} has already recorded the `failed` run and the
  * activity by the time it does; swallowing here is what stops one unreachable host from

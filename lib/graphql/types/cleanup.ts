@@ -145,14 +145,14 @@ const UpdateDockerCleanupPolicyInputType = builder.inputType(
 builder.queryFields((t) => ({
   dockerCleanupPolicy: t.field({
     type: DockerCleanupPolicyRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { instanceAdmin: true },
     description:
       "The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as the defaults — enabled, daily, every scope.",
     resolve: () => getCleanupPolicy(),
   }),
   dockerCleanupRuns: t.field({
     type: [DockerCleanupRunRef],
-    authScopes: { capability: "manage_infra" },
+    authScopes: { instanceAdmin: true },
     description:
       "Cleanup history, newest first. Not team-scoped: servers are the one shared cross-team resource, so a run belongs to a host.",
     args: {
@@ -178,7 +178,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   updateDockerCleanupPolicy: t.field({
     type: DockerCleanupPolicyRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { instanceAdmin: true },
     description:
       "Save the instance-wide cleanup policy. The cron is rejected (not repaired) when it does not parse — an unparseable schedule is a cleanup that silently never runs while the UI says it is enabled. The numeric bounds are clamped instead: there is no dangerous value of 'keep N images', only an unhelpful one.",
     args: { input: t.arg({ type: UpdateDockerCleanupPolicyInputType, required: true }) },
@@ -196,7 +196,7 @@ builder.mutationFields((t) => ({
   }),
   runDockerCleanupNow: t.field({
     type: DockerCleanupRunRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { instanceAdmin: true },
     description:
       "Reclaim Docker disk on this server now, with the policy's scopes — whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive. Errors clearly when the server is unreachable, unprovisioned, or its agent is too old to know how to clean up.",
     args: { serverId: t.arg.string({ required: true }) },

@@ -41,8 +41,10 @@ import {
  *    a save, or the sweep deletes things the operator refused),
  *  - the defaults a never-configured instance reads: ENABLED, with EVERY scope — the
  *    daily sweep is on unless an operator turns it off,
- *  - `manage_infra` gating every entry point, and the "history never lies" invariant:
- *    a sweep that could not even reach an agent still lands as a `failed` run,
+ *  - INSTANCE-ADMIN gating every entry point — a team capability, `manage_infra`
+ *    included, is not authority over an instance-wide policy or another team's host —
+ *    and the "history never lies" invariant: a sweep that could not even reach an
+ *    agent still lands as a `failed` run,
  *  - retention: the history is capped at 3 runs × server count, pruned by the executor
  *    itself, with `running` rows immortal to the pruner.
  *
@@ -66,6 +68,12 @@ after(async () => {
 
 /** A second, capability-poor principal: `view` only, so no `manage_infra`. */
 const USER_VIEWER = "user_viewer";
+/**
+ * The principal this feature's gate exists for: a full `manage_infra` holder in the
+ * team who is NOT an instance admin. Docker cleanup is one instance-wide policy over
+ * hosts every team shares, so a team capability must not reach it.
+ */
+const USER_INFRA = "user_infra";
 
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_CLEANUP}
@@ -74,6 +82,13 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: USER_VIEWER, teamId: TEAM_A, role: "viewer", capabilities: ["view"] },
+      {
+        id: USER_INFRA,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_infra"],
+        isInstanceAdmin: false,
+      },
     ],
   });
   await seedServer(db);
@@ -84,6 +99,9 @@ const asOwner = <T>(fn: () => Promise<T>): Promise<T> =>
 
 const asViewer = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_VIEWER, teamId: TEAM_A }, fn);
+
+const asInfraMember = <T>(fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity({ userId: USER_INFRA, teamId: TEAM_A }, fn);
 
 /** A valid policy input; spread over it to make one field wrong. */
 const VALID_INPUT = {
@@ -222,25 +240,37 @@ test("a saved policy always wins over the defaults — an explicit disable survi
 });
 
 /* ------------------------------------------------------------------ */
-/* (e) manage_infra gates every entry point                            */
+/* (e) instance-admin gates every entry point                          */
 /* ------------------------------------------------------------------ */
 
-test("an identity without manage_infra is refused by every entry point", async () => {
+const denied = /Only an instance admin can do that/;
+
+async function assertEveryEntryPointRefused() {
+  await assert.rejects(() => getCleanupPolicy(), denied, "read of the policy");
+  await assert.rejects(() => listCleanupRuns(), denied, "read of the history");
+  await assert.rejects(
+    () => updateCleanupPolicy({ ...VALID_INPUT, scopes: [...VALID_INPUT.scopes] }),
+    denied,
+    "write of the policy",
+  );
+  await assert.rejects(() => runCleanupNow(SERVER_1), denied, "the sweep itself");
+}
+
+test("a plain member is refused by every entry point", async () => {
+  await seedCleanupPolicy(db, { enabled: true });
+  await asViewer(assertEveryEntryPointRefused);
+  // The gate holds BEFORE any side effect: no run row, and the policy is untouched.
+  assert.equal((await allRuns()).length, 0);
+});
+
+test("manage_infra alone does NOT reach Docker cleanup — the gate is instance-admin", async () => {
   await seedCleanupPolicy(db, { enabled: true });
 
-  await asViewer(async () => {
-    const denied = /don't have permission to manage infrastructure/;
-    await assert.rejects(() => getCleanupPolicy(), denied, "read of the policy");
-    await assert.rejects(() => listCleanupRuns(), denied, "read of the history");
-    await assert.rejects(
-      () => updateCleanupPolicy({ ...VALID_INPUT, scopes: [...VALID_INPUT.scopes] }),
-      denied,
-      "write of the policy",
-    );
-    await assert.rejects(() => runCleanupNow(SERVER_1), denied, "the sweep itself");
-  });
+  // The whole point of the gate: this member may manage their own team's infra, but
+  // the cleanup policy is a single instance-wide row and the sweep deletes on hosts
+  // shared with every other team. Nothing here is theirs to decide.
+  await asInfraMember(assertEveryEntryPointRefused);
 
-  // The gate holds BEFORE any side effect: no run row, and the policy is untouched.
   assert.equal((await allRuns()).length, 0);
 });
 
