@@ -40,7 +40,7 @@ import {
 } from "@/components/apps/app-live-status";
 import { AppStatusDot } from "@/components/apps/app-status-dot";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
-import { cn, timeAgo } from "@/lib/utils";
+import { appTypeLabel, cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppSummary } from "@/lib/data/apps";
 import type { AppStatus } from "@/lib/types";
@@ -545,13 +545,14 @@ export function AppCard({
           <AppLogo logo={project.logo} size={36} />
           <div className="min-w-0 flex-1">
             <span className="block truncate font-medium">{project.name}</span>
-            {project.productionUrl ? (
-              <p className="truncate text-xs text-muted-foreground">
-                {project.productionUrl.replace(/^https?:\/\//, "")}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">No domain yet</p>
-            )}
+            {/* Same subtitle slot the app's own header uses: the live URL when
+                a domain is linked, otherwise what this App *is* — "No domain
+                yet" only restated the absence the empty slot already showed. */}
+            <p className="truncate text-xs text-muted-foreground">
+              {project.productionUrl
+                ? project.productionUrl.replace(/^https?:\/\//, "")
+                : appTypeLabel(project)}
+            </p>
           </div>
 
           {dep ? (
@@ -598,13 +599,13 @@ export function AppCard({
               <AppLogo logo={project.logo} size={36} />
               <div className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{project.name}</span>
-                {project.productionUrl ? (
-                  <p className="truncate text-xs text-muted-foreground">
-                    {project.productionUrl.replace(/^https?:\/\//, "")}
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No domain yet</p>
-                )}
+                {/* See the list view above: URL when there is one, else the
+                    App's kind, exactly as its management header reads. */}
+                <p className="truncate text-xs text-muted-foreground">
+                  {project.productionUrl
+                    ? project.productionUrl.replace(/^https?:\/\//, "")
+                    : appTypeLabel(project)}
+                </p>
               </div>
             </div>
 
