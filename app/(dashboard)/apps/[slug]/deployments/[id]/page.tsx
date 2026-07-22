@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CommitLink } from "@/components/apps/commit-link";
+import { CommitMessage } from "@/components/apps/commit-message";
 import { githubCommitUrl, timeAgo } from "@/lib/utils";
 import { BuildLogStream } from "@/components/apps/build-log-stream";
 import { BuildDuration } from "@/components/apps/build-duration";
@@ -85,10 +86,12 @@ export default async function DeploymentDetailPage(
               />
             </span>
           </Meta>
-          <div className="sm:col-span-2">
-            <p className="text-xs text-muted-foreground">Commit</p>
-            <p className="text-sm">{deployment.commitMessage}</p>
-          </div>
+          <Meta label="Commit" className="sm:col-span-2">
+            <CommitMessage
+              message={deployment.commitMessage}
+              sha={deployment.commitSha}
+            />
+          </Meta>
           <Meta label="Created">
             <span className="text-sm">
               {timeAgo(deployment.createdAt)} by {deployment.creator}
@@ -126,12 +129,14 @@ export default async function DeploymentDetailPage(
 function Meta({
   label,
   children,
+  className,
 }: {
   label: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div>
+    <div className={className}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <div className="mt-1">{children}</div>
     </div>
