@@ -17,7 +17,7 @@ import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { describeAppSource } from "@/components/apps/app-source";
 import { CommitLink } from "@/components/apps/commit-link";
-import { githubCommitUrl, timeAgo } from "@/lib/utils";
+import { formatBuildDuration, githubCommitUrl, timeAgo } from "@/lib/utils";
 
 export default async function AppOverview(
   props: PageProps<"/apps/[slug]">,
@@ -104,7 +104,7 @@ export default async function AppOverview(
                   <p className="text-xs text-muted-foreground">Build time</p>
                   <p className="flex items-center gap-1.5 text-sm">
                     <Clock className="size-3.5" />
-                    {formatDuration(prod.buildDurationMs)}
+                    {formatBuildDuration(prod.buildDurationMs)}
                   </p>
                 </div>
                 <div className="flex gap-2 pt-1">
@@ -200,7 +200,7 @@ export default async function AppOverview(
                   {d.environment}
                 </Badge>
                 <span className="hidden text-xs text-muted-foreground sm:inline">
-                  {formatDuration(d.buildDurationMs)}
+                  {formatBuildDuration(d.buildDurationMs)}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {timeAgo(d.createdAt)}
@@ -212,11 +212,4 @@ export default async function AppOverview(
       </div>
     </div>
   );
-}
-
-function formatDuration(ms: number | null): string {
-  if (!ms) return "";
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
 }

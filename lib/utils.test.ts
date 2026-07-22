@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   appTypeLabel,
+  formatBuildDuration,
   isHexColor,
   normalizeHexColor,
   readableTextColor,
@@ -59,6 +60,25 @@ test("appTypeLabel names the App kind, tracking usesComposeStack", () => {
     appTypeLabel({ ...base, source: "git", compose: "services: {}" }),
     "Compose app",
   );
+});
+
+test("formatBuildDuration rounds DOWN so a live timer never over-reports", () => {
+  // The same formatter drives the ticking "Build time" on the deployment page,
+  // so a build 400ms in must read 0s, not 1s.
+  assert.equal(formatBuildDuration(400), "0s");
+  assert.equal(formatBuildDuration(1_999), "1s");
+  assert.equal(formatBuildDuration(45_000), "45s");
+  assert.equal(formatBuildDuration(59_999), "59s");
+  assert.equal(formatBuildDuration(60_000), "1m 0s");
+  assert.equal(formatBuildDuration(125_000), "2m 5s");
+});
+
+test("formatBuildDuration: no duration renders empty, a negative one clamps to 0s", () => {
+  // Null = never measured (still queued, or a build orphaned by a restart) —
+  // the caller renders its own placeholder rather than a fabricated "0s".
+  assert.equal(formatBuildDuration(null), "");
+  // A viewer's clock running ahead of the host's must not show a negative build.
+  assert.equal(formatBuildDuration(-5_000), "0s");
 });
 
 test("readableTextColor returns a valid foreground for every curated folder colour", () => {

@@ -127,6 +127,9 @@ export async function seedDeployment(
     appId: string;
     status?: Deployment["status"];
     createdAt?: string;
+    /** When the build was claimed off the queue — omit to leave it null (a row
+     *  that never started building). */
+    startedAt?: string;
     serverId?: string;
   },
 ): Promise<void> {
@@ -141,6 +144,7 @@ export async function seedDeployment(
     branch: "main",
     url: "https://x",
     createdAt: opts.createdAt ?? T0,
+    startedAt: opts.startedAt ?? null,
     readyAt: null,
     buildDurationMs: null,
     creator: "Owner",

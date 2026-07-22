@@ -83,6 +83,13 @@ export const DeploymentRef = builder
       branch: t.exposeString("branch"),
       url: t.exposeString("url"),
       createdAt: t.exposeString("createdAt"),
+      startedAt: t.exposeString("startedAt", {
+        nullable: true,
+        description:
+          "When the build was claimed off the queue and started running — the " +
+          "origin `buildDurationMs` is measured from, and what a live build " +
+          "timer counts up from. Null while still queued.",
+      }),
       readyAt: t.exposeString("readyAt", { nullable: true }),
       buildDurationMs: t.exposeInt("buildDurationMs", { nullable: true }),
       creator: t.exposeString("creator"),

@@ -817,6 +817,14 @@ export const deployments = pgTable(
     branch: text("branch").notNull(),
     url: text("url").notNull(),
     readyAt: isoTimestamptz("ready_at"),
+    // When the build actually STARTED — the moment the queue drain claimed this
+    // row (`queued` → `building`), i.e. the instant `build_duration_ms` is
+    // measured from. Null while the deploy is still queued (and on rows that
+    // predate the column): a build that never started has no start to report.
+    // Persisted so "Build time" can tick LIVE in the UI and survive a reload —
+    // the build job's in-process clock dies with the job, and `created_at` would
+    // count the queue wait as build time.
+    startedAt: isoTimestamptz("started_at"),
     buildDurationMs: bigint("build_duration_ms", { mode: "number" }),
     creator: text("creator").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),

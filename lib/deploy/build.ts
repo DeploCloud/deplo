@@ -119,6 +119,7 @@ async function setDep(
   if (patch.commitAuthor !== undefined) set.commitAuthor = patch.commitAuthor;
   if (patch.branch !== undefined) set.branch = patch.branch;
   if (patch.url !== undefined) set.url = patch.url;
+  if (patch.startedAt !== undefined) set.startedAt = patch.startedAt;
   if (patch.readyAt !== undefined) set.readyAt = patch.readyAt;
   if (patch.buildDurationMs !== undefined)
     set.buildDurationMs = patch.buildDurationMs;
@@ -624,6 +625,8 @@ export async function startDeployment(
     branch,
     url,
     createdAt: nowIso(),
+    // Not started: the row is queued, and the claim below stamps the real start.
+    startedAt: null,
     readyAt: null,
     buildDurationMs: null,
     creator: opts.creator,
@@ -843,9 +846,12 @@ async function runDeployment(depId: string): Promise<void> {
   // clobbering the cancel with `building`. The terminal commitOutcome CAS only
   // covers a cancel that arrives DURING the build — this covers the window before
   // it starts.
+  // `startedAt` is stamped with the SAME `started` instant the final
+  // `buildDurationMs` is measured against (not `now()`), so the timer the UI
+  // ticks and the duration eventually written can't disagree.
   const claimed = await getDb()
     .update(deploymentsTable)
-    .set({ status: "building" })
+    .set({ status: "building", startedAt: new Date(started).toISOString() })
     .where(and(eq(deploymentsTable.id, depId), eq(deploymentsTable.status, "queued")))
     .returning({ id: deploymentsTable.id });
   if (claimed.length === 0) {

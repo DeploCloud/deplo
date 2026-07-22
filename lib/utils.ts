@@ -21,6 +21,21 @@ export function timeAgo(input: Date | string | number): string {
   return formatDistanceToNowStrict(date, { addSuffix: true });
 }
 
+/**
+ * How long a build took (or has been running), as `12s` / `2m 5s`. Empty for a
+ * missing duration so a caller can render its own placeholder.
+ *
+ * Rounds DOWN, because the same formatter feeds a timer that ticks live while a
+ * build runs: a clock that shows "1s" 400ms in is lying, and a finished build
+ * must not be able to report a second more than it actually took.
+ */
+export function formatBuildDuration(ms: number | null): string {
+  if (ms == null) return "";
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
 /** Title-case a slug or kebab string. */
 export function titleCase(input: string): string {
   return input.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());

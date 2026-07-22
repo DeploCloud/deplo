@@ -530,6 +530,11 @@ type Deployment {
   """
   queuePosition: Int
   readyAt: String
+
+  """
+  When the build was claimed off the queue and started running — the origin `buildDurationMs` is measured from, and what a live build timer counts up from. Null while still queued.
+  """
+  startedAt: String
   status: DeploymentStatus
   url: String
 }

@@ -9,17 +9,10 @@ import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
 import { LogLines, LogRow } from "@/components/shared/log-line-row";
-import { cn } from "@/lib/utils";
+import { isDeploymentLive } from "@/lib/deployment-status";
 import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
 import type { DeploymentStatus, LogLine } from "@/lib/types";
-
-/** A deployment is finished once it leaves the queued/building states. */
-const TERMINAL: ReadonlySet<DeploymentStatus> = new Set<DeploymentStatus>([
-  "ready",
-  "error",
-  "canceled",
-]);
 
 const POLL_MS = 500;
 /** Treat "within this many px of the bottom" as "at the bottom" → keep following. */
@@ -105,7 +98,7 @@ export function BuildLogStream({
   // own scroll for the user scrolling away and turn off follow.
   const programmaticScroll = React.useRef(false);
 
-  const live = !TERMINAL.has(status);
+  const live = isDeploymentLive(status);
 
   const router = useRouter();
   const [stopping, startStop] = React.useTransition();

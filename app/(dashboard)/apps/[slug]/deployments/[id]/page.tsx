@@ -14,6 +14,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { CommitLink } from "@/components/apps/commit-link";
 import { githubCommitUrl, timeAgo } from "@/lib/utils";
 import { BuildLogStream } from "@/components/apps/build-log-stream";
+import { BuildDuration } from "@/components/apps/build-duration";
 
 export const metadata = { title: "Deployment" };
 
@@ -75,9 +76,13 @@ export default async function DeploymentDetailPage(
           <Meta label="Build time">
             <span className="flex items-center gap-1.5 text-sm">
               <Clock className="size-3.5" />
-              {deployment.buildDurationMs
-                ? `${Math.round(deployment.buildDurationMs / 1000)}s`
-                : ""}
+              {/* Ticks live while the build runs, then freezes on the measured
+                  duration — see BuildDuration. */}
+              <BuildDuration
+                status={deployment.status}
+                startedAt={deployment.startedAt}
+                buildDurationMs={deployment.buildDurationMs}
+              />
             </span>
           </Meta>
           <div className="sm:col-span-2">

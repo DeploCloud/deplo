@@ -830,6 +830,10 @@ export interface Deployment {
   branch: string;
   url: string;
   createdAt: string;
+  /** When the build was claimed off the queue and actually started running —
+   *  the origin `buildDurationMs` is measured from, and what the UI ticks the
+   *  live "Build time" from. Null while queued (nothing has started yet). */
+  startedAt: string | null;
   readyAt: string | null;
   buildDurationMs: number | null;
   creator: string;

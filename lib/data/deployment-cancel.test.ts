@@ -252,6 +252,58 @@ test("canceling does not clobber a service that isn't building/queued", async ()
   );
 });
 
+const buildTimeOf = async (id: string): Promise<number | null> =>
+  (
+    await db
+      .select({ ms: deploymentsTable.buildDurationMs })
+      .from(deploymentsTable)
+      .where(eq(deploymentsTable.id, id))
+  )[0]!.ms;
+
+test("stopping a running build freezes the elapsed time as its build time", async () => {
+  // A build claimed off the queue 30s ago. Stopping it must report what it
+  // actually cost — the number the page's live timer was showing — instead of
+  // leaving "Build time" blank forever.
+  await seedDeployment(db, {
+    id: "dep_running",
+    appId: SVC,
+    status: "building",
+    startedAt: new Date(Date.now() - 30_000).toISOString(),
+  });
+  await as(OWNER, TEAM_A, () => cancelDeployment("dep_running"));
+  const ms = await buildTimeOf("dep_running");
+  assert.ok(
+    ms !== null && ms >= 29_000 && ms < 120_000,
+    `expected ~30s of build time, got ${ms}`,
+  );
+});
+
+test("stopping a QUEUED build leaves its build time null — it never started", async () => {
+  // dep_queued has no started_at: no build ran, so there is no duration to
+  // claim. Inventing one (from created_at, say) would report a build that
+  // never happened.
+  await as(OWNER, TEAM_A, () => cancelDeployment("dep_queued"));
+  assert.equal(await statusOf("dep_queued"), "canceled");
+  assert.equal(await buildTimeOf("dep_queued"), null);
+});
+
+test("the bulk stop freezes elapsed time too, per row", async () => {
+  await seedDeployment(db, {
+    id: "dep_running2",
+    appId: SVC,
+    status: "building",
+    startedAt: new Date(Date.now() - 10_000).toISOString(),
+  });
+  await as(OWNER, TEAM_A, () => cancelAllDeployments(SVC));
+  const ran = await buildTimeOf("dep_running2");
+  assert.ok(ran !== null && ran >= 9_000, `expected ~10s, got ${ran}`);
+  assert.equal(
+    await buildTimeOf("dep_queued"),
+    null,
+    "a never-started row in the same sweep keeps a null build time",
+  );
+});
+
 test("listDeployments decorates each row with its owning server", async () => {
   // A build whose row server_id points at SERVER_2 even though SVC is on SERVER_1.
   await seedDeployment(db, {

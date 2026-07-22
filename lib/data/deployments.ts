@@ -235,6 +235,19 @@ export async function redeploy(appId: string): Promise<Deployment> {
 }
 
 /**
+ * How long the build had been running, frozen onto a row at the moment it is
+ * canceled. A build stopped after 12s reports 12s instead of a blank "Build
+ * time" — the same number the page's live timer was showing when the button was
+ * clicked, so stopping a build doesn't erase what it cost.
+ *
+ * Computed in SQL against `started_at` (not in JS against a value read earlier)
+ * so it measures the row as it is at write time. Null-safe by construction: a
+ * deployment canceled while still `queued` never started, so it keeps a null
+ * duration — there is no build whose time we could claim to know.
+ */
+const elapsedBuildMs = sql`case when ${deploymentsTable.startedAt} is null then null else greatest(0, (extract(epoch from (now() - ${deploymentsTable.startedAt})) * 1000)::bigint) end`;
+
+/**
  * Stop a queued/building deployment. Flips the row to `canceled` and settles the
  * app off "building" right away (see `settleAppAfterCancel`); the running
  * build job (fire-and-forget, no agent-side abort) keeps going, but its terminal
@@ -259,7 +272,7 @@ export async function cancelDeployment(id: string): Promise<boolean> {
   // flipped from ready/error to canceled (0 rows → no-op).
   const stopped = await getDb()
     .update(deploymentsTable)
-    .set({ status: "canceled" })
+    .set({ status: "canceled", buildDurationMs: elapsedBuildMs })
     .where(
       and(
         eq(deploymentsTable.id, id),
@@ -530,7 +543,7 @@ async function cancelDeploymentRows(
   if (rows.length === 0) return 0;
   const stopped = await getDb()
     .update(deploymentsTable)
-    .set({ status: "canceled" })
+    .set({ status: "canceled", buildDurationMs: elapsedBuildMs })
     .where(
       and(
         inArray(deploymentsTable.id, rows.map((r) => r.id)),
