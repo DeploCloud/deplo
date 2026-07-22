@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNestedLayerDismissGuard } from "@/components/ui/use-nested-layer-dismiss-guard";
+import { overlayAutoFocus } from "@/components/ui/overlay-autofocus";
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -36,13 +37,28 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     hideClose?: boolean;
   }
->(({ className, children, hideClose, onInteractOutside, ...props }, ref) => {
+>((
+  {
+    className,
+    children,
+    hideClose,
+    onInteractOutside,
+    onOpenAutoFocus,
+    ...props
+  },
+  ref,
+) => {
   const nestedLayerJustDismissed = useNestedLayerDismissGuard();
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
   return (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
-      ref={ref}
+      ref={(node) => {
+        contentRef.current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref) ref.current = node;
+      }}
       className={cn(
         "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-2xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 rounded-xl",
         className
@@ -55,6 +71,12 @@ const DialogContent = React.forwardRef<
           return;
         }
         onInteractOutside?.(event);
+      }}
+      // Every modal in the app is this component, so none of them can open with
+      // a focus ring on an info icon or a tooltip already showing.
+      onOpenAutoFocus={(event) => {
+        onOpenAutoFocus?.(event);
+        overlayAutoFocus(event, contentRef.current);
       }}
       {...props}
     >

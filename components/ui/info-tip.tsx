@@ -7,7 +7,6 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-  keyboardOnlyTooltipFocus,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -38,12 +37,14 @@ export function InfoTip({
 }) {
   return (
     <Tooltip>
-      {/* Shut on open: a Dialog focuses its first tabbable element, and next to a
-          field label that is this button — see `keyboardOnlyTooltipFocus`. */}
-      <TooltipTrigger asChild onFocus={keyboardOnlyTooltipFocus}>
+      <TooltipTrigger asChild>
         <button
           type="button"
           aria-label={label}
+          // Hint-only: `DialogContent` skips it when a dialog picks what to focus
+          // on open, because landing on an info icon gives the user a focus ring
+          // on something they can't act on (and used to pop the tooltip open).
+          data-hint-trigger=""
           className={cn(
             "inline-flex size-3.5 shrink-0 cursor-help items-center justify-center rounded-full text-muted-foreground/70 outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
             className,

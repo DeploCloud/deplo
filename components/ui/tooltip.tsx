@@ -3,31 +3,56 @@
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { cn } from "@/lib/utils";
+import { isOverlayAutoFocusing } from "@/components/ui/overlay-autofocus";
 
 const TooltipProvider = TooltipPrimitive.Provider;
 const Tooltip = TooltipPrimitive.Root;
-const TooltipTrigger = TooltipPrimitive.Trigger;
 
 /**
- * Keep a tooltip SHUT when its trigger is focused by anything but the keyboard.
+ * Keep a tooltip SHUT unless the user actually asked for it.
  *
  * Radix opens a tooltip on *any* focus of the trigger
- * (`onFocus: composeEventHandlers(props.onFocus, () => context.onOpen())`), and a
- * Dialog focuses its first tabbable element as it opens. Next to a field label
- * that element is the little info button — so the dialog came up with its tooltip
- * already open, before the user had done anything.
+ * (`onFocus: composeEventHandlers(props.onFocus, () => context.onOpen())`), and an
+ * overlay focuses its first tabbable element as it opens — next to a field label
+ * that element is the little info button, so the dialog came up with a tooltip
+ * already floating over it.
+ *
+ * `:focus-visible` alone does NOT settle it, which is the trap: Chrome carries
+ * focus-visible over to whatever is focused programmatically next, so a dialog
+ * opened from a ⋯ menu (the menu item was focus-visible) matched it and opened
+ * the tooltip anyway. Hence {@link isOverlayAutoFocusing}, which knows what the
+ * heuristic can't: that this focus is the surface's doing, not the user's.
  *
  * `preventDefault()` is Radix's own escape hatch: `composeEventHandlers` skips
  * the primitive's handler on a default-prevented event. Focus itself is NOT
  * cancelled (a focus event isn't cancelable) — only Radix's reaction to it. A
- * real keyboard focus still matches `:focus-visible` and still shows the hint.
- *
- * Pass it as `onFocus` on the TRIGGER (it is the "original" handler Radix
- * composes with), never on the child element.
+ * real keyboard focus (Tab onto the trigger) still shows the hint.
  */
-export function keyboardOnlyTooltipFocus(event: React.FocusEvent<HTMLElement>) {
-  if (!event.currentTarget.matches(":focus-visible")) event.preventDefault();
+function keyboardOnlyTooltipFocus(event: React.FocusEvent<HTMLElement>) {
+  if (isOverlayAutoFocusing() || !event.currentTarget.matches(":focus-visible"))
+    event.preventDefault();
 }
+
+/**
+ * The trigger EVERY tooltip goes through, so the guard above is never something
+ * a call site has to remember — a raw `TooltipPrimitive.Trigger` would open on a
+ * dialog's auto-focus again. A caller's own `onFocus` runs first and can opt out
+ * by preventing default itself.
+ */
+const TooltipTrigger = React.forwardRef<
+  React.ElementRef<typeof TooltipPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Trigger>
+>(({ onFocus, ...props }, ref) => (
+  <TooltipPrimitive.Trigger
+    ref={ref}
+    onFocus={(event) => {
+      onFocus?.(event);
+      if (!event.defaultPrevented) keyboardOnlyTooltipFocus(event);
+    }}
+    {...props}
+  />
+));
+TooltipTrigger.displayName = TooltipPrimitive.Trigger.displayName;
 
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
@@ -59,9 +84,7 @@ function SimpleTooltip({
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild onFocus={keyboardOnlyTooltipFocus}>
-        {children}
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side={side}>{content}</TooltipContent>
     </Tooltip>
   );

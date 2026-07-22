@@ -6,6 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNestedLayerDismissGuard } from "@/components/ui/use-nested-layer-dismiss-guard";
+import { overlayAutoFocus } from "@/components/ui/overlay-autofocus";
 
 const Sheet = SheetPrimitive.Root;
 const SheetTrigger = SheetPrimitive.Trigger;
@@ -54,13 +55,28 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "left", className, children, onInteractOutside, ...props }, ref) => {
+>((
+  {
+    side = "left",
+    className,
+    children,
+    onInteractOutside,
+    onOpenAutoFocus,
+    ...props
+  },
+  ref,
+) => {
   const nestedLayerJustDismissed = useNestedLayerDismissGuard();
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
   return (
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content
-      ref={ref}
+      ref={(node) => {
+        contentRef.current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref) ref.current = node;
+      }}
       className={cn(sheetVariants({ side }), className)}
       onInteractOutside={(event) => {
         // Don't let the gesture that closed a nested popper (Select/menu/
@@ -70,6 +86,11 @@ const SheetContent = React.forwardRef<
           return;
         }
         onInteractOutside?.(event);
+      }}
+      // Same surface rules as a Dialog — it is the same Radix primitive.
+      onOpenAutoFocus={(event) => {
+        onOpenAutoFocus?.(event);
+        overlayAutoFocus(event, contentRef.current);
       }}
       {...props}
     >
