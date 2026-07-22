@@ -32,7 +32,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
@@ -253,7 +253,10 @@ export function EditUserDialog({
     newPassword?: string;
   }) {
     const grants = patch.grants ?? savedGrants;
-    return gqlAction<{ updateUserAdmin: { userId: string } }, { userId: string }>(
+    return gqlAction<
+      { updateUserAdmin: { userId: string } },
+      { userId: string }
+    >(
       UPDATE_USER,
       {
         input: {
@@ -376,7 +379,10 @@ export function EditUserDialog({
                   value={createdAt ? timeAgo(createdAt) : "—"}
                 />
                 <Meta label="Teams" value={String(teamCount)} />
-                <Meta label="Sign-in" value={suspended ? "Blocked" : "Allowed"} />
+                <Meta
+                  label="Sign-in"
+                  value={suspended ? "Blocked" : "Allowed"}
+                />
               </div>
               {teams && teams.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
@@ -397,23 +403,28 @@ export function EditUserDialog({
               <Section
                 icon={ShieldCheck}
                 title="Permissions"
-                description="Instance-wide: these apply in every team and on every server. What this person may do inside one team is a separate thing, set on that team's Members page."
+                info={
+                  <>
+                    Instance-wide: they apply in every team and on every server.
+                    What this person may do inside a single team is a separate
+                    thing, set on that team&apos;s Members page.
+                  </>
+                }
               >
                 <ToggleRow
                   title="Instance admin"
-                  detail={
-                    ownerFlagsLocked
-                      ? "The instance owner is always an instance admin. Transfer ownership first."
-                      : "Manage every user, mint registration links, and administer every team and server."
-                  }
+                  info="Manage every user, mint registration links, and administer every team and server. Instance admins also hold both advanced grants implicitly."
                   checked={admin}
                   disabled={isSelf || ownerFlagsLocked}
                   onChange={setAdmin}
                 />
-                {isSelf && (
+                {/* WHY the switch above is dead. A state, not field help, so it
+                    stays on screen rather than hiding behind an icon. */}
+                {(ownerFlagsLocked || isSelf) && (
                   <p className="text-xs text-muted-foreground">
-                    You can&apos;t change your own admin status — another
-                    instance admin has to do it.
+                    {ownerFlagsLocked
+                      ? "The instance owner is always an instance admin — transfer ownership first."
+                      : "You can't change your own admin status — another instance admin has to."}
                   </p>
                 )}
 
@@ -430,22 +441,22 @@ export function EditUserDialog({
                     <AccordionContent className="space-y-2 pb-1 pt-1">
                       <ToggleRow
                         title="Publish ports"
-                        detail="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains and routes don't need this."
+                        info="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains and routes don't need this."
                         checked={admin || exposePorts}
                         disabled={admin || ownerLocked}
                         onChange={setExposePorts}
                       />
                       <ToggleRow
                         title="Mount host volumes"
-                        detail="Bind-mount host filesystem paths into containers (compose and single-container)."
+                        info="Bind-mount host filesystem paths into containers (compose and single-container)."
                         checked={admin || mountHostVolumes}
                         disabled={admin || ownerLocked}
                         onChange={setMountHostVolumes}
                       />
                       {admin && (
                         <p className="text-xs text-muted-foreground">
-                          Instance admins hold both implicitly — these two only
-                          matter once the admin switch above is off.
+                          On because this account is an instance admin — these
+                          two only matter once that switch is off.
                         </p>
                       )}
                     </AccordionContent>
@@ -453,19 +464,16 @@ export function EditUserDialog({
                 </Accordion>
               </Section>
 
-              <Section
-                icon={KeyRound}
-                title="Password"
-                description="Set a new password for this account. Nobody is emailed about it — hand it over yourself."
-              >
+              <Section icon={KeyRound} title="Password">
                 <div className="space-y-2">
                   <FieldLabel
                     htmlFor="reset-pw"
                     info={
                       <>
                         Leave blank to keep the current password. A new one must
-                        be at least 8 characters, and replaces theirs the moment
-                        you save.
+                        be at least 8 characters and replaces theirs the moment
+                        you save — nobody is emailed about it, so hand it over
+                        yourself.
                       </>
                     }
                   >
@@ -491,14 +499,14 @@ export function EditUserDialog({
                   icon={AlertTriangle}
                   title="Danger zone"
                   tone="destructive"
-                  description="Unlike everything above, these apply the moment you confirm them — they don't wait for Save changes."
+                  info="Unlike everything above, these apply the moment you confirm them — they don't wait for Save changes."
                 >
                   <ActionRow
                     title={suspended ? "Reactivate account" : "Suspend account"}
-                    detail={
+                    info={
                       suspended
                         ? "Let this person sign in again. Everything they had is still there."
-                        : "Sign them out and block sign-in. Teams, apps and data are all kept, and you can undo it here at any time."
+                        : "Signs them out and blocks sign-in. Teams, apps and data are all kept, and you can undo it here at any time."
                     }
                     action={
                       suspended ? (
@@ -527,7 +535,7 @@ export function EditUserDialog({
                   />
                   <ActionRow
                     title="Delete account"
-                    detail="Permanently removes this person and — if you say so — what they own. There is no undo; suspending is the reversible answer."
+                    info="Permanently removes this person and — if you say so — what they own. There is no undo; suspending is the reversible answer."
                     action={
                       <Button
                         variant="destructive"
@@ -536,7 +544,7 @@ export function EditUserDialog({
                         onClick={() => setConfirmDelete(true)}
                       >
                         <Trash2 className="size-4" />
-                        Delete…
+                        Delete
                       </Button>
                     }
                   />
@@ -615,18 +623,20 @@ function Meta({ label, value }: { label: string; value: string }) {
 /**
  * A named group of controls. The heading is the whole point: it tells the admin
  * WHAT they are editing before they touch a switch, which a bare row of toggles
- * never did.
+ * never did. Anything longer than the name rides in the `info` tooltip — a dialog
+ * where every row explains itself in grey 12px reads as a wall, not as a form
+ * (the repo's "field help lives in the tooltip" rule).
  */
 function Section({
   icon: Icon,
   title,
-  description,
+  info,
   tone = "default",
   children,
 }: {
   icon: LucideIcon;
   title: string;
-  description: string;
+  info?: React.ReactNode;
   tone?: "default" | "destructive";
   children: React.ReactNode;
 }) {
@@ -638,71 +648,82 @@ function Section({
         danger ? "border-destructive/40 bg-destructive/5" : "border-border",
       )}
     >
-      <header className="space-y-1">
-        <h3
-          className={cn(
-            "flex items-center gap-2 text-sm font-semibold",
-            danger && "text-destructive",
-          )}
-        >
-          <Icon className="size-4 shrink-0" />
-          {title}
-        </h3>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </header>
+      <h3
+        className={cn(
+          "flex w-fit items-center gap-2 text-sm font-semibold",
+          danger && "text-destructive",
+        )}
+      >
+        <Icon className="size-4 shrink-0" />
+        {title}
+        {info != null && <InfoTip content={info} label={`About ${title}`} />}
+      </h3>
       <div className="space-y-2">{children}</div>
     </section>
   );
 }
 
+/** One row: name, its tooltip, and the control. */
+function Row({
+  title,
+  info,
+  control,
+}: {
+  title: string;
+  info: React.ReactNode;
+  control: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+      <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+        <span className="truncate">{title}</span>
+        <InfoTip content={info} label={`About ${title}`} />
+      </p>
+      <div className="shrink-0">{control}</div>
+    </div>
+  );
+}
+
 function ToggleRow({
   title,
-  detail,
+  info,
   checked,
   disabled,
   onChange,
 }: {
   title: string;
-  detail: string;
+  info: React.ReactNode;
   checked: boolean;
   disabled?: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3">
-      <div className="min-w-0">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-xs text-muted-foreground">{detail}</p>
-      </div>
-      {/* The title is a <p>, not a <label>, so the switch carries the name
-          itself — otherwise it announces as a bare "switch, off". */}
-      <Switch
-        aria-label={title}
-        checked={checked}
-        onCheckedChange={onChange}
-        disabled={disabled}
-      />
-    </div>
+    <Row
+      title={title}
+      info={info}
+      control={
+        // The title is a <p>, not a <label>, so the switch carries the name
+        // itself — otherwise it announces as a bare "switch, off".
+        <Switch
+          aria-label={title}
+          checked={checked}
+          onCheckedChange={onChange}
+          disabled={disabled}
+        />
+      }
+    />
   );
 }
 
 /** A row whose control fires straight away — the danger zone's shape. */
 function ActionRow({
   title,
-  detail,
+  info,
   action,
 }: {
   title: string;
-  detail: string;
+  info: React.ReactNode;
   action: React.ReactNode;
 }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background p-3">
-      <div className="min-w-0">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="text-xs text-muted-foreground">{detail}</p>
-      </div>
-      <div className="shrink-0">{action}</div>
-    </div>
-  );
+  return <Row title={title} info={info} control={action} />;
 }
