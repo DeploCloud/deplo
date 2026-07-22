@@ -11,7 +11,6 @@ import {
   Pencil,
   Plus,
   SearchX,
-  ShieldCheck,
   ShieldOff,
   Trash2,
   UserRound,
@@ -47,7 +46,7 @@ import {
   usePendingCreate,
 } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
-import { cn, timeAgo } from "@/lib/utils";
+import { timeAgo } from "@/lib/utils";
 import type { BasicAuthUserDTO } from "@/lib/data/basic-auth";
 
 /**
@@ -151,7 +150,11 @@ export function BasicAuthManager({
         </p>
       </div>
 
-      <ProtectionStatus count={rows.length} domains={domains} />
+      {/* Only once a login exists: with none, the empty state below already says
+          the app takes no login, and a bare hostname list would just restate the
+          Domains tab. The first credential being created counts — its card is
+          already in the grid. */}
+      {(hasUsers || pending.length > 0) && <CoveredDomains domains={domains} />}
 
       {hasUsers && (
         <EnvFilters
@@ -238,58 +241,29 @@ export function BasicAuthManager({
 }
 
 /* ------------------------------------------------------------------ */
-/* Status                                                              */
+/* Coverage                                                            */
 /* ------------------------------------------------------------------ */
 
 /**
- * What the credentials below actually DO right now, in one line: protected or
- * open, and which hostnames it covers. Derived from the rows and the app's real
- * domains — never a stored flag — so it cannot drift from what Traefik is
- * enforcing.
+ * Which hostnames the login stands in front of. Read from the app's real domains
+ * — never a stored flag — so it cannot drift from what Traefik is enforcing.
+ *
+ * It says only that. Whether the app is protected is not worth a banner: the
+ * cards below ARE the credentials, so counting them back ("Protected — 1
+ * credential can sign in") only restates what is already on screen, and with no
+ * credential at all the empty state says it better.
  */
-function ProtectionStatus({
-  count,
-  domains,
-}: {
-  count: number;
-  domains: string[];
-}) {
-  const on = count > 0;
-  const Icon = on ? ShieldCheck : ShieldOff;
+function CoveredDomains({ domains }: { domains: string[] }) {
   const listed = domains.slice(0, 3);
   const rest = domains.length - listed.length;
 
   return (
-    <div
-      className={cn(
-        "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border px-4 py-3",
-        on
-          ? "border-[var(--success)]/30 bg-[var(--success)]/[0.06]"
-          : "border-border bg-muted/40",
-      )}
-    >
-      <Icon
-        aria-hidden
-        className={cn(
-          "size-4 shrink-0",
-          on ? "text-[var(--success)]" : "text-muted-foreground",
-        )}
-      />
-      <p className="text-sm">
-        <span className="font-medium">{on ? "Protected" : "Open to anyone"}</span>
-        <span className="text-muted-foreground">
-          {" — "}
-          {on
-            ? `${count} ${count === 1 ? "credential can" : "credentials can"} sign in.`
-            : "anyone with the URL can reach this app."}
-        </span>
-      </p>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-muted/40 px-4 py-3">
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         {domains.length === 0 ? (
           <span className="text-xs text-muted-foreground">
-            {on
-              ? "This app has no domain yet — the login will cover every domain you add."
-              : "This app has no domain yet."}
+            This app has no domain yet — the login will cover every domain you
+            add.
           </span>
         ) : (
           <>
