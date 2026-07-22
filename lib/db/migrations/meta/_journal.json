@@ -330,6 +330,13 @@
       "when": 1784671000000,
       "tag": "0046_add_deployment_started_at",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1784671100000,
+      "tag": "0047_add_app_creator",
+      "breakpoints": true
     }
   ]
 }

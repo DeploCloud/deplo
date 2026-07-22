@@ -501,6 +501,69 @@ A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `dat
 """
 scalar DateTime
 
+"""
+Exactly what permanently deleting an account would take with it — read live so the confirmation states facts, not warnings.
+"""
+type DeleteUserImpact {
+  """Non-null ⇒ this account can't be deleted at all; the reason to show."""
+  blockedReason: String
+  createdAppCount: Int
+
+  """
+  Teams they founded that still have other members — deleted only on request.
+  """
+  foundedTeams: [DeleteUserTeamImpact!]
+
+  """Teams that keep everything, minus this membership."""
+  keptTeams: [DeleteUserKeptTeam!]
+  name: String
+  ownedAppCount: Int
+  ownedFolderCount: Int
+  ownedProjectCount: Int
+
+  """
+  Teams where they are the ONLY member — always deleted with the account, since nobody would be left who could ever open them.
+  """
+  soloTeams: [DeleteUserTeamImpact!]
+  tokenCount: Int
+  userId: ID
+  username: String
+
+  """
+  Surviving teams whose last member/team manager this account is. The delete hands that capability to their longest-standing remaining member.
+  """
+  vacatedTeams: [String!]
+}
+
+input DeleteUserInput {
+  deleteCreatedApps: Boolean
+  deleteFoundedTeams: Boolean
+  deleteOwnedWorkspaces: Boolean
+  userId: String!
+}
+
+type DeleteUserKeptTeam {
+  name: String
+  teamId: ID
+}
+
+"""What a completed account deletion actually removed."""
+type DeleteUserResult {
+  appsDeleted: Int
+  databasesDeleted: Int
+  teamsDeleted: Int
+  username: String
+}
+
+"""A team affected by deleting a user, and what it holds."""
+type DeleteUserTeamImpact {
+  appCount: Int
+  databaseCount: Int
+  name: String
+  otherMemberCount: Int
+  teamId: ID
+}
+
 enum DeploySource {
   COMPOSE
   DOCKER_IMAGE
@@ -1181,6 +1244,11 @@ type Mutation {
   deleteTeam(teamId: String!): Boolean
 
   """
+  Permanently delete a user account. Teams they are the only member of always go with it; the rest is opt-in.
+  """
+  deleteUser(input: DeleteUserInput!): DeleteUserResult
+
+  """
   Auto-detect a favicon (SVG/PNG) from the app's GitHub repo or uploaded files and set it as the logo. Errors if none is found.
   """
   detectAppLogo(id: String!): App
@@ -1704,6 +1772,11 @@ type Query {
 
   """All databases in the active team, newest first."""
   databases: [Database!]
+
+  """
+  What permanently deleting this account would remove. Read-only — nothing is deleted.
+  """
+  deleteUserImpact(userId: String!): DeleteUserImpact
   deployment(id: String!): Deployment
   deployments(appId: String, environment: DeploymentEnvironment, status: DeploymentStatus): [Deployment!]
 

@@ -619,7 +619,13 @@ export async function createApp(
         // concurrent setServerTeams restrict can't land this project on a server
         // the team just lost access to. One side of the race loses cleanly.
         await assertServerAccessibleTx(tx, server.id, membership.teamId);
-        await tx.insert(appsTable).values(appToRow(project));
+        // `created_by_user_id` is deliberately NOT on the App domain type: it is
+        // authorship metadata read only by the delete-a-user flow, never by the
+        // renderer or any capability check, so it rides along with the insert
+        // instead of widening every App the app graph assembles.
+        await tx
+          .insert(appsTable)
+          .values({ ...appToRow(project), createdByUserId: userId });
         await tx.insert(appBuildTable).values(buildToRow(project.id, project.build));
         await tx
           .insert(appBuildMethodSettingsTable)

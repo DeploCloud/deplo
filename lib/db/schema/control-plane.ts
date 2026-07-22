@@ -683,6 +683,16 @@ export const apps = pgTable(
       (): AnyPgColumn => deployments.id,
       { onDelete: "set null" },
     ),
+    // Who created this app. Authorship METADATA, never authority — every gate
+    // stays team/folder-scoped, and this column is read by exactly one flow:
+    // deleting a user account (Settings → Users), which offers "also delete the
+    // apps they created" as an explicit opt-in. `ON DELETE SET NULL` because the
+    // default must be the safe one: removing someone's account can never, by
+    // itself, destroy an app the team still runs — that call belongs to the
+    // operator ticking the box, not to a cascade.
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
@@ -692,6 +702,9 @@ export const apps = pgTable(
     index("apps_folder_idx").on(t.folderId),
     index("apps_project_idx").on(t.projectId),
     index("apps_environment_idx").on(t.environmentId),
+    // SET NULL on user delete would otherwise scan every app row (migration 0042
+    // indexed the other SET NULL FKs for the same reason).
+    index("apps_created_by_idx").on(t.createdByUserId),
   ],
 );
 
@@ -1888,10 +1901,12 @@ export const monitoringSettings = pgTable("monitoring_settings", {
  * not a dead end — the crown TRANSFERS, but only by the hand wearing it.
  *
  * NULLABLE, and the FK deliberately has **no `ON DELETE` action** (unlike
- * `teams.founder_user_id`, which is `SET NULL`): there is no user-deletion path in
- * the product, and if one is ever added, orphaning the crown should be a loud FK
- * error rather than a silent slide back into the unowned-instance state this row
- * exists to end. A missing row / NULL owner means "unowned" — legal, and what an
+ * `teams.founder_user_id`, which is `SET NULL`): orphaning the crown must be a loud
+ * FK error rather than a silent slide back into the unowned-instance state this row
+ * exists to end. There IS a user-deletion path now (`lib/data/user-delete.ts`), and
+ * it refuses the owner outright with a message naming the fix — transfer the crown
+ * first — so this FK never actually fires; it stays the backstop under that guard.
+ * A missing row / NULL owner means "unowned" — legal, and what an
  * instance upgraded from before this migration looks like if it somehow had no
  * admin to backfill from. Recovery for a locked-out owner is the host-side CLI
  * (`bun run recover`), which is why losing the row is survivable rather than fatal.

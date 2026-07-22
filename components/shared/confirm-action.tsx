@@ -28,6 +28,7 @@ export function ConfirmAction({
   variant = "destructive",
   successMessage,
   confirmText,
+  confirmDisabled = false,
   extra,
   onConfirm,
 }: {
@@ -49,6 +50,14 @@ export function ConfirmAction({
    * The phrase to type is surfaced for the operator; pass the target's slug/name.
    */
   confirmText?: string;
+  /**
+   * Hold the confirm button closed for a reason the CALLER knows: the dialog is
+   * still loading what it is about to destroy, or the action is refused outright
+   * and the description already says why. Independent of `confirmText` (which
+   * gates on the operator's typing) and of `pending` (which gates on the action
+   * already running).
+   */
+  confirmDisabled?: boolean;
   /**
    * Extra content rendered between the description and the footer — e.g. a
    * "also delete S3 artifacts" checkbox on a delete dialog. Keep it controlled
@@ -87,7 +96,7 @@ export function ConfirmAction({
   }
 
   function handleConfirm() {
-    if (!typedOk) return;
+    if (!typedOk || confirmDisabled) return;
     startTransition(async () => {
       const res = await onConfirm();
       if (res.ok) {
@@ -133,7 +142,7 @@ export function ConfirmAction({
             <Button
               type="submit"
               variant={variant}
-              disabled={pending || !typedOk}
+              disabled={pending || !typedOk || confirmDisabled}
               aria-busy={pending}
               aria-label={pending ? confirmLabel : undefined}
             >

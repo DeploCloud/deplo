@@ -76,6 +76,13 @@ export interface SeedAppOpts {
   status?: App["status"];
   source?: App["source"];
   resources?: App["resources"];
+  /** Park the app inside a folder (seed the folder row yourself first). */
+  folderId?: string | null;
+  /**
+   * Authorship — NOT on the App type (it never reaches the renderer), so it is
+   * written straight onto the row, exactly as `createApp` does.
+   */
+  createdByUserId?: string | null;
 }
 
 /** Seed one project + its 1-to-1 build / method-settings rows. Returns the id. */
@@ -91,7 +98,7 @@ export async function seedApp(
     name: opts.id,
     slug: opts.slug ?? opts.id,
     teamId,
-    folderId: null,
+    folderId: opts.folderId ?? null,
     serverId,
     logo: null,
     source: opts.source ?? "github",
@@ -110,7 +117,9 @@ export async function seedApp(
     createdAt: T0,
     updatedAt: T0,
   };
-  await db.insert(appsTable).values(appToRow(project));
+  await db
+    .insert(appsTable)
+    .values({ ...appToRow(project), createdByUserId: opts.createdByUserId ?? null });
   await db.insert(appBuildTable).values(buildToRow(project.id, build));
   await db
     .insert(appBuildMethodSettingsTable)

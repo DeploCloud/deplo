@@ -14,6 +14,7 @@ import {
   UserCog,
   MoreHorizontal,
   ChevronRight,
+  Trash2,
 } from "lucide-react";
 import {
   Card,
@@ -37,6 +38,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { EditUserDialog } from "@/components/settings/edit-user-dialog";
+import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
@@ -121,6 +123,7 @@ function UserRow({
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [confirmSuspend, setConfirmSuspend] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmTransfer, setConfirmTransfer] = React.useState(false);
   const [transferPassword, setTransferPassword] = React.useState("");
   const [pending, startTransition] = React.useTransition();
@@ -314,6 +317,30 @@ function UserRow({
                 {user.suspended ? "Reactivate account" : "Suspend account"}
               </DropdownMenuItem>
             </SimpleTooltip>
+            {/* Permanent deletion sits below the reversible actions, behind its
+                own separator: suspending is the answer to "they shouldn't be
+                able to log in", and only the operator who means "and everything
+                they own goes too" should reach past it. */}
+            <DropdownMenuSeparator />
+            <SimpleTooltip
+              content={
+                isSelf
+                  ? "You can't delete your own account."
+                  : ownerLocked
+                    ? "The instance owner's account can't be deleted. Transfer ownership first."
+                    : "Permanently delete this account — and, optionally, what it owns"
+              }
+              side="left"
+            >
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={isSelf || ownerLocked || pending}
+                onSelect={() => setConfirmDelete(true)}
+              >
+                <Trash2 className="size-4" />
+                Delete user…
+              </DropdownMenuItem>
+            </SimpleTooltip>
             {canTransferTo && (
               <>
                 <DropdownMenuSeparator />
@@ -383,6 +410,14 @@ function UserRow({
             if (res.ok) router.refresh();
             return res;
           }}
+        />
+      )}
+      {confirmDelete && (
+        <DeleteUserDialog
+          userId={user.userId}
+          username={user.username}
+          open={confirmDelete}
+          onOpenChange={setConfirmDelete}
         />
       )}
       {confirmTransfer && (

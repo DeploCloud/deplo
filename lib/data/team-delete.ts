@@ -20,7 +20,6 @@ import { mapLimit } from "../utils";
 import { withKeyedLock } from "./keyed-mutex";
 import { loadAppsByTeam } from "./app-graph-load";
 import { removeUploads } from "../deploy/upload";
-import type { App } from "../types";
 
 /**
  * Deleting a team is the one action that outranks `manage_team`: it implicitly
@@ -90,9 +89,14 @@ export async function canDeleteTeam(): Promise<{
   }
 }
 
-/** Everything the post-delete stack teardown needs, captured BEFORE the rows go. */
-interface TeardownPlan {
-  services: App[];
+/**
+ * Everything the post-delete stack teardown needs, captured BEFORE the rows go.
+ * Shared with {@link ./user-delete}, which deletes teams (and individual apps)
+ * on the same terms.
+ */
+export interface TeardownPlan {
+  /** Structural: an assembled App (lib/types.ts) satisfies it, and so does a bare row. */
+  services: { id: string; slug: string; serverId: string }[];
   databases: { id: string; host: string; serverId: string }[];
   /** Frozen slugs of the team's installed plugins (containers on the Deplo host). */
   appSlugs: string[];
@@ -111,7 +115,7 @@ interface TeardownPlan {
  * `teardownApp()` re-resolves the owning server from rows that no longer
  * exist.
  */
-function teardownTeamResources(plan: TeardownPlan): void {
+export function teardownTeamResources(plan: TeardownPlan, tag = "team-delete"): void {
   void (async () => {
     await mapLimit(plan.services, 4, async (service) => {
       try {
@@ -124,7 +128,7 @@ function teardownTeamResources(plan: TeardownPlan): void {
         }
       } catch (e) {
         console.warn(
-          `[team-delete] could not tear down ${service.slug} ` +
+          `[${tag}] could not tear down ${service.slug} ` +
             `(${e instanceof Error ? e.message : String(e)}) — leftover ` +
             `containers on its host must be removed manually`,
         );
@@ -142,7 +146,7 @@ function teardownTeamResources(plan: TeardownPlan): void {
             const r = await conn.destroyStack(d.host, true);
             if (!r.ok)
               console.warn(
-                `[team-delete] agent did not cleanly tear down ${d.host} ` +
+                `[${tag}] agent did not cleanly tear down ${d.host} ` +
                   `(${r.error || "unknown error"}) — its data volume may be orphaned`,
               );
           } finally {
@@ -150,7 +154,7 @@ function teardownTeamResources(plan: TeardownPlan): void {
           }
         } catch (e) {
           console.warn(
-            `[team-delete] could not reach the agent for database ${d.host} ` +
+            `[${tag}] could not reach the agent for database ${d.host} ` +
               `(${e instanceof Error ? e.message : String(e)}) — its ` +
               `container/volume may need a manual cleanup`,
           );
@@ -162,7 +166,7 @@ function teardownTeamResources(plan: TeardownPlan): void {
     }
   })().catch((e) =>
     console.warn(
-      `[team-delete] background teardown failed: ${
+      `[${tag}] background teardown failed: ${
         e instanceof Error ? e.message : String(e)
       }`,
     ),

@@ -22,6 +22,13 @@ import {
   transferInstanceOwner,
   viewerIsInstanceOwner,
 } from "@/lib/data/instance-owner";
+import {
+  getDeleteUserImpact,
+  deleteUser,
+  type DeleteUserImpact,
+  type DeleteUserTeamImpact,
+  type DeleteUserResult,
+} from "@/lib/data/user-delete";
 
 /* ------------------------------------------------------------------ */
 /* Local enums                                                         */
@@ -151,6 +158,87 @@ export const UserDetailRef = builder
     }),
   });
 
+/* --- Deleting an account: the preview, and what the delete removed --- */
+
+const DeleteUserTeamImpactRef = builder
+  .objectRef<DeleteUserTeamImpact>("DeleteUserTeamImpact")
+  .implement({
+    description: "A team affected by deleting a user, and what it holds.",
+    fields: (t) => ({
+      teamId: t.exposeID("teamId"),
+      name: t.exposeString("name"),
+      appCount: t.exposeInt("appCount"),
+      databaseCount: t.exposeInt("databaseCount"),
+      otherMemberCount: t.exposeInt("otherMemberCount"),
+    }),
+  });
+
+const DeleteUserKeptTeamRef = builder
+  .objectRef<DeleteUserImpact["keptTeams"][number]>("DeleteUserKeptTeam")
+  .implement({
+    fields: (t) => ({
+      teamId: t.exposeID("teamId"),
+      name: t.exposeString("name"),
+    }),
+  });
+
+export const DeleteUserImpactRef = builder
+  .objectRef<DeleteUserImpact>("DeleteUserImpact")
+  .implement({
+    description:
+      "Exactly what permanently deleting an account would take with it — read live so the confirmation states facts, not warnings.",
+    fields: (t) => ({
+      userId: t.exposeID("userId"),
+      username: t.exposeString("username"),
+      name: t.exposeString("name"),
+      blockedReason: t.exposeString("blockedReason", {
+        nullable: true,
+        description:
+          "Non-null ⇒ this account can't be deleted at all; the reason to show.",
+      }),
+      soloTeams: t.field({
+        type: [DeleteUserTeamImpactRef],
+        description:
+          "Teams where they are the ONLY member — always deleted with the account, since nobody would be left who could ever open them.",
+        resolve: (i) => i.soloTeams,
+      }),
+      foundedTeams: t.field({
+        type: [DeleteUserTeamImpactRef],
+        description:
+          "Teams they founded that still have other members — deleted only on request.",
+        resolve: (i) => i.foundedTeams,
+      }),
+      keptTeams: t.field({
+        type: [DeleteUserKeptTeamRef],
+        description: "Teams that keep everything, minus this membership.",
+        resolve: (i) => i.keptTeams,
+      }),
+      createdAppCount: t.exposeInt("createdAppCount"),
+      ownedFolderCount: t.exposeInt("ownedFolderCount"),
+      ownedProjectCount: t.exposeInt("ownedProjectCount"),
+      ownedAppCount: t.exposeInt("ownedAppCount"),
+      tokenCount: t.exposeInt("tokenCount"),
+      vacatedTeams: t.field({
+        type: ["String"],
+        description:
+          "Surviving teams whose last member/team manager this account is. The delete hands that capability to their longest-standing remaining member.",
+        resolve: (i) => i.vacatedTeams,
+      }),
+    }),
+  });
+
+export const DeleteUserResultRef = builder
+  .objectRef<DeleteUserResult>("DeleteUserResult")
+  .implement({
+    description: "What a completed account deletion actually removed.",
+    fields: (t) => ({
+      username: t.exposeString("username"),
+      teamsDeleted: t.exposeInt("teamsDeleted"),
+      appsDeleted: t.exposeInt("appsDeleted"),
+      databasesDeleted: t.exposeInt("databasesDeleted"),
+    }),
+  });
+
 export const RegistrationLinkRef = builder
   .objectRef<RegistrationLinkDTO>("RegistrationLink")
   .implement({
@@ -201,6 +289,18 @@ const UpdateUserAdminInputType = builder.inputType("UpdateUserAdminInput", {
     canExposePorts: t.boolean({ required: false }),
     canMountHostVolumes: t.boolean({ required: false }),
     newPassword: t.string({ required: false }),
+  }),
+});
+
+// The three "go deeper" choices the delete-account dialog offers. All optional
+// and all defaulting to FALSE server-side: an omitted flag must never be read as
+// "yes, destroy that too".
+const DeleteUserInputType = builder.inputType("DeleteUserInput", {
+  fields: (t) => ({
+    userId: t.string({ required: true }),
+    deleteCreatedApps: t.boolean({ required: false }),
+    deleteOwnedWorkspaces: t.boolean({ required: false }),
+    deleteFoundedTeams: t.boolean({ required: false }),
   }),
 });
 
@@ -262,6 +362,14 @@ builder.queryFields((t) => ({
     description: "Full detail (incl. email) for one user.",
     args: { userId: t.arg.string({ required: true }) },
     resolve: (_r, { userId }) => getUserDetail(userId),
+  }),
+  deleteUserImpact: t.field({
+    type: DeleteUserImpactRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "What permanently deleting this account would remove. Read-only — nothing is deleted.",
+    args: { userId: t.arg.string({ required: true }) },
+    resolve: (_r, { userId }) => getDeleteUserImpact(userId),
   }),
   registrationLinks: t.field({
     type: [RegistrationLinkRef],
@@ -369,6 +477,19 @@ builder.mutationFields((t) => ({
       });
       return getUserDetail(input.userId);
     },
+  }),
+  deleteUser: t.field({
+    type: DeleteUserResultRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Permanently delete a user account. Teams they are the only member of always go with it; the rest is opt-in.",
+    args: { input: t.arg({ type: DeleteUserInputType, required: true }) },
+    resolve: (_r, { input }) =>
+      deleteUser(input.userId, {
+        deleteCreatedApps: input.deleteCreatedApps ?? false,
+        deleteOwnedWorkspaces: input.deleteOwnedWorkspaces ?? false,
+        deleteFoundedTeams: input.deleteFoundedTeams ?? false,
+      }),
   }),
   transferInstanceOwner: t.field({
     type: "Boolean",
