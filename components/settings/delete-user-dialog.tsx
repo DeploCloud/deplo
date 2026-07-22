@@ -154,7 +154,7 @@ export function DeleteUserDialog({
           {loading && (
             <div className="flex items-center justify-center gap-2 py-6 text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              Checking what this would delete…
+              Checking what this would delete
             </div>
           )}
           {failed && (

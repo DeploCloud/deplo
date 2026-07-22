@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
@@ -357,10 +358,10 @@ export function EditUserDialog({
 
         <form className="grid gap-4" onSubmit={onSubmit}>
           {!ready ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              Loading user…
-            </div>
+            // `isSelf` is a prop, so the one section whose presence we can't know
+            // before the fetch is the danger zone on the instance OWNER — one
+            // account out of all of them. Everything else lines up box for box.
+            <EditorSkeleton withDanger={!isSelf} />
           ) : (
             <>
               {ownerLocked && (
@@ -384,6 +385,15 @@ export function EditUserDialog({
                   value={suspended ? "Blocked" : "Allowed"}
                 />
               </div>
+              {/* The chips need the fetch, but the seed already carries the
+                  COUNT — so the row that is coming is held open (and the row
+                  that isn't never appears) instead of pushing the sections down
+                  a second later. */}
+              {teams == null && teamCount > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  <Skeleton className="h-[22px] w-32 rounded-full" />
+                </div>
+              )}
               {teams && teams.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {teams.map((t) => (
@@ -570,8 +580,21 @@ export function EditUserDialog({
                 !dirty ||
                 (password.length > 0 && password.length < 8)
               }
+              aria-busy={pending}
             >
-              {pending ? "Saving…" : "Save changes"}
+              {/* While the save runs a spinner stands in for the label, which
+                  stays mounted (just hidden) so the button keeps its width and
+                  the footer doesn't jump — the ConfirmAction idiom. */}
+              <span className="grid place-items-center">
+                <span
+                  className={cn("col-start-1 row-start-1", pending && "invisible")}
+                >
+                  Save changes
+                </span>
+                {pending && (
+                  <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
+                )}
+              </span>
             </Button>
           </DialogFooter>
         </form>
@@ -611,6 +634,97 @@ export function EditUserDialog({
   );
 }
 
+/**
+ * The stand-in shown until the account is loaded. It is not a spinner but a
+ * TRACING of the real layout — same containers, same paddings, same row heights —
+ * because the editor is opened from a list row and the fetch always lands after
+ * the first paint: a centred spinner made the dialog open short, jump to full
+ * height a beat later, and collapse again on close.
+ *
+ * It mirrors the folded default (the advanced grants closed), so the only thing
+ * that can still move is a team list long enough to wrap onto a second line.
+ */
+function EditorSkeleton({ withDanger }: { withDanger: boolean }) {
+  return (
+    <>
+      {/* Identity strip: each cell is a 16px line over a 20px one, which is what
+          the two <p>s in Meta measure. */}
+      <div className="grid grid-cols-3 gap-2 rounded-lg border border-border p-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i}>
+            <TextLine box="h-4" bar="h-3 w-12" />
+            <TextLine box="h-5" bar="h-4 w-16" />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-1.5">
+        <Skeleton className="h-[22px] w-32 rounded-full" />
+      </div>
+
+      {/* Permissions: heading, the admin row, the folded advanced trigger. */}
+      <SkeletonSection>
+        <SkeletonRow />
+        <TextLine box="h-6" bar="h-4 w-28" />
+      </SkeletonSection>
+
+      {/* Password: heading, then the label (leading-none, so 14px) + input. */}
+      <SkeletonSection>
+        <TextLine box="h-3.5" bar="h-3 w-40" />
+        <Skeleton className="h-9 w-full" />
+      </SkeletonSection>
+
+      {withDanger && (
+        <SkeletonSection tone="destructive">
+          <SkeletonRow button />
+          <SkeletonRow button />
+        </SkeletonSection>
+      )}
+    </>
+  );
+}
+
+/** A {@link Section}-shaped placeholder — same shell, same inner spacing. */
+function SkeletonSection({
+  tone = "default",
+  children,
+}: {
+  tone?: "default" | "destructive";
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={sectionShell(tone)}>
+      <TextLine box="h-5" bar="h-4 w-28" />
+      <div className="space-y-2">{children}</div>
+    </div>
+  );
+}
+
+/** One {@link Row}-shaped placeholder — same shell, same control heights. */
+function SkeletonRow({ button }: { button?: boolean }) {
+  return (
+    <div className={ROW_SHELL}>
+      <TextLine box="h-5" bar="h-4 w-36" />
+      <Skeleton
+        className={button ? "h-8 w-24 rounded-md" : "h-5 w-9 rounded-full"}
+      />
+    </div>
+  );
+}
+
+/**
+ * A bar sitting in a box the height of the text line it replaces. Without the
+ * box the placeholder would be its own (shorter) height and every section would
+ * come up a few pixels short — which is the jump this whole component exists to
+ * remove.
+ */
+function TextLine({ box, bar }: { box: string; bar: string }) {
+  return (
+    <div className={cn("flex items-center", box)}>
+      <Skeleton className={bar} />
+    </div>
+  );
+}
+
 function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -642,12 +756,7 @@ function Section({
 }) {
   const danger = tone === "destructive";
   return (
-    <section
-      className={cn(
-        "space-y-3 rounded-lg border p-3",
-        danger ? "border-destructive/40 bg-destructive/5" : "border-border",
-      )}
-    >
+    <section className={sectionShell(tone)}>
       <h3
         className={cn(
           "flex w-fit items-center gap-2 text-sm font-semibold",
@@ -663,6 +772,23 @@ function Section({
   );
 }
 
+/**
+ * The two shells the real components and their skeletons BOTH wear. Shared
+ * rather than copied so the placeholder can't drift out of alignment with the
+ * thing it stands in for the next time someone changes a padding.
+ */
+const ROW_SHELL =
+  "flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5";
+
+function sectionShell(tone: "default" | "destructive") {
+  return cn(
+    "space-y-3 rounded-lg border p-3",
+    tone === "destructive"
+      ? "border-destructive/40 bg-destructive/5"
+      : "border-border",
+  );
+}
+
 /** One row: name, its tooltip, and the control. */
 function Row({
   title,
@@ -674,12 +800,15 @@ function Row({
   control: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+    <div className={ROW_SHELL}>
       <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
         <span className="truncate">{title}</span>
         <InfoTip content={info} label={`About ${title}`} />
       </p>
-      <div className="shrink-0">{control}</div>
+      {/* `flex` on purpose: an inline-flex control (Switch, Button) in a block
+          box sits on the text baseline and drags 5px of descender space in with
+          it, which no skeleton can predict. */}
+      <div className="flex shrink-0 items-center">{control}</div>
     </div>
   );
 }
