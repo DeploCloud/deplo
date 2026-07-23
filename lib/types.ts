@@ -1220,7 +1220,7 @@ export interface Backup {
    */
   targetKind: BackupTargetKind;
   databaseId: ID | null;
-  /** Set when `targetKind === "service"`; otherwise null. */
+  /** Set when `targetKind === "app"`; otherwise null. */
   appId: ID | null;
   destinationId: ID;
   schedule: string; // cron

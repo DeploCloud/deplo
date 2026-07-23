@@ -1735,6 +1735,11 @@ type Query {
   assignableTeams: [Team!]
 
   """
+  How many stored backup artifacts (successful runs) one target has in S3. 0 means there is nothing to sweep — the delete dialog hides its 'also delete backup artifacts' option in that case.
+  """
+  backupArtifactCount(targetId: String!, targetKind: BackupTargetKind!): Int
+
+  """
   Recorded backup runs for one target (an app OR a database), newest first. Pass exactly one of appId / databaseId.
   """
   backupRuns(appId: String, databaseId: String): [BackupRun!]

@@ -6,6 +6,7 @@ import {
   runAppBackup,
   restoreBackup,
   listBackupRuns,
+  countBackupArtifacts,
   toggleBackup,
   updateBackup,
   deleteBackup,
@@ -162,6 +163,19 @@ builder.queryFields((t) => ({
         appId: appId ?? undefined,
         databaseId: databaseId ?? undefined,
       }),
+  }),
+  backupArtifactCount: t.int({
+    authScopes: { loggedIn: true },
+    description:
+      "How many stored backup artifacts (successful runs) one target has in " +
+      "S3. 0 means there is nothing to sweep — the delete dialog hides its " +
+      "'also delete backup artifacts' option in that case.",
+    args: {
+      targetKind: t.arg({ type: BackupTargetKindEnum, required: true }),
+      targetId: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { targetKind, targetId }) =>
+      countBackupArtifacts({ kind: targetKind, targetId }),
   }),
 }));
 

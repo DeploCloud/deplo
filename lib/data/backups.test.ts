@@ -22,6 +22,7 @@ import {
 } from "./backup-test-helpers";
 import {
   backupDestinationsForTarget,
+  countBackupArtifacts,
   createBackup,
   deleteBackup,
   listBackupRuns,
@@ -177,6 +178,38 @@ test("backupDestinationsForTarget returns the distinct buckets a target ran to",
   await asUser1(async () => {
     const dests = await backupDestinationsForTarget({ kind: "database", targetId: "db_1" });
     assert.deepEqual([...dests].sort(), ["s3_1", "s3_2"]);
+  });
+});
+
+test("countBackupArtifacts counts only SUCCESSFUL runs of the given target", async () => {
+  // Two stored artifacts (success), plus a failed + a running run that left no
+  // object — and an artifact for a DIFFERENT target that must not leak in.
+  await seedRun(db, { id: "r_ok1", destinationId: "s3_1", databaseId: "db_1", status: "success" });
+  await seedRun(db, { id: "r_ok2", destinationId: "s3_1", databaseId: "db_1", status: "success" });
+  await seedRun(db, { id: "r_fail", destinationId: "s3_1", databaseId: "db_1", status: "failed" });
+  await seedRun(db, { id: "r_run", destinationId: "s3_1", databaseId: "db_1", status: "running" });
+  await seedRun(db, { id: "r_app", destinationId: "s3_1", appId: "prj_1", targetKind: "app", status: "success" });
+  await asUser1(async () => {
+    assert.equal(
+      await countBackupArtifacts({ kind: "database", targetId: "db_1" }),
+      2,
+      "only the two successful database runs count",
+    );
+    assert.equal(
+      await countBackupArtifacts({ kind: "app", targetId: "prj_1" }),
+      1,
+      "the app's own successful run",
+    );
+  });
+});
+
+test("countBackupArtifacts is 0 for a target with no stored artifacts", async () => {
+  // A target that only ever failed has nothing in S3 → the delete dialog hides
+  // its 'also delete backup artifacts' checkbox (the reported bug).
+  await seedRun(db, { id: "r_fail", destinationId: "s3_1", databaseId: "db_1", status: "failed" });
+  await asUser1(async () => {
+    assert.equal(await countBackupArtifacts({ kind: "database", targetId: "db_1" }), 0);
+    assert.equal(await countBackupArtifacts({ kind: "app", targetId: "prj_1" }), 0);
   });
 });
 

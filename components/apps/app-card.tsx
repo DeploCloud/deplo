@@ -488,7 +488,7 @@ export function AppCard({
     <DeleteWithArtifacts
       open={confirmOpen}
       onOpenChange={setConfirmOpen}
-      targetKind="service"
+      targetKind="app"
       targetId={project.id}
       targetName={project.name}
       title={`Delete ${project.name}?`}

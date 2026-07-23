@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, count, desc, eq, inArray, lt } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -944,6 +944,34 @@ function runTargetWhere(kind: BackupTargetKind, targetId: string) {
       ? eq(backupRunsTable.databaseId, targetId)
       : eq(backupRunsTable.appId, targetId),
   )!;
+}
+
+/**
+ * How many stored backup artifacts a single target still has in S3 — one per
+ * SUCCESSFUL run (a `failed`/`running` run never wrote an object). Team-scoped;
+ * exactly one target selected by kind.
+ *
+ * Drives the delete dialog's "also delete backup artifacts" affordance, which is
+ * hidden at 0: offering an operator a bucket sweep with nothing to sweep is both
+ * confusing and the source of the "$targetKind got invalid value" regression the
+ * checkbox used to fire regardless of whether any artifact existed.
+ */
+export async function countBackupArtifacts(input: {
+  kind: BackupTargetKind;
+  targetId: string;
+}): Promise<number> {
+  const teamId = await requireActiveTeamId();
+  const [row] = await getDb()
+    .select({ n: count() })
+    .from(backupRunsTable)
+    .where(
+      and(
+        eq(backupRunsTable.teamId, teamId),
+        eq(backupRunsTable.status, "success"),
+        runTargetWhere(input.kind, input.targetId),
+      ),
+    );
+  return Number(row?.n ?? 0);
 }
 
 /**
