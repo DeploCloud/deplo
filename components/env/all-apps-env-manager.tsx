@@ -58,6 +58,7 @@ import { Badge } from "@/components/ui/badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
@@ -112,6 +113,16 @@ type SharedVar = AppliedSharedVarDTO & { type: "plain" | "secret" };
 type EnvRow =
   | ({ kind: "standalone"; app: RowApp; projectName: string } & EnvVarDTO)
   | ({ kind: "shared"; app: RowApp; projectName: string } & SharedVar);
+
+/**
+ * A row's identity across the whole page — what an optimistic removal is tracked
+ * by. A standalone variable's id is unique on its own; a SHARED one repeats,
+ * once under every app it reaches, so there its app belongs in the key.
+ */
+const rowKey = (row: EnvRow) =>
+  row.kind === "standalone"
+    ? `standalone:${row.id}`
+    : `shared:${row.app.id}:${row.id}`;
 
 /**
  * The ids of the sections the user has COLLAPSED, persisted so a page you tidied
@@ -300,7 +311,7 @@ export function AllAppsEnvManager({
 
   // Every variable of every app, flat. Computed BEFORE the filters so that
   // "nothing matches the search" stays distinguishable from "nothing to search".
-  const rows = React.useMemo<EnvRow[]>(
+  const serverRows = React.useMemo<EnvRow[]>(
     () =>
       groups.flatMap((g) => {
         const where = g.app.projectId
@@ -327,6 +338,16 @@ export function AllAppsEnvManager({
         ];
       }),
     [groups, sharedByApp, projectName],
+  );
+
+  // A deleted variable leaves its card on the click, rather than sitting there
+  // — still clickable, still good for a "Not found" — for the length of the
+  // mutation and then the `router.refresh()` that reloads every app's variables.
+  // The sections, the filter counts and the empty states all read `rows`, so
+  // they agree with each other about what is left.
+  const { visible: rows, remove, restore } = useOptimisticRemove(
+    serverRows,
+    rowKey,
   );
 
   // This tab is the only place a variable is seen next to every OTHER app's, so
@@ -651,12 +672,19 @@ export function AllAppsEnvManager({
         description="This removes the variable. It will no longer be available to new deployments."
         confirmLabel="Delete"
         successMessage="Variable deleted"
+        optimistic
         onConfirm={async () => {
+          // `deleteId` is this render's value: the dialog has already closed
+          // itself (and cleared it) by the time this runs.
+          const id = deleteId!;
+          const key = `standalone:${id}`;
+          remove(key);
           const res = await gqlAction<{ deleteEnv: boolean }>(
             `mutation($id: String!) { deleteEnv(id: $id) }`,
-            { id: deleteId! },
+            { id },
           );
           if (res.ok) router.refresh();
+          else restore(key);
           return res;
         }}
       />

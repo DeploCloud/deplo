@@ -29,6 +29,7 @@ export function ConfirmAction({
   successMessage,
   confirmText,
   confirmDisabled = false,
+  optimistic = false,
   extra,
   onConfirm,
 }: {
@@ -58,6 +59,19 @@ export function ConfirmAction({
    * already running).
    */
   confirmDisabled?: boolean;
+  /**
+   * Fire and close: the dialog shuts on the confirm CLICK and `onConfirm`
+   * settles behind it, instead of holding the user in front of a spinner for the
+   * round trip. For actions whose caller takes the target off the list in the
+   * same commit (`useOptimisticRemove`) and puts it back if the mutation is
+   * refused — the toast still reports what actually happened, so nothing here
+   * claims a success it hasn't got.
+   *
+   * Only for actions that are quick and whose target is one row. A destructive
+   * action the user should watch complete — a restore, a delete with artifacts —
+   * keeps the spinner.
+   */
+  optimistic?: boolean;
   /**
    * Extra content rendered between the description and the footer — e.g. a
    * "also delete S3 artifacts" checkbox on a delete dialog. Keep it controlled
@@ -97,6 +111,24 @@ export function ConfirmAction({
 
   function handleConfirm() {
     if (!typedOk || confirmDisabled) return;
+    if (optimistic) {
+      // Close FIRST, then hand over: the caller's `onConfirm` drops the row in
+      // the same event, so the click, the dialog leaving and the row leaving are
+      // one commit. Nothing after this touches THIS component's state — only the
+      // global toaster — which is what makes it safe for the caller to unmount
+      // us, as removing a row unmounts the dialog that row renders.
+      setOpen(false);
+      void onConfirm()
+        .then((res) => {
+          if (res.ok) {
+            if (successMessage) toast.success(successMessage);
+          } else {
+            toast.error(res.error);
+          }
+        })
+        .catch((e: unknown) => toast.error((e as Error).message));
+      return;
+    }
     startTransition(async () => {
       const res = await onConfirm();
       if (res.ok) {

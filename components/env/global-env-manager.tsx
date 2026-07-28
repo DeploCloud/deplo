@@ -27,6 +27,7 @@ import { Switch } from "@/components/ui/switch";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import {
@@ -77,14 +78,22 @@ export function GlobalEnvManager({
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const m = MUTATIONS[scope];
 
+  // A deleted variable leaves the table on the click, instead of waiting out the
+  // mutation and then the `router.refresh()` behind it — the window in which a
+  // second click on the same row earned a "Not found".
+  const { visible: rows, remove, restore } = useOptimisticRemove(
+    vars,
+    (v) => v.id,
+  );
+
   // An instance-wide variable belongs to no project and no app, so this tab
   // filters on the three axes every variable has: what it is, who last touched
   // it, and when.
   const facets = React.useMemo(
-    () => [typeFacet(vars), editorFacet(vars), updatedFacet<GlobalEnvVarDTO>()],
-    [vars],
+    () => [typeFacet(rows), editorFacet(rows), updatedFacet<GlobalEnvVarDTO>()],
+    [rows],
   );
-  const { state, setState, clear, shown, counts } = useEnvFilters(vars, facets);
+  const { state, setState, clear, shown, counts } = useEnvFilters(rows, facets);
 
   return (
     <div className="space-y-4">
@@ -110,7 +119,7 @@ export function GlobalEnvManager({
         </Button>
       </div>
 
-      {vars.length > 0 && (
+      {rows.length > 0 && (
         <EnvFilters
           state={state}
           onChange={setState}
@@ -120,7 +129,7 @@ export function GlobalEnvManager({
         />
       )}
 
-      {vars.length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState
           icon={Plus}
           title="No variables yet"
@@ -212,12 +221,18 @@ export function GlobalEnvManager({
         description="This removes the variable. It will no longer be injected into deployments."
         confirmLabel="Delete"
         successMessage="Variable deleted"
+        optimistic
         onConfirm={async () => {
+          // `deleteId` is this render's value: the dialog has already closed
+          // itself (and cleared it) by the time this runs.
+          const id = deleteId!;
+          remove(id);
           const res = await gqlAction<Record<string, boolean>>(
             `mutation($id: String!) { ${m.del}(id: $id) }`,
-            { id: deleteId! },
+            { id },
           );
           if (res.ok) router.refresh();
+          else restore(id);
           return res;
         }}
       />

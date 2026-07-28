@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
@@ -84,6 +85,16 @@ export function SharedVarsManager({
     [environments],
   );
 
+  // A deleted variable leaves the table on the click, instead of waiting out the
+  // mutation and then the `router.refresh()` behind it — the window in which a
+  // second click on the same row earned a "Not found". The facets read `rows`
+  // too, so the project a deleted variable was the last to reach stops being
+  // offered as a filter at the same moment.
+  const { visible: rows, remove, restore } = useOptimisticRemove(
+    vars,
+    (v) => v.id,
+  );
+
   // The whole point of this tab is WHO gets the variable, so that is what it
   // filters on: the sharing mode, and then the single project / environment /
   // app a variable reaches. Options are the entities the variables actually name
@@ -109,7 +120,7 @@ export function SharedVarsManager({
         { value: "environment", label: "Environments" },
         { value: "app", label: "Specific apps" },
       ].filter((o) =>
-        vars.some((v) =>
+        rows.some((v) =>
           o.value === "team"
             ? v.teamWide
             : o.value === "project"
@@ -136,7 +147,7 @@ export function SharedVarsManager({
       icon: Boxes,
       info: "Variables scoped to this project — as a whole, or through one of its environments. Team-wide variables reach it too: find those under “Shared with”.",
       options: projects
-        .filter((p) => vars.some((v) => reachesProject(v, p.id)))
+        .filter((p) => rows.some((v) => reachesProject(v, p.id)))
         .map((p) => ({ value: p.id, label: p.name })),
       match: reachesProject,
     };
@@ -148,7 +159,7 @@ export function SharedVarsManager({
       icon: Layers,
       info: "Variables that reach this environment — picked directly, or through a scope on its whole project.",
       options: environments
-        .filter((e) => vars.some((v) => reachesEnvironment(v, e.id)))
+        .filter((e) => rows.some((v) => reachesEnvironment(v, e.id)))
         // Every project has a "Production": the project name is what tells two
         // same-named environments apart in the menu.
         .map((e) => ({ value: e.id, label: e.name, hint: e.projectName })),
@@ -162,7 +173,7 @@ export function SharedVarsManager({
       icon: AppWindow,
       info: "Variables linked directly to this app, wherever it lives.",
       options: apps
-        .filter((a) => vars.some((v) => v.appIds.includes(a.id)))
+        .filter((a) => rows.some((v) => v.appIds.includes(a.id)))
         .map((a) => ({ value: a.id, label: a.name })),
       match: (v, value) => v.appIds.includes(value),
     };
@@ -172,16 +183,16 @@ export function SharedVarsManager({
       projectFacet,
       environmentFacet,
       appFacet,
-      typeFacet(vars),
-      editorFacet(vars),
+      typeFacet(rows),
+      editorFacet(rows),
       updatedFacet<SharedVarDTO>(),
     ];
-  }, [vars, projects, environments, apps, projectOfEnv]);
+  }, [rows, projects, environments, apps, projectOfEnv]);
 
   // Searching "storefront" finds the variables shared WITH storefront, not only
   // the keys that spell it.
   const { state: filters, setState: setFilters, clear, shown, counts } =
-    useEnvFilters(vars, facets, (v) =>
+    useEnvFilters(rows, facets, (v) =>
       [
         ...v.projects.map((p) => p.name),
         ...v.apps.map((a) => a.name),
@@ -208,7 +219,7 @@ export function SharedVarsManager({
         </Button>
       </div>
 
-      {vars.length > 0 && (
+      {rows.length > 0 && (
         <EnvFilters
           state={filters}
           onChange={setFilters}
@@ -218,7 +229,7 @@ export function SharedVarsManager({
         />
       )}
 
-      {vars.length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState
           icon={Share2}
           title="No shared variables yet"
@@ -338,12 +349,18 @@ export function SharedVarsManager({
         description="This removes the variable from every app it reaches. New deployments will no longer receive it."
         confirmLabel="Delete"
         successMessage="Shared variable deleted"
+        optimistic
         onConfirm={async () => {
+          // `deleteId` is this render's value: the dialog has already closed
+          // itself (and cleared it) by the time this runs.
+          const id = deleteId!;
+          remove(id);
           const res = await gqlAction<{ deleteSharedVar: boolean }>(
             `mutation($id: String!) { deleteSharedVar(id: $id) }`,
-            { id: deleteId! },
+            { id },
           );
           if (res.ok) router.refresh();
+          else restore(id);
           return res;
         }}
       />

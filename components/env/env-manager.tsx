@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
@@ -51,6 +52,13 @@ import type { AppSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
 type EnvRow =
   | ({ kind: "standalone" } & EnvVarDTO)
   | ({ kind: "shared" } & AppSharedVarDTO);
+
+/**
+ * A row's identity in this table — also its React key and what an optimistic
+ * removal is tracked by. `kind` is part of it because the two lists are minted
+ * separately: an id only identifies a row together with the list it came from.
+ */
+const rowKey = (row: EnvRow) => `${row.kind}:${row.id}`;
 
 export function EnvManager({
   appId,
@@ -89,12 +97,22 @@ export function EnvManager({
     [sharedVarDetails],
   );
 
-  const rows = React.useMemo<EnvRow[]>(
+  const serverRows = React.useMemo<EnvRow[]>(
     () => [
       ...vars.map((v): EnvRow => ({ ...v, kind: "standalone" })),
       ...appliedShared.map((v): EnvRow => ({ ...v, kind: "shared" })),
     ],
     [vars, appliedShared],
+  );
+
+  // A deleted (or unlinked) row leaves the table on the click, instead of
+  // waiting out the mutation and then the `router.refresh()` that reloads this
+  // page's variables — the window in which a second click on the same row used
+  // to earn a "Not found". Everything below reads `rows`, so the filters, the
+  // counts and the empty states all agree the variable is gone.
+  const { visible: rows, remove, restore } = useOptimisticRemove(
+    serverRows,
+    rowKey,
   );
 
   // One app's table: the variable is either its own or shared with it (Source),
@@ -189,7 +207,7 @@ export function EnvManager({
             <TableBody>
               {shownRows.map((row) =>
                 row.kind === "standalone" ? (
-                  <TableRow key={`standalone:${row.id}`}>
+                  <TableRow key={rowKey(row)}>
                     <TableCell className="font-mono text-xs font-medium">
                       {row.key}
                     </TableCell>
@@ -231,7 +249,7 @@ export function EnvManager({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  <TableRow key={`shared:${row.id}`}>
+                  <TableRow key={rowKey(row)}>
                     <TableCell className="font-mono text-xs font-medium">
                       <div className="flex items-center gap-2">
                         {row.key}
@@ -263,6 +281,8 @@ export function EnvManager({
                         row={row}
                         appId={appId}
                         detail={detailsById.get(row.id)}
+                        onRemoved={() => remove(rowKey(row))}
+                        onRestored={() => restore(rowKey(row))}
                       />
                     </TableCell>
                   </TableRow>
@@ -288,12 +308,19 @@ export function EnvManager({
         description="This removes the variable. It will no longer be available to new deployments."
         confirmLabel="Delete"
         successMessage="Variable deleted"
+        optimistic
         onConfirm={async () => {
+          // `deleteId` is this render's value: the dialog has already closed
+          // itself (and cleared it) by the time this runs.
+          const id = deleteId!;
+          const key = `standalone:${id}`;
+          remove(key);
           const res = await gqlAction<{ deleteEnv: boolean }>(
             `mutation($id: String!) { deleteEnv(id: $id) }`,
-            { id: deleteId! },
+            { id },
           );
           if (res.ok) router.refresh();
+          else restore(key);
           return res;
         }}
       />
@@ -314,18 +341,31 @@ function SharedRowActions({
   row,
   appId,
   detail,
+  onRemoved,
+  onRestored,
 }: {
   row: AppSharedVarDTO;
   appId: string;
   detail: SharedVarDTO | undefined;
+  /**
+   * Both removals below take the row off THIS table, so both tell the table to
+   * drop it on the click rather than leaving it clickable until the refresh
+   * lands — and to put it back if the mutation behind it is refused.
+   */
+  onRemoved: () => void;
+  onRestored: () => void;
 }) {
   const router = useRouter();
   const [editOpen, setEditOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
-  const [pending, startTransition] = React.useTransition();
 
   function removeFromApp() {
-    startTransition(async () => {
+    // The row goes now and the unlink settles behind it. Deliberately no
+    // transition and no pending flag: this component is unmounted along with its
+    // row in the very next commit, so everything that outlives the click is
+    // either the TABLE's state (onRestored) or global (the toaster, the router).
+    onRemoved();
+    void (async () => {
       const res = await gqlAction(
         `mutation($varId: String!, $appId: String!, $linked: Boolean!) {
            setSharedVarAppLink(varId: $varId, appId: $appId, linked: $linked)
@@ -336,9 +376,10 @@ function SharedRowActions({
         toast.success(`Removed ${row.key} from this app`);
         router.refresh();
       } else {
+        onRestored();
         toast.error(res.error);
       }
-    });
+    })();
   }
 
   return (
@@ -347,7 +388,7 @@ function SharedRowActions({
         <Button
           variant="ghost"
           size="icon-sm"
-          disabled={!detail || pending}
+          disabled={!detail}
           onClick={() => setEditOpen(true)}
           aria-label="Edit"
         >
@@ -362,7 +403,6 @@ function SharedRowActions({
               variant="ghost"
               size="icon-sm"
               className="text-muted-foreground hover:text-destructive"
-              disabled={pending}
               aria-label="Delete"
             >
               <Trash2 className="size-4" />
@@ -420,12 +460,15 @@ function SharedRowActions({
         }
         confirmLabel="Delete everywhere"
         successMessage="Shared variable deleted"
+        optimistic
         onConfirm={async () => {
+          onRemoved();
           const res = await gqlAction<{ deleteSharedVar: boolean }>(
             `mutation($id: String!) { deleteSharedVar(id: $id) }`,
             { id: row.id },
           );
           if (res.ok) router.refresh();
+          else onRestored();
           return res;
         }}
       />
