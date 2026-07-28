@@ -19,8 +19,11 @@ import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { gqlAction } from "@/lib/graphql-client";
-import { formatBytes } from "@/lib/utils";
-import type { CleanupPolicy, CleanupScopeId } from "@/lib/data/docker-cleanup";
+import type {
+  CleanupPolicy,
+  CleanupRunDTO,
+  CleanupScopeId,
+} from "@/lib/data/docker-cleanup";
 
 const UPDATE_POLICY = /* GraphQL */ `
   mutation UpdateDockerCleanupPolicy($input: UpdateDockerCleanupPolicyInput!) {
@@ -30,11 +33,31 @@ const UPDATE_POLICY = /* GraphQL */ `
   }
 `;
 
+/**
+ * Starts the sweep and answers with the `running` run — it does NOT wait for the host.
+ * The fields are the ones the history table renders, so the row can be shown the
+ * instant the mutation returns, before the live subscription echoes it back.
+ */
 const RUN_CLEANUP_NOW = /* GraphQL */ `
   mutation RunDockerCleanupNow($serverId: String!) {
     runDockerCleanupNow(serverId: $serverId) {
       id
+      serverId
+      serverName
+      trigger
+      actor
+      status
+      error
       reclaimedBytes
+      startedAt
+      finishedAt
+      items {
+        scope
+        reclaimedBytes
+        itemsRemoved
+        skipped
+        error
+      }
     }
   }
 `;
@@ -142,16 +165,23 @@ function sameForm(a: PolicyForm, b: PolicyForm): boolean {
 export function CleanupPanel({
   policy,
   servers,
+  runningServerIds,
+  onStarted,
 }: {
   policy: CleanupPolicy;
   servers: CleanupServerOption[];
+  /** Hosts with a sweep in flight, live from the run history (see `CleanupLive`). */
+  runningServerIds: Set<string>;
+  /** Hand the freshly-started run to the page, which shows it in the history at once. */
+  onStarted: (run: CleanupRunDTO) => void;
 }) {
   const router = useRouter();
   const [saved, setSaved] = React.useState(policy);
   const [form, setForm] = React.useState(() => toForm(policy));
   const [saving, startSave] = React.useTransition();
-  /** The server whose sweep is in flight — one at a time, and the button says so. */
-  const [running, setRunning] = React.useState<string | null>(null);
+  /** The server whose START mutation is in flight — a fraction of a second, not the
+   *  sweep itself. It only stops a double-click before the run row comes back. */
+  const [starting, setStarting] = React.useState<string | null>(null);
 
   // A save ends in router.refresh(), which re-renders this tree with the PERSISTED
   // policy. Adopt it as the new baseline (the supported "adjust state during render"
@@ -208,30 +238,33 @@ export function CleanupPanel({
    * policy's scopes on this host now. Nothing here is destructive — the agent's
    * allow-list never prunes a container, a data volume or a network, so a stopped app,
    * its data and its network all survive; the worst case is a rebuild of an image no
-   * container references. The RUN's own reclaimed total is toasted (a dry run would
-   * only estimate), and the sweep lands in the history below either way.
+   * container references.
+   *
+   * The click does NOT wait for the host. The mutation only records the run and hands
+   * it back `running`; the sweep then works detached, so this returns in milliseconds
+   * and the row it produces keeps updating — in the history below — whether the admin
+   * stays here, wanders to another page, or closes the tab. What is toasted here is
+   * therefore "it started", never "it reclaimed N bytes": that total arrives later, on
+   * the live run (see `CleanupLive`).
    */
   async function runNow(server: CleanupServerOption) {
-    setRunning(server.id);
+    setStarting(server.id);
     try {
       const res = await gqlAction<
-        { runDockerCleanupNow: { reclaimedBytes: number } },
-        number
-      >(
-        RUN_CLEANUP_NOW,
-        { serverId: server.id },
-        (d) => d.runDockerCleanupNow.reclaimedBytes,
-      );
-      // An unprovisioned host, an unreachable agent, an agent too old to know how to
-      // clean up: each has its own message and each one names the next move.
+        { runDockerCleanupNow: CleanupRunDTO },
+        CleanupRunDTO
+      >(RUN_CLEANUP_NOW, { serverId: server.id }, (d) => d.runDockerCleanupNow);
+      // Only the pre-flight refusals reach here — an unknown server, an empty scope
+      // set, a sweep already running on this host. Anything the HOST fails at lands on
+      // the run row instead, where closing the page cannot lose it.
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
-      toast.success(`Reclaimed ${formatBytes(res.data ?? 0)} on ${server.name}`);
-      router.refresh();
+      toast.success(`Cleaning up ${server.name} in the background`);
+      if (res.data) onStarted(res.data);
     } finally {
-      setRunning(null);
+      setStarting(null);
     }
   }
 
@@ -360,6 +393,10 @@ export function CleanupPanel({
             <div className="space-y-2">
               {servers.map((server) => {
                 const excluded = form.excludedServerIds.includes(server.id);
+                // "Being swept" spans both windows: the blink while the start mutation
+                // is in flight and the whole detached sweep the run row reports.
+                const sweeping =
+                  starting === server.id || runningServerIds.has(server.id);
                 return (
                   <div
                     key={server.id}
@@ -384,15 +421,20 @@ export function CleanupPanel({
                     </div>
                     {/* Disabled while the form is dirty: a cleanup runs the SAVED policy,
                         so it would reclaim a different scope set than the checkboxes on
-                        screen show. A wrapping span keeps the tooltip reachable — a
-                        disabled button swallows pointer events. */}
+                        screen show. Disabled while THIS host is being swept — two
+                        concurrent sweeps would only race each other's candidate list —
+                        but never because ANOTHER host is: the hosts are independent and
+                        each has its own agent. A wrapping span keeps the tooltip
+                        reachable — a disabled button swallows pointer events. */}
                     <SimpleTooltip
                       content={
-                        dirty
-                          ? "Save the policy first — a cleanup runs the saved scopes, not the unsaved ones"
-                          : nothingSelected
-                            ? "Select at least one thing to reclaim"
-                            : `Reclaim Docker disk on ${server.name} now`
+                        sweeping
+                          ? `A cleanup is running on ${server.name} — it keeps going if you leave this page`
+                          : dirty
+                            ? "Save the policy first — a cleanup runs the saved scopes, not the unsaved ones"
+                            : nothingSelected
+                              ? "Select at least one thing to reclaim"
+                              : `Reclaim Docker disk on ${server.name} now`
                       }
                     >
                       <span tabIndex={0}>
@@ -400,16 +442,14 @@ export function CleanupPanel({
                           size="sm"
                           variant="outline"
                           onClick={() => runNow(server)}
-                          disabled={
-                            dirty || nothingSelected || running !== null || saving
-                          }
+                          disabled={dirty || nothingSelected || sweeping || saving}
                         >
-                          {running === server.id ? (
+                          {sweeping ? (
                             <Loader2 className="size-4 animate-spin" />
                           ) : (
                             <Brush className="size-4" />
                           )}
-                          Clean up now
+                          {sweeping ? "Cleaning up" : "Clean up now"}
                         </Button>
                       </span>
                     </SimpleTooltip>

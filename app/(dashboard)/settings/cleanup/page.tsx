@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/page-header";
-import { CleanupPanel } from "@/components/settings/cleanup-panel";
-import { CleanupHistory } from "@/components/settings/cleanup-history";
+import { CleanupLive } from "@/components/settings/cleanup-live";
 import { getCleanupPolicy, listCleanupRuns } from "@/lib/data/docker-cleanup";
 import { listAllServers } from "@/lib/data/servers";
 import { isInstanceAdmin } from "@/lib/membership";
@@ -35,11 +34,13 @@ export default async function SettingsCleanupPage() {
         title="Docker cleanup"
         description="Reclaim build cache and unused images on your servers. Stopped apps, their data volumes and their networks are never touched."
       />
-      <CleanupPanel
+      {/* The panel + the history are one client island: a sweep runs in the background,
+          so which hosts are busy and what the history says are the same live fact. */}
+      <CleanupLive
         policy={policy}
         servers={servers.map((s) => ({ id: s.id, name: serverLabel(s) }))}
+        initialRuns={runs}
       />
-      <CleanupHistory runs={runs} />
     </div>
   );
 }

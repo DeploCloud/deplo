@@ -27,6 +27,7 @@ import { createPubSub } from "@graphql-yoga/subscription";
 type Channels = {
   appChanged: [id: string, payload: string];
   databaseChanged: [id: string, payload: string];
+  cleanupRunsChanged: [id: string, payload: string];
 };
 type ServicePubSub = ReturnType<typeof createPubSub<Channels>>;
 
@@ -45,4 +46,20 @@ export function publishAppChanged(appId: string): void {
  *  as {@link publishAppChanged}: the payload is just the id, "re-read it". */
 export function publishDatabaseChanged(databaseId: string): void {
   pubSub.publish("databaseChanged", databaseId, databaseId);
+}
+
+/**
+ * The one key the `cleanupRunsChanged` channel uses. Docker cleanup has no
+ * per-resource stream to filter: the policy is instance-wide, the history spans
+ * every host and only an instance admin may read it, so there is a single
+ * logical channel rather than one per server — a keyed channel with a constant
+ * key, so it still rides the same `subscribe(topic, id)` shape as the others.
+ */
+export const CLEANUP_RUNS_TOPIC = "instance";
+
+/** Notify every subscriber that the Docker cleanup history changed — a sweep
+ *  started, finished, or was pruned. Payload-free in spirit (the key is a
+ *  constant): "re-read the runs". */
+export function publishCleanupRunsChanged(): void {
+  pubSub.publish("cleanupRunsChanged", CLEANUP_RUNS_TOPIC, CLEANUP_RUNS_TOPIC);
 }

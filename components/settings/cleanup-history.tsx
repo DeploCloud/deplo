@@ -1,3 +1,6 @@
+"use client";
+
+import * as React from "react";
 import { History, Loader2 } from "lucide-react";
 
 import {
@@ -17,7 +20,7 @@ import {
 import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatusDot } from "@/components/shared/status-badge";
-import { formatBytes, timeAgo } from "@/lib/utils";
+import { formatBuildDuration, formatBytes, timeAgo } from "@/lib/utils";
 import type { CleanupRunDTO } from "@/lib/data/docker-cleanup";
 
 const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
@@ -33,8 +36,9 @@ const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
  * agent too old — is in here too, as `failed` with the reason: the history records
  * the attempt, not just the successes.
  *
- * A server component: nothing here is interactive, and the page refreshes the tree
- * after a run, so there is no state to hold.
+ * Presentational, and it holds no state of its own — but it is a CLIENT component,
+ * because a sweep is a background job and this table is how it is watched: `CleanupLive`
+ * above it owns the rows and pushes each transition in from the live subscription.
  */
 export function CleanupHistory({ runs }: { runs: CleanupRunDTO[] }) {
   return (
@@ -77,9 +81,10 @@ export function CleanupHistory({ runs }: { runs: CleanupRunDTO[] }) {
                     <TableCell className="text-muted-foreground">{run.actor}</TableCell>
                     <TableCell>
                       {run.status === "running" ? (
-                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
                           <Loader2 className="size-3.5 animate-spin" />
                           {STATUS_LABELS.running}
+                          <Elapsed startedAt={run.startedAt} />
                         </span>
                       ) : (
                         <span className="flex items-center gap-1.5 text-xs">
@@ -126,9 +131,35 @@ export function CleanupHistory({ runs }: { runs: CleanupRunDTO[] }) {
   );
 }
 
+/**
+ * How long the sweep in flight has been going, ticking against the VIEWER's clock from
+ * an absolute timestamp (the same contract as `BuildDuration`). A sweep is a background
+ * job with no percentage to report, so the honest progress signal is elapsed time: it
+ * proves the row is live rather than stuck, and it is the only thing that distinguishes
+ * "started a moment ago" from "this host has been at it for four minutes".
+ *
+ * `suppressHydrationWarning` covers the sub-second disagreement between the server
+ * render and the browser's clock; the first tick takes over a second later.
+ */
+function Elapsed({ startedAt }: { startedAt: string }) {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <span className="tabular-nums" suppressHydrationWarning>
+      {formatBuildDuration(now - Date.parse(startedAt))}
+    </span>
+  );
+}
+
 /** "12 objects across 3 scopes" — the shape of a successful sweep, without the ids
  *  (the history keeps counts, not object names). */
 function summarize(run: CleanupRunDTO): string {
+  // A run in flight has no items yet, and "Nothing to reclaim" would be a lie told
+  // about a host that is still working. Say what is actually happening.
+  if (run.status === "running") return "Reclaiming disk on the host";
   const swept = run.items.filter((i) => !i.skipped && !i.error);
   const objects = swept.reduce((n, i) => n + i.itemsRemoved, 0);
   if (objects === 0) return "Nothing to reclaim";

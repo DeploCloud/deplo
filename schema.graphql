@@ -1451,7 +1451,7 @@ type Mutation {
   runBackup(id: String!): Boolean
 
   """
-  Reclaim Docker disk on this server now, with the policy's scopes — whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive. Errors clearly when the server is unreachable, unprovisioned, or its agent is too old to know how to clean up.
+  START a sweep of this server now, with the policy's scopes — whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at — unreachable, unprovisioned, an agent too old — lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive.
   """
   runDockerCleanupNow(serverId: String!): DockerCleanupRun
 
@@ -2362,6 +2362,11 @@ type Subscription {
   Emits the database whenever its status changes (provisioning → running, start/stop, redeploy, …). Fires once immediately with the current snapshot, then on every change; ends when the database is deleted.
   """
   databaseStatus(id: String!): Database
+
+  """
+  Emits the whole cleanup history whenever it changes — a sweep started, finished, or was pruned. Fires once immediately with the current snapshot. Instance-wide: there is no per-server stream, because there is one policy and one shared fleet.
+  """
+  dockerCleanupRuns: [DockerCleanupRun!]
 }
 
 """A team that owns apps, infra and members."""

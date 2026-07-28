@@ -12,6 +12,7 @@ import {
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
+import { publishCleanupRunsChanged } from "../graphql/pubsub";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import { recordActivity } from "./activity";
@@ -37,6 +38,11 @@ import { formatBytes } from "../utils";
  *    authority over another team's host. Servers are cross-team infra, so the
  *    policy and the run history are NOT team-scoped either — the `teamId` we
  *    resolve alongside the gate is used only to attribute the activity row.
+ *  - A sweep is a BACKGROUND job, not a request. {@link runCleanupNow} returns as
+ *    soon as the `running` row exists and lets the host work detached; the run
+ *    row IS the progress indicator, and every change to it is published on
+ *    `cleanupRunsChanged` so the settings page follows it live. Nobody waits on a
+ *    `docker rmi` sweep with a spinner, and closing the page cannot cancel it.
  *
  * WHAT gets deleted is not decided here. The control plane owns the scope SET; the
  * agent owns the deletion, allow-listed (never `system`/`container`/`volume`/`network
@@ -339,6 +345,26 @@ export async function listCleanupRuns(
   filter: { serverId?: string; limit?: number } = {},
 ): Promise<CleanupRunDTO[]> {
   await requireInstanceAdmin();
+  return loadRuns(filter);
+}
+
+/**
+ * The history, read WITHOUT a session — for the live subscription's generator, which
+ * re-reads it on every published change. Session-free by necessity, not by choice: a
+ * subscription's async iterator runs AFTER the HTTP handler returned its streaming
+ * response, so `cookies()` is no longer callable and {@link requireInstanceAdmin}
+ * would throw on the second tick. The gate has already been applied — the field's
+ * `instanceAdmin` scope is evaluated when the subscription is opened, in request
+ * scope — and this read takes no caller input beyond that.
+ */
+export async function listCleanupRunsForSubscriber(): Promise<CleanupRunDTO[]> {
+  return loadRuns({});
+}
+
+/** The ungated body of {@link listCleanupRuns}. */
+async function loadRuns(
+  filter: { serverId?: string; limit?: number } = {},
+): Promise<CleanupRunDTO[]> {
   const fallback = filter.limit ?? (await runHistoryCap());
   const limit = clampInt(fallback, 1, MAX_RUN_LIMIT, RUNS_KEPT_PER_SERVER);
   const rows = await getDb()
@@ -539,37 +565,27 @@ export async function updateCleanupPolicy(
 /* ------------------------------------------------------------------ */
 
 /**
- * The ONE executor every real sweep goes through — the interactive "Clean up now"
- * ({@link runCleanupNow}) and the scheduler ({@link runScheduledCleanup}). Shaped
- * exactly like `executeBackup`, and for the same three reasons:
+ * The executor's FIRST half: put the sweep on the record as `running`, before a
+ * single byte is asked of the host. Shaped like `executeBackup`'s opening, for the
+ * reason its rule (a) names — a sweep that could not even start (an unprovisioned
+ * host, an agent offline or too old) must still land as a `failed` run, and it can
+ * only do that if the row already exists when the dial throws.
  *
- *  (a) The `running` run row is written BEFORE the agent is dialled, so a sweep that
- *      could not even start — an unprovisioned host, an agent that is offline or too
- *      old — still lands as a `failed` run. History never lies about an attempt.
- *  (b) The gRPC call runs BETWEEN the two short transactions, never inside one: a
- *      cleanup can take half an hour, and holding a pooled connection + row locks
- *      across it would starve the pool.
- *  (c) `recordActivity` runs OUTSIDE any transaction (its own connection; it deadlocks
- *      pglite otherwise) and is fire-and-forget.
- *
- * Throws on failure — but only AFTER the failed run + the activity are recorded. The
- * throw is for the interactive caller (the UI toasts it verbatim); the scheduler
- * swallows it, because the record it needs already exists.
+ * It is also what makes "Clean up now" instant: this is the only part the clicking
+ * admin waits for — one short INSERT — and the returned `running` DTO is what the UI
+ * paints while {@link finishCleanupRun} works the host in the background.
  */
-async function executeCleanup(args: {
+async function beginCleanupRun(args: {
   serverId: string;
   serverName: string;
   actor: string;
   trigger: CleanupTrigger;
-  policy: CleanupPolicy;
-  /** The team the activity row is attributed to; null for a tick, which has no active team. */
-  teamId: string | null;
 }): Promise<CleanupRunDTO> {
-  const { serverId, serverName, actor, trigger, policy, teamId } = args;
+  const { serverId, serverName, actor, trigger } = args;
   const startedAt = nowIso();
   const runId = newId("dcr");
 
-  // START transaction (short): persist the `running` run. Rule (a).
+  // Short transaction, nothing else inside it: the agent is dialled later, outside.
   await getDb().transaction(async (tx) => {
     await tx.insert(dockerCleanupRuns).values({
       id: runId,
@@ -584,6 +600,51 @@ async function executeCleanup(args: {
       finishedAt: null,
     });
   });
+  // Every watching settings page shows the new row immediately — including the one
+  // belonging to the admin who clicked, whose own mutation result says the same thing.
+  publishCleanupRunsChanged();
+
+  return {
+    id: runId,
+    serverId,
+    serverName,
+    trigger,
+    actor,
+    status: "running",
+    error: null,
+    reclaimedBytes: 0,
+    startedAt,
+    finishedAt: null,
+    items: [],
+  };
+}
+
+/**
+ * The executor's SECOND half — the slow one: dial the host, then settle the run row
+ * that {@link beginCleanupRun} already wrote. Two rules shape it, both inherited from
+ * `executeBackup`:
+ *
+ *  (b) The gRPC call runs BETWEEN the two short transactions, never inside one: a
+ *      cleanup can take half an hour, and holding a pooled connection + row locks
+ *      across it would starve the pool.
+ *  (c) `recordActivity` runs OUTSIDE any transaction (its own connection; it deadlocks
+ *      pglite otherwise) and is fire-and-forget.
+ *
+ * NEVER throws. It is called detached (a manual sweep) or from a tick that has nobody
+ * to tell, so a thrown error would have no caller left to catch it — the failure's
+ * home is the run row's `error`, which the history renders verbatim and the live
+ * subscription pushes to whoever is watching. Returns the settled run either way.
+ */
+async function finishCleanupRun(args: {
+  runId: string;
+  serverId: string;
+  serverName: string;
+  actor: string;
+  policy: CleanupPolicy;
+  /** The team the activity row is attributed to; null for a tick, which has no active team. */
+  teamId: string | null;
+}): Promise<CleanupRunDTO> {
+  const { runId, serverId, serverName, actor, policy, teamId } = args;
 
   let failure: string | null = null;
   let reclaimedBytes = 0;
@@ -683,8 +744,65 @@ async function executeCleanup(args: {
     teamId,
   );
 
-  if (failure) throw new Error(failure);
+  // LAST, after the row, its items and the retention pass are all settled: whoever is
+  // watching re-reads a consistent history, and the row they were watching spin is the
+  // one that just changed. Publishing earlier would race the reader against our own
+  // pruner.
+  publishCleanupRunsChanged();
   return finished;
+}
+
+/* ------------------------------------------------------------------ */
+/* Detached sweeps                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The manual sweeps still working their host, runId → the promise that settles them.
+ * The DURABLE record of an in-flight sweep is the `running` run row (that is what
+ * {@link listServersWithCleanupRunning}, the scheduler and the boot reconcile read);
+ * this map exists only so a caller in the same process can WAIT for one — which in
+ * practice means the tests, since a detached sweep is exactly the thing no request
+ * waits on.
+ */
+const detachedSweeps = new Map<string, Promise<void>>();
+
+/**
+ * Run the slow half detached: nobody awaits it, so the HTTP request that started the
+ * sweep has already answered. Failures cannot propagate to a caller that is gone —
+ * they are already on the run row (rendered verbatim in the history and pushed live),
+ * so here they are only logged for the server's own operator.
+ */
+function detachSweep(runId: string, work: Promise<CleanupRunDTO>): void {
+  const tracked = work
+    .then((run) => {
+      if (run.status === "failed") {
+        console.warn(`[cleanup] sweep on ${run.serverName} failed: ${run.error}`);
+      }
+    })
+    .catch((e) => {
+      // finishCleanupRun does not throw; reaching here means the STORE failed (the
+      // terminal transaction itself), which leaves the row `running` for the boot
+      // reconcile to settle. Nothing better to do than say so loudly.
+      console.error(
+        `[cleanup] could not settle run ${runId}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    })
+    .finally(() => {
+      detachedSweeps.delete(runId);
+    });
+  detachedSweeps.set(runId, tracked);
+}
+
+/**
+ * Test-only: wait for every detached sweep this process started. Production code must
+ * never call it — the whole point of a detached sweep is that no request waits on one.
+ * Loops because settling a sweep can start nothing new, but a test may have kicked off
+ * several and one can finish while another is still dialling.
+ */
+export async function __settleCleanupSweeps(): Promise<void> {
+  while (detachedSweeps.size > 0) {
+    await Promise.all([...detachedSweeps.values()]);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -692,13 +810,22 @@ async function executeCleanup(args: {
 /* ------------------------------------------------------------------ */
 
 /**
- * Reclaim Docker disk on one server NOW, with the instance policy's scopes. Interactive
- * and deliberately per-server: it ignores {@link dockerCleanupExcludedServers}, because
- * an operator standing in front of the button has already made the decision that list
+ * START a sweep of one server NOW, with the instance policy's scopes. Interactive and
+ * deliberately per-server: it ignores {@link dockerCleanupExcludedServers}, because an
+ * operator standing in front of the button has already made the decision that list
  * exists to encode, and it runs whether or not the SCHEDULE is enabled.
  *
- * THROWS on failure (after recording it) so the UI can toast the agent's message
- * verbatim — "update the agent on this server" must reach the person who can act on it.
+ * RETURNS AS SOON AS THE RUN IS ON THE RECORD — it does not wait for the host. A
+ * `docker rmi` sweep of a full disk is minutes of work, and the honest UI for minutes
+ * of work is a live row in the history, not a spinner that holds a click hostage and
+ * throws its result away the moment the admin navigates elsewhere. The returned run is
+ * `running`; the sweep goes on regardless of what the browser does next, and every
+ * transition is published on `cleanupRunsChanged`.
+ *
+ * So the only failures it THROWS are the ones that happen before any host was touched
+ * — not an admin, unknown server, nothing selected to reclaim, a sweep already running
+ * there. Everything the host can fail at (unreachable, unprovisioned, an agent too old)
+ * lands in the run row's `error` instead, where it survives the page being closed.
  */
 export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
   await requireInstanceAdmin();
@@ -718,14 +845,33 @@ export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
   if (policy.scopes.length === 0) {
     throw new Error("No cleanup scopes are selected — choose what to reclaim, then clean up");
   }
-  return executeCleanup({
+  // The same never-stack-sweeps rule the scheduler follows, and it matters more now
+  // that the button answers instantly: two concurrent `docker rmi` sweeps would race
+  // each other's candidate lists, and a second click is far likelier when the first
+  // one no longer blocks. The check is against the durable `running` rows, so it also
+  // holds across control-plane instances.
+  if ((await listServersWithCleanupRunning()).includes(serverId)) {
+    throw new Error(`A cleanup is already running on ${server.name}`);
+  }
+
+  const run = await beginCleanupRun({
     serverId,
     serverName: server.name,
     actor: user.name,
     trigger: "manual",
-    policy,
-    teamId,
   });
+  detachSweep(
+    run.id,
+    finishCleanupRun({
+      runId: run.id,
+      serverId,
+      serverName: server.name,
+      actor: user.name,
+      policy,
+      teamId,
+    }),
+  );
+  return run;
 }
 
 /**
@@ -734,9 +880,10 @@ export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
  * read the enabled policy straight off the store, so its authority is that policy row
  * (written earlier by an instance admin) and a synthetic "Scheduler" actor.
  *
- * NEVER throws. {@link executeCleanup} has already recorded the `failed` run and the
- * activity by the time it does; swallowing here is what stops one unreachable host from
- * aborting the rest of the tick's servers.
+ * AWAITED, unlike the manual sweep: the tick drains its due hosts one at a time on
+ * purpose (one host's docker at a time, and the lease is renewed between them), so
+ * here the caller genuinely is the thing that must wait. NEVER throws — the failure is
+ * already on the run row, and one unreachable host must not abort the rest of the tick.
  */
 export async function runScheduledCleanup(
   serverId: string,
@@ -744,17 +891,26 @@ export async function runScheduledCleanup(
   policy: CleanupPolicy,
 ): Promise<void> {
   try {
-    await executeCleanup({
+    const run = await beginCleanupRun({
       serverId,
       serverName,
       actor: "Scheduler",
       trigger: "scheduled",
+    });
+    await finishCleanupRun({
+      runId: run.id,
+      serverId,
+      serverName,
+      actor: "Scheduler",
       policy,
       teamId: null,
     });
-  } catch {
-    // The run row + the activity already tell this story; the re-thrown error is for
-    // the interactive caller, not for a tick with nobody to tell.
+  } catch (e) {
+    // Only a STORE failure reaches here (finishCleanupRun swallows the host's). The
+    // tick has nobody to tell, so log and let the next host run.
+    console.warn(
+      `[cleanup] scheduled sweep on ${serverName} could not be recorded: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 }
 
@@ -868,6 +1024,7 @@ export async function reconcileInFlightCleanupRuns(): Promise<number> {
     console.warn(
       `[deplo] reconciled ${flipped.length} interrupted Docker cleanup run(s) to failed on startup`,
     );
+    publishCleanupRunsChanged();
   }
   return flipped.length;
 }

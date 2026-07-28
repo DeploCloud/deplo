@@ -1,7 +1,9 @@
 import { builder } from "../builder";
+import { CLEANUP_RUNS_TOPIC, pubSub } from "../pubsub";
 import {
   getCleanupPolicy,
   listCleanupRuns,
+  listCleanupRunsForSubscriber,
   runCleanupNow,
   updateCleanupPolicy,
   type CleanupPolicy,
@@ -198,8 +200,51 @@ builder.mutationFields((t) => ({
     type: DockerCleanupRunRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Reclaim Docker disk on this server now, with the policy's scopes — whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive. Errors clearly when the server is unreachable, unprovisioned, or its agent is too old to know how to clean up.",
+      "START a sweep of this server now, with the policy's scopes — whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at — unreachable, unprovisioned, an agent too old — lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive.",
     args: { serverId: t.arg.string({ required: true }) },
     resolve: (_r, { serverId }) => runCleanupNow(serverId),
   }),
 }));
+
+/* ------------------------------------------------------------------ */
+/* Subscription (the live history)                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The live history. Sweeps are background jobs — a manual one returns before the host
+ * has done anything, and the nightly one has no client at all — so the run rows are
+ * the progress indicator, and they have to move on their own.
+ *
+ * IMPORTANT — no cookies in the stream, same as `appStatus` (lib/graphql/types/app.ts):
+ * the async iterator runs AFTER the streaming Response is returned, so every read in
+ * the generator goes through the session-free `listCleanupRunsForSubscriber`. The gate
+ * is the field's `instanceAdmin` scope, which the scope-auth layer evaluates in request
+ * scope from the context snapshot (a synchronous `!!ctx.viewer?.isInstanceAdmin`) —
+ * exactly the same authority `dockerCleanupRuns`-the-query checks.
+ *
+ * The whole list is emitted, not a diff: it is a handful of rows (retention caps it at
+ * 3 × servers) and a full snapshot is what lets the client render without reconciling
+ * anything — the same reason the app stream re-reads its snapshot per ping.
+ */
+builder.subscriptionFields((t) => ({
+  dockerCleanupRuns: t.field({
+    type: [DockerCleanupRunRef],
+    authScopes: { instanceAdmin: true },
+    description:
+      "Emits the whole cleanup history whenever it changes — a sweep started, finished, or was pruned. Fires once immediately with the current snapshot. Instance-wide: there is no per-server stream, because there is one policy and one shared fleet.",
+    subscribe: () => cleanupRunsStream(),
+    resolve: (runs) => runs,
+  }),
+}));
+
+/** Exported for the SSE test: it must stay cookie-free across iteration ticks. */
+export async function* cleanupRunsStream(): AsyncGenerator<CleanupRunDTO[]> {
+  // Initial snapshot — a fresh subscriber paints the current history immediately,
+  // which also re-syncs a client whose SSE connection just self-healed.
+  yield await listCleanupRunsForSubscriber();
+  // The payload carries nothing beyond "something changed" (the channel's key is a
+  // constant), so each ping is answered with a fresh read rather than a diff.
+  for await (const _ping of pubSub.subscribe("cleanupRunsChanged", CLEANUP_RUNS_TOPIC)) {
+    yield await listCleanupRunsForSubscriber();
+  }
+}

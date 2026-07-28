@@ -21,6 +21,7 @@ import {
   TRUNCATE_CLEANUP,
 } from "./docker-cleanup-test-helpers";
 import {
+  __settleCleanupSweeps,
   getCleanupPolicy,
   listCleanupRuns,
   pruneCleanupRunHistory,
@@ -278,20 +279,30 @@ test("manage_infra alone does NOT reach Docker cleanup — the gate is instance-
 /* (f) History never lies                                              */
 /* ------------------------------------------------------------------ */
 
-test("runCleanupNow on a server with no live agent still records a failed run", async () => {
+test("runCleanupNow answers `running` at once and records the failure in the background", async () => {
   await seedCleanupPolicy(db, { enabled: true });
 
-  await asOwner(async () => {
-    // It throws so the UI can toast the agent's message verbatim...
-    await assert.rejects(() => runCleanupNow(SERVER_1), /not provisioned yet/);
-  });
+  // THE contract the UI is built on: the call returns a `running` run without waiting
+  // for the host, so "Clean up now" is a click, not a spinner — and it does NOT throw
+  // for anything the host fails at, because by then there is no caller left to tell.
+  const started = await asOwner(() => runCleanupNow(SERVER_1));
+  assert.equal(started.status, "running");
+  assert.equal(started.finishedAt, null);
+  assert.equal(started.trigger, "manual");
+  assert.equal(started.actor, USER_1);
+  assert.deepEqual(started.items, []);
 
-  // ...but only AFTER the attempt is on the record. This is the invariant: the
-  // `running` row is written BEFORE the dial, so a sweep that could not even start
-  // is a `failed` run, not a sweep that never happened.
+  // The detached half settles the same row it handed back. (Nothing in production
+  // awaits this — a page can be closed the moment the button is clicked.)
+  await __settleCleanupSweeps();
+
+  // The seeded server has no agent, and the invariant holds: the `running` row was
+  // written BEFORE the dial, so a sweep that could not even start is a `failed` run,
+  // not a sweep that never happened.
   const runs = await allRuns();
   assert.equal(runs.length, 1, "the attempt landed in the history");
   const run = runs[0]!;
+  assert.equal(run.id, started.id, "the same run the click was answered with");
   assert.equal(run.status, "failed");
   assert.equal(run.serverId, SERVER_1);
   assert.equal(run.trigger, "manual");
@@ -308,6 +319,25 @@ test("runCleanupNow on a server with no live agent still records a failed run", 
   const listed = await asOwner(() => listCleanupRuns({ serverId: SERVER_1 }));
   assert.equal(listed.length, 1);
   assert.equal(listed[0]!.status, "failed");
+});
+
+test("a second sweep is refused while one is already running on that host", async () => {
+  await seedCleanupPolicy(db, { enabled: true });
+  // A sweep in flight on this host — durably, so the guard holds across control-plane
+  // instances too, not just within one process.
+  await seedCleanupRun(db, {
+    id: "dcr_live",
+    status: "running",
+    startedAt: new Date().toISOString(),
+  });
+
+  // Refused BEFORE anything is recorded: this is a pre-flight problem, so it is one of
+  // the few things the mutation still throws — the button says the host is busy rather
+  // than stacking a second `docker rmi` sweep that would race the first's candidates.
+  await asOwner(async () => {
+    await assert.rejects(() => runCleanupNow(SERVER_1), /already running/);
+  });
+  assert.equal((await allRuns()).length, 1, "no second run row was written");
 });
 
 /* ------------------------------------------------------------------ */
@@ -386,9 +416,8 @@ test("the executor prunes after every sweep — even a failed one", async () => 
   }
 
   // The seeded server has no agent → the sweep fails, but it is still a run…
-  await asOwner(async () => {
-    await assert.rejects(() => runCleanupNow(SERVER_1), /not provisioned yet/);
-  });
+  await asOwner(() => runCleanupNow(SERVER_1));
+  await __settleCleanupSweeps();
 
   // …and the history is back at the cap: the just-failed run plus the two newest
   // survivors. Retention rides the executor — there is no janitor to schedule.
