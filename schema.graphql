@@ -1536,8 +1536,10 @@ type Mutation {
   """Send a one-off test alert through a single channel. Returns true."""
   testNotification(channel: TestNotificationChannel!): Boolean
 
-  """Run a connectivity check (HEAD bucket) and return the dest."""
-  testS3(id: String!): S3Destination
+  """
+  Probe the bucket through a backup-capable agent (head, write, remove) and return BOTH the repainted destination and the verdict. A failed probe resolves normally with `report.ok = false` — check it rather than assuming success, and show `report.error` verbatim.
+  """
+  testS3(id: String!): S3TestResult
 
   """Enable or disable a backup schedule. Returns true."""
   toggleBackup(enabled: Boolean!, id: String!): Boolean
@@ -1900,6 +1902,11 @@ type Query {
   """All S3 destinations in the active team, newest first."""
   s3Destinations: [S3Destination!]
 
+  """
+  The STORED result of this destination's last connection test — reading it never re-dials the bucket. `never` is true until the first test.
+  """
+  s3TestReport(id: String!): S3TestReport
+
   """Search registered users (by username/display name) to add to the team."""
   searchUsers(query: String!): [UserSearchResult!]
   server(id: String!): Server
@@ -2070,6 +2077,8 @@ type S3Destination {
   createdAt: String
   endpoint: String
   id: ID
+  lastTestAt: String
+  lastTestError: String
   name: String
   provider: S3Provider
   region: String
@@ -2091,6 +2100,51 @@ enum S3Status {
   connected
   error
   unverified
+}
+
+"""A line of the connection-test log, with the level to render it at."""
+type S3TestLogLine {
+  level: String
+  text: String
+}
+
+"""
+The result of testing a destination: the verdict, the probe sequence, the agent's verbatim output, and the commands that reproduce the same three S3 calls by hand. `never` ⇒ it has not been tested yet.
+"""
+type S3TestReport {
+  command: String
+  durationMs: Int
+  error: String
+  lines: [S3TestLogLine!]
+  never: Boolean
+  ok: Boolean
+  serverName: String
+  startedAt: String
+  steps: [S3TestStep!]
+}
+
+"""
+A completed connection test: the destination with its badge repainted, plus the verdict. Callers MUST read `report.ok` — a failed probe is a normal result, not a mutation error.
+"""
+type S3TestResult {
+  destination: S3Destination
+  report: S3TestReport
+}
+
+"""
+One step of the fixed probe sequence the agent performs (pick a server, open the endpoint, head the bucket, write a probe file, remove it).
+"""
+type S3TestStep {
+  detail: String
+  key: String
+  label: String
+  status: S3TestStepStatus
+}
+
+enum S3TestStepStatus {
+  failed
+  passed
+  skipped
 }
 
 """

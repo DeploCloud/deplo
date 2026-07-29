@@ -10,7 +10,14 @@ import {
   s3Destination as s3Table,
 } from "../db/schema/control-plane";
 import { assembleS3, s3ToRow } from "./backup-rows";
+import {
+  buildS3TestReport,
+  emptyS3TestReport,
+  type S3TestReport,
+  type S3TestTarget,
+} from "./s3-test-report";
 import { getCurrentUser } from "../auth";
+import { serverLabel } from "../utils";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
@@ -26,6 +33,18 @@ import type { S3Destination, S3Provider } from "../types";
 export interface S3DestinationDTO
   extends Omit<S3Destination, "accessKeyEnc" | "secretKeyEnc"> {
   accessKeyMasked: string;
+}
+
+/**
+ * What "Test connection" returns: the destination as it now stands (its badge
+ * repainted from the live verdict) AND the verdict itself. The report is the
+ * point — the mutation used to return only the destination, so a caller had no
+ * way to tell a passing probe from a failing one and the UI cheerfully toasted
+ * success either way.
+ */
+export interface S3TestResult {
+  destination: S3DestinationDTO;
+  report: S3TestReport;
 }
 
 function toDTO(s: S3Destination): S3DestinationDTO {
@@ -230,6 +249,12 @@ export async function createS3(input: {
     secretKeyEnc: encryptSecret(input.secretKey),
     status: "unverified",
     createdAt: nowIso(),
+    // Never tested yet — the badge says "unverified" and the connection log
+    // offers the test rather than a stale verdict.
+    lastTestAt: null,
+    lastTestError: null,
+    lastTestServerId: null,
+    lastTestMs: null,
   };
   await getDb().insert(s3Table).values(s3ToRow(s));
   await recordActivity("s3", `Connected S3 destination ${s.name}`, user.name, null);
@@ -249,7 +274,7 @@ export async function createS3(input: {
  * server has a backup-capable agent yet, we surface the agent-update guidance
  * ({@link AgentBackupUnsupportedError}) rather than flipping to `connected`.
  */
-export async function testS3(id: string): Promise<S3DestinationDTO> {
+export async function testS3(id: string): Promise<S3TestResult> {
   const teamId = (await requireCapability("manage_infra")).teamId;
   const cur = await loadS3(id, teamId);
   if (!cur) throw new Error("Not found");
@@ -261,16 +286,103 @@ export async function testS3(id: string): Promise<S3DestinationDTO> {
 
   // The agent probe (RPC) runs BEFORE the status write (PLAN §1 rule (a) — never
   // inside a transaction); the status is persisted from the live verdict.
-  const { ok } = await checkOnAnyBackupAgent(target);
+  //
+  // "No agent could serve the probe" USED to throw out of here, which made the
+  // most confusing failure of all (nothing to do with the bucket) the one with no
+  // recorded reason. It is now a verdict like any other: recorded, badged red,
+  // and explained in the connection log.
+  const startedAt = nowIso();
+  const began = Date.now();
+  let ok = false;
+  let error = "";
+  let serverId: string | null = null;
+  let attempts: string[] = [];
+  try {
+    const verdict = await checkOnAnyBackupAgent(target);
+    ok = verdict.ok;
+    error = verdict.error;
+    serverId = verdict.serverId;
+    attempts = verdict.attempts;
+  } catch (e) {
+    ok = false;
+    error = e instanceof Error ? e.message : String(e);
+  }
+  const durationMs = Date.now() - began;
 
   const status = ok ? "connected" : "error";
   const updated = await getDb()
     .update(s3Table)
-    .set({ status })
+    .set({
+      status,
+      lastTestAt: startedAt,
+      // Empty string would read as "tested and passed" — store NULL on success.
+      lastTestError: ok ? null : error || "The bucket probe failed.",
+      lastTestServerId: serverId,
+      lastTestMs: durationMs,
+    })
     .where(and(eq(s3Table.id, id), eq(s3Table.teamId, teamId)))
     .returning();
   if (updated.length === 0) throw new Error("Not found");
-  return toDTO(assembleS3(updated[0]!));
+  const destination = toDTO(assembleS3(updated[0]!));
+
+  return {
+    destination,
+    report: buildS3TestReport({
+      target: testTargetOf(destination),
+      ok,
+      error,
+      startedAt,
+      durationMs,
+      serverName: serverId ? await serverLabelFor(serverId) : "",
+      agentAttempts: attempts,
+    }),
+  };
+}
+
+/** The destination fields the report prints — never a credential. */
+function testTargetOf(d: S3DestinationDTO): S3TestTarget {
+  return {
+    name: d.name,
+    provider: d.provider,
+    endpoint: d.endpoint,
+    region: d.region,
+    bucket: d.bucket,
+  };
+}
+
+/**
+ * A server's display name for the log header, or a legible stand-in when the row
+ * is gone (the FK is SET NULL on removal, so this only covers the window where a
+ * report is read against a server deleted moments ago).
+ */
+async function serverLabelFor(serverId: string): Promise<string> {
+  const server = (await listAllServers()).find((s) => s.id === serverId);
+  return server ? serverLabel(server) : "a server that has since been removed";
+}
+
+/**
+ * The stored report for a destination — what the connection log opens on, so
+ * reading the last failure never silently re-dials the bucket. Rebuilt from the
+ * four `last_test_*` columns plus the destination's own coordinates (the step
+ * sequence and the reproduce commands are pure functions of those, which is why
+ * none of it is stored). Never tested ⇒ an explicit "not tested yet" report.
+ */
+export async function s3TestReport(id: string): Promise<S3TestReport> {
+  const teamId = await requireActiveTeamId();
+  const s = await loadS3(id, teamId);
+  if (!s) throw new Error("Not found");
+  const target = testTargetOf(toDTO(s));
+  if (!s.lastTestAt) return emptyS3TestReport(target);
+  return buildS3TestReport({
+    target,
+    ok: !s.lastTestError,
+    error: s.lastTestError ?? "",
+    startedAt: s.lastTestAt,
+    durationMs: s.lastTestMs ?? 0,
+    serverName: s.lastTestServerId
+      ? await serverLabelFor(s.lastTestServerId)
+      : "",
+  });
 }
 
 /**
@@ -281,9 +393,14 @@ export async function testS3(id: string): Promise<S3DestinationDTO> {
  * (so the UI says "update the agent"); throws {@link AgentUnreachableError} when
  * no server is reachable at all.
  */
-async function checkOnAnyBackupAgent(
-  target: S3Target,
-): Promise<{ ok: boolean; error: string }> {
+async function checkOnAnyBackupAgent(target: S3Target): Promise<{
+  ok: boolean;
+  error: string;
+  /** The server whose agent answered; null when none did. */
+  serverId: string | null;
+  /** `<server> — <why>` for each server tried and skipped, in order. */
+  attempts: string[];
+}> {
   const servers = (await listAllServers()).filter((s) => s.agent?.certFingerprint);
   if (servers.length === 0) {
     throw new AgentUnreachableError(
@@ -292,25 +409,31 @@ async function checkOnAnyBackupAgent(
   }
   let lastUnsupported: Error | null = null;
   let lastUnreachable: Error | null = null;
+  // Every server we walked past, so the connection log can distinguish "your
+  // bucket is wrong" from "no host here could even run the check".
+  const attempts: string[] = [];
   for (const server of servers) {
     let conn;
     try {
       conn = await connectBackupAgent(server.id);
     } catch (e) {
       const mapped = mapBackupUnsupported(e);
+      attempts.push(`${serverLabel(server)} — ${mapped.message}`);
       if (mapped instanceof AgentUnreachableError) lastUnreachable = mapped;
       else lastUnsupported = mapped;
       continue; // try the next server
     }
     try {
-      return await conn.s3Check(target);
+      const verdict = await conn.s3Check(target);
+      return { ...verdict, serverId: server.id, attempts };
     } catch (e) {
       // The RPC itself failed: an old agent (UNIMPLEMENTED) → try the next; a
       // transport drop → try the next; otherwise it's a real probe failure.
       const mapped = mapBackupUnsupported(e);
       if (mapped instanceof AgentUnreachableError) lastUnreachable = mapped;
       else if (mapped.name === "AgentBackupUnsupportedError") lastUnsupported = mapped;
-      else return { ok: false, error: mapped.message };
+      else return { ok: false, error: mapped.message, serverId: server.id, attempts };
+      attempts.push(`${serverLabel(server)} — ${mapped.message}`);
     } finally {
       conn.close();
     }

@@ -88,6 +88,16 @@ fetch), or `Boolean` for deletes/toggles, or a `String` for reveal-secret
 operations (e.g. `revealConnection`, `rotateDatabasePassword` return the
 connection string).
 
+**A verdict is a return value, not an error.** Where a mutation asks another
+system whether something works, the answer comes back in the payload and a
+failure resolves normally — `testS3(id)` returns `S3TestResult { destination,
+report }`, and `report.ok` is the verdict (`report.error` carries the storage
+provider's verbatim message, `report.steps` the probe sequence). A client that
+treats "the request succeeded" as "the bucket works" will report success over a
+bucket that just refused it — which is exactly the bug the old
+`testS3: S3Destination` shape caused in deplo's own UI. `s3TestReport(id)` reads
+the stored verdict without re-probing.
+
 ## Errors
 
 Errors come back in the standard GraphQL `errors[]` array. The `message` is

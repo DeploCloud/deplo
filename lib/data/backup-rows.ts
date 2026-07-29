@@ -127,6 +127,10 @@ export function s3ToRow(s: S3Destination): S3DestinationInsert {
     secretKeyEnc: s.secretKeyEnc,
     status: s.status,
     createdAt: s.createdAt,
+    lastTestAt: s.lastTestAt,
+    lastTestError: s.lastTestError,
+    lastTestServerId: s.lastTestServerId,
+    lastTestMs: s.lastTestMs,
   } satisfies Record<keyof S3Destination, unknown> as S3DestinationInsert;
 }
 
@@ -144,6 +148,10 @@ export function assembleS3(row: S3DestinationRow): S3Destination {
     secretKeyEnc: row.secretKeyEnc,
     status: row.status as S3Status,
     createdAt: row.createdAt,
+    lastTestAt: row.lastTestAt ?? null,
+    lastTestError: row.lastTestError ?? null,
+    lastTestServerId: row.lastTestServerId ?? null,
+    lastTestMs: row.lastTestMs ?? null,
   };
 }
 

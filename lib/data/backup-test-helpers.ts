@@ -94,6 +94,13 @@ export interface SeedS3Opts {
   teamId?: string;
   name?: string;
   status?: S3Destination["status"];
+  /** Last-test verdict, for the connection-log report. Default: never tested. */
+  lastTest?: {
+    at: string;
+    error?: string | null;
+    serverId?: string | null;
+    ms?: number | null;
+  };
 }
 
 /** Seed one S3 destination (real encrypted access/secret keys). */
@@ -110,6 +117,10 @@ export async function seedS3(db: TestDb, opts: SeedS3Opts): Promise<string> {
     secretKeyEnc: encryptSecret("secret_test"),
     status: opts.status ?? "connected",
     createdAt: T0,
+    lastTestAt: opts.lastTest?.at ?? null,
+    lastTestError: opts.lastTest?.error ?? null,
+    lastTestServerId: opts.lastTest?.serverId ?? null,
+    lastTestMs: opts.lastTest?.ms ?? null,
   };
   await db.insert(s3Table).values(s3ToRow(row));
   return row.id;

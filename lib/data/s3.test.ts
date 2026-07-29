@@ -10,11 +10,12 @@ import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
   s3Destination as s3Table,
+  servers as serversTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { decryptSecret } from "../crypto";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
-import { seedServer } from "./app-graph-test-helpers";
+import { seedServer, SERVER_1 } from "./app-graph-test-helpers";
 import {
   seedBackup,
   seedDatabase,
@@ -22,7 +23,7 @@ import {
   seedS3,
   TRUNCATE_BACKUPS,
 } from "./backup-test-helpers";
-import { createS3, deleteS3, getS3WithSecrets, listS3 } from "./s3";
+import { createS3, deleteS3, getS3WithSecrets, listS3, s3TestReport } from "./s3";
 
 /**
  * Data-layer tests for `s3` against pglite (PLAN Step 5, cut-set (d)). Verifies the
@@ -136,4 +137,90 @@ test("deleteS3 is team-scoped (a foreign destination is not found)", async () =>
   });
   // Still present.
   assert.equal((await db.select().from(s3Table).where(eq(s3Table.id, "s3_b"))).length, 1);
+});
+
+/* ------------------------------------------------------------------ */
+/* Connection-test report (what the "Connection log" dialog reads)     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `s3TestReport` is a pure READ of the four `last_test_*` columns — opening the
+ * log must never re-dial the bucket. The probe itself (`testS3`) needs a live
+ * agent, so its verdict-to-report mapping is covered by the pure tests in
+ * s3-test-report.test.ts; here we pin what the STORED verdict turns into.
+ */
+test("s3TestReport: never tested ⇒ a `never` report, not a failure", async () => {
+  await seedS3(db, { id: "s3_1", name: "Backups", status: "unverified" });
+  await asUser1(async () => {
+    const r = await s3TestReport("s3_1");
+    assert.equal(r.never, true);
+    assert.equal(r.ok, false);
+    assert.equal(r.error, "");
+    assert.deepEqual(r.steps, []);
+    // The reproduce block needs no verdict, so it is there from the start.
+    assert.match(r.command, /head-bucket/);
+  });
+});
+
+test("s3TestReport: a stored failure keeps the agent's words verbatim", async () => {
+  // Give the server a name distinct from its id, so the report proves it
+  // resolves the stored server_id to a human label instead of printing the id.
+  await db
+    .update(serversTable)
+    .set({ name: "eu-main-1" })
+    .where(eq(serversTable.id, SERVER_1));
+  await seedS3(db, {
+    id: "s3_1",
+    name: "Backups",
+    status: "error",
+    lastTest: {
+      at: "2026-07-29T09:00:00.000Z",
+      error: 'write probe to bucket "deplo-backups": Access Denied.',
+      serverId: SERVER_1,
+      ms: 731,
+    },
+  });
+  await asUser1(async () => {
+    const r = await s3TestReport("s3_1");
+    assert.equal(r.never, false);
+    assert.equal(r.ok, false);
+    assert.equal(r.error, 'write probe to bucket "deplo-backups": Access Denied.');
+    assert.equal(r.durationMs, 731);
+    // The stored server_id is resolved to the server's display name.
+    assert.equal(r.serverName, "eu-main-1");
+    // And the sequence blames the write step (see s3-test-report.test.ts).
+    assert.equal(r.steps.find((s) => s.key === "write")?.status, "failed");
+  });
+});
+
+test("s3TestReport: a stored PASS reports ok with no error line", async () => {
+  await seedS3(db, {
+    id: "s3_1",
+    status: "connected",
+    lastTest: { at: "2026-07-29T09:00:00.000Z", serverId: SERVER_1, ms: 120 },
+  });
+  await asUser1(async () => {
+    const r = await s3TestReport("s3_1");
+    assert.equal(r.ok, true);
+    assert.equal(r.error, "");
+    assert.ok(r.steps.every((s) => s.status === "passed"));
+  });
+});
+
+test("s3TestReport: the last verdict rides the DTO, so the card can explain the badge", async () => {
+  await seedS3(db, {
+    id: "s3_1",
+    status: "error",
+    lastTest: { at: "2026-07-29T09:00:00.000Z", error: "Access Denied.", ms: 5 },
+  });
+  await asUser1(async () => {
+    const [dto] = await listS3();
+    assert.equal(dto.lastTestError, "Access Denied.");
+    assert.equal(dto.lastTestAt, "2026-07-29T09:00:00.000Z");
+  });
+});
+
+test("s3TestReport refuses a cross-team destination", async () => {
+  await seedS3(db, { id: "s3_other", teamId: TEAM_B });
+  await assert.rejects(asUser1(() => s3TestReport("s3_other")), /not found/i);
 });

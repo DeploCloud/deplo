@@ -1262,6 +1262,18 @@ export const s3Destination = pgTable(
     secretKeyEnc: text("secret_key_enc").notNull(),
     status: text("status").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
+    // Last "Test connection" verdict, kept so the card can say WHY a destination
+    // is in `error` and the connection-log dialog can open on the previous run
+    // without silently re-dialing the bucket. All four are NULL until the first
+    // test. `lastTestError` NULL/"" with a non-null `lastTestAt` ⇒ it passed.
+    lastTestAt: isoTimestamptz("last_test_at"),
+    lastTestError: text("last_test_error"),
+    // The server whose agent served the probe (any backup-capable one can).
+    // SET NULL: removing a server must not delete a destination's history.
+    lastTestServerId: text("last_test_server_id").references(() => servers.id, {
+      onDelete: "set null",
+    }),
+    lastTestMs: integer("last_test_ms"),
   },
   (t) => [index("s3_destination_team_created_idx").on(t.teamId, t.createdAt.desc())],
 );

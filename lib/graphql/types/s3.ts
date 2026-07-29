@@ -4,9 +4,16 @@ import {
   listS3,
   createS3,
   testS3,
+  s3TestReport,
   deleteS3,
   type S3DestinationDTO,
+  type S3TestResult,
 } from "@/lib/data/s3";
+import type {
+  S3TestReport,
+  S3TestStep,
+  S3TestLogLine,
+} from "@/lib/data/s3-test-report";
 import type { S3Provider } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -39,6 +46,77 @@ export const S3DestinationRef = builder
       accessKeyMasked: t.exposeString("accessKeyMasked"),
       status: t.field({ type: S3StatusEnum, resolve: (s) => s.status }),
       createdAt: t.exposeString("createdAt"),
+      // Last-test verdict, so a red badge can say WHY without opening the log.
+      lastTestAt: t.exposeString("lastTestAt", { nullable: true }),
+      lastTestError: t.exposeString("lastTestError", { nullable: true }),
+    }),
+  });
+
+/* ------------------------------------------------------------------ */
+/* Connection test report (the debug output behind the badge)           */
+/* ------------------------------------------------------------------ */
+
+const S3TestStepStatusEnum = builder.enumType("S3TestStepStatus", {
+  values: ["passed", "failed", "skipped"] as const,
+});
+
+const S3TestStepRef = builder
+  .objectRef<S3TestStep>("S3TestStep")
+  .implement({
+    description:
+      "One step of the fixed probe sequence the agent performs (pick a server, " +
+      "open the endpoint, head the bucket, write a probe file, remove it).",
+    fields: (t) => ({
+      key: t.exposeString("key"),
+      label: t.exposeString("label"),
+      detail: t.exposeString("detail"),
+      status: t.field({ type: S3TestStepStatusEnum, resolve: (s) => s.status }),
+    }),
+  });
+
+const S3TestLogLineRef = builder
+  .objectRef<S3TestLogLine>("S3TestLogLine")
+  .implement({
+    description: "A line of the connection-test log, with the level to render it at.",
+    fields: (t) => ({
+      level: t.exposeString("level"),
+      text: t.exposeString("text"),
+    }),
+  });
+
+const S3TestReportRef = builder
+  .objectRef<S3TestReport>("S3TestReport")
+  .implement({
+    description:
+      "The result of testing a destination: the verdict, the probe sequence, the " +
+      "agent's verbatim output, and the commands that reproduce the same three S3 " +
+      "calls by hand. `never` ⇒ it has not been tested yet.",
+    fields: (t) => ({
+      ok: t.exposeBoolean("ok"),
+      never: t.exposeBoolean("never"),
+      error: t.exposeString("error"),
+      startedAt: t.exposeString("startedAt"),
+      durationMs: t.exposeInt("durationMs"),
+      serverName: t.exposeString("serverName"),
+      steps: t.field({ type: [S3TestStepRef], resolve: (r) => r.steps }),
+      lines: t.field({ type: [S3TestLogLineRef], resolve: (r) => r.lines }),
+      command: t.exposeString("command"),
+    }),
+  });
+
+const S3TestResultRef = builder
+  .objectRef<S3TestResult>("S3TestResult")
+  .implement({
+    description:
+      "A completed connection test: the destination with its badge repainted, plus " +
+      "the verdict. Callers MUST read `report.ok` — a failed probe is a normal " +
+      "result, not a mutation error.",
+    fields: (t) => ({
+      destination: t.field({
+        type: S3DestinationRef,
+        resolve: (r) => r.destination,
+      }),
+      report: t.field({ type: S3TestReportRef, resolve: (r) => r.report }),
     }),
   });
 
@@ -69,6 +147,15 @@ builder.queryFields((t) => ({
     description: "All S3 destinations in the active team, newest first.",
     resolve: () => listS3(),
   }),
+  s3TestReport: t.field({
+    type: S3TestReportRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "The STORED result of this destination's last connection test — reading it " +
+      "never re-dials the bucket. `never` is true until the first test.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => s3TestReport(id),
+  }),
 }));
 
 /* ------------------------------------------------------------------ */
@@ -92,9 +179,13 @@ builder.mutationFields((t) => ({
       }),
   }),
   testS3: t.field({
-    type: S3DestinationRef,
+    type: S3TestResultRef,
     authScopes: { capability: "manage_infra" },
-    description: "Run a connectivity check (HEAD bucket) and return the dest.",
+    description:
+      "Probe the bucket through a backup-capable agent (head, write, remove) and " +
+      "return BOTH the repainted destination and the verdict. A failed probe " +
+      "resolves normally with `report.ok = false` — check it rather than assuming " +
+      "success, and show `report.error` verbatim.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => testS3(id),
   }),

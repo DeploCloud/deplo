@@ -326,6 +326,21 @@ touches the host Docker socket for a DB. See
 _Avoid_: DB instance, datastore (use "database"), local database (none are local now — every
 DB lives on an agent, the Deplo host included).
 
+**S3 destination**:
+A team-owned S3-compatible bucket + credentials that **backup runs** write to (creds
+encrypted at rest, never returned to a client). Its `status` is `unverified` until someone
+runs the **connection test**, which is not a guess: a backup-capable **server agent** probes
+the bucket for real — head it, write a 0-byte `.deplo-s3check`, remove it — so a read-only
+key reads as *failed*, not *connected*. The verdict is persisted with its reason
+(`last_test_*`), which is what lets the card say WHY it is red and the **connection log**
+(the destination's three-dot menu) show the whole probe sequence, the agent's verbatim
+message, and the equivalent commands to reproduce it by hand. A failed probe is a normal
+result of `testS3`, NOT a mutation error — read `report.ok`; the mutation used to return only
+the destination, which is how the UI came to report success over a failing bucket.
+_Avoid_: bucket (a destination is bucket + endpoint + region + creds + verdict); "connection
+verified" for anything but a passed probe; calling the reproduce block "the command deplo
+ran" (the agent does it in-process with minio-go, no shell).
+
 **Backup**:
 A **schedule**: a cron expression + S3 destination + retention, targeting **one** thing via
 `targetKind` — a `Database` or an `App` (never an app's linked databases; those are

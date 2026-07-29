@@ -1216,6 +1216,19 @@ export interface S3Destination {
   secretKeyEnc: string;
   status: S3Status;
   createdAt: string;
+  /**
+   * The last "Test connection" verdict. `lastTestAt` null ⇒ never tested (the
+   * `unverified` badge); a non-null `lastTestAt` with an empty `lastTestError`
+   * ⇒ the probe passed. The error is the agent's VERBATIM message, kept so the
+   * card can say why a destination is red and the connection log can be read
+   * after the fact without re-dialing the bucket.
+   */
+  lastTestAt: string | null;
+  lastTestError: string | null;
+  /** Server whose agent served the probe (null ⇒ never tested, or removed since). */
+  lastTestServerId: ID | null;
+  /** Probe duration in ms (null ⇒ never tested). */
+  lastTestMs: number | null;
 }
 
 /** What a backup schedule / run targets. */
