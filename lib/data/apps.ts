@@ -35,6 +35,7 @@ import {
   composeHasHostBindMount,
   composePublishesPorts,
 } from "../deploy/compose-lint";
+import { composeServiceNames } from "../deploy/compose-stack";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import { buildConfigFor } from "../frameworks";
@@ -922,7 +923,7 @@ const RESERVED_MOUNT_PREFIXES = [
 ];
 
 /**
- * Validate + canonicalize the full volume set for a single-container project.
+ * Validate + canonicalize the full volume set for an app.
  * The renderer trusts its input, so EVERY safety rule lives here:
  *  - mountPath absolute, no spaces, no ":" (would smuggle a `:ro`/extra field
  *    into the compose `- name:path` string), no "..", not a reserved path.
@@ -930,7 +931,13 @@ const RESERVED_MOUNT_PREFIXES = [
  *    bind-mounted config files written next to the stack).
  *  - name lowercased, `[a-z0-9][a-z0-9_-]*`, ≤40 (blocks YAML key injection into
  *    the top-level `  <name>:` map), derived from the path when blank.
- *  - mountPath AND name unique within the project.
+ *  - name unique within the project; mountPath unique within the SERVICE it
+ *    mounts into (a compose stack may legitimately give two services their own
+ *    `/data` — a single-container app has one service, so this is the old
+ *    project-wide rule for it).
+ *  - `service` (compose stacks only) names a service the compose actually
+ *    declares, so the deploy can never fail on a stale name; `composeServices`
+ *    null ⇒ single-container, where the field is meaningless and is dropped.
  * For a HOST bind mount (`type: "host"`) the `hostPath` SOURCE is validated to be
  * an absolute path with no spaces/":"/".." (so it can't smuggle extra compose
  * fields) — but it is intentionally NOT subject to RESERVED_MOUNT_PREFIXES (those
@@ -942,12 +949,26 @@ const RESERVED_MOUNT_PREFIXES = [
 export function validateVolumes(
   raw: VolumeMount[],
   existingMounts: { filePath: string }[] | null | undefined,
+  composeServices?: string[] | null,
 ): VolumeMount[] | null {
   const seenPath = new Set<string>();
   const seenName = new Set<string>();
   const mountFilePaths = (existingMounts ?? []).map((m) => m.filePath);
   const out: VolumeMount[] = [];
   for (const v of raw) {
+    // Compose stacks only: which service gets the mount. Blank ⇒ the stack's
+    // default service, resolved at render time (so a compose edit that renames
+    // the default service can't strand the volume).
+    let service: string | null = null;
+    if (composeServices) {
+      const wanted = (v.service ?? "").trim();
+      if (wanted && !composeServices.includes(wanted)) {
+        throw new Error(
+          `Compose service "${wanted}" is not in this app's compose file.`,
+        );
+      }
+      service = wanted || null;
+    }
     const mountPath = (v.mountPath ?? "").trim().replace(/\/+$/, "") || "/";
     if (!/^\/[^\s:]*$/.test(mountPath) || mountPath.length < 2) {
       throw new Error(
@@ -981,10 +1002,15 @@ export function validateVolumes(
         `Mount path "${mountPath}" conflicts with a template config file.`,
       );
     }
-    if (seenPath.has(mountPath)) {
+    // Unique per (service, path): docker rejects two mounts at the same path in
+    // ONE container, but two services of a stack each mounting their own `/data`
+    // is normal. `service` is always null for a single-container app, so this is
+    // the plain project-wide check there.
+    const pathKey = `${service ?? ""}\u0000${mountPath}`;
+    if (seenPath.has(pathKey)) {
       throw new Error(`Duplicate mount path: "${mountPath}"`);
     }
-    seenPath.add(mountPath);
+    seenPath.add(pathKey);
 
     const name = ((v.name ?? "").trim() || deriveVolumeName(mountPath)).toLowerCase();
 
@@ -1019,6 +1045,7 @@ export function validateVolumes(
         type: "app",
         name,
         projectPath,
+        ...(service ? { service } : {}),
         mountPath,
         readOnly: Boolean(v.readOnly),
       });
@@ -1044,6 +1071,7 @@ export function validateVolumes(
         type: "host",
         name,
         hostPath,
+        ...(service ? { service } : {}),
         mountPath,
         readOnly: Boolean(v.readOnly),
       });
@@ -1060,17 +1088,27 @@ export function validateVolumes(
     }
     seenName.add(name);
 
-    out.push({ id: v.id || newId("vol"), name, mountPath, readOnly: Boolean(v.readOnly) });
+    out.push({
+      id: v.id || newId("vol"),
+      name,
+      ...(service ? { service } : {}),
+      mountPath,
+      readOnly: Boolean(v.readOnly),
+    });
   }
   return out.length ? out : null;
 }
 
 /**
- * Replace a single-container project's volumes (full set) — docker-managed named
- * volumes and (for privileged users) host bind mounts. Rejected for compose-stack
- * apps — they declare volumes inside their own YAML. An empty set is stored
- * as null so renderCompose stays byte-identical. Persists only; the new mounts
- * take effect on the next production deploy (consistent with the other per-card
+ * Replace an app's volumes (full set) — docker-managed named volumes, binds into
+ * the app's files dir, and (for privileged users) host bind mounts. Works for
+ * EVERY source, compose stacks included: requiring the user to hand-write
+ * `volumes:` into their YAML is exactly the Docker knowledge deplo exists to not
+ * demand. For a compose stack each row also carries the service it mounts into
+ * (blank ⇒ the stack's default service), validated here against the compose so a
+ * stale name can never surface as a deploy failure. An empty set is stored as
+ * null so the renderers stay byte-identical. Persists only; the new mounts take
+ * effect on the next production deploy (consistent with the other per-card
  * settings mutations).
  */
 export async function setAppVolumes(
@@ -1083,19 +1121,22 @@ export async function setAppVolumes(
   if (volumes.some((v) => v.type === "host")) {
     await requireMountHostVolumes();
   }
+  // The folder gate reads folder grants on its own connection, so it runs BEFORE
+  // the transaction — the same order as every other app-settings write here
+  // (updateAppResources, setAppUpload, …). Cross-team ids are still caught by the
+  // teamId check inside the transaction, which is the authoritative scope.
+  await requireFolderCapabilityForApp(id, "deploy");
   const user = (await getCurrentUser())!;
   await getDb().transaction(async (tx) => {
     const p = await loadAppGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("App not found");
-    await requireFolderCapabilityForApp(id, "deploy");
-    if (usesComposeStack(p)) {
-      throw new Error(
-        "Volumes are managed inside the compose file for this project.",
-      );
-    }
-    // Validate against the project's mounts (the conflict check), then whole-set
+    // Validate against the project's mounts (the conflict check) and, for a
+    // compose stack, against the services its compose declares, then whole-set
     // replace the `app_volumes` ordered child rows.
-    const validated = validateVolumes(volumes, p.mounts);
+    const composeServices = usesComposeStack(p)
+      ? composeServiceNames(p.compose)
+      : null;
+    const validated = validateVolumes(volumes, p.mounts, composeServices);
     await tx.delete(appVolumesTable).where(eq(appVolumesTable.appId, id));
     const rows = volumesToRows(id, validated);
     if (rows.length > 0) await tx.insert(appVolumesTable).values(rows);

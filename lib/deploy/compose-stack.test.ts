@@ -9,6 +9,7 @@ import {
   type ComposeStackInput,
   type ComposeDomainRoute,
 } from "./compose-stack";
+import type { VolumeMount } from "../types";
 
 /**
  * The `domains` table is the SOLE source of compose routing: each routed domain
@@ -318,6 +319,173 @@ services:
   );
   const vols = volsOf(doc.services.web as Svc & { volumes?: unknown });
   assert.ok(vols.includes("/srv/host/data:/data"));
+});
+
+/* ------------------------------------------------------------------ */
+/* Storage-settings volumes — a compose stack gets deplo-managed        */
+/* persistent storage without the user hand-writing any `volumes:`      */
+/* ------------------------------------------------------------------ */
+
+/** A volume mount row as Storage settings stores it. */
+function vol(
+  v: Partial<VolumeMount> & { mountPath: string },
+): VolumeMount {
+  return { id: "vol_1", name: "data", readOnly: false, ...v };
+}
+
+/** The parsed top-level `volumes:` block. */
+function topVolumes(doc: Doc): Record<string, { name?: string }> {
+  return ((doc as unknown as { volumes?: unknown }).volumes ?? {}) as Record<
+    string,
+    { name?: string }
+  >;
+}
+
+test("a named volume mounts into the stack's DEFAULT service and pins its host name", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80"
+  db:
+    image: postgres
+`,
+    { volumes: [vol({ name: "uploads", mountPath: "/app/uploads" })] },
+  );
+  // No service picked ⇒ the one a domain would route to (it publishes a port).
+  assert.deepEqual(volsOf(doc.services.web as Svc & { volumes?: unknown }), [
+    "uploads:/app/uploads",
+  ]);
+  // NOT every service: a shared mount would race on first-use seeding.
+  assert.deepEqual(volsOf(doc.services.db as Svc & { volumes?: unknown }), []);
+  // The host name matches the single-container renderer's, so an app that
+  // changes source keeps its data.
+  assert.deepEqual(topVolumes(doc), { uploads: { name: "deplo-demo-uploads" } });
+});
+
+test("a volume mounts into the service it names, read-only flag included", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+  db:
+    image: postgres
+`,
+    {
+      volumes: [
+        vol({ name: "pgdata", service: "db", mountPath: "/var/lib/postgresql/data" }),
+        vol({ id: "vol_2", name: "seed", service: "db", mountPath: "/seed", readOnly: true }),
+      ],
+    },
+  );
+  assert.deepEqual(volsOf(doc.services.db as Svc & { volumes?: unknown }), [
+    "pgdata:/var/lib/postgresql/data",
+    "seed:/seed:ro",
+  ]);
+  assert.deepEqual(volsOf(doc.services.web as Svc & { volumes?: unknown }), []);
+});
+
+test("the service's OWN mount at that path wins (existing-wins)", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    volumes:
+      - authored:/data
+`,
+    { volumes: [vol({ name: "data", mountPath: "/data" })] },
+  );
+  // The authored compose is authoritative — same precedence as envKeys/resources.
+  assert.deepEqual(volsOf(doc.services.web as Svc & { volumes?: unknown }), [
+    "authored:/data",
+  ]);
+  // …and the skipped mount leaves NO orphan top-level entry behind (compose
+  // would create that empty volume, and every backup would then carry it).
+  assert.deepEqual(topVolumes(doc), {});
+});
+
+test("app-file and host volumes render as binds, with no top-level entry", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+`,
+    {
+      filesDir: "/srv/stacks/files/demo",
+      volumes: [
+        vol({ id: "vol_1", type: "app", name: "conf", projectPath: "config.toml", mountPath: "/etc/app/config.toml" }),
+        vol({ id: "vol_2", type: "host", name: "media", hostPath: "/srv/media", mountPath: "/media" }),
+      ],
+    },
+  );
+  assert.deepEqual(volsOf(doc.services.web as Svc & { volumes?: unknown }), [
+    "/srv/stacks/files/demo/config.toml:/etc/app/config.toml",
+    "/srv/media:/media",
+  ]);
+  // Binds have an absolute source — docker needs no top-level declaration.
+  assert.deepEqual(topVolumes(doc), {});
+});
+
+test("a top-level key the compose already uses is not clobbered", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+volumes:
+  data:
+    external: true
+`,
+    { volumes: [vol({ name: "data", mountPath: "/data" })] },
+  );
+  const top = topVolumes(doc);
+  // The user's `data:` keeps its own declaration; ours takes the next free alias
+  // (its host name is still derived from the volume's name).
+  assert.deepEqual(top.data, { external: true });
+  assert.deepEqual(top["data-2"], { name: "deplo-demo-data" });
+  assert.deepEqual(volsOf(doc.services.web as Svc & { volumes?: unknown }), [
+    "data-2:/data",
+  ]);
+});
+
+test("a volume naming a service the compose lacks is a hard error", () => {
+  assert.throws(
+    () =>
+      buildDoc(
+        `
+services:
+  web:
+    image: nginx
+`,
+        { volumes: [vol({ name: "data", service: "worker", mountPath: "/data" })] },
+      ),
+    /worker/,
+  );
+});
+
+test("no volumes ⇒ no `volumes:` key anywhere (byte-identical baseline)", () => {
+  const base = buildComposeStack({
+    compose: "services:\n  web:\n    image: nginx\n",
+    name: "deplo-demo",
+    slug: "demo",
+    appId: "p1",
+    domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
+  });
+  const withEmpty = buildComposeStack({
+    compose: "services:\n  web:\n    image: nginx\n",
+    name: "deplo-demo",
+    slug: "demo",
+    appId: "p1",
+    domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
+    volumes: [],
+  });
+  assert.equal(withEmpty, base);
+  assert.ok(!base.includes("volumes:"));
 });
 
 /* ------------------------------------------------------------------ */

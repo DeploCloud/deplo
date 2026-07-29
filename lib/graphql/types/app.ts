@@ -115,8 +115,8 @@ export const DeploymentRef = builder
 
 const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
   description:
-    "A persistent volume mounted into a single-container project — a docker " +
-    "named volume, an app-files bind, or a host bind mount.",
+    "A persistent volume mounted into an app — a docker named volume, an " +
+    "app-files bind, or a host bind mount.",
   fields: (t) => ({
     id: t.exposeID("id"),
     // "named" (default), "app", or "host" — the UI re-derives its source
@@ -125,6 +125,9 @@ const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
     name: t.exposeString("name"),
     projectPath: t.exposeString("projectPath", { nullable: true }),
     hostPath: t.exposeString("hostPath", { nullable: true }),
+    // Compose stacks: the service this volume mounts into (null ⇒ the stack's
+    // default service). Always null for a single-container app.
+    service: t.string({ nullable: true, resolve: (v) => v.service ?? null }),
     mountPath: t.exposeString("mountPath"),
     readOnly: t.exposeBoolean("readOnly"),
   }),
@@ -153,8 +156,7 @@ export const AppRef = builder
       compose: t.exposeString("compose", { nullable: true }),
       volumes: t.field({
         type: [VolumeRef],
-        description:
-          "Persistent named volumes (single-container apps only).",
+        description: "Persistent volumes mounted into this app.",
         resolve: (p) => p.volumes ?? [],
       }),
       resources: t.field({
@@ -279,7 +281,7 @@ const MountInput = builder.inputType("MountInput", {
 });
 
 const VolumeInput = builder.inputType("VolumeInput", {
-  description: "A persistent volume for a single-container project.",
+  description: "A persistent volume mounted into an app.",
   fields: (t) => ({
     id: t.string({ required: false }),
     /** "named" (docker-managed, default), "app" (bind inside the app's
@@ -290,6 +292,9 @@ const VolumeInput = builder.inputType("VolumeInput", {
     projectPath: t.string({ required: false }),
     /** Absolute host path to bind-mount (host mounts only). */
     hostPath: t.string({ required: false }),
+    /** Compose-stack apps: the service to mount into (blank ⇒ the stack's
+     * default service). Ignored for single-container apps. */
+    service: t.string({ required: false }),
     mountPath: t.string({ required: true }),
     readOnly: t.boolean({ required: false }),
   }),
@@ -530,7 +535,7 @@ builder.mutationFields((t) => ({
     type: AppRef,
     authScopes: { capability: "deploy" },
     description:
-      "Replace a single-container app's volumes (named, app-files, and host bind mounts).",
+      "Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included — each volume names the service it mounts into.",
     args: {
       id: t.arg.string({ required: true }),
       volumes: t.arg({ type: [VolumeInput], required: true }),
@@ -543,12 +548,15 @@ builder.mutationFields((t) => ({
           type:
             v.type === "host"
               ? ("host" as const)
-              : v.type === "app"
+              : // "service" is the wire spelling the volume editor has always
+                // sent for a files-dir bind; "app" is the domain-object one.
+                v.type === "app" || v.type === "service"
                 ? ("app" as const)
                 : ("named" as const),
           name: v.name ?? "",
           projectPath: v.projectPath ?? undefined,
           hostPath: v.hostPath ?? undefined,
+          service: v.service ?? undefined,
           mountPath: v.mountPath,
           readOnly: v.readOnly ?? false,
         })),

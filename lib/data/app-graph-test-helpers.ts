@@ -76,6 +76,8 @@ export interface SeedAppOpts {
   status?: App["status"];
   source?: App["source"];
   resources?: App["resources"];
+  /** Compose YAML — pair with `source: "compose"` to seed a compose-stack app. */
+  compose?: string | null;
   /** Park the app inside a folder (seed the folder row yourself first). */
   folderId?: string | null;
   /**
@@ -105,7 +107,7 @@ export async function seedApp(
     repo: { provider: "github", url: "https://x", repo: "o/r", branch: "main" },
     dockerImage: null,
     upload: null,
-    compose: null,
+    compose: opts.compose ?? null,
     mounts: null,
     volumes: null,
     build,

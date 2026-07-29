@@ -381,18 +381,24 @@ default — comes from `effectivePortFor` in the same module.
 _Avoid_: port target (the old per-target axis died with dev mode), exposed port.
 
 **Volume**:
-A persistent **docker-managed named volume** a user mounts into a **single-container**
-app's one app (the `renderCompose` path — github/git/docker-image/upload), edited
-from app settings and gated by `usesComposeStack` (a **compose** service declares its
-own volumes inside its YAML, so the settings card hides there). Stored on the app as
-`{ name, mountPath, readOnly }`; the **on-host** name is namespaced per app at render
-time (`deplo-<slug>-<name>`, via `hostVolumeName`) so it can never collide with or leak
-into another team's app on the shared daemon — the same isolation reason compose
-strips `container_name`. **Named only** (no user-typed bind mounts: a host path handed to
-the shared docker socket is a cross-tenant footgun). Data survives redeploys and is never
-auto-deleted; removing a row just stops mounting it. A reroute reads volumes back from the
-on-disk stack (like image/env), so a domain-only change never silently applies a pending
-volume edit.
+Persistent storage a user mounts into an app from **Settings → Storage**, for **every**
+source — single-container (the `renderCompose` path) *and* **compose** stacks, which get
+the same editor plus the compose `service` each row mounts into (blank ⇒ the stack's
+default service; a name the compose lacks is a hard render error, never a silent remount).
+Nobody has to hand-write `volumes:` into their YAML to keep data. Stored on the app as
+`{ type, name, service, mountPath, readOnly }`. Three kinds: **named** (docker-managed,
+the default), **app** (a bind inside the app's isolated files dir) and **host** (an
+absolute host path — a cross-tenant footgun, so it needs the `canMountHostVolumes`
+grant). A named volume's **on-host** name is namespaced per app at render time
+(`deplo-<slug>-<name>`, via `hostVolumeName`) — identical on both render paths, so an app
+that changes source keeps its data — and can never collide with or leak into another
+team's app on the shared daemon (the same isolation reason compose strips
+`container_name`). In a compose stack the app's own compose always wins: a service that
+already mounts that container path keeps its mount. Data survives redeploys and is never
+auto-deleted; removing a row just stops mounting it. A single-image reroute reads volumes
+back from the on-disk stack (like image/env), so a domain-only change never silently
+applies a pending volume edit; a compose stack is re-rendered from the app, so its
+reroute carries whatever Storage currently holds.
 _Avoid_: **mount** (reserve for a template's bind-mounted **config files**, `app.mounts`
 — content-bearing, written next to the stack at deploy; a Volume carries no content);
 bind mount (deliberately unsupported); the `deplo-data` volume (Deplo's own data store).

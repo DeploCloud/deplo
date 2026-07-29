@@ -1,0 +1,16 @@
+-- Which compose service a volume mounts into.
+--
+-- Volumes used to be a single-container-only feature: a compose-stack app was
+-- told to "declare volumes directly in your docker-compose.yml", which is exactly
+-- the Docker knowledge deplo exists to NOT require. Volumes are now settable for
+-- every source, and a stack with more than one service needs to say WHICH service
+-- gets the mount — mounting one volume into all of them races on first-use
+-- seeding (whichever container starts first fills the empty volume) and can
+-- silently shadow an image's own content.
+--
+-- Nullable, no backfill: NULL means "the stack's default service" (the one a
+-- domain would route to), and it is always NULL for single-container apps, which
+-- have exactly one service. Every existing row is single-container by
+-- construction (the old writer rejected compose stacks), so NULL is correct for
+-- all of them.
+ALTER TABLE "app_volumes" ADD COLUMN "service" text;

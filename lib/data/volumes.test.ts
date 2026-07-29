@@ -242,3 +242,61 @@ test("project bind: rejects spaces or a colon in the projectPath", () => {
     /spaces or ":"/,
   );
 });
+
+/* ------------------------------------------------------------------ */
+/* Compose stacks: the service a volume mounts into                    */
+/* (a compose app configures storage in deplo, not by editing YAML)    */
+/* ------------------------------------------------------------------ */
+
+test("compose: keeps a service the compose declares", () => {
+  const out = validateVolumes(
+    [vol({ name: "pgdata", service: "db", mountPath: "/var/lib/postgresql/data" })],
+    null,
+    ["web", "db"],
+  );
+  assert.equal(out![0].service, "db");
+});
+
+test("compose: a blank service is stored as null (⇒ the stack's default)", () => {
+  const out = validateVolumes([vol({ name: "data", service: "  " })], null, ["web"]);
+  assert.equal(out![0].service, undefined);
+});
+
+test("compose: rejects a service the compose does not declare", () => {
+  assert.throws(
+    () => validateVolumes([vol({ name: "data", service: "worker" })], null, ["web"]),
+    /not in this app's compose file/,
+  );
+});
+
+test("single-container: the service field is dropped, not stored", () => {
+  const out = validateVolumes([vol({ name: "data", service: "web" })], null, null);
+  assert.equal(out![0].service, undefined);
+});
+
+test("compose: two services may each mount their own /data", () => {
+  const out = validateVolumes(
+    [
+      vol({ id: "v1", name: "webdata", service: "web", mountPath: "/data" }),
+      vol({ id: "v2", name: "dbdata", service: "db", mountPath: "/data" }),
+    ],
+    null,
+    ["web", "db"],
+  );
+  assert.equal(out!.length, 2);
+});
+
+test("compose: the SAME service may not mount /data twice", () => {
+  assert.throws(
+    () =>
+      validateVolumes(
+        [
+          vol({ id: "v1", name: "a", service: "web", mountPath: "/data" }),
+          vol({ id: "v2", name: "b", service: "web", mountPath: "/data" }),
+        ],
+        null,
+        ["web", "db"],
+      ),
+    /Duplicate mount path/,
+  );
+});

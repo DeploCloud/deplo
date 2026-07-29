@@ -20,8 +20,14 @@ import type { VolumeMount } from "@/lib/types";
 type VolumeType = NonNullable<VolumeMount["type"]>;
 
 /**
- * Presentational editor for a single-container app's persistent volumes (the
- * renderCompose path). Fetch-free — the parent form owns the save.
+ * Presentational editor for an app's persistent volumes. Fetch-free — the parent
+ * form owns the save.
+ *
+ * `composeServices` is non-empty only for a compose stack; each row then also
+ * picks the service the volume mounts into (blank ⇒ the stack's default service,
+ * i.e. the one a domain routes to), because mounting one volume into every
+ * service of a stack races on first-use seeding. A single-container app has one
+ * service and no picker.
  *
  * Three kinds per row, picked from the "Type" selector:
  *  - NAMED (default): a human name + an absolute in-container mount path. The
@@ -38,12 +44,25 @@ type VolumeType = NonNullable<VolumeMount["type"]>;
 export function VolumeFields({
   slug,
   volumes,
+  composeServices = [],
+  defaultComposeService,
   onChange,
 }: {
   slug: string;
   volumes: VolumeMount[];
+  /** Compose services to choose from; empty ⇒ single-container (no picker). */
+  composeServices?: string[];
+  /** Which service a blank pick resolves to at deploy (shown as the placeholder). */
+  defaultComposeService?: string | null;
   onChange: (next: VolumeMount[]) => void;
 }) {
+  // One service (or none) needs no choice — the mount can only go one place, so
+  // the row stays as simple as a single-container app's. The second clause keeps
+  // the picker reachable when a compose EDIT has since collapsed the stack to one
+  // service: a row still naming the old one has to stay fixable here.
+  const pickService =
+    composeServices.length > 1 ||
+    (composeServices.length > 0 && volumes.some((v) => (v.service ?? "") !== ""));
   function update(id: string, patch: Partial<VolumeMount>) {
     onChange(volumes.map((v) => (v.id === id ? { ...v, ...patch } : v)));
   }
@@ -96,7 +115,44 @@ export function VolumeFields({
                 key={v.id}
                 className="rounded-lg border border-border p-3 space-y-3"
               >
-                <div className="grid gap-3 sm:grid-cols-[auto_1fr_1fr]">
+                <div
+                  className={
+                    pickService
+                      ? "grid gap-3 sm:grid-cols-[auto_auto_1fr_1fr]"
+                      : "grid gap-3 sm:grid-cols-[auto_1fr_1fr]"
+                  }
+                >
+                  {pickService && (
+                    <div className="space-y-1.5">
+                      <FieldLabel
+                        className="text-xs"
+                        info="Which service of this compose stack the volume is mounted into. Only that service sees the data."
+                      >
+                        Service
+                      </FieldLabel>
+                      <Select
+                        value={v.service ?? ""}
+                        onValueChange={(s) => update(v.id, { service: s })}
+                      >
+                        <SelectTrigger className="text-sm">
+                          <SelectValue
+                            placeholder={
+                              defaultComposeService
+                                ? `${defaultComposeService} (default)`
+                                : "Default service"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {composeServices.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="space-y-1.5">
                     <FieldLabel
                       className="text-xs"
@@ -115,7 +171,11 @@ export function VolumeFields({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="named">Named volume</SelectItem>
-                        <SelectItem value="service">App file</SelectItem>
+                        {/* "app" — the domain-object discriminant. The wire
+                            spelling ("service") is applied by the parent form on
+                            save; using it here left the row rendering as a named
+                            volume, which made the type unselectable. */}
+                        <SelectItem value="app">App file</SelectItem>
                         <SelectItem value="host">Host path</SelectItem>
                       </SelectContent>
                     </Select>

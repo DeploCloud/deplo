@@ -101,7 +101,7 @@ type App {
   teamId: ID
   updatedAt: String
 
-  """Persistent named volumes (single-container apps only)."""
+  """Persistent volumes mounted into this app."""
   volumes: [Volume!]
 }
 
@@ -1468,7 +1468,7 @@ type Mutation {
   setAppEnv(appId: String!, defaultTargets: [EnvTarget!], entries: [EnvEntryInput!]!): Int
 
   """
-  Replace a single-container app's volumes (named, app-files, and host bind mounts).
+  Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included — each volume names the service it mounts into.
   """
   setAppVolumes(id: String!, volumes: [VolumeInput!]!): App
   setDatabaseRunning(id: String!, running: Boolean!): Database
@@ -2547,7 +2547,7 @@ type Viewer {
 }
 
 """
-A persistent volume mounted into a single-container project — a docker named volume, an app-files bind, or a host bind mount.
+A persistent volume mounted into an app — a docker named volume, an app-files bind, or a host bind mount.
 """
 type Volume {
   hostPath: String
@@ -2556,10 +2556,11 @@ type Volume {
   name: String
   projectPath: String
   readOnly: Boolean
+  service: String
   type: String
 }
 
-"""A persistent volume for a single-container project."""
+"""A persistent volume mounted into an app."""
 input VolumeInput {
   hostPath: String
   id: String
@@ -2567,5 +2568,6 @@ input VolumeInput {
   name: String
   projectPath: String
   readOnly: Boolean
+  service: String
   type: String
 }

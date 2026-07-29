@@ -783,6 +783,10 @@ export const appVolumes = pgTable(
     volumeId: text("volume_id").notNull(),
     type: text("type"),
     name: text("name").notNull(),
+    // Compose-stack apps only: the compose service this volume mounts into.
+    // NULL ⇒ the stack's default service (and always NULL for single-container
+    // apps, which have exactly one service).
+    service: text("service"),
     projectPath: text("project_path"),
     hostPath: text("host_path"),
     mountPath: text("mount_path").notNull(),

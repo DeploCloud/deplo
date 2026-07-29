@@ -626,12 +626,13 @@ export interface BuildConfig {
 }
 
 /**
- * A persistent volume mounted into a SINGLE-CONTAINER project's one service (the
- * renderCompose path — github/git/docker-image/upload, never compose-stack
- * apps, which declare volumes in their own YAML). Gated in the UI by
- * !usesComposeStack(project). Distinct from `App.mounts`, which writes
- * template CONFIG FILES to disk and bind-mounts them (content-bearing); a
- * VolumeMount carries no content — it is data that survives redeploys.
+ * A persistent volume mounted into an app's container. Available to EVERY source:
+ * a single-container app (the renderCompose path — github/git/docker-image/upload)
+ * mounts it into its one service, a compose-stack app into the service named by
+ * `service` (see below). Nobody has to hand-write compose YAML to get persistent
+ * storage. Distinct from `App.mounts`, which writes template CONFIG FILES to disk
+ * and bind-mounts them (content-bearing); a VolumeMount carries no content — it is
+ * data that survives redeploys.
  *
  * Three kinds, discriminated by `type` (absent ⇒ "named", for back-compat):
  *  - "named": a docker-MANAGED volume. The on-host volume name is NOT `name` —
@@ -676,7 +677,20 @@ export interface VolumeMount {
    * (type === "host"); absent/ignored for named and project mounts.
    */
   hostPath?: string;
-  /** Absolute in-container mount path, e.g. "/data". UNIQUE PER PROJECT. */
+  /**
+   * COMPOSE-STACK apps only: the compose service to mount into. Empty/absent ⇒
+   * the stack's default service (the one a domain would route to — a published
+   * port, else the first). A single-container app has exactly one service, so the
+   * field is meaningless there and is always stored NULL. A name that is not in
+   * the compose is a hard deploy error, never a silent remount elsewhere (that
+   * would strand a database's data on the wrong container).
+   */
+  service?: string | null;
+  /**
+   * Absolute in-container mount path, e.g. "/data". UNIQUE PER PROJECT — or, for
+   * a compose stack, unique per (service, path), so two services can each mount
+   * their own volume at `/data`.
+   */
   mountPath: string;
   /** Mount read-only (`:ro`). Defaults to false (read-write). */
   readOnly: boolean;

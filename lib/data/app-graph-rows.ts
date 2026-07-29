@@ -286,12 +286,17 @@ function assembleUpload(row: AppRow): App["upload"] {
 }
 
 function volumeRowToMount(v: AppVolumeRow): VolumeMount {
+  // A NULL `service` means "the stack's default service" and is the only value a
+  // single-container app ever has, so the key is spread in only when set — the
+  // object then round-trips to the same shape a volume-less app emits.
+  const service = v.service ? { service: v.service } : {};
   if (v.type === "host") {
     return {
       id: v.volumeId,
       type: "host",
       name: v.name,
       hostPath: v.hostPath ?? "",
+      ...service,
       mountPath: v.mountPath,
       readOnly: v.readOnly,
     };
@@ -302,13 +307,20 @@ function volumeRowToMount(v: AppVolumeRow): VolumeMount {
       type: "app",
       name: v.name,
       projectPath: v.projectPath ?? "",
+      ...service,
       mountPath: v.mountPath,
       readOnly: v.readOnly,
     };
   }
   // type NULL/absent ⇒ "named" (the back-compat default; do not store "named"
   // explicitly so the object round-trips to the same shape normalizeVolumes emits).
-  return { id: v.volumeId, name: v.name, mountPath: v.mountPath, readOnly: v.readOnly };
+  return {
+    id: v.volumeId,
+    name: v.name,
+    ...service,
+    mountPath: v.mountPath,
+    readOnly: v.readOnly,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -447,6 +459,9 @@ export function volumesToRows(
     // round-trips to the absent-key default).
     type: v.type === "host" || v.type === "app" ? v.type : null,
     name: v.name,
+    // Compose-stack target service; NULL ⇒ the stack's default service (and
+    // always NULL for a single-container app).
+    service: v.service?.trim() || null,
     projectPath: v.type === "app" ? v.projectPath : null,
     hostPath: v.type === "host" ? v.hostPath : null,
     mountPath: v.mountPath,

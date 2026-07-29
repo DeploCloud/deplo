@@ -75,6 +75,7 @@ import type {
   EnvTarget,
   LogLine,
   ResourceLimits,
+  VolumeMount,
 } from "../types";
 
 /**
@@ -1216,6 +1217,8 @@ interface ComposeStackApp {
   mounts?: { filePath: string; content: string }[] | null;
   /** Per-app resource caps applied to every service in the stack (existing-wins). */
   resources?: ResourceLimits | null;
+  /** Storage-settings volumes, mounted into the compose service each one names. */
+  volumes?: VolumeMount[] | null;
 }
 
 interface ComposeStackOpts {
@@ -1283,6 +1286,8 @@ async function prepareComposeStack(opts: ComposeStackOpts): Promise<{
     envKeys,
     // Per-app caps applied to every service (existing-wins). Null ⇒ no-op.
     resources: project.resources,
+    // Storage-settings volumes, mounted into the service each one names.
+    volumes: project.volumes,
   });
   return { stackYaml, filesDir };
 }
@@ -1665,6 +1670,11 @@ export async function rerouteApp(
         // carries the values. The no-op guard in mergeEnvironment means a reroute
         // that adds no new key re-renders byte-identically (no needless restart).
         envKeys: await appEnvKeys(appId),
+        // The stack's volumes must be re-rendered too: omitting them here would
+        // make a domain-only reroute silently UNMOUNT the app's storage (unlike
+        // the single-image branch below, a compose stack is re-rendered from the
+        // app, not read back from the running stack file).
+        volumes: project.volumes,
       });
       mounts = (project.mounts ?? []).map((m) => ({
         path: m.filePath,
@@ -1771,6 +1781,8 @@ export async function renderAppStack(
       envKeys: await appEnvKeys(appId),
       // Include the per-app resource caps so the preview matches the next deploy.
       resources: project.resources,
+      // Same for the Storage volumes and the top-level entries they add.
+      volumes: project.volumes,
     });
   }
 

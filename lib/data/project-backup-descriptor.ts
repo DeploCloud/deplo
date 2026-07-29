@@ -113,11 +113,20 @@ export function namedVolumeHostNames(
  * (`down -v`) would operate on the victim's data. Because the enumerator can't tell
  * `deplo-<myslug>-<x>` from `deplo-<otherslug>...` by string shape (both slug and
  * key allow hyphens), the safe rule is categorical: a user may not pin/reference
- * ANY `deplo-`-prefixed name — only Deplo's own derived names (emitted below,
- * never through this guard) may live there.
+ * ANY `deplo-`-prefixed name — only Deplo's own derived names may live there.
+ *
+ * `own` carries exactly those: the host names the STACK RENDERER itself pinned for
+ * the app's Storage-settings volumes (`hostVolumeName(slug, name)`, injected by
+ * `injectAppVolumes`). They are derived from the app's own rows, never from the
+ * user's compose text, so exempting them can't launder a hand-pinned name — a
+ * `name:` the user typed still has to be outside the namespace.
  */
-function assertNotReservedVolumeName(slug: string, name: string): void {
-  if (name.startsWith("deplo-"))
+function assertNotReservedVolumeName(
+  slug: string,
+  name: string,
+  own: ReadonlySet<string>,
+): void {
+  if (name.startsWith("deplo-") && !own.has(name))
     throw new Error(
       `App "${slug}" pins a volume name "${name}" inside Deplo's reserved ` +
         `namespace ("deplo-…"). Use a name of your own, or omit the explicit ` +
@@ -128,7 +137,10 @@ function assertNotReservedVolumeName(slug: string, name: string): void {
 export function composeStackVolumeHostNames(
   slug: string,
   renderedYaml: string,
+  /** Host names Deplo pinned itself (see {@link assertNotReservedVolumeName}). */
+  ownNames?: Iterable<string> | null,
 ): string[] {
+  const own = new Set(ownNames ?? []);
   let doc: unknown;
   try {
     doc = yaml.load(renderedYaml);
@@ -145,7 +157,7 @@ export function composeStackVolumeHostNames(
     };
     // A top-level `name:` pins the host volume name verbatim (external or not).
     if (typeof s.name === "string" && s.name) {
-      assertNotReservedVolumeName(slug, s.name);
+      assertNotReservedVolumeName(slug, s.name, own);
       names.push(s.name);
       continue;
     }
@@ -156,12 +168,12 @@ export function composeStackVolumeHostNames(
     if (s.external && typeof s.external === "object") {
       const ext = s.external as { name?: unknown };
       const n = typeof ext.name === "string" && ext.name ? ext.name : key;
-      assertNotReservedVolumeName(slug, n);
+      assertNotReservedVolumeName(slug, n, own);
       names.push(n);
       continue;
     }
     if (s.external === true) {
-      assertNotReservedVolumeName(slug, key);
+      assertNotReservedVolumeName(slug, key, own);
       names.push(key);
       continue;
     }
@@ -239,6 +251,9 @@ export function appMoveVolumeNames(
   }
   const volumes = (doc as { volumes?: unknown } | null)?.volumes;
   if (!volumes || typeof volumes !== "object") return [];
+  // The stack's own Storage-settings volumes are pinned inside Deplo's namespace
+  // BY Deplo — they must move with the app, not trip the reserved-name guard.
+  const own = new Set(namedVolumeHostNames(slug, project.volumes));
   const names: string[] = [];
   for (const [key, spec] of Object.entries(volumes as Record<string, unknown>)) {
     const s = (spec ?? {}) as { name?: unknown; external?: unknown };
@@ -248,7 +263,7 @@ export function appMoveVolumeNames(
       continue;
     }
     if (typeof s.name === "string" && s.name) {
-      assertNotReservedVolumeName(slug, s.name);
+      assertNotReservedVolumeName(slug, s.name, own);
       names.push(s.name);
       continue;
     }
@@ -286,7 +301,14 @@ export async function buildProjectDescriptor(
 
   const composeYaml = stack.exists ? stack.yaml : "";
   const volumeNames = composeStack
-    ? composeStackVolumeHostNames(slug, composeYaml)
+    ? // The app's Storage volumes are pinned by the RENDERER inside Deplo's
+      // namespace, so they are enumerated from the YAML like any other stack
+      // volume — but exempted from the guard that rejects a user-pinned one.
+      composeStackVolumeHostNames(
+        slug,
+        composeYaml,
+        namedVolumeHostNames(slug, project.volumes),
+      )
     : namedVolumeHostNames(slug, project.volumes);
   // Fail fast with a clear message before any agent work, rather than letting the
   // agent reject a bad name opaquely after it starts streaming the archive.

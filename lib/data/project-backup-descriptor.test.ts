@@ -97,6 +97,36 @@ volumes:
   assert.deepEqual(composeStackVolumeHostNames("shop", yaml), ["shared", "legacy-vol"]);
 });
 
+test("compose-stack: a user-pinned `deplo-` name is REFUSED (reserved namespace)", () => {
+  const yaml = `
+volumes:
+  sneaky:
+    name: deplo-victim-pgdata
+`;
+  assert.throws(() => composeStackVolumeHostNames("shop", yaml), /reserved/i);
+});
+
+test("compose-stack: the app's OWN Storage volume is enumerated, not refused", () => {
+  // What the renderer emits for a Storage-settings volume on a compose stack:
+  // a top-level alias pinned to Deplo's per-app host name. It lives inside the
+  // reserved namespace legitimately — the guard exempts exactly these.
+  const yaml = `
+volumes:
+  uploads:
+    name: deplo-shop-uploads
+  dbdata: {}
+`;
+  assert.deepEqual(
+    composeStackVolumeHostNames("shop", yaml, ["deplo-shop-uploads"]),
+    ["deplo-shop-uploads", "deplo-shop_dbdata"],
+  );
+  // …and the exemption is name-scoped: another app's volume still throws.
+  assert.throws(
+    () => composeStackVolumeHostNames("shop", yaml, ["deplo-shop-other"]),
+    /reserved/i,
+  );
+});
+
 test("compose-stack: no top-level volumes → empty", () => {
   const yaml = `
 services:
@@ -164,6 +194,23 @@ test("appMoveVolumeNames (single-container): named volumes, host mounts excluded
   assert.deepEqual(appMoveVolumeNames(singleImageApp("api", volumes), ""), [
     "deplo-api-pgdata",
   ]);
+});
+
+test("appMoveVolumeNames (compose): the app's own Storage volume moves with it", () => {
+  const app = {
+    slug: "shop",
+    source: "compose",
+    compose: "services:\n  web:\n    image: nginx\n",
+    repo: null,
+    dockerImage: null,
+    volumes: [vol({ name: "uploads", type: "named" })],
+  } as unknown as Parameters<typeof appMoveVolumeNames>[0];
+  const yaml = `
+volumes:
+  uploads:
+    name: deplo-shop-uploads
+`;
+  assert.deepEqual(appMoveVolumeNames(app, yaml), ["deplo-shop-uploads"]);
 });
 
 test("appMoveVolumeNames (compose): no volumes → empty", () => {

@@ -2,7 +2,8 @@ import "server-only";
 
 import yaml from "js-yaml";
 
-import type { ResourceLimits } from "../types";
+import type { ResourceLimits, VolumeMount } from "../types";
+import { hostVolumeName } from "../utils";
 import { certResolver } from "./domains";
 import { traefikRouterLabels, hash6 } from "./routing";
 import { mergeResourceLimits } from "./resources";
@@ -33,6 +34,13 @@ import { mergeResourceLimits } from "./resources";
  *     also hand-writing it into the compose — the env-var analogue of the auto
  *     domain labels in (2). A key the service already declares (in any form) is
  *     never overridden.
+ *  6. Mount the app's Storage-settings volumes into the service each one names
+ *     (`input.volumes`), adding the top-level `volumes:` entry a named volume
+ *     needs. Persistent storage is therefore a first-class deplo setting for a
+ *     compose stack too — nobody has to hand-edit YAML to keep data across
+ *     deploys. Unlike (5) this is NOT applied to every service: one volume
+ *     mounted into every container races on first-use seeding (whichever starts
+ *     first fills the empty volume) and can shadow an image's own content.
  *
  * The env the compose interpolates (`${VAR}`) is supplied to `docker compose`
  * via an `--env-file`, not baked in here. The injected pass-through keys read
@@ -112,6 +120,21 @@ export interface ComposeStackInput {
    * is applied per service — see the Resources settings copy for compose stacks.
    */
   resources?: ResourceLimits | null;
+  /**
+   * The app's Storage-settings volumes, each mounted into the compose service it
+   * names (`VolumeMount.service`; empty ⇒ the stack's default service — the one a
+   * domain would route to). EXISTING-WINS per service: a service that already
+   * mounts something at that container path in the user's own compose keeps its
+   * mount untouched. A "named" volume also gets a top-level `volumes:` entry
+   * pinning the per-app host name (`hostVolumeName`), the SAME name the
+   * single-container renderer uses — so switching an app between sources keeps
+   * its data, and the backup/move enumerators find it. Empty/absent ⇒ no volume
+   * key is touched anywhere (byte-identical to a stack without them).
+   *
+   * A volume naming a service that is NOT in the compose throws: silently
+   * mounting it somewhere else would strand data on the wrong container.
+   */
+  volumes?: VolumeMount[] | null;
 }
 
 type App = Record<string, unknown>;
@@ -351,6 +374,52 @@ function mergeEnvironment(svc: App, keys: string[]): void {
 }
 
 /**
+ * The IN-CONTAINER path a compose `volumes:` entry mounts at, for the
+ * existing-wins check below. Handles every form compose accepts: the short
+ * `src:dst[:mode]` string (dst is the second field), a bare `dst` anonymous
+ * volume, and the long `{type, source, target}` object. Null when unreadable —
+ * an entry we can't parse never blocks an injected mount (compose itself would
+ * reject a duplicate target, which is the loud failure we'd want anyway).
+ */
+function containerPathOf(entry: unknown): string | null {
+  if (typeof entry === "string") {
+    const parts = entry.split(":");
+    const target = parts.length > 1 ? parts[1] : parts[0];
+    const t = target.trim().replace(/\/+$/, "");
+    return t || null;
+  }
+  if (entry && typeof entry === "object") {
+    const t = (entry as Record<string, unknown>).target;
+    if (typeof t === "string") return t.trim().replace(/\/+$/, "") || null;
+  }
+  return null;
+}
+
+/**
+ * Mount the app's Storage volumes into one service, appending a short-form
+ * `- <source>:<target>[:ro]` per volume. EXISTING-WINS: a container path the
+ * service already mounts in the user's own compose is skipped, so the authored
+ * compose always beats the injected mount (the same precedence `mergeEnvironment`
+ * and `mergeResourceLimits` use). Nothing to add ⇒ the service is left exactly
+ * as-is, so a service with no `volumes:` key never grows an empty one.
+ */
+function mergeVolumes(
+  svc: App,
+  mounts: { source: string; target: string; readOnly: boolean }[],
+): void {
+  if (mounts.length === 0) return;
+  const existing: unknown[] = Array.isArray(svc.volumes) ? [...svc.volumes] : [];
+  const declared = new Set(
+    existing.map(containerPathOf).filter((p): p is string => p !== null),
+  );
+  const added = mounts
+    .filter((m) => !declared.has(m.target.replace(/\/+$/, "")))
+    .map((m) => `${m.source}:${m.target}${m.readOnly ? ":ro" : ""}`);
+  if (added.length === 0) return;
+  svc.volumes = [...existing, ...added];
+}
+
+/**
  * Rewrite a project-relative `./<x>` bind-mount source to the project's isolated
  * files dir. `./config.toml` → `<filesDir>/config.toml`, `./folder/x` →
  * `<filesDir>/folder/x`, bare `.`/`./` → `<filesDir>`. A `../` source escapes the
@@ -393,6 +462,114 @@ function appNetworks(svc: App): string[] {
   if (Array.isArray(n)) return n.map(String);
   if (n && typeof n === "object") return Object.keys(n);
   return [];
+}
+
+/**
+ * Mount the app's Storage-settings volumes into the stack and declare the named
+ * ones at the top level.
+ *
+ * TARGET SERVICE: `volume.service` when set, else the stack's default service —
+ * the same `detectExpose` heuristic a first domain uses, so on the overwhelmingly
+ * common single-service compose the user configures NOTHING and the mount lands
+ * where it must. A `service` naming something absent from the compose THROWS: the
+ * alternative (quietly mounting it on another service) would leave, say, a
+ * database writing to a fresh empty volume with the old data still on disk under
+ * the previous service — data loss that looks like a successful deploy.
+ *
+ * SOURCE, per kind:
+ *  - "named": the top-level alias, pinned to `hostVolumeName(slug, name)` —
+ *    byte-for-byte the host name the single-container renderer uses, so an app
+ *    that changes source keeps its data and `composeStackVolumeHostNames` (backup
+ *    / server-move) enumerates it like any other stack volume.
+ *  - "app": an absolute path inside the app's isolated files dir — the same
+ *    sandbox the `./<x>` compose convention resolves to.
+ *  - "host": the operator's absolute host path, verbatim (gated on the
+ *    `canMountHostVolumes` grant back in `setAppVolumes`).
+ */
+function injectAppVolumes(
+  doc: ComposeDoc,
+  services: Record<string, App>,
+  input: ComposeStackInput,
+): void {
+  const volumes = input.volumes ?? [];
+  if (volumes.length === 0) return;
+
+  const fallback = detectExpose(services)?.service ?? Object.keys(services)[0];
+  // Existing top-level volume keys — ours must not collide with a key the user
+  // already declared (that would silently re-point their volume at our mount).
+  const topLevel = (doc.volumes && typeof doc.volumes === "object"
+    ? doc.volumes
+    : {}) as Record<string, unknown>;
+  const takenKeys = new Set(Object.keys(topLevel));
+  // Per-service mount lists, so a service is rewritten once with all of its
+  // volumes (and the existing-wins check sees the authored compose, not our own
+  // earlier injections).
+  const byService = new Map<
+    string,
+    { source: string; target: string; readOnly: boolean }[]
+  >();
+  // Container paths each service ALREADY mounts in the authored compose, read
+  // lazily once per service. Checked before a top-level alias is allocated, so an
+  // existing-wins skip doesn't leave an orphan `volumes:` entry behind (compose
+  // would create that empty volume and every backup would then carry it).
+  const declaredBySvc = new Map<string, Set<string>>();
+  const declaredFor = (name: string): Set<string> => {
+    let paths = declaredBySvc.get(name);
+    if (!paths) {
+      const vols = services[name].volumes;
+      paths = new Set(
+        (Array.isArray(vols) ? vols : [])
+          .map(containerPathOf)
+          .filter((p): p is string => p !== null),
+      );
+      declaredBySvc.set(name, paths);
+    }
+    return paths;
+  };
+
+  for (const v of volumes) {
+    const svcName = (v.service ?? "").trim() || fallback;
+    if (!svcName || !services[svcName]) {
+      throw new Error(
+        `Volume "${v.name || v.mountPath}" is set to mount into compose service ` +
+          `"${svcName || "?"}", which this compose file does not define. Pick an ` +
+          `existing service in Settings → Storage.`,
+      );
+    }
+    const declared = declaredFor(svcName);
+    const targetPath = v.mountPath.replace(/\/+$/, "");
+    if (declared.has(targetPath)) continue; // the authored compose wins
+    declared.add(targetPath);
+    let source: string;
+    if (v.type === "host") {
+      source = (v.hostPath ?? "").trim();
+    } else if (v.type === "app") {
+      if (!input.filesDir) {
+        throw new Error(
+          `Volume "${v.name || v.mountPath}" mounts a file from this app, which ` +
+            `needs the app's files directory — internal error.`,
+        );
+      }
+      source = `${input.filesDir}/${(v.projectPath ?? "").replace(/^\.\/+/, "")}`;
+    } else {
+      // Named: a fresh top-level alias whose `name:` pins the per-app host
+      // volume. Prefer the user-facing name; fall back to a suffixed alias when
+      // the compose already declares that key.
+      let key = v.name;
+      for (let n = 2; takenKeys.has(key); n++) key = `${v.name}-${n}`;
+      takenKeys.add(key);
+      topLevel[key] = { name: hostVolumeName(input.slug, v.name) };
+      source = key;
+    }
+    const list = byService.get(svcName) ?? [];
+    list.push({ source, target: v.mountPath, readOnly: Boolean(v.readOnly) });
+    byService.set(svcName, list);
+  }
+
+  for (const [service, mounts] of byService) {
+    mergeVolumes(services[service], mounts);
+  }
+  if (Object.keys(topLevel).length > 0) doc.volumes = topLevel;
 }
 
 export function buildComposeStack(input: ComposeStackInput): string {
@@ -515,6 +692,10 @@ export function buildComposeStack(input: ComposeStackInput): string {
     : {}) as Record<string, unknown>;
   networks[NETWORK] = { external: true };
   doc.networks = networks;
+
+  // Storage-settings volumes → the service each one names. Done last so the
+  // existing-wins check sees the user's own `volumes:` exactly as authored.
+  injectAppVolumes(doc, services, input);
 
   const body = yaml.dump(doc, { lineWidth: -1, noRefs: true });
   return `# Generated by Deplo  ${slug}\n${body}`;
