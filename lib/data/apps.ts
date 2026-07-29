@@ -36,6 +36,11 @@ import {
   composePublishesPorts,
 } from "../deploy/compose-lint";
 import { composeServiceNames } from "../deploy/compose-stack";
+import {
+  RESERVED_MOUNT_PREFIXES,
+  VOLUME_NAME_MAX,
+  VOLUME_NAME_RE,
+} from "../apps/volume-model";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import { buildConfigFor } from "../frameworks";
@@ -905,22 +910,10 @@ export async function updateAppSource(
   }
 }
 
-/**
- * Container paths the runtime owns; mounting a user volume over them would break
- * or compromise the container. Rejected (exact match or as a parent prefix).
- */
-const RESERVED_MOUNT_PREFIXES = [
-  "/proc",
-  "/sys",
-  "/dev",
-  "/etc",
-  "/usr",
-  "/bin",
-  "/sbin",
-  "/lib",
-  "/lib64",
-  "/var/run",
-];
+// Container paths the runtime owns, the managed-volume name shape, and its length
+// cap all live in `lib/apps/volume-model.ts` — the SAME constants the Storage
+// editor lints against, so the form cannot accept a mount this writer will
+// refuse. Only the messages differ (API errors here, typing help there).
 
 /**
  * Validate + canonicalize the full volume set for an app.
@@ -1029,16 +1022,16 @@ export function validateVolumes(
         .replace(/\/+$/, "");
       if (projectPath === "" || projectPath.startsWith("/")) {
         throw new Error(
-          `App path must be relative to the project's files dir, e.g. "config.toml": "${v.projectPath}"`,
+          `The path in this app's Files must be relative, for example "config.toml": "${v.projectPath}"`,
         );
       }
       if (/[\s:]/.test(projectPath)) {
         throw new Error(
-          `App path must not contain spaces or ":": "${v.projectPath}"`,
+          `The path in this app's Files cannot contain spaces or ":": "${v.projectPath}"`,
         );
       }
       if (projectPath.split("/").includes("..")) {
-        throw new Error(`App path must not contain "..": "${v.projectPath}"`);
+        throw new Error(`The path in this app's Files cannot contain "..": "${v.projectPath}"`);
       }
       out.push({
         id: v.id || newId("vol"),
@@ -1060,11 +1053,11 @@ export function validateVolumes(
       const hostPath = (v.hostPath ?? "").trim().replace(/\/+$/, "");
       if (!/^\/[^\s:]*$/.test(hostPath) || hostPath.length < 2) {
         throw new Error(
-          `Host path must be an absolute path with no spaces or ":": "${v.hostPath}"`,
+          `The path on the server must be absolute, with no spaces or ":": "${v.hostPath}"`,
         );
       }
       if (hostPath.split("/").includes("..")) {
-        throw new Error(`Host path must not contain "..": "${v.hostPath}"`);
+        throw new Error(`The path on the server cannot contain "..": "${v.hostPath}"`);
       }
       out.push({
         id: v.id || newId("vol"),
@@ -1078,9 +1071,9 @@ export function validateVolumes(
       continue;
     }
 
-    if (!/^[a-z0-9][a-z0-9_-]*$/.test(name) || name.length > 40) {
+    if (!VOLUME_NAME_RE.test(name) || name.length > VOLUME_NAME_MAX) {
       throw new Error(
-        `Volume name "${name}" must be lowercase letters, digits, "-"/"_" (max 40).`,
+        `Volume name "${name}" must be lowercase letters, digits, "-"/"_" (max ${VOLUME_NAME_MAX}).`,
       );
     }
     if (seenName.has(name)) {

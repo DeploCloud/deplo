@@ -1,5 +1,6 @@
 import { newId } from "../ids";
 import { normalizeBuildConfig } from "../frameworks";
+import { deriveVolumeName } from "../apps/volume-model";
 import type { App, VolumeMount } from "../types";
 
 /**
@@ -16,14 +17,11 @@ import type { App, VolumeMount } from "../types";
  */
 
 /** A docker-volume-safe name derived from a mount path when the user left the
- *  name blank (e.g. "/var/data" → "var-data", "/" → "data"). */
-export function deriveVolumeName(mountPath: string): string {
-  const s = mountPath
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return s || "data";
-}
+ *  name blank (e.g. "/var/data" → "var-data", "/" → "data"). Canonical copy lives
+ *  in `lib/apps/volume-model.ts` (client-safe) so the Storage editor can PREVIEW
+ *  the derived name with the exact function the writer will use; re-exported here
+ *  because every existing caller reaches it through this module. */
+export { deriveVolumeName } from "../apps/volume-model";
 
 /**
  * Backfill/sanitize a project's named volumes on read. Absent ⇒ null (so

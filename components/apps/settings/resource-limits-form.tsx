@@ -378,7 +378,7 @@ export function ResourceLimitsForm({
                     placeholder="e.g. 10"
                     value={form.storageGb}
                     onChange={set("storageGb")}
-                    info="⚠ Caps the writable layer, not named volumes. Needs host support (XFS + pquota or devicemapper) or the deploy is rejected"
+                    info="⚠ Caps the writable layer, not Volume storage. Needs host support (XFS + pquota or devicemapper) or the deploy is rejected"
                   />
                 </LimitGroup>
 

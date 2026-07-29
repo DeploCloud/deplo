@@ -457,8 +457,8 @@ export function EditUserDialog({
                         onChange={setExposePorts}
                       />
                       <ToggleRow
-                        title="Mount host volumes"
-                        info="Bind-mount host filesystem paths into containers (compose and single-container)."
+                        title="Bind server folders"
+                        info="Let this account point an app at a folder that already exists on the server (the Bind kind in an app's Storage settings)."
                         checked={admin || mountHostVolumes}
                         disabled={admin || ownerLocked}
                         onChange={setMountHostVolumes}

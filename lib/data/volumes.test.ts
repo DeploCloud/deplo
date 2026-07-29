@@ -124,21 +124,21 @@ test("accepts a host bind mount and keeps type + hostPath", () => {
 test("host mount: rejects a relative host path", () => {
   assert.throws(
     () => validateVolumes([vol({ type: "host", hostPath: "srv/data", mountPath: "/data" })], null),
-    /Host path .*absolute/,
+    /path on the server must be absolute/,
   );
 });
 
 test("host mount: rejects a host path with a colon (flag smuggling)", () => {
   assert.throws(
     () => validateVolumes([vol({ type: "host", hostPath: "/srv:data", mountPath: "/data" })], null),
-    /Host path/,
+    /path on the server/,
   );
 });
 
 test("host mount: rejects '..' traversal in the host path", () => {
   assert.throws(
     () => validateVolumes([vol({ type: "host", hostPath: "/srv/../etc", mountPath: "/data" })], null),
-    /Host path must not contain/,
+    /path on the server cannot contain "\.\."/,
   );
 });
 
@@ -212,23 +212,23 @@ test("project bind: accepts a nested relative path", () => {
 test("project bind: rejects a '..' escape (the rename-vuln guard)", () => {
   assert.throws(
     () => validateVolumes([vol({ type: "app", projectPath: "../other/data", mountPath: "/data" })], null),
-    /must not contain "\.\."/,
+    /cannot contain "\.\."/,
   );
   // …including a climb dressed up as same-project self-reference.
   assert.throws(
     () => validateVolumes([vol({ type: "app", projectPath: "../demo/appdata", mountPath: "/appdata" })], null),
-    /must not contain "\.\."/,
+    /cannot contain "\.\."/,
   );
 });
 
 test("project bind: rejects an absolute or empty projectPath", () => {
   assert.throws(
     () => validateVolumes([vol({ type: "app", projectPath: "/abs", mountPath: "/data" })], null),
-    /relative to the project/,
+    /must be relative/,
   );
   assert.throws(
     () => validateVolumes([vol({ type: "app", projectPath: "", mountPath: "/data" })], null),
-    /relative to the project/,
+    /must be relative/,
   );
 });
 

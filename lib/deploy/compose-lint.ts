@@ -327,7 +327,7 @@ export function lintCompose(source: string): LintDiagnostic[] {
           diags.push({
             severity: "warning",
             rule: "bind-mount-absolute",
-            message: `\`${name}\` bind-mounts host path \`${src}\` — it must exist on the deploy host and isn't isolated per project. Prefer a named volume.`,
+            message: `\`${name}\` bind-mounts host path \`${src}\` — it must exist on the deploy host and isn't isolated per project. Prefer a Volume (storage deplo creates and keeps).`,
             line: volLine,
           });
         }

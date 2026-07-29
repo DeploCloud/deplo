@@ -300,7 +300,9 @@ export async function canMountHostVolumes(): Promise<boolean> {
 export async function requireMountHostVolumes(): Promise<{ userId: string }> {
   const user = await assertUser();
   if (!(await hasGrant(user, "canMountHostVolumes")))
-    throw new Error("You don't have permission to mount host volumes");
+    throw new Error(
+      "You don't have permission to add a Bind (a folder on the server)",
+    );
   return { userId: user.id };
 }
 

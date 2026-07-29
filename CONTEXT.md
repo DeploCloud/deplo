@@ -386,10 +386,16 @@ source — single-container (the `renderCompose` path) *and* **compose** stacks,
 the same editor plus the compose `service` each row mounts into (blank ⇒ the stack's
 default service; a name the compose lacks is a hard render error, never a silent remount).
 Nobody has to hand-write `volumes:` into their YAML to keep data. Stored on the app as
-`{ type, name, service, mountPath, readOnly }`. Three kinds: **named** (docker-managed,
-the default), **app** (a bind inside the app's isolated files dir) and **host** (an
-absolute host path — a cross-tenant footgun, so it needs the `canMountHostVolumes`
-grant). A named volume's **on-host** name is namespaced per app at render time
+`{ type, name, service, mountPath, readOnly }`. Three kinds — **UI name / stored `type`**,
+and the UI name is what every screen, tooltip and doc says:
+ - **Volume** (`named`) — disk space deplo creates and keeps. The default.
+ - **File** (`app`) — a file or folder from the app's own **Files** (its isolated files dir).
+ - **Bind** (`host`) — a folder that already exists on the server: outside deplo and shared
+   with everything else on the machine, so it needs the `canMountHostVolumes` grant.
+The stored discriminants never change (a rename would be a migration for a caption); the
+label ⇄ `type` mapping and the copy live in `lib/apps/volume-model.ts`, which the server's
+`validateVolumes` shares constants with so the editor can't accept what the writer refuses.
+A **Volume**'s **on-host** name is namespaced per app at render time
 (`deplo-<slug>-<name>`, via `hostVolumeName`) — identical on both render paths, so an app
 that changes source keeps its data — and can never collide with or leak into another
 team's app on the shared daemon (the same isolation reason compose strips
@@ -399,6 +405,8 @@ auto-deleted; removing a row just stops mounting it. A single-image reroute read
 back from the on-disk stack (like image/env), so a domain-only change never silently
 applies a pending volume edit; a compose stack is re-rendered from the app, so its
 reroute carries whatever Storage currently holds.
-_Avoid_: **mount** (reserve for a template's bind-mounted **config files**, `app.mounts`
-— content-bearing, written next to the stack at deploy; a Volume carries no content);
-bind mount (deliberately unsupported); the `deplo-data` volume (Deplo's own data store).
+_Avoid_: **named volume** / **app file** / **host path** (the old labels — "nobody knows
+what a named volume is" was exactly the problem; say Volume / File / Bind); **mount** as a
+synonym for Volume (reserve it for a template's bind-mounted **config files**,
+`app.mounts` — content-bearing, written next to the stack at deploy; a Volume carries no
+content); the `deplo-data` volume (Deplo's own data store).

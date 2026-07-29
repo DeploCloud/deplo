@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { HardDrive } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
+import { canMountHostVolumes } from "@/lib/membership";
+import { containerWorkdir } from "@/lib/apps/volume-model";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { StorageSettingsForm } from "@/components/apps/settings/storage-settings-form";
 import {
@@ -31,6 +33,9 @@ export default async function AppStorageSettingsPage(
   const composeServices = isComposeStack
     ? composeServiceNames(project.compose)
     : [];
+  // A Bind stays selectable without the grant — the editor says plainly that
+  // saving one needs it, which beats hiding the option and the reason with it.
+  const mayBind = await canMountHostVolumes();
 
   return (
     <section className="space-y-4">
@@ -45,6 +50,14 @@ export default async function AppStorageSettingsPage(
         defaultComposeService={
           isComposeStack ? detectDefaultApp(project.compose)?.service : null
         }
+        canMountHostVolumes={mayBind}
+        // "Path inside the app" is the field a non-expert cannot guess. For
+        // anything deplo builds, the answer is a fact (the generated Dockerfile's
+        // WORKDIR), so the editor states it instead of leaving a blank box.
+        containerWorkdir={containerWorkdir(
+          project.source,
+          project.build.rootDirectory,
+        )}
       />
     </section>
   );
