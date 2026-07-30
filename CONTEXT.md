@@ -405,8 +405,20 @@ Nobody has to hand-write `volumes:` into their YAML to keep data. Stored on the 
 and the UI name is what every screen, tooltip and doc says:
  - **Volume** (`named`) — disk space deplo creates and keeps. The default.
  - **File** (`app`) — a file or folder from the app's own **Files** (its isolated files dir).
+   Its CONTENT is written from the Storage editor too (`appStorageFile` / `writeAppFile`,
+   over the agent) — not a copy in the database, the same file the Files tab shows — so an
+   entry never points at a path with nothing behind it. Files are written **before** the
+   rows, because Docker answers a missing bind source by inventing an empty *directory*.
  - **Bind** (`host`) — a folder that already exists on the server: outside deplo and shared
    with everything else on the machine, so it needs the `canMountHostVolumes` grant.
+Only the **source** is ever required. `mountPath` left empty is **derived** —
+`derivedMountPath`: the storage lands in the app's own working directory under the name its
+source gives (`uploads` → `/app/uploads`, Files `conf/app.toml` → `/app/conf/app.toml`,
+`/srv/media` → `/app/media`) — and the editor sends that path explicitly, so the row stores
+what it previewed. Offered ONLY where `containerWorkdir` is a fact (anything deplo builds);
+a prebuilt image or a compose service picked its own, and mounting at an invented path is
+the silent failure — the app writes where it always did and the disk stays empty — so there
+the field stays required.
 The stored discriminants never change (a rename would be a migration for a caption); the
 label ⇄ `type` mapping and the copy live in `lib/apps/volume-model.ts`, which the server's
 `validateVolumes` shares constants with so the editor can't accept what the writer refuses.

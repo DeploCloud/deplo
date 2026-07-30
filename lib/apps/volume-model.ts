@@ -14,6 +14,11 @@ import type { VolumeMount } from "../types";
  * screen. Renaming the stored values would have been a migration for a caption,
  * so the mapping lives here and nowhere else.
  *
+ * Only the SOURCE of an entry is ever really required. Where it lands inside the
+ * container is derived when deplo can derive it honestly — see
+ * {@link derivedMountPath}, the reason "Path inside the app" is an optional field
+ * for every app deplo builds.
+ *
  * The RULES are shared with the server on purpose: `validateVolumes`
  * (lib/data/apps.ts) imports {@link RESERVED_MOUNT_PREFIXES} and
  * {@link VOLUME_NAME_RE} from here, so the editor cannot accept something the
@@ -191,6 +196,13 @@ export function normalizeFilesPath(path: string | null | undefined): string {
   return (path ?? "").trim().replace(/^\.\/+/, "").replace(/\/+$/, "");
 }
 
+/** The last segment of a path — `/srv/media` → `media`. Empty for `/`, `.`, `..`. */
+function lastSegment(path: string): string {
+  const segments = (path ?? "").trim().replace(/\/+$/, "").split("/");
+  const last = segments[segments.length - 1] ?? "";
+  return last === "." || last === ".." ? "" : last;
+}
+
 /**
  * The file name a mount path ends in — `/etc/nginx/nginx.conf` → `nginx.conf`.
  * The editor offers this as the path in Files while the user has not written one
@@ -198,9 +210,64 @@ export function normalizeFilesPath(path: string | null | undefined): string {
  * one field instead of two. Empty when the path has no last segment yet.
  */
 export function filesPathFromMountPath(mountPath: string): string {
-  const segments = (mountPath ?? "").trim().replace(/\/+$/, "").split("/");
-  const last = segments[segments.length - 1] ?? "";
-  return last === "." || last === ".." ? "" : last;
+  return lastSegment(mountPath);
+}
+
+/**
+ * Where a row lands inside the container when the user does not say — the reason
+ * "Path inside the app" is not a field you must fill.
+ *
+ * The rule is one sentence: **leave it empty and deplo puts the storage in the
+ * app's own folder, named after whatever you gave it.** A File kept in Files at
+ * `conf/app.toml` appears at `<workdir>/conf/app.toml`, the same layout it had in
+ * the repo; a Volume named `uploads` at `<workdir>/uploads`, which is what
+ * `./uploads` in the code already means; a Bind of `/srv/media` at
+ * `<workdir>/media`.
+ *
+ * Offered ONLY when deplo built the app, because only then is the working
+ * directory a fact ({@link containerWorkdir}) instead of a guess. A prebuilt
+ * image or a compose service picked its own, and mounting at an invented path is
+ * the failure that never announces itself: the app keeps writing where it always
+ * did, the disk stays empty, and the data is gone at the next deploy. There the
+ * field is required, and the editor says why.
+ *
+ * Returns "" when there is nothing to derive from (no working directory, or no
+ * source to name it after) — the caller then has to ask.
+ */
+export function derivedMountPath(
+  v: VolumeMount,
+  workdir: string | null | undefined,
+): string {
+  if (!workdir) return "";
+  const kind = kindOf(v);
+  const rel =
+    kind === "app"
+      ? normalizeFilesPath(v.projectPath)
+      : kind === "host"
+        ? lastSegment((v.hostPath ?? "").trim())
+        : // As typed, NOT case-folded: a path inside a Linux container is
+          // case-sensitive, so a Volume named `Uploads` has to land on
+          // `/app/Uploads` — the folder the code writes to. Only the docker
+          // volume name is lowercased (`hostVolumeName`), and that is a
+          // different string entirely.
+          (v.name ?? "").trim();
+  if (!rel) return "";
+  return `${workdir.replace(/\/+$/, "")}/${rel.replace(/^\/+/, "")}`;
+}
+
+/**
+ * The path this row will really mount at: what the user typed, or else
+ * {@link derivedMountPath}. Every reader goes through this — the validator, the
+ * readout, the collapsed line, the dirty key and the save payload — so the path
+ * shown as a placeholder is the very one that gets stored.
+ */
+export function effectiveMountPath(
+  v: VolumeMount,
+  workdir?: string | null,
+): string {
+  return (
+    (v.mountPath ?? "").trim().replace(/\/+$/, "") || derivedMountPath(v, workdir)
+  );
 }
 
 /** A docker-volume-safe name derived from a mount path when the name is blank
@@ -229,11 +296,71 @@ export interface VolumeProblem {
   message: string;
 }
 
-export function volumeProblem(v: VolumeMount): VolumeProblem | null {
+export function volumeProblem(
+  v: VolumeMount,
+  workdir?: string | null,
+): VolumeProblem | null {
   const kind = kindOf(v);
-  const mountPath = (v.mountPath ?? "").trim().replace(/\/+$/, "");
 
-  if (!mountPath) return { field: "mountPath", message: "Add a path inside the app" };
+  // The SOURCE is checked first, and not only because the form asks for it
+  // first: with a known working directory it is also what the path inside the
+  // app is derived from, so a row with neither has a missing source, not a
+  // missing path.
+  if (kind === "host") {
+    const hostPath = (v.hostPath ?? "").trim().replace(/\/+$/, "");
+    if (!hostPath)
+      return { field: "source", message: "Add the folder's path on the server" };
+    if (!hostPath.startsWith("/") || hostPath.length < 2)
+      return {
+        field: "source",
+        message: "The path on the server must start with a slash, like /srv/media",
+      };
+    if (/[\s:]/.test(hostPath))
+      return {
+        field: "source",
+        message: 'The path on the server cannot contain spaces or ":"',
+      };
+    if (hostPath.split("/").includes(".."))
+      return { field: "source", message: 'The path cannot contain ".."' };
+  } else if (kind === "app") {
+    const p = normalizeFilesPath(v.projectPath);
+    if (!p)
+      return { field: "source", message: "Add the file's path in this app's Files" };
+    if (p.startsWith("/"))
+      return {
+        field: "source",
+        message: "Use a path relative to this app's Files, like config.toml",
+      };
+    if (/[\s:]/.test(p))
+      return { field: "source", message: 'The path cannot contain spaces or ":"' };
+    if (p.split("/").includes(".."))
+      return { field: "source", message: 'The path cannot contain ".."' };
+  } else {
+    // Volume: a blank name is fine on its own — the server derives one from the
+    // path (and the path may in turn be derived from the name, which is why the
+    // "one of the two" rule lives below rather than here).
+    const name = (v.name ?? "").trim().toLowerCase();
+    if (name && !VOLUME_NAME_RE.test(name))
+      return {
+        field: "source",
+        message: "Use lowercase letters, digits, - or _ , starting with a letter or digit",
+      };
+    if (name.length > VOLUME_NAME_MAX)
+      return {
+        field: "source",
+        message: `Keep the name under ${VOLUME_NAME_MAX + 1} characters`,
+      };
+  }
+
+  const mountPath = effectiveMountPath(v, workdir);
+  if (!mountPath) {
+    // A Volume is the one kind whose source may be left blank, so this is where
+    // its "name it or place it" requirement lands — and with a working directory
+    // to derive from, naming it is the shorter of the two.
+    if (kind === "named" && workdir)
+      return { field: "source", message: "Give this storage a name, like uploads" };
+    return { field: "mountPath", message: "Add a path inside the app, like /data" };
+  }
   if (!mountPath.startsWith("/") || mountPath.length < 2)
     return {
       field: "mountPath",
@@ -256,54 +383,6 @@ export function volumeProblem(v: VolumeMount): VolumeProblem | null {
       message: `${mountPath} belongs to the system and cannot be replaced`,
     };
 
-  if (kind === "host") {
-    const hostPath = (v.hostPath ?? "").trim().replace(/\/+$/, "");
-    if (!hostPath)
-      return { field: "source", message: "Add the folder's path on the server" };
-    if (!hostPath.startsWith("/") || hostPath.length < 2)
-      return {
-        field: "source",
-        message: "The path on the server must start with a slash, like /srv/media",
-      };
-    if (/[\s:]/.test(hostPath))
-      return {
-        field: "source",
-        message: 'The path on the server cannot contain spaces or ":"',
-      };
-    if (hostPath.split("/").includes(".."))
-      return { field: "source", message: 'The path cannot contain ".."' };
-    return null;
-  }
-
-  if (kind === "app") {
-    const p = normalizeFilesPath(v.projectPath);
-    if (!p)
-      return { field: "source", message: "Add the file's path in this app's Files" };
-    if (p.startsWith("/"))
-      return {
-        field: "source",
-        message: "Use a path relative to this app's Files, like config.toml",
-      };
-    if (/[\s:]/.test(p))
-      return { field: "source", message: 'The path cannot contain spaces or ":"' };
-    if (p.split("/").includes(".."))
-      return { field: "source", message: 'The path cannot contain ".."' };
-    return null;
-  }
-
-  // Volume: a blank name is fine (the server derives one from the path).
-  const name = (v.name ?? "").trim().toLowerCase();
-  if (!name) return null;
-  if (!VOLUME_NAME_RE.test(name))
-    return {
-      field: "source",
-      message: "Use lowercase letters, digits, - or _ , starting with a letter or digit",
-    };
-  if (name.length > VOLUME_NAME_MAX)
-    return {
-      field: "source",
-      message: `Keep the name under ${VOLUME_NAME_MAX + 1} characters`,
-    };
   return null;
 }
 
@@ -313,13 +392,20 @@ export function volumeProblem(v: VolumeMount): VolumeProblem | null {
  * on-host name would collide). Keyed per compose service, because two services
  * of one stack each mounting their own `/data` is normal.
  */
-export function volumeSetProblem(volumes: VolumeMount[]): string | null {
+export function volumeSetProblem(
+  volumes: VolumeMount[],
+  workdir?: string | null,
+): string | null {
   const paths = new Set<string>();
   const names = new Set<string>();
   for (const v of volumes) {
-    const path = (v.mountPath ?? "").trim().replace(/\/+$/, "");
+    // The path that will be STORED, derived ones included: two rows that leave
+    // the path empty and land on the same one still collide.
+    const path = effectiveMountPath(v, workdir);
     if (path) {
-      const key = `${(v.service ?? "").trim()} ${path}`;
+      // JSON, not a joined string: it keeps the two parts apart with no
+      // separator character that a service name or a path could contain.
+      const key = JSON.stringify([(v.service ?? "").trim(), path]);
       if (paths.has(key)) return `Two mounts share the path ${path}`;
       paths.add(key);
     }
@@ -339,9 +425,13 @@ export function volumeSetProblem(volumes: VolumeMount[]): string | null {
  * a File or a Bind (their source IS the target, already on screen) and for a
  * Volume with no path yet, which has nothing to derive a name from.
  */
-export function namedVolumeTarget(v: VolumeMount, slug: string): string | null {
+export function namedVolumeTarget(
+  v: VolumeMount,
+  slug: string,
+  workdir?: string | null,
+): string | null {
   if (kindOf(v) !== "named") return null;
-  const path = (v.mountPath ?? "").trim();
+  const path = effectiveMountPath(v, workdir);
   const name = (v.name ?? "").trim() || (path ? deriveVolumeName(path) : "");
   return name ? hostVolumeName(slug, name.toLowerCase()) : null;
 }
@@ -351,9 +441,15 @@ export function namedVolumeTarget(v: VolumeMount, slug: string): string | null {
  * replaces guessing from three half-filled inputs. `slug` is the app's, for the
  * on-host volume name.
  */
-export function volumeReadout(v: VolumeMount, slug: string): string {
+export function volumeReadout(
+  v: VolumeMount,
+  slug: string,
+  workdir?: string | null,
+): string {
   const kind = kindOf(v);
-  const at = (v.mountPath ?? "").trim();
+  // The path it will really use — a derived one reads exactly like a typed one,
+  // because at deploy there is no difference between them.
+  const at = effectiveMountPath(v, workdir);
   const ro = v.readOnly ? " The app can read it but not change it." : "";
   if (kind === "host") {
     const from = (v.hostPath ?? "").trim();
@@ -365,7 +461,7 @@ export function volumeReadout(v: VolumeMount, slug: string): string {
     if (!from || !at) return "Keeps a file you write here in this app's Files.";
     return `Keeps ${from} in this app's Files and puts it at ${at} inside the app.${ro}`;
   }
-  if (!at) return "deplo creates the disk once you set a path inside the app.";
+  if (!at) return "deplo creates the disk once you give it a name or a path.";
   const name = ((v.name ?? "").trim() || deriveVolumeName(at)).toLowerCase();
   return `Keeps ${at} on a disk deplo manages (${hostVolumeName(slug, name)}). It survives every deploy.${ro}`;
 }

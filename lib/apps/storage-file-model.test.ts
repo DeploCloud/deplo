@@ -7,8 +7,11 @@ import {
   loadingFileDraft,
   pendingFileWrite,
   storageFileDraft,
+  unpathedFileDraft,
   type StorageFileDraft,
 } from "./storage-file-model";
+import { effectiveMountPath, volumeProblem } from "./volume-model";
+import type { VolumeMount } from "../types";
 
 /**
  * A File storage entry's content box. The tests that matter are about what the
@@ -111,6 +114,75 @@ test("content read for a different path is never written", () => {
   // to nginx.conf would truncate a file nobody looked at.
   assert.equal(pendingFileWrite(editable({ draft: "a = 2" }), "nginx.conf"), null);
   assert.equal(pendingFileWrite(undefined, "config.toml"), null);
+});
+
+/* ---- writing before the entry has a name ---------------------------- */
+
+test("the box can be written in before the entry names a file", () => {
+  // The editor is on screen from the moment a File entry is added, so the text
+  // needs somewhere to live while there is no path to read or write it at.
+  const d = unpathedFileDraft("server { }");
+  assert.equal(d.status, "editable");
+  assert.equal(d.path, "");
+  assert.equal(d.draft, "server { }");
+  assert.equal(d.saved, "");
+});
+
+test("text typed with no path yet is unsaved work, so leaving the page warns", () => {
+  assert.equal(fileDraftIsDirty(unpathedFileDraft("server { }"), ""), true);
+  assert.equal(fileDraftIsDirty(unpathedFileDraft(""), ""), false);
+});
+
+test("nothing is ever written until the entry names a file", () => {
+  // The whole point of holding it with an empty path: there is no file to
+  // truncate and no folder to invent, whatever the save does next.
+  assert.equal(pendingFileWrite(unpathedFileDraft("server { }"), ""), null);
+  assert.equal(pendingFileWrite(editable({ path: "", saved: "", exists: false }), ""), null);
+});
+
+test("naming the file afterwards carries the typed text over", () => {
+  // The re-read for the new path is where the two meet: `keepDraft` is the text
+  // written while the entry was still unnamed.
+  const held = unpathedFileDraft("server { }");
+  const named = storageFileDraft(
+    { path: "nginx.conf", state: "new", text: "" },
+    held.draft,
+  );
+  assert.equal(named.draft, "server { }");
+  assert.equal(pendingFileWrite(named, "nginx.conf"), "server { }");
+});
+
+test("the whole write-then-name flow: nothing is saved until the entry is complete", () => {
+  // The order people actually work in, step by step — the form's own sequence
+  // (setDraft, then the read for the first path, then the save).
+  const row: VolumeMount = {
+    id: "vol_1",
+    type: "app",
+    name: "",
+    mountPath: "",
+    readOnly: false,
+  };
+  // 1. A brand-new entry: the box is on screen, the save is blocked on the name.
+  assert.equal(volumeProblem(row, "/app")?.field, "source");
+
+  // 2. Write the file first. It is unsaved work, and it goes nowhere yet.
+  const typed = unpathedFileDraft("server { listen 80; }");
+  assert.equal(fileDraftIsDirty(typed, ""), true);
+  assert.equal(pendingFileWrite(typed, ""), null);
+  assert.equal(volumeProblem(row, "/app")?.field, "source", "still blocked");
+
+  // 3. Name it, and leave the path inside the app empty on purpose.
+  const named = { ...row, projectPath: "nginx.conf" };
+  assert.equal(volumeProblem(named, "/app"), null, "complete: the path derives");
+  assert.equal(effectiveMountPath(named, "/app"), "/app/nginx.conf");
+
+  // 4. The read for that path lands and carries the text over; the save writes
+  //    the file, then the row, at the derived path.
+  const read = storageFileDraft({ path: "nginx.conf", state: "new", text: "" }, typed.draft);
+  assert.equal(pendingFileWrite(read, "nginx.conf"), "server { listen 80; }");
+
+  // 5. The same entry on a prebuilt image: nothing to derive from, so it asks.
+  assert.equal(volumeProblem(named, null)?.field, "mountPath");
 });
 
 test("what deplo could not read or cannot edit, it does not touch", () => {

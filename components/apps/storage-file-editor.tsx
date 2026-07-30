@@ -22,6 +22,14 @@ import { cn } from "@/lib/utils";
  * entry now asks for the content too, and the save writes it (Dokploy's File
  * Mount does the same: file path, mount path, content).
  *
+ * THE BOX IS ALWAYS THERE. It does not wait for the entry to be named first —
+ * asking for a path before offering the editor put the two in the wrong order
+ * (you know what you want to write long before you know where it goes) and made
+ * the box look broken until an unrelated field was filled. Text written before
+ * the entry has a path is held in the form, read from nowhere and written
+ * nowhere, and carried over the moment the entry names a file. Nothing is saved
+ * until the whole entry is complete and Save is pressed.
+ *
  * ONE FILE, ONE TRUTH. The content is not a copy kept in deplo's database: it is
  * read from, and written to, the very file the Files tab shows — the same agent
  * RPCs, on the app's own server. So an edit made in either place is the one the
@@ -51,9 +59,9 @@ export function StorageFileEditor({
   onChange,
   onRetry,
 }: {
-  /** The row's CURRENT path in Files, normalised. Empty ⇒ nothing to write yet. */
+  /** The row's CURRENT path in Files, normalised. Empty ⇒ not named yet. */
   path: string;
-  /** Undefined until the first read for this row lands. */
+  /** Undefined until the row has either been typed into or read. */
   state: StorageFileDraft | undefined;
   /**
    * Whether the viewer may read and write this app's files. COSMETIC — the
@@ -85,31 +93,15 @@ export function StorageFileEditor({
     );
   }
 
-  if (!path) {
-    return (
-      <Section label={label}>
-        <Note>
-          Give the file a path in Files above, then write it here.
-        </Note>
-      </Section>
-    );
-  }
+  // The read that matches the entry's CURRENT path — undefined while a path edit
+  // is still being re-read, and for an entry that has no path at all.
+  const current = state && state.path === path ? state : undefined;
 
-  // A stale draft (the path changed and the re-read hasn't landed) shows the
-  // skeleton rather than the previous file's contents under the new name.
-  if (!state || state.status === "loading" || state.path !== path) {
-    return (
-      <Section label={label}>
-        <EditorSkeleton />
-      </Section>
-    );
-  }
-
-  if (state.status === "error") {
+  if (current?.status === "error") {
     return (
       <Section label={label}>
         <Note icon={TriangleAlert} tone="destructive">
-          <span className="min-w-0 flex-1">{state.message}</span>
+          <span className="min-w-0 flex-1">{current.message}</span>
           <Button
             type="button"
             variant="outline"
@@ -125,29 +117,58 @@ export function StorageFileEditor({
     );
   }
 
-  if (state.status === "blocked") {
+  if (current?.status === "blocked") {
     return (
       <Section label={label}>
-        <Note icon={FolderOpen}>{state.message}</Note>
+        <Note icon={FolderOpen}>{current.message}</Note>
       </Section>
     );
   }
 
+  if (current?.status === "editable") {
+    return (
+      <Section
+        label={label}
+        // An entry with no path yet has no file to describe, so it gets no badge
+        // — only the box.
+        badge={
+          !path ? null : current.exists ? (
+            current.draft !== current.saved ? (
+              <Badge variant="secondary">Unsaved edit</Badge>
+            ) : null
+          ) : (
+            <Badge variant="outline">deplo creates this file</Badge>
+          )
+        }
+      >
+        <TextEditor
+          value={current.draft}
+          onChange={onChange}
+          minHeight={EDITOR_MIN_HEIGHT}
+        />
+      </Section>
+    );
+  }
+
+  // Nothing has been read for this path. The box is on screen anyway, because
+  // text written before the entry was named must not blink away behind a
+  // skeleton while the read for its new path lands — `loadFile` carries it over
+  // as the unsaved draft, so what is shown here is what will be kept.
+  const carried =
+    state?.status === "editable" && state.draft !== state.saved
+      ? state.draft
+      : null;
+  if (path && carried === null) {
+    return (
+      <Section label={label}>
+        <EditorSkeleton />
+      </Section>
+    );
+  }
   return (
-    <Section
-      label={label}
-      badge={
-        state.exists ? (
-          state.draft !== state.saved ? (
-            <Badge variant="secondary">Unsaved edit</Badge>
-          ) : null
-        ) : (
-          <Badge variant="outline">deplo creates this file</Badge>
-        )
-      }
-    >
+    <Section label={label}>
       <TextEditor
-        value={state.draft}
+        value={carried ?? ""}
         onChange={onChange}
         minHeight={EDITOR_MIN_HEIGHT}
       />

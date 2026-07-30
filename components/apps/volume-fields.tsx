@@ -37,6 +37,8 @@ import {
   VOLUME_KINDS,
   VOLUME_KIND_ORDER,
   deriveVolumeName,
+  derivedMountPath,
+  effectiveMountPath,
   filesPathFromMountPath,
   kindOf,
   metaOf,
@@ -72,7 +74,13 @@ import type { VolumeMount } from "@/lib/types";
  * A **File** entry also carries the file's CONTENTS (`fileContent`, rendered by
  * `storage-file-editor.tsx`): you write the config file here instead of having
  * to go and create it in the Files tab first, which is what used to leave the
- * commonest File entry pointing at a path with nothing behind it.
+ * commonest File entry pointing at a path with nothing behind it. That box is
+ * there from the moment the entry is added, not once the other fields are filled.
+ *
+ * Only the SOURCE of an entry is really required. "Path inside the app" fills
+ * itself in for every app deplo builds (`derivedMountPath`) — leave it empty and
+ * the storage lands in the app's own folder, greyed into the field so you see the
+ * path before deciding whether you want a different one.
  *
  * Fetch-free — the parent form owns the reads and the save.
  */
@@ -187,7 +195,10 @@ export function VolumeFields({
     <div className="space-y-3">
       <ul className="space-y-2" aria-label="Storage this app keeps">
         {volumes.map((v) => {
-          const problem = revealProblems || touched.has(v.id) ? volumeProblem(v) : null;
+          const problem =
+            revealProblems || touched.has(v.id)
+              ? volumeProblem(v, containerWorkdir)
+              : null;
           return (
             <MountRow
               key={v.id}
@@ -219,10 +230,18 @@ export function VolumeFields({
 }
 
 /** `<source> → <path>`, the one line that identifies a collapsed entry. */
-function IdentityLine({ mount }: { mount: VolumeMount }) {
+function IdentityLine({
+  mount,
+  containerWorkdir,
+}: {
+  mount: VolumeMount;
+  containerWorkdir?: string | null;
+}) {
   const kind = kindOf(mount);
   const meta = metaOf(mount);
-  const path = mount.mountPath.trim();
+  // The path it will really mount at, so a row that left the field empty reads
+  // as what it does rather than as a blank.
+  const path = effectiveMountPath(mount, containerWorkdir);
   const source =
     kind === "host"
       ? (mount.hostPath ?? "").trim()
@@ -238,7 +257,9 @@ function IdentityLine({ mount }: { mount: VolumeMount }) {
         {shown || meta.sourcePlaceholder}
       </span>
       <span className="px-1.5 text-muted-foreground">→</span>
-      <span className={path ? undefined : dim}>{path || "/data"}</span>
+      <span className={path ? undefined : dim}>
+        {path || (kind === "app" ? "/etc/nginx/nginx.conf" : "/data")}
+      </span>
     </span>
   );
 }
@@ -310,7 +331,10 @@ function MountRow({
     );
   };
 
-  const target = namedVolumeTarget(mount, slug);
+  const target = namedVolumeTarget(mount, slug, containerWorkdir);
+  // What "Path inside the app" fills itself with when left empty — the whole
+  // reason it is not a field you must answer.
+  const derived = derivedMountPath(mount, containerWorkdir);
 
   return (
     <li className="overflow-hidden rounded-xl border border-border bg-card">
@@ -326,7 +350,7 @@ function MountRow({
             <Icon className="size-3" />
             {meta.label}
           </Badge>
-          <IdentityLine mount={mount} />
+          <IdentityLine mount={mount} containerWorkdir={containerWorkdir} />
           <span className="ml-auto flex shrink-0 items-center gap-2">
             {mount.readOnly && <Badge variant="muted">Read-only</Badge>}
             {blockedBind && <Badge variant="warning">Needs permission</Badge>}
@@ -401,7 +425,11 @@ function MountRow({
             )}
             <Field
               label={meta.sourceLabel}
-              optional={kind === "named"}
+              // A Volume's name is optional once the path can supply one — the
+              // mirror image of the path being optional once the name can. What
+              // is never optional is BOTH: the row would then be nothing at all,
+              // and the problem line says so.
+              optional={kind === "named" && mount.mountPath.trim() !== ""}
               info={meta.sourceTooltip}
               value={sourceValue}
               onChange={setSource}
@@ -411,16 +439,17 @@ function MountRow({
             />
             <Field
               label="Path inside the app"
+              // Optional exactly when deplo has something to derive it from —
+              // never a promise it can't keep. See `derivedMountPath`.
+              optional={derived !== ""}
               info={
-                kind === "app"
-                  ? `Where the file appears inside the app, file name included${
-                      containerWorkdir
-                        ? ` — deplo runs your code in ${containerWorkdir}, so a file your code opens as ./config.toml is ${containerWorkdir}/config.toml`
-                        : ", such as /etc/nginx/nginx.conf"
-                    }. Use the path the app's documentation asks for.`
-                  : containerWorkdir
-                    ? `Where the app finds this storage. deplo runs your code in ${containerWorkdir}, so a folder your code writes to as ./uploads is ${containerWorkdir}/uploads. Anything the app writes there is what gets kept.`
-                    : "Where the app finds this storage, as an absolute path such as /data. This image chose its own working directory, so use the path its documentation gives for the data you want to keep."
+                containerWorkdir
+                  ? kind === "app"
+                    ? `Where the file appears inside the app. Leave it empty and deplo puts it in ${containerWorkdir}, the folder your code runs in — so a file your code opens as ./config.toml needs nothing here. Fill it in when the app wants it elsewhere, like /etc/nginx/nginx.conf.`
+                    : `Where the app finds this storage. Leave it empty and deplo puts it in ${containerWorkdir}, the folder your code runs in — so a folder your code writes to as ./uploads needs nothing here. Fill it in when the app keeps its data elsewhere, like /var/lib/postgresql/data.`
+                  : kind === "app"
+                    ? "Where the file appears inside the app, file name included, like /etc/nginx/nginx.conf. deplo can't fill this in for a prebuilt image — the image chose its own working directory — so use the path the app's documentation asks for."
+                    : "Where the app finds this storage, as an absolute path like /data. deplo can't fill this in for a prebuilt image — the image chose its own working directory — so use the path its documentation gives for the data you want to keep."
               }
               value={mount.mountPath}
               onChange={(value) =>
@@ -433,14 +462,17 @@ function MountRow({
                     : { mountPath: value },
                 )
               }
+              // The derived path IS the placeholder: what you would get by
+              // typing nothing, shown before you decide whether to.
               placeholder={
-                kind === "app"
+                derived ||
+                (kind === "app"
                   ? containerWorkdir
                     ? `${containerWorkdir}/config.toml`
                     : "/etc/nginx/nginx.conf"
                   : containerWorkdir
                     ? `${containerWorkdir}/uploads`
-                    : "/data"
+                    : "/data")
               }
               invalid={problem?.field === "mountPath"}
             />
@@ -507,7 +539,7 @@ function MountRow({
               <>
                 <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                   <CornerDownRight className="mt-px size-3.5 shrink-0" />
-                  {volumeReadout(mount, slug)}
+                  {volumeReadout(mount, slug, containerWorkdir)}
                 </p>
                 {meta.targetLabel && target && (
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-[1.125rem] text-xs text-muted-foreground">
@@ -662,8 +694,8 @@ function EmptyPicker({
         </span>
         <p className="text-sm font-medium">No storage yet</p>
         <p className="max-w-md text-xs text-muted-foreground">
-          Everything this app writes is thrown away when it redeploys, unless it
-          lands on a path you list here. Pick where the data should live:
+          Everything this app writes is thrown away when it redeploys, unless you
+          keep it here. Pick where the data should live:
         </p>
       </div>
       {/* Volume and File are the two a normal app wants; they get the room. Bind

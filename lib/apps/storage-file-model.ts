@@ -93,6 +93,21 @@ export function loadingFileDraft(path: string): StorageFileDraft {
   return { path, status: "loading", saved: "", draft: "", exists: false, message: "" };
 }
 
+/**
+ * What the box holds before the entry names a file. The editor is on screen from
+ * the moment a File entry exists — you write the config first and say where it
+ * goes after, which is the order people actually work in — so the text needs
+ * somewhere to live while there is no path to read or write it at.
+ *
+ * `path: ""` is what keeps it inert: nothing is read (there is nothing to read),
+ * {@link pendingFileWrite} refuses an empty path outright, and the moment the
+ * entry IS given a path the form re-reads it and carries this text over as the
+ * unsaved draft.
+ */
+export function unpathedFileDraft(text: string): StorageFileDraft {
+  return { path: "", status: "editable", saved: "", draft: text, exists: false, message: "" };
+}
+
 /** A read that failed for a real reason (an unreachable server, above all). */
 export function failedFileDraft(path: string, message: string): StorageFileDraft {
   return { path, status: "error", saved: "", draft: "", exists: false, message };
@@ -122,6 +137,7 @@ export function pendingFileWrite(
   draft: StorageFileDraft | undefined,
   path: string,
 ): string | null {
+  if (!path) return null; // typed before the entry named a file — nowhere to put it
   if (!draft || draft.path !== path) return null; // read for another path, or not read
   if (draft.status !== "editable") return null; // a folder, a binary, too big, unreadable
   if (draft.exists && draft.draft === draft.saved) return null; // unchanged
