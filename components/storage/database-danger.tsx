@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
+import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
@@ -22,9 +22,9 @@ import type { DatabaseDTO } from "@/lib/data/databases";
  *  - Rebuild: wipe the data volume and re-provision a fresh, empty database
  *    from the current settings (same engine/version/credentials — the
  *    connection string keeps working). The "factory reset".
- *  - Delete: destroy the container + data volume (and, optionally, its S3
- *    backup artifacts) via the shared DeleteWithArtifacts, which is already
- *    database-aware. On success, back to the storage overview.
+ *  - Delete: stop and destroy the container + data volume (and, optionally, its
+ *    S3 backup artifacts) via the shared {@link DeleteDatabaseDialog}. On
+ *    success, back to the storage overview.
  */
 export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
@@ -88,21 +88,11 @@ export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
         </div>
       </CardContent>
 
-      <DeleteWithArtifacts
+      <DeleteDatabaseDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        targetKind="database"
-        targetId={db.id}
-        targetName={db.name}
-        title={`Delete ${db.name}?`}
-        description="This permanently destroys the database container and all its data, including any backup schedules attached to it."
-        confirmLabel="Delete database"
-        successMessage="Database deleted"
-        deleteMutation={() =>
-          gqlAction(`mutation($id: String!) { deleteDatabase(id: $id) }`, {
-            id: db.id,
-          })
-        }
+        databaseId={db.id}
+        databaseName={db.name}
         onDeleted={() => router.push("/storage")}
       />
     </Card>

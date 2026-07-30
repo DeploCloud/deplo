@@ -24,7 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
+import { DeleteDatabaseDialog } from "@/components/storage/delete-database-dialog";
 import { DatabaseConnectionString } from "@/components/storage/database-connection-string";
 import { DatabaseLiveStatusProvider } from "@/components/storage/database-live-status";
 import {
@@ -349,21 +349,11 @@ function CardActions({
         </DropdownMenu>
       </div>
 
-      <DeleteWithArtifacts
+      <DeleteDatabaseDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        targetKind="database"
-        targetId={db.id}
-        targetName={db.name}
-        title={`Delete ${db.name}?`}
-        description="This permanently destroys the database container and all its data, including any backup schedules attached to it."
-        confirmLabel="Delete database"
-        successMessage="Database deleted"
-        deleteMutation={() =>
-          gqlAction(`mutation($id: String!) { deleteDatabase(id: $id) }`, {
-            id: db.id,
-          })
-        }
+        databaseId={db.id}
+        databaseName={db.name}
         onDeleted={() => router.refresh()}
       />
     </div>

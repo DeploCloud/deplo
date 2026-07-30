@@ -2,7 +2,11 @@ import "server-only";
 
 import { and, desc, eq } from "drizzle-orm";
 
-import { listServersForTeam, assertServerAccessibleTx } from "./servers";
+import {
+  listServersForTeam,
+  assertServerAccessibleTx,
+  getServerById,
+} from "./servers";
 import { getDb } from "../db/client";
 import {
   databases as databasesTable,
@@ -929,7 +933,100 @@ export async function updateDatabase(
   );
 }
 
-export async function deleteDatabase(id: string): Promise<void> {
+/**
+ * Tear a database's stack down on its owning server and PROVE nothing of it
+ * survived. Returns `null` when the host is clean, or the reason it is not.
+ *
+ * A plain `destroyStack` is not enough on its own, because it can fail while
+ * reporting only what the agent saw:
+ *
+ *  - The agent's `compose down -v` needs the stack file it wrote at provision
+ *    time (`<stackDir>/<slug>.yml`). If that file is gone — a half-finished
+ *    provision, a restored/rebuilt host, an earlier teardown that removed the
+ *    file before the volume — the `down` fails and the agent falls back to a
+ *    force-remove of `deplo-<slug>`, which is the APP container-name convention:
+ *    a database's container is named `<slug>` (`db-<name>`), so that fallback
+ *    can never remove one. The container keeps running.
+ *  - We would then have deleted the row anyway, so a live database — possibly on
+ *    a published port — becomes invisible to Deplo and reclaimable only from a
+ *    shell on the host. That is exactly the "you must know Docker/SSH" hole the
+ *    product exists to close.
+ *
+ * So: destroy → if that failed, HEAL and retry → then verify. The heal is a
+ * `reroute` (the one RPC that writes the stack file) re-rendered from the row,
+ * which restores the file the `down` needs; the retry then removes the container
+ * AND reclaims the data volume. Verification asks the agent which containers
+ * still carry this database's `deplo.project` label — the same list the console
+ * and the runtime poll read — so a teardown is only "clean" when the host agrees.
+ * Anything left is stopped (never leave a database the user asked to delete
+ * serving) and reported.
+ */
+async function teardownDatabaseStack(db: Database): Promise<string | null> {
+  const conn = await connectAgent(db.serverId);
+  try {
+    let res = await conn.destroyStack(db.host, true);
+    if (!res.ok) {
+      // Rewrite the stack file from the row, then tear down again. `reroute`
+      // brings the stack up in the process — harmless for something we are about
+      // to destroy, and it is what makes the volume reclaimable at all (only a
+      // `down -v` with a compose file can drop a named volume).
+      const password = parseConnectionPassword(decryptSecret(db.connectionStringEnc));
+      const healed = await conn.reroute({
+        slug: db.host,
+        composeYaml: renderDatabaseStackYaml(db, password),
+        env: {},
+        mounts: [],
+      });
+      // A failed heal leaves `res` — the ORIGINAL destroy error — as the reason;
+      // it is the actionable one (the heal error is a symptom of the same host).
+      if (healed.ok) res = await conn.destroyStack(db.host, true);
+    }
+    // Trust, then verify. An agent too old for the label (or one that errors on
+    // the probe) yields null: we can't verify, so the destroy's own verdict
+    // stands rather than blocking a delete on a check we couldn't run.
+    const left = await conn
+      .listInstances(db.id, db.host, db.host)
+      .catch(() => null);
+    const leftover = left !== null && left.length > 0;
+    if (leftover || !res.ok) {
+      // Whatever we could not remove must at least not be SERVING — the user
+      // asked for this database to go. This also catches the one case the verify
+      // can't see: a heal that brought the stack up (to restore the compose file)
+      // and a retry that still failed, on an agent whose probe we couldn't read.
+      await conn.stopStack(db.host).catch(() => {});
+      return leftover
+        ? `its container survived the teardown` +
+            (res.error ? ` (${res.error})` : "")
+        : res.error || "the teardown failed";
+    }
+    return null;
+  } finally {
+    conn.close();
+  }
+}
+
+/**
+ * Delete a database: stop + destroy the real container and its data volume on
+ * the owning server, then drop the row and everything hanging off it.
+ *
+ * The teardown is AUTHORITATIVE, not best-effort: unless `force` is set, a
+ * database whose stack could not be verifiably removed is NOT deleted, and the
+ * caller gets an actionable error instead of a green "deleted" over a container
+ * that is still running. This deliberately differs from {@link deleteApp}'s
+ * "never pin a record to a dead box" stance — a database holds data and often a
+ * published port, so silently forgetting a live one is the worse failure, and
+ * keeping the row means it is still Deplo's to stop, retry or move.
+ *
+ * `force` is the escape hatch for a host that is never coming back (a server can
+ * only be removed once nothing is hosted on it, so without it a dead box would
+ * deadlock its databases). It skips nothing that CAN be cleaned — the teardown
+ * still runs — it only stops a failed one from blocking the row delete, and
+ * writes the leftovers into the activity log.
+ */
+export async function deleteDatabase(
+  id: string,
+  opts: { force?: boolean } = {},
+): Promise<void> {
   const { membership } = await requireCapability("manage_infra");
   const user = (await getCurrentUser())!;
   const db = await loadDatabase(id, membership.teamId);
@@ -940,41 +1037,38 @@ export async function deleteDatabase(id: string): Promise<void> {
   // provision is still in flight — the provision's `up -d` then recreates the
   // container + volume the control plane no longer tracks. Under the lock a delete
   // WAITS for the provision, then tears down a fully-created stack.
+  const server = await getServerById(db.serverId);
+  const where = server ? server.name : "its server";
   await withKeyedLock(id, async () => {
     // Re-check under the lock: a concurrent delete (or never-finished provision
     // that bailed) may have already removed the row. Idempotent → just return.
     if (!(await databaseExists(id))) return;
-    // Tear down the real container + data volume on the owning agent via
-    // `removeVolumes` (`down -v` + remove the compose file). Best-effort: we still
-    // remove the row (the operator asked to delete it) even when the volume could
-    // not be reclaimed, but we surface that so it isn't a silent leak. Two ways the
-    // volume can survive:
-    //   - the agent reports ok:false — its `down -v` failed and it fell through to
-    //     `rm -f` (which can't reclaim a named volume), or the agent is too old to
-    //     honour removeVolumes and only ran a plain `down`;
-    //   - the host is unreachable (the dial/RPC throws).
-    // Both leave an orphaned volume to sweep by hand; record it on the activity log
-    // so it has a durable trace, not just a process log.
-    let orphanWarning: string | null = null;
+    // Tear down the real container + data volume on the owning agent, and hold
+    // the delete until the host confirms both are gone. Two ways it can fail —
+    // the teardown itself (agent reachable, `down -v` unhappy, something left
+    // behind) or the dial (host down / trust revoked) — and they want different
+    // advice, so each carries its own "what now": retrying a broken teardown is
+    // immediate, retrying a dead host means waiting for it to come back.
+    let failure: { why: string; retry: string } | null = null;
     try {
-      const conn = await connectAgent(db.serverId);
-      try {
-        const r = await conn.destroyStack(db.host, true);
-        if (!r.ok)
-          orphanWarning =
-            `Agent did not cleanly tear down ${db.host} (${r.error || "unknown error"}). ` +
-            `Its data volume may be orphaned — sweep it on the host with ` +
-            `\`docker volume rm\`.`;
-      } finally {
-        conn.close();
-      }
+      const reason = await teardownDatabaseStack(db);
+      if (reason)
+        failure = { why: `${where} could not remove it: ${reason}`, retry: "Try again" };
     } catch (e) {
-      orphanWarning =
-        `Could not reach the agent on this database's server to tear it down ` +
-        `(${e instanceof Error ? e.message : String(e)}). Its container/volume may ` +
-        `need a manual cleanup on the host.`;
+      failure = {
+        why: `${where} could not be reached (${e instanceof Error ? e.message : String(e)})`,
+        retry: `Try again once ${where} is back online`,
+      };
     }
-    if (orphanWarning) console.warn(`[databases] ${orphanWarning}`);
+    if (failure) {
+      console.warn(`[databases] teardown of ${db.host} failed: ${failure.why}`);
+      if (!opts.force)
+        throw new Error(
+          `${db.name} was NOT deleted: ${failure.why}. Nothing has been removed ` +
+            `from Deplo. ${failure.retry}, or delete it anyway to drop it from ` +
+            `Deplo and leave its container and data on that host.`,
+        );
+    }
     // One DELETE — the agent teardown above ran OUTSIDE any transaction (PLAN §1
     // rule (a)). The `backups.database_id` FK CASCADE removes dependent backup
     // SCHEDULES automatically (was a manual `d.backups` filter); `backup_runs`'
@@ -984,8 +1078,9 @@ export async function deleteDatabase(id: string): Promise<void> {
     publishDatabaseChanged(id);
     await recordActivity(
       "database",
-      orphanWarning
-        ? `Deleted database ${db.name} (warning: ${orphanWarning})`
+      failure
+        ? `Deleted database ${db.name} from Deplo, but ${failure.why} — its ` +
+          `container and data volume are still on ${where} and must be removed there.`
         : `Deleted database ${db.name}`,
       user.name,
       null,

@@ -1211,8 +1211,10 @@ type Mutation {
   """
   deleteBackupArtifacts(targetId: String!, targetKind: BackupTargetKind!): Int
 
-  """Tear down the database container + volume. Returns true."""
-  deleteDatabase(id: String!): Boolean
+  """
+  Stop and destroy the database's container + data volume on its server, then delete it (dependent backup schedules cascade). The teardown must verifiably succeed: if the server can't be reached — or something of the stack survives it — nothing is deleted and the mutation errors, so a live database is never silently forgotten. `force` deletes the record anyway (for a host that is never coming back), leaving that container and its data on the host. Returns true.
+  """
+  deleteDatabase(force: Boolean, id: String!): Boolean
 
   """
   Delete finished deployments (ready/error/canceled) by id; in-progress ones (queued/building) are left to be canceled first. Returns how many were deleted.

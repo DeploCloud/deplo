@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
+  activities as activitiesTable,
   backups as backupsTable,
   backupRuns as backupRunsTable,
   databases as databasesTable,
@@ -106,6 +107,38 @@ test("getConnectionString decrypts; getDatabase is team-scoped", async () => {
   });
 });
 
+/**
+ * The seeded server has no agent record, so `connectAgent` throws before a socket
+ * is opened — the "host we cannot clean" case, without any gRPC in the test.
+ * A delete that cannot prove the container and volume are gone must delete
+ * NOTHING: the database stays Deplo's to retry, stop or move, instead of becoming
+ * a live container the control plane has forgotten about.
+ */
+test("deleteDatabase refuses (deleting nothing) when the server can't be torn down", async () => {
+  await seedDatabase(db, { id: "db_1", name: "main" });
+  const s3 = await seedS3(db, { id: "s3_1" });
+  await seedBackup(db, { id: "bkp_1", destinationId: s3, databaseId: "db_1" });
+
+  await asUser1(() =>
+    assert.rejects(
+      () => deleteDatabase("db_1"),
+      // Names the database, says nothing was deleted, and points at the escape hatch.
+      /main was NOT deleted[\s\S]*delete it\s+anyway/i,
+    ),
+  );
+
+  assert.equal(
+    (await db.select().from(databasesTable).where(eq(databasesTable.id, "db_1"))).length,
+    1,
+    "the database row survives a refused delete",
+  );
+  assert.equal(
+    (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1"))).length,
+    1,
+    "its backup schedule survives too (nothing cascaded)",
+  );
+});
+
 test("deleteDatabase cascades schedules and SET NULLs run history (no orphans)", async () => {
   await seedDatabase(db, { id: "db_1", name: "main" });
   const s3 = await seedS3(db, { id: "s3_1" });
@@ -113,10 +146,11 @@ test("deleteDatabase cascades schedules and SET NULLs run history (no orphans)",
   await seedBackup(db, { id: "bkp_1", destinationId: s3, databaseId: "db_1" });
   await seedRun(db, { id: "brun_1", destinationId: s3, databaseId: "db_1", backupId: "bkp_1" });
 
-  // The seeded server has no live agent, so the teardown dial fails — best-effort:
-  // the row is still deleted (and an orphan warning logged). This also proves the
-  // agent call is OUTSIDE the delete (a thrown dial can't roll the delete back).
-  await asUser1(() => deleteDatabase("db_1"));
+  // `force` is the "this host is never coming back" path: the teardown still runs
+  // (and fails — no agent), but its failure no longer blocks the record delete.
+  // This also proves the agent call is OUTSIDE the delete (a thrown dial can't
+  // roll the row removal back).
+  await asUser1(() => deleteDatabase("db_1", { force: true }));
 
   assert.equal(
     (await db.select().from(databasesTable).where(eq(databasesTable.id, "db_1"))).length,
@@ -131,6 +165,19 @@ test("deleteDatabase cascades schedules and SET NULLs run history (no orphans)",
   const run = await db.select().from(backupRunsTable).where(eq(backupRunsTable.id, "brun_1"));
   assert.equal(run.length, 1, "run history survives");
   assert.equal(run[0]!.databaseId, null, "run.databaseId SET NULL");
+
+  // A forced delete leaves real leftovers on the host, so it must leave a durable
+  // trace of them — the activity log, not just a process warning.
+  const logged = await db.select().from(activitiesTable);
+  assert.ok(
+    logged.some(
+      (a) =>
+        a.message.includes("main") &&
+        a.message.includes("still on") &&
+        a.message.includes("must be removed"),
+    ),
+    `forced delete records the leftovers, got: ${logged.map((a) => a.message).join(" | ")}`,
+  );
 });
 
 // The cross-host volume copy that backs a server MOVE operates on the DB's real

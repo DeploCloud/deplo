@@ -329,10 +329,20 @@ builder.mutationFields((t) => ({
   deleteDatabase: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_infra" },
-    description: "Tear down the database container + volume. Returns true.",
-    args: { id: t.arg.string({ required: true }) },
-    resolve: async (_r, { id }) => {
-      await deleteDatabase(id);
+    description:
+      "Stop and destroy the database's container + data volume on its server, " +
+      "then delete it (dependent backup schedules cascade). The teardown must " +
+      "verifiably succeed: if the server can't be reached — or something of the " +
+      "stack survives it — nothing is deleted and the mutation errors, so a live " +
+      "database is never silently forgotten. `force` deletes the record anyway " +
+      "(for a host that is never coming back), leaving that container and its " +
+      "data on the host. Returns true.",
+    args: {
+      id: t.arg.string({ required: true }),
+      force: t.arg.boolean({ required: false }),
+    },
+    resolve: async (_r, { id, force }) => {
+      await deleteDatabase(id, { force: force ?? false });
       return true;
     },
   }),
