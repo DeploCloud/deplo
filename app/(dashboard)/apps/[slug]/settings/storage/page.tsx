@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { HardDrive } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
-import { canMountHostVolumes } from "@/lib/membership";
+import { canMountHostVolumes, hasCapability } from "@/lib/membership";
 import { containerWorkdir } from "@/lib/apps/volume-model";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { StorageSettingsForm } from "@/components/apps/settings/storage-settings-form";
@@ -36,6 +36,11 @@ export default async function AppStorageSettingsPage(
   // A Bind stays selectable without the grant — the editor says plainly that
   // saving one needs it, which beats hiding the option and the reason with it.
   const mayBind = await canMountHostVolumes();
+  // A File entry's content IS this app's files tree, so writing one is the
+  // `manage_files` capability. Cosmetic here (the query and the mutation are
+  // both gated server-side); it lets the editor say why the box is closed
+  // instead of failing on save.
+  const mayEditFiles = await hasCapability("manage_files");
 
   return (
     <section className="space-y-4">
@@ -51,6 +56,7 @@ export default async function AppStorageSettingsPage(
           isComposeStack ? detectDefaultApp(project.compose)?.service : null
         }
         canMountHostVolumes={mayBind}
+        canManageFiles={mayEditFiles}
         // "Path inside the app" is the field a non-expert cannot guess. For
         // anything deplo builds, the answer is a fact (the generated Dockerfile's
         // WORKDIR), so the editor states it instead of leaving a blank box.

@@ -8,6 +8,8 @@ import {
   VOLUME_KINDS,
   VOLUME_KIND_ORDER,
   deriveVolumeName,
+  filesPathFromMountPath,
+  normalizeFilesPath,
   kindOf,
   metaOf,
   namedVolumeTarget,
@@ -221,7 +223,7 @@ test("the readout says what will happen, per kind", () => {
   );
   assert.match(
     volumeReadout(vol({ type: "app", projectPath: "config.toml", mountPath: "/c" }), "shop"),
-    /from this app's Files/,
+    /config\.toml in this app's Files/,
   );
   assert.match(
     volumeReadout(vol({ type: "host", hostPath: "/srv/m", mountPath: "/m" }), "shop"),
@@ -368,4 +370,27 @@ test("each kind has a distinct chip tone, warning reserved for the gated one", (
   assert.equal(VOLUME_KINDS.host.chip, "warning");
   const tones = VOLUME_KIND_ORDER.map((k) => VOLUME_KINDS[k].chip);
   assert.equal(new Set(tones).size, tones.length);
+});
+
+/* ---- the File entry's path in Files -------------------------------- */
+
+test("a path in Files normalises to one form, whatever the user typed", () => {
+  assert.equal(normalizeFilesPath("  config.toml "), "config.toml");
+  assert.equal(normalizeFilesPath("./conf/app.toml"), "conf/app.toml");
+  assert.equal(normalizeFilesPath("conf/"), "conf");
+  assert.equal(normalizeFilesPath(""), "");
+  assert.equal(normalizeFilesPath(undefined), "");
+  // The same string the server's validateVolumes stores, so the editor's read of
+  // a file's content and the saved row can never disagree about which file it is.
+  assert.equal(normalizeFilesPath("./config.toml"), normalizeFilesPath("config.toml"));
+});
+
+test("the path in Files is offered from the mount path's file name", () => {
+  assert.equal(filesPathFromMountPath("/etc/nginx/nginx.conf"), "nginx.conf");
+  assert.equal(filesPathFromMountPath("/app/config.toml"), "config.toml");
+  assert.equal(filesPathFromMountPath("/app/conf/"), "conf");
+  // Half-typed or degenerate paths offer nothing rather than a junk name.
+  assert.equal(filesPathFromMountPath("/"), "");
+  assert.equal(filesPathFromMountPath(""), "");
+  assert.equal(filesPathFromMountPath("/app/.."), "");
 });

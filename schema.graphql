@@ -182,6 +182,15 @@ enum AppStatus {
   stopping
 }
 
+"""
+The file behind a File storage entry, where a path that does not exist yet is a normal answer rather than an error.
+"""
+type AppStorageFile {
+  path: String
+  state: String
+  text: String
+}
+
 type AuthPayload {
   viewer: Viewer
 }
@@ -1727,6 +1736,11 @@ type Query {
   Live container state for an app, straight from the owning agent — the truth behind the stored status. Polled by the app's status badge.
   """
   appRuntime(appId: String!): AppRuntime
+
+  """
+  Read the file a File storage entry points at (Settings → Storage). A path that is not there yet answers state "new" with an empty body instead of failing, so the editor can offer it as a file to write.
+  """
+  appStorageFile(appId: String!, path: String!): AppStorageFile
 
   """All apps in the active team, newest first."""
   apps: [App!]

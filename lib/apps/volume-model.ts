@@ -80,14 +80,14 @@ export const VOLUME_KINDS: Record<VolumeKind, VolumeKindMeta> = {
   app: {
     kind: "app",
     label: "File",
-    summary: "A file or folder you keep in this app's Files",
+    summary: "A file you write here, put inside the app",
     examples: "Good for a config file, like config.toml or nginx.conf.",
     tooltip:
-      "Takes a file or folder from this app's own Files and puts it inside the app. Edit it in deplo and the app picks it up on the next deploy. Best for config files.",
+      "Write the file's contents here and deplo keeps it in this app's Files, then puts it inside the app. Edit it any time — the app picks it up on the next deploy. Best for config files.",
     sourceLabel: "Path in Files",
     sourcePlaceholder: "config.toml",
     sourceTooltip:
-      "Where the file sits under this app's Files, for example config.toml or conf/nginx.conf. Relative, never starting with a slash.",
+      "Where deplo keeps the file under this app's Files, for example config.toml or conf/nginx.conf. Relative, never starting with a slash. deplo creates it for you when it isn't there yet.",
     needsPermission: false,
     chip: "outline",
     targetLabel: null,
@@ -179,6 +179,30 @@ export const RESERVED_MOUNT_PREFIXES = [
 export const VOLUME_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
 export const VOLUME_NAME_MAX = 40;
 
+/**
+ * The one normaliser for a File entry's path in this app's Files: trimmed, the
+ * optional `./` marker dropped (the same prefix the compose convention uses),
+ * no trailing slash. The editor, the dirty key, the content read and the save
+ * all key off this, so a path typed as `./conf/app.toml` is the same file as
+ * `conf/app.toml` everywhere instead of only after a round trip. The server's
+ * `validateVolumes` normalises identically.
+ */
+export function normalizeFilesPath(path: string | null | undefined): string {
+  return (path ?? "").trim().replace(/^\.\/+/, "").replace(/\/+$/, "");
+}
+
+/**
+ * The file name a mount path ends in — `/etc/nginx/nginx.conf` → `nginx.conf`.
+ * The editor offers this as the path in Files while the user has not written one
+ * of their own, so the commonest File entry (one file, same name both sides) is
+ * one field instead of two. Empty when the path has no last segment yet.
+ */
+export function filesPathFromMountPath(mountPath: string): string {
+  const segments = (mountPath ?? "").trim().replace(/\/+$/, "").split("/");
+  const last = segments[segments.length - 1] ?? "";
+  return last === "." || last === ".." ? "" : last;
+}
+
 /** A docker-volume-safe name derived from a mount path when the name is blank
  *  (e.g. "/var/data" → "var-data", "/" → "data"). The server derives the SAME
  *  name (it re-exports this), so the editor's preview is not a guess. */
@@ -252,7 +276,7 @@ export function volumeProblem(v: VolumeMount): VolumeProblem | null {
   }
 
   if (kind === "app") {
-    const p = (v.projectPath ?? "").trim().replace(/^\.\/+/, "").replace(/\/+$/, "");
+    const p = normalizeFilesPath(v.projectPath);
     if (!p)
       return { field: "source", message: "Add the file's path in this app's Files" };
     if (p.startsWith("/"))
@@ -337,9 +361,9 @@ export function volumeReadout(v: VolumeMount, slug: string): string {
     return `Shares the server's ${from} at ${at} inside the app.${ro}`;
   }
   if (kind === "app") {
-    const from = (v.projectPath ?? "").trim().replace(/^\.\/+/, "");
-    if (!from || !at) return "Takes a file or folder from this app's Files.";
-    return `Puts ${from} from this app's Files at ${at} inside the app.${ro}`;
+    const from = normalizeFilesPath(v.projectPath);
+    if (!from || !at) return "Keeps a file you write here in this app's Files.";
+    return `Keeps ${from} in this app's Files and puts it at ${at} inside the app.${ro}`;
   }
   if (!at) return "deplo creates the disk once you set a path inside the app.";
   const name = ((v.name ?? "").trim() || deriveVolumeName(at)).toLowerCase();

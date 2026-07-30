@@ -37,9 +37,11 @@ import {
   VOLUME_KINDS,
   VOLUME_KIND_ORDER,
   deriveVolumeName,
+  filesPathFromMountPath,
   kindOf,
   metaOf,
   namedVolumeTarget,
+  normalizeFilesPath,
   switchKind,
   volumeProblem,
   volumeReadout,
@@ -67,7 +69,12 @@ import type { VolumeMount } from "@/lib/types";
  * type by the SAME validator the save runs (`lib/apps/volume-model.ts`, whose
  * constants the server's `validateVolumes` imports).
  *
- * Fetch-free — the parent form owns the save.
+ * A **File** entry also carries the file's CONTENTS (`fileContent`, rendered by
+ * `storage-file-editor.tsx`): you write the config file here instead of having
+ * to go and create it in the Files tab first, which is what used to leave the
+ * commonest File entry pointing at a path with nothing behind it.
+ *
+ * Fetch-free — the parent form owns the reads and the save.
  */
 
 const KIND_ICON: Record<VolumeKind, LucideIcon> = {
@@ -92,6 +99,7 @@ export function VolumeFields({
   canMountHostVolumes = true,
   containerWorkdir,
   revealProblems = false,
+  fileContent,
   onChange,
 }: {
   slug: string;
@@ -121,6 +129,13 @@ export function VolumeFields({
    * fix.
    */
   revealProblems?: boolean;
+  /**
+   * The content editor for a **File** entry, rendered inside its expanded body.
+   * The parent supplies it because the content is the real file on the app's
+   * host — read and written over the agent, which this fetch-free editor does
+   * not do. Absent ⇒ the entry asks for its two paths and nothing else.
+   */
+  fileContent?: (mount: VolumeMount) => React.ReactNode;
   onChange: (next: VolumeMount[]) => void;
 }) {
   // One service (or none) needs no choice — the entry can only go one place, so
@@ -190,6 +205,7 @@ export function VolumeFields({
               defaultComposeService={defaultComposeService}
               canMountHostVolumes={canMountHostVolumes}
               containerWorkdir={containerWorkdir}
+              fileContent={fileContent}
               onChange={(patch) => update(v.id, patch)}
               onKindChange={(kind) => changeKind(v.id, kind)}
               onRemove={() => remove(v.id)}
@@ -238,6 +254,7 @@ function MountRow({
   defaultComposeService,
   canMountHostVolumes,
   containerWorkdir,
+  fileContent,
   onChange,
   onKindChange,
   onRemove,
@@ -252,6 +269,7 @@ function MountRow({
   defaultComposeService?: string | null;
   canMountHostVolumes: boolean;
   containerWorkdir?: string | null;
+  fileContent?: (mount: VolumeMount) => React.ReactNode;
   onChange: (patch: Partial<VolumeMount>) => void;
   onKindChange: (kind: VolumeKind) => void;
   onRemove: () => void;
@@ -262,13 +280,27 @@ function MountRow({
   const blockedBind = kind === "host" && !canMountHostVolumes;
   const readOnlyId = React.useId();
 
+  // A File's path in Files follows the file name of the path inside the app
+  // (/etc/nginx/nginx.conf ⇒ nginx.conf) until the user writes one of their own:
+  // the same file, named once instead of twice. Only for a row that ARRIVED
+  // empty — a saved entry's stored path is never rewritten by an edit to the
+  // other field. "Did it start empty" is captured once (rows are keyed by id, so
+  // this is per entry) rather than read from the current value, which would stop
+  // deriving after the first character it wrote.
+  const [sourceStartedEmpty] = React.useState(
+    () => normalizeFilesPath(mount.projectPath) === "",
+  );
+  const [sourceEdited, setSourceEdited] = React.useState(false);
+  const derivesSource = kind === "app" && sourceStartedEmpty && !sourceEdited;
+
   const sourceValue =
     kind === "host"
       ? (mount.hostPath ?? "")
       : kind === "app"
         ? (mount.projectPath ?? "")
         : mount.name;
-  const setSource = (value: string) =>
+  const setSource = (value: string) => {
+    setSourceEdited(true);
     onChange(
       kind === "host"
         ? { hostPath: value }
@@ -276,6 +308,7 @@ function MountRow({
           ? { projectPath: value }
           : { name: value },
     );
+  };
 
   const target = namedVolumeTarget(mount, slug);
 
@@ -379,15 +412,40 @@ function MountRow({
             <Field
               label="Path inside the app"
               info={
-                containerWorkdir
-                  ? `Where the app finds this storage. deplo runs your code in ${containerWorkdir}, so a folder your code writes to as ./uploads is ${containerWorkdir}/uploads. Anything the app writes there is what gets kept.`
-                  : "Where the app finds this storage, as an absolute path such as /data. This image chose its own working directory, so use the path its documentation gives for the data you want to keep."
+                kind === "app"
+                  ? `Where the file appears inside the app, file name included${
+                      containerWorkdir
+                        ? ` — deplo runs your code in ${containerWorkdir}, so a file your code opens as ./config.toml is ${containerWorkdir}/config.toml`
+                        : ", such as /etc/nginx/nginx.conf"
+                    }. Use the path the app's documentation asks for.`
+                  : containerWorkdir
+                    ? `Where the app finds this storage. deplo runs your code in ${containerWorkdir}, so a folder your code writes to as ./uploads is ${containerWorkdir}/uploads. Anything the app writes there is what gets kept.`
+                    : "Where the app finds this storage, as an absolute path such as /data. This image chose its own working directory, so use the path its documentation gives for the data you want to keep."
               }
               value={mount.mountPath}
-              onChange={(value) => onChange({ mountPath: value })}
-              placeholder={containerWorkdir ? `${containerWorkdir}/uploads` : "/data"}
+              onChange={(value) =>
+                onChange(
+                  derivesSource
+                    ? {
+                        mountPath: value,
+                        projectPath: filesPathFromMountPath(value),
+                      }
+                    : { mountPath: value },
+                )
+              }
+              placeholder={
+                kind === "app"
+                  ? containerWorkdir
+                    ? `${containerWorkdir}/config.toml`
+                    : "/etc/nginx/nginx.conf"
+                  : containerWorkdir
+                    ? `${containerWorkdir}/uploads`
+                    : "/data"
+              }
               invalid={problem?.field === "mountPath"}
             />
+
+            {kind === "app" && fileContent?.(mount)}
 
             {pickService && (
               <div className="space-y-1.5 sm:col-span-2">

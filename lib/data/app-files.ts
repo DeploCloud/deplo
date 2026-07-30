@@ -2,12 +2,17 @@ import "server-only";
 
 import { realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
+import { status as GrpcStatus } from "@grpc/grpc-js";
 import { requireCapability, hasCapability, getActiveTeamId } from "../membership";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
 import { loadTeamApp } from "./app-graph-load";
 import { requireFolderCapabilityForApp } from "./folder-access";
-import { connectAgent, type AgentConnection } from "../infra/agent-client";
+import {
+  connectAgent,
+  AgentUnreachableError,
+  type AgentConnection,
+} from "../infra/agent-client";
 
 /**
  * Browse and edit a single-container project's files directory — the on-disk
@@ -217,6 +222,95 @@ export async function writeAppFile(
     return entry;
   } finally {
     conn.close();
+  }
+}
+
+/** What the Storage editor found at a File entry's path in this app's Files. */
+export type StorageFileState = "text" | "new" | "folder" | "binary" | "too-large";
+
+/**
+ * What a FAILED agent read of a File entry's path means, or null when the
+ * failure is real and must be rethrown.
+ *
+ * The agent answers NOT_FOUND when nothing is there (the file, a parent dir, or
+ * the app's files dir itself — none of which is a failure for an editor whose
+ * whole job is to create that file) and INVALID_ARGUMENT "not a file" for a
+ * directory. Everything else, an unreachable server above all, stays an error:
+ * reporting "new" for a host we could not reach would offer to overwrite a file
+ * nobody read. Pure, so those three cases are pinned by tests — there is no
+ * mocking seam for `connectAgent`.
+ */
+export function storageFileStateForError(e: unknown): StorageFileState | null {
+  const code = (e as { code?: number } | null)?.code;
+  const message = e instanceof Error ? e.message : String(e);
+  if (code === GrpcStatus.NOT_FOUND) return "new";
+  if (code === GrpcStatus.INVALID_ARGUMENT && /not a file/i.test(message)) {
+    return "folder";
+  }
+  return null;
+}
+
+/**
+ * The user-facing failure for a read deplo could NOT classify — the editor puts
+ * this next to a "Try again" button, so it has to say what happened.
+ *
+ * It never forwards the raw transport message: a gRPC transport error embeds the
+ * dial address and the pinned cert fingerprint, which is exactly what the GraphQL
+ * layer masks to "Something went wrong" (lib/graphql/yoga.ts). Curated copy on a
+ * plain Error passes that mask; the original rides along as `cause` for the
+ * server-side log and never reaches the browser.
+ */
+export function storageFileReadError(e: unknown): Error {
+  return new Error(
+    e instanceof AgentUnreachableError
+      ? "The server that runs this app didn't answer, so deplo couldn't read this file. It may be offline."
+      : "deplo couldn't read this file from the server that runs this app.",
+    { cause: e },
+  );
+}
+
+export interface StorageFile {
+  /** The normalised path that was read. */
+  path: string;
+  state: StorageFileState;
+  /** The body. Always "" for anything but "text". */
+  text: string;
+}
+
+/**
+ * Read the file a **File** storage entry points at (Settings → Storage), where a
+ * path that isn't there yet is a normal answer — `state: "new"` — rather than an
+ * error. That is the whole difference from {@link readAppFile}: the Storage
+ * editor writes the file's content, so the commonest case by far is a file deplo
+ * has not created yet, and a "not found" thrown at the UI would read as a
+ * failure instead of an empty page to type into.
+ *
+ * `"folder"` (the path is a directory) and `"binary"` / `"too-large"` are the
+ * other three honest answers — each one the editor states instead of pretending
+ * the file is empty and offering to overwrite it.
+ */
+export async function readAppStorageFile(
+  appId: string,
+  path: string,
+): Promise<StorageFile> {
+  const { slug, serverId } = await requireAppInTeam(appId);
+  const rel = normalizeRel(path);
+  if (!rel) throw new Error("A path in this app's Files is required");
+  // The dial is INSIDE the try: a server with no provisioned agent (or with its
+  // trust revoked) fails right here, and that has to reach the editor as the
+  // same plain "the server didn't answer" as a dead connection does.
+  let conn: AgentConnection | undefined;
+  try {
+    conn = await agentFor(serverId);
+    const r = await conn.readFile(slug, rel);
+    if (r.reason) return { path: rel, state: r.reason, text: "" };
+    return { path: rel, state: "text", text: r.text ?? "" };
+  } catch (e) {
+    const state = storageFileStateForError(e);
+    if (!state) throw storageFileReadError(e);
+    return { path: rel, state, text: "" };
+  } finally {
+    conn?.close();
   }
 }
 
