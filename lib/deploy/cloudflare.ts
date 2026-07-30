@@ -233,3 +233,79 @@ export function certProviderForDns<T extends CertProvider | undefined>(
 ): T | "cloudflare" {
   return status === "cloudflare" && current === "none" ? "cloudflare" : current;
 }
+
+/**
+ * Second-level public suffixes — the ccTLDs where the registrable domain is the
+ * LAST THREE labels (`example.co.uk`), not the last two. Deliberately a short,
+ * common-case list rather than a vendored Public Suffix List: the only consumer
+ * is {@link cloudflareDnsRecordsUrl}, whose worst case when the guess is wrong
+ * is that Cloudflare opens its own zone picker instead of the right zone — a
+ * click, not a breakage. Not worth a megabyte of suffix data shipped to the
+ * browser on every domains page.
+ */
+const MULTI_LABEL_SUFFIXES = new Set([
+  // uk
+  "co.uk", "org.uk", "me.uk", "net.uk", "ltd.uk", "plc.uk", "sch.uk", "ac.uk", "gov.uk",
+  // au / nz
+  "com.au", "net.au", "org.au", "edu.au", "gov.au", "id.au",
+  "co.nz", "net.nz", "org.nz", "ac.nz", "govt.nz",
+  // asia
+  "co.jp", "ne.jp", "or.jp", "ac.jp", "go.jp",
+  "co.kr", "ne.kr", "or.kr",
+  "com.cn", "net.cn", "org.cn", "com.hk", "org.hk", "com.tw",
+  "co.in", "net.in", "org.in", "co.id", "com.my", "com.sg", "com.ph", "com.vn", "com.pk",
+  // americas
+  "com.br", "net.br", "org.br", "com.ar", "com.mx", "org.mx", "com.co", "com.pe",
+  // emea
+  "co.za", "org.za", "net.za", "com.tr", "net.tr", "org.tr", "com.ua",
+  "com.es", "org.es", "nom.es", "com.pl", "net.pl", "org.pl",
+  "co.il", "org.il", "net.il", "ac.il", "com.sa", "com.eg", "com.ng",
+]);
+
+/**
+ * The Cloudflare ZONE a host lives in — its registrable domain
+ * (`api.staging.example.co.uk` → `example.co.uk`), or null when the host is not
+ * a plausible hostname or is too short to have a zone (a bare `localhost`).
+ * A leading `*.` (wildcard host) and a trailing root dot are stripped first.
+ */
+export function cloudflareZoneName(host: string): string | null {
+  const clean = host
+    .trim()
+    .toLowerCase()
+    .replace(/^\*\./, "")
+    .replace(/\.$/, "");
+  // Anything that isn't a plain LDH hostname (no scheme, path, port, spaces,
+  // unicode) gets no guess — the caller falls back to Cloudflare's picker.
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(clean)) {
+    return null;
+  }
+  const labels = clean.split(".");
+  if (labels.length < 2) return null;
+  const lastTwo = labels.slice(-2).join(".");
+  if (labels.length > 2 && MULTI_LABEL_SUFFIXES.has(lastTwo)) {
+    return labels.slice(-3).join(".");
+  }
+  return lastTwo;
+}
+
+/**
+ * A deep link straight to the **DNS records** screen of the Cloudflare zone that
+ * owns `host` — where the user edits the proxied record's origin IP. This is the
+ * one part of "point Cloudflare at this server" deplo can do for them without
+ * holding a Cloudflare API token: the origin lives in the zone's private
+ * configuration (see the module header), so deplo cannot read it, let alone
+ * write it — but it CAN land the user on the exact screen with the exact zone
+ * already selected, instead of "go find it in your Cloudflare account".
+ *
+ * Uses Cloudflare's documented magic-link form — `?to=` with `:account` /
+ * `:zone` placeholders the dashboard resolves after login
+ * (https://blog.cloudflare.com/deeplinks-and-scrollanchor). `:zone` takes a zone
+ * NAME, so the guessed zone drops straight in; when the zone can't be guessed —
+ * or the guess isn't a zone on the account — the placeholder stays and
+ * Cloudflare shows its zone picker, which is the same page one click away.
+ * Nothing about the record is prefillable: Cloudflare exposes no such parameter.
+ */
+export function cloudflareDnsRecordsUrl(host: string): string {
+  const zone = cloudflareZoneName(host) ?? ":zone";
+  return `https://dash.cloudflare.com/?to=${encodeURIComponent(`/:account/${zone}/dns/records`)}`;
+}
