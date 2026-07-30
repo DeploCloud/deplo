@@ -51,7 +51,6 @@ import {
   type DomainConfigState,
 } from "@/components/domains/domain-config-fields";
 import { gqlAction } from "@/lib/graphql-client";
-import { cloudflareDnsRecordsUrl } from "@/lib/deploy/cloudflare";
 import type { Domain } from "@/lib/types";
 
 type Row = Domain & { serviceName: string; appSlug: string };
@@ -71,54 +70,6 @@ function composeServices(compose?: string | null): string[] {
   } catch {
     return [];
   }
-}
-
-/**
- * The one actionable thing on a proxied domain's notice: a link that lands the
- * user on the DNS records screen of THIS domain's Cloudflare zone, already
- * selected, with the origin IP on their clipboard so the only thing left is a
- * paste. deplo cannot read or write the origin itself — Cloudflare keeps it in
- * the zone's private configuration (`lib/deploy/cloudflare.ts`) — so this
- * automates every step it can and hands over the one it can't, instead of
- * telling a non-expert to go find the right screen in their Cloudflare account.
- *
- * The copy is best-effort: a browser that denies clipboard access still gets the
- * right tab and a toast spelling out both values to enter.
- */
-function CloudflareAutoConfigure({
-  host,
-  serverIp,
-}: {
-  host: string;
-  /** The origin IP to put on the record, copied on click. Absent ⇒ the link
-   * still opens the zone, the toast just can't name an address. */
-  serverIp?: string;
-}) {
-  return (
-    <a
-      href={cloudflareDnsRecordsUrl(host)}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={() => {
-        if (serverIp) {
-          void navigator.clipboard?.writeText(serverIp).catch(() => {});
-          toast.info(`${serverIp} copied — paste it as this domain’s A record`, {
-            description:
-              "In the Cloudflare tab: edit the A record for this domain, paste the IP as its IPv4 address, then set SSL/TLS to Full.",
-          });
-        } else {
-          toast.info("Point this domain’s A record at its server", {
-            description:
-              "In the Cloudflare tab: edit the A record for this domain to the IP of the server this app runs on, then set SSL/TLS to Full.",
-          });
-        }
-      }}
-      className="inline-flex cursor-pointer items-center gap-1 font-medium text-foreground underline underline-offset-2 hover:text-primary"
-    >
-      Automatically configure
-      <ExternalLink className="size-3" />
-    </a>
-  );
 }
 
 export function DomainRow({
@@ -394,10 +345,6 @@ export function DomainRow({
           // the SSL/TLS mode. Same shape as the pending/misconfigured hint
           // above, and deliberately one quiet line — the likely case is that
           // everything is fine, so this is a "confirm this", not an alarm.
-          //
-          // It ends in the ONE thing deplo can still do for them:
-          // {@link CloudflareAutoConfigure}, a link onto that exact zone's DNS
-          // screen with the origin IP already copied.
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
             <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
             {serverIp ? (
@@ -415,22 +362,15 @@ export function DomainRow({
                   with SSL/TLS set to{" "}
                   <span className="font-medium text-foreground">Full</span>.
                 </span>
-                <CloudflareAutoConfigure
-                  host={domain.name}
-                  serverIp={serverIp}
-                />
               </>
             ) : (
-              <>
-                <span>
-                  Proxied through Cloudflare, which hides where this domain
-                  really points — deplo can’t confirm it reaches this app. In
-                  Cloudflare, point this record’s origin at the IP of the server
-                  this app runs on, with SSL/TLS set to{" "}
-                  <span className="font-medium text-foreground">Full</span>.
-                </span>
-                <CloudflareAutoConfigure host={domain.name} />
-              </>
+              <span>
+                Proxied through Cloudflare, which hides where this domain really
+                points — deplo can’t confirm it reaches this app. In Cloudflare,
+                point this record’s origin at the IP of the server this app runs
+                on, with SSL/TLS set to{" "}
+                <span className="font-medium text-foreground">Full</span>.
+              </span>
             )}
           </div>
         )}

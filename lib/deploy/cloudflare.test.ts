@@ -5,8 +5,6 @@ import {
   isCloudflareIp,
   classifyDomainDns,
   certProviderForDns,
-  cloudflareZoneName,
-  cloudflareDnsRecordsUrl,
   CLOUDFLARE_IPV4_RANGES,
 } from "./cloudflare";
 
@@ -148,69 +146,4 @@ test("CLOUDFLARE_IPV4_RANGES mirrors the published ips-v4 list (15 CIDRs)", () =
   for (const cidr of CLOUDFLARE_IPV4_RANGES) {
     assert.match(cidr, /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/, `${cidr} is a CIDR`);
   }
-});
-
-// --- cloudflareZoneName: the registrable domain a host belongs to ---
-
-test("cloudflareZoneName: an apex host is its own zone", () => {
-  assert.equal(cloudflareZoneName("example.com"), "example.com");
-  assert.equal(cloudflareZoneName("idra.app"), "idra.app");
-});
-
-test("cloudflareZoneName: a subdomain resolves to the registrable domain", () => {
-  assert.equal(cloudflareZoneName("app.example.com"), "example.com");
-  assert.equal(cloudflareZoneName("api.staging.example.com"), "example.com");
-  // Long TLDs are ordinary two-label zones, not multi-label suffixes.
-  assert.equal(cloudflareZoneName("shop.my-store.online"), "my-store.online");
-});
-
-test("cloudflareZoneName: second-level public suffixes keep three labels", () => {
-  assert.equal(cloudflareZoneName("example.co.uk"), "example.co.uk");
-  assert.equal(cloudflareZoneName("app.example.co.uk"), "example.co.uk");
-  assert.equal(cloudflareZoneName("api.staging.example.com.br"), "example.com.br");
-  assert.equal(cloudflareZoneName("www.example.com.au"), "example.com.au");
-  // ...but the suffix itself, with nothing registered in front, stays as-is
-  // rather than being cut to a bare TLD.
-  assert.equal(cloudflareZoneName("co.uk"), "co.uk");
-});
-
-test("cloudflareZoneName: normalizes case, wildcards and the root dot", () => {
-  assert.equal(cloudflareZoneName("  App.EXAMPLE.com  "), "example.com");
-  assert.equal(cloudflareZoneName("*.example.com"), "example.com");
-  assert.equal(cloudflareZoneName("app.example.com."), "example.com");
-});
-
-test("cloudflareZoneName: null for anything that isn't a plain hostname", () => {
-  for (const bad of [
-    "",
-    "localhost",
-    "https://example.com",
-    "example.com/dns",
-    "example.com:443",
-    "exam ple.com",
-    "-bad.example.com",
-    "..",
-  ]) {
-    assert.equal(cloudflareZoneName(bad), null, `${JSON.stringify(bad)} → null`);
-  }
-});
-
-// --- cloudflareDnsRecordsUrl: the dashboard deep link ---
-
-test("cloudflareDnsRecordsUrl: deep-links to the host's own zone", () => {
-  assert.equal(
-    cloudflareDnsRecordsUrl("app.example.com"),
-    "https://dash.cloudflare.com/?to=%2F%3Aaccount%2Fexample.com%2Fdns%2Frecords",
-  );
-  // Decoded, that is the documented magic-link path — `:account` left for the
-  // dashboard to resolve after login, the zone already filled in.
-  const to = new URL(cloudflareDnsRecordsUrl("app.example.co.uk")).searchParams.get(
-    "to",
-  );
-  assert.equal(to, "/:account/example.co.uk/dns/records");
-});
-
-test("cloudflareDnsRecordsUrl: an unguessable zone falls back to the picker", () => {
-  const to = new URL(cloudflareDnsRecordsUrl("not a host")).searchParams.get("to");
-  assert.equal(to, "/:account/:zone/dns/records");
 });
