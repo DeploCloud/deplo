@@ -20,14 +20,15 @@ import { useConsoleAck, acknowledgeConsole } from "@/components/apps/console-ack
  * anyone opens it we hold the terminal back behind a warning modal: leaving the
  * page is the safe default; continuing mounts the console AND records the ack
  * (see {@link acknowledgeConsole}) so the modal never returns — and the console
- * sidebar chip unlocks. The child (the live console) isn't mounted — no agent
- * stream opens — until the user continues.
+ * sidebar chip unlocks, for apps and databases alike. The child (the live
+ * console) isn't mounted — no agent stream opens — until the user continues.
  */
 export function ConsoleWarningGate({
-  slug,
+  backHref,
   children,
 }: {
-  slug: string;
+  /** Where "Leave page" goes — the owning app's or database's overview. */
+  backHref: string;
   children: React.ReactNode;
 }) {
   // null = undecided (server render / hydration). boolean once the client has
@@ -60,7 +61,7 @@ export function ConsoleWarningGate({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={() => router.push(`/apps/${slug}`)}>
+          <Button variant="outline" onClick={() => router.push(backHref)}>
             Leave page
           </Button>
           <Button onClick={acknowledgeConsole}>

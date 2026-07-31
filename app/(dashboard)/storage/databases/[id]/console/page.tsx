@@ -37,9 +37,12 @@ export default async function DatabaseConsolePage(
         title="Console"
         description="Run commands in the database's container (docker exec)."
       />
-      {/* One-time "know what you're doing" warning, keyed by the container so a
-          per-app ack doesn't unlock a database and vice versa. */}
-      <ConsoleWarningGate slug={`db-${db.id}`}>
+      {/* The same one-time "know what you're doing" warning apps show — one
+          acknowledgement covers every console, and taking it here is what
+          unlocks this database's Console chip in the sidebar. "Leave page" must
+          land on the DATABASE overview (it used to push /apps/db-<id>, a route
+          that does not exist). */}
+      <ConsoleWarningGate backHref={`/storage/databases/${db.id}`}>
         <DatabaseConsole
           id={db.id}
           status={db.status}

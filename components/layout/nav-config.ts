@@ -480,12 +480,22 @@ export function appSettingsNav(slug: string): NavSection[] {
 /**
  * A database's navigation. When the viewer is under `/storage/databases/<id>`
  * the sidebar swaps {@link NAV} for this set — the DB twin of {@link appNav}.
- * Deliberately flag-less (no nav store / sync component): Logs works while
- * stopped, and the Console/Backups pages guard themselves, so nothing here
- * depends on live per-database state. Console + Backups are manage_infra-only.
+ * Deliberately almost flag-less (no nav store / sync component): Logs works
+ * while stopped, and the Backups page guards itself, so nothing here depends on
+ * live per-database state. Console + Backups are manage_infra-only.
+ *
+ * The one flag is the console acknowledgement, for the same reason apps have it:
+ * the console is an ADVANCED surface reached from Advanced settings, and its
+ * chip stays hidden until the user has confirmed the one-time warning.
  */
-export function databaseNav(id: string): NavSection[] {
+export function databaseNav(
+  id: string,
+  f: { pathname: string; consoleAcknowledged: boolean },
+): NavSection[] {
   const base = `/storage/databases/${id}`;
+  const onConsole =
+    f.pathname === `${base}/console` ||
+    f.pathname.startsWith(`${base}/console/`);
   return [
     {
       items: [
@@ -521,13 +531,20 @@ export function databaseNav(id: string): NavSection[] {
           icon: LineChart,
           tooltip: "Live resource usage",
         },
-        {
-          label: "Console",
-          href: `${base}/console`,
-          icon: SquareTerminal,
-          tooltip: "Container console",
-          requires: "manage_infra",
-        },
+        // Console is an ADVANCED surface — a live shell into the container,
+        // reached from Advanced settings. Its chip stays hidden until the user
+        // confirms the one-time warning (and stays put while the page is open).
+        ...(f.consoleAcknowledged || onConsole
+          ? [
+              {
+                label: "Console",
+                href: `${base}/console`,
+                icon: SquareTerminal,
+                tooltip: "Container console",
+                requires: "manage_infra",
+              } as NavItem,
+            ]
+          : []),
         {
           label: "Backups",
           href: `${base}/backups`,

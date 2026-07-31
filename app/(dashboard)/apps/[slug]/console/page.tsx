@@ -28,7 +28,7 @@ export default async function AppConsolePage(
 
       {/* First visit shows a "know what you're doing" warning; the console
           (and its live agent stream) only mounts once the user continues. */}
-      <ConsoleWarningGate slug={project.slug}>
+      <ConsoleWarningGate backHref={`/apps/${project.slug}`}>
         {/* Follows the app's live running state: the terminal appears/
             disappears as the container starts/stops, no reload. */}
         <LiveConsole

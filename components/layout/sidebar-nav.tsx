@@ -107,7 +107,7 @@ export function SidebarNav({
   if (dbId && inDbSettings) {
     sections = databaseSettingsNav(dbId);
   } else if (dbId) {
-    sections = databaseNav(dbId);
+    sections = databaseNav(dbId, { pathname, consoleAcknowledged });
   } else if (appSlug && inAppSettings) {
     sections = appSettingsNav(appSlug);
   } else if (appSlug) {
