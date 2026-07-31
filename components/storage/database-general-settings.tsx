@@ -1,325 +1,187 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRightLeft, KeyRound, Eye } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { useRouter } from "next/navigation";
+import { Save, Image as ImageIcon } from "lucide-react";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
+import { DatabaseLogo } from "@/components/storage/database-logo";
+import { DB_NAMES } from "@/components/storage/db-engines";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { CopyButton } from "@/components/shared/copy-button";
+  LOGO_ACCEPT_ATTR,
+  LOGO_IMAGE_TYPES,
+  MAX_LOGO_BYTES,
+} from "@/lib/apps/logo-shared";
+import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
+import { formatBytes } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
- * A database's General settings — the ported EditDatabaseDialog body, split
- * into SettingsSection cards: public exposure (+ host port), server location /
- * move, and password rotation. Engine, version, username and db name stay
- * create-only (shown read-only on the Overview).
+ * General settings for a database: its name and logo — its identity, so they
+ * share one card, exactly like an App's General. The logo saves as soon as a
+ * file is picked; the name saves with its button (and arms the leave guard while
+ * dirty).
+ *
+ * Renaming here is a pure label change. The container's identity — the compose
+ * project, its data volume, its DNS name and therefore the connection string —
+ * is fixed at creation and untouched by a rename, so nothing restarts and no
+ * client's DSN breaks. The copy says so, because "will this drop my database?"
+ * is the first thing a non-expert wonders before typing in this box.
  */
-export function DatabaseGeneralSettings({
-  db,
-  servers,
-  canExposePorts,
-}: {
-  db: DatabaseDTO;
-  servers: { id: string; name: string }[];
-  canExposePorts: boolean;
-}) {
-  return (
-    <div className="space-y-6">
-      <ExposureCard db={db} servers={servers} canExposePorts={canExposePorts} />
-      <RotatePasswordCard db={db} />
-    </div>
-  );
-}
-
-/* Exposure + server move — one reroute either way (the data layer's
-   updateDatabase applies both). */
-function ExposureCard({
-  db,
-  servers,
-  canExposePorts,
-}: {
-  db: DatabaseDTO;
-  servers: { id: string; name: string }[];
-  canExposePorts: boolean;
-}) {
+export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
   const router = useRouter();
+  const [name, setName] = React.useState(db.name);
+  // Null ⇒ no uploaded logo, so the UI shows the ENGINE's real brand mark.
+  const [logo, setLogo] = React.useState<string | null>(db.logo);
+  const logoInputRef = React.useRef<HTMLInputElement>(null);
   const [pending, startTransition] = React.useTransition();
-  const [exposed, setExposed] = React.useState(db.exposedPublicly);
-  const [port, setPort] = React.useState(db.exposedPort ? String(db.exposedPort) : "");
-  const [serverId, setServerId] = React.useState(db.serverId);
-  const [generatingPort, setGeneratingPort] = React.useState(false);
 
-  const parsedPort = Number.parseInt(port, 10);
-  const portValid =
-    Number.isInteger(parsedPort) && parsedPort >= 1024 && parsedPort <= 65535;
-  const exposeReady = !exposed || portValid;
-  const movingServer = serverId !== db.serverId;
-  const canPickServer = servers.length > 1;
-  const currentServerName =
-    servers.find((s) => s.id === db.serverId)?.name ?? "its server";
-  const targetServerName =
-    servers.find((s) => s.id === serverId)?.name ?? "the selected server";
+  const [savedName, setSavedName] = React.useState(db.name);
+  const nameDirty = name.trim() !== savedName;
 
-  const dirty =
-    movingServer ||
-    exposed !== db.exposedPublicly ||
-    (exposed && parsedPort !== db.exposedPort);
-  const saveReady = exposeReady && dirty;
-
-  function generatePort() {
-    setGeneratingPort(true);
-    startTransition(async () => {
-      const res = await gqlAction<{ generateAvailableDbPort: number }, number>(
-        `mutation($serverId: ID) { generateAvailableDbPort(serverId: $serverId) }`,
-        { serverId },
-        (d) => d.generateAvailableDbPort,
-      );
-      setGeneratingPort(false);
-      if (res.ok) setPort(String(res.data));
-      else toast.error(res.error);
-    });
-  }
-
-  function save() {
+  function saveName() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($id: String!, $input: UpdateDatabaseInput!) {
-          updateDatabase(id: $id, input: $input) { id }
-        }`,
-        {
-          id: db.id,
-          input: {
-            exposedPublicly: exposed,
-            exposedPort: exposed ? parsedPort : null,
-            serverId: movingServer ? serverId : null,
-          },
-        },
+        `mutation($id: String!, $name: String!) { renameDatabase(id: $id, name: $name) { id name } }`,
+        { id: db.id, name: name.trim() },
       );
       if (res.ok) {
-        toast.success(movingServer ? "Database moved" : "Database updated");
+        setSavedName(name.trim());
+        setName(name.trim());
         router.refresh();
+        toast.success("Database renamed");
       } else toast.error(res.error);
     });
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Network & location</CardTitle>
-        <CardDescription>
-          Publish the database on a host port, or move it to another server. Any
-          save re-applies the database&apos;s current settings.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {canPickServer && (
-          <div className="space-y-3 rounded-lg border border-border p-3">
-            <div className="space-y-2">
-              <FieldLabel info="The host this database runs on.">Server</FieldLabel>
-              <Select value={serverId} onValueChange={setServerId}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {servers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {movingServer && (
-              <div className="rounded-md border border-border bg-secondary/40 p-3">
-                <div className="flex items-start gap-2">
-                  <ArrowRightLeft className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  <div className="space-y-1 text-xs">
-                    <p className="font-medium">
-                      Move {db.name} to {targetServerName}
-                    </p>
-                    <p className="text-muted-foreground">
-                      The database and its data are copied from {currentServerName}{" "}
-                      to {targetServerName}. It will be briefly offline while the
-                      data volume copies. If the copy fails the move is rolled back
-                      and the database stays on {currentServerName}.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="space-y-3 rounded-lg border border-border p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Expose publicly</p>
-              <p className="text-xs text-muted-foreground">
-                Publish the port to the internet. Keep off unless required.
-              </p>
-            </div>
-            {canExposePorts ? (
-              <Switch checked={exposed} onCheckedChange={setExposed} />
-            ) : (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span tabIndex={0}>
-                    <Switch checked={exposed} disabled />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  You don&apos;t have permission to publish ports
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-          {exposed && (
-            <div className="space-y-1.5">
-              <FieldLabel
-                htmlFor="db-port"
-                info={
-                  <>
-                    Port clients connect to. Use a free unprivileged port
-                    (1024–65535), or click Generate.
-                    {movingServer && " On a move it must be free on the new server too."}
-                  </>
-                }
-              >
-                Host port
-              </FieldLabel>
-              <div className="flex gap-2">
-                <Input
-                  id="db-port"
-                  inputMode="numeric"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value.replace(/[^0-9]/g, ""))}
-                  placeholder="e.g. 25432"
-                  aria-invalid={port !== "" && !portValid}
-                  disabled={!canExposePorts}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={generatePort}
-                  disabled={generatingPort || pending || !canExposePorts}
-                >
-                  {generatingPort ? "Finding…" : "Generate"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      </CardContent>
-      <CardFooter className="justify-between">
-        <DirtyHint dirty={dirty} />
-        <Button onClick={save} disabled={pending || !saveReady}>
-          {pending
-            ? movingServer
-              ? "Moving…"
-              : "Saving…"
-            : movingServer
-              ? "Move & save"
-              : "Save changes"}
-        </Button>
-      </CardFooter>
-    </Card>
-  );
-}
-
-/* Password rotation — reveals the NEW connection string once. */
-function RotatePasswordCard({ db }: { db: DatabaseDTO }) {
-  const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  const [custom, setCustom] = React.useState("");
-  const [newConn, setNewConn] = React.useState<string | null>(null);
-  const running = db.status === "running";
-
-  function rotate() {
+  function saveLogo(next: string | null) {
+    setLogo(next);
     startTransition(async () => {
-      const res = await gqlAction<{ rotateDatabasePassword: string }, string>(
-        `mutation($id: String!, $password: String) { rotateDatabasePassword(id: $id, password: $password) }`,
-        { id: db.id, password: custom.trim() || null },
-        (d) => d.rotateDatabasePassword,
+      const res = await gqlAction(
+        `mutation($id: String!, $logo: String) { updateDatabaseLogo(id: $id, logo: $logo) { id } }`,
+        { id: db.id, logo: next },
       );
-      if (res.ok && res.data) {
-        setNewConn(res.data);
-        setCustom("");
-        toast.success("Password rotated");
+      if (res.ok) {
         router.refresh();
-      } else if (!res.ok) toast.error(res.error);
+        toast.success(next ? "Logo updated" : "Logo cleared");
+      } else toast.error(res.error);
     });
   }
 
+  // Read a picked image into a base64 data-URI and persist it. Validated (type +
+  // size) before reading, so an oversized blob is never inlined into the row.
+  function pickLogo(file: File) {
+    if (!LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])) {
+      toast.error("Unsupported image — use PNG, JPEG, WebP, GIF or SVG");
+      return;
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      toast.error(`Image too large (max ${formatBytes(MAX_LOGO_BYTES)})`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUri = typeof reader.result === "string" ? reader.result : "";
+      if (!dataUri) {
+        toast.error("Could not read image");
+        return;
+      }
+      saveLogo(dataUri);
+    };
+    reader.onerror = () => toast.error("Could not read image");
+    reader.readAsDataURL(file);
+  }
+
+  const engine = DB_NAMES[db.type] ?? db.type;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <KeyRound className="size-4 text-muted-foreground" />
-          Rotate password
-        </CardTitle>
-        <CardDescription>
-          Generate a new engine password (or set your own) and re-issue the
-          connection string. The database must be running.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="space-y-1.5">
-          <FieldLabel info="Leave empty to auto-generate a strong password. No quotes, spaces, or URL characters.">
-            New password (optional)
-          </FieldLabel>
-          <Input
-            type="text"
-            value={custom}
-            onChange={(e) => setCustom(e.target.value)}
-            placeholder="Leave empty to auto-generate"
-            disabled={!running || pending}
-          />
-        </div>
-        {newConn && (
-          <div className="space-y-1.5">
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Eye className="size-3.5" />
-              New connection string — shown once, copy it now.
-            </p>
-            <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-2.5 py-1.5">
-              <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
-                {newConn}
-              </code>
-              <CopyButton value={newConn} />
+    <>
+      <Card>
+        <CardContent className="space-y-6 pt-6">
+          {/* Logo */}
+          <div className="space-y-3">
+            <FieldLabel info={`Shown for this database on the dashboard. Defaults to the ${engine} logo — upload an image to use your own`}>
+              Logo
+            </FieldLabel>
+            <div className="flex flex-wrap items-center gap-4">
+              <DatabaseLogo type={db.type} logo={logo} size={48} />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={pending}
+                >
+                  <ImageIcon className="size-4" />
+                  {logo ? "Replace image" : "Upload image"}
+                </Button>
+                {logo && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground"
+                    onClick={() => saveLogo(null)}
+                    disabled={pending}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              PNG, JPEG, WebP, GIF, SVG or ICO · up to{" "}
+              {formatBytes(MAX_LOGO_BYTES)}. Saved as soon as you pick a file;
+              remove it to go back to the {engine} logo.
+            </p>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept={LOGO_ACCEPT_ATTR}
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) pickLogo(file);
+                e.target.value = "";
+              }}
+            />
           </div>
-        )}
-      </CardContent>
-      <CardFooter className="justify-end">
-        <Button onClick={rotate} disabled={!running || pending} variant="outline">
-          {pending ? "Rotating…" : "Rotate password"}
-        </Button>
-      </CardFooter>
-    </Card>
+
+          {/* Name — saved with the button below; the logo saves on pick. */}
+          <div className="max-w-md space-y-2 border-t border-border pt-6">
+            <Label htmlFor="db-name">Database name</Label>
+            <Input
+              id="db-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              A label for the dashboard. The connection string keeps pointing at{" "}
+              <code className="font-mono">{db.host}</code> — renaming never
+              restarts the database or changes how apps reach it.
+            </p>
+          </div>
+        </CardContent>
+        <CardFooter className="justify-between border-t border-border pt-4">
+          <DirtyHint dirty={nameDirty} />
+          <Button
+            size="sm"
+            onClick={saveName}
+            disabled={pending || !nameDirty || !name.trim()}
+          >
+            <Save className="size-4" />
+            Save name
+          </Button>
+        </CardFooter>
+      </Card>
+
+      {/* Warn before leaving with an unsaved name (the logo saves on pick). */}
+      <UnsavedChangesGuard when={nameDirty} />
+    </>
   );
 }

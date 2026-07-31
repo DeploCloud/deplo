@@ -9,6 +9,8 @@ import {
   getConnectionString,
   createDatabase,
   updateDatabase,
+  renameDatabase,
+  updateDatabaseLogo,
   reorderDatabases,
   updateDatabaseResources,
   updateDatabaseImage,
@@ -46,7 +48,17 @@ export const DatabaseRef = builder
     fields: (t) => ({
       id: t.exposeID("id"),
       teamId: t.exposeID("teamId"),
-      name: t.exposeString("name"),
+      name: t.exposeString("name", {
+        description:
+          "Display name, editable with renameDatabase. Not the container's " +
+          "identity — `host` is, and it is fixed at creation.",
+      }),
+      logo: t.exposeString("logo", {
+        nullable: true,
+        description:
+          "Uploaded display logo as an image data-URI, or null to fall back to " +
+          "the engine's own brand mark (which is what the UI draws by default).",
+      }),
       type: t.field({ type: DatabaseTypeEnum, resolve: (d) => d.type }),
       version: t.exposeString("version"),
       // The engine login + logical DB, shown read-only in the edit dialog (both
@@ -208,6 +220,38 @@ builder.mutationFields((t) => ({
         exposedPort: input.exposedPort ?? undefined,
         serverId: input.serverId ?? undefined,
       });
+      return reloadDatabase(id);
+    },
+  }),
+  renameDatabase: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Rename a database — its DISPLAY name only. The container's identity " +
+      "(compose project, data volume, DNS name and therefore the connection " +
+      "string) is fixed at creation and is untouched, so nothing restarts. The " +
+      "name must be unique within the team.",
+    args: {
+      id: t.arg.string({ required: true }),
+      name: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { id, name }) => {
+      await renameDatabase(id, name);
+      return reloadDatabase(id);
+    },
+  }),
+  updateDatabaseLogo: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Set the database's display logo (an image data-URI), or clear it with " +
+      "null to fall back to the engine's own brand mark. Cosmetic only.",
+    args: {
+      id: t.arg.string({ required: true }),
+      logo: t.arg.string({ required: false }),
+    },
+    resolve: async (_r, { id, logo }) => {
+      await updateDatabaseLogo(id, logo ?? null);
       return reloadDatabase(id);
     },
   }),

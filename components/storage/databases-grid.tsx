@@ -38,6 +38,7 @@ import {
 } from "@/components/shared/pending-create";
 import { DatabaseCard } from "@/components/storage/database-card";
 import { DB_TYPES } from "@/components/storage/db-engines";
+import { DatabaseLogo } from "@/components/storage/database-logo";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { DatabaseDTO } from "@/lib/data/databases";
@@ -246,7 +247,7 @@ function Toolbar({
           {DB_TYPES.map((t) => (
             <SelectItem key={t.id} value={t.id}>
               <span className="flex items-center gap-2">
-                <t.icon className="size-4 text-muted-foreground" />
+                <DatabaseLogo type={t.id} size={16} />
                 {t.name}
               </span>
             </SelectItem>

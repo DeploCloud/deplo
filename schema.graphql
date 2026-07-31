@@ -473,6 +473,15 @@ type Database {
   exposedPublicly: Boolean
   host: String
   id: ID
+
+  """
+  Uploaded display logo as an image data-URI, or null to fall back to the engine's own brand mark (which is what the UI draws by default).
+  """
+  logo: String
+
+  """
+  Display name, editable with renameDatabase. Not the container's identity — `host` is, and it is fixed at creation.
+  """
   name: String
   port: Int
 
@@ -1381,6 +1390,11 @@ type Mutation {
   """Rename or move a file/folder within the app files tree."""
   renameAppFile(appId: String!, newPath: String!, path: String!): FileEntry
 
+  """
+  Rename a database — its DISPLAY name only. The container's identity (compose project, data volume, DNS name and therefore the connection string) is fixed at creation and is untouched, so nothing restarts. The name must be unique within the team.
+  """
+  renameDatabase(id: String!, name: String!): Database
+
   """Rename an env var's key in place, then return the stored entity."""
   renameEnv(id: String!, newKey: String!): EnvVar
 
@@ -1592,6 +1606,11 @@ type Mutation {
   Save the database's expert overrides: custom image, custom command, and/or engine version (image tag). Applied on the next redeploy. An absent field is left unchanged; an explicit null clears the override.
   """
   updateDatabaseImage(id: String!, input: UpdateDatabaseImageInput!): Database
+
+  """
+  Set the database's display logo (an image data-URI), or clear it with null to fall back to the engine's own brand mark. Cosmetic only.
+  """
+  updateDatabaseLogo(id: String!, logo: String): Database
 
   """
   Save the database's per-container resource limits. Applied on the next redeploy or settings-driven reroute.

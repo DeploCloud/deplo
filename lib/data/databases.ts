@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import {
   listServersForTeam,
@@ -38,6 +38,7 @@ import {
   effectiveDatabaseImage,
 } from "../deploy/database-compose";
 import { isDockerLevelStderr } from "../infra/docker";
+import { isValidLogoValue } from "../apps/logo-shared";
 import { withKeyedLock } from "./keyed-mutex";
 import { publishDatabaseChanged } from "../graphql/pubsub";
 import type { Database, DatabaseType } from "../types";
@@ -79,6 +80,51 @@ function isValidExposePort(port: number): boolean {
  *  matches the historical per-engine hardcode (redis 'default', else 'app'). */
 function defaultUserFor(type: DatabaseType): string {
   return type === "redis" ? "default" : "app";
+}
+
+/** Cap the display name like every other named resource (App, Project, Folder,
+ *  Environment) so a multi-MB name can't bloat every RSC payload / activity row. */
+const DB_NAME_MAX = 60;
+
+/**
+ * Clean a user-supplied DISPLAY name. Free-form on purpose — spaces, capitals
+ * and accents are all fine, exactly like an App's name — because the display
+ * name is not an identifier: {@link databaseSlug} derives the container's
+ * identity separately, and only at creation.
+ */
+function cleanDatabaseName(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) throw new Error("Database name is required.");
+  if (trimmed.length > DB_NAME_MAX)
+    throw new Error(`Database name must be ${DB_NAME_MAX} characters or fewer.`);
+  return trimmed;
+}
+
+/**
+ * Derive the host-side slug from a display name: the compose project (`db-<slug>`),
+ * its container_name, its data volume and its DNS name on the `deplo` network all
+ * hang off it. CREATE-ONLY — the slug is frozen in the `host` column at creation
+ * and a later rename never re-derives it, which is precisely what makes renaming
+ * safe (nothing physical moves).
+ */
+function databaseSlug(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (!/[a-z0-9]/.test(slug))
+    throw new Error("Name must contain at least one letter or number.");
+  return slug;
+}
+
+/** Friendly message for the `databases_team_name_uq` violation a concurrent
+ *  create/rename can still lose to after our own pre-check passed. */
+function isDuplicateNameError(e: unknown): boolean {
+  return String((e as { message?: string })?.message ?? e).includes(
+    "databases_team_name_uq",
+  );
 }
 
 /**
@@ -384,8 +430,12 @@ export async function createDatabase(input: {
   const { membership } = await requireCapability("manage_infra");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
-  const name = input.name.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
-  if (!name) throw new Error("Name is required");
+  // Display name as typed (trimmed) vs. the slug the host artifacts are named
+  // after: "My Main DB" now STAYS "My Main DB" on the card and runs as the
+  // stack `db-my-main-db`, instead of the name itself being slugified into
+  // "my-main-db" for everyone to read forever.
+  const name = cleanDatabaseName(input.name);
+  const slug = databaseSlug(name);
   // The version is interpolated raw into the compose `image:` scalar
   // (`postgres:${version}-alpine`), so validate it as an image tag up front — the
   // update path (updateDatabaseImage) already does; the create path had the gap.
@@ -409,22 +459,42 @@ export async function createDatabase(input: {
   // (have a live agent) — provisioning routes through that agent.
   const server = await resolveTeamServer(teamId, input.serverId);
 
-  // The stack slug `db-<name>`, its container_name and its data volume are a
+  // The display name is unique per team (`databases_team_name_uq`). Check it here
+  // so a duplicate reads as a sentence instead of a raw unique-violation from the
+  // INSERT far below — the same courtesy renameDatabase does.
+  const nameTaken = await getDb()
+    .select({ id: databasesTable.id })
+    .from(databasesTable)
+    .where(and(eq(databasesTable.teamId, teamId), eq(databasesTable.name, name)))
+    .limit(1);
+  if (nameTaken.length > 0)
+    throw new Error(`A database named "${name}" already exists in this team.`);
+
+  // The stack slug `db-<slug>`, its container_name and its data volume are a
   // GLOBAL namespace on the host, but the DB name is only unique per-team — and
-  // servers are shared cross-team. Two teams landing the same name on one server
+  // servers are shared cross-team. Two teams landing the same slug on one server
   // would collide on the same compose project/volume, so one team's reroute could
   // adopt the other's live volume and its delete/rebuild would wipe it. Reject a
   // create whose host slug already exists on the target server (any team). Apps
-  // dodge this with a globally-unique slug; databases still key on the name, so
-  // this is the interim guard until the slug is derived from the row id.
+  // dodge this with a globally-unique slug; databases still derive it from the
+  // name, so this is the interim guard until the slug comes from the row id.
+  //
+  // Compared against `host` — the column that IS the slug — never against `name`:
+  // a renamed database keeps its original host, so matching on the display name
+  // would both miss a real collision and invent a phantom one.
   const slugCollision = await getDb()
     .select({ id: databasesTable.id })
     .from(databasesTable)
-    .where(and(eq(databasesTable.serverId, server.id), eq(databasesTable.name, name)))
+    .where(
+      and(
+        eq(databasesTable.serverId, server.id),
+        eq(databasesTable.host, `db-${slug}`),
+      ),
+    )
     .limit(1);
   if (slugCollision.length > 0)
     throw new Error(
-      `A database named "${name}" already exists on ${server.name}. Database stacks share a per-host namespace — pick a different name.`,
+      `A database stack named "db-${slug}" already exists on ${server.name}. Database stacks share a per-host namespace — pick a different name.`,
     );
 
   // Validate + reserve the host port up front when exposing. A collision here is
@@ -448,9 +518,10 @@ export async function createDatabase(input: {
   }
 
   const port = DEFAULT_PORTS[input.type];
-  // App name == container DNS name on the shared `deplo` network == the
-  // agent stack slug. Connection strings reference it, so it must stay stable.
-  const service = `db-${name}`;
+  // Name slug == container DNS name on the shared `deplo` network == the
+  // agent stack slug. Connection strings reference it, so it must stay stable —
+  // it is stored in `host` and never re-derived (a rename leaves it alone).
+  const service = `db-${slug}`;
 
   // Resolve the credentials. Redis has no user concept (auth is a single
   // requirepass and the built-in ACL user is literally `default`), so its
@@ -489,6 +560,9 @@ export async function createDatabase(input: {
     id: newId("db"),
     teamId,
     name,
+    // No logo of its own: the UI shows the engine's real brand mark until
+    // someone uploads one in Settings → General.
+    logo: null,
     type: input.type,
     version: input.version,
     username,
@@ -1091,6 +1165,105 @@ export async function deleteDatabase(
 /* ------------------------------------------------------------------ */
 /* Focused post-create mutations (the database detail page)            */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Rename a database (Settings → General) — the display label only.
+ *
+ * Nothing physical moves: the compose project, container_name, data volume and
+ * DNS name all live in the create-only `host` column, and the connection string
+ * embeds that host, so a rename can't invalidate a client's DSN or strand a
+ * volume. This is the same split an App has between its name and its slug.
+ *
+ * The name is unique per team (`databases_team_name_uq`) — checked here for a
+ * readable error, and caught again below for the concurrent-rename race.
+ */
+export async function renameDatabase(id: string, name: string): Promise<void> {
+  const { membership } = await requireCapability("manage_infra");
+  const teamId = membership.teamId;
+  const user = (await getCurrentUser())!;
+  const clean = cleanDatabaseName(name);
+  const cur = await loadDatabase(id, teamId);
+  if (!cur) throw new Error("Not found");
+  // No-op: skip the write, the ping and the activity line for an idle Save.
+  if (cur.name === clean) return;
+
+  const taken = await getDb()
+    .select({ id: databasesTable.id })
+    .from(databasesTable)
+    .where(and(eq(databasesTable.teamId, teamId), eq(databasesTable.name, clean)))
+    .limit(1);
+  if (taken.length > 0)
+    throw new Error(`A database named "${clean}" already exists in this team.`);
+
+  try {
+    await getDb()
+      .update(databasesTable)
+      .set({ name: clean })
+      .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)));
+  } catch (e) {
+    if (isDuplicateNameError(e))
+      throw new Error(`A database named "${clean}" already exists in this team.`);
+    throw e;
+  }
+  // The header, the grid card and every live status badge read the name off the
+  // subscription payload, so they re-title themselves without a reload.
+  publishDatabaseChanged(id);
+  await recordActivity(
+    "database",
+    `Renamed database ${cur.name} to ${clean}`,
+    user.name,
+    null,
+  );
+}
+
+/**
+ * Set (or clear) a database's display logo (Settings → General). Null clears it,
+ * falling the UI back to the ENGINE's real brand mark — which is why clearing is
+ * never a downgrade to a generic glyph, unlike an App's.
+ *
+ * Stored inline as a base64 image data-URI so it renders under the strict CSP
+ * with no remote fetch (see {@link isValidLogoValue}). Purely cosmetic: no
+ * deploy, compose render or connection string reads it. A no-op write records
+ * nothing, so an idle re-pick doesn't spam the activity log.
+ */
+export async function updateDatabaseLogo(
+  id: string,
+  logo: string | null,
+): Promise<void> {
+  const { membership } = await requireCapability("manage_infra");
+  const user = (await getCurrentUser())!;
+  const next = logo?.trim() ? logo.trim() : null;
+  if (next && !isValidLogoValue(next)) throw new Error("Unsupported logo image");
+
+  // Conditional, team-scoped UPDATE … RETURNING: distinguishes "changed" from
+  // "unchanged" without a second read, exactly like updateAppLogo.
+  const updated = await getDb()
+    .update(databasesTable)
+    .set({ logo: next })
+    .where(
+      and(
+        eq(databasesTable.id, id),
+        eq(databasesTable.teamId, membership.teamId),
+        next === null
+          ? sql`${databasesTable.logo} is not null`
+          : sql`${databasesTable.logo} is distinct from ${next}`,
+      ),
+    )
+    .returning({ id: databasesTable.id });
+  if (updated.length === 0) {
+    // Nothing changed — tell "not found / not owned" apart from "already that".
+    const exists = await loadDatabase(id, membership.teamId);
+    if (!exists) throw new Error("Not found");
+    return;
+  }
+  publishDatabaseChanged(id);
+  await recordActivity(
+    "database",
+    next ? "Updated database logo" : "Removed database logo",
+    user.name,
+    null,
+  );
+}
 
 /**
  * Save a database's per-container resource limits (Settings → Resources).

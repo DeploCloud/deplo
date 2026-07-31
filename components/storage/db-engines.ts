@@ -1,11 +1,3 @@
-import {
-  Database as DatabaseIcon,
-  Leaf,
-  MemoryStick,
-  BarChart3,
-  type LucideIcon,
-} from "lucide-react";
-
 import type { DatabaseType } from "@/lib/types";
 
 /**
@@ -16,19 +8,18 @@ import type { DatabaseType } from "@/lib/types";
 export const DB_TYPES: {
   id: DatabaseType;
   name: string;
-  icon: LucideIcon;
   versions: string[];
 }[] = [
   // These lists are only the OFFLINE FALLBACK + default (versions[0]) for the
   // create dialog — the real version picker (DbVersionInput) fetches the live
   // tag list from Docker Hub via /api/database-versions, so it tracks new
   // releases automatically. Keep the first entry a sensible current default.
-  { id: "postgres", name: "PostgreSQL", icon: DatabaseIcon, versions: ["18", "17", "16"] },
-  { id: "mysql", name: "MySQL", icon: DatabaseIcon, versions: ["8.4", "8.0"] },
-  { id: "mariadb", name: "MariaDB", icon: DatabaseIcon, versions: ["11", "10"] },
-  { id: "mongodb", name: "MongoDB", icon: Leaf, versions: ["8", "7"] },
-  { id: "redis", name: "Redis", icon: MemoryStick, versions: ["8", "7"] },
-  { id: "clickhouse", name: "ClickHouse", icon: BarChart3, versions: ["25", "24"] },
+  { id: "postgres", name: "PostgreSQL", versions: ["18", "17", "16"] },
+  { id: "mysql", name: "MySQL", versions: ["8.4", "8.0"] },
+  { id: "mariadb", name: "MariaDB", versions: ["11", "10"] },
+  { id: "mongodb", name: "MongoDB", versions: ["8", "7"] },
+  { id: "redis", name: "Redis", versions: ["8", "7"] },
+  { id: "clickhouse", name: "ClickHouse", versions: ["25", "24"] },
 ];
 
 /** Engine id → proper display name ("postgres" → "PostgreSQL"), for card copy. */
@@ -36,13 +27,33 @@ export const DB_NAMES = Object.fromEntries(
   DB_TYPES.map((t) => [t.id, t.name]),
 ) as Record<DatabaseType, string>;
 
-export const DB_ICONS: Record<DatabaseType, LucideIcon> = {
-  postgres: DatabaseIcon,
-  mysql: DatabaseIcon,
-  mariadb: DatabaseIcon,
-  mongodb: Leaf,
-  redis: MemoryStick,
-  clickhouse: BarChart3,
+/**
+ * Engine id → its REAL brand mark, bundled under `/public/engines` and served
+ * from our own origin (the dashboard CSP is `img-src 'self' blob: data:` — no
+ * remote fetch, ever). These are the engines' actual logos, not a stand-in
+ * glyph: a database with no custom logo of its own shows the elephant, the
+ * dolphin, the seal, the leaf.
+ *
+ * This is the DEFAULT, not the value: a database's uploaded logo (Settings →
+ * General) always wins, and clearing it falls back here — the same
+ * override-or-derive rule an App's logo follows. Rendered by
+ * {@link file://./database-logo.tsx DatabaseLogo}, the only component that
+ * should read this map.
+ *
+ * Provenance: dashboard-icons (homarr-labs, CC0) for every engine except MySQL,
+ * whose mark there carries the wordmark and turns to mush at 36px — that one is
+ * devicon's dolphin (MIT). Each was checked to stay legible on BOTH the light
+ * and the dark tile background before it was picked; a mark that vanishes in one
+ * theme (the navy MariaDB seal, the black ClickHouse bars) was rejected for the
+ * brand's own light variant.
+ */
+export const DB_LOGOS: Record<DatabaseType, string> = {
+  postgres: "/engines/postgres.svg",
+  mysql: "/engines/mysql.svg",
+  mariadb: "/engines/mariadb.svg",
+  mongodb: "/engines/mongodb.svg",
+  redis: "/engines/redis.svg",
+  clickhouse: "/engines/clickhouse.svg",
 };
 
 /**

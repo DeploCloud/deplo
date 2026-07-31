@@ -64,6 +64,7 @@ export async function seedDatabase(
     id: opts.id,
     teamId: opts.teamId ?? TEAM_A,
     name,
+    logo: null,
     type,
     version: "16",
     // Defaults mirror what createDatabase / the 0014 backfill produce: the

@@ -13,7 +13,6 @@ import {
   Server as ServerIcon,
   Globe,
   Lock,
-  Database as DatabaseIcon,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,9 +30,10 @@ import {
   DatabaseStatusBadge,
   DatabaseStatusDot,
 } from "@/components/storage/database-status-badge";
-import { timeAgo, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
-import { DB_ICONS, DB_NAMES } from "./db-engines";
+import { DatabaseLogo } from "./database-logo";
+import { DB_NAMES } from "./db-engines";
 import type { DatabaseDTO } from "@/lib/data/databases";
 
 /**
@@ -116,7 +116,6 @@ function DatabaseCardGrid({
   canReveal,
 }: Inner) {
   const href = `/storage/databases/${db.id}`;
-  const Icon = DB_ICONS[db.type] ?? DatabaseIcon;
   return (
     <Card className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20">
       {/* Stretched link: the whole card is clickable. Interactive controls
@@ -126,9 +125,7 @@ function DatabaseCardGrid({
       <div className="pointer-events-none relative z-[1] flex flex-1 flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-secondary text-foreground">
-              <Icon className="size-5" />
-            </div>
+            <DatabaseLogo type={db.type} logo={db.logo} size={36} />
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{db.name}</p>
               <p className="truncate text-xs text-muted-foreground">
@@ -161,10 +158,6 @@ function DatabaseCardGrid({
             </span>
           </div>
         </div>
-
-        <p className="mt-auto text-xs text-muted-foreground">
-          Created {timeAgo(db.createdAt)}
-        </p>
       </div>
     </Card>
   );
@@ -172,14 +165,11 @@ function DatabaseCardGrid({
 
 function DatabaseCardList({ db, serverName, dragHandle, dragActive, pollMs }: Inner) {
   const href = `/storage/databases/${db.id}`;
-  const Icon = DB_ICONS[db.type] ?? DatabaseIcon;
   return (
     <Card className="group relative flex items-center gap-4 p-4 transition-colors hover:border-foreground/20">
       <OverlayLink href={href} label={db.name} dragActive={dragActive} />
       <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-secondary text-foreground">
-          <Icon className="size-4.5" />
-        </div>
+        <DatabaseLogo type={db.type} logo={db.logo} size={36} />
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{db.name}</p>
           <p className="truncate text-xs text-muted-foreground">

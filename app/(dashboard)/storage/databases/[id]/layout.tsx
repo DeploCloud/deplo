@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getDatabase } from "@/lib/data/databases";
 import { titleCase, truncate } from "@/lib/utils";
-import { DB_ICONS, DB_NAMES } from "@/components/storage/db-engines";
+import { DB_NAMES } from "@/components/storage/db-engines";
+import { DatabaseLogo } from "@/components/storage/database-logo";
 import {
   DatabaseLiveStatusProvider,
   type LiveDatabase,
@@ -10,7 +11,6 @@ import {
 import { DatabaseStatusBadge } from "@/components/storage/database-status-badge";
 import { DatabaseControls } from "@/components/storage/database-controls";
 import { DatabaseRedeployButton } from "@/components/storage/database-redeploy-button";
-import { Database as DatabaseIcon } from "lucide-react";
 
 const DB_TITLE_MAX = 24;
 
@@ -36,7 +36,6 @@ export default async function DatabaseLayout(
   const db = await getDatabase(id);
   if (!db) notFound();
 
-  const Icon = DB_ICONS[db.type] ?? DatabaseIcon;
   const initialLive: LiveDatabase = {
     id: db.id,
     name: db.name,
@@ -48,9 +47,7 @@ export default async function DatabaseLayout(
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-lg border border-border bg-secondary text-foreground">
-              <Icon className="size-5" />
-            </div>
+            <DatabaseLogo type={db.type} logo={db.logo} size={44} />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-semibold tracking-tight">{db.name}</h1>

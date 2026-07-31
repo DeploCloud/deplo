@@ -25,6 +25,7 @@ import {
   Bell,
   KeyRound,
   Settings2,
+  Network,
   HardDrive,
   ShieldCheck,
   SlidersHorizontal,
@@ -572,8 +573,14 @@ export function databaseSettingsNav(id: string): NavSection[] {
           label: "General",
           href: base,
           icon: Settings2,
-          tooltip: "Network, server & password",
+          tooltip: "Name & logo",
           exact: true,
+        },
+        {
+          label: "Connection",
+          href: `${base}/connection`,
+          icon: Network,
+          tooltip: "Exposure, server & password",
         },
         {
           label: "Resources",

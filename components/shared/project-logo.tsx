@@ -19,9 +19,45 @@ export function AppLogo({
   size?: number;
   className?: string;
 }) {
-  const [broken, setBroken] = React.useState(false);
+  return (
+    <LogoImage
+      src={logo}
+      size={size}
+      className={className}
+      fallback={<Box style={{ width: size * 0.5, height: size * 0.5 }} />}
+    />
+  );
+}
 
-  if (!logo || broken) {
+/**
+ * The avatar tile itself, shared by every resource that has a display logo (an
+ * App's uploaded/template logo, a database's uploaded logo or its engine's brand
+ * mark). Renders `src` as an image; a missing OR broken source falls back to the
+ * caller's glyph on the same muted tile, so a dead data-URI never shows a broken
+ * image. Kept sizing-only: the caller decides what the fallback glyph is.
+ */
+export function LogoImage({
+  src,
+  size = 36,
+  className,
+  fallback,
+}: {
+  /** Image source: a data-URI or a same-origin path (the CSP allows no host). */
+  src: string | null;
+  size?: number;
+  className?: string;
+  fallback: React.ReactNode;
+}) {
+  const [broken, setBroken] = React.useState(false);
+  // A new source deserves a fresh attempt — otherwise replacing a broken logo
+  // would keep showing the fallback until a remount.
+  const [triedSrc, setTriedSrc] = React.useState(src);
+  if (triedSrc !== src) {
+    setTriedSrc(src);
+    setBroken(false);
+  }
+
+  if (!src || broken) {
     return (
       <span
         className={cn(
@@ -30,7 +66,7 @@ export function AppLogo({
         )}
         style={{ width: size, height: size }}
       >
-        <Box style={{ width: size * 0.5, height: size * 0.5 }} />
+        {fallback}
       </span>
     );
   }
@@ -45,7 +81,7 @@ export function AppLogo({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={logo}
+        src={src}
         alt=""
         // The inset that keeps a full-bleed logo off the avatar's edge is worth
         // 4px of a 36px tile and a quarter of a 16px one — at menu-icon size it

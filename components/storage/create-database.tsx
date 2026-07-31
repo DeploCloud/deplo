@@ -34,6 +34,7 @@ import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { generatePassword } from "@/lib/utils";
 import { DB_NAMES, DB_TYPES as TYPES, ENGINE_CREDS } from "./db-engines";
+import { DatabaseLogo } from "./database-logo";
 import { DbVersionInput } from "./db-version-input";
 import type { DatabaseType } from "@/lib/types";
 
@@ -262,7 +263,7 @@ export function CreateDatabase({
                     {TYPES.map((t) => (
                       <SelectItem key={t.id} value={t.id}>
                         <span className="flex items-center gap-2">
-                          <t.icon className="size-4 text-muted-foreground" />
+                          <DatabaseLogo type={t.id} size={16} />
                           {t.name}
                         </span>
                       </SelectItem>

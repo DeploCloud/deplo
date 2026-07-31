@@ -1,0 +1,20 @@
+-- A database gets a display logo of its own, exactly like an App.
+--
+-- Until now a database had no identity to edit at all: its Settings held only
+-- network/server/password, and the grid drew a generic lucide glyph for every
+-- engine. Settings → General now owns the pair an App's General owns — the
+-- display name and an uploadable image — and the icon a database shows by
+-- DEFAULT is its engine's real brand mark (public/engines/*.svg, resolved in the
+-- UI from `type`).
+--
+-- So this column is the OVERRIDE, not the icon: NULL — the only value any
+-- existing row can have — means "show the engine's mark", which is why there is
+-- nothing to backfill. Same shape and contract as `apps.logo`: a base64 image
+-- data-URI, validated by isValidLogoValue, capped by MAX_LOGO_STRING_LEN, and
+-- purely cosmetic (no deploy, compose render or connection string reads it).
+--
+-- Note what this does NOT change: `name` stays the display label and `host`
+-- stays the container's identity (compose project, data volume, DNS name on the
+-- `deplo` network). Renaming a database was already a pure label change — every
+-- physical path reads `host` — which is what makes the new rename safe.
+ALTER TABLE "databases" ADD COLUMN "logo" text;

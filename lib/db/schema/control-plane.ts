@@ -1159,7 +1159,14 @@ export const databases = pgTable(
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
+    // DISPLAY name only — editable in Settings → General, like an App's. The
+    // container's identity is `host` (the compose project / volume / DNS name),
+    // frozen at create: renaming a database never touches the running stack.
     name: text("name").notNull(),
+    // Uploaded display logo (a base64 image data-URI), or NULL to fall back to
+    // the engine's own brand mark. Same column contract and validation as
+    // `apps.logo`; purely cosmetic, never read by a deploy.
+    logo: text("logo"),
     type: text("type").notNull(),
     version: text("version").notNull(),
     // The engine login the connection string authenticates as AND (except

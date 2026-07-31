@@ -29,6 +29,8 @@ import {
   rebuildDatabase,
   rotateDatabasePassword,
   reorderDatabases,
+  renameDatabase,
+  updateDatabaseLogo,
 } from "./databases";
 import { generateDatabaseCompose } from "../deploy/database-compose";
 import { composeStackVolumeHostNames } from "./project-backup-descriptor";
@@ -387,5 +389,95 @@ test("reorderDatabases self-heals on delete (FK cascade) and rejects without man
   await seedDatabase(db, { id: "db_z", name: "zzz" });
   await runWithIdentity({ userId: "user_viewer2", teamId: TEAM_A }, async () => {
     await assert.rejects(reorderDatabases(["db_z"]));
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Identity: rename + logo (Settings → General)                        */
+/* ------------------------------------------------------------------ */
+
+// The headline invariant of renaming: the DISPLAY name changes and NOTHING
+// physical does. `host` is the compose project / data volume / DNS name and it
+// is baked into the connection string, so if a rename ever touched it, every
+// client DSN would break and the next reroute would adopt a different volume.
+test("renameDatabase changes only the display name — host and connection string are untouched", async () => {
+  await seedDatabase(db, { id: "db_r", name: "main" });
+  await asUser1(async () => {
+    const before = await getDatabase("db_r");
+    await renameDatabase("db_r", "  Primary Store  ");
+    const after = await getDatabase("db_r");
+    // Trimmed, but otherwise free-form: spaces and capitals survive (it is a
+    // label, not an identifier).
+    assert.equal(after?.name, "Primary Store");
+    assert.equal(after?.host, before?.host, "host slug frozen");
+    assert.equal(
+      after?.connectionStringMasked,
+      before?.connectionStringMasked,
+      "connection string unaffected",
+    );
+    assert.equal(await getConnectionString("db_r"), await getConnectionString("db_r"));
+  });
+  const logged = await db.select().from(activitiesTable);
+  assert.ok(
+    logged.some((a) => a.message === "Renamed database main to Primary Store"),
+    `rename is recorded, got: ${logged.map((a) => a.message).join(" | ")}`,
+  );
+});
+
+test("renameDatabase: validates, refuses a duplicate, no-ops on an unchanged name", async () => {
+  await seedDatabase(db, { id: "db_n1", name: "alpha" });
+  await seedDatabase(db, { id: "db_n2", name: "beta" });
+  await asUser1(async () => {
+    await assert.rejects(renameDatabase("db_n1", "   "), /name is required/i);
+    await assert.rejects(renameDatabase("db_n1", "x".repeat(61)), /60 characters/);
+    // The team-unique index reads as a sentence, not a raw pg violation.
+    await assert.rejects(renameDatabase("db_n1", "beta"), /already exists in this team/);
+
+    // Unchanged name: no write, and no activity row for a no-op Save.
+    const activityBefore = (await db.select().from(activitiesTable)).length;
+    await renameDatabase("db_n1", "alpha");
+    assert.equal((await db.select().from(activitiesTable)).length, activityBefore);
+  });
+});
+
+test("renameDatabase: a cross-team id is Not found", async () => {
+  await seedDatabase(db, { id: "db_other", teamId: TEAM_B, name: "theirs" });
+  await asUser1(async () => {
+    await assert.rejects(renameDatabase("db_other", "mine"), /Not found/);
+  });
+  // The foreign row kept its name.
+  const rows = await db
+    .select()
+    .from(databasesTable)
+    .where(eq(databasesTable.id, "db_other"));
+  assert.equal(rows[0]!.name, "theirs");
+});
+
+test("updateDatabaseLogo: set, clear, validate, and stay team-scoped", async () => {
+  const png =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  await seedDatabase(db, { id: "db_l", name: "logo" });
+  await asUser1(async () => {
+    // Born with no logo of its own — the UI falls back to the engine's mark.
+    assert.equal((await getDatabase("db_l"))?.logo, null);
+
+    await updateDatabaseLogo("db_l", png);
+    assert.equal((await getDatabase("db_l"))?.logo, png);
+
+    // Only the same grammar an app logo accepts: no remote URLs, no scripts.
+    await assert.rejects(
+      updateDatabaseLogo("db_l", "https://example.com/evil.svg"),
+      /Unsupported logo image/,
+    );
+    assert.equal((await getDatabase("db_l"))?.logo, png, "rejected value not stored");
+
+    // Clearing goes back to the engine mark.
+    await updateDatabaseLogo("db_l", null);
+    assert.equal((await getDatabase("db_l"))?.logo, null);
+  });
+
+  await seedDatabase(db, { id: "db_lf", teamId: TEAM_B, name: "foreign-logo" });
+  await asUser1(async () => {
+    await assert.rejects(updateDatabaseLogo("db_lf", png), /Not found/);
   });
 });

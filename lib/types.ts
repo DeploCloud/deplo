@@ -1132,7 +1132,19 @@ export interface Database {
   id: ID;
   /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
   teamId: ID;
+  /**
+   * DISPLAY name, editable in Settings → General. It is NOT the container's
+   * identity — {@link host} is (the compose project, its volume and its DNS name
+   * on the `deplo` network), and that is frozen at creation, so a rename is a
+   * pure label change that never touches the running stack. Unique per team.
+   */
   name: string;
+  /**
+   * Uploaded display logo — a base64 image data-URI, or null to fall back to the
+   * engine's real brand mark (`DB_LOGOS`). Same contract as an App's logo:
+   * cosmetic only, never read by a deploy, validated by `isValidLogoValue`.
+   */
+  logo: string | null;
   type: DatabaseType;
   version: string;
   /**
