@@ -67,6 +67,7 @@ const REORDER_PROJECT_CONTAINERS = `mutation($ids: [ID!]!) { reorderProjects(pro
 const MOVE_TO_FOLDER = `mutation($appId: ID!, $folderId: ID) { moveAppToFolder(appId: $appId, folderId: $folderId) }`;
 const MOVE_SERVICE_TO_PROJECT = `mutation($appId: ID!, $projectId: ID) { moveAppToProject(appId: $appId, projectId: $projectId) }`;
 const DELETE_FOLDER = `mutation($id: ID!) { deleteFolder(id: $id) }`;
+const DELETE_PROJECT = `mutation($id: ID!) { deleteProject(id: $id) }`;
 const MOVE_FOLDER = `mutation($id: ID!, $parentId: ID) { moveFolder(id: $id, parentId: $parentId) }`;
 // Bulk variants: each is ONE server round-trip + ONE store write for the whole
 // selection (instead of N fanned-out per-id mutations).
@@ -100,6 +101,11 @@ function gridClass(view: "grid" | "list"): string {
     : "grid gap-4 sm:grid-cols-2 3xl:grid-cols-3";
 }
 
+/** "1 app is" / "3 apps are" — both forms spelled out by the caller. */
+function count(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 function allAppsHref(view: "grid" | "list"): string {
   return view === "list" ? "/?view=list" : "/";
 }
@@ -107,6 +113,13 @@ function allAppsHref(view: "grid" | "list"): string {
 /** Selection-aware bulk actions, composed by the grid that owns the selection. */
 interface SelectionBulk {
   count: number;
+  /** How many of the selected cards are APPS — the only kind that lives inside a
+   *  folder, so the two folder actions stay hidden for a projects/folders-only
+   *  selection instead of offering a button that would do nothing. */
+  appCount: number;
+  /** The viewer may delete everything currently selected (each kind has its own
+   *  gate, so a mixed selection needs both). */
+  canDelete: boolean;
   onSelectAll: () => void;
   onClear: () => void;
   onDelete: () => void;
@@ -119,9 +132,12 @@ interface SelectionBulk {
  * The dynamic BULK-actions bar. It floats at the bottom of the viewport whenever
  * one or more cards are selected (marquee drag / ⌘-click), replacing what used to
  * be a right-click menu. "New folder with selection" is a CREATE action (gated on
- * `canCreateFolder`); the team-wide Move / Delete are gated on `canManageAllFolders`.
- * Select all + Clear are always shown. Keyboard shortcuts (⌘A / Esc / ⌫) stay wired
- * on the grid regardless of the bar. This is the one place the bulk actions live.
+ * `canCreateFolder`); the team-wide Move is gated on `canManageAllFolders`, and
+ * both only appear while the selection actually contains apps. Delete carries its
+ * own already-resolved gate (`selection.canDelete`) because projects, folders and
+ * apps don't share one. Select all + Clear are always shown. Keyboard shortcuts
+ * (⌘A / Esc / ⌫) stay wired on the grid regardless of the bar. This is the one
+ * place the bulk actions live.
  */
 function SelectionActionBar({
   selection,
@@ -140,7 +156,7 @@ function SelectionActionBar({
           {selection.count} selected
         </span>
         <span className="mx-1.5 h-5 w-px bg-border" />
-        {canCreateFolder && (
+        {canCreateFolder && selection.appCount > 0 && (
           <Button
             variant="ghost"
             size="sm"
@@ -150,45 +166,45 @@ function SelectionActionBar({
             New folder
           </Button>
         )}
-        {canManageAllFolders && (
-          <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <FolderInput className="size-4" />
-                  Move to
-                  <ChevronDown className="size-3.5 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="top"
-                align="center"
-                className="max-h-72 w-52 overflow-y-auto"
-              >
-                <DropdownMenuItem onSelect={() => selection.onMoveTo(null)}>
-                  Ungrouped
-                </DropdownMenuItem>
-                {selection.moveTargets.length > 0 && <DropdownMenuSeparator />}
-                {selection.moveTargets.map((f) => (
-                  <DropdownMenuItem
-                    key={f.id}
-                    onSelect={() => selection.onMoveTo(f.id)}
-                  >
-                    {f.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive"
-              onClick={selection.onDelete}
+        {canManageAllFolders && selection.appCount > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <FolderInput className="size-4" />
+                Move to
+                <ChevronDown className="size-3.5 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="center"
+              className="max-h-72 w-52 overflow-y-auto"
             >
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
-          </>
+              <DropdownMenuItem onSelect={() => selection.onMoveTo(null)}>
+                Ungrouped
+              </DropdownMenuItem>
+              {selection.moveTargets.length > 0 && <DropdownMenuSeparator />}
+              {selection.moveTargets.map((f) => (
+                <DropdownMenuItem
+                  key={f.id}
+                  onSelect={() => selection.onMoveTo(f.id)}
+                >
+                  {f.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {selection.canDelete && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={selection.onDelete}
+          >
+            <Trash2 className="size-4" />
+            Delete
+          </Button>
         )}
         <span className="mx-1.5 h-5 w-px bg-border" />
         <Button variant="ghost" size="sm" onClick={selection.onSelectAll}>
@@ -529,10 +545,15 @@ function SortableGrid({
     (folderIdSet.has(overId) || projectIdSet.has(overId));
 
   /* ---- Multi-selection (marquee + ctrl/shift-click) + bulk actions ------- */
-  // Selectable ids in display order: folders first, then the visible apps.
+  // Selectable ids in DISPLAY order — projects, then folders, then the visible
+  // apps — so a shift-click range spans the grid exactly as it reads on screen.
   const selectableIds = React.useMemo(
-    () => [...folderItems.map((f) => f.id), ...items.map((p) => p.id)],
-    [folderItems, items],
+    () => [
+      ...projectItems.map((p) => p.id),
+      ...folderItems.map((f) => f.id),
+      ...items.map((p) => p.id),
+    ],
+    [projectItems, folderItems, items],
   );
   const {
     selected,
@@ -560,20 +581,61 @@ function SortableGrid({
   // freshly-created folder ("New folder with selection").
   const [folderTakesSelection, setFolderTakesSelection] = React.useState(false);
 
-  const selectedAppIds = () =>
-    effectiveSelected.filter((id) => !folderIdSet.has(id));
-  const selectedFolderIds = () =>
-    effectiveSelected.filter((id) => folderIdSet.has(id));
+  // The selection, split by card kind. Every bulk action routes through these
+  // (never the raw ids): each kind has its own mutation and its own gate.
+  const selectedProjectIds = React.useMemo(
+    () => effectiveSelected.filter((id) => projectIdSet.has(id)),
+    [effectiveSelected, projectIdSet],
+  );
+  const selectedFolderIds = React.useMemo(
+    () => effectiveSelected.filter((id) => folderIdSet.has(id)),
+    [effectiveSelected, folderIdSet],
+  );
+  const selectedAppIds = React.useMemo(
+    () =>
+      effectiveSelected.filter(
+        (id) => !folderIdSet.has(id) && !projectIdSet.has(id),
+      ),
+    [effectiveSelected, folderIdSet, projectIdSet],
+  );
+
+  // Deleting apps/folders is the team-wide super-user action; deleting a project
+  // container needs `deploy` (the same gate as its own ⋯ menu). A mixed
+  // selection therefore needs both — otherwise the bar would offer a Delete that
+  // half-fails on the server.
+  const canDeleteSelection =
+    selectionCount > 0 &&
+    (selectedProjectIds.length === 0 || canManageProjects) &&
+    (selectedAppIds.length + selectedFolderIds.length === 0 ||
+      canManageAllFolders);
+
+  // The confirm copy names exactly what is selected: the three kinds have very
+  // different consequences (only apps are actually destroyed — a folder or a
+  // project is just removed, its contents survive), so one fixed sentence would
+  // either scare or mislead depending on the selection.
+  const deleteParts: string[] = [];
+  if (selectedAppIds.length)
+    deleteParts.push(
+      `${count(selectedAppIds.length, "app is", "apps are")} permanently deleted, including deployments, domains and env vars.`,
+    );
+  if (selectedFolderIds.length)
+    deleteParts.push(
+      `${count(selectedFolderIds.length, "folder is", "folders are")} removed — the apps inside move back to the top level.`,
+    );
+  if (selectedProjectIds.length)
+    deleteParts.push(
+      `${count(selectedProjectIds.length, "project is", "projects are")} removed — the apps inside move back to the top level.`,
+    );
+  deleteParts.push("This can't be undone.");
+  const bulkDeleteDescription = deleteParts.join(" ");
 
   function bulkMoveTo(folderId: string | null) {
-    const ids = selectedAppIds();
+    const ids = selectedAppIds;
     if (ids.length === 0) return;
     startTransition(async () => {
       const res = await gqlAction(BULK_MOVE, { ids, folderId });
       if (res.ok) {
-        toast.success(
-          `Moved ${ids.length} project${ids.length === 1 ? "" : "s"}`,
-        );
+        toast.success(`Moved ${ids.length} app${ids.length === 1 ? "" : "s"}`);
         clearSelection();
         router.refresh();
       } else toast.error(res.error);
@@ -583,19 +645,21 @@ function SortableGrid({
   // `onCreated` for the "New folder with selection" flow: move the selected
   // apps into the folder the dialog just created (one bulk call).
   async function moveSelectionInto(folderId: string) {
-    const ids = selectedAppIds();
+    const ids = selectedAppIds;
     if (ids.length) await gqlAction(BULK_MOVE, { ids, folderId });
     clearSelection();
   }
 
   async function bulkDelete() {
-    const appIds = selectedAppIds();
-    const folderIds = selectedFolderIds();
+    const appIds = selectedAppIds;
+    const folderIds = selectedFolderIds;
+    const projectIds = selectedProjectIds;
     // Apps go through ONE bulk mutation (one server write, bounded-
-    // concurrency teardown); folders (usually few) delete per id.
+    // concurrency teardown); folders and projects (usually few) delete per id.
     const results = await Promise.all([
       ...(appIds.length ? [gqlAction(BULK_DELETE, { ids: appIds })] : []),
       ...folderIds.map((id) => gqlAction(DELETE_FOLDER, { id })),
+      ...projectIds.map((id) => gqlAction(DELETE_PROJECT, { id })),
     ]);
     router.refresh();
     const failed = results.find((r) => !r.ok);
@@ -626,8 +690,7 @@ function SortableGrid({
         clearSelection();
       } else if (
         (e.key === "Delete" || e.key === "Backspace") &&
-        selectionCount > 0 &&
-        canManageAllFolders
+        canDeleteSelection
       ) {
         e.preventDefault();
         setBulkDeleteOpen(true);
@@ -635,7 +698,7 @@ function SortableGrid({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectionCount, selectAll, clearSelection, canManageAllFolders]);
+  }, [selectionCount, selectAll, clearSelection, canDeleteSelection]);
 
   const sensors = useSensors(
     // Mouse: a few px of travel before a drag begins, so a click still navigates
@@ -904,10 +967,10 @@ function SortableGrid({
         if (groupDrag) bulkMoveTo(dest);
         else moveApp(a, dest);
       } else if (openProject) {
-        // selectedAppIds() (not the raw selection) so a stale off-screen id
+        // selectedAppIds (not the raw selection) so a stale off-screen id
         // left in `selected` by a concurrent move is never dragged along — the
         // same visibility guard every other bulk action routes through.
-        if (groupDrag) moveAppsToProject(selectedAppIds(), null);
+        if (groupDrag) moveAppsToProject(selectedAppIds, null);
         else moveAppToProject(a, null);
       }
       return;
@@ -925,9 +988,9 @@ function SortableGrid({
       // (folder onto an app/project: ignored — folders don't nest there)
     } else if (oIsProject) {
       // App(s) dropped onto a project container card. The group path uses
-      // selectedAppIds() — the visibility-guarded selection — not the raw
+      // selectedAppIds — the visibility-guarded selection — not the raw
       // `selApps` (see the breadcrumb branch above).
-      if (groupDrag) moveAppsToProject(selectedAppIds(), o);
+      if (groupDrag) moveAppsToProject(selectedAppIds, o);
       else moveAppToProject(a, o);
     } else if (oIsFolder) {
       // App(s) dropped onto a folder → move the whole selection (or just the
@@ -948,6 +1011,8 @@ function SortableGrid({
   // that appears whenever one or more cards are selected.
   const bulkSelection: SelectionBulk = {
     count: selectionCount,
+    appCount: selectedAppIds.length,
+    canDelete: canDeleteSelection,
     onSelectAll: selectAll,
     onClear: clearSelection,
     onDelete: () => setBulkDeleteOpen(true),
@@ -964,6 +1029,7 @@ function SortableGrid({
   const activeIsSelectedMulti =
     activeId != null &&
     !folderIdSet.has(activeId) &&
+    !projectIdSet.has(activeId) &&
     selected.has(activeId) &&
     selectedAppOrder.length >= 2;
   return (
@@ -1018,7 +1084,9 @@ function SortableGrid({
                       key={p.id}
                       id={p.id}
                       dragging={dragging}
+                      selected={selected.has(p.id)}
                       dataKind="project"
+                      onSelect={(e) => onItemClick(p.id, e)}
                     >
                       {({ handle, dragActive, isOver }) => (
                         <ProjectContainerCard
@@ -1165,7 +1233,7 @@ function SortableGrid({
         onCreated={folderTakesSelection ? moveSelectionInto : undefined}
         description={
           folderTakesSelection
-            ? `Create a folder and move the ${selectedAppIds().length} selected project(s) into it.`
+            ? `Create a folder and move the ${selectedAppIds.length} selected app(s) into it.`
             : undefined
         }
       />
@@ -1173,7 +1241,7 @@ function SortableGrid({
         open={bulkDeleteOpen}
         onOpenChange={setBulkDeleteOpen}
         title={`Delete ${selectionCount} item${selectionCount === 1 ? "" : "s"}?`}
-        description="Selected apps are permanently deleted (with their deployments, domains and env vars). Selected folders are removed — their apps move back to the top level. This can't be undone."
+        description={bulkDeleteDescription}
         confirmLabel="Delete selection"
         successMessage="Selection deleted"
         onConfirm={bulkDelete}
@@ -1239,7 +1307,8 @@ function SortableItem({
   /** A multi-selection group drag is in flight → dim every selected card (not
    *  only the lifted one) so the whole moving group reads as picked up. */
   groupDragging?: boolean;
-  /** "service" | "folder" — surfaced as data-card-kind for marquee hit-testing. */
+  /** "project" | "folder" | "service" — surfaced as data-card-kind for marquee
+   *  hit-testing. */
   dataKind?: string;
   /** Modifier-click (ctrl/cmd/shift) selection handler. */
   onSelect?: (e: React.MouseEvent) => void;
