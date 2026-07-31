@@ -592,7 +592,7 @@ builder.mutationFields((t) => ({
     type: AppRef,
     authScopes: { capability: "deploy" },
     description:
-      "Auto-detect a favicon (SVG/PNG) from the app's GitHub repo or uploaded files and set it as the logo. Errors if none is found.",
+      "Auto-detect a favicon from the app's own files — its GitHub repo, its uploaded archive, or (for a compose stack) its files dir on its server — and set it as the logo. Errors if none is found.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await redetectAppLogo(id);

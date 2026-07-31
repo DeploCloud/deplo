@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Settings2 } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
-import { isGithubRepo } from "@/lib/apps/favicon-shared";
+import { faviconSourceKind } from "@/lib/apps/favicon-shared";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { GeneralSettingsForm } from "@/components/apps/settings/general-settings-form";
 
@@ -14,6 +14,11 @@ export default async function AppGeneralSettingsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
+  // "Detect from source" is offered for every app whose files deplo can
+  // actually read: a GitHub repo, an uploaded archive, or — for a compose stack
+  // — the app's own files on its server. Same dispatch the detector runs.
+  const detectable = faviconSourceKind(project) !== "none";
+
   return (
     <section className="space-y-4">
       <SettingsSection icon={Settings2} title="General" />
@@ -21,7 +26,7 @@ export default async function AppGeneralSettingsPage(
         appId={project.id}
         name={project.name}
         logo={project.logo}
-        detectable={project.source === "upload" || isGithubRepo(project.repo)}
+        detectable={detectable}
       />
     </section>
   );

@@ -79,6 +79,7 @@ import { withKeyedLock } from "./keyed-mutex";
 import { removeUploads } from "../deploy/upload";
 import { isValidLogoValue, isTemplateLogo } from "../apps/logo-shared";
 import { detectAppFavicon } from "../apps/favicon-detect";
+import { AgentUnreachableError } from "../infra/agent-client";
 import { publishAppChanged } from "../graphql/pubsub";
 import {
   insertEnvVars,
@@ -1411,9 +1412,19 @@ export async function redetectAppLogo(id: string): Promise<string> {
       "This app keeps its template's default icon, which takes priority. Remove it first to detect one from your source files.",
     );
   }
-  const logo = await detectAppFavicon(project);
+  // A compose stack's files are read off its own server, so "we couldn't reach
+  // the server" must not be reported as "your files have no favicon".
+  const logo = await detectAppFavicon(project).catch((e) => {
+    if (e instanceof AgentUnreachableError) {
+      throw new Error(
+        "The server that runs this app didn't answer, so deplo couldn't read its files. It may be offline.",
+        { cause: e },
+      );
+    }
+    throw e;
+  });
   if (!logo || !isValidLogoValue(logo)) {
-    throw new Error("No favicon (SVG or PNG) found in the app files");
+    throw new Error("No file named favicon (SVG, PNG or ICO) found in this app's files");
   }
   await getDb()
     .update(appsTable)

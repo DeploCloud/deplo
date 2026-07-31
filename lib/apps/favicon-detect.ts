@@ -13,8 +13,10 @@ import {
   scoreFaviconPath,
   isExcludedDirName,
   isGithubRepo,
+  faviconSourceKind,
   type FaviconFile,
 } from "./favicon-shared";
+import { detectAgentFilesFavicon } from "./favicon-agent";
 import { isValidLogoValue, MAX_LOGO_BYTES } from "./logo-shared";
 import type { GitRepo, UploadArchive } from "../types";
 
@@ -30,6 +32,9 @@ import type { GitRepo, UploadArchive } from "../types";
  *    blob) instead — works for private (installation token) and public repos.
  *  - Uploaded archives live on the control plane, so we extract to a temp dir
  *    and scan the files (reusing extractArchive's symlink-reject guard).
+ *  - A COMPOSE STACK has neither: its own files are the files dir on its owning
+ *    host, walked + read through that server's agent — see
+ *    {@link file://./favicon-agent.ts}.
  *
  * Every entry point is best-effort and non-throwing: detection is a cosmetic
  * nicety layered on deploy, never a reason to fail one.
@@ -213,32 +218,60 @@ export async function detectUploadFavicon(
   }
 }
 
+/**
+ * Detect an icon in an app's files dir on its OWNING SERVER — the compose-stack
+ * arm, where "the app's own files" is the `<stacks>/files/<slug>` tree its
+ * `./x` bind mounts resolve into. The walk + the read go through that server's
+ * agent; only the ranking and this data-URI wrap are control-plane logic.
+ */
+export async function detectAppFilesFavicon(
+  serverId: string,
+  slug: string,
+): Promise<string | null> {
+  const found = await detectAgentFilesFavicon(serverId, slug);
+  return found ? toLogoDataUri(found.bytes, found.path) : null;
+}
+
 /** The minimal app shape favicon detection reads. A loaded app graph
  * satisfies it structurally. */
 export interface FaviconDetectApp {
+  slug: string;
+  serverId: string;
   source: string;
+  compose: string | null;
+  dockerImage: string | null;
   repo?: GitRepo | null;
   upload?: UploadArchive | null;
   build: { rootDirectory?: string | null };
 }
 
 /**
- * Detect a logo from whichever source an app builds from — the single entry
- * point the create hook, the upload route, and the manual "Detect from source"
- * action all share. Null when the source has no scannable files (a prebuilt
- * docker image, a non-GitHub git URL, or an upload with no archive yet).
+ * Detect a logo from whichever files an app actually owns — the on-demand entry
+ * point behind the settings "Detect from source" action (the deploy hooks call
+ * the arm their source already resolved). WHICH pile of files that is comes from
+ * the shared {@link faviconSourceKind}, so the UI's "can this be detected?" gate
+ * and this dispatch can never disagree. Null when there is nothing to scan (a
+ * prebuilt docker image, a non-GitHub git URL, or an upload with no archive).
  */
 export async function detectAppFavicon(
   project: FaviconDetectApp,
 ): Promise<string | null> {
-  // A repo source is keyed on the repo itself (provider/URL), NOT the `source`
-  // string — a GitHub App import is `source: "github"`, a bare git URL is
-  // `source: "git"`, and both carry a repo. isGithubRepo is the shared gate.
-  if (project.repo && isGithubRepo(project.repo)) {
-    return detectGithubFavicon(project.repo, project.build.rootDirectory ?? null);
+  switch (faviconSourceKind(project)) {
+    // A compose stack's files live on its host, not here.
+    case "app-files":
+      return detectAppFilesFavicon(project.serverId, project.slug);
+    // A repo source is keyed on the repo itself (provider/URL), NOT the `source`
+    // string — a GitHub App import is `source: "github"`, a bare git URL is
+    // `source: "git"`, and both carry a repo.
+    case "github":
+      return project.repo
+        ? detectGithubFavicon(project.repo, project.build.rootDirectory ?? null)
+        : null;
+    case "upload":
+      return project.upload
+        ? detectUploadFavicon(project.upload, project.build.rootDirectory ?? null)
+        : null;
+    default:
+      return null;
   }
-  if (project.source === "upload" && project.upload) {
-    return detectUploadFavicon(project.upload, project.build.rootDirectory ?? null);
-  }
-  return null;
 }

@@ -1,9 +1,11 @@
 /**
  * Pure logic for auto-detecting an app's display logo from a favicon/icon
- * shipped in its own source files (a GitHub repo or an uploaded archive). Kept
+ * shipped in its own files (a GitHub repo, an uploaded archive, or — for a
+ * compose stack — its files dir on the server that runs it). Kept
  * free of any `server-only` / Node-only import so it is unit-testable in
  * isolation — the file-listing and the byte-fetching live in the server-only
- * {@link file://./favicon-detect.ts} module, which calls into here to RANK.
+ * {@link file://./favicon-detect.ts} module (and, for a compose stack's host,
+ * {@link file://./favicon-agent.ts}), which call into here to RANK.
  *
  * We ONLY pick a file literally named `favicon` (favicon.svg / .ico / .png /
  * .jpg / …) that the app itself ships — never `logo.*`, `icon.*`,
@@ -14,6 +16,7 @@
  */
 
 import { MAX_LOGO_BYTES } from "./logo-shared";
+import { usesComposeStack } from "../utils";
 
 /** Image extensions we accept for a detected favicon, mapped to their stored
  * MIME. Every value is a type `isValidLogoValue` accepts (incl. `.ico` ⇒
@@ -62,6 +65,37 @@ export function isGithubRepo(
   } catch {
     return false;
   }
+}
+
+/**
+ * WHICH pile of files an app's icon is detected from — the single dispatch both
+ * the detector and the settings UI read, so the "Detect from source" button is
+ * offered exactly when the server can actually scan something.
+ *
+ *  - `github`    — the repo's own tree, read over the GitHub API.
+ *  - `upload`    — the uploaded archive, extracted control-plane-side.
+ *  - `app-files` — the app's files dir ON ITS OWNING SERVER: a **compose stack**
+ *    has no repo and no archive, its files are the `<stacks>/files/<slug>` tree
+ *    its `./x` bind mounts resolve into (the Files tab), so that is where its
+ *    own web assets — favicon included — actually live.
+ *  - `none`      — a prebuilt docker image and nothing else: no files to scan.
+ *
+ * Compose is tested FIRST because `source` is authoritative for a compose stack
+ * (an app switched to compose may still carry the repo it used to build from,
+ * which the deploy ignores — so detection must ignore it too).
+ */
+export type FaviconSourceKind = "github" | "upload" | "app-files" | "none";
+
+export function faviconSourceKind(app: {
+  source: string;
+  compose: string | null;
+  repo?: { provider?: string | null; url?: string | null } | null;
+  dockerImage: string | null;
+}): FaviconSourceKind {
+  if (usesComposeStack({ ...app, repo: app.repo ?? null })) return "app-files";
+  if (isGithubRepo(app.repo)) return "github";
+  if (app.source === "upload") return "upload";
+  return "none";
 }
 
 /** Whether a single directory NAME is one detection should never descend into

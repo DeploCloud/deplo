@@ -4,6 +4,7 @@ import {
   mimeForFaviconPath,
   scoreFaviconPath,
   pickBestFavicon,
+  faviconSourceKind,
 } from "./favicon-shared";
 import { MAX_LOGO_BYTES } from "./logo-shared";
 
@@ -122,4 +123,91 @@ test("pickBestFavicon: ties break on the smaller path deterministically", () => 
     { path: "public/favicon-a.png", size: 1000 },
   ]);
   assert.equal(a?.path, "public/favicon-a.png");
+});
+
+/* ------------------------------------------------------------------ */
+/* faviconSourceKind — which pile of files an app's icon comes from     */
+/* ------------------------------------------------------------------ */
+
+const APP = {
+  source: "docker-image",
+  compose: null as string | null,
+  repo: null as { provider?: string | null; url?: string | null } | null,
+  dockerImage: null as string | null,
+};
+
+test("faviconSourceKind: a compose stack is scanned on its own server", () => {
+  assert.equal(
+    faviconSourceKind({ ...APP, source: "compose", compose: "services:\n  web:\n" }),
+    "app-files",
+  );
+});
+
+test("faviconSourceKind: compose wins over a repo the app no longer builds from", () => {
+  // Switching an app to a compose stack KEEPS the repo (so it can switch back),
+  // but the deploy ignores it — detection must ignore it the same way.
+  assert.equal(
+    faviconSourceKind({
+      ...APP,
+      source: "compose",
+      compose: "services:\n  web:\n",
+      repo: { provider: "github", url: "https://github.com/acme/site" },
+    }),
+    "app-files",
+  );
+});
+
+test("faviconSourceKind: a legacy template app (compose, no repo/image) is app-files", () => {
+  assert.equal(
+    faviconSourceKind({ ...APP, source: "docker-image", compose: "services: {}" }),
+    "app-files",
+  );
+});
+
+test("faviconSourceKind: GitHub repos are read over the API", () => {
+  assert.equal(
+    faviconSourceKind({
+      ...APP,
+      source: "github",
+      repo: { provider: "github", url: "https://github.com/acme/site" },
+    }),
+    "github",
+  );
+  // A bare git URL that happens to be github.com counts too.
+  assert.equal(
+    faviconSourceKind({
+      ...APP,
+      source: "git",
+      repo: { provider: "git", url: "https://github.com/acme/site.git" },
+    }),
+    "github",
+  );
+});
+
+test("faviconSourceKind: a non-GitHub git host has nothing the control plane can read", () => {
+  assert.equal(
+    faviconSourceKind({
+      ...APP,
+      source: "git",
+      repo: { provider: "git", url: "https://gitlab.com/acme/site.git" },
+    }),
+    "none",
+  );
+});
+
+test("faviconSourceKind: an upload is scanned from its archive", () => {
+  assert.equal(faviconSourceKind({ ...APP, source: "upload" }), "upload");
+  // Even with a stale compose lingering from a previous source — an upload is
+  // explicit and still builds its archive.
+  assert.equal(
+    faviconSourceKind({ ...APP, source: "upload", compose: "services: {}" }),
+    "upload",
+  );
+});
+
+test("faviconSourceKind: a prebuilt image alone has no files to scan", () => {
+  assert.equal(
+    faviconSourceKind({ ...APP, source: "docker-image", dockerImage: "nginx:latest" }),
+    "none",
+  );
 });

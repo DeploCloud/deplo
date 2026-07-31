@@ -1269,7 +1269,7 @@ type Mutation {
   deleteUser(input: DeleteUserInput!): DeleteUserResult
 
   """
-  Auto-detect a favicon (SVG/PNG) from the app's GitHub repo or uploaded files and set it as the logo. Errors if none is found.
+  Auto-detect a favicon from the app's own files — its GitHub repo, its uploaded archive, or (for a compose stack) its files dir on its server — and set it as the logo. Errors if none is found.
   """
   detectAppLogo(id: String!): App
 

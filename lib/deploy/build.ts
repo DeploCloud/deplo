@@ -34,7 +34,11 @@ import { deploymentToRow } from "../data/app-graph-rows";
 import { ensureNetwork } from "../infra/docker";
 import { buildImage } from "./builders";
 import { extractArchive } from "./upload";
-import { detectTreeFavicon, detectGithubFavicon } from "../apps/favicon-detect";
+import {
+  detectTreeFavicon,
+  detectGithubFavicon,
+  detectAppFilesFavicon,
+} from "../apps/favicon-detect";
 import { isGithubRepo } from "../apps/favicon-shared";
 import { planDeploySource, resolveBuildDir } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
@@ -299,6 +303,30 @@ function autoDetectRepoLogo(
 ): void {
   if (currentLogo || !isGithubRepo(repo)) return;
   void detectGithubFavicon(repo, rootDirectory)
+    .then((logo) => setLogoIfUnset(appId, logo))
+    .catch(() => {});
+}
+
+/**
+ * Auto-detect a display logo for a COMPOSE STACK from the app's own files on
+ * its owning host — the stack has no repo and no archive, so its files dir
+ * (what its `./x` bind mounts resolve into, and where a web app it serves keeps
+ * its favicon) is the analogue of the tree the other sources scan.
+ *
+ * Runs AFTER the agent deploy, so the mount files the stack ships with are on
+ * disk before the walk, and FIRE-AND-FORGET like the repo arm: an agent round
+ * trip must never delay a deploy, and the logo pushes to live subscribers a
+ * moment later. Guarded on the app having no logo yet, so a template default is
+ * kept and an app that already has an icon costs zero RPCs per deploy.
+ */
+function autoDetectAppFilesLogo(
+  appId: string,
+  currentLogo: string | null,
+  serverId: string,
+  slug: string,
+): void {
+  if (currentLogo) return;
+  void detectAppFilesFavicon(serverId, slug)
     .then((logo) => setLogoIfUnset(appId, logo))
     .catch(() => {});
 }
@@ -906,6 +934,10 @@ async function runDeployment(depId: string): Promise<void> {
       // `compose up`s on its host), the host running Deplo included. The control
       // plane renders the stack YAML (buildComposeStack); the agent brings it up.
       await deployComposeStackViaAgent({ ...composeOpts, serverId: project.serverId });
+      // Auto-set the display logo from a favicon in the app's OWN files on that
+      // host (the tree its `./x` mounts resolve into) when it has none yet —
+      // the compose-stack arm of the same detection git/upload apps get.
+      autoDetectAppFilesLogo(project.id, project.logo, project.serverId, slug);
       return;
     }
 
