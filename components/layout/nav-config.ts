@@ -58,6 +58,13 @@ export interface NavItem {
 export interface NavSection {
   title?: string;
   items: NavItem[];
+  /**
+   * Render this section's entries as plain text — no icons. Used by the app /
+   * database settings sub-menus, where the list is short, already titled, and an
+   * icon per row is decoration rather than a wayfinding aid. Ignored while the
+   * sidebar is collapsed, since there the icon IS the entry.
+   */
+  iconless?: boolean;
 }
 
 export const NAV: NavSection[] = [
@@ -419,6 +426,7 @@ export function appSettingsNav(slug: string): NavSection[] {
     },
     {
       title: "Settings",
+      iconless: true,
       items: [
         {
           label: "General",
@@ -558,6 +566,7 @@ export function databaseSettingsNav(id: string): NavSection[] {
     },
     {
       title: "Settings",
+      iconless: true,
       items: [
         {
           label: "General",

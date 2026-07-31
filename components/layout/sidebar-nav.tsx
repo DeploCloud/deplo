@@ -224,6 +224,9 @@ export function SidebarNav({
           {section.items.map((item) => {
             const active = isActive(item.href, item.exact);
             const Icon = item.icon;
+            // A text-only section (app/database settings) drops the icons — but
+            // never while collapsed, where the icon is the only thing rendered.
+            const showIcon = !section.iconless || collapsed;
             return (
               <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>
                 <TooltipTrigger asChild>
@@ -241,14 +244,16 @@ export function SidebarNav({
                         : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/5",
                     )}
                   >
-                    <Icon
-                      className={cn(
-                        "size-4 shrink-0",
-                        active
-                          ? "text-foreground"
-                          : "text-muted-foreground group-hover:text-foreground",
-                      )}
-                    />
+                    {showIcon && (
+                      <Icon
+                        className={cn(
+                          "size-4 shrink-0",
+                          active
+                            ? "text-foreground"
+                            : "text-muted-foreground group-hover:text-foreground",
+                        )}
+                      />
+                    )}
                     {!collapsed && item.label}
                   </Link>
                 </TooltipTrigger>
