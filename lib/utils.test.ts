@@ -64,8 +64,7 @@ test("appTypeLabel names the App kind, tracking usesComposeStack", () => {
 
 test("formatBuildDuration rounds DOWN so a live timer never over-reports", () => {
   // The same formatter drives the ticking "Build time" on the deployment page,
-  // so a build 400ms in must read 0s, not 1s.
-  assert.equal(formatBuildDuration(400), "0s");
+  // so a build 400ms in must read 400ms, never a second it hasn't reached.
   assert.equal(formatBuildDuration(1_999), "1s");
   assert.equal(formatBuildDuration(45_000), "45s");
   assert.equal(formatBuildDuration(59_999), "59s");
@@ -73,12 +72,24 @@ test("formatBuildDuration rounds DOWN so a live timer never over-reports", () =>
   assert.equal(formatBuildDuration(125_000), "2m 5s");
 });
 
-test("formatBuildDuration: no duration renders empty, a negative one clamps to 0s", () => {
+test("formatBuildDuration: a sub-second build reports milliseconds, not 0s", () => {
+  // A redeploy that only restarts a container really does finish in a few
+  // hundred ms — "0s" would read as "we didn't measure it".
+  assert.equal(formatBuildDuration(400), "400ms");
+  assert.equal(formatBuildDuration(7), "7ms");
+  assert.equal(formatBuildDuration(999), "999ms");
+  // Fractions round down too, and the unit flips exactly at a full second.
+  assert.equal(formatBuildDuration(12.9), "12ms");
+  assert.equal(formatBuildDuration(999.9), "999ms");
+  assert.equal(formatBuildDuration(1_000), "1s");
+});
+
+test("formatBuildDuration: no duration renders empty, a negative one clamps to 0ms", () => {
   // Null = never measured (still queued, or a build orphaned by a restart) —
-  // the caller renders its own placeholder rather than a fabricated "0s".
+  // the caller renders its own placeholder rather than a fabricated duration.
   assert.equal(formatBuildDuration(null), "");
   // A viewer's clock running ahead of the host's must not show a negative build.
-  assert.equal(formatBuildDuration(-5_000), "0s");
+  assert.equal(formatBuildDuration(-5_000), "0ms");
 });
 
 test("readableTextColor returns a valid foreground for every curated folder colour", () => {

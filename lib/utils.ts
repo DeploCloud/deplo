@@ -22,16 +22,22 @@ export function timeAgo(input: Date | string | number): string {
 }
 
 /**
- * How long a build took (or has been running), as `12s` / `2m 5s`. Empty for a
- * missing duration so a caller can render its own placeholder.
+ * How long a build took (or has been running), as `340ms` / `12s` / `2m 5s`.
+ * Empty for a missing duration so a caller can render its own placeholder.
  *
- * Rounds DOWN, because the same formatter feeds a timer that ticks live while a
- * build runs: a clock that shows "1s" 400ms in is lying, and a finished build
- * must not be able to report a second more than it actually took.
+ * Under a second the unit drops to milliseconds rather than collapsing to "0s":
+ * an app that redeploys in a few hundred milliseconds took a real, reportable
+ * amount of time, and rounding it away reads as "not measured".
+ *
+ * Rounds DOWN at every scale, because the same formatter feeds a timer that
+ * ticks live while a build runs: a clock that shows "1s" 400ms in is lying, and
+ * a finished build must not be able to report more time than it actually took.
  */
 export function formatBuildDuration(ms: number | null): string {
   if (ms == null) return "";
-  const s = Math.max(0, Math.floor(ms / 1000));
+  const total = Math.max(0, Math.floor(ms));
+  if (total < 1_000) return `${total}ms`;
+  const s = Math.floor(total / 1_000);
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }

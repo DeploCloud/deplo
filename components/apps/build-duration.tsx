@@ -6,7 +6,11 @@ import { isDeploymentLive } from "@/lib/deployment-status";
 import { formatBuildDuration } from "@/lib/utils";
 import type { DeploymentStatus } from "@/lib/types";
 
-/** Repaint cadence. Seconds is the finest unit the label renders. */
+/**
+ * Repaint cadence. The label renders milliseconds only in its first second, and
+ * a running build has no reason to repaint faster than the seconds it will show
+ * for the rest of its life.
+ */
 const TICK_MS = 1000;
 
 /**
