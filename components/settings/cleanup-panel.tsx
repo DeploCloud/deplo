@@ -85,8 +85,10 @@ const SCOPES: {
     label: "Build cache",
     info: (
       <>
-        The Docker daemon&apos;s BuildKit cache. Removing it costs nothing but a slower
-        next build — no app, image or volume is touched.
+        The Docker daemon&apos;s BuildKit cache — what makes a redeploy reuse the last
+        build instead of repeating it. Removing it costs nothing but a slower next
+        build; no app, image or volume is touched. Whatever survives the age filter is
+        still capped at a tenth of the disk, so it can never grow without bound.
       </>
     ),
   },
