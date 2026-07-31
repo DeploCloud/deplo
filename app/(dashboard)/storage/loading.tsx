@@ -1,6 +1,18 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 
+// Same scheme as the Overview skeleton: the grid mirrors DatabasesGrid's
+// breakpoints (1 col, 2 from `sm`, 3 from `3xl`) and each extra placeholder
+// only appears once a column exists for it — two full rows at every width.
+const ROW_FILL = [
+  "",
+  "",
+  "hidden sm:block",
+  "hidden sm:block",
+  "hidden 3xl:block",
+  "hidden 3xl:block",
+];
+
 export default function Loading() {
   return (
     <div
@@ -42,9 +54,9 @@ export default function Loading() {
             <Skeleton className="h-8 w-32 rounded-md" />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i}>
+          <div className="grid gap-4 sm:grid-cols-2 3xl:grid-cols-3">
+            {ROW_FILL.map((fill, i) => (
+              <Card key={i} className={fill || undefined}>
                 <CardContent className="space-y-4 p-5">
                   {/* header: icon + name/type, status + menu */}
                   <div className="flex items-start justify-between">

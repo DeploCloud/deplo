@@ -1,5 +1,19 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+
+// The grid below mirrors AppsGrid's own breakpoints (1 col, 2 from `sm`, 3 from
+// `3xl`), so the placeholder count has to follow them too: a fixed count leaves
+// a half-empty last row on the wider layouts. Each extra card is revealed only
+// once a column exists for it — two full rows at every width (2 / 4 / 6).
+const ROW_FILL = [
+  "",
+  "",
+  "hidden sm:flex",
+  "hidden sm:flex",
+  "hidden 3xl:flex",
+  "hidden 3xl:flex",
+];
 
 export default function Loading() {
   return (
@@ -47,9 +61,9 @@ export default function Loading() {
         </div>
 
         {/* Apps grid */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i} className="flex flex-col gap-4 p-5">
+        <div className="grid gap-4 sm:grid-cols-2 3xl:grid-cols-3">
+          {ROW_FILL.map((fill, i) => (
+            <Card key={i} className={cn("flex flex-col gap-4 p-5", fill)}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <Skeleton className="size-9 rounded-md" />
