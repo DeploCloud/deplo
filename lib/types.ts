@@ -1040,14 +1040,25 @@ export interface Domain {
   name: string;
   status: DomainStatus;
   primary: boolean;
+  /**
+   * The hostname this domain answers a permanent redirect (301) to, or null when
+   * it serves the app. Set only by the `www` ⇄ non-`www` pairing, and only ever
+   * to another hostname of the SAME app that serves — never a chain, never an
+   * outside address. Its router still targets this domain's port/service (a
+   * Traefik router needs a service) but the generated `redirectregex` middleware
+   * answers first, so the container is never reached.
+   */
   redirectTo: string | null;
   ssl: boolean;
   /**
    * "auto"  the zero-config nip.io hostname Deplo generates once per project
    * (already routed, no DNS setup). "custom"  a domain the user added and must
-   * point at this server. Defaults to "custom" when absent.
+   * point at this server. "redirect"  the `www`/non-`www` companion Deplo
+   * generated for a domain that asked to be paired — the provenance that makes
+   * un-pairing safe to DELETE the row, where a hostname the user typed is only
+   * un-redirected. Defaults to "custom" when absent.
    */
-  source?: "auto" | "custom";
+  source?: "auto" | "custom" | "redirect";
   /**
    * Container port this hostname's Traefik router targets. Null/absent ⇒ route
    * to the project's default port (single-image `build.port`, or the compose

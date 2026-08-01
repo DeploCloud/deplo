@@ -1,7 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Cloud, CornerDownRight, Lock, Route } from "lucide-react";
+import {
+  Cloud,
+  CornerDownRight,
+  Lock,
+  Route,
+  Signpost,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
@@ -18,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { wwwCounterpart, type WwwRedirect } from "@/lib/www-redirect";
 import type { CertProvider, DomainEntrypoint } from "@/lib/types";
 
 /** Entrypoint options — the two entrypoints the proxy's static config defines.
@@ -67,6 +74,9 @@ export interface DomainConfigState {
   stripPath: boolean;
   /** Compose-stack only: which compose service this host targets ("" ⇒ default). */
   service: string;
+  /** Which half of this hostname's `www` pair serves the app. Derived from the
+   * app's rows by the caller (never a stored flag) and posted back on save. */
+  www: WwwRedirect;
 }
 
 /** Seed config form state from a domain (or defaults for a brand-new domain).
@@ -93,6 +103,9 @@ export function initialDomainConfig(
     service?: string;
   },
   defaultPort?: number,
+  /** The `www` pairing the app's rows currently describe (`deriveWwwRedirect`).
+   * Defaults to `none`, which is right for a brand-new domain. */
+  www: WwwRedirect = "none",
 ): DomainConfigState {
   return {
     port:
@@ -108,6 +121,7 @@ export function initialDomainConfig(
     path: domain?.pathPrefix ?? "",
     stripPath: Boolean(domain?.stripPrefix),
     service: domain?.service ?? "",
+    www,
   };
 }
 
@@ -134,6 +148,11 @@ export function parseMiddlewares(text: string): string[] {
 export function resolveDomainConfig(
   state: DomainConfigState,
   isCompose: boolean,
+  /** The hostname the dialog currently holds. Given, a `www` pairing is dropped
+   * when that hostname has no counterpart — otherwise typing `example.com`,
+   * picking a pairing and then editing the host into `api.foo.example.com`
+   * would post a pairing the server can only reject. */
+  hostname?: string,
 ):
   | {
       ok: true;
@@ -144,6 +163,7 @@ export function resolveDomainConfig(
       pathPrefix: string;
       stripPrefix: boolean;
       service: string;
+      www: WwwRedirect;
     }
   | { ok: false; error: string } {
   const service = state.service.trim();
@@ -176,6 +196,13 @@ export function resolveDomainConfig(
     // Strip is meaningless without a path; never send a true with no path.
     stripPrefix: path ? state.stripPath : false,
     service,
+    // Sent as-is, including when unchanged: the pairing is derived from the app's
+    // rows, so posting the current value is a no-op server-side and posting a
+    // different one is the whole edit.
+    www:
+      hostname !== undefined && wwwCounterpart(hostname) == null
+        ? "none"
+        : state.www,
   };
 }
 
@@ -192,8 +219,26 @@ export function resolveDomainConfig(
  * Middlewares are counted, never named: names overflow the row, and the count
  * answers the only question a closed header needs to answer.
  */
-export function advancedSummary(state: DomainConfigState): string {
+export function advancedSummary(
+  state: DomainConfigState,
+  /** The hostname the dialog currently holds, so the summary can name the
+   * hostname a `www` pairing redirects. Absent ⇒ the pairing is summarised
+   * generically. */
+  hostname?: string,
+): string {
   const parts: string[] = [];
+  if (state.www !== "none") {
+    const counterpart = wwwCounterpart(hostname ?? "");
+    parts.push(
+      state.www === "toThis"
+        ? counterpart
+          ? `${counterpart} redirects here`
+          : "www redirects here"
+        : counterpart
+          ? `redirects to ${counterpart}`
+          : "redirects to www",
+    );
+  }
   if (state.certProvider === "letsencrypt") parts.push("Let's Encrypt");
   else if (state.certProvider === "cloudflare")
     parts.push("Cloudflare certificate");
@@ -249,6 +294,20 @@ function RoutePreview({
   const manualEntrypoint =
     state.manualEntrypoint && state.certProvider !== "none";
   const middlewares = parseMiddlewares(state.middlewares).length;
+  // The `www` pair, spelled out: the URL on top is always the hostname that
+  // SERVES the app — which, under `toCounterpart`, is the counterpart rather than
+  // the hostname being edited. Showing the edited host there would advertise a
+  // URL that answers 301, which is exactly the confusion this pairing exists to
+  // remove.
+  const counterpart = wwwCounterpart(host);
+  const paired = state.www !== "none" && counterpart != null;
+  const servedHost =
+    paired && state.www === "toCounterpart" ? counterpart! : host;
+  const redirectingHost = !paired
+    ? ""
+    : state.www === "toCounterpart"
+      ? host
+      : counterpart!;
 
   const target = [
     // Named only once chosen — "the selected service" while nothing is selected
@@ -261,7 +320,9 @@ function RoutePreview({
     <div className="space-y-1 rounded-md bg-muted px-3 py-2">
       <p className="break-all font-mono text-xs text-foreground">
         {scheme}://
-        {host || <span className="text-muted-foreground">your-domain.com</span>}
+        {servedHost || (
+          <span className="text-muted-foreground">your-domain.com</span>
+        )}
         {urlPath}
       </p>
       <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -274,6 +335,18 @@ function RoutePreview({
             `, through ${middlewares} middleware${middlewares === 1 ? "" : "s"}`}
         </span>
       </p>
+      {paired && (
+        <p className="flex items-start gap-1.5 break-all text-xs text-muted-foreground">
+          <Signpost className="mt-px size-3 shrink-0" aria-hidden />
+          <span className="min-w-0 break-words">
+            <span className="font-mono">{redirectingHost}</span> answers a
+            permanent redirect (301) to{" "}
+            <span className="font-mono">
+              {scheme}://{servedHost}
+            </span>
+          </span>
+        </p>
+      )}
     </div>
   );
 }
@@ -308,9 +381,10 @@ function AdvancedGroup({
  * dialogs so the two never drift. Always-visible: the service selector (compose
  * stacks only), the service port, and a read-only preview of the route they
  * produce. Folded into an "Advanced settings" collapsible — whose closed header
- * summarises anything that diverges from the defaults — two grouped concerns:
- * HTTPS (certificate + entrypoint) and request routing (path, strip, the
- * middleware chain).
+ * summarises anything that diverges from the defaults — three grouped concerns:
+ * HTTPS (certificate + entrypoint), the `www` redirect (which spelling of the
+ * hostname serves the app, offered only when the hostname HAS a meaningful `www`
+ * counterpart), and request routing (path, strip, the middleware chain).
  *
  * `idPrefix` namespaces the input ids (multiple instances can coexist on a page).
  * `services` lists a compose app's service names — when non-empty the service
@@ -367,7 +441,19 @@ export function DomainConfigFields({
   // shows (and locks to) the truth rather than a stale override.
   const entrypointValue =
     noCert || !state.manualEntrypoint ? ENTRYPOINT_AUTO : state.entrypoint;
-  const summary = advancedSummary(state);
+  const summary = advancedSummary(state, hostname);
+
+  // The `www` pair of the hostname currently typed. Null for a hostname that has
+  // no meaningful one (an `api.` subdomain, a generated nip.io host) — the whole
+  // group is then absent rather than offering a choice about a hostname nobody
+  // would use. A path-routed domain is offered the group only while a pair
+  // already exists, so an existing pair stays visible (and undoable) but a path
+  // route can't start one: a redirect answers for a whole hostname.
+  const host = (hostname ?? "").trim();
+  const counterpart = wwwCounterpart(host);
+  const showWww = counterpart != null && (!hasPath || state.www !== "none");
+  const redirectingHost =
+    state.www === "toCounterpart" ? host : (counterpart ?? "");
 
   return (
     <>
@@ -555,6 +641,60 @@ export function DomainConfigFields({
                 </Select>
               </div>
             </AdvancedGroup>
+
+            {showWww && (
+              <AdvancedGroup icon={Signpost} title="Redirect">
+                <div className="space-y-2">
+                  <FieldLabel
+                    htmlFor={`${idPrefix}-www`}
+                    info={
+                      <>
+                        Sends one of the two spellings of this site to the other
+                        with a permanent redirect (301), so visitors and search
+                        engines settle on a single address. Deplo adds the other
+                        hostname as a domain of this app — with its own DNS check
+                        and its own certificate — so it shows up in the list and
+                        can be removed there.
+                      </>
+                    }
+                  >
+                    www redirect
+                  </FieldLabel>
+                  <Select
+                    value={state.www}
+                    onValueChange={(v) => set("www", v as WwwRedirect)}
+                  >
+                    <SelectTrigger id={`${idPrefix}-www`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No redirect</SelectItem>
+                      {/* Both directions, spelled with the real hostnames rather
+                          than the words "www"/"non-www": the option a user reads
+                          is exactly the pair of rows the server will write. */}
+                      <SelectItem value="toThis">
+                        {counterpart} → {host}
+                      </SelectItem>
+                      <SelectItem value="toCounterpart">
+                        {host} → {counterpart}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {state.www !== "none" && (
+                    // Said once, next to the control that causes it: the one
+                    // thing the user still has to do themselves is point the
+                    // second hostname's DNS here. It is re-checked automatically,
+                    // so this is a heads-up, not a chore list.
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-mono">{redirectingHost}</span> is
+                      added as a domain of this app. Point its DNS at this server
+                      too — it is checked automatically and appears in the list
+                      with its own status.
+                    </p>
+                  )}
+                </div>
+              </AdvancedGroup>
+            )}
 
             <AdvancedGroup icon={Route} title="Request routing">
               <div className="space-y-2">

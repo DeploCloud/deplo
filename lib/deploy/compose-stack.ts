@@ -71,6 +71,11 @@ export interface ComposeDomainRoute {
   pathPrefix: string;
   /** Strip `pathPrefix` before forwarding. */
   stripPrefix: boolean;
+  /** Absolute base URL this hostname permanently redirects to (`https://…`), or
+   * empty/absent when it serves the app. Set for the redirecting half of a
+   * `www` pair; the router still names a service (Traefik needs one) but the
+   * generated redirect middleware answers before it is reached. */
+  redirectTo?: string;
 }
 
 export interface ComposeStackInput {
@@ -276,11 +281,15 @@ function traefikLabels(opts: {
   pathPrefix?: string;
   /** Strip the path prefix before forwarding (ignored without a path). */
   stripPrefix?: boolean;
+  /** Absolute base URL this host permanently redirects to (the canonical half of
+   * a `www` pair). Absent/empty ⇒ the router serves the service. */
+  redirectTo?: string;
   /** App-wide Basic Auth: a generated `basicauth` middleware (defined once
    * and prepended to this router's chain). Absent ⇒ no auth. */
   basicAuth?: { name: string; users: string };
 }): string[] {
-  const { router, domains, port, pathPrefix, stripPrefix, basicAuth } = opts;
+  const { router, domains, port, pathPrefix, stripPrefix, redirectTo, basicAuth } =
+    opts;
   // One router named `router`, serving every host in `domains` on `port` (a
   // single OR-rule). Default grouping with all hosts at the default port folds
   // them into the one `baseKey` router — `alwaysService` forces the explicit
@@ -289,7 +298,13 @@ function traefikLabels(opts: {
   // omitted ⇒ byte-identical to the long-standing host-only output.
   return traefikRouterLabels({
     baseKey: router,
-    routes: domains.map((name) => ({ name, port: null, pathPrefix, stripPrefix })),
+    routes: domains.map((name) => ({
+      name,
+      port: null,
+      pathPrefix,
+      stripPrefix,
+      redirectTo,
+    })),
     defaultPort: port,
     certResolver: certResolver(),
     dockerNetwork: NETWORK,
@@ -707,6 +722,10 @@ export function buildComposeStack(input: ComposeStackInput): string {
         port,
         pathPrefix: route.pathPrefix,
         stripPrefix: route.stripPrefix,
+        // A `www` host of a compose app still needs a router pointing at a real
+        // service (Traefik requires one), but its generated redirect middleware
+        // answers 301 before the container is ever reached.
+        redirectTo: route.redirectTo,
         ...(basicAuth ? { basicAuth } : {}),
       }),
     );

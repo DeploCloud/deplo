@@ -44,6 +44,11 @@ import {
 import { domainToRow, domainMiddlewaresToRows } from "./app-graph-rows";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { getServerById } from "./servers";
+import {
+  wwwCounterpart,
+  deriveWwwRedirect,
+  type WwwRedirect,
+} from "../www-redirect";
 import type { CertProvider, Domain, DomainEntrypoint } from "../types";
 
 const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
@@ -307,7 +312,14 @@ export async function primaryDomainName(appId: string): Promise<string> {
  */
 export async function primaryDomainRow(appId: string): Promise<Domain | null> {
   const domains = await loadDomainsForApp(appId);
-  return domains.find((d) => d.primary) ?? domains[0] ?? null;
+  // Same fallback rule as {@link syncProductionUrl}: a redirecting hostname is
+  // never the canonical host, it only points at it.
+  return (
+    domains.find((d) => d.primary) ??
+    domains.find((d) => !d.redirectTo) ??
+    domains[0] ??
+    null
+  );
 }
 
 /**
@@ -374,6 +386,9 @@ export interface DomainConfig {
   stripPrefix?: boolean;
   /** Compose-stack only: which compose service this host targets. */
   service?: string;
+  /** `www` ⇄ non-`www` pairing for this hostname — see {@link applyWwwRedirect}.
+   * Absent/`none` ⇒ the hostname is routed on its own, exactly as before. */
+  www?: WwwRedirect;
 }
 
 export async function addDomain(
@@ -416,24 +431,7 @@ export async function addDomain(
       pathPrefix ? "Domain + path already added" : "Domain already added",
     );
 
-  // Per-team Let's Encrypt quota: the whole fleet shares ONE ACME account/resolver,
-  // so an uncapped tenant registering hundreds of letsencrypt subdomains would
-  // exhaust the shared account's rate limit for every other team. Count this team's
-  // existing letsencrypt domains (across all its apps) and refuse past the cap.
-  const provider = config.certProvider ?? "none";
-  if (provider === "letsencrypt") {
-    const [{ n }] = await getDb()
-      .select({ n: count() })
-      .from(domainsTable)
-      .innerJoin(appsTable, eq(domainsTable.appId, appsTable.id))
-      .where(
-        and(
-          eq(appsTable.teamId, membership.teamId),
-          eq(domainsTable.certProvider, "letsencrypt"),
-        ),
-      );
-    assertLetsencryptQuota(n, provider);
-  }
+  await assertTeamLetsencryptQuota(membership.teamId, config.certProvider ?? "none");
 
   const service = resolveApp(config.service, project, isCompose);
   // On a compose stack the port is required (the chosen service's container
@@ -500,6 +498,11 @@ export async function addDomain(
     createdAt: nowIso(),
   };
   await insertDomain(getDb(), domain);
+  // Pair the hostname with its www counterpart when the add asked for one. Runs
+  // BEFORE the canonical URL is synced, because a `toCounterpart` pairing hands
+  // `primary` to the hostname that ends up serving the app.
+  if (config.www && config.www !== "none")
+    await applyWwwRedirect(domain, config.www, membership.teamId);
   // The FIRST domain is the app's canonical URL from this second on (before it,
   // the card reads "No domain yet"); a later one can still change the scheme of
   // the fallback the app is showing. Cheap, and it keeps apps.production_url a
@@ -507,6 +510,32 @@ export async function addDomain(
   await syncProductionUrl(appId);
   await recordActivity("domain", `Added domain ${clean}`, user.name, appId);
   return domain;
+}
+
+/**
+ * Per-team Let's Encrypt quota: the whole fleet shares ONE ACME account/resolver,
+ * so an uncapped tenant registering hundreds of letsencrypt subdomains would
+ * exhaust the shared account's rate limit for every other team. Counts this
+ * team's existing letsencrypt domains (across all its apps) and refuses past the
+ * cap. A no-op for every other provider — including for a `www` companion that
+ * inherits `none`/`cloudflare`, which registers no certificate at all.
+ */
+async function assertTeamLetsencryptQuota(
+  teamId: string,
+  provider: CertProvider,
+): Promise<void> {
+  if (provider !== "letsencrypt") return;
+  const [{ n }] = await getDb()
+    .select({ n: count() })
+    .from(domainsTable)
+    .innerJoin(appsTable, eq(domainsTable.appId, appsTable.id))
+    .where(
+      and(
+        eq(appsTable.teamId, teamId),
+        eq(domainsTable.certProvider, "letsencrypt"),
+      ),
+    );
+  assertLetsencryptQuota(n, provider);
 }
 
 /** Normalise a router path prefix to its canonical stored form: trim, strip a
@@ -608,6 +637,10 @@ export interface DomainPatch {
   stripPrefix?: boolean;
   /** Compose-stack only: which compose service this host targets; "" clears it. */
   service?: string;
+  /** `www` ⇄ non-`www` pairing — see {@link applyWwwRedirect}. Absent ⇒ the
+   * pairing is left exactly as it is (the Edit dialog always sends the derived
+   * current value, so an untouched dropdown is a no-op). */
+  www?: WwwRedirect;
   /**
    * The entrypoint, expressed as a tri-state because the Edit dialog always
    * sends the full routing config:
@@ -744,6 +777,15 @@ export async function updateDomain(
     if (mwRows.length > 0) await tx.insert(domainMiddlewaresTable).values(mwRows);
   });
   const dom = next;
+  // A rename moves the hostname every dependent redirect points AT, so the
+  // dependents follow it — otherwise a `www` companion would keep 301-ing to a
+  // hostname this app no longer answers on.
+  if (renamed) await repointRedirects(dom.appId, current.name, dom.name);
+  // The www pairing is applied last: it reads the app's rows back, so it must see
+  // the renamed row and the re-pointed dependents, and it can move `primary`
+  // before the canonical URL below is derived.
+  if (patch.www !== undefined)
+    await applyWwwRedirect(dom, patch.www, membership.teamId);
   // A rename moves the canonical host; a certificate-provider change moves its
   // scheme (http ⇄ https). Both are visible in the URL, so re-derive it.
   await syncProductionUrl(dom.appId);
@@ -756,6 +798,253 @@ export async function updateDomain(
     dom.appId,
   );
   return dom.appId;
+}
+
+/* ------------------------------------------------------------------ */
+/* www ⇄ non-www pairing                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Pair a hostname with its `www`/non-`www` counterpart so one of the two serves
+ * the app and the other permanently redirects to it.
+ *
+ * The redirect is a REAL second Domain row, never a hidden flag on the first —
+ * which is the whole reason this is safe for someone who has never touched
+ * Traefik. The counterpart hostname then gets, for free and by construction:
+ * its own DNS check (so `www` that isn't pointed anywhere shows up as
+ * `pending` on the domains page instead of failing invisibly), its own
+ * certificate on its own Traefik router (so an unresolvable `www` can never sink
+ * the ACME order of the host that DOES work — one shared router would), its own
+ * row in the table, and one-click removal.
+ *
+ * `mode` is expressed relative to `domain` — the row the user is editing:
+ *
+ *  - `none`          — break the pair. A companion this feature created is
+ *                      deleted; a hostname the USER added themselves is only
+ *                      un-redirected (it goes back to serving), because deleting
+ *                      a domain somebody typed is not ours to do.
+ *  - `toThis`        — the counterpart 301s HERE. Created if it doesn't exist,
+ *                      mirroring this row's port/service/certificate.
+ *  - `toCounterpart` — this row 301s to the counterpart, which serves the app.
+ *                      The counterpart is created if missing (copying this row's
+ *                      routing), and `primary` moves with the serving host so the
+ *                      app's canonical URL follows.
+ *
+ * Idempotent: the current state is DERIVED from the rows ({@link
+ * deriveWwwRedirect}) and a call that asks for what is already true writes
+ * nothing — which is what lets the Edit dialog post the whole config every time.
+ * Callers re-apply routing afterwards; this only touches the store.
+ */
+async function applyWwwRedirect(
+  domain: Domain,
+  mode: WwwRedirect,
+  teamId: string,
+): Promise<void> {
+  const all = await loadDomainsForApp(domain.appId);
+  const self = all.find((d) => d.id === domain.id) ?? domain;
+  if (deriveWwwRedirect(self.name, all) === mode) return;
+
+  const counterpart = wwwCounterpart(self.name);
+  if (!counterpart)
+    throw new Error(
+      `${self.name} has no www variant to pair with — the www redirect is for a site's own domain, e.g. example.com.`,
+    );
+  // A path-routed row serves ONE path of its host, not the site, so pairing it
+  // with a whole-host redirect would send the rest of the host nowhere.
+  if ((self.pathPrefix ?? "").trim())
+    throw new Error(
+      `${self.name} routes the path ${self.pathPrefix} — a www redirect applies to a whole hostname, so it can't be set on a path route.`,
+    );
+  const other = all.find((d) => d.name === counterpart);
+
+  if (mode === "none") {
+    if (self.redirectTo) await writeRedirectTo(self.id, null);
+    if (other && other.redirectTo === self.name) {
+      // Ours to delete only if we created it; a hostname the user added is left
+      // in place, serving the app again.
+      if (other.source === "redirect") await deleteDomainRow(other.id);
+      else await writeRedirectTo(other.id, null);
+    }
+    return;
+  }
+
+  if (mode === "toThis") {
+    // This row serves from now on, so it can't also be redirecting away.
+    if (self.redirectTo) await writeRedirectTo(self.id, null);
+    if (!other) {
+      await insertPairedDomain(self, counterpart, {
+        redirectTo: self.name,
+        source: "redirect",
+        teamId,
+      });
+    } else {
+      // A path route serves ONE path of its host; turning it into a whole-host
+      // redirect would send the rest of that hostname nowhere.
+      if ((other.pathPrefix ?? "").trim())
+        throw new Error(
+          `${counterpart} routes the path ${other.pathPrefix} — remove that domain before redirecting the hostname.`,
+        );
+      await writeRedirectTo(other.id, self.name);
+    }
+    await movePrimaryToServingHost(domain.appId, self.name, counterpart);
+    return;
+  }
+
+  // toCounterpart: the counterpart serves, this row redirects to it.
+  if (!other) {
+    await insertPairedDomain(self, counterpart, {
+      redirectTo: null,
+      source: "custom",
+      teamId,
+    });
+  } else if (other.redirectTo) {
+    await writeRedirectTo(other.id, null);
+  }
+  await writeRedirectTo(self.id, counterpart);
+  await movePrimaryToServingHost(domain.appId, counterpart, self.name);
+}
+
+/**
+ * Keep `primary` on the half of a pair that SERVES the app.
+ *
+ * A redirecting hostname is not a canonical host — it answers 301 — so when the
+ * pair flips, the Primary badge and the app's production URL flip with it. Only
+ * fires when the REDIRECTING half currently holds the flag: an unrelated third
+ * domain that is the app's primary keeps it, because pairing two hostnames says
+ * nothing about a third.
+ *
+ * CLEAR-then-SET in one transaction for the same reason {@link setPrimaryDomain}
+ * does it: the `(app_id) WHERE is_primary` partial unique cannot tolerate two
+ * live primaries, even transiently.
+ */
+async function movePrimaryToServingHost(
+  appId: string,
+  servingName: string,
+  redirectingName: string,
+): Promise<void> {
+  const rows = await loadDomainsForApp(appId);
+  const redirecting = rows.find((d) => d.name === redirectingName);
+  if (!redirecting?.primary) return;
+  const serving = rows.find((d) => d.name === servingName);
+  if (!serving) return;
+  await getDb().transaction(async (tx) => {
+    await tx
+      .update(domainsTable)
+      .set({ isPrimary: false })
+      .where(and(eq(domainsTable.appId, appId), eq(domainsTable.isPrimary, true)));
+    await tx
+      .update(domainsTable)
+      .set({ isPrimary: true })
+      .where(eq(domainsTable.id, serving.id));
+  });
+}
+
+/**
+ * Follow a renamed hostname with everything that redirects to it.
+ *
+ * Two things move. Every dependent row is re-pointed at the new name, so a pair
+ * survives the rename instead of 301-ing to a hostname the app dropped. And a
+ * companion THIS feature generated (`source: "redirect"`) is itself renamed to
+ * the counterpart of the NEW hostname — `www.old.com` redirecting to `new.com`
+ * is a hostname nobody asked for — which re-checks its DNS, exactly as renaming
+ * it by hand would. The rename is skipped when the new counterpart is already
+ * taken (anywhere on the instance): re-pointing alone still leaves a working
+ * redirect, and stealing a name would not.
+ */
+async function repointRedirects(
+  appId: string,
+  oldName: string,
+  newName: string,
+): Promise<void> {
+  const dependents = (await loadDomainsForApp(appId)).filter(
+    (d) => d.redirectTo === oldName,
+  );
+  if (dependents.length === 0) return;
+  const nextCounterpart = wwwCounterpart(newName);
+  for (const dep of dependents) {
+    const rename =
+      dep.source === "redirect" &&
+      dep.name === wwwCounterpart(oldName) &&
+      nextCounterpart != null &&
+      nextCounterpart !== dep.name &&
+      !(await domainNameExists(nextCounterpart));
+    if (!rename) {
+      await writeRedirectTo(dep.id, newName);
+      continue;
+    }
+    const status = await checkDomainDns(nextCounterpart!, await appServerIp(appId));
+    await getDb()
+      .update(domainsTable)
+      .set({
+        name: nextCounterpart!,
+        redirectTo: newName,
+        status,
+        ssl:
+          (dep.certProvider ?? "letsencrypt") !== "none" &&
+          (status === "valid" || status === "cloudflare"),
+      })
+      .where(eq(domainsTable.id, dep.id));
+  }
+}
+
+/** Point a domain at another hostname (or clear the pointer). The single writer
+ * of `redirect_to`, so every path through the pairing above stays one statement
+ * and one meaning: "this hostname answers 301 to that one". */
+async function writeRedirectTo(id: string, target: string | null): Promise<void> {
+  await getDb()
+    .update(domainsTable)
+    .set({ redirectTo: target })
+    .where(eq(domainsTable.id, id));
+}
+
+/** Drop a domain row (its `domain_middlewares` children CASCADE). Used only for
+ * a companion this feature created — see {@link applyWwwRedirect}. */
+async function deleteDomainRow(id: string): Promise<void> {
+  await getDb().delete(domainsTable).where(eq(domainsTable.id, id));
+}
+
+/**
+ * Create the other half of a `www` pair, cloned from the row the user is
+ * editing: same container port, same compose service, same entrypoint and the
+ * same certificate provider — a redirect that answers on `https://www.…` needs
+ * its own valid certificate there, or the browser hits a certificate error
+ * BEFORE it is ever told where to go.
+ *
+ * DNS is checked right now (like {@link addDomain}) so the new hostname is born
+ * `valid` when the record is already in place, and `pending` — visibly, on the
+ * domains page, with the automatic re-check running — when it isn't. It is never
+ * born primary: the serving host keeps that, and `applyWwwRedirect` hands it
+ * over explicitly when the pair flips.
+ */
+async function insertPairedDomain(
+  from: Domain,
+  name: string,
+  opts: { redirectTo: string | null; source: "redirect" | "custom"; teamId: string },
+): Promise<void> {
+  if (await domainNameExists(name))
+    throw new Error(
+      `${name} is already routed by another app — remove it there first.`,
+    );
+  const status = await checkDomainDns(name, await appServerIp(from.appId));
+  // Mirror the canonical host's certificate choice, upgrading to `cloudflare`
+  // when the check finds THIS hostname proxied (the same rule an add follows).
+  const certProvider = certProviderForDns(status, from.certProvider ?? "none");
+  await assertTeamLetsencryptQuota(opts.teamId, certProvider);
+  await insertDomain(getDb(), {
+    id: newId("dom"),
+    appId: from.appId,
+    name,
+    status,
+    primary: false,
+    redirectTo: opts.redirectTo,
+    ssl: certProvider !== "none" && (status === "valid" || status === "cloudflare"),
+    source: opts.source,
+    port: from.port ?? null,
+    ...(from.entrypoint ? { entrypoint: from.entrypoint } : {}),
+    certProvider,
+    ...(from.service ? { service: from.service } : {}),
+    createdAt: nowIso(),
+  });
 }
 
 /**
@@ -935,6 +1224,11 @@ export interface RoutableDomain {
   /** Compose-stack only: the compose service this host targets (null ⇒ the
    * stack's default exposed service). Ignored by the single-image path. */
   service: string | null;
+  /** Absolute base URL this host permanently redirects to (`https://example.com`),
+   * or "" when it serves the app. Resolved from the stored `redirectTo` hostname
+   * plus the TARGET row's certificate provider, so the 301 lands on the scheme
+   * the canonical host is actually served over. */
+  redirectTo: string;
 }
 
 /**
@@ -960,6 +1254,7 @@ export function defaultRoute(
     pathPrefix: "",
     stripPrefix: false,
     service,
+    redirectTo: "",
   };
 }
 
@@ -974,14 +1269,19 @@ export function defaultRoute(
 export async function routableRoutes(
   appId: string,
 ): Promise<RoutableDomain[]> {
-  return (await loadDomainsForApp(appId))
-    // `valid` (points straight here) and `cloudflare` (proxied — Cloudflare
-    // may or may not forward here, which DNS cannot tell us) are both routable
-    // hosts; a pending/misconfigured host has no working DNS at all and is left
-    // off the router.
-    .filter((d) => d.status === "valid" || d.status === "cloudflare")
-    .sort((a, b) => Number(b.primary) - Number(a.primary))
-    .map(toRoutableDomain);
+  const all = await loadDomainsForApp(appId);
+  return (
+    all
+      // `valid` (points straight here) and `cloudflare` (proxied — Cloudflare
+      // may or may not forward here, which DNS cannot tell us) are both routable
+      // hosts; a pending/misconfigured host has no working DNS at all and is left
+      // off the router.
+      .filter((d) => d.status === "valid" || d.status === "cloudflare")
+      .sort((a, b) => Number(b.primary) - Number(a.primary))
+      // Every row is mapped against the app's FULL domain set, because a
+      // redirecting host resolves its target's scheme from the target's own row.
+      .map((d) => toRoutableDomain(d, all))
+  );
 }
 
 /**
@@ -995,7 +1295,15 @@ export async function routableRoutes(
  * exist is the bug this exists to prevent: it silently flattens the row to
  * whole-host HTTPS-on-the-default-port and the path never routes.
  */
-export function toRoutableDomain(d: Domain): RoutableDomain {
+export function toRoutableDomain(
+  d: Domain,
+  /** The app's other domains, so a redirecting host can read its TARGET's
+   * certificate provider (the 301 must land on the scheme the canonical host is
+   * really served over). Omitted ⇒ the row's own scheme is assumed, which is
+   * exactly right for the pair this feature creates (the counterpart mirrors the
+   * canonical's provider). */
+  siblings: Domain[] = [],
+): RoutableDomain {
   return {
     name: d.name,
     port: d.port ?? null,
@@ -1004,7 +1312,29 @@ export function toRoutableDomain(d: Domain): RoutableDomain {
     pathPrefix: d.pathPrefix ?? "",
     stripPrefix: Boolean(d.stripPrefix),
     service: d.service ?? null,
+    redirectTo: redirectTargetUrl(d, siblings),
   };
+}
+
+/**
+ * The absolute URL a domain's stored `redirectTo` hostname resolves to, or ""
+ * when the row serves the app.
+ *
+ * The scheme comes from the TARGET row when it is present (the canonical host
+ * decides whether the site is https), falling back to the redirecting row's own
+ * scheme when the target isn't in `siblings` — that only happens on a
+ * partially-loaded set, and guessing the pair's shared scheme beats emitting a
+ * 301 to a scheme nobody serves. A target that names a row which itself
+ * redirects is IGNORED (no redirect chains): the data layer refuses to create
+ * one, so a chain can only come from a hand-edited row, and dropping it keeps
+ * the host serving rather than bouncing a browser in circles.
+ */
+function redirectTargetUrl(d: Domain, siblings: Domain[]): string {
+  const target = (d.redirectTo ?? "").trim().toLowerCase();
+  if (!target || target === d.name) return "";
+  const row = siblings.find((s) => s.name === target);
+  if (row?.redirectTo) return "";
+  return `${domainScheme(row ?? d)}://${target}`;
 }
 
 /**
@@ -1021,14 +1351,15 @@ export async function pendingPrimaryRoute(
   primary: string,
 ): Promise<RoutableDomain | null> {
   if (!primary) return null;
-  const rows = (await loadDomainsForApp(appId)).filter((d) => d.name === primary);
+  const all = await loadDomainsForApp(appId);
+  const rows = all.filter((d) => d.name === primary);
   // A hostname can carry SEVERAL rows (one per path), so prefer the one actually
   // flagged primary — `primary` is only a name, and picking whichever row happens
   // to come back first would route an arbitrary sibling's path as the canonical
   // host. Fall back to any row on that hostname when none is flagged (a legacy
   // app whose primary flag was never set).
   const row = rows.find((d) => d.primary) ?? rows[0];
-  return row ? toRoutableDomain(row) : null;
+  return row ? toRoutableDomain(row, all) : null;
 }
 
 /**
@@ -1053,6 +1384,13 @@ export async function setPrimaryDomain(id: string): Promise<string> {
   if (dom.status === "misconfigured")
     throw new Error(
       "This domain’s DNS is misconfigured — fix its DNS and re-verify before setting it as primary.",
+    );
+  // A redirecting hostname serves nothing: making it canonical would advertise a
+  // URL that answers 301 to another one. The pair is flipped from the Redirect
+  // setting of the domain that serves, which moves `primary` with it.
+  if (dom.redirectTo)
+    throw new Error(
+      `${dom.name} redirects to ${dom.redirectTo}, so it can't be the canonical host — flip the redirect from ${dom.redirectTo} instead.`,
     );
   // The multi-row primary flip is CLEAR-then-SET in one transaction (PLAN §4).
   // A single `SET is_primary = (id = $target)` UPDATE is NOT safe: the
@@ -1099,7 +1437,13 @@ export async function setPrimaryDomain(id: string): Promise<string> {
  */
 export async function syncProductionUrl(appId: string): Promise<void> {
   const domains = await loadDomainsForApp(appId);
-  const primary = domains.find((x) => x.primary) ?? domains[0];
+  // The fallback skips redirecting hostnames: they answer 301 to another host of
+  // the same app, so advertising one as the canonical URL would send every
+  // visitor (and every link in the dashboard) through a bounce.
+  const primary =
+    domains.find((x) => x.primary) ??
+    domains.find((x) => !x.redirectTo) ??
+    domains[0];
   await getDb()
     .update(appsTable)
     .set({
@@ -1177,15 +1521,39 @@ export async function removeDomain(id: string): Promise<string> {
   // one primary, and a half-applied succession would leave the canonical host
   // undefined (`primaryDomainRow` would fall back to an arbitrary row, and the
   // "Primary" badge would vanish from the domains list).
+  const rest = (await loadDomainsForApp(dom.appId)).filter((d) => d.id !== id);
+  // Removing a hostname takes its redirects with it: a companion Deplo generated
+  // for the pair (`source: "redirect"`) is deleted — it exists only to point at
+  // this host — while a hostname the USER added is merely un-redirected, so it
+  // stays as a domain of the app and starts serving instead of 301-ing into a
+  // hole. Both happen in the same transaction as the delete.
+  const dependents = rest.filter((d) => d.redirectTo === dom.name);
+  const orphaned = dependents.filter((d) => d.source === "redirect");
+  const freed = dependents.filter((d) => d.source !== "redirect");
+  const orphanedIds = new Set(orphaned.map((d) => d.id));
+  // The heir must be a hostname that will still be there AND still serve: a
+  // deleted companion, or a row that redirects somewhere else, is not a
+  // canonical host.
   const heir = dom.primary
     ? successorPrimary(
-        (await loadDomainsForApp(dom.appId)).filter((d) => d.id !== id),
+        rest.filter(
+          (d) =>
+            !orphanedIds.has(d.id) &&
+            (!d.redirectTo || d.redirectTo === dom.name),
+        ),
         dom,
       )
     : null;
   await getDb().transaction(async (tx) => {
     // The domain_middlewares child rows CASCADE on the domain delete.
     await tx.delete(domainsTable).where(eq(domainsTable.id, id));
+    for (const d of orphaned)
+      await tx.delete(domainsTable).where(eq(domainsTable.id, d.id));
+    for (const d of freed)
+      await tx
+        .update(domainsTable)
+        .set({ redirectTo: null })
+        .where(eq(domainsTable.id, d.id));
     if (heir)
       await tx
         .update(domainsTable)

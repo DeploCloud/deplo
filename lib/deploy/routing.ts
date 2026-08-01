@@ -57,6 +57,13 @@ export interface RouterRoute {
    * middleware PREPENDED to `middlewares` (so user middlewares see the stripped
    * path). Ignored when `pathPrefix` is empty. */
   stripPrefix?: boolean;
+  /** Absolute base URL this host permanently redirects to, e.g.
+   * `https://example.com` — the canonical half of a `www`/non-`www` pair. Renders
+   * a generated `redirectregex` middleware at the HEAD of this router's chain, so
+   * the 301 fires before auth, before stripprefix and before the service is ever
+   * reached; path and query ride along unchanged. Empty/absent ⇒ no redirect
+   * labels at all (byte-identical to the pre-redirect output). */
+  redirectTo?: string;
 }
 
 export interface RouterLabelOptions {
@@ -129,8 +136,8 @@ const PATH_PRIORITY_BASE = 1_000_000;
  *
  * Default mode (no `perRouteKey`): group routes by their full signature —
  * effective port, the TLS triplet (entrypoint, tls on/off, cert resolver), the
- * middleware chain, and the path prefix (+strip flag) — and emit one router per
- * distinct signature. Two hosts fold into one OR-rule router only when ALL of
+ * middleware chain, the path prefix (+strip flag) and the redirect target — and
+ * emit one router per distinct signature. Two hosts fold into one OR-rule router only when ALL of
  * these match; a different `pathPrefix` always splits them (one Traefik rule
  * line carries one `PathPrefix`), and every path router is lifted above the
  * whole-host routers by {@link PATH_PRIORITY_BASE}, longest prefix first, so
@@ -191,10 +198,13 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
   }
 
   // Group by the full router signature: effective port plus the TLS triplet
-  // (entrypoint, tls on/off, cert resolver). Two hosts fold into one OR-rule
-  // router only when ALL of these match; any difference splits them into their
-  // own router — that's what lets one container serve some hosts over HTTPS and
-  // others as plain HTTP, or via different ACME resolvers.
+  // (entrypoint, tls on/off, cert resolver), and the redirect target. Two hosts
+  // fold into one OR-rule router only when ALL of these match; any difference
+  // splits them into their own router — that's what lets one container serve some
+  // hosts over HTTPS and others as plain HTTP, or via different ACME resolvers,
+  // and what keeps a `www` host that 301s away OFF the canonical host's router
+  // (one shared router would redirect the canonical host to itself, and one
+  // shared ACME order would let an unresolvable `www` sink the real host's cert).
   const groups = new Map<string, { sig: RouterSig; hosts: string[] }>();
   for (const r of routes) {
     const sig = resolveTls(r, opts);
@@ -215,6 +225,7 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
     middlewares: [],
     pathPrefix: "",
     stripPrefix: false,
+    redirectTo: "",
   });
   // Default group first; the rest by ascending port (NUMERIC, so :80 sorts
   // before :100 — a string sort of the id would not), then by id for a stable
@@ -256,6 +267,10 @@ interface RouterSig {
   /** Strip `pathPrefix` via a generated `stripprefix` middleware. Always false
    * when `pathPrefix` is empty (strip-without-path is a no-op). */
   stripPrefix: boolean;
+  /** Absolute base URL this router 301s to. Empty ⇒ it serves the app. Part of
+   * the signature: a redirecting host can never share a router with one that
+   * serves, or the redirect would swallow the canonical host too. */
+  redirectTo: string;
 }
 
 /** Resolve a route's signature, applying the call-level defaults. `tls: false`
@@ -274,6 +289,7 @@ function resolveTls(route: RouterRoute, opts: RouterLabelOptions): RouterSig {
   // keeps a strip-without-path route in the same (default) signature as a bare
   // route and emits no stripprefix label (byte-identical to today).
   const stripPrefix = pathPrefix !== "" && (route.stripPrefix ?? false);
+  const redirectTo = normalizeRedirectTarget(route.redirectTo);
   if (!tls) {
     return {
       port,
@@ -283,6 +299,7 @@ function resolveTls(route: RouterRoute, opts: RouterLabelOptions): RouterSig {
       middlewares,
       pathPrefix,
       stripPrefix,
+      redirectTo,
     };
   }
   return {
@@ -293,7 +310,19 @@ function resolveTls(route: RouterRoute, opts: RouterLabelOptions): RouterSig {
     middlewares,
     pathPrefix,
     stripPrefix,
+    redirectTo,
   };
+}
+
+/** Clean a redirect target down to an absolute `scheme://host[/path]` with no
+ * trailing slash. A value that is not an absolute http(s) URL is DROPPED rather
+ * than guessed at: the target is interpolated into a Traefik replacement string,
+ * and a half-formed one would emit a router that 301s somewhere meaningless. */
+function normalizeRedirectTarget(input?: string): string {
+  const t = (input ?? "").trim();
+  if (!t) return "";
+  if (!/^https?:\/\/[^\s/]+/i.test(t)) return "";
+  return t.replace(/\/+$/, "");
 }
 
 /** Normalise a router path prefix: trim, drop a trailing slash, force a single
@@ -314,7 +343,7 @@ function normalizeRulePath(input?: string): string {
  * middleware chain is part of the id (order included) so hosts with different
  * chains never share a router. */
 function sigId(sig: RouterSig): string {
-  return `${sig.port}|${sig.entrypoint}|${sig.tls ? 1 : 0}|${sig.certResolver}|${sig.middlewares.join(",")}|${sig.pathPrefix}|${sig.stripPrefix ? 1 : 0}`;
+  return `${sig.port}|${sig.entrypoint}|${sig.tls ? 1 : 0}|${sig.certResolver}|${sig.middlewares.join(",")}|${sig.pathPrefix}|${sig.stripPrefix ? 1 : 0}|${sig.redirectTo}`;
 }
 
 /**
@@ -349,6 +378,10 @@ function sigSuffix(sig: RouterSig, defaultResolver: string): string {
   // for their chain would otherwise share a key (an invalid duplicate router).
   // The sanitised, ordered names keep the key deterministic and chain-distinct.
   if (sig.middlewares.length) parts.push("mw", ...sig.middlewares.map(safe));
+  // Same reasoning for a redirect: the target is hashed rather than spelled out
+  // (a URL sanitises to an unbounded, non-injective segment) so two hosts
+  // redirecting to different targets can never collide on one router name.
+  if (sig.redirectTo) parts.push("redirect", hash6(sig.redirectTo));
   return parts.join("-");
 }
 
@@ -396,7 +429,18 @@ function routerBlock(
   // (unqualified) because it lives in the same docker provider as this router;
   // user entries may be provider-qualified (`auth@file`) and are kept verbatim.
   const stripName = sig.stripPrefix ? `${key}-stripprefix` : null;
-  const middlewares = stripName ? [stripName, ...sig.middlewares] : sig.middlewares;
+  // A generated redirectregex middleware, at the HEAD of the chain: this router
+  // exists to answer 301, so it must fire before basic auth (nobody should be
+  // asked to log in on the hostname they are being sent away from), before
+  // stripprefix, and before the service is reached. `^https?://[^/]+` eats the
+  // scheme+host Traefik reconstructs and `(.*)` keeps everything after it —
+  // Traefik's request URL carries the path AND query, so both ride along.
+  const redirectName = sig.redirectTo ? `${key}-redirect` : null;
+  const middlewares = [
+    ...(redirectName ? [redirectName] : []),
+    ...(stripName ? [stripName] : []),
+    ...sig.middlewares,
+  ];
   return [
     `traefik.http.routers.${key}.rule=${rule}`,
     `traefik.http.routers.${key}.entrypoints=${sig.entrypoint}`,
@@ -417,6 +461,20 @@ function routerBlock(
           `traefik.http.routers.${key}.priority=${
             PATH_PRIORITY_BASE + sig.pathPrefix.length
           }`,
+        ]
+      : []),
+    // `${1}` is Go's capture reference in the replacement, and every `$` is
+    // DOUBLED for the same reason the basic-auth hashes are: these labels are
+    // embedded in a docker-compose YAML, which would otherwise interpolate `${1}`
+    // as an (empty) variable and silently drop the path from every redirect.
+    ...(redirectName
+      ? [
+          `traefik.http.middlewares.${redirectName}.redirectregex.regex=^https?://[^/]+(.*)`,
+          `traefik.http.middlewares.${redirectName}.redirectregex.replacement=${`${sig.redirectTo}\${1}`.replace(
+            /\$/g,
+            "$$$$",
+          )}`,
+          `traefik.http.middlewares.${redirectName}.redirectregex.permanent=true`,
         ]
       : []),
     ...(stripName

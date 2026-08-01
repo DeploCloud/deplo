@@ -414,6 +414,26 @@ app's own var < linked shared var. Managed on the Variables page's **Shared** ta
 _Avoid_: shared env group (the old model), sharing mode (pre-0012 auto-apply language),
 shared variables as Coolify's whole-set concept.
 
+**Domain**:
+A hostname routed to an app — one row per `(hostname, path)`, and the **sole** routing
+source the renderers read (`routableRoutes` ⇒ `traefikRouterLabels`). Carries its own DNS
+`status` (only `valid`/`cloudflare` are routed), certificate provider (opt-in; `none` ⇒
+plain HTTP), container port, compose service, optional path prefix and middleware chain.
+Exactly one domain per app is **primary** — the *canonical host*, the app's
+`productionUrl`.
+
+**Redirect domain**:
+A Domain that serves nothing and answers a permanent 301 to another hostname of the same
+app, named in its `redirect_to`. It exists so the `www` and non-`www` spellings of one
+site settle on a single address: the pair is set from the **Redirect** advanced setting of
+whichever half serves, and the redirecting half is a real Domain row — its own DNS check,
+its own certificate, its own Traefik router (never folded into the canonical host's, or an
+unresolvable `www` would sink that host's cert order). `source: "redirect"` marks a
+companion Deplo generated, and is what makes un-pairing safe to delete the row while a
+hostname the user typed is only un-redirected. `primary` always follows the half that
+serves.
+_Avoid_: alias, CNAME (a DNS record type, not a deplo concept), URL forwarding.
+
 **Port**:
 An app has **one** container port — the image-baked `build.port` (`preview` reuses it) —
 read through the single `portFor(app)` accessor in `lib/deploy/ports.ts` (ADR-0001's

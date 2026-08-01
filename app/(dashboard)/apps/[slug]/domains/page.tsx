@@ -156,6 +156,9 @@ export default async function AppDomainsPage(
                     isCompose={isComposeStack}
                     showContainer={showContainer}
                     serverIp={serverIp}
+                    // Every row of THIS app, so each Edit dialog can derive the
+                    // hostname's www pairing from the rows that exist.
+                    siblings={domains}
                   />
                 ))}
                 <PendingRows columns={showContainer ? 4 : 3} />

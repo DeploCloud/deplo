@@ -29,6 +29,19 @@ const DomainEntrypointEnum = builder.enumType("DomainEntrypoint", {
   values: ["websecure", "web"] as const,
 });
 
+// The `www` ⇄ non-`www` pairing, expressed relative to the domain being written:
+// `toThis` makes the counterpart hostname 301 here, `toCounterpart` makes THIS
+// hostname 301 to its counterpart (which serves the app and inherits `primary`),
+// `none` breaks the pair. The current value is derived from the rows, never
+// stored separately — the only stored fact is a domain's `redirectTo`.
+const DomainWwwRedirectEnum = builder.enumType("DomainWwwRedirect", {
+  description:
+    "Which half of a www / non-www pair serves the app, relative to this domain. " +
+    "`toThis`: the counterpart hostname redirects here. `toCounterpart`: this " +
+    "hostname redirects to its counterpart, which serves the app. `none`: no pair.",
+  values: ["none", "toThis", "toCounterpart"] as const,
+});
+
 /* ------------------------------------------------------------------ */
 /* Object types                                                        */
 /* ------------------------------------------------------------------ */
@@ -53,7 +66,12 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
       resolve: (d) => d.status,
     }),
     primary: t.exposeBoolean("primary"),
-    redirectTo: t.exposeString("redirectTo", { nullable: true }),
+    redirectTo: t.exposeString("redirectTo", {
+      nullable: true,
+      description:
+        "Hostname this domain answers a permanent 301 to (the canonical half of " +
+        "its www / non-www pair), or null when it serves the app itself.",
+    }),
     ssl: t.exposeBoolean("ssl"),
     source: t.exposeString("source", { nullable: true }),
     port: t.exposeInt("port", { nullable: true }),
@@ -104,6 +122,7 @@ const DomainConfigInput = builder.inputType("DomainConfigInput", {
     pathPrefix: t.string({ required: false }),
     stripPrefix: t.boolean({ required: false }),
     service: t.string({ required: false }),
+    www: t.field({ type: DomainWwwRedirectEnum, required: false }),
   }),
 });
 
@@ -122,6 +141,7 @@ const DomainPatchInput = builder.inputType("DomainPatchInput", {
     pathPrefix: t.string({ required: false }),
     stripPrefix: t.boolean({ required: false }),
     service: t.string({ required: false }),
+    www: t.field({ type: DomainWwwRedirectEnum, required: false }),
   }),
 });
 
@@ -163,6 +183,7 @@ builder.mutationFields((t) => ({
         pathPrefix: config?.pathPrefix ?? undefined,
         stripPrefix: config?.stripPrefix ?? undefined,
         service: config?.service ?? undefined,
+        www: config?.www ?? undefined,
       };
       const domain = await addDomain(appId, name, cfg);
       await applyRouting(appId);
@@ -190,6 +211,7 @@ builder.mutationFields((t) => ({
         pathPrefix: patch.pathPrefix ?? undefined,
         stripPrefix: patch.stripPrefix ?? undefined,
         service: patch.service ?? undefined,
+        www: patch.www ?? undefined,
       };
       const appId = await updateDomain(id, next);
       await applyRouting(appId);

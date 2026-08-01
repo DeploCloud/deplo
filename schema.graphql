@@ -742,6 +742,10 @@ type Domain {
   pathPrefix: String
   port: Int
   primary: Boolean
+
+  """
+  Hostname this domain answers a permanent 301 to (the canonical half of its www / non-www pair), or null when it serves the app itself.
+  """
   redirectTo: String
   service: String
   serviceName: String
@@ -766,6 +770,7 @@ input DomainConfigInput {
   port: Int
   service: String
   stripPrefix: Boolean
+  www: DomainWwwRedirect
 }
 
 enum DomainEntrypoint {
@@ -785,6 +790,7 @@ input DomainPatchInput {
   port: Int
   service: String
   stripPrefix: Boolean
+  www: DomainWwwRedirect
 }
 
 """A custom domain's DNS verification state."""
@@ -811,6 +817,15 @@ enum DomainStatus {
   An A record resolves straight to this app's server: confirmed, and routed.
   """
   valid
+}
+
+"""
+Which half of a www / non-www pair serves the app, relative to this domain. `toThis`: the counterpart hostname redirects here. `toCounterpart`: this hostname redirects to its counterpart, which serves the app. `none`: no pair.
+"""
+enum DomainWwwRedirect {
+  none
+  toCounterpart
+  toThis
 }
 
 input EnvEntryInput {

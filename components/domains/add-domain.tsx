@@ -128,7 +128,7 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
   }
 
   function submit() {
-    const resolved = resolveDomainConfig(config, services.length > 0);
+    const resolved = resolveDomainConfig(config, services.length > 0, name.trim());
     if (!resolved.ok) {
       toast.error(resolved.error);
       return;
@@ -158,6 +158,10 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
               pathPrefix: resolved.pathPrefix,
               stripPrefix: resolved.stripPrefix,
               service: resolved.service,
+              // A brand-new domain can be paired with its www counterpart in the
+              // same click: the server adds the second hostname, checks its DNS
+              // and wires the 301 before the add returns.
+              www: resolved.www,
             },
           },
         ),

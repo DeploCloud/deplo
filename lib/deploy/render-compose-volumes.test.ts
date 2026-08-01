@@ -24,6 +24,7 @@ const route: RoutableDomain = {
   pathPrefix: "",
   stripPrefix: false,
   service: null,
+  redirectTo: "",
 };
 
 const base = {

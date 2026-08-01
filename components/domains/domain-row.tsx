@@ -16,6 +16,7 @@ import {
   Pencil,
   Layers,
   Route,
+  Signpost,
   TriangleAlert,
   Cloud,
 } from "lucide-react";
@@ -50,6 +51,7 @@ import {
   type DomainConfigState,
 } from "@/components/domains/domain-config-fields";
 import { gqlAction } from "@/lib/graphql-client";
+import { deriveWwwRedirect } from "@/lib/www-redirect";
 import type { Domain } from "@/lib/types";
 
 type Row = Domain & { serviceName: string; appSlug: string };
@@ -77,8 +79,15 @@ export function DomainRow({
   isCompose,
   showContainer,
   serverIp,
+  siblings = [],
 }: {
   domain: Row;
+  /** Every domain of the SAME app, so the Edit dialog can DERIVE this hostname's
+   * `www` pairing from the rows that exist rather than from a stored flag. The
+   * page already holds them; passing them keeps the derivation in one direction
+   * (rows ⇒ state), so a companion removed by hand shows up as "No redirect" on
+   * the next render instead of a lie. */
+  siblings?: { name: string; redirectTo?: string | null }[];
   /** The app's compose YAML (compose stacks only) so the Edit dialog can
    * offer the service selector. Absent/null ⇒ a single-image project. */
   compose?: string | null;
@@ -121,10 +130,16 @@ export function DomainRow({
   // wire, so the hostname reaches nothing until one is picked.
   const unrouted = isCompose && !service;
 
+  // The `www` pairing this hostname is currently in, read off the app's rows.
+  const www = React.useMemo(
+    () => deriveWwwRedirect(domain.name, siblings),
+    [domain.name, siblings],
+  );
+
   // Edit-dialog form state: name lives here; the routing knobs in `config`.
   const [name, setName] = React.useState(domain.name);
   const [config, setConfig] = React.useState<DomainConfigState>(() =>
-    initialDomainConfig(domain),
+    initialDomainConfig(domain, undefined, www),
   );
 
   const effectiveProvider = domain.certProvider ?? "letsencrypt";
@@ -160,7 +175,7 @@ export function DomainRow({
     // Reset the form to the domain's current values so a cancelled edit never
     // leaks stale input into the next open.
     setName(domain.name);
-    setConfig(initialDomainConfig(domain));
+    setConfig(initialDomainConfig(domain, undefined, www));
     setEditOpen(true);
   }
 
@@ -175,7 +190,7 @@ export function DomainRow({
       toast.error("Enter a valid domain name");
       return;
     }
-    const resolved = resolveDomainConfig(config, services.length > 0);
+    const resolved = resolveDomainConfig(config, services.length > 0, trimmedName);
     if (!resolved.ok) {
       toast.error(resolved.error);
       return;
@@ -197,6 +212,9 @@ export function DomainRow({
             pathPrefix: resolved.pathPrefix,
             stripPrefix: resolved.stripPrefix,
             service: resolved.service,
+            // The pairing is derived, so this is the CURRENT value unless the
+            // user changed it — the server no-ops when it already matches.
+            www: resolved.www,
           },
         },
         () => undefined,
@@ -230,6 +248,19 @@ export function DomainRow({
               <Star className="size-3" />
               Primary
             </Badge>
+          )}
+          {domain.redirectTo && (
+            // This hostname serves nothing — it answers 301 to the canonical
+            // half of its www pair. Said as a chip in the same row as the rest,
+            // because "what does this hostname do" is the question this cell
+            // answers, and a redirect is the whole answer for this one.
+            <SimpleTooltip
+              content={`Answers a permanent redirect (301) to ${domain.redirectTo}. Edit ${domain.redirectTo} to change or remove the pair.`}
+            >
+              <Badge variant="outline" className="gap-1 font-mono">
+                <Signpost className="size-3" />→ {domain.redirectTo}
+              </Badge>
+            </SimpleTooltip>
           )}
           {domain.port != null && (
             <Badge variant="outline" className="gap-1 font-mono">
@@ -308,11 +339,6 @@ export function DomainRow({
             </Badge>
           )}
         </div>
-        {domain.redirectTo && (
-          <p className="text-xs text-muted-foreground">
-            → {domain.redirectTo}
-          </p>
-        )}
         {(domain.status === "misconfigured" || domain.status === "pending") && (
           // A pending domain has no DNS record yet; a misconfigured one
           // resolves somewhere other than this app's server. Both need the
@@ -496,7 +522,10 @@ export function DomainRow({
                 Verify
               </DropdownMenuItem>
             )}
-            {!domain.primary && (
+            {/* A redirecting hostname can never be the canonical host — it
+                serves nothing. The pair is flipped from the Redirect setting of
+                the domain that DOES serve, and the server refuses this too. */}
+            {!domain.primary && !domain.redirectTo && (
               <DropdownMenuItem
                 onClick={() =>
                   call(
