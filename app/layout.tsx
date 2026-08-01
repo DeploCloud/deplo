@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Deplo – Ship anything, anywhere",
+    default: "Overview - Deplo",
     template: "%s – Deplo",
   },
   description:
