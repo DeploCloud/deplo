@@ -33,6 +33,12 @@ import {
   type ResourceLimitsInput,
 } from "@/lib/data/apps";
 import {
+  appTransferInfo,
+  transferAppToTeam,
+  type AppTransferInfo,
+  type AppTransferTarget,
+} from "@/lib/data/app-transfer";
+import {
   frameworkById,
   type FrameworkDefinition,
 } from "@/lib/apps/framework-catalog";
@@ -377,11 +383,78 @@ const RecognizedFrameworkRef = builder
     }),
   });
 
+const AppTransferTargetRef = builder
+  .objectRef<AppTransferTarget>("AppTransferTarget")
+  .implement({
+    description:
+      "A team an app could be transferred to: one the viewer belongs to and " +
+      "can deploy in, other than the active team.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+      serverAvailable: t.exposeBoolean("serverAvailable", {
+        description:
+          "False when the app's server isn't shared with this team — the " +
+          "transfer is refused rather than landing the app on a host that team " +
+          "may not use.",
+      }),
+      githubFollows: t.exposeBoolean("githubFollows", {
+        description:
+          "True when the GitHub connection survives the move (this team owns an " +
+          "installation for the repository's account). False means auto-deploy " +
+          "is switched off and the repository must be reconnected there. Always " +
+          "true for an app with no GitHub connection.",
+      }),
+    }),
+  });
+
+const AppTransferRef = builder
+  .objectRef<AppTransferInfo>("AppTransfer")
+  .implement({
+    description:
+      "Where an app may be transferred, and what it loses on the way — " +
+      "everything the Danger Zone's transfer dialog shows, in one round trip.",
+    fields: (t) => ({
+      serverName: t.exposeString("serverName"),
+      homeLabel: t.exposeString("homeLabel", {
+        nullable: true,
+        description:
+          'The folder / project the app sits in today ("folder Marketing", ' +
+          '"project Shop / staging"), which it leaves on the way out. Null at ' +
+          "the team's top level.",
+      }),
+      sharedVarCount: t.exposeInt("sharedVarCount", {
+        description: "Shared variables linked to the app; the links are cut.",
+      }),
+      backupCount: t.exposeInt("backupCount", {
+        description:
+          "Backup schedules on the app; they are removed (each points at an S3 " +
+          "destination the current team owns).",
+      }),
+      githubConnected: t.exposeBoolean("githubConnected"),
+      targets: t.field({
+        type: [AppTransferTargetRef],
+        resolve: (x) => x.targets,
+      }),
+    }),
+  });
+
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
+  appTransfer: t.field({
+    type: AppTransferRef,
+    // Same pair the transfer itself takes, so the dialog can't be used to
+    // enumerate the viewer's teams from an app they may not hand over.
+    authScopes: { $all: { capability: "deploy", $all: { capability: "manage_env" } } },
+    description:
+      "The teams this app could be transferred to and what the move costs. " +
+      "Requires deploy + manage variables.",
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: (_r, { appId }) => appTransferInfo(appId),
+  }),
   apps: t.field({
     type: [AppRef],
     authScopes: { loggedIn: true },
@@ -722,6 +795,27 @@ builder.mutationFields((t) => ({
       "Re-apply the app's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => reapplyRouting(id),
+  }),
+  transferAppToTeam: t.field({
+    type: "Boolean",
+    // `deploy` to give an app away, `manage_env` because it carries its secrets
+    // across the tenancy boundary. The nested `$all` is how a scope map spells
+    // "both capabilities" — one key per scope name.
+    authScopes: { $all: { capability: "deploy", $all: { capability: "manage_env" } } },
+    description:
+      "Hand the app over to another team the viewer belongs to and can deploy " +
+      "in. The running stack is untouched (same URLs); the app leaves its " +
+      "folder/project, loses its shared-variable links and backup schedules, " +
+      "and keeps its GitHub connection only if the destination team owns an " +
+      "installation for the same account. Returns true.",
+    args: {
+      appId: t.arg.string({ required: true }),
+      teamId: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { appId, teamId }) => {
+      await transferAppToTeam(appId, teamId);
+      return true;
+    },
   }),
   deleteApp: t.field({
     type: "Boolean",

@@ -55,6 +55,12 @@ Fields are gated by the same capability model as the dashboard:
 | `manage_members`  | add/remove members, change roles                            |
 | `manage_team`     | rename/edit/delete the team                                 |
 
+One pair takes **two** capabilities: `appTransfer` and `transferAppToTeam` (handing
+an App to another team) need `deploy` **and** `manage_env` in the app's current team —
+the app carries its secrets across the tenancy boundary, so giving it away may not be
+cheaper than reading them — plus `deploy` in the destination team, which must be one the
+caller belongs to.
+
 Some queries/mutations require **instance admin** (global): managing all users,
 minting registration links, the per-user admin editor, and Docker cleanup
 (`dockerCleanupPolicy`, `dockerCleanupRuns`, `updateDockerCleanupPolicy`,

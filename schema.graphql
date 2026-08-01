@@ -196,6 +196,44 @@ type AppStorageFile {
   text: String
 }
 
+"""
+Where an app may be transferred, and what it loses on the way — everything the Danger Zone's transfer dialog shows, in one round trip.
+"""
+type AppTransfer {
+  """
+  Backup schedules on the app; they are removed (each points at an S3 destination the current team owns).
+  """
+  backupCount: Int
+  githubConnected: Boolean
+
+  """
+  The folder / project the app sits in today ("folder Marketing", "project Shop / staging"), which it leaves on the way out. Null at the team's top level.
+  """
+  homeLabel: String
+  serverName: String
+
+  """Shared variables linked to the app; the links are cut."""
+  sharedVarCount: Int
+  targets: [AppTransferTarget!]
+}
+
+"""
+A team an app could be transferred to: one the viewer belongs to and can deploy in, other than the active team.
+"""
+type AppTransferTarget {
+  """
+  True when the GitHub connection survives the move (this team owns an installation for the repository's account). False means auto-deploy is switched off and the repository must be reconnected there. Always true for an app with no GitHub connection.
+  """
+  githubFollows: Boolean
+  id: ID
+  name: String
+
+  """
+  False when the app's server isn't shared with this team — the transfer is refused rather than landing the app on a host that team may not use.
+  """
+  serverAvailable: Boolean
+}
+
 type AuthPayload {
   viewer: Viewer
 }
@@ -1557,6 +1595,11 @@ type Mutation {
   toggleBackup(enabled: Boolean!, id: String!): Boolean
 
   """
+  Hand the app over to another team the viewer belongs to and can deploy in. The running stack is untouched (same URLs); the app leaves its folder/project, loses its shared-variable links and backup schedules, and keeps its GitHub connection only if the destination team owns an installation for the same account. Returns true.
+  """
+  transferAppToTeam(appId: String!, teamId: String!): Boolean
+
+  """
   Hand instance ownership to another instance admin. Owner-only; requires the caller's password. Returns true.
   """
   transferInstanceOwner(password: String!, userId: String!): Boolean
@@ -1732,6 +1775,11 @@ type Query {
   Read the file a File storage entry points at (Settings → Storage). A path that is not there yet answers state "new" with an empty body instead of failing, so the editor can offer it as a file to write.
   """
   appStorageFile(appId: String!, path: String!): AppStorageFile
+
+  """
+  The teams this app could be transferred to and what the move costs. Requires deploy + manage variables.
+  """
+  appTransfer(appId: String!): AppTransfer
 
   """All apps in the active team, newest first."""
   apps: [App!]

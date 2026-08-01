@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { SlidersHorizontal, SquareTerminal } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
+import { hasCapability } from "@/lib/membership";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerCard } from "@/components/apps/settings/rebuild-container-card";
@@ -19,9 +20,9 @@ export const metadata = { title: "Advanced" };
 /**
  * Advanced app settings: the powerful, less-everyday controls in one place — an
  * entry point into the container Console, a from-scratch container Rebuild, and
- * the Danger Zone (delete). Folding these under "Advanced" keeps a destructive
- * action off the everyday sections, so it's never one stray click away from
- * Name & logo.
+ * the Danger Zone (transfer to another team, delete). Folding these under
+ * "Advanced" keeps a destructive action off the everyday sections, so it's never
+ * one stray click away from Name & logo.
  */
 export default async function AppAdvancedSettingsPage(
   props: PageProps<"/apps/[slug]/settings/advanced">,
@@ -29,13 +30,17 @@ export default async function AppAdvancedSettingsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
+  // Giving the app away hands its secrets to another team, so the action needs
+  // both capabilities — cosmetic here, enforced in lib/data/app-transfer.ts.
+  const canTransfer =
+    (await hasCapability("deploy")) && (await hasCapability("manage_env"));
 
   return (
     <section className="space-y-4">
       <SettingsSection
         icon={SlidersHorizontal}
         title="Advanced"
-        info="Open the container console, rebuild the container from scratch, or permanently delete this app."
+        info="Open the container console, rebuild the container from scratch, hand this app to another team, or permanently delete it."
       />
 
       <Card>
@@ -62,7 +67,12 @@ export default async function AppAdvancedSettingsPage(
 
       <RebuildContainerCard appId={project.id} slug={slug} />
 
-      <DangerSettings appId={project.id} name={project.name} />
+      <DangerSettings
+        appId={project.id}
+        name={project.name}
+        slug={project.slug}
+        canTransfer={canTransfer}
+      />
     </section>
   );
 }

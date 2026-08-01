@@ -142,6 +142,23 @@ _Avoid_: service (that is now a **compose service** inside a stack, or a Traefik
 project (that is now the **container**), plugin (reserved for an installed **Plugin**),
 component (a compose service inside one stack).
 
+**App transfer**:
+Handing ONE App to another **team** — the Danger Zone action in Settings → Advanced
+([`lib/data/app-transfer.ts`](../lib/data/app-transfer.ts)). A tenancy change, **not** a
+redeploy: every host-side artifact is named after the App **slug**, so the container,
+volumes, files dir and Traefik routers are untouched and the App keeps serving the same
+URLs. What travels is what the App owns alone (deployments, env vars, domains, basic-auth
+users, volumes, resource limits); what is **cut** is what the source team owns and the
+destination cannot read — its **Folder**/**Project**/**Environment** placement (it lands
+at the destination's top level), its shared-variable
+links (ADR-0012), its backup **schedules** (each points at that team's S3 destination;
+past runs stay behind as their history), and its **GitHub App** installation unless the
+destination team owns one for the same account. Gated on `deploy` **+** `manage_env` in
+the source team (the App carries its secrets across), `deploy` in the destination, and the
+App's **server** being targetable by it.
+_Avoid_: move (that is filing an App into a Folder/Project, which never leaves the team),
+share (no App is ever owned by two teams).
+
 **App status**:
 `apps.status` is **INTENT** — the last thing the control plane was *asked* to do — never an
 observation of the host, which is exactly what separates it from **Server health**. Six
