@@ -1,11 +1,10 @@
 import "server-only";
 
-import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, count, eq, inArray, or } from "drizzle-orm";
 import { getDb, type DbTx } from "../db/client";
 import {
   apiTokens as apiTokensTable,
   apps as appsTable,
-  appPreviews as appPreviewsTable,
   databases as databasesTable,
   folders as foldersTable,
   installedPlugins as installedPluginsTable,
@@ -555,28 +554,6 @@ export async function deleteUser(
     ))
       looseApps.set(a.id, a);
 
-    // Snapshot the live pull request preview stacks of every app about to be
-    // deleted: the FK cascade below drops their rows, and with them the only
-    // record that those containers and volumes exist on a host.
-    const doomedAppIds = [...teamApps.map((a) => a.id), ...looseApps.keys()];
-    const previewStacks = doomedAppIds.length
-      ? (
-          await tx
-            .select({
-              deployKey: appPreviewsTable.deployKey,
-              serverId: appsTable.serverId,
-            })
-            .from(appPreviewsTable)
-            .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
-            .where(
-              and(
-                inArray(appPreviewsTable.appId, doomedAppIds),
-                isNull(appPreviewsTable.tornDownAt),
-              ),
-            )
-        ).map((r) => ({ deployKey: r.deployKey, serverId: r.serverId }))
-      : [];
-
     // ---- the writes ----
     if (looseApps.size > 0)
       await tx.delete(appsTable).where(inArray(appsTable.id, [...looseApps.keys()]));
@@ -610,7 +587,6 @@ export async function deleteUser(
       },
       plan: {
         services: [...teamApps, ...looseApps.values()],
-        previewStacks,
         databases: teamDatabases,
         appSlugs: teamPlugins.map(
           (p) => p.slug || pluginSlug(p.catalogId, teamSlugById.get(p.teamId) ?? ""),

@@ -278,7 +278,7 @@ export const environments = pgTable(
  * axis without duplicating the whole App row. A row exists once a service is
  * deployed to an environment (the deploy pipeline, wired in a later step, writes
  * it). The stack's deploy KEY is DERIVED, not stored (see
- * [deploy-key.ts](../../deploy/deploy-key.ts) — the default environment
+ * [env-deploy-key.ts](../../deploy/env-deploy-key.ts) — the default environment
  * keeps the bare `<slug>`, others get `<slug>__<envSlug>`). Both FKs CASCADE;
  * `latest_deployment_id` `SET NULL`. PK `(app_id, environment_id)`.
  */
@@ -688,35 +688,6 @@ export const apps = pgTable(
     resourceUlimitNofile: integer("resource_ulimit_nofile"),
     resourceUlimitNproc: integer("resource_ulimit_nproc"),
     resourceOomScoreAdj: integer("resource_oom_score_adj"),
-    // Pull request previews (one ephemeral stack per open pull request),
-    // flattened like resource_*: NULL ⇒ the platform default, so an app that
-    // never opened the setting behaves identically to one that did.
-    //
-    // OFF by default. A preview is a container on the operator's host; switching
-    // that on for every existing GitHub app without being asked is not a default
-    // anyone chose. The single Switch lives in Settings → Deployments.
-    previewEnabled: boolean("preview_enabled").notNull().default(false),
-    // NULL ⇒ a deterministic nip.io host on plain HTTP (zero DNS configuration,
-    // and nip.io can never hold a Let's Encrypt certificate — it is ONE
-    // registered domain sharing one rate limit across the whole internet). A base
-    // like `preview.example.com` needs ONE wildcard DNS record and gives each
-    // preview its own HTTP-01 certificate from the existing letsencrypt resolver.
-    previewBaseDomain: text("preview_base_domain"),
-    // NULL ⇒ PREVIEW_MAX_ACTIVE_DEFAULT. A cap, not a quota (same stance as the
-    // resource limits above): over it a NEW preview is refused with a reason the
-    // user can read — a running preview is never silently evicted, because that
-    // URL is live in a pull request somebody is testing.
-    previewMaxActive: integer("preview_max_active"),
-    // NULL ⇒ PREVIEW_TTL_DAYS_DEFAULT. Idle days before the reaper closes a
-    // preview: what makes the cap self-healing, and the safety net for a `closed`
-    // webhook that never arrived. Any sync bumps `last_activity_at`, so an active
-    // pull request never expires.
-    previewTtlDays: integer("preview_ttl_days"),
-    // NULL ⇒ "approve". deny | approve | allow. A pull request from a fork is
-    // attacker-authored code that would run on the operator's host, so by default
-    // it lands in the list as blocked and waits for a member with `deploy`.
-    // Even under "allow", a fork preview never receives `secret`-typed variables.
-    previewForkPolicy: text("preview_fork_policy"),
     // Pointer to the service's latest Deployment. `SET NULL` so deleting a
     // deployment can't leave a dangling pointer (the orphan-prevention-as-DB-
     // invariant goal). The value is set in a second backfill pass after
@@ -872,25 +843,6 @@ export const deployments = pgTable(
     serverId: text("server_id"),
     status: text("status").notNull(),
     environment: text("environment").notNull(),
-    // The host-side KEY this deploy owns: the container `deplo-<key>`, the stack
-    // file `<key>.yml`, the files dir `files/<key>`, the named volumes
-    // `deplo-<key>-<name>` and every agent RPC. For a production deploy it IS the
-    // app slug (backfilled that way, so every running stack is untouched); for a
-    // preview it is `<slug>__pr-<n>` (lib/deploy/deploy-key.ts).
-    //
-    // Denormalized for the same reasons `server_id` is: the queue drain reads it
-    // without an apps join, and it records what was ACTUALLY deployed — it
-    // outlives both a slug rename and the preview row itself.
-    deployKey: text("deploy_key").notNull(),
-    // The preview this deploy belongs to, or NULL for production. `SET NULL`, not
-    // cascade: destroying a preview must never delete the build history of what
-    // it deployed.
-    previewId: text("preview_id").references((): AnyPgColumn => appPreviews.id, {
-      onDelete: "set null",
-    }),
-    // Denormalized pull-request number so the deployments list can still say
-    // "PR #42" after the preview row is gone.
-    prNumber: integer("pr_number"),
     commitSha: text("commit_sha").notNull(),
     commitMessage: text("commit_message").notNull(),
     commitAuthor: text("commit_author").notNull(),
@@ -922,12 +874,6 @@ export const deployments = pgTable(
     index("deployments_queued_server_idx")
       .on(t.serverId, t.createdAt, t.seq)
       .where(sql`${t.status} = 'queued'`),
-    // A pull request preview's own build history, newest first.
-    index("deployments_preview_idx").on(
-      t.previewId,
-      t.createdAt.desc(),
-      t.seq.desc(),
-    ),
   ],
 );
 
@@ -952,94 +898,6 @@ export const deploymentLogs = pgTable(
     text: text("text").notNull(),
   },
   (t) => [index("deployment_logs_deployment_idx").on(t.deploymentId, t.id)],
-);
-
-/**
- * A **pull request preview**: an ephemeral stack built from one open pull
- * request and torn down when it closes. One row per (App, pull request).
- *
- * It is neither an App nor an Environment. It renders from the App's build
- * config but owns its own deploy key `<slug>__pr-<n>`, its own container, files
- * dir, named volumes and hostname — see [deploy-key](../../deploy/deploy-key.ts).
- *
- * TWO STATE COLUMNS, on purpose:
- *  - `state`  is the LIFECYCLE (`open` | `closed`), owned by the pull request.
- *  - `status` is the RUNTIME (`blocked|queued|building|active|error|idle`), the
- *    per-preview twin of `apps.status`. It exists so a preview build can never
- *    repaint the production App's badge.
- *
- * The row SURVIVES the close (`state = 'closed'`), which is what makes teardown
- * idempotent AND retryable: `torn_down_at IS NULL` is the reaper's retry
- * predicate and stamping it is the only proof the stack is really gone. Deleting
- * the row on close would mean an agent that happened to be unreachable at that
- * moment leaks a container and a volume set nothing points at any more.
- *
- * `deploy_key` and `host` are minted ONCE at open and never recomputed — the URL
- * is commented on the pull request, so regenerating either would strand a link
- * somebody is testing.
- */
-export const appPreviews = pgTable(
-  "app_previews",
-  {
-    id: text("id").primaryKey(),
-    appId: text("app_id")
-      .notNull()
-      .references(() => apps.id, { onDelete: "cascade" }),
-    prNumber: integer("pr_number").notNull(),
-    prTitle: text("pr_title").notNull().default(""),
-    prAuthor: text("pr_author").notNull().default(""),
-    prUrl: text("pr_url").notNull().default(""),
-    headBranch: text("head_branch").notNull(),
-    headSha: text("head_sha").notNull().default(""),
-    /** `owner/name` of the HEAD repo. Differs from the App's repo ⇒ a fork. */
-    headRepo: text("head_repo").notNull().default(""),
-    /** The fork's own clone URL: a fork's head ref does not exist on the base
-     *  repo, and `git clone --branch` accepts neither a SHA nor `refs/pull/N/head`. */
-    headCloneUrl: text("head_clone_url").notNull().default(""),
-    baseBranch: text("base_branch").notNull().default(""),
-    isFork: boolean("is_fork").notNull().default(false),
-    // Who unblocked a fork preview, and at which commit. Approval is per pull
-    // request, not per commit (a click per push is unusable, and it is how
-    // GitHub's own "Approve and run" behaves) — `approved_sha` is the audit
-    // record of what was reviewed, shown in the UI, not a gate that re-arms.
-    approvedByUserId: text("approved_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    approvedAt: isoTimestamptz("approved_at"),
-    approvedSha: text("approved_sha"),
-    deployKey: text("deploy_key").notNull(),
-    host: text("host").notNull(),
-    /** What the host's router was rendered with, so the URL scheme stays stable. */
-    certProvider: text("cert_provider").notNull().default("none"),
-    status: text("status").notNull().default("queued"),
-    latestDeploymentId: text("latest_deployment_id").references(
-      (): AnyPgColumn => deployments.id,
-      { onDelete: "set null" },
-    ),
-    url: text("url").notNull().default(""),
-    /** The ONE sticky comment Deplo edits in place instead of spamming the thread. */
-    commentId: bigint("comment_id", { mode: "number" }),
-    state: text("state").notNull().default("open"),
-    closedAt: isoTimestamptz("closed_at"),
-    tornDownAt: isoTimestamptz("torn_down_at"),
-    lastActivityAt: isoTimestamptz("last_activity_at").notNull(),
-    createdAt: isoTimestamptz("created_at").notNull(),
-    updatedAt: isoTimestamptz("updated_at").notNull(),
-  },
-  (t) => [
-    uniqueIndex("app_previews_app_pr_uq").on(t.appId, t.prNumber),
-    uniqueIndex("app_previews_deploy_key_uq").on(t.deployKey),
-    uniqueIndex("app_previews_host_uq").on(t.host),
-    index("app_previews_app_idx").on(t.appId),
-    // The reaper's two scans, each partial so it indexes only its working set:
-    // open previews by idleness, and closed-but-not-torn-down ones to retry.
-    index("app_previews_open_idx")
-      .on(t.lastActivityAt)
-      .where(sql`${t.state} = 'open'`),
-    index("app_previews_untorn_idx")
-      .on(t.closedAt)
-      .where(sql`${t.tornDownAt} is null`),
-  ],
 );
 
 /**
@@ -1072,44 +930,6 @@ export const envVars = pgTable(
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
   (t) => [uniqueIndex("env_vars_app_key_uq").on(t.appId, t.key)],
-);
-
-/**
- * Preview-only environment variable OVERRIDES (advanced).
- *
- * A preview inherits the App's variables verbatim by default — the Vercel
- * behaviour, and the one that needs no configuration. This table is the escape
- * hatch for the one case that genuinely matters: pointing a preview at a scratch
- * database instead of the production one.
- *
- * It is a separate table rather than a second `env_vars` row because
- * `env_vars_app_key_uq` is `UNIQUE(app_id, key)` — two values for one key are
- * not representable there. It folds LAST in
- * [env-resolve](../../deploy/env-resolve.ts), above the app's own vars AND above
- * linked shared vars, and only for the `preview` target: an override is the most
- * specific statement a user can make, and if a team-wide shared variable
- * outranked it the feature could not do the one thing it exists for.
- */
-export const appPreviewEnvVars = pgTable(
-  "app_preview_env_vars",
-  {
-    id: text("id").primaryKey(),
-    appId: text("app_id")
-      .notNull()
-      .references(() => apps.id, { onDelete: "cascade" }),
-    key: text("key").notNull(),
-    valueEnc: text("value_enc").notNull(),
-    type: text("type").notNull().default("plain"),
-    createdByUserId: text("created_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    updatedByUserId: text("updated_by_user_id").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    createdAt: isoTimestamptz("created_at").notNull(),
-    updatedAt: isoTimestamptz("updated_at").notNull(),
-  },
-  (t) => [uniqueIndex("app_preview_env_vars_app_key_uq").on(t.appId, t.key)],
 );
 
 /** [EnvVar.targets](../../types.ts) → junction. `target` ∈ production/preview. */

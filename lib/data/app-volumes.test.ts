@@ -110,7 +110,7 @@ test("the saved volume reaches the rendered stack, on its own service", async ()
   const yamlOut = buildComposeStack({
     compose: app.compose ?? "",
     name: "deplo-shop",
-    deployKey: app.slug,
+    slug: app.slug,
     appId: app.id,
     domainRoutes: [],
     volumes: app.volumes,

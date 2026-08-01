@@ -9,7 +9,7 @@ import {
   ExternalLink,
   ScrollText,
   RotateCw,
-  GitPullRequest,
+  ArrowUpToLine,
   Ban,
   Trash2,
 } from "lucide-react";
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
-import type { DeploymentStatus } from "@/lib/types";
+import type { DeploymentStatus, DeploymentEnvironment } from "@/lib/types";
 
 export function DeploymentActions({
   id,
@@ -32,7 +32,7 @@ export function DeploymentActions({
   appSlug,
   url,
   status,
-  pullRequestUrl,
+  environment,
   canDelete = false,
 }: {
   id: string;
@@ -41,12 +41,7 @@ export function DeploymentActions({
   appSlug: string;
   url: string;
   status: DeploymentStatus;
-  /** Set for a pull request preview build: a link straight to the pull request.
-   *  It replaced "Promote to Production", which only ever flipped metadata —
-   *  once a preview is a real, separate stack, promoting it pointed the app's
-   *  production URL at a host the reaper deletes. Merging the pull request is
-   *  the honest promotion, and the existing push auto-deploy already ships it. */
-  pullRequestUrl?: string | null;
+  environment: DeploymentEnvironment;
   /** Show the "Delete" item (a finished deployment only). Cosmetic — the data
    *  layer re-checks `deploy` on the app's folder. */
   canDelete?: boolean;
@@ -55,6 +50,7 @@ export function DeploymentActions({
   const [pending, startTransition] = React.useTransition();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
+  const isPreview = environment === "preview";
   // A build in flight can be stopped; a still-queued one is simply canceled.
   const isBuilding = status === "building";
   const canCancel = isBuilding || status === "queued";
@@ -80,6 +76,19 @@ export function DeploymentActions({
         } else {
           router.refresh();
         }
+      } else toast.error(res.error);
+    });
+  }
+
+  function promote() {
+    startTransition(async () => {
+      const res = await gqlAction(
+        `mutation ($id: String!) { promoteDeployment(id: $id) }`,
+        { id },
+      );
+      if (res.ok) {
+        toast.success("Promoted to production");
+        router.refresh();
       } else toast.error(res.error);
     });
   }
@@ -161,12 +170,10 @@ export function DeploymentActions({
             <RotateCw className="size-4" />
             Redeploy
           </DropdownMenuItem>
-          {pullRequestUrl && (
-            <DropdownMenuItem asChild>
-              <a href={pullRequestUrl} target="_blank" rel="noreferrer">
-                <GitPullRequest className="size-4" />
-                Open pull request
-              </a>
+          {isPreview && (
+            <DropdownMenuItem onClick={promote} disabled={pending}>
+              <ArrowUpToLine className="size-4" />
+              Promote to Production
             </DropdownMenuItem>
           )}
           {canCancel && (

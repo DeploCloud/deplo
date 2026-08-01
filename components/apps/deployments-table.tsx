@@ -194,10 +194,6 @@ export interface DeploymentRow {
   commitMessage: string;
   commitSha: string;
   commitUrl: string | null;
-  /** The pull request this preview build came from, or null for production. */
-  pullRequestUrl?: string | null;
-  /** Denormalized pull request number — shown next to the Preview badge. */
-  prNumber?: number | null;
   status: DeploymentStatus;
   environment: DeploymentEnvironment;
   branch: string;
@@ -855,14 +851,6 @@ export function DeploymentsTable({
                       >
                         {d.environment}
                       </Badge>
-                      {/* Which pull request this preview came from. Read off the
-                          deployment's own denormalized number, so it survives
-                          the preview being reaped. */}
-                      {d.prNumber ? (
-                        <span className="ml-1.5 font-mono text-xs text-muted-foreground">
-                          #{d.prNumber}
-                        </span>
-                      ) : null}
                     </TableCell>
 
                     <TableCell>
@@ -890,7 +878,7 @@ export function DeploymentsTable({
                         appSlug={d.appSlug}
                         url={d.url}
                         status={d.status}
-                        pullRequestUrl={d.pullRequestUrl}
+                        environment={d.environment}
                         canDelete={canManage}
                       />
                     </TableCell>

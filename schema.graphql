@@ -129,76 +129,6 @@ input AppEnvInput {
 }
 
 """
-An ephemeral deploy of one App for one open pull request, running as its own stack `deplo-<slug>__pr-<n>` with its own URL. Not an App and not an Environment.
-"""
-type AppPreview {
-  appId: ID
-
-  """
-  A fork's pull request only builds once a member with `deploy` approves it.
-  """
-  approved: Boolean
-  approvedSha: String
-  author: String
-  baseBranch: String
-  closed: Boolean
-  createdAt: String
-  headBranch: String
-  headRepo: String
-  host: String
-  id: ID
-
-  """
-  The head lives in a repository the operator does not control, so its code is untrusted and it never receives secret-typed variables.
-  """
-  isFork: Boolean
-  latestDeploymentId: ID
-  prNumber: Int
-  pullRequestUrl: String
-
-  """blocked | queued | building | active | error | idle."""
-  status: String
-  title: String
-  updatedAt: String
-  url: String
-}
-
-input AppPreviewSettingsInput {
-  """
-  e.g. `preview.example.com`, with a wildcard DNS record pointing here. Empty clears it back to the zero-configuration nip.io default.
-  """
-  baseDomain: String
-  enabled: Boolean
-
-  """deny | approve | allow."""
-  forkPolicy: String
-  maxActive: Int
-  ttlDays: Int
-}
-
-"""
-Everything the Pull requests page renders in one read: whether previews can work at all, the branch they watch, the app's settings, and the previews.
-"""
-type AppPreviewsView {
-  appId: ID
-  baseDomain: String
-
-  """Pull requests must target this branch to get a preview."""
-  branch: String
-  enabled: Boolean
-  forkPolicy: String
-  githubSettingsUrl: String
-  maxActive: Int
-  previews: [AppPreview!]
-  ttlDays: Int
-
-  """
-  null ⇒ previews work. Otherwise the ONE reason they cannot: not-github | no-installation | app-needs-update | disabled.
-  """
-  unavailable: String
-}
-
-"""
 What an app's containers are ACTUALLY doing on the host, read live from the owning agent. `App.status` only records the last thing the control plane asked for (deploy / start / stop), so it keeps saying 'active' for an app that has been crash-looping since its deploy succeeded.
 """
 type AppRuntime {
@@ -675,26 +605,11 @@ type Deployment {
   commitSha: String
   createdAt: String
   creator: String
-
-  """
-  The stack this build owns: the app slug for production, `<slug>__pr-<n>` for a pull request preview.
-  """
-  deployKey: String
   environment: DeploymentEnvironment
   id: ID
 
   """Build logs for this deployment (most recent lines, capped)."""
   logs: [LogLine!]
-
-  """
-  The pull request number, denormalized so it survives the preview itself being reaped. Null for a production build.
-  """
-  prNumber: Int
-
-  """
-  The pull request preview this build belongs to, or null for production.
-  """
-  previewId: ID
 
   """
   1-based position in the owning server's build queue while this deployment is `queued` (1 = next to build); null once it starts building or finishes.
@@ -1083,19 +998,6 @@ type GithubInstallation {
   installationId: Int
 }
 
-"""An open pull request on the app's repository."""
-type GithubPullRequest {
-  authorLogin: String
-  baseRef: String
-  draft: Boolean
-  fromFork: Boolean
-  headRef: String
-  htmlUrl: String
-  number: Int
-  title: String
-  updatedAt: String
-}
-
 """A repository the installation can list and clone."""
 type GithubRepo {
   defaultBranch: String
@@ -1210,11 +1112,6 @@ type Mutation {
   """Add a registry credential to the active team. Returns true."""
   addRegistry(input: AddRegistryInput!): Boolean
   addServer(input: AddServerInput!): AddServerPayload
-
-  """
-  Unblock a fork's pull request and build it. Approval is per pull request, so later commits on it build automatically.
-  """
-  approvePreview(id: ID!): AppPreview
 
   """
   Cancel every in-progress deployment (queued/building) for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. Terminal deployments are left. Returns how many builds were stopped.
@@ -1340,9 +1237,6 @@ type Mutation {
   """Delete an instance-wide variable. Returns true."""
   deleteInstanceEnv(id: String!): Boolean
 
-  """Remove a preview-only override."""
-  deletePreviewEnvVar(appId: ID!, key: String!): Boolean
-
   """
   Delete a Project container; its folders and apps fall back to the team top level (not deleted).
   """
@@ -1366,16 +1260,6 @@ type Mutation {
   Permanently delete a user account. Teams they are the only member of always go with it; the rest is opt-in.
   """
   deleteUser(input: DeleteUserInput!): DeleteUserResult
-
-  """
-  Build a preview for a specific open pull request. Also approves it when it comes from a fork — clicking this IS the approval.
-  """
-  deployPullRequest(appId: ID!, prNumber: Int!): AppPreview
-
-  """
-  Stop a preview and remove its containers and volumes. The next commit on the pull request builds it again.
-  """
-  destroyPreview(id: ID!): Boolean
 
   """
   Auto-detect a favicon from the app's own files — its GitHub repo, its uploaded archive, or (for a compose stack) its files dir on its server — and set it as the logo. Errors if none is found.
@@ -1435,6 +1319,9 @@ type Mutation {
   Move a folder under a new parent folder, or to the top level when parentId is omitted/null. Rejects moving a folder into itself or a descendant.
   """
   moveFolder(id: ID!, parentId: ID): Boolean
+
+  """Promote a preview deployment to production."""
+  promoteDeployment(id: String!): Boolean
   rebuildApp(id: String!): App
 
   """
@@ -1447,9 +1334,6 @@ type Mutation {
   Re-render the database's compose from its current settings (resource limits, image/command overrides, exposure) and reroute it on its server. The container is recreated only when its config actually changed; the data volume is always preserved.
   """
   redeployDatabase(id: String!): Database
-
-  """Rebuild an existing preview at its current head."""
-  redeployPreview(id: ID!): AppPreview
 
   """
   Create a new account + team via a single-use registration link. Signs in.
@@ -1596,9 +1480,6 @@ type Mutation {
   """
   setAppEnv(appId: String!, defaultTargets: [EnvTarget!], entries: [EnvEntryInput!]!): Int
 
-  """Turn pull request previews on or off, and set their options."""
-  setAppPreviewSettings(appId: ID!, input: AppPreviewSettingsInput!): Boolean
-
   """
   Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included — each volume names the service it mounts into.
   """
@@ -1622,11 +1503,6 @@ type Mutation {
   Grant (or replace) a user's capabilities on a folder. Bounded by both the granter's and the grantee's caps; owner/admin only. Returns the fresh grant list.
   """
   setFolderGrant(capabilities: [String!]!, folderId: ID!, userId: ID!): [FolderGrant!]
-
-  """
-  Set a preview-only override for one variable (advanced). It outranks the app's own value and any shared variable, in previews only.
-  """
-  setPreviewEnvVar(appId: ID!, key: String!, secret: Boolean, value: String!): Boolean
 
   """Make this domain its app's primary (canonical) host. Returns true."""
   setPrimaryDomain(id: String!): Boolean
@@ -1787,15 +1663,6 @@ type NotificationSettings {
 }
 
 """
-A preview-only variable override. Write-only, like every stored secret: the value is never projected and there is no reveal path.
-"""
-type PreviewEnvVar {
-  key: String
-  type: String
-  updatedAt: String
-}
-
-"""
 A top-level, team-scoped CONTAINER (ADR-0008): folder-like, but it owns Environments and holds folders/apps via their `projectId`. NOT the deployable app — that is an `App`. A Project never nests in a Project.
 """
 type Project {
@@ -1855,9 +1722,6 @@ type Query {
   The metrics history buffered for one app (oldest first) — what the app's Monitoring charts seed from. Empty when the owning server's telemetry stream has not delivered a frame for it yet.
   """
   appMetricsHistory(appId: String!): [ContainerMetricsSample!]
-
-  """Pull request previews for an app, plus why they may not work."""
-  appPreviews(appId: ID!): AppPreviewsView
 
   """
   Live container state for an app, straight from the owning agent — the truth behind the stored status. Polled by the app's status badge.
@@ -2041,14 +1905,6 @@ type Query {
 
   """The active team's notification settings (defaults if unset)."""
   notificationSettings: NotificationSettings
-
-  """
-  Open pull requests on the app's repository, for the deploy picker. Needs only `pull_requests: read`, which every Deplo GitHub App has.
-  """
-  openPullRequests(appId: ID!): [GithubPullRequest!]
-
-  """The app's preview-only variable overrides (advanced)."""
-  previewEnvVars(appId: ID!): [PreviewEnvVar!]
 
   """
   The first server available, or null when none has been added/provisioned yet.

@@ -35,13 +35,6 @@ export const BACKUP_SCHEDULER_LEASE = "backup-scheduler";
  */
 export const DOCKER_CLEANUP_LEASE = "docker-cleanup-scheduler";
 
-/**
- * The pull request preview reaper's lease name. A third independent row, for the
- * same reason as the second: the three loops claim different names, so a long
- * nightly dump can never block a preview from being reaped (or the reverse).
- */
-export const PREVIEW_REAPER_LEASE = "preview-reaper";
-
 /* ------------------------------------------------------------------ */
 /* Pure decision (unit-tested)                                          */
 /* ------------------------------------------------------------------ */

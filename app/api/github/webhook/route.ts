@@ -11,7 +11,6 @@ import { findAppByAppId } from "@/lib/github/app";
 import { startDeployment } from "@/lib/deploy/build";
 import { parseWatchPaths } from "@/lib/data/app-graph-rows";
 import { parsePushEvent, shouldAutoDeploy } from "@/lib/deploy/git-webhook";
-import { handlePullRequestDelivery } from "@/lib/github/webhook-pull-request";
 
 /**
  * Inbound GitHub App webhook. Verifies the HMAC signature against the receiving
@@ -48,9 +47,6 @@ export async function POST(request: Request) {
   }
 
   const event = request.headers.get("x-github-event");
-  // Pull request deliveries drive preview deployments; the push arm below is
-  // untouched. Everything else GitHub sends is acknowledged and dropped.
-  if (event === "pull_request") return handlePullRequestDelivery(raw);
   if (event !== "push") return new Response("ok", { status: 200 });
 
   let payload: PushPayload;

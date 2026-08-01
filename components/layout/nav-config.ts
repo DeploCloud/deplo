@@ -1,5 +1,4 @@
 import {
-  GitPullRequest,
   LayoutGrid,
   LayoutDashboard,
   Rocket,
@@ -269,11 +268,6 @@ export interface AppNavFlags {
   canBackup: boolean;
   running: boolean;
   showFiles: boolean;
-  /** The app deploys from a connected GitHub App installation, so its pull
-   *  requests can get their own preview deploy. Nothing else — a raw git URL, a
-   *  docker image, an upload, a compose stack — ever receives a `pull_request`
-   *  delivery, so the entry would be a dead end. */
-  githubConnected: boolean;
   /** The console is an advanced surface: its chip appears only once the user has
    *  confirmed the one-time "I understand" warning (persisted in localStorage). */
   consoleAcknowledged: boolean;
@@ -309,19 +303,6 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       icon: Rocket,
       tooltip: "Deployment history",
     },
-    // Pull request previews. NOT gated on the previews switch: someone who
-    // turned them off still needs the page to find leftovers and to read why
-    // nothing is building.
-    ...(f.githubConnected || on("/pull-requests")
-      ? [
-          {
-            label: "Pull requests",
-            href: `${base}/pull-requests`,
-            icon: GitPullRequest,
-            tooltip: "Preview deploys for open pull requests",
-          } as NavItem,
-        ]
-      : []),
     // Environment holds sensitive values — only for manage_env holders.
     ...(f.canManageEnv
       ? [

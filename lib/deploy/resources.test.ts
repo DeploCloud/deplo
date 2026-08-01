@@ -131,7 +131,7 @@ const base = {
   image: "deplo/demo:abc",
   port: 3000,
   appId: "p1",
-  deployKey: "demo",
+  slug: "demo",
   routes: [route],
   env: { FOO: "bar" },
 };
@@ -192,7 +192,7 @@ test("buildComposeStack applies caps to every service, existing-wins", () => {
   const out = buildComposeStack({
     compose,
     name: "deplo-demo",
-    deployKey: "demo",
+    slug: "demo",
     appId: "p1",
     domainRoutes: [],
     resources: mk({ memoryMb: 512, cpuMilli: 1000 }),
@@ -213,7 +213,7 @@ test("buildComposeStack leaves services untouched when there are no limits", () 
   const out = buildComposeStack({
     compose,
     name: "deplo-demo",
-    deployKey: "demo",
+    slug: "demo",
     appId: "p1",
     domainRoutes: [],
     resources: null,

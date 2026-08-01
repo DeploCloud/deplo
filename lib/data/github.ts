@@ -2,7 +2,6 @@ import "server-only";
 
 import { and, eq, inArray } from "drizzle-orm";
 
-import { readAppCapabilities } from "../github/app";
 import { getDb } from "../db/client";
 import {
   githubApps as githubAppsTable,
@@ -131,29 +130,6 @@ export async function createGithubApp(
   await getDb().insert(githubAppsTable).values(githubAppToRow(app));
   await recordActivity("member", `Connected GitHub App ${app.name}`, user.name, null, membership.teamId);
   return app;
-}
-
-/**
- * Whether each connected GitHub App can drive pull request previews, keyed by
- * App id. Read LIVE from GitHub (never stored) because the operator fixes it on
- * github.com, and a cached "needs update" badge would outlive the fix.
- *
- * A GitHub failure yields no entry rather than a false accusation: an App that
- * cannot be checked is shown as fine, because telling someone their working
- * setup is broken is worse than saying nothing.
- */
-export async function githubAppsPreviewReadiness(): Promise<
-  Record<string, { ready: boolean; settingsUrl: string }>
-> {
-  const apps = await listGithubApps();
-  const out: Record<string, { ready: boolean; settingsUrl: string }> = {};
-  await Promise.all(
-    apps.map(async (a) => {
-      const caps = await readAppCapabilities(a.id);
-      if (caps) out[a.id] = { ready: caps.previewReady, settingsUrl: caps.settingsUrl };
-    }),
-  );
-  return out;
 }
 
 /** True once the active team has at least one App connected. */

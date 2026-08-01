@@ -1,4 +1,4 @@
-import { githubAppsPreviewReadiness, listGithubApps } from "@/lib/data/github";
+import { listGithubApps } from "@/lib/data/github";
 import { PageHeader } from "@/components/shared/page-header";
 import { GithubPanel } from "@/components/settings/github-panel";
 
@@ -11,9 +11,6 @@ export default async function SettingsGitPage(props: {
   // One-shot status from the GitHub OAuth-style redirect (?git=connected|error).
   const gitStatus = Array.isArray(sp.git) ? sp.git[0] : sp.git;
   const githubApps = await listGithubApps();
-  // Whether each App can drive pull request previews. Read live; an App that
-  // cannot be checked simply gets no entry and no warning.
-  const previewReadiness = await githubAppsPreviewReadiness();
 
   return (
     <div className="space-y-6">
@@ -21,11 +18,7 @@ export default async function SettingsGitPage(props: {
         title="Git"
         description="Connect GitHub apps for repository access and auto-deploys."
       />
-      <GithubPanel
-        apps={githubApps}
-        gitStatus={gitStatus}
-        previewReadiness={previewReadiness}
-      />
+      <GithubPanel apps={githubApps} gitStatus={gitStatus} />
     </div>
   );
 }

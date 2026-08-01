@@ -101,23 +101,6 @@ export function githubCommitUrl(
 }
 
 /**
- * The GitHub URL of a pull request a deployment was built from, or null for a
- * production build (no pull request) or a non-GitHub source. Derived, never
- * stored — same shape and rationale as {@link githubCommitUrl}.
- */
-export function githubPullRequestUrl(
-  repo:
-    | { provider?: string | null; repo?: string | null; url?: string | null }
-    | null
-    | undefined,
-  prNumber: number | null | undefined,
-): string | null {
-  if (!repo || !prNumber) return null;
-  const slug = githubRepoSlug(repo);
-  return slug ? `https://github.com/${slug}/pull/${prNumber}` : null;
-}
-
-/**
  * The `owner/name` slug of a project's GitHub repo, or null when it isn't on
  * GitHub. Handles the GitHub-App source (provider "github", `repo` already the
  * slug) AND a plain-git source whose URL happens to be on github.com (https or

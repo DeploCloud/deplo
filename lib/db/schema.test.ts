@@ -96,10 +96,6 @@ const CONTROL_PLANE = [
   "app_mounts",
   "deployments",
   "deployment_logs",
-  // pull request previews — one ephemeral stack per open pull request, plus the
-  // advanced preview-only variable overrides.
-  "app_previews",
-  "app_preview_env_vars",
   "env_vars",
   "env_var_targets",
   "instance_env_vars",

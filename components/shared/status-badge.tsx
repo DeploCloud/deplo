@@ -25,9 +25,7 @@ type AnyStatus =
   | "restarting"
   | "degraded"
   | "unhealthy"
-  | "down"
-  // A pull request preview from a fork, held until a maintainer approves it.
-  | "blocked";
+  | "down";
 
 const COLORS: Record<string, string> = {
   // green
@@ -47,7 +45,6 @@ const COLORS: Record<string, string> = {
   provisioning: "bg-[var(--warning)]",
   pending: "bg-[var(--warning)]",
   unverified: "bg-[var(--warning)]",
-  blocked: "bg-[var(--warning)]",
   // A domain proxied through Cloudflare, sitting beside `unverified` for the
   // same reason: it IS unverified. Cloudflare's shared anycast IPs mask the
   // origin, so deplo can see that the host is proxied and never whether
@@ -162,9 +159,6 @@ export function StatusDot({
  */
 const LABELS: Record<string, string> = {
   idle: "Stopped",
-  // A fork's preview waiting on a maintainer — not a failure, and not something
-  // Deplo is doing. "Blocked" would read like an error; this names the action.
-  blocked: "Needs approval",
   active: "Running",
   // "Not running", never "Stopped": the app is supposed to be up. The wording
   // has to make an unasked-for outage impossible to mistake for a deliberate one.

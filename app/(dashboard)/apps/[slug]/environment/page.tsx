@@ -4,9 +4,7 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { hasCapability } from "@/lib/membership";
 import { listEnv } from "@/lib/data/env";
 import { listSharedVars, listSharedVarsForApp } from "@/lib/data/shared-vars";
-import { listPreviewEnvVars } from "@/lib/data/previews";
 import { EnvManager } from "@/components/env/env-manager";
-import { PreviewOverrides } from "@/components/env/preview-overrides";
 import { EmptyState } from "@/components/shared/empty-state";
 
 export const metadata = { title: "Environment Variables" };
@@ -30,13 +28,12 @@ export default async function AppEnvPage(
     );
   }
 
-  const [vars, sharedVars, allSharedVars, previewOverrides] = await Promise.all([
+  const [vars, sharedVars, allSharedVars] = await Promise.all([
     listEnv(project.id),
     listSharedVarsForApp(project.id),
     // The full records back the value edit + "Shared with" chips a shared row now
     // exposes here; narrow to the ones this app actually receives.
     listSharedVars(),
-    listPreviewEnvVars(project.id),
   ]);
   const linkedIds = new Set(
     sharedVars.filter((v) => v.linked).map((v) => v.id),
@@ -44,14 +41,11 @@ export default async function AppEnvPage(
   const sharedVarDetails = allSharedVars.filter((v) => linkedIds.has(v.id));
 
   return (
-    <div className="space-y-6">
-      <EnvManager
-        appId={project.id}
-        vars={vars}
-        sharedVars={sharedVars}
-        sharedVarDetails={sharedVarDetails}
-      />
-      <PreviewOverrides appId={project.id} overrides={previewOverrides} />
-    </div>
+    <EnvManager
+      appId={project.id}
+      vars={vars}
+      sharedVars={sharedVars}
+      sharedVarDetails={sharedVarDetails}
+    />
   );
 }
