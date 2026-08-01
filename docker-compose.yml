@@ -31,11 +31,11 @@ services:
       - "traefik.http.routers.deplo.entrypoints=websecure"
       - "traefik.http.routers.deplo.tls.certresolver=letsencrypt"
       # Lowest priority so this Host-only dashboard router is a true fallback:
-      # any more-specific PathPrefix router on the same host — an installed app's
-      # /apps/<slug> route, or a deployed project's path override — wins. Traefik
+      # any more-specific PathPrefix router on the same host — an app's path
+      # override, or the reserved /plugins/<slug> route (ADR-0013) — wins. Traefik
       # defaults an un-pinned router's priority to its rule-string LENGTH, which
       # for a real host exceeds a short PathPrefix router's length and would
-      # otherwise SHADOW the app path. priority=1 (0 is treated as "unset").
+      # otherwise SHADOW that path. priority=1 (0 is treated as "unset").
       - "traefik.http.routers.deplo.priority=1"
       - "traefik.http.services.deplo.loadbalancer.server.port=3000"
 

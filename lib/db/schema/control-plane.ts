@@ -1508,6 +1508,10 @@ export const registries = pgTable(
  * `(team_id, created_at DESC)` index. `status`/`url` deliberately NOT stored
  * (computed). Backfill derives the `slug` for legacy empty-slug rows. A LEAF
  * collection (cut-set (a)) (PLAN §2).
+ *
+ * DORMANT (ADR-0013): the Plugins feature is deferred, so nothing inserts here —
+ * the boot sweep (`lib/plugins/retire.ts`) empties it. Kept (not dropped) so the
+ * feature can return without a migration.
  */
 export const installedPlugins = pgTable(
   "installed_plugins",

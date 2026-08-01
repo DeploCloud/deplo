@@ -7,6 +7,10 @@
  * schema without a manual `db:migrate` step. Idempotent; a failure re-throws
  * (fail fast) rather than serve on an out-of-date schema.
  *
+ * It also RETIRES the withdrawn Plugins feature (ADR-0013) — a container an older
+ * version installed has no UI left to remove it, so the sweep in
+ * lib/plugins/retire.ts tears it down. A no-op once the table is empty.
+ *
  * Then Deplo uses it to reconcile work orphaned by a control-plane restart:
  *  - Deployments: a deploy is fire-and-forget — its background job dies with the
  *    process. A `building` row (a build was actually in flight) has no job to
@@ -47,6 +51,19 @@ export async function register(): Promise<void> {
   } catch (e) {
     console.error("[deplo] DB migration failed at boot — refusing to serve on an out-of-date schema:", e);
     throw e;
+  }
+  try {
+    // Retire anything left by the withdrawn Plugins feature (ADR-0013): with no
+    // Plugins UI left, an installed plugin's container would otherwise be an
+    // orphan only a shell on the host could remove. Floated — a teardown can take
+    // a couple of minutes and nothing at boot waits on it — and a no-op (one
+    // indexed SELECT) once the table is empty, which it is on any fresh install.
+    const { retireInstalledPlugins } = await import("./lib/plugins/retire");
+    void retireInstalledPlugins().catch((e) =>
+      console.error("[deplo] plugin retirement sweep failed:", e),
+    );
+  } catch (e) {
+    console.error("[deplo] plugin retirement sweep failed to start:", e);
   }
   // Each reconcile/start below runs in ITS OWN try/catch: these are independent
   // subsystems, and one transient failure (say, the backup reconcile losing its

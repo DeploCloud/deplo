@@ -1,5 +1,15 @@
 # Plugin sections + dev mode as a plugin — settled decisions
 
+> **On hold — the Plugins feature is deferred ([ADR-0013](../../adr/0013-plugins-are-deferred-and-the-mcp-plugin-is-withdrawn.md)).**
+> Nothing here is being built right now: the plugin UI, API and catalog client are gone and only
+> the foundations remain (`installed_plugins`, `lib/plugins/manifest.ts`, `lib/plugins/runtime.ts`,
+> the reserved `/plugins/<slug>` path). This document is kept because it is the design record the
+> revival starts from — its constraints still bind, and ADR-0013 §5 lists what must be settled
+> before any of it ships. Two premises have since changed: **dev mode was removed from deplo
+> entirely** (Jul 2026), so §5 describes relocating a feature that no longer exists, and the
+> revival is expected to reach hosts **through the server agent** rather than the control plane's
+> Docker socket.
+
 Status: **charting** (wayfinder map). Settled 2026-07-13 in a grilling session with the owner.
 These are **constraints**, not open questions — every ticket session must respect them. The open
 questions live as tickets on the wayfinder map.
@@ -13,7 +23,7 @@ Destination: an agreed **spec + ADR** (superseding parts of ADR-0005), ready to 
 
 | Term | Meaning | Where it lives |
 | --- | --- | --- |
-| **Plugin** | Installable catalog container (ADR-0005; the MCP one is the first) | `lib/plugins/*`, `lib/data/plugins.ts`, `/plugins/<slug>`, `installed_plugins`, gated on `manage_infra` |
+| **Plugin** | Installable catalog container (ADR-0005, deferred by ADR-0013) | `lib/plugins/*`, `/plugins/<slug>`, `installed_plugins`, gated on `manage_infra` |
 | **App** | The deployable unit (was "Service"/"Project") | `lib/apps/*`, `lib/data/apps.ts`, `/apps/[slug]/*`, `appNav()`, `app_dev` |
 | **Project** | The container-folder (ADR-0009) | `prc_` prefix; no page of its own |
 
@@ -49,7 +59,8 @@ ADR-0003, or ADR-0006.
 
 4. **Attended work → cookie relay.** A plugin is served on Deplo's own host
    (`/plugins/<slug>`), so the browser sends the viewer's `deplo_session` cookie to the plugin
-   automatically. The plugin forwards it to Deplo's GraphQL — exactly the MCP relay pattern — and
+   automatically. The plugin forwards it to Deplo's GraphQL — a pure relay, holding no credential
+   of its own — and
    the **viewer's own capabilities and folder-access are enforced natively**. The confused-deputy
    problem dissolves: the plugin *is* the viewer.
 5. **Unattended work → service token.** A standing, team-scoped, **`deploy`**-capable `deplo_`
@@ -134,8 +145,7 @@ trust-by-origin. It is why the iframe is *not* sandboxed to an opaque origin.
     - **SSH users are lost** → the removal release must **deprovision stale gateway accounts**.
     - **Orphaned `deplo-dev-*` containers** must be stopped by the removal release.
 21. **Breaking API change.** Dev's 4 queries + 11 mutations leave core's public schema. The dev
-    plugin serves its own dev API on its own path. (Cost: dev disappears from MCP/AI tooling and
-    from API-token clients.)
+    plugin serves its own dev API on its own path. (Cost: dev disappears from API-token clients.)
 
 ---
 
@@ -153,9 +163,9 @@ one process) · ADR-0006 dec. 6 (one compose renderer, opaque YAML on the wire) 
 
 - **`${secret:N}` rotates on reinstall.** `resolvePluginEnv` mints a fresh random value on every
   resolve, and `installed_plugins` persists no env — so a plugin's generated secret silently
-  rotates on reinstall. Harmless for MCP (which uses none); it would have destroyed a *stateful*
+  rotates on reinstall. Harmless for a plugin that injects none; it would destroy a *stateful*
   plugin's encrypted data. Sidestepped by keeping the plugin's key in its own volume, but it should
-  be fixed or documented.
+  be fixed or documented. (Carried into ADR-0013 §5 as a revival blocker.)
 - **A second, parallel section registry** exists at `lib/breadcrumb-model.ts` (`MAIN_SECTIONS`).
   An injected section must register there too or it appears in the sidebar but not the breadcrumb
   dropdown.

@@ -1393,24 +1393,28 @@ export interface Registry {
 }
 
 /**
- * An app a team installed from the app repository (ADR-0005). An installed app
- * is a host-managed container — NOT a project — so this row is deliberately
+ * A plugin a team installed from a plugin repository (ADR-0005). An installed
+ * plugin is a host-managed container — NOT an App — so this row is deliberately
  * minimal: no `status`, `url`, `appId`, or token reference. Status is read
  * live from the container at query time; the URL is computed from the stored
- * `slug`; the (MCP) app holds no credential of its own — it relays the caller's
- * `deplo_` token.
+ * `slug`.
+ *
+ * **DORMANT (ADR-0013):** the Plugins feature is deferred and nothing writes this
+ * row today — the boot sweep in `lib/plugins/retire.ts` clears any left by an
+ * older version. The table and this type stay so the feature returns without a
+ * migration.
  *
  * The `slug` is the FROZEN physical identity of the container — its name,
  * compose project, stack file, and Traefik path router all key off it. It is
  * computed once at install (`pluginSlug(catalogId, teamSlug)`) and persisted, so a
- * later team rename never orphans the running container/router — exactly as a
- * project's slug is frozen and `renameApp` never touches it.
+ * later team rename never orphans the running container/router — exactly as an
+ * app's slug is frozen and `renameApp` never touches it.
  */
 export interface InstalledPlugin {
   id: ID;
   /** Owning team. Everything is team-scoped, like registries. */
   teamId: ID;
-  /** The catalog app id, e.g. "mcp". */
+  /** The catalog plugin id, e.g. "relay". */
   catalogId: string;
   /** Frozen physical identity (container/project/stack-file/router). Computed
    * at install from `pluginSlug(catalogId, teamSlug)`; never re-derived after. */

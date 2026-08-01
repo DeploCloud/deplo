@@ -250,10 +250,9 @@ if is_real_domain "$DEPLO_DOMAIN"; then
   USE_DOMAIN=true
   PUBLIC_URL="https://$DEPLO_DOMAIN"
   # priority=1 keeps this Host-only dashboard router a true fallback so any
-  # more-specific PathPrefix router on the same host (an installed app's
-  # /apps/<slug> route, or a project path override) outranks it — Traefik would
-  # otherwise default this router's priority to its rule-string length and
-  # shadow the app path.
+  # more-specific PathPrefix router on the same host (an app's path override, or
+  # the reserved /plugins/<slug> route) outranks it — Traefik would otherwise
+  # default this router's priority to its rule-string length and shadow it.
   DEPLO_EXPOSE="$(printf '    labels:\n      - "traefik.enable=true"\n      - "traefik.http.routers.deplo.rule=Host(`%s`)"\n      - "traefik.http.routers.deplo.entrypoints=websecure"\n      - "traefik.http.routers.deplo.tls.certresolver=letsencrypt"\n      - "traefik.http.routers.deplo.priority=1"\n      - "traefik.http.services.deplo.loadbalancer.server.port=3000"' "$DEPLO_DOMAIN")"
 else
   USE_DOMAIN=false

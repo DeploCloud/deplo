@@ -7,7 +7,6 @@ import { builder } from "./builder";
 // resolves refs lazily at build time. Keep this list alphabetical.
 import "./types/account";
 import "./types/activity";
-import "./types/plugins";
 import "./types/auth";
 import "./types/backup";
 import "./types/basic-auth";

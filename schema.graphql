@@ -1037,18 +1037,6 @@ type GlobalUser {
 }
 
 """
-A plugin a team installed from the plugin repository — a host-managed container, not an app. Status is read live from the container; the URL is the plugin path under Deplo's own host.
-"""
-type InstalledPlugin {
-  catalogId: String
-  createdAt: String
-  id: ID
-  status: String
-  url: String
-  version: String
-}
-
-"""
 The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
 scalar JSON
@@ -1290,11 +1278,6 @@ type Mutation {
 
   """Bulk-import a .env-style blob; returns the number of vars imported."""
   importEnv(appId: String!, blob: String!, targets: [EnvTarget!]): Int
-
-  """
-  Install a plugin from the catalog (one per plugin per team; recreates the container in place if already installed). Mints no token — the caller supplies their own from Settings → API Tokens.
-  """
-  installPlugin(catalogId: String!): InstalledPlugin
 
   """Sign in with email + password. Sets the session cookie."""
   login(email: String!, password: String!): AuthPayload
@@ -1547,13 +1530,7 @@ type Mutation {
   Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.
   """
   startGithubConnect(org: String): GithubConnectStart
-
-  """Start a stopped plugin's container. Returns true."""
-  startPlugin(id: String!): Boolean
   stopApp(id: String!): App
-
-  """Stop a running plugin's container. Returns true."""
-  stopPlugin(id: String!): Boolean
 
   """Switch the active team (sets a cookie server-side). Returns true."""
   switchTeam(teamId: String!): Boolean
@@ -1573,11 +1550,6 @@ type Mutation {
   Hand instance ownership to another instance admin. Owner-only; requires the caller's password. Returns true.
   """
   transferInstanceOwner(password: String!, userId: String!): Boolean
-
-  """
-  Uninstall a plugin: destroy its container + Traefik router and drop the row. Revokes nothing (the plugin held no token). Returns true.
-  """
-  uninstallPlugin(id: String!): Boolean
   updateAppBuild(build: BuildConfigInput!, id: String!): App
   updateAppLogo(id: String!, logo: String): App
 
@@ -1678,18 +1650,6 @@ type NotificationSettings {
   Per-event delivery map (deployment_failed, server_offline, …) -> boolean.
   """
   events: JSON
-}
-
-"""
-An installable plugin from the remote plugin repository (read-only catalog). Distinct from a Template, which ships inside Deplo.
-"""
-type PluginListing {
-  description: String
-  id: String
-  logo: String
-  name: String
-  tags: [String!]
-  version: String
 }
 
 """
@@ -1886,9 +1846,6 @@ type Query {
   """
   grantableFolderCapabilities(folderId: ID!): [String!]
 
-  """Plugins the active team has installed, newest first, with live status."""
-  installedPlugins: [InstalledPlugin!]
-
   """
   Instance-wide env vars — injected into every app of every team. Instance admin only.
   """
@@ -1913,9 +1870,6 @@ type Query {
 
   """The active team's notification settings (defaults if unset)."""
   notificationSettings: NotificationSettings
-
-  """The remote catalog of installable plugins."""
-  pluginCatalog: [PluginListing!]
 
   """
   The first server available, or null when none has been added/provisioned yet.

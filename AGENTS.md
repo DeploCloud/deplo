@@ -5,7 +5,7 @@ templates into Docker stacks fronted by Traefik. Read this before writing code, 
 the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root) — authoritative glossary / ubiquitous language. Single-context repo.
-- **`docs/adr/`** — numbered decisions (0001–0009). Contradicting one? Surface it, don't silently override.
+- **`docs/adr/`** — numbered decisions (0001–0013). Contradicting one? Surface it, don't silently override.
 - **`docs/api/graphql.md`** — external API reference · **`schema.graphql`** (root) — generated SDL.
 - **`docs/agents/`** — `issue-tracker.md`, `triage-labels.md`, `domain.md`.
 
@@ -95,7 +95,11 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   is a hard error, never a silent local build. New RPCs are additive (contract stays `V1`); gate
   host features behind Hello `capabilities[]`.
 - **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers
-  where Deplo *does* own the socket (`lib/plugins/runtime.ts`) — a Plugin is not an App.
+  where Deplo *does* own the socket (`lib/plugins/runtime.ts`) — a Plugin is not an App. That
+  code is **dormant**: the feature is deferred (**ADR-0013**), so nothing installs a plugin and
+  the only live caller is the boot sweep that removes ones an older version left behind. Don't
+  wire anything new to it, and read ADR-0013 before reviving it — the return is expected to go
+  through the agent, not the socket.
   `lib/deploy/build.ts` also retains a now-dead local build path + host `ensureNetwork`/`mkdir`;
   the live path passes `skipBuild:true → runAgentDeploy`. Don't mistake the dead path for a
   violation and don't revive it.
@@ -258,7 +262,7 @@ Use **CONTEXT.md's exact terms**; avoid its banned synonyms. **App** (the deploy
 "service"/"project"; a bare compose "service" is a different thing) · **Project** (the
 container-folder, never container/group/folder) · **Capability** (never permission/scope/grant) ·
 **server agent** / "the owning server" (never bare agent/node/worker/daemon) · **Plugin** (an
-installed catalog feature à la MCP server, never an App) · **active team** (never current/selected) ·
+installed catalog feature, never an App — deferred, see ADR-0013) · **active team** (never current/selected) ·
 **Environment** (never "env target"). If a concept isn't in the glossary, you're probably inventing
 language — reconsider, or note the gap.
 

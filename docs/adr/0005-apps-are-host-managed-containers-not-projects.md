@@ -1,5 +1,14 @@
 # Apps are host-managed containers, not projects
 
+> **Superseded in part (Aug 2026) — [ADR-0013](0013-plugins-are-deferred-and-the-mcp-plugin-is-withdrawn.md).**
+> The Plugins feature is **deferred**: no UI, no GraphQL surface, no catalog client, and the
+> **MCP plugin this ADR is written around no longer exists**. Read decisions 1, 2 and 4 (a
+> plugin is a host-managed container, served on a path under Deplo's own host, status read
+> live) as the shape a revival starts from; read decision 3 and every mention of the MCP app,
+> its relay and its caller token as **withdrawn**. ADR-0013 also records what the revival must
+> settle first — starting with routing through the **server agent** instead of the control
+> plane's own socket.
+
 > **Terminology update (Jul 2026):** the installable feature this ADR calls an **App** is now
 > called a **Plugin**, and the deployable unit formerly called a **Service** is now called an
 > **App**. Read "App/app repository/app path" → "Plugin/plugin repository/plugin path" and

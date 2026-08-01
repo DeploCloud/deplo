@@ -13,14 +13,14 @@ import {
 /* Catalog / manifest validation                                       */
 /* ------------------------------------------------------------------ */
 
-test("catalog: a valid MCP listing parses and defaults tags/description", () => {
+test("catalog: a valid listing parses and defaults tags/description", () => {
   const parsed = PluginCatalogSchema.safeParse([
     {
-      id: "mcp",
-      name: "AI MCP Server",
+      id: "relay",
+      name: "Relay",
       version: "1.0.0",
-      logo: "/apps/mcp/logo.svg",
-      manifestUrl: "/apps/mcp/manifest.json",
+      logo: "/plugins/relay/logo.svg",
+      manifestUrl: "/plugins/relay/manifest.json",
     },
   ]);
   assert.ok(parsed.success);
@@ -28,19 +28,19 @@ test("catalog: a valid MCP listing parses and defaults tags/description", () => 
   assert.deepEqual(parsed.data[0].tags, []); // defaulted
 });
 
-test("catalog: a non-slug app id is rejected", () => {
+test("catalog: a non-slug plugin id is rejected", () => {
   const parsed = PluginCatalogSchema.safeParse([
     { id: "Bad Id!", name: "x", version: "1", manifestUrl: "/m.json" },
   ]);
   assert.equal(parsed.success, false);
 });
 
-test("manifest: a valid MCP manifest parses with one env placeholder", () => {
+test("manifest: a valid manifest parses with one env placeholder", () => {
   const parsed = PluginManifestSchema.safeParse({
-    id: "mcp",
-    name: "AI MCP Server",
+    id: "relay",
+    name: "Relay",
     version: "1.0.0",
-    image: "devrepo.pixelfederico.com/mcp-server:1.0.0",
+    image: "registry.example.com/relay:1.0.0",
     expose: { port: 8080 },
     env: [{ key: "DEPLO_GRAPHQL_URL", value: "${deplo_graphql_url}" }],
   });
@@ -51,7 +51,7 @@ test("manifest: a valid MCP manifest parses with one env placeholder", () => {
 
 test("manifest: env with no env array defaults to []", () => {
   const parsed = PluginManifestSchema.safeParse({
-    id: "mcp",
+    id: "relay",
     name: "x",
     version: "1",
     image: "img:1",
@@ -63,7 +63,7 @@ test("manifest: env with no env array defaults to []", () => {
 
 test("manifest: an out-of-range port is rejected", () => {
   const parsed = PluginManifestSchema.safeParse({
-    id: "mcp",
+    id: "relay",
     name: "x",
     version: "1",
     image: "img:1",
@@ -74,7 +74,7 @@ test("manifest: an out-of-range port is rejected", () => {
 
 test("manifest: a bad env key (not a shell identifier) is rejected", () => {
   const parsed = PluginManifestSchema.safeParse({
-    id: "mcp",
+    id: "relay",
     name: "x",
     version: "1",
     image: "img:1",

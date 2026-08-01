@@ -3,7 +3,7 @@
  *
  * Switching teams used to always drop the viewer on the Overview, which throws
  * away where they were even though most of the dashboard is the same page in
- * every team: Storage, Variables, Templates, Plugins, Deployments, Logs,
+ * every team: Storage, Variables, Templates, Deployments, Logs,
  * Monitoring, Members, Activity and Settings are *sections*, not rows — the
  * team only decides what they list. Leaving those is the exception, not the
  * rule.

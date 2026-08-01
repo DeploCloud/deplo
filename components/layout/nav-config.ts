@@ -11,7 +11,6 @@ import {
   Activity,
   LineChart,
   Braces,
-  Blocks,
   Users,
   ArrowLeft,
   Building2,
@@ -114,13 +113,9 @@ export const NAV: NavSection[] = [
         icon: LayoutTemplate,
         tooltip: "One-click deploy templates",
       },
-      {
-        label: "Plugins",
-        href: "/plugins",
-        icon: Blocks,
-        tooltip: "Install plugins to extend Deplo",
-        requires: "manage_infra",
-      },
+      // Plugins deliberately have NO nav entry: the feature is deferred and its
+      // UI/API are withdrawn (ADR-0013). The `/plugins/<slug>` path stays
+      // reserved for a plugin's own routes, so nothing here may claim it.
     ],
   },
   {

@@ -66,53 +66,54 @@ Adding an **existing** user to a team is a separate flow: the team-members page 
 registered users by username and attaches a `Membership` directly.
 _Avoid_: invite (reserved for adding an existing user to a team), email invite (removed).
 
+**API token**:
+The plain team-scoped `deplo_` bearer token a **user** mints from Settings → API Tokens to
+drive Deplo's GraphQL API from outside the dashboard (a script, CI, a third-party client). It
+acts **as its creator, in the team it was created in** — it can only ever do what that
+member's **Capabilities** allow, and there is no way for it to reach another team's data.
+Shown **once** at creation; only its **sha256** is stored, so it is revocable but never
+re-readable, and revoking one user's token cuts off only that user. The dashboard itself never
+uses one — the browser carries the `deplo_session` cookie instead.
+_Avoid_: caller token (a retired name), API key (reserve for third-party provider keys in
+env), secret key.
+
 ### Plugins
 
+> **Deferred — not a live feature (ADR-0013).** Plugins have no UI, no GraphQL surface and no
+> catalog client today. The terms below describe the ground the feature returns on — the
+> `installed_plugins` table, `lib/plugins/*`, and the reserved `/plugins/<slug>` path — not
+> anything a user can reach. Don't build against them until ADR-0013's open questions are
+> settled; do keep using the words, so the revival doesn't invent a second vocabulary.
+
 **Plugin**:
-An optional, self-contained feature a team **installs** from the **plugin repository** to
-extend the platform (like an MCP server). An installed plugin is a **host-managed container**
-(Deplo owns the Docker socket → real start/stop/restart + true status) — but it is
+An optional, self-contained feature a team **installs** from a **plugin repository** to
+extend the platform. An installed plugin is a **host-managed container**
+(Deplo owns the container lifecycle → real start/stop/restart + true status) — but it is
 **not an "App"**: it never appears on the Overview, in the app count, or the
 `apps` API. It is platform infrastructure that happens to run a container, like Traefik.
 It is **not** deployed through the deploy pipeline and gets **no per-plugin
 domain, sslip.io, or TLS cert**; when a plugin needs to be reached it is served on the **plugin
-path** under Deplo's own public URL. The first plugin is the **MCP plugin** — a **stateless relay**
-that serves MCP over that path and **holds no credential of its own**: it forwards the
-caller's `deplo_` token verbatim to Deplo's GraphQL API, so a caller can only ever do what
-*their own* token's team capabilities allow. Its **status is never stored** — it is read
-**live** from the container
-at query time and exposed through the GraphQL API — computed, not managed. The UI never
-touches Docker: status and start/stop flow **UI → GraphQL → data
-layer → socket**, never UI → socket.
+path** under Deplo's own public URL. Its **status is never stored** — it is read
+**live** from the container, computed rather than managed. The UI never touches Docker:
+status and start/stop flow **UI → GraphQL → data layer → the host**, never UI → socket.
 _Avoid_: App (a plugin runs on host container machinery but is never an App, nor a
 Project container), extension, add-on. (The container/label identity `deplo-app-<slug>` and
 the `app_` id prefix persist for compatibility, but the concept is a **Plugin**.)
 
 **Plugin repository**:
-The remote, online catalog of installable plugins (`catalog.json` + per-plugin manifests),
-served over HTTP at `devrepo.pixelfederico.com`. Deplo fetches it read-only and treats a
-manifest's compose as **opaque text** handed to the deploy pipeline — never evaluated. The
-source of every plugin's image and manifest. Distinct from **Templates**, which ship inside
-Deplo; plugins are fetched from outside.
+The remote, online catalog of installable plugins (`catalog.json` + per-plugin manifests) an
+operator points Deplo at. Deplo fetches it read-only and treats a manifest's `image` and `env`
+as **opaque** — validated for shape, never evaluated. The source of every plugin's image and
+manifest. Distinct from **Templates**, which ship inside Deplo; plugins are fetched from
+outside. **Which repository Deplo would ship pointing at is undecided** (ADR-0013) — the
+former default was a private host and has been removed.
 _Avoid_: app store, marketplace, registry (that is a container-image credential).
-
-**Caller token**:
-The plain team-scoped `deplo_` API token a **user** mints from Settings → API Tokens and
-pastes into their own MCP client. It is the **only** credential in the MCP flow: the client
-sends it to the **plugin path**, the plugin forwards it **verbatim** to Deplo's GraphQL API, and
-Deplo authenticates it on every call. There is **no separate plugin-held secret and no
-`MCP_BEARER`** — *reaching* the plugin and *doing* something through it collapse into one
-capability check on this token. Per-user, per-client: revoking one user's token cuts off only
-that user; the same plugin container serves many callers, each as their own principal.
-_Avoid_: secret key / plugin token (the plugin holds no token of its own), MCP_BEARER (removed —
-there is no separate door key), API key (reserve for third-party provider keys in env).
 
 **Plugin path**:
 The route under Deplo's **own public URL** at which a reachable plugin is served (e.g.
-`https://<deplo>/plugins/mcp-<slug>/…`), reusing Deplo's existing TLS. Deliberately **not** a
-per-plugin domain, sslip.io name, or `Domain` row — a plugin never gets its own cert. The plugin
-authenticates **nothing** at this path itself; it relays the **caller token** through to
-Deplo's API, which performs the real auth.
+`https://<deplo>/plugins/<slug>/…`), reusing Deplo's existing TLS. Deliberately **not** a
+per-plugin domain, sslip.io name, or `Domain` row — a plugin never gets its own cert. The path
+stays **reserved** while the feature is deferred: no dashboard route may claim `/plugins/*`.
 _Avoid_: plugin domain, plugin URL (it is a path on Deplo's domain, not a domain of its own),
 route (reserved for Traefik service routes).
 
@@ -122,7 +123,8 @@ failed), emitted by the control plane and delivered **observe-only** to subscrib
 fire-and-forget with retries, never blocking. A plugin reacts by calling the capability-scoped
 API back; it can *observe and then act*, but it can **never veto or pause** a pipeline. This
 is how a plugin "does things when something happens." Blocking gates (a true pre-deploy veto)
-are deliberately **out of scope** and reserved for a future ADR. *(Phase 2 — not yet built.)*
+are deliberately **out of scope** and reserved for a future ADR. *(Not built — deferred with
+the rest of the feature.)*
 _Avoid_: hook (implies blocking/in-process), webhook (that is the delivery mechanism, not
 the event), trigger.
 
@@ -298,10 +300,10 @@ control plane signs the agent's mTLS cert and the token is spent. Carried in the
 server bootstrap command; **single-use**, expires (~1h), and stored only as its **sha256**
 (never the raw value) — the same handling as a **registration link**, with an added expiry
 because a provisioning token is more dangerous (it gives rise to a trusted agent). Distinct from
-the **caller token** (a user's `deplo_` API token, long-lived, for the MCP flow) and from the
+the **API token** (a user's long-lived `deplo_` token for the external API) and from the
 short-lived **git token** the control plane hands an agent to clone a private repo.
 _Avoid_: agent token (the agent's lasting credential is its mTLS cert, not this), join token,
-enrollment key, API token (that is the caller token).
+enrollment key, API token (that is the user's own external-API credential, not this).
 
 **Production stack**:
 The immutable, image-baked runtime for an app (`deplo-<slug>`). Built by

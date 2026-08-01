@@ -12,7 +12,6 @@ test("stays on team-agnostic section pages", () => {
     "/storage",
     "/variables",
     "/templates",
-    "/plugins",
     "/members",
     "/activity",
     "/monitoring",
