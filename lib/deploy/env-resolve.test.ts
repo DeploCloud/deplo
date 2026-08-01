@@ -133,3 +133,55 @@ test("omitting instanceGlobals defaults to the app-own + shared behaviour", () =
   const vars = [envVar("X", ["production"])];
   assert.deepEqual(keys(resolveEnvEntries("production", APP, vars, [])), ["X"]);
 });
+
+/* ------------------------------------------------------------------ */
+/* Preview overrides (ADR-0014)                                        */
+/* ------------------------------------------------------------------ */
+
+test("a preview override beats the app's own var AND a linked shared var", () => {
+  // The whole reason overrides exist: pointing a pull request's preview at a
+  // scratch database. A team-wide shared value outranking it would make that
+  // impossible.
+  const out = resolveEnvEntries(
+    "preview",
+    APP,
+    [envVar("DATABASE_URL", ["production", "preview"])],
+    [shared("DATABASE_URL", ["production", "preview"], "team-default")],
+    [globalEntry("DATABASE_URL", ["production", "preview"], "instance")],
+    [{ key: "DATABASE_URL", valueEnc: "enc(scratch)" }],
+  );
+  assert.equal(fold(out)["DATABASE_URL"], "enc(scratch)");
+  // Lowest precedence first, override last.
+  assert.deepEqual(
+    out.map((e) => e.valueEnc),
+    ["enc(instance)", "enc(DATABASE_URL)", "enc(team-default)", "enc(scratch)"],
+  );
+});
+
+test("an override can introduce a key that exists nowhere else", () => {
+  const out = resolveEnvEntries("preview", APP, [], [], [], [
+    { key: "PREVIEW_ONLY", valueEnc: "enc(v)" },
+  ]);
+  assert.deepEqual(keys(out), ["PREVIEW_ONLY"]);
+});
+
+test("overrides NEVER reach production, even when supplied", () => {
+  const out = resolveEnvEntries(
+    "production",
+    APP,
+    [envVar("DATABASE_URL", ["production", "preview"])],
+    [],
+    [],
+    [{ key: "DATABASE_URL", valueEnc: "enc(scratch)" }],
+  );
+  assert.equal(fold(out)["DATABASE_URL"], "enc(DATABASE_URL)");
+});
+
+test("omitting overrides leaves every existing caller byte-identical", () => {
+  const vars = [envVar("X", ["production", "preview"])];
+  const sharedVars = [shared("Y", ["production", "preview"], "s")];
+  assert.deepEqual(
+    resolveEnvEntries("preview", APP, vars, sharedVars, []),
+    resolveEnvEntries("preview", APP, vars, sharedVars, [], []),
+  );
+});

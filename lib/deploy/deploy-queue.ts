@@ -188,7 +188,11 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
     // re-drain after a short backoff (the startOne .catch().finally()
     // contract, applied to the pump itself).
     console.error("[deplo] deploy queue pump failed:", e);
-    setTimeout(() => scheduleServer(serverId), 5_000);
+    // `unref()`: the re-arm must not, by itself, hold the process open. The real
+    // server has plenty of other handles; a test harness (or a CLI task) has
+    // none, and an un-unref'd retry there keeps a finished process alive forever
+    // re-trying against a database that has already been torn down.
+    setTimeout(() => scheduleServer(serverId), 5_000).unref?.();
   } finally {
     lane.pumping = false;
     if (lane.dirty) {
