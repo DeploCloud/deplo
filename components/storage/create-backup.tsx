@@ -30,8 +30,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { SchedulePicker } from "@/components/shared/schedule-picker";
+import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
+import type { DestinationOption } from "@/lib/data/s3";
 
 type TargetKind = "database" | "app";
 
@@ -43,7 +45,7 @@ export function CreateBackup({
 }: {
   databases: { id: string; name: string }[];
   services?: { id: string; name: string }[];
-  destinations: { id: string; name: string }[];
+  destinations: DestinationOption[];
   /** Open on mount — used by the global "New ▸ Schedule backup" menu
    *  (which links to /storage?new=backup). */
   autoOpen?: boolean;
@@ -58,10 +60,12 @@ export function CreateBackup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [name, setName] = React.useState("");
-  // Default to whichever target type actually has options — a team with only
-  // apps (no databases) should land on "App" rather than an empty select.
+  // Apps are the common case — a whole app (volumes, files, compose/env
+  // snapshot) is what most people come here to protect, and a database that
+  // matters usually belongs to one. Databases still win the default when the
+  // team has no apps at all, so the dialog never opens on an empty select.
   const [targetKind, setTargetKind] = React.useState<TargetKind>(
-    databases.length === 0 && services.length > 0 ? "app" : "database"
+    services.length === 0 && databases.length > 0 ? "database" : "app"
   );
   const [databaseId, setDatabaseId] = React.useState<string>(
     databases[0]?.id ?? ""
@@ -147,10 +151,11 @@ export function CreateBackup({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          <div className="space-y-4">
+          <div className="grid gap-4">
             <div className="space-y-2">
-              <Label>Name</Label>
+              <Label htmlFor="new-backup-name">Name</Label>
               <Input
+                id="new-backup-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Nightly Postgres backup"
@@ -174,29 +179,29 @@ export function CreateBackup({
                 <Button
                   type="button"
                   size="sm"
-                  variant={targetKind === "database" ? "secondary" : "ghost"}
-                  onClick={() => setTargetKind("database")}
-                >
-                  Database
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
                   variant={targetKind === "app" ? "secondary" : "ghost"}
                   onClick={() => setTargetKind("app")}
                 >
                   App
                 </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={targetKind === "database" ? "secondary" : "ghost"}
+                  onClick={() => setTargetKind("database")}
+                >
+                  Database
+                </Button>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 {targetKind === "database" ? (
                   <>
-                    <Label>Database</Label>
+                    <Label htmlFor="new-backup-database">Database</Label>
                     <Select value={databaseId} onValueChange={setDatabaseId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select…" />
+                      <SelectTrigger id="new-backup-database">
+                        <SelectValue placeholder="Select one" />
                       </SelectTrigger>
                       <SelectContent>
                         {databases.map((d) => (
@@ -209,10 +214,10 @@ export function CreateBackup({
                   </>
                 ) : (
                   <>
-                    <Label>App</Label>
+                    <Label htmlFor="new-backup-app">App</Label>
                     <Select value={appId} onValueChange={setAppId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select…" />
+                      <SelectTrigger id="new-backup-app">
+                        <SelectValue placeholder="Select one" />
                       </SelectTrigger>
                       <SelectContent>
                         {services.map((p) => (
@@ -226,21 +231,18 @@ export function CreateBackup({
                 )}
               </div>
               <div className="space-y-2">
-                <FieldLabel info="The S3 destination where backup archives are uploaded and stored.">
+                <FieldLabel
+                  htmlFor="new-backup-destination"
+                  info="The S3 destination where backup archives are uploaded and stored. Opening the list re-checks every bucket, so the status you see is live."
+                >
                   Destination
                 </FieldLabel>
-                <Select value={destinationId} onValueChange={setDestinationId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {destinations.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <DestinationCombobox
+                  id="new-backup-destination"
+                  destinations={destinations}
+                  value={destinationId}
+                  onChange={setDestinationId}
+                />
               </div>
             </div>
             <SchedulePicker

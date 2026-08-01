@@ -28,7 +28,7 @@ import {
   AgentUnreachableError,
 } from "../infra/agent-client";
 import type { S3Target } from "../agent/gen/agent";
-import type { S3Destination, S3Provider } from "../types";
+import type { S3Destination, S3Provider, S3Status } from "../types";
 
 export interface S3DestinationDTO
   extends Omit<S3Destination, "accessKeyEnc" | "secretKeyEnc"> {
@@ -45,6 +45,24 @@ export interface S3DestinationDTO
 export interface S3TestResult {
   destination: S3DestinationDTO;
   report: S3TestReport;
+}
+
+/**
+ * A destination as a PICKER needs it — what to call it, where it points, how it
+ * last answered. Deliberately narrower than the DTO: a dialog that only chooses
+ * a bucket has no business shipping the region, the masked key or the test
+ * history to the browser.
+ */
+export interface DestinationOption {
+  id: string;
+  name: string;
+  endpoint: string;
+  status: S3Status;
+}
+
+/** Project a destination down to {@link DestinationOption}. */
+export function toDestinationOption(d: S3DestinationDTO): DestinationOption {
+  return { id: d.id, name: d.name, endpoint: d.endpoint, status: d.status };
 }
 
 function toDTO(s: S3Destination): S3DestinationDTO {
@@ -278,7 +296,64 @@ export async function testS3(id: string): Promise<S3TestResult> {
   const teamId = (await requireCapability("manage_infra")).teamId;
   const cur = await loadS3(id, teamId);
   if (!cur) throw new Error("Not found");
+  return probeAndRecord(id, teamId);
+}
 
+/**
+ * Re-probe EVERY destination in the active team and return them repainted, in
+ * `listS3` order. This is what the destination picker calls when it opens: a
+ * stored badge can be hours old, and picking a destination is exactly the moment
+ * "is this bucket actually reachable?" has to be true rather than remembered.
+ *
+ * One destination's failure never sinks the list — a probe that throws before it
+ * can record a verdict (a decrypt failure, a vanished row) falls back to that
+ * destination as it currently stands, so the picker still shows every option.
+ * Probes run concurrently but bounded: each one opens its own mTLS connection to
+ * a host, and a team with twenty buckets should not open twenty at once.
+ */
+export async function testAllS3(): Promise<S3DestinationDTO[]> {
+  const teamId = (await requireCapability("manage_infra")).teamId;
+  const current = await listS3();
+  return mapBounded(current, PROBE_CONCURRENCY, async (d) => {
+    try {
+      return (await probeAndRecord(d.id, teamId)).destination;
+    } catch {
+      return d;
+    }
+  });
+}
+
+/** How many buckets we probe at once in {@link testAllS3}. */
+const PROBE_CONCURRENCY = 4;
+
+/** `Promise.all` with a ceiling on how many run at once; results keep input order. */
+async function mapBounded<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= items.length) return;
+        out[i] = await fn(items[i]!);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return out;
+}
+
+/**
+ * Probe one destination and persist the verdict. The caller has already proven
+ * the capability and the team; this is the part {@link testS3} and
+ * {@link testAllS3} share.
+ */
+async function probeAndRecord(id: string, teamId: string): Promise<S3TestResult> {
   const creds = await getS3WithSecrets(id);
   // `S3Check` ignores the object key (it's a bucket probe), but the wire type
   // requires one — a sentinel that documents intent.

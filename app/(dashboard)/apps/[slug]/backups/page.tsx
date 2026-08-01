@@ -3,7 +3,7 @@ import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasCapability } from "@/lib/membership";
 import { listBackups, listBackupRuns } from "@/lib/data/backups";
-import { listS3 } from "@/lib/data/s3";
+import { listS3, toDestinationOption } from "@/lib/data/s3";
 import { AppBackups } from "@/components/apps/app-backups";
 import { PendingCreateProvider } from "@/components/shared/pending-create";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -50,7 +50,7 @@ export default async function AppBackupsPage(
         serviceName={project.name}
         schedules={schedules}
         runs={runs}
-        destinations={destinations.map((d) => ({ id: d.id, name: d.name }))}
+        destinations={destinations.map(toDestinationOption)}
       />
     </PendingCreateProvider>
   );

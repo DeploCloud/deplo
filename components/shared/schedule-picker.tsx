@@ -190,9 +190,11 @@ export function SchedulePicker({
     ) : null;
 
   return (
-    <div className="space-y-3">
+    // One rhythm, matching the dialogs this sits in: gap-4 between field rows,
+    // space-y-2 between a label, its control and the note that explains it.
+    <div className="grid gap-4">
       {/* Row 1 — how often, plus the day that frequency has to pin down. */}
-      <div className={dayField ? "grid gap-3 sm:grid-cols-2" : "grid gap-3"}>
+      <div className={dayField ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
         <div className="space-y-2">
           <FieldLabel htmlFor={id} info={info}>
             {label}
@@ -219,66 +221,70 @@ export function SchedulePicker({
               </SelectGroup>
             </SelectContent>
           </Select>
+          {/* The raw expression belongs to the frequency field — it IS the
+              frequency, spelled out — so it sits in that cell, not on its own row. */}
+          {custom && (
+            <Input
+              aria-label="Cron expression"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              className="font-mono text-xs"
+              placeholder="0 3 * * *"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={disabled}
+            />
+          )}
         </div>
         {dayField}
       </div>
 
-      {custom && (
-        <Input
-          aria-label="Cron expression"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="font-mono text-xs"
-          placeholder="0 3 * * *"
-          autoComplete="off"
-          spellCheck={false}
-          disabled={disabled}
-        />
-      )}
-
       {/* Row 2 — the time of day, on the same axis as whatever the caller pairs
           with it (retention, in every current call site). Two columns even when
-          only one is filled, so a lone field keeps a field's width. */}
-      {(needsTime || trailing) && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {needsTime && (
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor={`${id}-time`}
-                info="The time of day it runs, in UTC. The line below shows when that lands in your own timezone."
-              >
-                Time (UTC)
-              </FieldLabel>
-              <Input
-                id={`${id}-time`}
-                type="time"
-                step={60}
-                value={`${pad(parts.hour)}:${pad(parts.minute)}`}
-                onChange={(e) => pickTime(e.target.value)}
-                disabled={disabled}
-              />
-            </div>
-          )}
-          {trailing}
-        </div>
-      )}
+          only one is filled, so a lone field keeps a field's width. The summary
+          reads the whole schedule, so it hangs off this last row. */}
+      <div className="space-y-2">
+        {(needsTime || trailing) && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {needsTime && (
+              <div className="space-y-2">
+                <FieldLabel
+                  htmlFor={`${id}-time`}
+                  info="The time of day it runs, in UTC. The line below shows when that lands in your own timezone."
+                >
+                  Time (UTC)
+                </FieldLabel>
+                <Input
+                  id={`${id}-time`}
+                  type="time"
+                  step={60}
+                  value={`${pad(parts.hour)}:${pad(parts.minute)}`}
+                  onChange={(e) => pickTime(e.target.value)}
+                  disabled={disabled}
+                />
+              </div>
+            )}
+            {trailing}
+          </div>
+        )}
 
-      {valid ? (
-        <p className="text-xs text-muted-foreground">
-          {description ?? "Custom schedule"}
-          {nextRun && (
-            <>
-              {" · next run "}
-              <span className="text-foreground">{formatLocal(nextRun)}</span>
-              {" your time"}
-            </>
-          )}
-        </p>
-      ) : (
-        <p className="text-xs text-destructive">
-          Not a valid cron expression. Use 5 fields — minute hour day month weekday.
-        </p>
-      )}
+        {valid ? (
+          <p className="text-xs text-muted-foreground">
+            {description ?? "Custom schedule"}
+            {nextRun && (
+              <>
+                {" · next run "}
+                <span className="text-foreground">{formatLocal(nextRun)}</span>
+                {" your time"}
+              </>
+            )}
+          </p>
+        ) : (
+          <p className="text-xs text-destructive">
+            Not a valid cron expression. Use 5 fields — minute hour day month weekday.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

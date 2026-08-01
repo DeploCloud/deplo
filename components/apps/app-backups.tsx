@@ -20,13 +20,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -63,12 +56,14 @@ import {
   ScheduleLabel,
   SchedulePicker,
 } from "@/components/shared/schedule-picker";
+import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
+import type { DestinationOption } from "@/lib/data/s3";
 import type { BackupRun } from "@/lib/types";
 
-type Destination = { id: string; name: string };
+type Destination = DestinationOption;
 
 export function AppBackups({
   appId,
@@ -286,21 +281,18 @@ function BackUpNow({
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
           <div className="space-y-2">
-            <FieldLabel info="The S3 destination this backup is uploaded to.">
+            <FieldLabel
+              htmlFor="backup-now-destination"
+              info="The S3 destination this backup is uploaded to. Opening the list re-checks every bucket, so the status you see is live."
+            >
               Destination
             </FieldLabel>
-            <Select value={destinationId} onValueChange={setDestinationId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select…" />
-              </SelectTrigger>
-              <SelectContent>
-                {destinations.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <DestinationCombobox
+              id="backup-now-destination"
+              destinations={destinations}
+              value={destinationId}
+              onChange={setDestinationId}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
@@ -450,34 +442,29 @@ function ScheduleFormFields({
   destinations: Destination[];
 }) {
   return (
-    <div className="space-y-4">
+    <div className="grid gap-4">
       <div className="space-y-2">
-        <Label>Name</Label>
+        <Label htmlFor="app-backup-name">Name</Label>
         <Input
+          id="app-backup-name"
           value={fields.name}
           onChange={(e) => onChange((f) => ({ ...f, name: e.target.value }))}
           placeholder="Nightly project backup"
         />
       </div>
       <div className="space-y-2">
-        <FieldLabel info="The S3 destination scheduled backups are uploaded to.">
+        <FieldLabel
+          htmlFor="app-backup-destination"
+          info="The S3 destination scheduled backups are uploaded to. Opening the list re-checks every bucket, so the status you see is live."
+        >
           Destination
         </FieldLabel>
-        <Select
+        <DestinationCombobox
+          id="app-backup-destination"
+          destinations={destinations}
           value={fields.destinationId}
-          onValueChange={(v) => onChange((f) => ({ ...f, destinationId: v }))}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select…" />
-          </SelectTrigger>
-          <SelectContent>
-            {destinations.map((d) => (
-              <SelectItem key={d.id} value={d.id}>
-                {d.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onChange={(v) => onChange((f) => ({ ...f, destinationId: v }))}
+        />
       </div>
       <SchedulePicker
         id="app-backup-schedule"

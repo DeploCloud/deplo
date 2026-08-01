@@ -1543,6 +1543,11 @@ type Mutation {
   """
   testS3(id: String!): S3TestResult
 
+  """
+  Re-probe EVERY destination in the active team and return them with their badges repainted, newest first. For pickers that must show live connectivity the moment they open, rather than a status that was true hours ago. A destination whose probe fails comes back as `error` with `lastTestError` set — the call itself still resolves.
+  """
+  testS3Destinations: [S3Destination!]
+
   """Enable or disable a backup schedule. Returns true."""
   toggleBackup(enabled: Boolean!, id: String!): Boolean
 

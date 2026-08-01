@@ -1,6 +1,6 @@
 import { Database, Cloud, Archive } from "lucide-react";
 import { listDatabases } from "@/lib/data/databases";
-import { listS3 } from "@/lib/data/s3";
+import { listS3, toDestinationOption } from "@/lib/data/s3";
 import { listBackups } from "@/lib/data/backups";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listApps } from "@/lib/data/apps";
@@ -201,10 +201,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
             <CreateBackup
               databases={databases.map((d) => ({ id: d.id, name: d.name }))}
               services={services.map((p) => ({ id: p.id, name: p.name }))}
-              destinations={destinations.map((d) => ({
-                id: d.id,
-                name: d.name,
-              }))}
+              destinations={destinations.map(toDestinationOption)}
               autoOpen={autoOpenBackup}
             />
           </div>
@@ -234,10 +231,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                     <BackupRow
                       key={b.id}
                       backup={b}
-                      destinations={destinations.map((d) => ({
-                        id: d.id,
-                        name: d.name,
-                      }))}
+                      destinations={destinations.map(toDestinationOption)}
                     />
                   ))}
                 </TableBody>

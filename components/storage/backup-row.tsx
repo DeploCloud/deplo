@@ -26,13 +26,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { FieldLabel } from "@/components/ui/info-tip";
 import {
@@ -45,6 +38,7 @@ import {
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { RestoreRunsDialog } from "@/components/storage/restore-runs-dialog";
+import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import {
   ScheduleLabel,
   SchedulePicker,
@@ -53,8 +47,9 @@ import { timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import { isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
+import type { DestinationOption } from "@/lib/data/s3";
 
-type Destination = { id: string; name: string };
+type Destination = DestinationOption;
 
 export function BackupRow({
   backup,
@@ -289,27 +284,28 @@ function EditBackupDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          <div className="space-y-4">
+          <div className="grid gap-4">
             <div className="space-y-2">
-              <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="edit-backup-name">Name</Label>
+              <Input
+                id="edit-backup-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
-              <FieldLabel info="Where backup files are uploaded, chosen from your configured storage destinations.">
+              <FieldLabel
+                htmlFor="edit-backup-destination"
+                info="Where backup files are uploaded, chosen from your configured storage destinations. Opening the list re-checks every bucket, so the status you see is live."
+              >
                 Destination
               </FieldLabel>
-              <Select value={destinationId} onValueChange={setDestinationId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {destinations.map((d) => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <DestinationCombobox
+                id="edit-backup-destination"
+                destinations={destinations}
+                value={destinationId}
+                onChange={setDestinationId}
+              />
             </div>
             <SchedulePicker
               id="edit-backup-schedule"

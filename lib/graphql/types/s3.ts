@@ -4,6 +4,7 @@ import {
   listS3,
   createS3,
   testS3,
+  testAllS3,
   s3TestReport,
   deleteS3,
   type S3DestinationDTO,
@@ -188,6 +189,17 @@ builder.mutationFields((t) => ({
       "success, and show `report.error` verbatim.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => testS3(id),
+  }),
+  testS3Destinations: t.field({
+    type: [S3DestinationRef],
+    authScopes: { capability: "manage_infra" },
+    description:
+      "Re-probe EVERY destination in the active team and return them with their " +
+      "badges repainted, newest first. For pickers that must show live " +
+      "connectivity the moment they open, rather than a status that was true " +
+      "hours ago. A destination whose probe fails comes back as `error` with " +
+      "`lastTestError` set — the call itself still resolves.",
+    resolve: () => testAllS3(),
   }),
   deleteS3: t.field({
     type: "Boolean",

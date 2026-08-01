@@ -3,7 +3,7 @@ import { Lock } from "lucide-react";
 import { getDatabase } from "@/lib/data/databases";
 import { hasCapability } from "@/lib/membership";
 import { listBackups } from "@/lib/data/backups";
-import { listS3 } from "@/lib/data/s3";
+import { listS3, toDestinationOption } from "@/lib/data/s3";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DatabaseBackups } from "@/components/storage/database-backups";
@@ -44,7 +44,7 @@ export default async function DatabaseBackupsPage(
       <DatabaseBackups
         database={{ id: db.id, name: db.name }}
         schedules={schedules}
-        destinations={destinations.map((d) => ({ id: d.id, name: d.name }))}
+        destinations={destinations.map(toDestinationOption)}
       />
     </div>
   );

@@ -12,8 +12,9 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { CreateBackup } from "@/components/storage/create-backup";
 import { BackupRow } from "@/components/storage/backup-row";
 import type { BackupDTO } from "@/lib/data/backups";
+import type { DestinationOption } from "@/lib/data/s3";
 
-type Destination = { id: string; name: string };
+type Destination = DestinationOption;
 
 /**
  * The per-database Backups tab. Composes the existing team-wide storage backup

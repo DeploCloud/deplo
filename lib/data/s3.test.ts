@@ -23,7 +23,15 @@ import {
   seedS3,
   TRUNCATE_BACKUPS,
 } from "./backup-test-helpers";
-import { createS3, deleteS3, getS3WithSecrets, listS3, s3TestReport } from "./s3";
+import {
+  createS3,
+  deleteS3,
+  getS3WithSecrets,
+  listS3,
+  s3TestReport,
+  testAllS3,
+  toDestinationOption,
+} from "./s3";
 
 /**
  * Data-layer tests for `s3` against pglite (PLAN Step 5, cut-set (d)). Verifies the
@@ -106,6 +114,68 @@ test("listS3 is team-scoped and newest-first", async () => {
   await asUser1(async () => {
     const list = await listS3();
     assert.deepEqual(list.map((s) => s.id), ["s3_b", "s3_a"]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Probing every destination at once (what the picker opens with)      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `testAllS3` is what the destination picker fires when it opens, so the two
+ * properties that matter are "every destination gets a verdict" and "one bad
+ * destination never sinks the list". The seeded server has no agent certificate,
+ * so no host can serve the probe — every destination lands on the SAME recorded
+ * failure, which is exactly the case that used to be invisible.
+ */
+test("testAllS3 probes every destination and records each verdict", async () => {
+  await seedS3(db, { id: "s3_a", name: "a", status: "connected" });
+  await db
+    .update(s3Table)
+    .set({ createdAt: "2026-02-01T00:00:00.000Z" })
+    .where(eq(s3Table.id, "s3_a"));
+  await seedS3(db, { id: "s3_b", name: "b", status: "connected" });
+  await db
+    .update(s3Table)
+    .set({ createdAt: "2026-03-01T00:00:00.000Z" })
+    .where(eq(s3Table.id, "s3_b"));
+  // Another team's bucket must never be probed on our behalf.
+  await seedS3(db, { id: "s3_other", teamId: TEAM_B, name: "other" });
+
+  await asUser1(async () => {
+    const probed = await testAllS3();
+    assert.deepEqual(
+      probed.map((d) => d.id),
+      ["s3_b", "s3_a"],
+      "same order as listS3 — newest first",
+    );
+    for (const d of probed) {
+      assert.equal(d.status, "error", `${d.id} should be repainted from the live probe`);
+      assert.match(d.lastTestError ?? "", /No provisioned server is available/);
+      assert.ok(d.lastTestAt, "the probe stamps when it ran");
+    }
+  });
+
+  // Persisted, not just returned — a reopened dialog reads the same verdict.
+  const rows = await db.select().from(s3Table).where(eq(s3Table.teamId, TEAM_A));
+  assert.deepEqual(
+    rows.map((r) => r.status).sort(),
+    ["error", "error"],
+  );
+  const foreign = (await db.select().from(s3Table).where(eq(s3Table.id, "s3_other")))[0]!;
+  assert.equal(foreign.status, "connected", "another team's destination is untouched");
+});
+
+test("toDestinationOption keeps the picker's three facts and nothing else", async () => {
+  await seedS3(db, { id: "s3_1", name: "Backups" });
+  await asUser1(async () => {
+    const [dto] = await listS3();
+    assert.deepEqual(toDestinationOption(dto!), {
+      id: "s3_1",
+      name: "Backups",
+      endpoint: "https://s3.us-east-1.amazonaws.com",
+      status: "connected",
+    });
   });
 });
 
