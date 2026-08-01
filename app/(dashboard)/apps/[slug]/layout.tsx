@@ -126,6 +126,9 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
         slug={slug}
         running={project.status === "active"}
         showFiles={showFiles}
+        githubConnected={
+          project.source === "github" && Boolean(project.repo?.installationId)
+        }
       />
 
       {props.children}

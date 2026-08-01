@@ -15,6 +15,7 @@ export type AppNavState = {
   slug: string;
   running: boolean;
   showFiles: boolean;
+  githubConnected: boolean;
 };
 
 // Client-only module state: each browser tab owns its own instance. It is never

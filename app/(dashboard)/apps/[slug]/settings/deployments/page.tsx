@@ -3,8 +3,10 @@ import { Rocket } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
+import { listAppPreviews } from "@/lib/data/previews";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
+import { PreviewSettingsCard } from "@/components/apps/settings/preview-settings-card";
 
 export const metadata = { title: "Deployment" };
 
@@ -21,6 +23,10 @@ export default async function AppDeploymentSettingsPage(
     type: s.type,
   }));
   const installations = await listGithubInstallations();
+  // The preview card only makes sense for a GitHub-backed app: nothing else
+  // ever receives a `pull_request` delivery.
+  const previews =
+    project.source === "github" ? await listAppPreviews(project.id) : null;
 
   return (
     <section className="space-y-4">
@@ -48,6 +54,17 @@ export default async function AppDeploymentSettingsPage(
         servers={servers}
         installations={installations}
       />
+      {previews && (
+        <PreviewSettingsCard
+          appId={project.id}
+          branch={previews.branch}
+          enabled={previews.enabled}
+          baseDomain={previews.baseDomain}
+          maxActive={previews.maxActive}
+          ttlDays={previews.ttlDays}
+          forkPolicy={previews.forkPolicy}
+        />
+      )}
     </section>
   );
 }
