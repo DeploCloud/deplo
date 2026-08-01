@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { scopeListenersToSubtree } from "@/lib/portal-event-scope";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   PendingCards,
@@ -323,7 +324,12 @@ function SortableCard({
     transition,
   };
 
-  const { onKeyDown: keyboardListener, ...pointerListeners } = listeners ?? {};
+  const { onKeyDown: keyboardListener, ...rawPointerListeners } =
+    listeners ?? {};
+  // Scoped to this card's own DOM: a press inside a menu or modal the card
+  // rendered reaches these through the React tree even though the portal put it
+  // elsewhere in the page, and must not start a drag under a backdrop.
+  const pointerListeners = scopeListenersToSubtree(rawPointerListeners);
   const {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     role: _role,
@@ -347,6 +353,10 @@ function SortableCard({
   }, [isDragging]);
 
   function onClickCapture(e: React.MouseEvent<HTMLDivElement>) {
+    // A menu/modal this card opened is portalled out of the card's DOM but not
+    // out of its React tree, and capture runs before the surface ever sees it — drop
+    // anything that isn't physically inside this card (see lib/portal-event-scope.ts).
+    if (!e.currentTarget.contains(e.target as Node)) return;
     const onControls = Boolean(
       (e.target as HTMLElement).closest?.("[data-card-actions]"),
     );

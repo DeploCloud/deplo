@@ -109,6 +109,10 @@ export function useOverviewSelection(orderedIds: string[]): OverviewSelection {
     // long-press context menu, so leave those alone.
     if (e.pointerType !== "mouse") return;
     const target = e.target as HTMLElement;
+    // A press on a menu or modal a card opened is portalled out of the canvas'
+    // DOM but still bubbles here through the React tree; it must never rubber-
+    // band the grid underneath it (see lib/portal-event-scope.ts).
+    if (!e.currentTarget.contains(target)) return;
     // Presses on a card or any interactive control belong to dnd-kit / the link
     // / the menu — never start a marquee there.
     if (

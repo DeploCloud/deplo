@@ -57,6 +57,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { scopeListenersToSubtree } from "@/lib/portal-event-scope";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import type { AppSummary } from "@/lib/data/apps";
@@ -1338,8 +1339,15 @@ function SortableItem({
   // Split listeners by input: pointer activators (Mouse/Touch) drive the whole-
   // card drag from the wrapper; the keyboard activator lives on the handle so
   // the card keeps clean link semantics rather than becoming a focusable button.
-  const { onKeyDown: keyboardListener, ...pointerDragListeners } =
+  const { onKeyDown: keyboardListener, ...rawPointerDragListeners } =
     listeners ?? {};
+  // …and scoped to the card's own DOM: a press inside a menu or modal THIS card
+  // rendered still reaches these listeners through the React tree (portals move
+  // the DOM node, not the React parent), and must never pick the card up under
+  // the backdrop. See lib/portal-event-scope.ts.
+  const pointerDragListeners = scopeListenersToSubtree(
+    rawPointerDragListeners,
+  );
   // Drop the draggable's role="button" (and its role-only ARIA companions) from
   // the wrapper: it also hosts the ⋯ menu button, and a button must not nest one.
   const {
@@ -1373,6 +1381,11 @@ function SortableItem({
   }, [isDragging]);
 
   function onClickCapture(e: React.MouseEvent<HTMLDivElement>) {
+    // Menus and modals this card opens are portalled to <body> but stay REACT
+    // children of it, so their clicks arrive here first (capture runs before the
+    // event ever reaches the surface, so the surface cannot stop it — see
+    // lib/portal-event-scope.ts). Only clicks physically inside the card are ours.
+    if (!e.currentTarget.contains(e.target as Node)) return;
     const onControls = Boolean(
       (e.target as HTMLElement).closest?.("[data-card-actions]"),
     );
