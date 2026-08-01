@@ -135,7 +135,7 @@ test("a compose stack isolates its volumes and labels the same way", () => {
     deployKey: "blog",
     appId: "prj_1",
     domainRoutes: [],
-    volumes: [{ name: "data", mountPath: "/data" }],
+    volumes: [{ id: "vol_1", name: "data", mountPath: "/data", readOnly: false }],
   });
   assert.match(production, /deplo-blog-data/);
   assert.match(production, /deplo\.project=prj_1/);
@@ -149,7 +149,7 @@ test("a compose stack isolates its volumes and labels the same way", () => {
     appId: "prj_1",
     trackingId: "prv_1",
     domainRoutes: [],
-    volumes: [{ name: "data", mountPath: "/data" }],
+    volumes: [{ id: "vol_1", name: "data", mountPath: "/data", readOnly: false }],
   });
   assert.match(preview, /deplo-blog__pr-42-data/);
   assert.doesNotMatch(preview, /deplo-blog-data/);
