@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, ChevronDown, Plus } from "lucide-react";
 import {
@@ -15,6 +15,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
+import { teamSwitchDestination } from "@/lib/team-switch";
 import type { Team, TeamSummary } from "@/lib/types";
 
 export function TeamSwitcher({
@@ -25,6 +26,7 @@ export function TeamSwitcher({
   teams: TeamSummary[];
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [pending, startTransition] = React.useTransition();
   const [createOpen, setCreateOpen] = React.useState(false);
 
@@ -35,12 +37,22 @@ export function TeamSwitcher({
         `mutation($teamId: String!) { switchTeam(teamId: $teamId) }`,
         { teamId },
       );
-      if (res.ok) {
-        router.push("/");
-        router.refresh();
-      } else {
+      if (!res.ok) {
         toast.error(res.error);
+        return;
       }
+      // Sections (Variables, Storage, Templates, …) exist in every team, so
+      // stay on the open page and let it re-read under the new team; only a
+      // page naming one team's App/Database/Project has to be left behind.
+      const dest = teamSwitchDestination(pathname);
+      // REPLACE, never push: the entry we'd leave behind points at the team we
+      // just left, so "back" would land on a page that no longer resolves.
+      if (dest !== window.location.pathname + window.location.search) {
+        router.replace(dest);
+      }
+      // Staying put still needs the refresh — it is what re-runs the RSC reads
+      // (and the layout) with the new deplo_team cookie.
+      router.refresh();
     });
   }
 
