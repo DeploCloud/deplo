@@ -189,6 +189,32 @@ export function detectDefaultApp(
 }
 
 /**
+ * The container port ONE named service of a compose app answers on: the port it
+ * publishes, else the conventional web port a route with no explicit port falls
+ * back to (the same `portOf` the renderer uses when wiring Traefik). Null when
+ * the compose is unparseable or has no such service.
+ *
+ * Exported for icon detection, which has to reach a running service directly and
+ * therefore needs the same port Traefik was pointed at — read from the one place
+ * that knows, rather than re-guessed.
+ */
+export function composeServicePort(
+  compose: string | null,
+  service: string,
+): number | null {
+  if (!compose || !compose.trim() || !service) return null;
+  let doc: ComposeDoc;
+  try {
+    doc = (yaml.load(compose) as ComposeDoc) ?? {};
+  } catch {
+    return null;
+  }
+  const svc = doc.services?.[service];
+  if (!svc || typeof svc !== "object") return null;
+  return publishedPort(svc as App) ?? 80;
+}
+
+/**
  * The service names a compose app is SUPPOSED to have containers for. The runtime
  * probe compares them against what the host actually has: a service with no
  * container at all (a `compose up` that never brought it back, a container that

@@ -128,6 +128,14 @@ const EXT_SCORES: Record<string, number> = {
   jpeg: 8,
 };
 
+/** The format preference above, for the OTHER detector — the one that reads a
+ * running app's declared icons ({@link file://./favicon-http.ts}) rather than
+ * files on disk. Both arms must prefer the same formats, so there is one table.
+ * 0 for anything not a candidate image type. */
+export function faviconFormatScore(ext: string): number {
+  return EXT_SCORES[ext.toLowerCase()] ?? 0;
+}
+
 /** Well-known asset dirs where a real app icon lives. A deeper bonus tie-breaks
  * toward the conventional home (`public/`, static roots, app-router). */
 function locationScore(segments: readonly string[]): number {

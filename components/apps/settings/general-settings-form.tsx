@@ -114,10 +114,10 @@ export function GeneralSettingsForm({
     });
   }
 
-  // Ask the server to scan the app's own files (a GitHub repo, the uploaded
-  // archive, or — for a compose stack — its files dir on its server) for a
-  // favicon and set it as the logo. The mutation errors when none is found,
-  // which we surface as an info toast.
+  // Ask the server to find this app's own favicon and set it as the logo: in a
+  // GitHub repo, the uploaded archive, or — for a compose stack — its files dir
+  // on its server plus the icon the running app serves. The mutation errors when
+  // none is found, which we surface as an info toast.
   function detectFromSource() {
     startTransition(async () => {
       const res = await gqlAction(
@@ -128,7 +128,7 @@ export function GeneralSettingsForm({
       if (res.ok) {
         setLogo(res.data?.logo ?? null);
         router.refresh();
-        toast.success("Logo detected from source files");
+        toast.success("Logo detected");
       } else toast.error(res.error);
     });
   }
@@ -140,7 +140,7 @@ export function GeneralSettingsForm({
           {/* Logo */}
           <div className="space-y-3">
             <FieldLabel
-              info="Shown for this app on the dashboard. Set automatically from a favicon in your source files — replace it any time"
+              info="Shown for this app on the dashboard. Set automatically from this app's own favicon — replace it any time"
             >
               Logo
             </FieldLabel>
@@ -187,7 +187,7 @@ export function GeneralSettingsForm({
               PNG, JPEG, WebP, GIF, SVG or ICO · up to{" "}
               {formatBytes(MAX_LOGO_BYTES)}.
               {detectable
-                ? " Saved as soon as you pick a file, or detect the favicon from this app's own files."
+                ? " Saved as soon as you pick a file, or detect this app's own favicon."
                 : " Saved as soon as you pick a file."}
             </p>
             <input

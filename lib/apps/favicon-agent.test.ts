@@ -6,6 +6,8 @@ import { gzipSync } from "node:zlib";
 import {
   collectAgentFaviconCandidates,
   readFilesDirBytes,
+  detectServedFaviconVia,
+  servedIconTarget,
 } from "./favicon-agent";
 import { buildTar, tarStream } from "../infra/tar-test-helpers";
 import { pickBestFavicon } from "./favicon-shared";
@@ -279,4 +281,282 @@ test("read: an agent without files-copy reads nothing binary (and no stream)", a
 test("read: a file missing from the archive yields null", async () => {
   const conn = fakeReader({ files: { "favicon.png": Buffer.from([1, 2, 3]) } });
   assert.equal(await readFilesDirBytes(conn, "web", "public/favicon.png"), null);
+});
+
+/* ------------------------------------------------------------------ */
+/* The icon a RUNNING app serves — the case a files walk can never see: */
+/* a compose stack of prebuilt images keeps its favicon in the image.   */
+/* ------------------------------------------------------------------ */
+
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
+const ICO_BYTES = Buffer.from([0x00, 0x00, 0x01, 0x00, 1, 0, 16, 16]);
+
+/** One canned HTTP response. */
+interface FakeResponse {
+  status?: number;
+  contentType?: string;
+  body?: Buffer;
+  truncated?: boolean;
+  location?: string;
+}
+
+/** A fake agent that answers ProbeHttp from a path → response map and records
+ * every request, so what the detector ASKS FOR is as testable as what it picks. */
+function fakeProber(
+  responses: Record<string, FakeResponse>,
+  opts: { capabilities?: string[] } = {},
+) {
+  const asked: string[] = [];
+  const hosts: string[] = [];
+  return {
+    asked,
+    hosts,
+    async hello() {
+      return { capabilities: opts.capabilities ?? ["http-probe"] };
+    },
+    async probeHttp(req: { path: string; host: string }) {
+      asked.push(req.path);
+      hosts.push(req.host);
+      const res = responses[req.path];
+      if (!res) throw new Error("connection refused");
+      return {
+        status: res.status ?? 200,
+        contentType: res.contentType ?? "",
+        body: res.body ?? Buffer.alloc(0),
+        truncated: res.truncated ?? false,
+        location: res.location ?? "",
+      };
+    },
+  };
+}
+
+const TARGET = {
+  appId: "prj_1",
+  slug: "web",
+  service: "app",
+  port: 3000,
+  host: "app.example.com",
+  basePath: "",
+};
+
+test("served: takes the icon the page declares, over the /favicon.ico fallback", async () => {
+  const conn = fakeProber({
+    "/": {
+      contentType: "text/html; charset=utf-8",
+      body: Buffer.from(
+        `<html><head><link rel="icon" type="image/png" href="/assets/icon-192.png"></head></html>`,
+      ),
+    },
+    "/assets/icon-192.png": { contentType: "image/png", body: PNG_BYTES },
+    "/favicon.ico": { contentType: "image/x-icon", body: ICO_BYTES },
+  });
+  const found = await detectServedFaviconVia(conn, TARGET);
+  assert.equal(found?.path, "/assets/icon-192.png");
+  assert.equal(found?.mime, "image/png");
+  assert.deepEqual(found?.bytes, PNG_BYTES);
+  assert.deepEqual(conn.asked, ["/", "/assets/icon-192.png"]);
+  // The app is asked on its OWN hostname — what an app with host authorization
+  // (ALLOWED_HOSTS, a configured site URL) requires before it answers at all.
+  assert.deepEqual(new Set(conn.hosts), new Set(["app.example.com"]));
+});
+
+test("served: an app that declares nothing still gets /favicon.ico tried", async () => {
+  const conn = fakeProber({
+    "/": { contentType: "text/html", body: Buffer.from("<html><head></head></html>") },
+    "/favicon.ico": { contentType: "image/x-icon", body: ICO_BYTES },
+  });
+  const found = await detectServedFaviconVia(conn, TARGET);
+  assert.equal(found?.path, "/favicon.ico");
+  assert.equal(found?.mime, "image/x-icon");
+});
+
+test("served: an API that serves no HTML at all still gets /favicon.ico tried", async () => {
+  const conn = fakeProber({
+    "/": { contentType: "application/json", body: Buffer.from("{}") },
+    "/favicon.ico": { contentType: "image/x-icon", body: ICO_BYTES },
+  });
+  assert.equal((await detectServedFaviconVia(conn, TARGET))?.path, "/favicon.ico");
+});
+
+test("served: follows the redirect apps put in front of their home page", async () => {
+  const conn = fakeProber({
+    "/": { status: 302, location: "/login" },
+    "/login": {
+      contentType: "text/html",
+      body: Buffer.from(`<head><link rel="icon" href="/static/f.png"></head>`),
+    },
+    "/static/f.png": { contentType: "image/png", body: PNG_BYTES },
+  });
+  assert.equal((await detectServedFaviconVia(conn, TARGET))?.path, "/static/f.png");
+});
+
+test("served: a redirect off this app is not followed", async () => {
+  const conn = fakeProber({
+    "/": { status: 302, location: "https://accounts.google.com/signin" },
+    "/favicon.ico": { contentType: "image/x-icon", body: ICO_BYTES },
+  });
+  // The home page is abandoned, but the app's own well-known path is still ours
+  // to ask for.
+  assert.equal((await detectServedFaviconVia(conn, TARGET))?.path, "/favicon.ico");
+  assert.ok(!conn.asked.some((p) => p.includes("google")));
+});
+
+test("served: an SPA answering /favicon.ico with index.html is NOT an icon", async () => {
+  const html = Buffer.from("<!DOCTYPE html><html><body>app</body></html>");
+  const conn = fakeProber({
+    "/": { contentType: "text/html", body: Buffer.from("<head></head>") },
+    // A 200, and even an image content type — only the bytes give it away.
+    "/favicon.ico": { contentType: "image/x-icon", body: html },
+  });
+  assert.equal(await detectServedFaviconVia(conn, TARGET), null);
+});
+
+test("served: moves on to the next candidate when one is missing or oversized", async () => {
+  const conn = fakeProber({
+    "/": {
+      contentType: "text/html",
+      body: Buffer.from(
+        `<head><link rel="icon" type="image/svg+xml" href="/huge.svg">` +
+          `<link rel="icon" type="image/png" href="/gone.png">` +
+          `<link rel="icon" sizes="16x16" type="image/png" href="/ok.png"></head>`,
+      ),
+    },
+    // Truncated => the agent cut it at the logo cap, so we hold a fragment.
+    "/huge.svg": { contentType: "image/svg+xml", body: Buffer.from("<svg"), truncated: true },
+    // `/gone.png` is absent from the map => the probe throws (404/refused).
+    "/ok.png": { contentType: "image/png", body: PNG_BYTES },
+  });
+  assert.equal((await detectServedFaviconVia(conn, TARGET))?.path, "/ok.png");
+});
+
+test("served: an icon the page inlined needs no request", async () => {
+  const conn = fakeProber({
+    "/": {
+      contentType: "text/html",
+      body: Buffer.from(
+        `<head><link rel="icon" href="data:image/png;base64,${PNG_BYTES.toString("base64")}"></head>`,
+      ),
+    },
+  });
+  const found = await detectServedFaviconVia(conn, TARGET);
+  assert.equal(found?.mime, "image/png");
+  assert.deepEqual(found?.bytes, PNG_BYTES);
+  assert.deepEqual(conn.asked, ["/"]);
+});
+
+test("served: an agent too old to probe reports no icon, not an error", async () => {
+  const conn = fakeProber({ "/favicon.ico": { body: ICO_BYTES } }, { capabilities: ["metrics"] });
+  assert.equal(await detectServedFaviconVia(conn, TARGET), null);
+  assert.deepEqual(conn.asked, []);
+});
+
+test("served: an app that is not answering has no icon, and does not throw", async () => {
+  const conn = fakeProber({});
+  assert.equal(await detectServedFaviconVia(conn, TARGET), null);
+});
+
+test("served: a path-routed app is read under the prefix it actually serves on", async () => {
+  const conn = fakeProber({
+    "/api/": {
+      contentType: "text/html",
+      body: Buffer.from(`<head><link rel="icon" href="icon.png"></head>`),
+    },
+    "/api/icon.png": { contentType: "image/png", body: PNG_BYTES },
+  });
+  const found = await detectServedFaviconVia(conn, { ...TARGET, basePath: "/api" });
+  assert.equal(found?.path, "/api/icon.png");
+});
+
+/* ------------------------------------------------------------------ */
+/* Which container/port/host to ask — the same one Traefik was given.   */
+/* ------------------------------------------------------------------ */
+
+const COMPOSE = `services:
+  web:
+    image: nginx
+    ports: ["8080:80"]
+  api:
+    image: acme/api
+    ports: ["4000"]
+  db:
+    image: postgres`;
+
+const APP = { id: "prj_1", slug: "shop", compose: COMPOSE };
+
+test("target: the primary domain decides the service, port and Host header", async () => {
+  const target = servedIconTarget(
+    APP,
+    [
+      { name: "api.example.com", service: "api", port: 4000, pathPrefix: "", stripPrefix: false },
+      { name: "shop.example.com", service: "web", port: 80, pathPrefix: "", stripPrefix: false },
+    ],
+    "shop.example.com",
+  );
+  assert.deepEqual(target, {
+    appId: "prj_1",
+    slug: "shop",
+    service: "web",
+    port: 80,
+    host: "shop.example.com",
+    basePath: "",
+  });
+});
+
+test("target: an app with no domain yet is still reachable, via the compose default", async () => {
+  // Not published is not the same as not running — and this is exactly the case
+  // a fetch from the outside could never cover.
+  const target = servedIconTarget(APP, [], "");
+  assert.equal(target?.service, "web");
+  assert.equal(target?.port, 80);
+  assert.equal(target?.host, "");
+});
+
+test("target: a route with no port takes the service's own compose port", async () => {
+  const target = servedIconTarget(
+    APP,
+    [{ name: "x.example.com", service: "api", port: null, pathPrefix: "", stripPrefix: false }],
+    "x.example.com",
+  );
+  assert.equal(target?.port, 4000);
+});
+
+test("target: a stripped path prefix never reaches the container", async () => {
+  const routes = [
+    { name: "x.example.com", service: "web", port: 80, pathPrefix: "/api", stripPrefix: true },
+  ];
+  assert.equal(servedIconTarget(APP, routes, "x.example.com")?.basePath, "");
+  assert.equal(
+    servedIconTarget(APP, [{ ...routes[0], stripPrefix: false }], "x.example.com")?.basePath,
+    "/api",
+  );
+});
+
+test("target: null when there is no service to talk to at all", async () => {
+  assert.equal(servedIconTarget({ id: "p", slug: "s", compose: null }, [], ""), null);
+  assert.equal(servedIconTarget({ id: "p", slug: "s", compose: "nonsense: ["}, [], ""), null);
+});
+
+test("served: an icon URL that redirects within the app is followed", async () => {
+  const conn = fakeProber({
+    "/": { contentType: "text/html", body: Buffer.from("<head></head>") },
+    // A hashed-asset rewrite in front of the well-known path — ordinary, and
+    // giving up on it would cost the icon.
+    "/favicon.ico": { status: 301, location: "/assets/favicon.a1b2.ico" },
+    "/assets/favicon.a1b2.ico": { contentType: "image/x-icon", body: ICO_BYTES },
+  });
+  const found = await detectServedFaviconVia(conn, TARGET);
+  assert.equal(found?.path, "/assets/favicon.a1b2.ico");
+  assert.deepEqual(conn.asked, ["/", "/favicon.ico", "/assets/favicon.a1b2.ico"]);
+});
+
+test("served: a redirect loop cannot turn the search into a crawl", async () => {
+  const conn = fakeProber({
+    "/": { contentType: "text/html", body: Buffer.from("<head></head>") },
+    "/favicon.ico": { status: 302, location: "/a" },
+    "/a": { status: 302, location: "/b" },
+    "/b": { status: 302, location: "/a" },
+  });
+  assert.equal(await detectServedFaviconVia(conn, TARGET), null);
+  // The home page, then a bounded number of icon fetches — never unbounded.
+  assert.ok(conn.asked.length <= 8, `asked ${conn.asked.length} times`);
 });

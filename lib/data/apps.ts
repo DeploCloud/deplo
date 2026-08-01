@@ -79,6 +79,7 @@ import { withKeyedLock } from "./keyed-mutex";
 import { removeUploads } from "../deploy/upload";
 import { isValidLogoValue, isTemplateLogo } from "../apps/logo-shared";
 import { detectAppFavicon } from "../apps/favicon-detect";
+import { faviconSourceKind } from "../apps/favicon-shared";
 import { AgentUnreachableError } from "../infra/agent-client";
 import { publishAppChanged } from "../graphql/pubsub";
 import {
@@ -1387,6 +1388,19 @@ export async function updateAppLogo(
 }
 
 /**
+ * Why detection came up empty, in the terms of where it actually looked. A
+ * compose app is read twice — its own files AND the icon the running app serves
+ * — so telling that user we found "no file named favicon" would describe half
+ * the search and point them at the wrong thing to fix.
+ */
+function noIconFoundMessage(app: Parameters<typeof detectAppFavicon>[0]): string {
+  if (faviconSourceKind(app) === "app-files") {
+    return "No icon found. deplo looked in this app's files and asked the running app for its favicon — check that the app is running and serves one.";
+  }
+  return "No file named favicon (SVG, PNG or ICO) found in this app's files";
+}
+
+/**
  * Re-run favicon auto-detection for an app on demand (the settings "Detect
  * from source" button) and, when one is found, set it as the logo — overwriting
  * any current inline value, since the user explicitly asked to detect. Throws a
@@ -1412,9 +1426,21 @@ export async function redetectAppLogo(id: string): Promise<string> {
       "This app keeps its template's default icon, which takes priority. Remove it first to detect one from your source files.",
     );
   }
-  // A compose stack's files are read off its own server, so "we couldn't reach
-  // the server" must not be reported as "your files have no favicon".
-  const logo = await detectAppFavicon(project).catch((e) => {
+  // A compose stack is read on its own server — its files, and the icon the
+  // running app serves — so its routed domains come along: they name the compose
+  // service and port the app answers on, which is how the probe reaches it the
+  // same way Traefik does.
+  const domains = await loadDomainsForApp(id);
+  const routes = domains.map((d) => ({
+    name: d.name,
+    service: d.service ?? null,
+    port: d.port ?? null,
+    pathPrefix: d.pathPrefix ?? "",
+    stripPrefix: d.stripPrefix ?? false,
+  }));
+  const primaryHost = domains.find((d) => d.primary)?.name ?? domains[0]?.name ?? "";
+  // "We couldn't reach the server" must not be reported as "your app has no icon".
+  const logo = await detectAppFavicon(project, routes, primaryHost).catch((e) => {
     if (e instanceof AgentUnreachableError) {
       throw new Error(
         "The server that runs this app didn't answer, so deplo couldn't read its files. It may be offline.",
@@ -1424,7 +1450,7 @@ export async function redetectAppLogo(id: string): Promise<string> {
     throw e;
   });
   if (!logo || !isValidLogoValue(logo)) {
-    throw new Error("No file named favicon (SVG, PNG or ICO) found in this app's files");
+    throw new Error(noIconFoundMessage(project));
   }
   await getDb()
     .update(appsTable)

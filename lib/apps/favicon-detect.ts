@@ -16,7 +16,13 @@ import {
   faviconSourceKind,
   type FaviconFile,
 } from "./favicon-shared";
-import { detectAgentFilesFavicon } from "./favicon-agent";
+import {
+  detectAgentFilesFavicon,
+  detectServedFavicon,
+  servedIconTarget,
+  type IconProbeRoute,
+  type ServedIconTarget,
+} from "./favicon-agent";
 import { isValidLogoValue, MAX_LOGO_BYTES } from "./logo-shared";
 import type { GitRepo, UploadArchive } from "../types";
 
@@ -32,9 +38,11 @@ import type { GitRepo, UploadArchive } from "../types";
  *    blob) instead — works for private (installation token) and public repos.
  *  - Uploaded archives live on the control plane, so we extract to a temp dir
  *    and scan the files (reusing extractArchive's symlink-reject guard).
- *  - A COMPOSE STACK has neither: its own files are the files dir on its owning
- *    host, walked + read through that server's agent — see
- *    {@link file://./favicon-agent.ts}.
+ *  - A COMPOSE STACK has neither, so it is read on its own host through that
+ *    server's agent, in two passes: the files dir it bind-mounts from, and then
+ *    — the case that actually covers most compose apps — the icon the RUNNING
+ *    app serves, since a stack of prebuilt images keeps its favicon inside the
+ *    image where no file walk can reach it. See {@link file://./favicon-agent.ts}.
  *
  * Every entry point is best-effort and non-throwing: detection is a cosmetic
  * nicety layered on deploy, never a reason to fail one.
@@ -42,12 +50,16 @@ import type { GitRepo, UploadArchive } from "../types";
 
 /** Turn chosen icon bytes into a validated `data:` logo URI, or null if the
  * bytes are empty / over the cap / an unsupported type. The final
- * `isValidLogoValue` gate is what every storer already trusts. */
-function toLogoDataUri(bytes: Buffer, path: string): string | null {
+ * `isValidLogoValue` gate is what every storer already trusts.
+ *
+ * `mime` is passed when the SOURCE knew the type — a served icon, whose bytes
+ * were sniffed — and beats the extension, which a served URL may not even have
+ * (`/icon?v=2`). A file on disk has only its name, so it falls back to that. */
+function toLogoDataUri(bytes: Buffer, path: string, mime?: string): string | null {
   if (bytes.length === 0 || bytes.length > MAX_LOGO_BYTES) return null;
-  const mime = mimeForFaviconPath(path);
-  if (!mime) return null;
-  const uri = `data:${mime};base64,${bytes.toString("base64")}`;
+  const type = mime ?? mimeForFaviconPath(path);
+  if (!type) return null;
+  const uri = `data:${type};base64,${bytes.toString("base64")}`;
   return isValidLogoValue(uri) ? uri : null;
 }
 
@@ -232,9 +244,43 @@ export async function detectAppFilesFavicon(
   return found ? toLogoDataUri(found.bytes, found.path) : null;
 }
 
+/**
+ * Detect the icon a RUNNING compose app serves, by asking the app for it
+ * through its owning server's agent. This is what makes icon detection work for
+ * a compose stack at all in the ordinary case: such an app runs prebuilt images,
+ * so its favicon is inside the image and no file walk can ever see it.
+ */
+export async function detectServedAppFavicon(
+  serverId: string,
+  target: ServedIconTarget,
+): Promise<string | null> {
+  const found = await detectServedFavicon(serverId, target);
+  return found ? toLogoDataUri(found.bytes, found.path, found.mime) : null;
+}
+
+/**
+ * The whole compose-stack arm: the app's own files first, then the icon it
+ * serves.
+ *
+ * Files first because that read is cheap, works on a stopped app, and is the
+ * right answer when the stack serves a site the user put there — the icon is
+ * literally theirs. The served read is the fallback that covers everything else,
+ * which in practice is most compose apps.
+ */
+export async function detectComposeAppFavicon(
+  serverId: string,
+  slug: string,
+  target: ServedIconTarget | null,
+): Promise<string | null> {
+  const fromFiles = await detectAppFilesFavicon(serverId, slug);
+  if (fromFiles) return fromFiles;
+  return target ? detectServedAppFavicon(serverId, target) : null;
+}
+
 /** The minimal app shape favicon detection reads. A loaded app graph
  * satisfies it structurally. */
 export interface FaviconDetectApp {
+  id: string;
   slug: string;
   serverId: string;
   source: string;
@@ -246,20 +292,49 @@ export interface FaviconDetectApp {
 }
 
 /**
+ * Where to reach a compose app's own web service, for the served-icon read.
+ * Split out so a caller that already has the app's routes (a deploy) hands them
+ * straight over, while one that doesn't (the settings action) can load them.
+ */
+export function appIconProbeTarget(
+  app: FaviconDetectApp,
+  routes: readonly IconProbeRoute[],
+  primaryHost: string,
+): ServedIconTarget | null {
+  return servedIconTarget(
+    { id: app.id, slug: app.slug, compose: app.compose },
+    routes,
+    primaryHost,
+  );
+}
+
+/**
  * Detect a logo from whichever files an app actually owns — the on-demand entry
  * point behind the settings "Detect from source" action (the deploy hooks call
  * the arm their source already resolved). WHICH pile of files that is comes from
  * the shared {@link faviconSourceKind}, so the UI's "can this be detected?" gate
  * and this dispatch can never disagree. Null when there is nothing to scan (a
  * prebuilt docker image, a non-GitHub git URL, or an upload with no archive).
+ *
+ * `routes`/`primaryHost` are the app's routed domains, needed only by the
+ * compose arm to reach the running app the way Traefik does. Omitting them still
+ * detects a compose app's icon — the target falls back to the compose file's own
+ * default service — it just can't send the app its own hostname.
  */
 export async function detectAppFavicon(
   project: FaviconDetectApp,
+  routes: readonly IconProbeRoute[] = [],
+  primaryHost = "",
 ): Promise<string | null> {
   switch (faviconSourceKind(project)) {
-    // A compose stack's files live on its host, not here.
+    // A compose stack's icon lives on its host: in the files it mounts, or
+    // inside the images it runs (where only the running app can show it).
     case "app-files":
-      return detectAppFilesFavicon(project.serverId, project.slug);
+      return detectComposeAppFavicon(
+        project.serverId,
+        project.slug,
+        appIconProbeTarget(project, routes, primaryHost),
+      );
     // A repo source is keyed on the repo itself (provider/URL), NOT the `source`
     // string — a GitHub App import is `source: "github"`, a bare git URL is
     // `source: "git"`, and both carry a repo.

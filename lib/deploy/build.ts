@@ -38,7 +38,10 @@ import {
   detectTreeFavicon,
   detectGithubFavicon,
   detectAppFilesFavicon,
+  detectServedAppFavicon,
+  appIconProbeTarget,
 } from "../apps/favicon-detect";
+import type { ServedIconTarget } from "../apps/favicon-agent";
 import { isGithubRepo } from "../apps/favicon-shared";
 import { planDeploySource, resolveBuildDir } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
@@ -308,27 +311,59 @@ function autoDetectRepoLogo(
 }
 
 /**
- * Auto-detect a display logo for a COMPOSE STACK from the app's own files on
- * its owning host — the stack has no repo and no archive, so its files dir
- * (what its `./x` bind mounts resolve into, and where a web app it serves keeps
- * its favicon) is the analogue of the tree the other sources scan.
+ * When to re-ask a freshly deployed app for its icon. `compose up` returns once
+ * the containers are RUNNING, which is well before an app is SERVING: a database
+ * migration, a first-boot setup, a JIT warm-up all sit between the two. Asking
+ * once would mean most compose apps never get an icon until some later redeploy
+ * happened to catch them awake.
  *
- * Runs AFTER the agent deploy, so the mount files the stack ships with are on
- * disk before the walk, and FIRE-AND-FORGET like the repo arm: an agent round
- * trip must never delay a deploy, and the logo pushes to live subscribers a
- * moment later. Guarded on the app having no logo yet, so a template default is
- * kept and an app that already has an icon costs zero RPCs per deploy.
+ * Cumulative ~50s after the deploy, which covers the ordinary boot of the apps
+ * people actually deploy this way. Each attempt is one HTTP GET on the host, and
+ * only for an app that still has no logo — an app that got one on the first try
+ * (or never gets one) costs nothing more.
  */
-function autoDetectAppFilesLogo(
+const ICON_RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
+
+/**
+ * Auto-detect a display logo for a COMPOSE STACK on its owning host: the app's
+ * own files first, then — the case that covers most compose apps — the icon the
+ * running app SERVES, since a stack of prebuilt images keeps its favicon inside
+ * the image where no file walk can reach it.
+ *
+ * Runs AFTER the agent deploy, so the mount files are on disk and the stack is
+ * up before anything is read, and FIRE-AND-FORGET like the repo arm: an agent
+ * round trip must never delay a deploy, and the logo pushes to live subscribers
+ * a moment later. Guarded on the app having no logo yet, so a template default
+ * is kept and an app that already has an icon costs zero RPCs per deploy.
+ */
+function autoDetectComposeLogo(
   appId: string,
   currentLogo: string | null,
   serverId: string,
   slug: string,
+  target: ServedIconTarget | null,
 ): void {
   if (currentLogo) return;
-  void detectAppFilesFavicon(serverId, slug)
-    .then((logo) => setLogoIfUnset(appId, logo))
-    .catch(() => {});
+  void (async () => {
+    // The files dir is already final at this point, so one look is enough.
+    const fromFiles = await detectAppFilesFavicon(serverId, slug).catch(() => null);
+    if (fromFiles) {
+      await setLogoIfUnset(appId, fromFiles);
+      return;
+    }
+    if (!target) return;
+    for (let attempt = 0; ; attempt++) {
+      const logo = await detectServedAppFavicon(serverId, target).catch(() => null);
+      if (logo) {
+        await setLogoIfUnset(appId, logo);
+        return;
+      }
+      if (attempt >= ICON_RETRY_DELAYS_MS.length) return;
+      await new Promise((r) => setTimeout(r, ICON_RETRY_DELAYS_MS[attempt]));
+    }
+  })().catch(() => {
+    /* detection is a cosmetic nicety; never let it disturb a deploy */
+  });
 }
 
 /**
@@ -934,10 +969,18 @@ async function runDeployment(depId: string): Promise<void> {
       // `compose up`s on its host), the host running Deplo included. The control
       // plane renders the stack YAML (buildComposeStack); the agent brings it up.
       await deployComposeStackViaAgent({ ...composeOpts, serverId: project.serverId });
-      // Auto-set the display logo from a favicon in the app's OWN files on that
-      // host (the tree its `./x` mounts resolve into) when it has none yet —
-      // the compose-stack arm of the same detection git/upload apps get.
-      autoDetectAppFilesLogo(project.id, project.logo, project.serverId, slug);
+      // Auto-set the display logo when the app has none yet — the compose-stack
+      // arm of the same detection git/upload apps get. It reads the app's own
+      // files AND, since a stack of prebuilt images keeps its favicon inside the
+      // image, the icon the running app serves. `domain` is the primary host, so
+      // the probe reaches the app exactly where Traefik does.
+      autoDetectComposeLogo(
+        project.id,
+        project.logo,
+        project.serverId,
+        slug,
+        appIconProbeTarget(project, routeDomains, domain),
+      );
       return;
     }
 

@@ -964,6 +964,69 @@ export interface CheckPortResponse {
 }
 
 /**
+ * One HTTP GET to a container of an app's stack (see the ProbeHttp RPC comment).
+ * The agent picks the ADDRESS; the caller only picks what to ask for.
+ */
+export interface ProbeHttpRequest {
+  /**
+   * The app the container must belong to (its `deplo.project` label). Empty is
+   * refused — an unscoped probe could reach any container on the host.
+   */
+  projectId: string;
+  /**
+   * The app's slug, used to read the compose service out of a container name
+   * (deplo-<slug>-<service>-N), exactly as ListInstances does.
+   */
+  slug: string;
+  /**
+   * Which compose service to reach. Empty => the app's first running container
+   * (the single-image case, where the stack has exactly one).
+   */
+  service: string;
+  /**
+   * The port INSIDE the container (1-65535) — the same port Traefik is routed
+   * to, not a published host port.
+   */
+  port: number;
+  /**
+   * Absolute request path ("/", "/favicon.ico"). Must start with "/" and carry
+   * no control characters; anything else is refused rather than sent.
+   */
+  path: string;
+  /**
+   * Host header to send. Empty => the container's IP. An app that only answers
+   * on its own hostname (ALLOWED_HOSTS, a configured site URL) needs its real
+   * domain here. Validated as a hostname — never a URL, never a header list.
+   */
+  host: string;
+  /**
+   * Cap on the body bytes returned. 0 => the agent's default; the agent clamps
+   * to its own ceiling regardless, so a caller can never ask for an unbounded
+   * read.
+   */
+  maxBytes: number;
+}
+
+export interface ProbeHttpResponse {
+  /** HTTP status of the response (200, 404, 301, …). */
+  status: number;
+  /**
+   * Content-Type header, lowercased, parameters kept ("image/png",
+   * "text/html; charset=utf-8"). Empty when the response carried none.
+   */
+  contentType: string;
+  /** The body, truncated to max_bytes. */
+  body: Uint8Array;
+  /** True when the body was longer than max_bytes and was cut. */
+  truncated: boolean;
+  /**
+   * The Location header on a 3xx (empty otherwise). The agent does NOT follow
+   * it: the control plane decides whether the target is still this app.
+   */
+  location: string;
+}
+
+/**
  * In-place agent binary update (SelfUpdate). The control plane resolves the
  * latest release and sends EVERY published per-arch asset (its download URL + the
  * sha256 from the release's checksums.txt — the same integrity source install-
@@ -5334,6 +5397,298 @@ export const CheckPortResponse: MessageFns<CheckPortResponse> = {
     const message = createBaseCheckPortResponse();
     message.available = object.available ?? false;
     message.reason = object.reason ?? "";
+    return message;
+  },
+};
+
+function createBaseProbeHttpRequest(): ProbeHttpRequest {
+  return { projectId: "", slug: "", service: "", port: 0, path: "", host: "", maxBytes: 0 };
+}
+
+export const ProbeHttpRequest: MessageFns<ProbeHttpRequest> = {
+  encode(message: ProbeHttpRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.projectId !== "") {
+      writer.uint32(10).string(message.projectId);
+    }
+    if (message.slug !== "") {
+      writer.uint32(18).string(message.slug);
+    }
+    if (message.service !== "") {
+      writer.uint32(26).string(message.service);
+    }
+    if (message.port !== 0) {
+      writer.uint32(32).int32(message.port);
+    }
+    if (message.path !== "") {
+      writer.uint32(42).string(message.path);
+    }
+    if (message.host !== "") {
+      writer.uint32(50).string(message.host);
+    }
+    if (message.maxBytes !== 0) {
+      writer.uint32(56).int32(message.maxBytes);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ProbeHttpRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseProbeHttpRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.projectId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.slug = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.service = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.port = reader.int32();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.host = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 56) {
+            break;
+          }
+
+          message.maxBytes = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ProbeHttpRequest {
+    return {
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      slug: isSet(object.slug) ? globalThis.String(object.slug) : "",
+      service: isSet(object.service) ? globalThis.String(object.service) : "",
+      port: isSet(object.port) ? globalThis.Number(object.port) : 0,
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      host: isSet(object.host) ? globalThis.String(object.host) : "",
+      maxBytes: isSet(object.maxBytes)
+        ? globalThis.Number(object.maxBytes)
+        : isSet(object.max_bytes)
+        ? globalThis.Number(object.max_bytes)
+        : 0,
+    };
+  },
+
+  toJSON(message: ProbeHttpRequest): unknown {
+    const obj: any = {};
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.slug !== "") {
+      obj.slug = message.slug;
+    }
+    if (message.service !== "") {
+      obj.service = message.service;
+    }
+    if (message.port !== 0) {
+      obj.port = Math.round(message.port);
+    }
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.host !== "") {
+      obj.host = message.host;
+    }
+    if (message.maxBytes !== 0) {
+      obj.maxBytes = Math.round(message.maxBytes);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ProbeHttpRequest>, I>>(base?: I): ProbeHttpRequest {
+    return ProbeHttpRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ProbeHttpRequest>, I>>(object: I): ProbeHttpRequest {
+    const message = createBaseProbeHttpRequest();
+    message.projectId = object.projectId ?? "";
+    message.slug = object.slug ?? "";
+    message.service = object.service ?? "";
+    message.port = object.port ?? 0;
+    message.path = object.path ?? "";
+    message.host = object.host ?? "";
+    message.maxBytes = object.maxBytes ?? 0;
+    return message;
+  },
+};
+
+function createBaseProbeHttpResponse(): ProbeHttpResponse {
+  return { status: 0, contentType: "", body: new Uint8Array(0), truncated: false, location: "" };
+}
+
+export const ProbeHttpResponse: MessageFns<ProbeHttpResponse> = {
+  encode(message: ProbeHttpResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.status !== 0) {
+      writer.uint32(8).int32(message.status);
+    }
+    if (message.contentType !== "") {
+      writer.uint32(18).string(message.contentType);
+    }
+    if (message.body.length !== 0) {
+      writer.uint32(26).bytes(message.body);
+    }
+    if (message.truncated !== false) {
+      writer.uint32(32).bool(message.truncated);
+    }
+    if (message.location !== "") {
+      writer.uint32(42).string(message.location);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ProbeHttpResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseProbeHttpResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.status = reader.int32();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.contentType = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.body = reader.bytes();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.truncated = reader.bool();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.location = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ProbeHttpResponse {
+    return {
+      status: isSet(object.status) ? globalThis.Number(object.status) : 0,
+      contentType: isSet(object.contentType)
+        ? globalThis.String(object.contentType)
+        : isSet(object.content_type)
+        ? globalThis.String(object.content_type)
+        : "",
+      body: isSet(object.body) ? bytesFromBase64(object.body) : new Uint8Array(0),
+      truncated: isSet(object.truncated) ? globalThis.Boolean(object.truncated) : false,
+      location: isSet(object.location) ? globalThis.String(object.location) : "",
+    };
+  },
+
+  toJSON(message: ProbeHttpResponse): unknown {
+    const obj: any = {};
+    if (message.status !== 0) {
+      obj.status = Math.round(message.status);
+    }
+    if (message.contentType !== "") {
+      obj.contentType = message.contentType;
+    }
+    if (message.body.length !== 0) {
+      obj.body = base64FromBytes(message.body);
+    }
+    if (message.truncated !== false) {
+      obj.truncated = message.truncated;
+    }
+    if (message.location !== "") {
+      obj.location = message.location;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ProbeHttpResponse>, I>>(base?: I): ProbeHttpResponse {
+    return ProbeHttpResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ProbeHttpResponse>, I>>(object: I): ProbeHttpResponse {
+    const message = createBaseProbeHttpResponse();
+    message.status = object.status ?? 0;
+    message.contentType = object.contentType ?? "";
+    message.body = object.body ?? new Uint8Array(0);
+    message.truncated = object.truncated ?? false;
+    message.location = object.location ?? "";
     return message;
   },
 };
@@ -11984,6 +12339,35 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): CheckPortResponse => CheckPortResponse.decode(value),
   },
   /**
+   * ONE bounded HTTP GET to a container of an app's own stack, issued from the
+   * host over Docker's network — what a compose app's icon detection reads.
+   *
+   * An app deployed as a compose stack runs PREBUILT images: its favicon is not
+   * a file anywhere on the host (the files dir holds only the config its bind
+   * mounts need), it exists only inside the image and is SERVED. The only way to
+   * see it is to ask the running app for it, exactly as a browser would.
+   *
+   * The agent resolves the target itself: the container is found by the app's own
+   * `deplo.project` label + compose service, and the request goes to THAT
+   * container's IP. The caller supplies a port, a path and a Host header — never
+   * an address — so this can never be turned into a general outbound fetch from
+   * the host (no DNS, no user-supplied IP, no scheme: plain HTTP to a container
+   * this app owns). Redirects are returned, never followed: where to go next is
+   * the control plane's decision, not the agent's.
+   *
+   * Deliberately NOT a health check and not a proxy — one request, one bounded
+   * body, no streaming. Gated behind the "http-probe" Hello capability.
+   */
+  probeHttp: {
+    path: "/deplo.agent.v1.Agent/ProbeHttp" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ProbeHttpRequest): Buffer => Buffer.from(ProbeHttpRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ProbeHttpRequest => ProbeHttpRequest.decode(value),
+    responseSerialize: (value: ProbeHttpResponse): Buffer => Buffer.from(ProbeHttpResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ProbeHttpResponse => ProbeHttpResponse.decode(value),
+  },
+  /**
    * Reclaim Docker disk on the host. STRICTLY AN ALLOW-LIST: the agent removes
    * only what it can PROVE is unreferenced, and the proof is always a
    * container-reference REVERSE INDEX over `docker ps -aq` (running AND exited) or
@@ -12585,6 +12969,27 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   checkPort: handleUnaryCall<CheckPortRequest, CheckPortResponse>;
   /**
+   * ONE bounded HTTP GET to a container of an app's own stack, issued from the
+   * host over Docker's network — what a compose app's icon detection reads.
+   *
+   * An app deployed as a compose stack runs PREBUILT images: its favicon is not
+   * a file anywhere on the host (the files dir holds only the config its bind
+   * mounts need), it exists only inside the image and is SERVED. The only way to
+   * see it is to ask the running app for it, exactly as a browser would.
+   *
+   * The agent resolves the target itself: the container is found by the app's own
+   * `deplo.project` label + compose service, and the request goes to THAT
+   * container's IP. The caller supplies a port, a path and a Host header — never
+   * an address — so this can never be turned into a general outbound fetch from
+   * the host (no DNS, no user-supplied IP, no scheme: plain HTTP to a container
+   * this app owns). Redirects are returned, never followed: where to go next is
+   * the control plane's decision, not the agent's.
+   *
+   * Deliberately NOT a health check and not a proxy — one request, one bounded
+   * body, no streaming. Gated behind the "http-probe" Hello capability.
+   */
+  probeHttp: handleUnaryCall<ProbeHttpRequest, ProbeHttpResponse>;
+  /**
    * Reclaim Docker disk on the host. STRICTLY AN ALLOW-LIST: the agent removes
    * only what it can PROVE is unreferenced, and the proof is always a
    * container-reference REVERSE INDEX over `docker ps -aq` (running AND exited) or
@@ -13118,6 +13523,41 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: CheckPortResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * ONE bounded HTTP GET to a container of an app's own stack, issued from the
+   * host over Docker's network — what a compose app's icon detection reads.
+   *
+   * An app deployed as a compose stack runs PREBUILT images: its favicon is not
+   * a file anywhere on the host (the files dir holds only the config its bind
+   * mounts need), it exists only inside the image and is SERVED. The only way to
+   * see it is to ask the running app for it, exactly as a browser would.
+   *
+   * The agent resolves the target itself: the container is found by the app's own
+   * `deplo.project` label + compose service, and the request goes to THAT
+   * container's IP. The caller supplies a port, a path and a Host header — never
+   * an address — so this can never be turned into a general outbound fetch from
+   * the host (no DNS, no user-supplied IP, no scheme: plain HTTP to a container
+   * this app owns). Redirects are returned, never followed: where to go next is
+   * the control plane's decision, not the agent's.
+   *
+   * Deliberately NOT a health check and not a proxy — one request, one bounded
+   * body, no streaming. Gated behind the "http-probe" Hello capability.
+   */
+  probeHttp(
+    request: ProbeHttpRequest,
+    callback: (error: ServiceError | null, response: ProbeHttpResponse) => void,
+  ): ClientUnaryCall;
+  probeHttp(
+    request: ProbeHttpRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ProbeHttpResponse) => void,
+  ): ClientUnaryCall;
+  probeHttp(
+    request: ProbeHttpRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ProbeHttpResponse) => void,
   ): ClientUnaryCall;
   /**
    * Reclaim Docker disk on the host. STRICTLY AN ALLOW-LIST: the agent removes

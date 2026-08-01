@@ -118,6 +118,11 @@ const VOLUME_COPY_DEADLINE_MS = 60 * 60_000;
 // Keep the deadline short so an unreachable agent fails fast (this gates an
 // interactive "generate available port" click + the pre-provision guard).
 const CHECK_PORT_DEADLINE_MS = 15_000;
+// One HTTP GET from the host to a container of an app's stack. The agent budgets
+// ~6s for the request itself; this is that plus dial slack. Deliberately short:
+// the only caller is icon detection, a cosmetic read that must never hold a
+// deploy or a settings click open waiting on a slow app.
+const PROBE_HTTP_DEADLINE_MS = 12_000;
 // A cleanup sweep walks every image, volume and build-cache record on the host and
 // then removes them one at a time (never in one `prune` verb — see dockerCleanup);
 // on a full host that is tens of GB of unlinking. The agent budgets ~30min for its
@@ -125,6 +130,36 @@ const CHECK_PORT_DEADLINE_MS = 15_000;
 // one. It stays MANDATORY all the same: an agent that wedges mid-sweep must fail
 // the run rather than pin the request forever.
 const CLEANUP_DEADLINE_MS = 30 * 60_000;
+
+/** What to ask an app's own container for — never an address (see `probeHttp`). */
+export interface AgentProbeHttpRequest {
+  /** The app whose stack to reach; the container must carry its label. */
+  appId: string;
+  /** The app's slug, how the agent reads a service out of a container name. */
+  slug: string;
+  /** Compose service to reach; "" ⇒ the app's single running container. */
+  service: string;
+  /** Port INSIDE the container (what Traefik routes to, not a host port). */
+  port: number;
+  /** Absolute request path. */
+  path: string;
+  /** Host header; "" ⇒ the container's IP. An app with host authorization
+   *  (ALLOWED_HOSTS, a configured site URL) needs its real domain here. */
+  host: string;
+  /** Cap on the returned body; 0 ⇒ the agent's default. */
+  maxBytes: number;
+}
+
+/** One HTTP response, body capped. */
+export interface AgentProbeHttpResult {
+  status: number;
+  /** Lowercased Content-Type, parameters kept; "" when absent. */
+  contentType: string;
+  body: Buffer;
+  truncated: boolean;
+  /** Location on a 3xx (the agent never follows one); "" otherwise. */
+  location: string;
+}
 
 /** Plain structural shapes the agent returns — mapped 1:1 by the data layer. */
 export interface AgentConsoleInstance {
@@ -292,6 +327,14 @@ export interface AgentConnection {
    *  rejects with UNIMPLEMENTED (mapped to AgentCheckPortUnsupportedError by the
    *  caller). */
   checkPort(port: number): Promise<{ available: boolean; reason: string }>;
+  /** One bounded HTTP GET to a container of an app's OWN stack, issued from the
+   *  host over Docker's network. The agent resolves the address itself (the
+   *  container carrying this app's `deplo.project` label, on `service`), so the
+   *  caller picks WHAT to ask for and never WHERE — this is not a general fetch.
+   *  Redirects come back unfollowed. Used by icon detection to read the favicon a
+   *  compose app only ever serves. Rejects with UNIMPLEMENTED on an agent without
+   *  the `http-probe` capability, and UNAVAILABLE when the app isn't answering. */
+  probeHttp(req: AgentProbeHttpRequest): Promise<AgentProbeHttpResult>;
   /** Update the agent BINARY in place to `version`, WITHOUT reissuing certs: the
    *  agent picks the asset for its own arch from `binaries`, verifies the sha256,
    *  swaps itself, and re-execs reusing the on-disk mTLS materials. Resolves once
@@ -1275,6 +1318,33 @@ function dial(target: DialTarget): AgentConnection {
             err
               ? reject(toAgentError(err))
               : resolve({ available: resp.available, reason: resp.reason }),
+        );
+      });
+    },
+    probeHttp(req: AgentProbeHttpRequest) {
+      return new Promise<AgentProbeHttpResult>((resolve, reject) => {
+        client.probeHttp(
+          {
+            projectId: req.appId,
+            slug: req.slug,
+            service: req.service,
+            port: req.port,
+            path: req.path,
+            host: req.host,
+            maxBytes: req.maxBytes,
+          },
+          new Metadata(),
+          { deadline: new Date(Date.now() + PROBE_HTTP_DEADLINE_MS) },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({
+                  status: resp.status,
+                  contentType: resp.contentType,
+                  body: Buffer.from(resp.body),
+                  truncated: resp.truncated,
+                  location: resp.location,
+                }),
         );
       });
     },
