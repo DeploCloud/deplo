@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import yaml from "js-yaml";
 import { toast } from "sonner";
@@ -75,12 +74,18 @@ function composeServices(compose?: string | null): string[] {
 export function DomainRow({
   domain,
   compose,
+  isCompose,
   serverIp,
 }: {
   domain: Row;
   /** The app's compose YAML (compose stacks only) so the Edit dialog can
    * offer the service selector. Absent/null ⇒ a single-image project. */
   compose?: string | null;
+  /** Whether the app really is a compose stack (`usesComposeStack`, resolved by
+   * the page). NOT inferred from `compose` here: an app can carry leftover
+   * compose text while deploying a repo/image, and that inference would make
+   * the Container cell warn "no service" about a domain that routes fine. */
+  isCompose: boolean;
   /** The public IPv4 of the server THIS project is deployed on — the address a
    * custom domain's A record must resolve to. Surfaced in the misconfigured hint
    * so the user knows exactly where to point DNS. It is server-specific (a
@@ -93,6 +98,21 @@ export function DomainRow({
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
   const services = React.useMemo(() => composeServices(compose), [compose]);
+
+  // What this hostname's router actually reaches. A compose stack routes to the
+  // compose service the domain NAMES (required on a stack — `buildComposeStack`
+  // skips a route that names none, so an empty one is genuinely unrouted); a
+  // single-image app has exactly one container, `deplo-<slug>` (the
+  // `container_name` renderCompose writes, and what lib/data/console calls it).
+  // Same thing the Logs/Console picker shows for the same app: the service name
+  // on a stack, the container name when there is only one — NOT the App's
+  // display name, which is identical on every row of this page and names no
+  // container at all.
+  const service = (domain.service ?? "").trim();
+  const container = service || `deplo-${domain.appSlug}`;
+  // A compose row that names no service: the stack renderer has no target to
+  // wire, so the hostname reaches nothing until one is picked.
+  const unrouted = isCompose && !service;
 
   // Edit-dialog form state: name lives here; the routing knobs in `config`.
   const [name, setName] = React.useState(domain.name);
@@ -376,12 +396,26 @@ export function DomainRow({
         )}
       </TableCell>
       <TableCell>
-        <Link
-          href={`/apps/${domain.appSlug}`}
-          className="cursor-pointer text-sm text-muted-foreground hover:text-foreground"
-        >
-          {domain.serviceName}
-        </Link>
+        {unrouted ? (
+          <SimpleTooltip content="This domain doesn't name a container, so nothing serves it. Edit the domain to pick one.">
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+              Not set
+            </span>
+          </SimpleTooltip>
+        ) : (
+          <SimpleTooltip
+            content={
+              service
+                ? `Compose service “${service}” in the stack deplo-${domain.appSlug}`
+                : "This app runs a single container"
+            }
+          >
+            <span className="font-mono text-xs text-muted-foreground">
+              {container}
+            </span>
+          </SimpleTooltip>
+        )}
       </TableCell>
       <TableCell>
         <StatusBadge status={domain.status} />

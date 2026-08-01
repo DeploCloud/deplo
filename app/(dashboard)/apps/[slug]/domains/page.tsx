@@ -4,6 +4,7 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { listServers } from "@/lib/data/servers";
 import { listDomains } from "@/lib/data/domains";
 import { resolveServerIp, productionDomain } from "@/lib/deploy/domains";
+import { usesComposeStack } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Table,
@@ -46,6 +47,10 @@ export default async function AppDomainsPage(
   // client bundle.
   const serverIp = resolveServerIp(server);
   const suggestedDomain = productionDomain(project.slug, serverIp);
+  // Whether each row routes to a compose service or to the app's single
+  // container — the authoritative source check, not "does the app carry compose
+  // text" (an app can keep leftover YAML while deploying a repo or an image).
+  const isComposeStack = usesComposeStack(project);
 
   // Every domain mutation now re-applies routing to the running container itself
   // (see `applyRouting` in lib/graphql/types/domain.ts), so a settled domain is
@@ -112,7 +117,11 @@ export default async function AppDomainsPage(
               <TableHeader>
                 <TableRow>
                   <TableHead>Domain</TableHead>
-                  <TableHead>App</TableHead>
+                  {/* What the hostname reaches, not who owns it: the owning App
+                      is the page you are already on, so its name was the same
+                      on every row. A compose stack shows the service the router
+                      targets, a single-image app its one container. */}
+                  <TableHead>Container</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -123,6 +132,7 @@ export default async function AppDomainsPage(
                     key={d.id}
                     domain={d}
                     compose={project.compose}
+                    isCompose={isComposeStack}
                     serverIp={serverIp}
                   />
                 ))}

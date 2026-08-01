@@ -148,11 +148,11 @@ export function resolveDomainConfig(
   | { ok: false; error: string } {
   const service = state.service.trim();
   if (isCompose && !service) {
-    return { ok: false, error: "Select the service this domain routes to" };
+    return { ok: false, error: "Select the container this domain routes to" };
   }
   const rawPort = state.port.trim();
   if (isCompose && !rawPort) {
-    return { ok: false, error: "App port is required" };
+    return { ok: false, error: "Container port is required" };
   }
   const port = rawPort ? Number(rawPort) : null;
   if (rawPort && (!Number.isInteger(port) || port! < 1 || port! > 65535)) {
@@ -373,15 +373,20 @@ export function DomainConfigFields({
     <>
       {isCompose && (
         <div className="space-y-2">
+          {/* The stack's containers, by their compose service name — the same
+              names the Logs and Console pickers list for this app. Labelled
+              "Container", not "App": the App is the whole stack, and calling one
+              of its containers an App is what made the domains table look like
+              it was naming the app rather than what actually serves the host. */}
           <FieldLabel
             htmlFor={`${idPrefix}-service`}
-            info="Which compose service this domain routes to."
+            info="Which container of this app's compose stack serves this domain."
           >
-            App
+            Container
           </FieldLabel>
           <Select value={state.service} onValueChange={(v) => set("service", v)}>
             <SelectTrigger id={`${idPrefix}-service`}>
-              <SelectValue placeholder="Select a service" />
+              <SelectValue placeholder="Select a container" />
             </SelectTrigger>
             <SelectContent>
               {services.map((s) => (
@@ -399,11 +404,11 @@ export function DomainConfigFields({
           htmlFor={`${idPrefix}-port`}
           info={
             isCompose
-              ? "The container port of the selected service to route to."
+              ? "The port the selected container listens on."
               : "The container port this domain routes to. Defaults to the app's port."
           }
         >
-          App port
+          Container port
         </FieldLabel>
         <Input
           id={`${idPrefix}-port`}

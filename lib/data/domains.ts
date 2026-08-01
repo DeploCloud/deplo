@@ -75,7 +75,7 @@ export function __resetDnsResolve4ForTest(): void {
  * it there rather than persist an inert value the UI would falsely report as
  * applied. */
 const SERVICE_UNSUPPORTED =
-  "Routing to a named service is only available for compose stacks — single-image apps use the service port field.";
+  "Picking a container is only available for compose stacks — a single-image app has exactly one, so use the container port field.";
 
 /** True if any project already owns this exact hostname (global uniqueness —
  * the `domains.name` unique index is the hard backstop; this is the friendly
@@ -439,7 +439,7 @@ export async function addDomain(
   // On a compose stack the port is required (the chosen service's container
   // port); single-image keeps it optional (blank ⇒ the project's default port).
   if (isCompose && config.port == null)
-    throw new Error("App port is required");
+    throw new Error("Container port is required");
   const middlewares = normalizeMiddlewares(config.middlewares);
   // Strip is only meaningful with a path (a stripprefix middleware needs a
   // prefix to strip), so drop it otherwise — the router grammar does the same.
@@ -564,10 +564,10 @@ function resolveApp(
     if (service) throw new Error(SERVICE_UNSUPPORTED);
     return null;
   }
-  if (!service) throw new Error("Select the service this domain routes to");
+  if (!service) throw new Error("Select the container this domain routes to");
   const names = composeServiceNames(project.compose);
   if (!names.includes(service))
-    throw new Error(`App "${service}" is not defined in the compose file`);
+    throw new Error(`No container named "${service}" in the compose file`);
   return service;
 }
 
@@ -674,8 +674,8 @@ export async function updateDomain(
   // Edit dialog always sends both, this guards a direct/legacy call.
   const nextPort = patch.port !== undefined ? patch.port : current.port ?? null;
   if (isCompose) {
-    if (!nextApp) throw new Error("Select the service this domain routes to");
-    if (nextPort == null) throw new Error("App port is required");
+    if (!nextApp) throw new Error("Select the container this domain routes to");
+    if (nextPort == null) throw new Error("Container port is required");
   }
   // Uniqueness on (host + path) against every OTHER domain (the partial-unique
   // index is the real guard; this is the friendly pre-check).
