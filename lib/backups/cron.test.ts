@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseCron, cronMatches } from "./cron";
+import { parseCron, cronMatches, nextCronRun } from "./cron";
 
 /**
  * The cron matcher is the scheduler's "is this due now?" oracle (Step 6). It is
@@ -106,4 +106,64 @@ test("malformed expressions never match and never throw", () => {
 
 test("whitespace is tolerated between fields", () => {
   assert.ok(cronMatches("  0   3   *   *   *  ", at("2026-06-23T03:00:00Z")));
+});
+
+/* ------------------------------------------------------------------ */
+/* nextCronRun — the UI's "prove what I just picked actually means"     */
+/* ------------------------------------------------------------------ */
+
+const iso = (d: Date | null) => (d === null ? null : d.toISOString());
+
+test("nextCronRun is strictly after `from`, never `from` itself", () => {
+  // 03:00 is a match, so the next one is tomorrow's.
+  assert.equal(
+    iso(nextCronRun("0 3 * * *", at("2026-06-23T03:00:00Z"))),
+    "2026-06-24T03:00:00.000Z",
+  );
+  assert.equal(
+    iso(nextCronRun("0 3 * * *", at("2026-06-23T02:59:00Z"))),
+    "2026-06-23T03:00:00.000Z",
+  );
+});
+
+test("nextCronRun ignores the seconds of `from`", () => {
+  assert.equal(
+    iso(nextCronRun("* * * * *", at("2026-06-23T10:00:30Z"))),
+    "2026-06-23T10:01:00.000Z",
+  );
+});
+
+test("nextCronRun walks steps, weekdays and months", () => {
+  assert.equal(
+    iso(nextCronRun("*/15 * * * *", at("2026-06-23T10:07:00Z"))),
+    "2026-06-23T10:15:00.000Z",
+  );
+  // 2026-06-23 is a Tuesday; the next Friday 09:30 is the 26th.
+  assert.equal(
+    iso(nextCronRun("30 9 * * 5", at("2026-06-23T10:00:00Z"))),
+    "2026-06-26T09:30:00.000Z",
+  );
+  assert.equal(
+    iso(nextCronRun("0 0 1 * *", at("2026-06-23T10:00:00Z"))),
+    "2026-07-01T00:00:00.000Z",
+  );
+  // A yearly schedule must not need a per-minute walk to resolve.
+  assert.equal(
+    iso(nextCronRun("0 0 1 1 *", at("2026-06-23T10:00:00Z"))),
+    "2027-01-01T00:00:00.000Z",
+  );
+});
+
+test("nextCronRun honours the Vixie day union", () => {
+  // "the 13th OR any Friday" — 2026-06-23 is a Tuesday, so Friday the 26th wins.
+  assert.equal(
+    iso(nextCronRun("0 0 13 * 5", at("2026-06-23T10:00:00Z"))),
+    "2026-06-26T00:00:00.000Z",
+  );
+});
+
+test("nextCronRun is null when the expression can never fire", () => {
+  assert.equal(nextCronRun("nonsense", at("2026-06-23T10:00:00Z")), null);
+  // The 30th of February parses fine and simply never comes around.
+  assert.equal(nextCronRun("0 0 30 2 *", at("2026-06-23T10:00:00Z")), null);
 });

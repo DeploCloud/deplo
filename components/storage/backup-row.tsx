@@ -45,8 +45,13 @@ import {
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { RestoreRunsDialog } from "@/components/storage/restore-runs-dialog";
+import {
+  ScheduleLabel,
+  SchedulePicker,
+} from "@/components/shared/schedule-picker";
 import { timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
+import { isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
 
 type Destination = { id: string; name: string };
@@ -109,7 +114,7 @@ export function BackupRow({
         {backup.destinationName}
       </TableCell>
       <TableCell>
-        <code className="font-mono text-xs">{backup.schedule}</code>
+        <ScheduleLabel cron={backup.schedule} />
       </TableCell>
       <TableCell className="text-muted-foreground">
         {backup.retentionDays}d
@@ -277,7 +282,8 @@ function EditBackupDialog({
         <DialogHeader>
           <DialogTitle>Edit schedule</DialogTitle>
           <DialogDescription>
-            Change this schedule&apos;s name, destination, cron and retention. The{" "}
+            Change this schedule&apos;s name, destination, frequency and
+            retention. The{" "}
             {backup.targetKind === "app" ? "app" : "database"} it backs up
             can&apos;t be changed.
           </DialogDescription>
@@ -305,17 +311,20 @@ function EditBackupDialog({
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="edit-backup-schedule"
+                info="How often this backup runs. Pick a frequency — the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
+              >
+                Schedule
+              </FieldLabel>
+              <SchedulePicker
+                id="edit-backup-schedule"
+                value={schedule}
+                onChange={setSchedule}
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <FieldLabel info="Standard cron expression (UTC).">
-                  Schedule (cron)
-                </FieldLabel>
-                <Input
-                  value={schedule}
-                  onChange={(e) => setSchedule(e.target.value)}
-                  className="font-mono text-xs"
-                />
-              </div>
               <div className="space-y-2">
                 <FieldLabel info="How many days to keep each backup before it's pruned.">
                   Retention (days)
@@ -339,7 +348,9 @@ function EditBackupDialog({
             </Button>
             <Button
               type="submit"
-              disabled={pending || !name.trim() || !destinationId}
+              disabled={
+                pending || !name.trim() || !destinationId || !isValidSchedule(schedule)
+              }
             >
               {pending ? "Saving…" : "Save changes"}
             </Button>

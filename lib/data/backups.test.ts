@@ -135,6 +135,38 @@ test("createBackup rejects an unknown target / foreign destination", async () =>
   });
 });
 
+test("an unparseable cron is rejected, not stored — on create and on edit", async () => {
+  // `cronMatches` treats a bad expression as "never matches", so storing one
+  // would be a schedule the UI reports as enabled and that never fires.
+  await seedBackup(db, { id: "bkp_1", destinationId: "s3_1", databaseId: "db_1" });
+  await asUser1(async () => {
+    await assert.rejects(
+      () =>
+        createBackup({
+          name: "x", targetKind: "database", databaseId: "db_1",
+          destinationId: "s3_1", schedule: "every day at 3", retentionDays: 7,
+        }),
+      /not a valid cron expression/,
+    );
+    await assert.rejects(
+      () =>
+        updateBackup("bkp_1", {
+          name: "x", destinationId: "s3_1", schedule: "0 99 * * *", retentionDays: 7,
+        }),
+      /not a valid cron expression/,
+    );
+    // An OMITTED schedule is "didn't choose", not "chose something broken" — it
+    // still falls back to the daily default.
+    const dto = await createBackup({
+      name: "defaulted", targetKind: "database", databaseId: "db_1",
+      destinationId: "s3_1", schedule: "", retentionDays: 7,
+    });
+    assert.equal(dto.schedule, "0 3 * * *");
+  });
+  const row = (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1")))[0]!;
+  assert.equal(row.schedule, "0 3 * * *", "the rejected edit must not have landed");
+});
+
 test("toggleBackup / updateBackup / deleteBackup", async () => {
   await seedBackup(db, { id: "bkp_1", destinationId: "s3_1", databaseId: "db_1" });
   await seedS3(db, { id: "s3_2", name: "second" });

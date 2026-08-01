@@ -29,7 +29,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { SchedulePicker } from "@/components/shared/schedule-picker";
 import { gqlAction } from "@/lib/graphql-client";
+import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
 
 type TargetKind = "database" | "app";
 
@@ -70,7 +72,7 @@ export function CreateBackup({
   const [destinationId, setDestinationId] = React.useState<string>(
     destinations[0]?.id ?? ""
   );
-  const [schedule, setSchedule] = React.useState("0 3 * * *");
+  const [schedule, setSchedule] = React.useState(DEFAULT_SCHEDULE);
   const [retention, setRetention] = React.useState(14);
 
   const noDeps = destinations.length === 0;
@@ -241,25 +243,20 @@ export function CreateBackup({
                 </Select>
               </div>
             </div>
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="new-backup-schedule"
+                info="How often this backup runs. Pick a frequency — the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
+              >
+                Schedule
+              </FieldLabel>
+              <SchedulePicker
+                id="new-backup-schedule"
+                value={schedule}
+                onChange={setSchedule}
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <FieldLabel
-                  info={
-                    <>
-                      Standard cron expression (UTC). Defaults to{" "}
-                      <code className="font-mono">0 3 * * *</code> — daily at
-                      03:00.
-                    </>
-                  }
-                >
-                  Schedule (cron)
-                </FieldLabel>
-                <Input
-                  value={schedule}
-                  onChange={(e) => setSchedule(e.target.value)}
-                  className="font-mono text-xs"
-                />
-              </div>
               <div className="space-y-2">
                 <FieldLabel info="Number of days to keep each backup before it is automatically deleted.">
                   Retention (days)
@@ -279,7 +276,13 @@ export function CreateBackup({
             </Button>
             <Button
               type="submit"
-              disabled={pending || !name.trim() || !destinationId || !targetId}
+              disabled={
+                pending ||
+                !name.trim() ||
+                !destinationId ||
+                !targetId ||
+                !isValidSchedule(schedule)
+              }
             >
               {pending ? "Creating…" : "Create schedule"}
             </Button>

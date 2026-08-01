@@ -23,6 +23,11 @@ import { recordActivity } from "./activity";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { loadAppGraph, loadTeamApp } from "./app-graph-load";
 import { decryptSecret } from "../crypto";
+import {
+  DEFAULT_SCHEDULE,
+  invalidScheduleMessage,
+  isValidSchedule,
+} from "../schedule";
 import { parseConnectionPassword } from "../deploy/database-compose";
 import {
   connectBackupAgent,
@@ -137,6 +142,20 @@ export async function listBackups(): Promise<BackupDTO[]> {
   return Promise.all(rows.map((r) => toDTO(assembleBackup(r))));
 }
 
+/**
+ * Trim an incoming cron and REJECT it when it can't be parsed — never repair it.
+ * `cronMatches` has to treat an unparseable expression as "never matches" (one
+ * bad row must not crash the scheduler tick), so an accepted-but-unparseable
+ * schedule is a backup that silently never runs while the UI reports it enabled.
+ * An empty string still falls back to the daily default, since that is "the
+ * caller didn't choose", not "the caller chose something broken".
+ */
+function normalizeSchedule(schedule: string): string {
+  const expr = (schedule || DEFAULT_SCHEDULE).trim();
+  if (!isValidSchedule(expr)) throw new Error(invalidScheduleMessage(expr));
+  return expr;
+}
+
 export async function createBackup(input: {
   name: string;
   targetKind?: BackupTargetKind;
@@ -151,6 +170,7 @@ export async function createBackup(input: {
   const user = (await getCurrentUser())!;
   if (!input.name.trim()) throw new Error("Name is required");
   if (!input.destinationId) throw new Error("Select a destination");
+  const schedule = normalizeSchedule(input.schedule);
 
   const targetKind: BackupTargetKind = input.targetKind ?? "database";
   const appId = input.appId ?? null;
@@ -181,7 +201,7 @@ export async function createBackup(input: {
     databaseId: targetKind === "database" ? databaseId : null,
     appId: targetKind === "app" ? appId : null,
     destinationId: input.destinationId,
-    schedule: input.schedule || "0 3 * * *",
+    schedule,
     retentionDays: Math.max(1, input.retentionDays || 7),
     lastRunAt: null,
     lastStatus: "never",
@@ -837,6 +857,7 @@ export async function updateBackup(
   const user = (await getCurrentUser())!;
   if (!input.name.trim()) throw new Error("Name is required");
   if (!input.destinationId) throw new Error("Select a destination");
+  const schedule = normalizeSchedule(input.schedule);
 
   // The (possibly changed) destination must belong to this team.
   if (!(await destinationExists(input.destinationId, teamId)))
@@ -853,7 +874,7 @@ export async function updateBackup(
     .set({
       name: input.name.trim(),
       destinationId: input.destinationId,
-      schedule: input.schedule || "0 3 * * *",
+      schedule,
       retentionDays: Math.max(1, input.retentionDays || 7),
     })
     .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)))

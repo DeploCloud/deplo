@@ -105,6 +105,22 @@ export function parseCron(expr: string): ParsedCron | null {
 }
 
 /**
+ * Does the DAY of `at` satisfy the parsed expression? Split out of
+ * {@link cronMatches} because {@link nextCronRun} needs the same Vixie
+ * day-of-month / day-of-week union rule while skipping whole days at a time.
+ */
+function dayMatches(c: ParsedCron, at: Date): boolean {
+  const domMatch = c.dom.has(at.getUTCDate());
+  const dowMatch = c.dow.has(at.getUTCDay());
+  // Vixie rule: if both day fields are restricted, the day matches when EITHER
+  // does (union). If one is `*`, only the other constrains.
+  if (c.domAny && c.dowAny) return true;
+  if (c.domAny) return dowMatch;
+  if (c.dowAny) return domMatch;
+  return domMatch || dowMatch;
+}
+
+/**
  * Does `expr` fire at the given instant? Evaluated to MINUTE precision in UTC
  * (the scheduler ticks once a minute and the store stamps ISO/UTC), so seconds
  * are ignored. An unparseable expression never matches.
@@ -115,13 +131,60 @@ export function cronMatches(expr: string, at: Date): boolean {
   if (!c.minute.has(at.getUTCMinutes())) return false;
   if (!c.hour.has(at.getUTCHours())) return false;
   if (!c.month.has(at.getUTCMonth() + 1)) return false;
+  return dayMatches(c, at);
+}
 
-  const domMatch = c.dom.has(at.getUTCDate());
-  const dowMatch = c.dow.has(at.getUTCDay());
-  // Vixie rule: if both day fields are restricted, the day matches when EITHER
-  // does (union). If one is `*`, only the other constrains.
-  if (c.domAny && c.dowAny) return true;
-  if (c.domAny) return dowMatch;
-  if (c.dowAny) return domMatch;
-  return domMatch || dowMatch;
+/**
+ * The first instant strictly AFTER `from` at which `expr` fires, or null when it
+ * is unparseable or fires nowhere inside `limitDays` (e.g. `0 0 30 2 *` — the
+ * 30th of February). Minute precision, UTC, same semantics as
+ * {@link cronMatches}.
+ *
+ * This exists for the UI, not the scheduler: the scheduler only ever asks "is
+ * this due at this minute?", while a person configuring a schedule needs the
+ * platform to prove what they picked actually means ("next run Sat 2 Aug,
+ * 05:00"). Rather than iterate minute by minute (up to ~527k steps a year), each
+ * failing field jumps the cursor to the start of the next candidate unit —
+ * month, day, hour — so a yearly cron resolves in a few hundred steps.
+ */
+export function nextCronRun(expr: string, from: Date, limitDays = 366): Date | null {
+  const c = parseCron(expr);
+  if (!c) return null;
+  // Start at the next whole minute: "next" is strictly after `from`, and a cron
+  // fires at second 0.
+  const cursor = new Date(
+    Date.UTC(
+      from.getUTCFullYear(),
+      from.getUTCMonth(),
+      from.getUTCDate(),
+      from.getUTCHours(),
+      from.getUTCMinutes(),
+    ) + 60_000,
+  );
+  const deadline = cursor.getTime() + limitDays * 86_400_000;
+
+  while (cursor.getTime() <= deadline) {
+    if (!c.month.has(cursor.getUTCMonth() + 1)) {
+      // Jump to 00:00 on the 1st of the next month.
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1, 1);
+      cursor.setUTCHours(0, 0, 0, 0);
+      continue;
+    }
+    if (!dayMatches(c, cursor)) {
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      cursor.setUTCHours(0, 0, 0, 0);
+      continue;
+    }
+    if (!c.hour.has(cursor.getUTCHours())) {
+      // Rolls the date over on its own when the hour is 23.
+      cursor.setUTCHours(cursor.getUTCHours() + 1, 0, 0, 0);
+      continue;
+    }
+    if (!c.minute.has(cursor.getUTCMinutes())) {
+      cursor.setUTCMinutes(cursor.getUTCMinutes() + 1, 0, 0);
+      continue;
+    }
+    return new Date(cursor);
+  }
+  return null;
 }

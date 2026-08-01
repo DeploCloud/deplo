@@ -59,7 +59,12 @@ import {
   PendingRows,
   usePendingCreate,
 } from "@/components/shared/pending-create";
+import {
+  ScheduleLabel,
+  SchedulePicker,
+} from "@/components/shared/schedule-picker";
 import { gqlAction } from "@/lib/graphql-client";
+import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
 import type { BackupRun } from "@/lib/types";
 
@@ -328,7 +333,7 @@ function ScheduleBackup({
   const [fields, setFields] = React.useState<ScheduleFields>({
     name: "",
     destinationId: destinations[0]?.id ?? "",
-    schedule: "0 3 * * *",
+    schedule: DEFAULT_SCHEDULE,
     retention: 14,
   });
   const noDeps = destinations.length === 0;
@@ -407,7 +412,12 @@ function ScheduleBackup({
             </Button>
             <Button
               type="submit"
-              disabled={pending || !fields.name.trim() || !fields.destinationId}
+              disabled={
+                pending ||
+                !fields.name.trim() ||
+                !fields.destinationId ||
+                !isValidSchedule(fields.schedule)
+              }
             >
               {pending ? "Creating…" : "Create schedule"}
             </Button>
@@ -469,19 +479,20 @@ function ScheduleFormFields({
           </SelectContent>
         </Select>
       </div>
+      <div className="space-y-2">
+        <FieldLabel
+          htmlFor="app-backup-schedule"
+          info="How often this backup runs. Pick a frequency — the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
+        >
+          Schedule
+        </FieldLabel>
+        <SchedulePicker
+          id="app-backup-schedule"
+          value={fields.schedule}
+          onChange={(cron) => onChange((f) => ({ ...f, schedule: cron }))}
+        />
+      </div>
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <FieldLabel info="Standard cron expression, evaluated in UTC.">
-            Schedule (cron)
-          </FieldLabel>
-          <Input
-            value={fields.schedule}
-            onChange={(e) =>
-              onChange((f) => ({ ...f, schedule: e.target.value }))
-            }
-            className="font-mono text-xs"
-          />
-        </div>
         <div className="space-y-2">
           <FieldLabel info="How long completed backup artifacts are kept in the destination before older ones are pruned.">
             Retention (days)
@@ -574,7 +585,12 @@ function EditScheduleDialog({
             </Button>
             <Button
               type="submit"
-              disabled={pending || !fields.name.trim() || !fields.destinationId}
+              disabled={
+                pending ||
+                !fields.name.trim() ||
+                !fields.destinationId ||
+                !isValidSchedule(fields.schedule)
+              }
             >
               {pending ? "Saving…" : "Save changes"}
             </Button>
@@ -632,7 +648,7 @@ function ScheduleRow({
         {schedule.destinationName}
       </TableCell>
       <TableCell>
-        <code className="font-mono text-xs">{schedule.schedule}</code>
+        <ScheduleLabel cron={schedule.schedule} />
       </TableCell>
       <TableCell className="text-muted-foreground">
         {schedule.retentionDays}d
