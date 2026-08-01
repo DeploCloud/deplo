@@ -103,6 +103,7 @@ export async function seedApp(
     folderId: opts.folderId ?? null,
     serverId,
     logo: null,
+    framework: null,
     source: opts.source ?? "github",
     repo: { provider: "github", url: "https://x", repo: "o/r", branch: "main" },
     dockerImage: null,

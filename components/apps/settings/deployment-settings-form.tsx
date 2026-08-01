@@ -132,10 +132,18 @@ export function DeploymentSettingsForm({
   serverId: initialServerId,
   servers,
   installations,
+  framework,
 }: {
   appId: string;
   slug: string;
   build: BuildConfig;
+  /**
+   * The framework the LAST DEPLOY recognised in this app's source, shown in the
+   * build card. Not live and not editable: every deploy re-derives it, so what
+   * settings shows is what actually built the app, not a guess about what the
+   * next build will find.
+   */
+  framework: string | null;
   autoDeploy: boolean;
   source: DeploySource;
   repo: GitRepo | null;
@@ -836,7 +844,12 @@ export function DeploymentSettingsForm({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <BuildConfigFields build={build} onBuildChange={setBuild} />
+              <BuildConfigFields
+                build={build}
+                onBuildChange={setBuild}
+                framework={framework}
+                frameworkCaption="Detected in your source on the last deploy. Deplo re-checks on every one."
+              />
             </CardContent>
             <CardFooter className="justify-between border-t border-border pt-4">
               <DirtyHint dirty={buildDirty} />

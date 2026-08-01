@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { listRepoTree, fetchRepoBlob } from "../github/app";
+import { githubFullName } from "../github/repo-id";
 import { extractArchive } from "../deploy/upload";
 import { normalizeRootRel } from "../deploy/source";
 import {
@@ -61,22 +62,6 @@ function toLogoDataUri(bytes: Buffer, path: string, mime?: string): string | nul
   if (!type) return null;
   const uri = `data:${type};base64,${bytes.toString("base64")}`;
   return isValidLogoValue(uri) ? uri : null;
-}
-
-/** `owner/name` for a GitHub repo, taken from the stored `repo.repo` when it's
- * already `owner/name`, else parsed from a github.com URL. Null when the repo
- * isn't GitHub-hosted or can't be resolved to a clean owner/name. */
-function githubFullName(repo: GitRepo): string | null {
-  const OWNER_REPO = /^[\w.-]+\/[\w.-]+$/;
-  if (repo.repo && OWNER_REPO.test(repo.repo)) return repo.repo.replace(/\.git$/, "");
-  try {
-    const u = new URL(repo.url ?? "");
-    if (u.hostname.toLowerCase() !== "github.com") return null;
-    const path = u.pathname.replace(/^\/+/, "").replace(/\.git$/, "");
-    return OWNER_REPO.test(path) ? path : null;
-  } catch {
-    return null;
-  }
 }
 
 /**

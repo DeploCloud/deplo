@@ -68,6 +68,10 @@ minting registration links, the per-user admin editor, and Docker cleanup
   `databaseConsoleInfo`/`databaseLogsInfo`/`databaseShellLabel`, `domains`, `servers`,
   `serverMetrics`, `appMetrics(appId)`/`databaseMetrics(databaseId)` (live per-container
   resource usage for the Monitoring tab) and their `*MetricsHistory` seeds,
+  `detectRepoFramework(repo, buildMethod, …)` (names the JavaScript framework in a
+  GitHub repository *before* an App exists for it — what the new-app wizard shows
+  while you pick a repo; an App carries the same answer on `App.framework`, re-derived
+  by every deploy),
   `members`, `apiTokens`, `activity`, `me`, `viewerTeam`, …. Object
   types are navigable — e.g. `App.deployments`, `App.latestDeployment`.
 - **Mutations** mirror every former server action: `createApp`, `redeploy`,

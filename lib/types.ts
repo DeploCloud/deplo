@@ -1,3 +1,7 @@
+// Type-only (erased at runtime), so the framework catalog can keep importing
+// BuildMethod from here without either module ever forming a runtime cycle.
+import type { FrameworkId } from "./apps/framework-catalog";
+
 export type ID = string;
 
 export type Role = "owner" | "member" | "viewer";
@@ -783,6 +787,18 @@ export interface App {
    * Null ⇒ fall back to a generic icon. NOT the Docker image (`dockerImage`).
    */
   logo: string | null;
+  /**
+   * The JavaScript framework Deplo recognised in this app's own source — a
+   * {@link FrameworkId} from `lib/apps/framework-catalog.ts` ("nextjs",
+   * "astro", …), or null when none was found or the build method isn't one of
+   * the auto-detecting builders (Nixpacks / Railpack), the only ones this
+   * applies to.
+   *
+   * DERIVED, never user-set: every deploy re-detects and overwrites it. Typed as
+   * the id rather than the definition so the stored value stays a plain string;
+   * `frameworkById` resolves it to a name + default port on both sides.
+   */
+  framework: FrameworkId | null;
   /** How this project is deployed (git, docker image, dockerfile, upload). */
   source: DeploySource;
   repo: GitRepo | null;

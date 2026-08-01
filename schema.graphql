@@ -81,6 +81,11 @@ type App {
   dockerImage: String
   domainCount: Int
   folderId: ID
+
+  """
+  The JavaScript framework Deplo recognised in this app's own source ("nextjs", "astro", "nestjs", …), or null when none was found or the app doesn't build with one of the auto-detecting builders (Nixpacks / Railpack). Derived on every deploy — never set by hand.
+  """
+  framework: String
   id: ID
   latestDeployment: Deployment
   logo: String
@@ -1793,6 +1798,31 @@ type Query {
   deployments(appId: String, environment: DeploymentEnvironment, status: DeploymentStatus): [Deployment!]
 
   """
+  Recognise the JavaScript framework in a GitHub repository before an app exists for it — what the new-app wizard shows while you pick a repo. Null when there is nothing to recognise: a build method other than Nixpacks / Railpack (the only ones this applies to), a repository Deplo can't read, or a repository with no framework in it. Reads only; the app's first deploy re-derives and stores the answer.
+  """
+  detectRepoFramework(
+    """Branch to read; empty ⇒ the repository's default branch."""
+    branch: String
+
+    """The build method the app will use, e.g. "nixpacks"."""
+    buildMethod: String!
+
+    """
+    GitHub App installation to read a private repo through. Ignored unless it belongs to the active team.
+    """
+    installationId: String
+
+    """The repository as "owner/name"."""
+    repo: String!
+
+    """Build sub-directory, for a monorepo."""
+    rootDirectory: String
+
+    """Its clone URL, when the caller has one (else derived)."""
+    url: String
+  ): RecognizedFramework
+
+  """
   The instance-wide Docker cleanup policy. Never null: an instance that has never configured cleanup reads as the defaults — enabled, daily, every scope.
   """
   dockerCleanupPolicy: DockerCleanupPolicy
@@ -1942,6 +1972,22 @@ type Query {
 
   """The active team."""
   viewerTeam: Team
+}
+
+"""
+A JavaScript framework Deplo recognised in an app's source, with what it knows about it. Detection only — Deplo never writes build commands from a framework; the auto-detecting builders own that.
+"""
+type RecognizedFramework {
+  """
+  The port this framework's production server binds when nothing tells it otherwise — what a new app's container port defaults to.
+  """
+  defaultPort: Int
+
+  """Stable id, e.g. "nextjs" — also the key for its brand mark."""
+  id: String
+
+  """Display name, e.g. "Next.js"."""
+  name: String
 }
 
 """A single-use link to register a new account."""

@@ -28,9 +28,14 @@ import {
   updateAppResources,
   findAppSummaryBySlugForTeam,
   summarizeForTeam,
+  previewRepoFramework,
   type AppSummary,
   type ResourceLimitsInput,
 } from "@/lib/data/apps";
+import {
+  frameworkById,
+  type FrameworkDefinition,
+} from "@/lib/apps/framework-catalog";
 import { pubSub } from "../pubsub";
 import {
   listDeployments,
@@ -47,6 +52,7 @@ import {
 } from "@/lib/data/deployments";
 import { renderAppStack } from "@/lib/deploy/build";
 import type {
+  BuildMethod,
   Deployment,
   GitRepo,
   LogLine,
@@ -151,6 +157,14 @@ export const AppRef = builder
       }),
       serverId: t.exposeID("serverId"),
       logo: t.exposeString("logo", { nullable: true }),
+      framework: t.exposeString("framework", {
+        nullable: true,
+        description:
+          "The JavaScript framework Deplo recognised in this app's own source " +
+          '("nextjs", "astro", "nestjs", …), or null when none was found or the ' +
+          "app doesn't build with one of the auto-detecting builders (Nixpacks / " +
+          "Railpack). Derived on every deploy — never set by hand.",
+      }),
       source: t.field({ type: DeploySourceEnum, resolve: (p) => p.source }),
       dockerImage: t.exposeString("dockerImage", { nullable: true }),
       compose: t.exposeString("compose", { nullable: true }),
@@ -341,6 +355,28 @@ const UpdateSourceInputType = builder.inputType("UpdateSourceInput", {
   }),
 });
 
+const RecognizedFrameworkRef = builder
+  .objectRef<FrameworkDefinition>("RecognizedFramework")
+  .implement({
+    description:
+      "A JavaScript framework Deplo recognised in an app's source, with what it " +
+      "knows about it. Detection only — Deplo never writes build commands from a " +
+      "framework; the auto-detecting builders own that.",
+    fields: (t) => ({
+      id: t.exposeString("id", {
+        description: 'Stable id, e.g. "nextjs" — also the key for its brand mark.',
+      }),
+      name: t.exposeString("name", {
+        description: 'Display name, e.g. "Next.js".',
+      }),
+      defaultPort: t.exposeInt("defaultPort", {
+        description:
+          "The port this framework's production server binds when nothing tells " +
+          "it otherwise — what a new app's container port defaults to.",
+      }),
+    }),
+  });
+
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
 /* ------------------------------------------------------------------ */
@@ -358,6 +394,59 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     args: { slug: t.arg.string({ required: true }) },
     resolve: (_r, { slug }) => getAppBySlug(slug),
+  }),
+  detectRepoFramework: t.field({
+    type: RecognizedFrameworkRef,
+    nullable: true,
+    authScopes: { capability: "deploy" },
+    description:
+      "Recognise the JavaScript framework in a GitHub repository before an app " +
+      "exists for it — what the new-app wizard shows while you pick a repo. " +
+      "Null when there is nothing to recognise: a build method other than " +
+      "Nixpacks / Railpack (the only ones this applies to), a repository Deplo " +
+      "can't read, or a repository with no framework in it. Reads only; the " +
+      "app's first deploy re-derives and stores the answer.",
+    args: {
+      repo: t.arg.string({
+        required: true,
+        description: 'The repository as "owner/name".',
+      }),
+      url: t.arg.string({
+        required: false,
+        description: "Its clone URL, when the caller has one (else derived).",
+      }),
+      branch: t.arg.string({
+        required: false,
+        description: "Branch to read; empty ⇒ the repository's default branch.",
+      }),
+      installationId: t.arg.string({
+        required: false,
+        description:
+          "GitHub App installation to read a private repo through. Ignored " +
+          "unless it belongs to the active team.",
+      }),
+      buildMethod: t.arg.string({
+        required: true,
+        description: 'The build method the app will use, e.g. "nixpacks".',
+      }),
+      rootDirectory: t.arg.string({
+        required: false,
+        description: "Build sub-directory, for a monorepo.",
+      }),
+    },
+    resolve: async (_r, args) =>
+      frameworkById(
+        await previewRepoFramework({
+          repo: args.repo,
+          url: args.url,
+          branch: args.branch,
+          installationId: args.installationId,
+          // Untrusted string: anything that isn't a real method simply fails the
+          // Nixpacks/Railpack test inside and yields null.
+          buildMethod: args.buildMethod as BuildMethod,
+          rootDirectory: args.rootDirectory,
+        }),
+      ),
   }),
   deployments: t.field({
     type: [DeploymentRef],

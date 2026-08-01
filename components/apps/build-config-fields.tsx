@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { BuildMethodFields } from "@/components/apps/build-method-fields";
 import { NodeVersionInput } from "@/components/apps/node-version-input";
+import { FrameworkRow } from "@/components/apps/framework-badge";
+import { supportsFrameworkDetection } from "@/lib/apps/framework-catalog";
 import { DEFAULT_NODE_MAJOR, usesDefaultNodeMajor } from "@/lib/frameworks";
 import type {
   BuildConfig,
@@ -24,9 +26,19 @@ import type {
 export function BuildConfigFields({
   build,
   onBuildChange,
+  framework,
+  frameworkCaption,
 }: {
   build: BuildConfig;
   onBuildChange: (next: BuildConfig) => void;
+  /**
+   * The framework Deplo recognised in this app's source, if any. Shown — never
+   * edited — and only under a build method recognition applies to, so switching
+   * to a Dockerfile drops the badge with the feature. Absent ⇒ nothing is shown,
+   * which is also what a caller that has no source to read passes.
+   */
+  framework?: string | null;
+  frameworkCaption?: React.ReactNode;
 }) {
   function setBuild(updater: (b: BuildConfig) => BuildConfig) {
     onBuildChange(updater(build));
@@ -59,26 +71,30 @@ export function BuildConfigFields({
     method === "nixpacks" || method === "railpack" || method === "static";
   const showOverrides = showBuildCommand || showStartCommand || showNodeVersion;
 
-  // The port field keeps its own text state so it can be emptied mid-edit. Only a
-  // valid positive integer is committed to the build config; while the field is
-  // blank/invalid the last committed port stays put (so clearing it to type a new
-  // number no longer snaps the default straight back). Blur restores the value if
-  // the user leaves it empty.
-  const [portText, setPortText] = React.useState(() => String(build.port));
+  // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
+  // Only a valid positive integer is committed to the build config; while the
+  // field is blank/invalid the last committed port stays put (so clearing it to
+  // type a new number no longer snaps the default straight back).
+  //
+  // `null` means "no draft — show the committed port", which is also what makes
+  // a port set from OUTSIDE (framework recognition picking the port that
+  // framework's server binds) appear immediately, while a draft in progress keeps
+  // the user's own text until they leave the field.
+  const [portDraft, setPortDraft] = React.useState<string | null>(null);
+  const portText = portDraft ?? String(build.port);
 
   function onPortChange(text: string) {
-    setPortText(text);
+    setPortDraft(text);
     const n = Number(text);
     if (text.trim() !== "" && Number.isInteger(n) && n > 0) {
       setBuild((b) => ({ ...b, port: n }));
     }
   }
 
+  /** Leaving the field drops the draft, so the box shows the committed port
+   * again — which is what restores it after it was emptied or left invalid. */
   function onPortBlur() {
-    const n = Number(portText);
-    if (portText.trim() === "" || !Number.isInteger(n) || n <= 0) {
-      setPortText(String(build.port));
-    }
+    setPortDraft(null);
   }
 
   return (
@@ -89,6 +105,10 @@ export function BuildConfigFields({
         onMethodChange={setBuildMethod}
         onSettingsChange={patchMethodSettings}
       />
+
+      {supportsFrameworkDetection(method) && framework && (
+        <FrameworkRow id={framework} caption={frameworkCaption} />
+      )}
 
       {showOverrides && (
         <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">

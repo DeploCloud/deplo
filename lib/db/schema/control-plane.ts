@@ -632,6 +632,14 @@ export const apps = pgTable(
       { onDelete: "set null" },
     ),
     logo: text("logo"),
+    // The JavaScript framework Deplo recognised in this app's own source
+    // ("nextjs", "astro", …; see lib/apps/framework-catalog.ts), or NULL when
+    // none was found / the build method isn't one of the auto-detecting builders.
+    // DERIVED, never user-set: every deploy re-detects and overwrites it, so it
+    // follows the repo instead of drifting from it. Plain text with no CHECK —
+    // an id written by a newer catalog must round-trip through an older binary
+    // rather than break the row.
+    framework: text("framework"),
     source: text("source").notNull(),
     // Flattened GitRepo (NULL columns when there is no repo).
     repoProvider: text("repo_provider"),

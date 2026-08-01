@@ -43,6 +43,11 @@ import {
 } from "../apps/favicon-detect";
 import type { ServedIconTarget } from "../apps/favicon-agent";
 import { isGithubRepo } from "../apps/favicon-shared";
+import {
+  detectRepoFramework,
+  detectTreeFramework,
+} from "../apps/framework-source";
+import { supportsFrameworkDetection, type FrameworkId } from "../apps/framework-catalog";
 import { planDeploySource, resolveBuildDir } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
 import { usesComposeStack, hostVolumeName, formatBytes } from "../utils";
@@ -77,9 +82,11 @@ import {
 import { connectAgent, agentPreflight } from "../infra/agent-client";
 import { enqueueDeployment } from "./deploy-queue";
 import type {
+  BuildMethod,
   Deployment,
   DeploymentEnvironment,
   EnvTarget,
+  GitRepo,
   LogLine,
   ResourceLimits,
   VolumeMount,
@@ -308,6 +315,86 @@ function autoDetectRepoLogo(
   void detectGithubFavicon(repo, rootDirectory)
     .then((logo) => setLogoIfUnset(appId, logo))
     .catch(() => {});
+}
+
+/**
+ * Store the framework recognised in an app's source. Unlike the logo's
+ * NULL-guarded write, this OVERWRITES: nobody picks this value, so the newest
+ * read of the source is by definition the truthful one — including a null, which
+ * is how an app that moved to a Dockerfile, a prebuilt image or a different
+ * framework stops advertising the old one.
+ *
+ * The unchanged case is a ZERO-ROW update, so a live subscriber is only nudged
+ * when the answer actually changed. Clearing is spelled `is not null` rather than
+ * `is distinct from <null>` — the same split `updateAppLogo` makes — because an
+ * untyped NULL parameter is not something to hand Postgres.
+ */
+async function setFramework(
+  appId: string,
+  framework: FrameworkId | null,
+): Promise<void> {
+  const updated = await getDb()
+    .update(appsTable)
+    .set({ framework, updatedAt: nowIso() })
+    .where(
+      and(
+        eq(appsTable.id, appId),
+        framework === null
+          ? sql`${appsTable.framework} is not null`
+          : sql`${appsTable.framework} is distinct from ${framework}`,
+      ),
+    )
+    .returning({ id: appsTable.id });
+  if (updated.length > 0) publishAppChanged(appId);
+}
+
+/**
+ * Whether THIS deploy can recognise a framework at all: only the auto-detecting
+ * builders (Nixpacks / Railpack — the one gate, shared with the API and the UI)
+ * and only for a source whose files Deplo can read (a repo, an uploaded archive).
+ * Everything else — a compose stack, a prebuilt image, a hand-written Dockerfile —
+ * is the user having already said exactly how the app is built.
+ */
+function canRecognizeFramework(app: {
+  source: string;
+  build: { buildMethod: BuildMethod };
+}): boolean {
+  if (!supportsFrameworkDetection(app.build.buildMethod)) return false;
+  return app.source !== "docker-image" && app.source !== "compose";
+}
+
+/**
+ * Recognise the framework in a GitHub repo and store it. Reads the repo over the
+ * API (the tree is cloned on the agent, never here), so it is FIRE-AND-FORGET
+ * like the logo arm: a GitHub round-trip must not delay a deploy, and the badge
+ * lands a moment later on live subscribers.
+ */
+function autoDetectRepoFramework(
+  appId: string,
+  repo: GitRepo,
+  rootDirectory: string | null | undefined,
+): void {
+  void detectRepoFramework(repo, rootDirectory)
+    .then((framework) => setFramework(appId, framework))
+    .catch(() => {});
+}
+
+/**
+ * Recognise the framework in the tree this deploy just extracted (the upload
+ * arm) and store it. Reuses the tree already on disk — one directory read plus
+ * the manifest — so it is awaited rather than detached, and never re-extracts an
+ * attacker-controlled archive.
+ */
+async function autoDetectFrameworkFromTree(
+  appId: string,
+  root: string,
+  rootDirectory: string | null | undefined,
+): Promise<void> {
+  try {
+    await setFramework(appId, await detectTreeFramework(root, rootDirectory));
+  } catch {
+    /* recognition is a label; never let it disturb a deploy */
+  }
 }
 
 /**
@@ -1098,6 +1185,12 @@ async function runDeployment(depId: string): Promise<void> {
       agentOutcome = outcome === "agent" ? "agent" : "failed";
     };
 
+    // Framework recognition is per-deploy and self-correcting. The arms below
+    // set what they find; this clears what an app can no longer have — it moved
+    // to a Dockerfile, a prebuilt image or a compose stack — so the badge never
+    // outlives the build method that earned it.
+    if (!canRecognizeFramework(project)) void setFramework(project.id, null);
+
     // Decide which source this deployment builds from (see planDeploySource).
     // Each arm materialises a tree (or pulls an image) then funnels through the
     // shared buildImageFromTree, so the rootDirectory containment + build
@@ -1127,6 +1220,12 @@ async function runDeployment(depId: string): Promise<void> {
         // app has none yet. Fire-and-forget so a GitHub round-trip never
         // delays the deploy.
         autoDetectRepoLogo(project.id, project.logo, repo, project.build.rootDirectory);
+        // Same read, same detached shape: name the framework backing the repo so
+        // the app shows what it actually is (and its port default follows the
+        // framework's own server). Only under the auto-detecting builders.
+        if (canRecognizeFramework(project)) {
+          autoDetectRepoFramework(project.id, repo, project.build.rootDirectory);
+        }
         // The OWNING AGENT clones the repo itself (PLAN Part B, D3), the host
         // running Deplo included, so the whole tree never crosses the wire — only
         // the descriptor does. The control plane resolves the authenticated clone
@@ -1192,6 +1291,14 @@ async function runDeployment(depId: string): Promise<void> {
             root,
             project.build.rootDirectory,
           );
+          // And name the framework from that same tree (one directory read).
+          if (canRecognizeFramework(project)) {
+            await autoDetectFrameworkFromTree(
+              project.id,
+              root,
+              project.build.rootDirectory,
+            );
+          }
           await buildAndMaybeAgent({
             workDir: work,
             root,

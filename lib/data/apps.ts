@@ -46,6 +46,7 @@ import { recordActivity } from "./activity";
 import { buildConfigFor } from "../frameworks";
 import type {
   BuildConfig,
+  BuildMethod,
   Deployment,
   DeploySource,
   EnvTarget,
@@ -80,6 +81,12 @@ import { removeUploads } from "../deploy/upload";
 import { isValidLogoValue, isTemplateLogo } from "../apps/logo-shared";
 import { detectAppFavicon } from "../apps/favicon-detect";
 import { faviconSourceKind } from "../apps/favicon-shared";
+import { detectRepoFramework } from "../apps/framework-source";
+import {
+  supportsFrameworkDetection,
+  type FrameworkId,
+} from "../apps/framework-catalog";
+import { listGithubInstallations } from "./github";
 import { AgentUnreachableError } from "../infra/agent-client";
 import { publishAppChanged } from "../graphql/pubsub";
 import {
@@ -570,6 +577,10 @@ export async function createApp(
     // Defaulted from a template's logo (a /templates path); ignore anything that
     // isn't a valid inline logo so a crafted create payload can't store a URL.
     logo: input.logo && isValidLogoValue(input.logo) ? input.logo : null,
+    // Recognised from the app's own source by its FIRST deploy (which starts
+    // below for every source but "upload"), not guessed at creation: the repo
+    // read belongs on the deploy path, where it already happens for the logo.
+    framework: null,
     source: input.source,
     repo: input.repo,
     dockerImage: input.dockerImage ?? null,
@@ -1461,6 +1472,55 @@ export async function redetectAppLogo(id: string): Promise<string> {
   await recordActivity("app", `Detected project logo from source`, user.name, id);
   publishAppChanged(id);
   return logo;
+}
+
+/**
+ * Recognise the framework in a repository the user is ABOUT to deploy — the read
+ * behind the new-app wizard's "Next.js" badge, before any app row exists. Pure
+ * read: it stores nothing, and the value it returns is re-derived (and persisted)
+ * by the app's first deploy anyway.
+ *
+ * Two gates, both real:
+ *  - `deploy`, the same capability creating an app needs. Reading someone's
+ *    repository through the team's GitHub App is not a view-only act.
+ *  - the installation must belong to the ACTIVE TEAM. Installations are
+ *    team-scoped, so an id from another team is dropped rather than used —
+ *    otherwise a crafted request could borrow another team's token to read their
+ *    private repo. Dropping it (instead of failing) degrades to the
+ *    unauthenticated read, which is exactly right for a public repo.
+ *
+ * Null whenever there is nothing to recognise: a build method that isn't one of
+ * the auto-detecting builders, a non-GitHub host, an unreadable repo, or a repo
+ * with no framework in it.
+ */
+export async function previewRepoFramework(input: {
+  repo: string;
+  url?: string | null;
+  branch?: string | null;
+  installationId?: string | null;
+  buildMethod: BuildMethod;
+  rootDirectory?: string | null;
+}): Promise<FrameworkId | null> {
+  await requireCapability("deploy");
+  if (!supportsFrameworkDetection(input.buildMethod)) return null;
+
+  let installationId: string | null = null;
+  if (input.installationId) {
+    const installations = await listGithubInstallations();
+    installationId =
+      installations.find((i) => i.id === input.installationId)?.id ?? null;
+  }
+
+  return detectRepoFramework(
+    {
+      provider: "github",
+      url: input.url?.trim() || `https://github.com/${input.repo.trim()}`,
+      repo: input.repo.trim(),
+      branch: input.branch?.trim() || "",
+      installationId,
+    },
+    input.rootDirectory,
+  );
 }
 
 /** Set a project's status and notify every live subscriber. */

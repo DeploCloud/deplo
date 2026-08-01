@@ -164,6 +164,31 @@ _Avoid_: "stopped" as a stored value (it is `idle`), reading `apps.status` as a 
 adding a writer of the column whose guard is not in its own `WHERE`, treating an App missing
 from a telemetry frame as evidence of anything.
 
+**Framework**:
+The JavaScript framework Deplo **recognised** in an App's own source — Next.js, Nuxt,
+SvelteKit, Astro, NestJS, … — stored as a catalog id on `apps.framework` and shown with the
+project's real brand mark. It is a **fact about the code, never a setting**: there is no
+preset to pick, no mutation that writes it, and it changes nothing about how the App is
+built. Every deploy re-derives it from the App's `package.json` + root config files (read
+over the GitHub API for a repo, off the extracted tree for an upload) and overwrites — so it
+follows the source instead of drifting from it, and clears itself when it no longer applies.
+It exists **only under the auto-detecting builders** (Nixpacks / Railpack), the one gate the
+deploy hook, the API and every screen share (`supportsFrameworkDetection`): with a Dockerfile
+or the static builder the user has already spelled the build out, so naming a framework there
+would be a label that changes nothing. The one thing derived FROM it is the App's default
+container **Port** — the port that framework's production server actually binds (Vite's 4173,
+Angular's 4200), applied while the user is creating the App and theirs to override from the
+moment they touch the field. Catalog (ids, names, ports, signals) in
+[`lib/apps/framework-catalog.ts`](../lib/apps/framework-catalog.ts), the pure rules in
+[`framework-detect.ts`](../lib/apps/framework-detect.ts), the source reads in
+[`framework-source.ts`](../lib/apps/framework-source.ts), and the marks — inlined, never a
+CDN, because a self-hosted Deplo may have no internet — in
+[`components/shared/framework-icons.tsx`](../components/shared/framework-icons.tsx).
+_Avoid_: framework **preset** (the user-picked kind was removed on purpose — the builders
+detect the stack), calling it a build method (that is the separate `buildMethod` axis),
+stack (that word is the App's Docker **Production stack**), language (recognition names a
+framework, and a repo with no JavaScript framework simply has none).
+
 **Project**:
 A top-level, team-scoped **advanced folder** (ADR-0008, remodeled by ADR-0009) whose
 contents are scoped per **Environment**: each environment (picked from a dropdown in the

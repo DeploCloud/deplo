@@ -29,6 +29,7 @@ export default async function AppDeploymentSettingsPage(
         appId={project.id}
         slug={project.slug}
         build={project.build}
+        framework={project.framework}
         autoDeploy={project.autoDeploy}
         source={project.source}
         repo={project.repo}

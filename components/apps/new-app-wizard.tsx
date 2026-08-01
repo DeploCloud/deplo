@@ -44,8 +44,10 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { BuildConfigFields } from "@/components/apps/build-config-fields";
+import { FrameworkRow, FrameworkRowSkeleton } from "@/components/apps/framework-badge";
+import { useRepoFramework } from "@/components/apps/use-repo-framework";
 import { buildConfigFor } from "@/lib/frameworks";
-import type { DeploySource } from "@/lib/types";
+import type { BuildConfig, DeploySource } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, serverLabel } from "@/lib/utils";
@@ -184,7 +186,9 @@ export function NewAppWizard({
     DEFAULT_GIT_DEPLOY_OPTIONS,
   );
   const [advanced, setAdvanced] = React.useState(false);
-  const [build, setBuild] = React.useState(() => buildConfigFor());
+  // What the user has actually chosen. The build config the UI shows and deploys
+  // is `build` below — this with the recognised framework's port layered on.
+  const [draftBuild, setDraftBuild] = React.useState(() => buildConfigFor());
 
   // The compose editor is shared by templates (their baked stack) and the
   // non-template Compose source tab; env rows stay template-only.
@@ -198,6 +202,56 @@ export function NewAppWizard({
   // Build & output settings only apply when Deplo turns code into an image. A
   // prebuilt docker image and a compose stack are deployed as-is.
   const buildsImage = source !== "docker-image" && source !== "compose";
+
+  // ── Framework recognition ────────────────────────────────────────────────
+  // Which repository (if any) Deplo can read to name the framework. GitHub only:
+  // a GitLab / Bitbucket / self-hosted URL has no tree-read path from the control
+  // plane, so asking would always come back empty.
+  const gitRepoParsed = source === "git" ? parseRepo(repoUrl) : null;
+  const detectRepo =
+    source === "github" && ghSelection
+      ? {
+          repo: ghSelection.fullName,
+          url: `https://github.com/${ghSelection.fullName}`,
+          branch: ghSelection.branch || "",
+          installationId: ghSelection.installationId,
+        }
+      : gitRepoParsed && gitRepoParsed.provider === "github"
+        ? { repo: gitRepoParsed.repo, url: repoUrl.trim(), branch, installationId: null }
+        : null;
+
+  const { framework, detecting: detectingFramework } = useRepoFramework({
+    repo: buildsImage && !locked ? detectRepo?.repo ?? null : null,
+    url: detectRepo?.url,
+    branch: detectRepo?.branch,
+    installationId: detectRepo?.installationId,
+    buildMethod: draftBuild.buildMethod,
+    rootDirectory: draftBuild.rootDirectory,
+  });
+
+  // Once a framework is named, the container port follows ITS server instead of a
+  // hardcoded 3000 — the difference between an Astro or Vite app answering on its
+  // own port and one that deploys green and serves nothing.
+  //
+  // DERIVED, not written back into state: the recognised port is layered over the
+  // build config at render time, so there is no effect racing the user's typing
+  // and no stale value to reconcile. The moment the user edits the port it is
+  // theirs (`portTouched`) and the layer stops applying.
+  const [portTouched, setPortTouched] = React.useState(false);
+  const build = React.useMemo(
+    () =>
+      framework && !portTouched && draftBuild.port !== framework.defaultPort
+        ? { ...draftBuild, port: framework.defaultPort }
+        : draftBuild,
+    [draftBuild, framework, portTouched],
+  );
+
+  /** Build-config edits made BY THE USER — the fields edit the config they were
+   * SHOWN (port included), so a hand-set port stops being auto-managed. */
+  function onBuildChange(next: BuildConfig) {
+    if (next.port !== build.port) setPortTouched(true);
+    setDraftBuild(next);
+  }
 
   function onRepoChange(value: string) {
     setRepoUrl(value);
@@ -502,6 +556,22 @@ export function NewAppWizard({
               )}
             </div>
 
+            {/* What Deplo recognised in the repository, as soon as one is
+                picked — the app's framework named with its own mark, and the
+                container port that framework's server actually binds. Shown out
+                here, not inside the collapsed build section, because it is the
+                platform telling the user it understood their code. */}
+            {detectingFramework ? (
+              <FrameworkRowSkeleton />
+            ) : (
+              framework && (
+                <FrameworkRow
+                  id={framework.id}
+                  caption={`Detected in your repository · container port ${build.port}`}
+                />
+              )
+            )}
+
             {/* Build & output settings — the same method-aware controls the
                 app settings page shows, kept inside a collapse so creation
                 stays lean. Only relevant when Deplo builds an image (not for a
@@ -524,7 +594,7 @@ export function NewAppWizard({
 
                 {advanced && (
                   <div className="rounded-lg border border-border p-4">
-                    <BuildConfigFields build={build} onBuildChange={setBuild} />
+                    <BuildConfigFields build={build} onBuildChange={onBuildChange} />
                   </div>
                 )}
               </>

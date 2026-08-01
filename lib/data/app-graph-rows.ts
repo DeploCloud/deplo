@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isFrameworkId } from "../apps/framework-catalog";
 import type {
   BuildConfig,
   BuildMethodSettings,
@@ -178,6 +179,10 @@ export function assembleApp(
     serverId: row.serverId,
     migrateFromServerId: row.migrateFromServerId ?? null,
     logo: row.logo,
+    // Derived, and read back defensively: an id this binary's catalog doesn't
+    // know (a row written by a newer Deplo) reads as "no framework" rather than
+    // leaking an unrenderable value into the UI.
+    framework: isFrameworkId(row.framework ?? "") ? (row.framework as App["framework"]) : null,
     source: row.source as App["source"],
     repo: assembleRepo(row),
     dockerImage: row.dockerImage,
@@ -379,6 +384,7 @@ export function appToRow(p: App): AppInsert {
     serverId: p.serverId,
     migrateFromServerId: p.migrateFromServerId ?? null,
     logo: p.logo ?? null,
+    framework: p.framework ?? null,
     source: p.source,
     repoProvider: p.repo?.provider ?? null,
     repoUrl: p.repo?.url ?? null,

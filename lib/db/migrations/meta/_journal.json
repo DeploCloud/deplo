@@ -365,6 +365,13 @@
       "when": 1784671500000,
       "tag": "0051_add_database_logo",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1784671600000,
+      "tag": "0052_add_app_framework",
+      "breakpoints": true
     }
   ]
 }
