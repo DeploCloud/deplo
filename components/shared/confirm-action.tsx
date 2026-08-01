@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CopyButton } from "@/components/shared/copy-button";
 import type { ActionResult } from "@/lib/result";
 import { cn } from "@/lib/utils";
 
@@ -85,6 +86,7 @@ export function ConfirmAction({
   const open = isControlled ? controlledOpen : internalOpen;
   const [pending, startTransition] = React.useTransition();
   const [typed, setTyped] = React.useState("");
+  const confirmInputId = React.useId();
 
   // Reset the typed phrase on close so a previous attempt never leaves a stale,
   // already-matching value behind the next time the dialog opens. `onOpenChange`
@@ -152,14 +154,32 @@ export function ConfirmAction({
           {extra}
           {confirmText && (
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">
-                Type{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
-                  {confirmText}
-                </code>{" "}
-                to confirm
-              </Label>
+              {/* Copy sits ON the name, not at the end of the sentence: what the
+                  operator does next is paste it into the box below. It stays
+                  OUTSIDE the <label> — a <button> nested in a label becomes that
+                  label's control, so clicking the words would fire a copy
+                  instead of focusing the input. Two labels for one input is
+                  legal and keeps the accessible name the whole phrase. */}
+              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+                <Label
+                  htmlFor={confirmInputId}
+                  className="inline-flex min-w-0 flex-wrap items-center gap-1 text-xs text-muted-foreground"
+                >
+                  Type
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs break-all text-foreground">
+                    {confirmText}
+                  </code>
+                </Label>
+                <CopyButton value={confirmText} className="size-6" />
+                <Label
+                  htmlFor={confirmInputId}
+                  className="text-xs text-muted-foreground"
+                >
+                  to confirm
+                </Label>
+              </div>
               <Input
+                id={confirmInputId}
                 value={typed}
                 onChange={(e) => setTyped(e.target.value)}
                 autoComplete="off"
