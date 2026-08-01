@@ -75,6 +75,7 @@ export function DomainRow({
   domain,
   compose,
   isCompose,
+  showContainer,
   serverIp,
 }: {
   domain: Row;
@@ -86,6 +87,12 @@ export function DomainRow({
    * compose text while deploying a repo/image, and that inference would make
    * the Container cell warn "no service" about a domain that routes fine. */
   isCompose: boolean;
+  /** Whether the table renders the Container column at all (resolved by the page:
+   * only when the app has more than one container to route to, or a row on a
+   * stack names none). With one container every row would print the same name,
+   * so the column is dropped and this cell with it — the header count and the
+   * cells must agree, hence a prop rather than a per-row decision. */
+  showContainer: boolean;
   /** The public IPv4 of the server THIS project is deployed on — the address a
    * custom domain's A record must resolve to. Surfaced in the misconfigured hint
    * so the user knows exactly where to point DNS. It is server-specific (a
@@ -395,28 +402,30 @@ export function DomainRow({
           </div>
         )}
       </TableCell>
-      <TableCell>
-        {unrouted ? (
-          <SimpleTooltip content="This domain doesn't name a container, so nothing serves it. Edit the domain to pick one.">
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
-              Not set
-            </span>
-          </SimpleTooltip>
-        ) : (
-          <SimpleTooltip
-            content={
-              service
-                ? `Compose service “${service}” in the stack deplo-${domain.appSlug}`
-                : "This app runs a single container"
-            }
-          >
-            <span className="font-mono text-xs text-muted-foreground">
-              {container}
-            </span>
-          </SimpleTooltip>
-        )}
-      </TableCell>
+      {showContainer && (
+        <TableCell className="w-56">
+          {unrouted ? (
+            <SimpleTooltip content="This domain doesn't name a container, so nothing serves it. Edit the domain to pick one.">
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <TriangleAlert className="size-3.5 shrink-0 text-[var(--warning,#d97706)]" />
+                Not set
+              </span>
+            </SimpleTooltip>
+          ) : (
+            <SimpleTooltip
+              content={
+                service
+                  ? `Compose service “${service}” in the stack deplo-${domain.appSlug}`
+                  : "This app runs a single container"
+              }
+            >
+              <span className="font-mono text-xs text-muted-foreground">
+                {container}
+              </span>
+            </SimpleTooltip>
+          )}
+        </TableCell>
+      )}
       <TableCell>
         <StatusBadge status={domain.status} />
       </TableCell>

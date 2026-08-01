@@ -4,6 +4,7 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { listServers } from "@/lib/data/servers";
 import { listDomains } from "@/lib/data/domains";
 import { resolveServerIp, productionDomain } from "@/lib/deploy/domains";
+import { composeServiceNames } from "@/lib/deploy/compose-stack";
 import { usesComposeStack } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -51,6 +52,22 @@ export default async function AppDomainsPage(
   // container — the authoritative source check, not "does the app carry compose
   // text" (an app can keep leftover YAML while deploying a repo or an image).
   const isComposeStack = usesComposeStack(project);
+  // The Container column only says something when there is a choice to say it
+  // about. A single-image app has exactly one container, and so does a one-service
+  // stack: the column would then repeat the same string on every row — the very
+  // thing that made the old "App" column useless. It is dropped in that case (the
+  // Edit dialog still names the container), and shown when the stack really has
+  // more than one service, where each domain differs by exactly this.
+  //
+  // The one exception is a row that names NO service on a stack: it routes
+  // nowhere, and that warning lives in this cell, so the column stays even on a
+  // one-service stack while such a row exists.
+  const containerCount = isComposeStack
+    ? composeServiceNames(project.compose).length
+    : 1;
+  const showContainer =
+    containerCount > 1 ||
+    (isComposeStack && domains.some((d) => !(d.service ?? "").trim()));
 
   // Every domain mutation now re-applies routing to the running container itself
   // (see `applyRouting` in lib/graphql/types/domain.ts), so a settled domain is
@@ -119,9 +136,13 @@ export default async function AppDomainsPage(
                   <TableHead>Domain</TableHead>
                   {/* What the hostname reaches, not who owns it: the owning App
                       is the page you are already on, so its name was the same
-                      on every row. A compose stack shows the service the router
-                      targets, a single-image app its one container. */}
-                  <TableHead>Container</TableHead>
+                      on every row. Only rendered when the app has more than one
+                      container to route to (see `showContainer`) — otherwise
+                      every row would name the same one. Sized so a real compose
+                      service name fits on one line instead of wrapping. */}
+                  {showContainer && (
+                    <TableHead className="w-56">Container</TableHead>
+                  )}
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -133,10 +154,11 @@ export default async function AppDomainsPage(
                     domain={d}
                     compose={project.compose}
                     isCompose={isComposeStack}
+                    showContainer={showContainer}
                     serverIp={serverIp}
                   />
                 ))}
-                <PendingRows columns={4} />
+                <PendingRows columns={showContainer ? 4 : 3} />
               </TableBody>
             </Table>
           </div>
