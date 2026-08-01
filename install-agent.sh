@@ -332,7 +332,7 @@ services:
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
-      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@deluxhost.net}
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@acme.com}
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
     ports:
       - "80:80"

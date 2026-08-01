@@ -83,7 +83,7 @@ PostgreSQL is the only control-plane data store, so `DEPLO_DATABASE_URL` (or `DA
 
 | | Development login |
 | --- | --- |
-| **Email** | `admin@deluxhost.net` |
+| **Email** | `admin@acme.com` |
 | **Password** | `deplo-admin-2026` *(development convenience only)* |
 
 > [!IMPORTANT]
