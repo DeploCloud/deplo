@@ -86,8 +86,13 @@ export interface ConsoleInstance {
   restartCount: number;
 }
 
-export function containerName(p: App): string {
-  return `deplo-${p.slug}`;
+/**
+ * The container an App's console/logs attach to. `deployKey` defaults to the
+ * app's own slug — a pull request preview passes its key
+ * (`<slug>__pr-<n>`) to reach its own container instead.
+ */
+export function containerName(p: App, deployKey: string = p.slug): string {
+  return `deplo-${deployKey}`;
 }
 
 /**

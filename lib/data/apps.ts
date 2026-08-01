@@ -76,6 +76,7 @@ import {
   blueprintWantsTls,
 } from "../deploy/domains";
 import { teardownApp } from "./deployments";
+import { destroyPreviewsForApp } from "../deploy/preview-lifecycle";
 import { withKeyedLock } from "./keyed-mutex";
 import { removeUploads } from "../deploy/upload";
 import { isValidLogoValue, isTemplateLogo } from "../apps/logo-shared";
@@ -1615,6 +1616,9 @@ export async function deleteApp(id: string): Promise<void> {
   // lock and aborts instead of resurrecting the stack. Closes the orphan race the
   // keyed-mutex already prevents for databases.
   const tornDown = await withKeyedLock(`app-lifecycle:${id}`, async () => {
+    // Pull request previews FIRST: the DELETE below cascades their rows away,
+    // and with them the only record that those containers and volumes exist.
+    await destroyPreviewsForApp(id).catch(() => {});
     const ok = await teardownApp(project.slug);
     // Drop any uploaded archive backing an "upload" source.
     await removeUploads(id).catch(() => {});
@@ -1675,6 +1679,8 @@ export async function deleteApps(ids: string[]): Promise<number> {
   const unreachable: string[] = [];
   await mapLimit(apps, 4, async (project) => {
     const tornDown = await withKeyedLock(`app-lifecycle:${project.id}`, async () => {
+      // Preview stacks first — see deleteApp.
+      await destroyPreviewsForApp(project.id).catch(() => {});
       const ok = await teardownApp(project.slug).catch(() => false);
       await removeUploads(project.id).catch(() => {});
       await getDb().delete(appsTable).where(eq(appsTable.id, project.id));

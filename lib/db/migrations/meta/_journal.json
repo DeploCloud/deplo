@@ -372,6 +372,13 @@
       "when": 1784671600000,
       "tag": "0052_add_app_framework",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1784671700000,
+      "tag": "0053_add_app_previews",
+      "breakpoints": true
     }
   ]
 }

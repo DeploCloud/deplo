@@ -31,7 +31,7 @@ const base = {
   image: "deplo/demo:abc123",
   port: 3000,
   appId: "p1",
-  slug: "demo",
+  deployKey: "demo",
   routes: [route],
   env: { FOO: "bar" },
 };

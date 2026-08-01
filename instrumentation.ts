@@ -120,6 +120,18 @@ export async function register(): Promise<void> {
     console.error("[deplo] docker-cleanup reconcile/scheduler startup failed:", e);
   }
   try {
+    // The pull request preview reaper — a third sibling under its own lease.
+    // No reconcile to await: unlike backups and cleanup it keeps no `running`
+    // rows, and every predicate it uses is a plain DB state query, so a tick
+    // that never happened costs nothing. Its boot tick IS load-bearing though:
+    // it is what turns an outage into minutes of delay for a preview whose pull
+    // request closed while we were down, rather than a stack left running.
+    const { startPreviewReaper } = await import("./lib/previews/reaper");
+    startPreviewReaper();
+  } catch (e) {
+    console.error("[deplo] preview reaper startup failed:", e);
+  }
+  try {
     // Finally the metrics stream supervisor — holds ONE long-lived telemetry
     // stream per server, which is what keeps every Monitoring chart warm whether
     // or not anybody has the page open (no reconcile to wait on: its state is
@@ -173,6 +185,9 @@ export async function register(): Promise<void> {
         .catch(() => {});
       void import("./lib/docker-cleanup/scheduler")
         .then(({ releaseDockerCleanupLease }) => releaseDockerCleanupLease())
+        .catch(() => {});
+      void import("./lib/previews/reaper")
+        .then(({ releasePreviewReaperLease }) => releasePreviewReaperLease())
         .catch(() => {});
     });
   }

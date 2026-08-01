@@ -854,6 +854,19 @@ export interface Deployment {
   appId: ID;
   status: DeploymentStatus;
   environment: DeploymentEnvironment;
+  /**
+   * The host-side KEY this deploy owns: the container `deplo-<key>`, the stack
+   * file `<key>.yml`, the files dir `files/<key>`, the named volumes
+   * `deplo-<key>-<name>` and every agent RPC. For production it IS the app slug;
+   * for a pull request preview it is `<slug>__pr-<n>`. See
+   * {@link ../deploy/deploy-key}.
+   */
+  deployKey: string;
+  /** The pull request preview this deploy belongs to, or null for production. */
+  previewId: ID | null;
+  /** Denormalized pull request number, so the deployments list can still say
+   *  "PR #42" after the preview row is reaped. Null for production. */
+  prNumber: number | null;
   commitSha: string;
   commitMessage: string;
   commitAuthor: string;
