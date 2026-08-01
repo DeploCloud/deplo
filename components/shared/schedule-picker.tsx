@@ -34,6 +34,10 @@ const pad = (n: number) => String(n).padStart(2, "0");
 /** Order the groups appear in, taken from the options list itself. */
 const GROUPS = [...new Set(SCHEDULE_OPTIONS.map((o) => o.group))];
 
+const DEFAULT_INFO =
+  "How often this runs. Pick a frequency — the details it needs appear next to it. " +
+  "Writing a cron expression by hand is the last option in the list.";
+
 /* The "have we hydrated yet?" store: nothing to subscribe to, the snapshot just
    differs between the two renderers. */
 const NEVER_CHANGES = () => () => {};
@@ -66,14 +70,26 @@ const onServer = () => false;
 export function SchedulePicker({
   value,
   onChange,
+  trailing,
   disabled,
   id = "schedule",
+  label = "Schedule",
+  info = DEFAULT_INFO,
 }: {
   value: string;
   onChange: (cron: string) => void;
+  /**
+   * One more field to lay out on the SAME axis as the time of day — retention,
+   * in every current call site. The picker owns that row's grid, so a caller
+   * can't line its own field up with the time from outside.
+   */
+  trailing?: React.ReactNode;
   disabled?: boolean;
   /** Prefix for the generated control ids, so labels bind in a page with two pickers. */
   id?: string;
+  /** The frequency field's own label — the picker renders it, to stay aligned with `trailing`. */
+  label?: React.ReactNode;
+  info?: React.ReactNode;
 }) {
   const [parts, setParts] = React.useState<ScheduleParts>(
     () => partsFromCron(value) ?? DEFAULT_PARTS,
@@ -120,101 +136,92 @@ export function SchedulePicker({
 
   const needsTime = mode === "daily" || mode === "weekly" || mode === "monthly";
 
-  return (
-    <div className="space-y-2">
-      <Select value={mode} onValueChange={pickMode} disabled={disabled}>
-        <SelectTrigger id={id} aria-label="Frequency">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {GROUPS.map((group) => (
-            <SelectGroup key={group}>
-              <SelectLabel>{group}</SelectLabel>
-              {SCHEDULE_OPTIONS.filter((o) => o.group === group).map((o) => (
-                <SelectItem key={o.mode} value={o.mode}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          ))}
-          <SelectSeparator />
-          <SelectGroup>
-            <SelectLabel>Advanced</SelectLabel>
-            <SelectItem value="custom">Custom cron expression</SelectItem>
-          </SelectGroup>
-        </SelectContent>
-      </Select>
+  // The one follow-up the chosen frequency needs BESIDES a time, if any. It
+  // shares the first row with the frequency itself so the second row is always
+  // the "when / how long" pair.
+  const dayField =
+    mode === "weekly" ? (
+      <div className="space-y-2">
+        <FieldLabel htmlFor={`${id}-weekday`} info="Which day of the week it runs on.">
+          Day
+        </FieldLabel>
+        <Select
+          value={String(parts.weekday)}
+          onValueChange={(v) => apply({ ...parts, weekday: Number(v) })}
+          disabled={disabled}
+        >
+          <SelectTrigger id={`${id}-weekday`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {WEEKDAY_LABELS.map((label, i) => (
+              <SelectItem key={label} value={String(i)}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    ) : mode === "monthly" ? (
+      <div className="space-y-2">
+        <FieldLabel
+          htmlFor={`${id}-day`}
+          info={`Which day of the month it runs on. Stops at ${MAX_MONTH_DAY} on purpose — a later day would silently skip the months that don't have it.`}
+        >
+          Day of month
+        </FieldLabel>
+        <Select
+          value={String(parts.day)}
+          onValueChange={(v) => apply({ ...parts, day: Number(v) })}
+          disabled={disabled}
+        >
+          <SelectTrigger id={`${id}-day`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Array.from({ length: MAX_MONTH_DAY }, (_, i) => i + 1).map((d) => (
+              <SelectItem key={d} value={String(d)}>
+                {d}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    ) : null;
 
-      {/* Only the frequency that was chosen gets to ask a follow-up question. */}
-      {needsTime && (
-        <div className={mode === "daily" ? "grid gap-3" : "grid gap-3 sm:grid-cols-2"}>
-          {mode === "weekly" && (
-            <div className="space-y-2">
-              <FieldLabel htmlFor={`${id}-weekday`} info="Which day of the week it runs on.">
-                Day
-              </FieldLabel>
-              <Select
-                value={String(parts.weekday)}
-                onValueChange={(v) => apply({ ...parts, weekday: Number(v) })}
-                disabled={disabled}
-              >
-                <SelectTrigger id={`${id}-weekday`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {WEEKDAY_LABELS.map((label, i) => (
-                    <SelectItem key={label} value={String(i)}>
-                      {label}
+  return (
+    <div className="space-y-3">
+      {/* Row 1 — how often, plus the day that frequency has to pin down. */}
+      <div className={dayField ? "grid gap-3 sm:grid-cols-2" : "grid gap-3"}>
+        <div className="space-y-2">
+          <FieldLabel htmlFor={id} info={info}>
+            {label}
+          </FieldLabel>
+          <Select value={mode} onValueChange={pickMode} disabled={disabled}>
+            <SelectTrigger id={id}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {GROUPS.map((group) => (
+                <SelectGroup key={group}>
+                  <SelectLabel>{group}</SelectLabel>
+                  {SCHEDULE_OPTIONS.filter((o) => o.group === group).map((o) => (
+                    <SelectItem key={o.mode} value={o.mode}>
+                      {o.label}
                     </SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          {mode === "monthly" && (
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor={`${id}-day`}
-                info={`Which day of the month it runs on. Stops at ${MAX_MONTH_DAY} on purpose — a later day would silently skip the months that don't have it.`}
-              >
-                Day of month
-              </FieldLabel>
-              <Select
-                value={String(parts.day)}
-                onValueChange={(v) => apply({ ...parts, day: Number(v) })}
-                disabled={disabled}
-              >
-                <SelectTrigger id={`${id}-day`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: MAX_MONTH_DAY }, (_, i) => i + 1).map((d) => (
-                    <SelectItem key={d} value={String(d)}>
-                      {d}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor={`${id}-time`}
-              info="The time of day it runs, in UTC. The line below shows when that lands in your own timezone."
-            >
-              Time (UTC)
-            </FieldLabel>
-            <Input
-              id={`${id}-time`}
-              type="time"
-              step={60}
-              value={`${pad(parts.hour)}:${pad(parts.minute)}`}
-              onChange={(e) => pickTime(e.target.value)}
-              disabled={disabled}
-            />
-          </div>
+                </SelectGroup>
+              ))}
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>Advanced</SelectLabel>
+                <SelectItem value="custom">Custom cron expression</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
-      )}
+        {dayField}
+      </div>
 
       {custom && (
         <Input
@@ -227,6 +234,33 @@ export function SchedulePicker({
           spellCheck={false}
           disabled={disabled}
         />
+      )}
+
+      {/* Row 2 — the time of day, on the same axis as whatever the caller pairs
+          with it (retention, in every current call site). Two columns even when
+          only one is filled, so a lone field keeps a field's width. */}
+      {(needsTime || trailing) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {needsTime && (
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor={`${id}-time`}
+                info="The time of day it runs, in UTC. The line below shows when that lands in your own timezone."
+              >
+                Time (UTC)
+              </FieldLabel>
+              <Input
+                id={`${id}-time`}
+                type="time"
+                step={60}
+                value={`${pad(parts.hour)}:${pad(parts.minute)}`}
+                onChange={(e) => pickTime(e.target.value)}
+                disabled={disabled}
+              />
+            </div>
+          )}
+          {trailing}
+        </div>
       )}
 
       {valid ? (

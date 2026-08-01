@@ -311,32 +311,29 @@ function EditBackupDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor="edit-backup-schedule"
-                info="How often this backup runs. Pick a frequency — the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
-              >
-                Schedule
-              </FieldLabel>
-              <SchedulePicker
-                id="edit-backup-schedule"
-                value={schedule}
-                onChange={setSchedule}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <FieldLabel info="How many days to keep each backup before it's pruned.">
-                  Retention (days)
-                </FieldLabel>
-                <Input
-                  type="number"
-                  value={retention}
-                  onChange={(e) => setRetention(Number(e.target.value) || 7)}
-                  min={1}
-                />
-              </div>
-            </div>
+            <SchedulePicker
+              id="edit-backup-schedule"
+              value={schedule}
+              onChange={setSchedule}
+              info="How often this backup runs. Pick a frequency — the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
+              trailing={
+                <div className="space-y-2">
+                  <FieldLabel
+                    htmlFor="edit-backup-retention"
+                    info="How many days to keep each backup before it's pruned."
+                  >
+                    Retention (days)
+                  </FieldLabel>
+                  <Input
+                    id="edit-backup-retention"
+                    type="number"
+                    value={retention}
+                    onChange={(e) => setRetention(Number(e.target.value) || 7)}
+                    min={1}
+                  />
+                </div>
+              }
+            />
           </div>
           <DialogFooter>
             <Button

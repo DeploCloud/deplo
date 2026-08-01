@@ -479,34 +479,31 @@ function ScheduleFormFields({
           </SelectContent>
         </Select>
       </div>
-      <div className="space-y-2">
-        <FieldLabel
-          htmlFor="app-backup-schedule"
-          info="How often this backup runs. Pick a frequency — the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
-        >
-          Schedule
-        </FieldLabel>
-        <SchedulePicker
-          id="app-backup-schedule"
-          value={fields.schedule}
-          onChange={(cron) => onChange((f) => ({ ...f, schedule: cron }))}
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <FieldLabel info="How long completed backup artifacts are kept in the destination before older ones are pruned.">
-            Retention (days)
-          </FieldLabel>
-          <Input
-            type="number"
-            value={fields.retention}
-            onChange={(e) =>
-              onChange((f) => ({ ...f, retention: Number(e.target.value) || 7 }))
-            }
-            min={1}
-          />
-        </div>
-      </div>
+      <SchedulePicker
+        id="app-backup-schedule"
+        value={fields.schedule}
+        onChange={(cron) => onChange((f) => ({ ...f, schedule: cron }))}
+        info="How often this backup runs. Pick a frequency — the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
+        trailing={
+          <div className="space-y-2">
+            <FieldLabel
+              htmlFor="app-backup-retention"
+              info="How long completed backup artifacts are kept in the destination before older ones are pruned."
+            >
+              Retention (days)
+            </FieldLabel>
+            <Input
+              id="app-backup-retention"
+              type="number"
+              value={fields.retention}
+              onChange={(e) =>
+                onChange((f) => ({ ...f, retention: Number(e.target.value) || 7 }))
+              }
+              min={1}
+            />
+          </div>
+        }
+      />
     </div>
   );
 }
