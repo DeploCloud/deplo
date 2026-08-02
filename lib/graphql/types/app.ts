@@ -30,6 +30,7 @@ import {
   findAppSummaryBySlugForTeam,
   summarizeForTeam,
   previewRepoFramework,
+  setAppFramework,
   type AppSummary,
   type ResourceLimitsInput,
 } from "@/lib/data/apps";
@@ -40,6 +41,7 @@ import {
   type AppTransferTarget,
 } from "@/lib/data/app-transfer";
 import {
+  effectiveFramework,
   frameworkById,
   type FrameworkDefinition,
 } from "@/lib/apps/framework-catalog";
@@ -164,13 +166,21 @@ export const AppRef = builder
       }),
       serverId: t.exposeID("serverId"),
       logo: t.exposeString("logo", { nullable: true }),
-      framework: t.exposeString("framework", {
+      framework: t.string({
         nullable: true,
         description:
-          "The JavaScript framework Deplo recognised in this app's own source " +
+          "The JavaScript framework backing this app " +
           '("nextjs", "astro", "nestjs", …), or null when none was found or the ' +
           "app doesn't build with one of the auto-detecting builders (Nixpacks / " +
-          "Railpack). Derived on every deploy — never set by hand.",
+          "Railpack). Detected on every deploy, unless setAppFramework has " +
+          "corrected it — in which case that choice is what this returns.",
+        resolve: (p) => effectiveFramework(p),
+      }),
+      frameworkDetected: t.exposeString("framework", {
+        nullable: true,
+        description:
+          "What the LAST DEPLOY actually read from the source, ignoring any " +
+          "correction. Equals `framework` unless the user overrode it.",
       }),
       source: t.field({ type: DeploySourceEnum, resolve: (p) => p.source }),
       dockerImage: t.exposeString("dockerImage", { nullable: true }),
@@ -662,6 +672,22 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, build }) => {
       await updateAppBuild(id, remapBuildInput(build) as never);
+      return reloadApp(id);
+    },
+  }),
+  setAppFramework: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Correct the framework Deplo recognised in this app's source (a catalog " +
+      "id such as \"vite\"), or pass null to go back to trusting detection. The " +
+      "correction survives every later deploy's re-detection.",
+    args: {
+      id: t.arg.string({ required: true }),
+      framework: t.arg.string({ required: false }),
+    },
+    resolve: async (_r, { id, framework }) => {
+      await setAppFramework(id, framework ?? null);
       return reloadApp(id);
     },
   }),

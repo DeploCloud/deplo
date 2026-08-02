@@ -83,6 +83,8 @@ import { detectAppFavicon } from "../apps/favicon-detect";
 import { faviconSourceKind } from "../apps/favicon-shared";
 import { detectRepoFramework } from "../apps/framework-source";
 import {
+  frameworkById,
+  isFrameworkId,
   supportsFrameworkDetection,
   type FrameworkId,
 } from "../apps/framework-catalog";
@@ -581,6 +583,8 @@ export async function createApp(
     // below for every source but "upload"), not guessed at creation: the repo
     // read belongs on the deploy path, where it already happens for the logo.
     framework: null,
+    // Nothing to correct before anything has been detected.
+    frameworkOverride: null,
     source: input.source,
     repo: input.repo,
     dockerImage: input.dockerImage ?? null,
@@ -1568,6 +1572,47 @@ export async function previewRepoFramework(input: {
     },
     input.rootDirectory,
   );
+}
+
+/**
+ * Correct the framework Deplo recognised in this app's source — or drop the
+ * correction (`framework: null`) and go back to trusting detection.
+ *
+ * Written to its own column, never over `apps.framework`: the deploy keeps
+ * re-detecting into that one, so a shared column would silently lose the choice
+ * on the next push. Which one wins is {@link effectiveFramework}'s answer, not
+ * this function's.
+ *
+ * Gated like every other build setting (`configure_apps` + the folder gate) — it
+ * changes which port the app is routed on, so it is a configuration change, not
+ * a label edit. An id the catalog doesn't know is refused rather than stored:
+ * unlike a value detection wrote, this one comes from a client.
+ */
+export async function setAppFramework(
+  id: string,
+  framework: string | null,
+): Promise<void> {
+  const { membership } = await requireCapability("configure_apps");
+  const user = (await getCurrentUser())!;
+  await requireFolderCapabilityForApp(id, "configure_apps");
+  const value = framework?.trim() || null;
+  if (value !== null && !isFrameworkId(value))
+    throw new Error(`Unknown framework "${value}"`);
+  const updated = await getDb()
+    .update(appsTable)
+    .set({ frameworkOverride: value, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+    .returning({ id: appsTable.id });
+  if (updated.length === 0) throw new Error("App not found");
+  await recordActivity(
+    "app",
+    value
+      ? `Set framework to ${frameworkById(value)?.name ?? value}`
+      : `Reset framework to what deplo detects`,
+    user.name,
+    id,
+  );
+  publishAppChanged(id);
 }
 
 /** Set a project's status and notify every live subscriber. */

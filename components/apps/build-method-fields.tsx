@@ -3,7 +3,6 @@
 import * as React from "react";
 import { FileCode2, Boxes, Layers, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RailpackVersionInput } from "@/components/apps/railpack-version-input";
@@ -63,22 +62,21 @@ export function BuildMethodFields({
 }) {
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>Build Method</Label>
-        <div
-          role="radiogroup"
-          aria-label="Build method"
-          className="grid gap-2 sm:grid-cols-2"
-        >
-          {BUILD_METHODS.map((m) => (
-            <MethodCard
-              key={m.id}
-              meta={m}
-              selected={m.id === method}
-              onSelect={() => onMethodChange(m.id)}
-            />
-          ))}
-        </div>
+      {/* No heading of its own: the caller titles this group, and two "Build
+          method" labels stacked on each other is noise. */}
+      <div
+        role="radiogroup"
+        aria-label="Build method"
+        className="grid gap-2 sm:grid-cols-2"
+      >
+        {BUILD_METHODS.map((m) => (
+          <MethodCard
+            key={m.id}
+            meta={m}
+            selected={m.id === method}
+            onSelect={() => onMethodChange(m.id)}
+          />
+        ))}
       </div>
 
       <MethodSettings

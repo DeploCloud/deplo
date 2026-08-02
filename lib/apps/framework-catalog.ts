@@ -16,9 +16,12 @@
  *    (Nixpacks / Railpack) — see {@link supportsFrameworkDetection}. A Dockerfile
  *    or the static builder is the user telling Deplo exactly how to build; naming
  *    a framework there would be decoration that changes nothing.
- *  - There is NO manual override. A framework the user could pick would have to
- *    change the build to be worth picking, and it can't — so it stays a fact
- *    about the repo, not a setting.
+ *  - The user CAN correct it (`apps.framework_override`, read through
+ *    {@link effectiveFramework}). Detection is a heuristic over a `package.json`,
+ *    and where it guesses wrong it guesses wrong about the PORT — a Vite SPA that
+ *    still carries `next` deploys green on 3000 and answers nothing on 4173. The
+ *    correction changes the name and the port default; it still writes no build
+ *    commands, which remains the auto-detecting builders' job alone.
  *
  * Pure and isomorphic: the detector (server) and the UI (client) both read this,
  * so the badge and the port can never disagree about what was found.
@@ -313,6 +316,19 @@ export function frameworkById(
 /** Narrow an untrusted string to a catalog id. */
 export function isFrameworkId(value: string): value is FrameworkId {
   return BY_ID.has(value);
+}
+
+/**
+ * The framework an app actually IS: the user's correction when they made one,
+ * otherwise what the last deploy read from the source. The single reader — the
+ * badge, the settings card and the API all go through it, so "which one wins?"
+ * has exactly one answer and a stale override can never outlive being cleared.
+ */
+export function effectiveFramework(app: {
+  framework: string | null;
+  frameworkOverride: string | null;
+}): string | null {
+  return app.frameworkOverride ?? app.framework;
 }
 
 /**

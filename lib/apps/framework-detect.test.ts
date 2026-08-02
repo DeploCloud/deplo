@@ -9,6 +9,7 @@ import {
 } from "./framework-detect";
 import {
   FRAMEWORKS,
+  effectiveFramework,
   frameworkById,
   isFrameworkId,
   supportsFrameworkDetection,
@@ -172,6 +173,26 @@ test("recognition applies to the auto-detecting builders only", () => {
   assert.equal(supportsFrameworkDetection("railpack"), true);
   assert.equal(supportsFrameworkDetection("dockerfile"), false);
   assert.equal(supportsFrameworkDetection("static"), false);
+});
+
+test("a user's correction outranks detection, and only when it's set", () => {
+  assert.equal(
+    effectiveFramework({ framework: "nextjs", frameworkOverride: null }),
+    "nextjs",
+  );
+  assert.equal(
+    effectiveFramework({ framework: "nextjs", frameworkOverride: "vite" }),
+    "vite",
+  );
+  // A correction on an app detection never named is still the answer.
+  assert.equal(
+    effectiveFramework({ framework: null, frameworkOverride: "vite" }),
+    "vite",
+  );
+  assert.equal(
+    effectiveFramework({ framework: null, frameworkOverride: null }),
+    null,
+  );
 });
 
 test("the catalog itself stays coherent", () => {

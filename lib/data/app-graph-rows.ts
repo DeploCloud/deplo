@@ -185,6 +185,11 @@ export function assembleApp(
     // know (a row written by a newer Deplo) reads as "no framework" rather than
     // leaking an unrenderable value into the UI.
     framework: isFrameworkId(row.framework ?? "") ? (row.framework as App["framework"]) : null,
+    // The user's correction, read back with the same defensiveness. Null (the
+    // common case) means "trust detection".
+    frameworkOverride: isFrameworkId(row.frameworkOverride ?? "")
+      ? (row.frameworkOverride as App["framework"])
+      : null,
     source: row.source as App["source"],
     repo: assembleRepo(row),
     dockerImage: row.dockerImage,
@@ -387,6 +392,7 @@ export function appToRow(p: App): AppInsert {
     migrateFromServerId: p.migrateFromServerId ?? null,
     logo: p.logo ?? null,
     framework: p.framework ?? null,
+    frameworkOverride: p.frameworkOverride ?? null,
     source: p.source,
     repoProvider: p.repo?.provider ?? null,
     repoUrl: p.repo?.url ?? null,

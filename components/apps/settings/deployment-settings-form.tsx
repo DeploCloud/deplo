@@ -134,17 +134,20 @@ export function DeploymentSettingsForm({
   servers,
   installations,
   framework,
+  frameworkOverride: initialFrameworkOverride,
 }: {
   appId: string;
   slug: string;
   build: BuildConfig;
   /**
-   * The framework the LAST DEPLOY recognised in this app's source, shown in the
-   * build card. Not live and not editable: every deploy re-derives it, so what
-   * settings shows is what actually built the app, not a guess about what the
-   * next build will find.
+   * The framework the LAST DEPLOY recognised in this app's source. Not live:
+   * every deploy re-derives it, so what settings shows is what actually built
+   * the app, not a guess about what the next build will find.
    */
   framework: string | null;
+  /** The user's correction to that, or null to trust detection. Editable in the
+   * build card and saved by its Save button. */
+  frameworkOverride: string | null;
   autoDeploy: boolean;
   source: DeploySource;
   repo: GitRepo | null;
@@ -157,6 +160,13 @@ export function DeploymentSettingsForm({
 }) {
   const router = useRouter();
   const [build, setBuild] = React.useState<BuildConfig>(initialBuild);
+  // The framework correction. Lives beside `build` rather than inside it: it is
+  // a column on the app, not build config, so it saves through its own mutation —
+  // but it belongs to the Build & Output card, so it shares that card's dirty
+  // state and its one Save button.
+  const [frameworkOverride, setFrameworkOverride] = React.useState(
+    initialFrameworkOverride,
+  );
   const [autoDeploy, setAutoDeploy] = React.useState(initialAutoDeploy);
   const [pending, startTransition] = React.useTransition();
   // The git deploy-trigger options are advanced and rarely changed, so the whole
@@ -308,14 +318,22 @@ export function DeploymentSettingsForm({
         startCommand: build.startCommand,
         runtimeVersion: build.runtimeVersion,
         port: build.port,
+        // Saved by a second mutation, but from the same card and the same
+        // button — so it counts as the same card's dirt.
+        frameworkOverride,
       }),
-    [build],
+    [build, frameworkOverride],
   );
   const currentRootKey = React.useMemo(
     () => JSON.stringify({ rootDirectory: build.rootDirectory }),
     [build.rootDirectory],
   );
   const [savedBuildKey, setSavedBuildKey] = React.useState(currentBuildKey);
+  // Tracked on its own too, so saveBuild only spends the extra mutation when the
+  // framework is what actually changed.
+  const [savedFrameworkOverride, setSavedFrameworkOverride] = React.useState(
+    initialFrameworkOverride,
+  );
   const [savedRootKey, setSavedRootKey] = React.useState(currentRootKey);
   const buildDirty = currentBuildKey !== savedBuildKey;
   const rootDirty = currentRootKey !== savedRootKey;
@@ -518,20 +536,45 @@ export function DeploymentSettingsForm({
 
   function saveBuild() {
     const committed = currentBuildKey;
-    persistBuildPatch(
-      {
-        buildMethod: build.buildMethod,
-        settings: build.methodSettings,
-        installCommand: build.installCommand,
-        buildCommand: build.buildCommand,
-        outputDir: build.outputDirectory,
-        startCommand: build.startCommand,
-        runtimeVersion: build.runtimeVersion,
-        port: build.port,
-      },
-      () => setSavedBuildKey(committed),
-      "Build settings saved",
-    );
+    // The framework correction is a column on the app, not build config, so it
+    // takes a second mutation. It goes FIRST: if it fails, nothing has been
+    // half-saved and the card stays dirty in full.
+    startTransition(async () => {
+      if (frameworkOverride !== savedFrameworkOverride) {
+        const res = await gqlAction(
+          `mutation($id: String!, $framework: String) { setAppFramework(id: $id, framework: $framework) { id } }`,
+          { id: appId, framework: frameworkOverride },
+        );
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        setSavedFrameworkOverride(frameworkOverride);
+      }
+      const res = await gqlAction(
+        `mutation($id: String!, $build: BuildConfigInput!) { updateAppBuild(id: $id, build: $build) { id } }`,
+        {
+          id: appId,
+          build: {
+            buildMethod: build.buildMethod,
+            settings: build.methodSettings,
+            installCommand: build.installCommand,
+            buildCommand: build.buildCommand,
+            outputDir: build.outputDirectory,
+            startCommand: build.startCommand,
+            runtimeVersion: build.runtimeVersion,
+            port: build.port,
+          },
+        },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setSavedBuildKey(committed);
+      router.refresh();
+      toast.success("Build settings saved");
+    });
   }
 
   function saveRootDir() {
@@ -850,8 +893,9 @@ export function DeploymentSettingsForm({
               <BuildConfigFields
                 build={build}
                 onBuildChange={setBuild}
-                framework={framework}
-                frameworkCaption="Detected in your source on the last deploy. Deplo re-checks on every one."
+                framework={frameworkOverride ?? framework}
+                detectedFramework={framework}
+                onFrameworkChange={setFrameworkOverride}
               />
               {/* Advanced: the build cache. Collapsed by default (nobody's first
                   deploy needs it) with its current state in the closed header, so

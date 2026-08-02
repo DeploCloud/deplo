@@ -721,11 +721,17 @@ export const apps = pgTable(
     // The JavaScript framework Deplo recognised in this app's own source
     // ("nextjs", "astro", …; see lib/apps/framework-catalog.ts), or NULL when
     // none was found / the build method isn't one of the auto-detecting builders.
-    // DERIVED, never user-set: every deploy re-detects and overwrites it, so it
-    // follows the repo instead of drifting from it. Plain text with no CHECK —
-    // an id written by a newer catalog must round-trip through an older binary
-    // rather than break the row.
+    // DERIVED: every deploy re-detects and overwrites it, so it follows the repo
+    // instead of drifting from it. Plain text with no CHECK — an id written by a
+    // newer catalog must round-trip through an older binary rather than break
+    // the row.
     framework: text("framework"),
+    // The framework the USER picked when detection got it wrong (same id space).
+    // NULL ⇒ trust detection, which is the default and the common case. Kept in
+    // its own column precisely so a deploy's re-detection can keep overwriting
+    // `framework` without ever clobbering the choice — and so the UI can still
+    // say what was detected while showing what the user picked.
+    frameworkOverride: text("framework_override"),
     source: text("source").notNull(),
     // Flattened GitRepo (NULL columns when there is no repo).
     repoProvider: text("repo_provider"),

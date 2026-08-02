@@ -900,11 +900,25 @@ export interface App {
    * the auto-detecting builders (Nixpacks / Railpack), the only ones this
    * applies to.
    *
-   * DERIVED, never user-set: every deploy re-detects and overwrites it. Typed as
-   * the id rather than the definition so the stored value stays a plain string;
+   * DERIVED: every deploy re-detects and overwrites it. Typed as the id rather
+   * than the definition so the stored value stays a plain string;
    * `frameworkById` resolves it to a name + default port on both sides.
+   *
+   * This is what Deplo READ, not necessarily what the app IS — see
+   * {@link App.frameworkOverride}, which wins when set.
    */
   framework: FrameworkId | null;
+  /**
+   * The framework the user picked because detection got it wrong, or null (the
+   * default) to trust detection. Read as `frameworkOverride ?? framework`
+   * everywhere the app's framework is shown or used.
+   *
+   * Deliberately NOT folded into `framework`: the deploy keeps overwriting that
+   * one unconditionally, so a shared column would lose the choice on the next
+   * push — and the UI could no longer say "we detected Next.js" next to the
+   * Vite the user chose.
+   */
+  frameworkOverride: FrameworkId | null;
   /** How this project is deployed (git, docker image, dockerfile, upload). */
   source: DeploySource;
   repo: GitRepo | null;

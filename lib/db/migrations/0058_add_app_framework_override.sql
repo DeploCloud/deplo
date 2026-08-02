@@ -1,0 +1,19 @@
+-- An app can override the framework Deplo recognised in its source.
+--
+-- Detection (migration 0052) is right most of the time and wrong in a way the
+-- user can see: a Vite SPA that still carries a `next` dependency reads as
+-- Next.js, a monorepo root names the wrong sub-app's stack. The consequence is
+-- not cosmetic — the framework picks the container port Traefik routes to
+-- (`vite preview` binds 4173 and ignores PORT), so a wrong name is an app that
+-- deploys green and answers nothing.
+--
+-- The override lives in its OWN column instead of replacing `framework` so the
+-- two facts stay separable: every deploy keeps re-detecting into `framework`
+-- (that write must never be conditional on what the user picked), while
+-- `framework_override` — NULL for every existing row and every app that never
+-- needed correcting — wins wherever the app's framework is read. Clearing it is
+-- the "use what Deplo detected" reset, and it costs one UPDATE to NULL.
+--
+-- Plain text with no CHECK, same as `framework`: an id written by a newer
+-- catalog must round-trip through an older binary rather than break the row.
+ALTER TABLE "apps" ADD COLUMN IF NOT EXISTS "framework_override" text;

@@ -17,7 +17,10 @@ import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { describeAppSource } from "@/components/apps/app-source";
 import { FrameworkBadge } from "@/components/apps/framework-badge";
-import { supportsFrameworkDetection } from "@/lib/apps/framework-catalog";
+import {
+  effectiveFramework,
+  supportsFrameworkDetection,
+} from "@/lib/apps/framework-catalog";
 import { CommitLink } from "@/components/apps/commit-link";
 import { formatBuildDuration, githubCommitUrl, timeAgo } from "@/lib/utils";
 
@@ -102,16 +105,17 @@ export default async function AppOverview(
                     </p>
                   )}
                 </div>
-                {/* What Deplo recognised in the app's own source. Derived on
-                    every deploy, and only under the auto-detecting builders —
-                    the same gate the feature uses everywhere else, so a build
-                    method that moved on stops claiming a framework. */}
-                {project.framework &&
+                {/* What Deplo recognised in the app's own source (or what the
+                    user corrected it to — effectiveFramework settles that).
+                    Only under the auto-detecting builders, the same gate the
+                    feature uses everywhere else, so a build method that moved
+                    on stops claiming a framework. */}
+                {effectiveFramework(project) &&
                   supportsFrameworkDetection(project.build.buildMethod) && (
                     <div>
                       <p className="text-xs text-muted-foreground">Framework</p>
                       <p className="mt-0.5 text-sm">
-                        <FrameworkBadge id={project.framework} />
+                        <FrameworkBadge id={effectiveFramework(project)} />
                       </p>
                     </div>
                   )}

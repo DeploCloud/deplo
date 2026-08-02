@@ -84,9 +84,14 @@ type App {
   folderId: ID
 
   """
-  The JavaScript framework Deplo recognised in this app's own source ("nextjs", "astro", "nestjs", …), or null when none was found or the app doesn't build with one of the auto-detecting builders (Nixpacks / Railpack). Derived on every deploy — never set by hand.
+  The JavaScript framework backing this app ("nextjs", "astro", "nestjs", …), or null when none was found or the app doesn't build with one of the auto-detecting builders (Nixpacks / Railpack). Detected on every deploy, unless setAppFramework has corrected it — in which case that choice is what this returns.
   """
   framework: String
+
+  """
+  What the LAST DEPLOY actually read from the source, ignoring any correction. Equals `framework` unless the user overrode it.
+  """
+  frameworkDetected: String
   id: ID
   latestDeployment: Deployment
   logo: String
@@ -1662,6 +1667,11 @@ type Mutation {
   Replace an app's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.
   """
   setAppEnv(appId: String!, defaultTargets: [EnvTarget!], entries: [EnvEntryInput!]!): Int
+
+  """
+  Correct the framework Deplo recognised in this app's source (a catalog id such as "vite"), or pass null to go back to trusting detection. The correction survives every later deploy's re-detection.
+  """
+  setAppFramework(framework: String, id: String!): App
 
   """
   Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included — each volume names the service it mounts into.
