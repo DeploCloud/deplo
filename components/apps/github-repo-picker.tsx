@@ -160,6 +160,7 @@ export function GithubRepoPicker({
   manageHref?: string;
 }) {
   const { connect, pending: connecting } = useGithubConnect();
+  const branchFieldId = React.useId();
   const [installationId, setInstallationId] = React.useState(
     (initial?.installationId &&
       installations.some((i) => i.id === initial.installationId)
@@ -395,10 +396,13 @@ export function GithubRepoPicker({
       {!hasInstallations ? (
         <ConnectPanel connect={connect} connecting={connecting} />
       ) : selected && !browsing ? (
-        // Chosen repo — a compact confirmation with its branch, so the common
-        // "already picked" case isn't a wall of repos. "Change" reopens the list.
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-accent/30 p-3">
+        // Chosen repo — a compact confirmation, so the common "already picked"
+        // case isn't a wall of repos. "Change" reopens the list. The branch
+        // lives INSIDE this card: it belongs to the chosen repository (it means
+        // nothing without one, and changing repo re-picks it), so it reads as
+        // part of the source, not as a second unrelated field below it.
+        <div className="rounded-lg border border-border bg-accent/30">
+          <div className="flex items-center gap-3 p-3">
             {activeInstallation && (
               <AccountAvatar inst={activeInstallation} className="size-8" />
             )}
@@ -439,15 +443,19 @@ export function GithubRepoPicker({
             </Button>
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 border-t border-border/60 px-3 py-2">
             <FieldLabel
-              className="text-sm font-medium"
+              htmlFor={branchFieldId}
+              className="text-xs font-medium text-muted-foreground"
               info="The branch Deplo clones and deploys. New pushes to it can trigger a redeploy."
             >
               Branch
             </FieldLabel>
             <Select value={branch} onValueChange={setBranch}>
-              <SelectTrigger className="max-w-xs">
+              <SelectTrigger
+                id={branchFieldId}
+                className="h-8 w-auto min-w-44 max-w-full bg-background"
+              >
                 {/* `flex!` is load-bearing: SelectTrigger applies
                     `[&>span]:line-clamp-1` to its direct-child spans, whose
                     `display:-webkit-box` outranks a plain `flex` class (the
