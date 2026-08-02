@@ -32,6 +32,13 @@ import type { ManifestConversion } from "../github/manifest";
 export interface GithubInstallationDTO {
   id: string;
   installationId: number;
+  /**
+   * Name of the connected GitHub App this installation belongs to. Source
+   * pickers identify an installation by App name, not by account: the same
+   * account can host several connected Apps, each with its own repository
+   * access, and the account alone doesn't say which one you're deploying from.
+   */
+  appName: string;
   accountLogin: string;
   accountType: "User" | "Organization";
   avatarUrl: string;
@@ -47,10 +54,14 @@ export interface GithubAppDTO {
   installations: GithubInstallationDTO[];
 }
 
-function toInstallationDTO(i: GithubInstallation): GithubInstallationDTO {
+function toInstallationDTO(
+  i: GithubInstallation,
+  appName: string,
+): GithubInstallationDTO {
   return {
     id: i.id,
     installationId: i.installationId,
+    appName,
     accountLogin: i.accountLogin,
     accountType: i.accountType,
     avatarUrl: i.avatarUrl,
@@ -67,7 +78,7 @@ function toAppDTO(app: GithubApp, installs: GithubInstallation[]): GithubAppDTO 
     createdAt: app.createdAt,
     installations: installs
       .filter((i) => i.appId === app.id)
-      .map(toInstallationDTO),
+      .map((i) => toInstallationDTO(i, app.name)),
   };
 }
 
@@ -98,14 +109,16 @@ export async function listGithubApps(): Promise<GithubAppDTO[]> {
 export async function listGithubInstallations(): Promise<GithubInstallationDTO[]> {
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
-    .select({ install: githubInstallationTable })
+    .select({ install: githubInstallationTable, appName: githubAppsTable.name })
     .from(githubInstallationTable)
     .innerJoin(
       githubAppsTable,
       eq(githubAppsTable.id, githubInstallationTable.appId),
     )
     .where(eq(githubAppsTable.teamId, teamId));
-  return rows.map((r) => toInstallationDTO(assembleGithubInstallation(r.install)));
+  return rows.map((r) =>
+    toInstallationDTO(assembleGithubInstallation(r.install), r.appName),
+  );
 }
 
 /** Persist a newly-created App from its manifest conversion. Secrets encrypted. */

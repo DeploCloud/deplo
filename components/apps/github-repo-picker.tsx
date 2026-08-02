@@ -68,6 +68,22 @@ function installationSettingsUrl(inst: GithubInstallationDTO): string {
     : `https://github.com/settings/installations/${inst.installationId}`;
 }
 
+/**
+ * How an installation reads in the switcher: the connected GitHub App's name
+ * first (that's what decides which repositories are reachable — the same
+ * account can host several Apps with different access), with the account it is
+ * installed on as muted context, since one App can also be installed on more
+ * than one account.
+ */
+function InstallationLabel({ inst }: { inst: GithubInstallationDTO }) {
+  return (
+    <span className="min-w-0 flex-1 truncate">
+      <span className="font-medium">{inst.appName}</span>
+      <span className="text-muted-foreground"> · {inst.accountLogin}</span>
+    </span>
+  );
+}
+
 /** A round GitHub account avatar with an initials fallback if the image fails. */
 function AccountAvatar({
   inst,
@@ -284,14 +300,15 @@ export function GithubRepoPicker({
 
   return (
     <div className="space-y-3">
-      {/* Account — always rendered so the layout is stable and there's always a
-          path to switch, connect, or manage Apps, even with none connected. */}
+      {/* Connected App — always rendered so the layout is stable and there's
+          always a path to switch, connect, or manage Apps, even with none
+          connected. */}
       <div className="space-y-1.5">
         <FieldLabel
           className="text-sm font-medium"
-          info="The connected GitHub App / account whose repositories you deploy from. Switch accounts, connect another, or manage your connected apps."
+          info="The connected GitHub App whose repositories you deploy from. Two Apps on the same account can reach different repositories, so the App is what you pick here. Switch App, connect another, or manage your connected apps."
         >
-          GitHub account
+          GitHub App
         </FieldLabel>
         <div className="flex flex-wrap items-center gap-2">
           <DropdownMenu>
@@ -303,9 +320,7 @@ export function GithubRepoPicker({
                 {activeInstallation ? (
                   <>
                     <AccountAvatar inst={activeInstallation} />
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {activeInstallation.accountLogin}
-                    </span>
+                    <InstallationLabel inst={activeInstallation} />
                     {activeInstallation.accountType === "Organization" ? (
                       <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
                     ) : (
@@ -327,7 +342,7 @@ export function GithubRepoPicker({
               {hasInstallations && (
                 <>
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
-                    Connected accounts
+                    Connected GitHub Apps
                   </DropdownMenuLabel>
                   {installations.map((i) => (
                     <DropdownMenuItem
@@ -336,9 +351,7 @@ export function GithubRepoPicker({
                       className="gap-2"
                     >
                       <AccountAvatar inst={i} />
-                      <span className="min-w-0 flex-1 truncate">
-                        {i.accountLogin}
-                      </span>
+                      <InstallationLabel inst={i} />
                       {i.id === installationId && (
                         <Check className="size-4 shrink-0 text-[var(--success)]" />
                       )}
@@ -353,7 +366,9 @@ export function GithubRepoPicker({
                 className="gap-2"
               >
                 <Plus className="size-4" />
-                {hasInstallations ? "Connect another account" : "Connect GitHub"}
+                {hasInstallations
+                  ? "Connect another GitHub App"
+                  : "Connect GitHub"}
               </DropdownMenuItem>
               {manageHref && (
                 <DropdownMenuItem asChild className="gap-2">

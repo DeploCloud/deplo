@@ -1050,6 +1050,9 @@ type GithubConnectStart {
 type GithubInstallation {
   accountLogin: String
   accountType: String
+
+  """Name of the connected GitHub App this installation is of."""
+  appName: String
   avatarUrl: String
   id: ID
   installationId: Int

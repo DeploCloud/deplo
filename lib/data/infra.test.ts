@@ -189,6 +189,8 @@ test("github: listGithubApps is team-scoped and folds in installations (no secre
     assert.equal(apps[0]!.id, "gha_a");
     assert.equal(apps[0]!.installations.length, 1);
     assert.equal(apps[0]!.installations[0]!.installationId, 11);
+    // Source pickers label an installation by its App, not by the account.
+    assert.equal(apps[0]!.installations[0]!.appName, "AppA");
     // The DTO never leaks the secrets.
     assert.equal("clientSecretEnc" in apps[0]!, false);
     assert.equal("privateKeyEnc" in apps[0]!, false);
@@ -196,6 +198,7 @@ test("github: listGithubApps is team-scoped and folds in installations (no secre
     const installs = await listGithubInstallations();
     assert.equal(installs.length, 1);
     assert.equal(installs[0]!.id, "ghi_1");
+    assert.equal(installs[0]!.appName, "AppA", "joined from the parent App");
   });
 });
 

@@ -40,6 +40,9 @@ const GithubInstallationRef = builder
     fields: (t) => ({
       id: t.exposeID("id"),
       installationId: t.exposeInt("installationId"),
+      appName: t.exposeString("appName", {
+        description: "Name of the connected GitHub App this installation is of.",
+      }),
       accountLogin: t.exposeString("accountLogin"),
       accountType: t.exposeString("accountType"),
       avatarUrl: t.exposeString("avatarUrl"),
