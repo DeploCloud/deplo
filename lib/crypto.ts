@@ -222,17 +222,8 @@ export function decryptSecret(payload: string): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* Session tokens (HMAC-signed, stateless)                            */
+/* Encoding helpers                                                    */
 /* ------------------------------------------------------------------ */
-
-export interface SessionPayload {
-  uid: string;
-  exp: number; // epoch seconds
-  /** The user's `token_version` at sign time. Absent on cookies minted before
-   *  session revocation existed → the reader treats absent as 0 (the column
-   *  default), so old cookies stay valid until the first version bump. */
-  v?: number;
-}
 
 function b64url(buf: Buffer): string {
   return buf
@@ -244,38 +235,6 @@ function b64url(buf: Buffer): string {
 
 function fromB64url(s: string): Buffer {
   return Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
-}
-
-export function signSession(payload: SessionPayload): string {
-  const body = b64url(Buffer.from(JSON.stringify(payload), "utf8"));
-  const sig = b64url(
-    createHmac("sha256", deriveKey("session")).update(body).digest(),
-  );
-  return `${body}.${sig}`;
-}
-
-export function verifySession(
-  token: string | undefined,
-): SessionPayload | null {
-  if (!token) return null;
-  const [body, sig] = token.split(".");
-  if (!body || !sig) return null;
-  const expected = b64url(
-    createHmac("sha256", deriveKey("session")).update(body).digest(),
-  );
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  try {
-    const payload = JSON.parse(
-      fromB64url(body).toString("utf8"),
-    ) as SessionPayload;
-    if (typeof payload.exp !== "number" || payload.exp * 1000 < Date.now())
-      return null;
-    return payload;
-  } catch {
-    return null;
-  }
 }
 
 /* ------------------------------------------------------------------ */
