@@ -19,7 +19,7 @@ export default async function DatabaseConsolePage(
 
   // A live shell into the database container is an infra-class operation — gate
   // on manage_infra (the tab is hidden without it; guard the page too).
-  if (!(await hasCapability("manage_infra"))) {
+  if (!(await hasCapability("open_database_console"))) {
     return (
       <EmptyState
         icon={Lock}

@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { count, eq, inArray, or, sql } from "drizzle-orm";
+import { and, count, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb, type DbTx } from "./db/client";
 import {
   instanceSettings as instanceSettingsTable,
@@ -12,20 +12,16 @@ import {
   teams as teamsTable,
   users as usersTable,
 } from "./db/schema/control-plane";
-import {
-  hashPassword,
-  verifyPassword,
-  signSession,
-  verifySession,
-} from "./crypto";
+import { account as accountTable } from "./db/schema/auth";
+import { hashPassword, verifyPassword } from "./crypto";
 import type { Capability, PublicUser, Role, Team, User } from "./types";
 import { capabilitiesForRole, cleanCapabilities } from "./membership-shared";
 import { normalizeUsername, validateUsername } from "./username";
+import { newId } from "./ids";
 import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
+import { getAuth, requireAuth, sessionCookieNames } from "./auth/better-auth";
 
-const SESSION_COOKIE = "deplo_session";
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 // Kept in sync with lib/membership.ts (ACTIVE_TEAM_COOKIE). Set here on
 // signup/setup so the new account lands with an active team immediately,
 // avoiding a circular import with the membership module.
@@ -44,7 +40,7 @@ async function setActiveTeamCookie(teamId: string) {
   });
 }
 
-/** Columns projected for a {@link PublicUser} — never `password_hash`. */
+/** Columns projected for a {@link PublicUser} — never a credential. */
 const PUBLIC_USER_COLS = {
   id: usersTable.id,
   email: usersTable.email,
@@ -53,6 +49,7 @@ const PUBLIC_USER_COLS = {
   role: usersTable.role,
   isInstanceAdmin: usersTable.isInstanceAdmin,
   avatarColor: usersTable.avatarColor,
+  twoFactorEnabled: usersTable.twoFactorEnabled,
 } as const;
 
 function toPublic(u: {
@@ -63,6 +60,7 @@ function toPublic(u: {
   role: string;
   isInstanceAdmin: boolean | null;
   avatarColor: string;
+  twoFactorEnabled: boolean | null;
 }): PublicUser {
   return {
     id: u.id,
@@ -72,6 +70,7 @@ function toPublic(u: {
     role: u.role as PublicUser["role"],
     isInstanceAdmin: u.isInstanceAdmin ?? false,
     avatarColor: u.avatarColor,
+    twoFactorEnabled: u.twoFactorEnabled ?? false,
   };
 }
 
@@ -96,6 +95,13 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
  * the race backstop), assigns the deterministic avatar color from the in-tx user
  * count, hashes the password and inserts the user row. Inserts NO team or
  * membership — the caller wires those up.
+ *
+ * Also writes the Better Auth `account` row that holds the credential: since
+ * migration 0055 `account.password` is the only stored copy, and Better Auth is
+ * configured with `disableSignUp: true` precisely so account creation stays here
+ * (it cannot fill deplo's NOT NULL `username`/`role`/`avatar_color`). The hash
+ * format is deplo's own scrypt, which Better Auth verifies via the `password`
+ * option in [./auth/better-auth.ts](./auth/better-auth.ts).
  */
 async function insertUserCore(
   tx: DbTx,
@@ -119,15 +125,15 @@ async function insertUserCore(
   const n = (await tx.select({ n: count() }).from(usersTable))[0]!.n;
   const avatarColor = AVATAR_COLORS[n % AVATAR_COLORS.length];
 
+  const now = new Date().toISOString();
   const user: User = {
     id: `usr_${randomBytes(8).toString("hex")}`,
     email: input.email,
     username: input.username,
     name: input.name,
-    passwordHash: hashPassword(input.password),
     role: (opts.userRole ?? "member") as User["role"],
     avatarColor,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
     isInstanceAdmin: opts.isInstanceAdmin ?? false,
     suspended: false,
   };
@@ -136,12 +142,21 @@ async function insertUserCore(
     email: user.email,
     username: user.username,
     name: user.name,
-    passwordHash: user.passwordHash,
     role: user.role,
     isInstanceAdmin: user.isInstanceAdmin ?? false,
     suspended: false,
     avatarColor: user.avatarColor,
     createdAt: user.createdAt,
+    updatedAt: now,
+  });
+  // `account_id` is the provider's own subject id; for `credential` that is the
+  // user id, matching the 0055 backfill.
+  await tx.insert(accountTable).values({
+    id: newId("bacc"),
+    userId: user.id,
+    accountId: user.id,
+    providerId: "credential",
+    password: hashPassword(input.password),
   });
   return user;
 }
@@ -358,37 +373,61 @@ export async function createAccountWithTeams(
 }
 
 /**
- * Resolve the current user from the signed session cookie.
+ * The current request's cookies, rendered as a `cookie` header for Better Auth.
+ *
+ * Deliberately built from `next/headers` `cookies()` rather than `headers()`:
+ * the cookie store reflects writes made EARLIER IN THE SAME REQUEST, so a
+ * `getCurrentUser()` immediately after `login()` sees the session that was just
+ * minted. Reading the raw request headers would not.
+ */
+async function cookieHeader(): Promise<Headers> {
+  try {
+    const store = await cookies();
+    return new Headers({
+      cookie: store
+        .getAll()
+        .map((c) => `${c.name}=${c.value}`)
+        .join("; "),
+    });
+  } catch {
+    // No request scope (a script, or `node --test`). "No cookies" is the honest
+    // answer, and it keeps a READ from failing a call that never needed one — a
+    // cookie WRITE still throws, which is correct, because that one does.
+    return new Headers();
+  }
+}
+
+/**
+ * Resolve the current user from the Better Auth session (ADR-0014).
  * Cached per-request so it can be called from many places cheaply.
  * Returns null when unauthenticated. Never throws.
+ *
+ * The session only establishes WHICH account is calling; `suspended` and every
+ * deplo-side field still come from a fresh `users` read, so suspending an account
+ * takes effect on the next request rather than at the next session refresh.
  */
 export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   // A bearer-token request (the public GraphQL API) supplies its principal via
   // the request-context override and carries no session cookie.
   const override = currentIdentity();
-  const session = override
-    ? null
-    : verifySession((await cookies()).get(SESSION_COOKIE)?.value);
-  const uid = override ? override.userId : session?.uid;
+  let uid = override?.userId;
+  if (!uid) {
+    const auth = getAuth();
+    if (!auth) return null;
+    const session = await auth.api
+      .getSession({ headers: await cookieHeader() })
+      .catch(() => null);
+    uid = session?.user?.id;
+  }
   if (!uid) return null;
   const rows = await getDb()
-    .select({
-      ...PUBLIC_USER_COLS,
-      suspended: usersTable.suspended,
-      tokenVersion: usersTable.tokenVersion,
-    })
+    .select({ ...PUBLIC_USER_COLS, suspended: usersTable.suspended })
     .from(usersTable)
     .where(eq(usersTable.id, uid))
     .limit(1);
   const user = rows[0];
   // A suspended account loses access immediately, even with a live session.
   if (!user || user.suspended) return null;
-  // Session revocation: a cookie is valid only while its stamped token_version
-  // still matches the user's. A bump (password change / reset / sign-out-
-  // everywhere) invalidates every older cookie. Absent `v` (pre-0043 cookie) is
-  // read as 0, matching the column default, so existing sessions survive until
-  // the first bump. Bearer overrides carry no session version and are unaffected.
-  if (!override && (session?.v ?? 0) !== user.tokenVersion) return null;
   return toPublic(user);
 });
 
@@ -415,58 +454,162 @@ export async function assertUser(): Promise<PublicUser> {
   return user;
 }
 
-/** (Re-)issue the caller's deplo_session cookie for `userId`, stamping the user's
- *  current token_version. Exported so the data layer can refresh the initiator's
- *  own cookie right after a token_version bump (e.g. changePassword) — otherwise
- *  the bump would sign the initiator out along with the sessions it revokes. */
-export async function setSessionCookie(userId: string) {
-  const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
-  // Stamp the user's CURRENT token_version into the cookie so a later bump
-  // (password change / admin reset / sign-out-everywhere) invalidates it.
-  const vRow = await getDb()
-    .select({ v: usersTable.tokenVersion })
-    .from(usersTable)
-    .where(eq(usersTable.id, userId))
+/**
+ * Verify a user's OWN password — the re-auth step in front of every sensitive
+ * account action (change email / change password / transfer ownership / enable
+ * or disable 2FA). Reads `account.password`, which since 0055 is the only stored
+ * credential. Returns false for an account with no credential row rather than
+ * throwing, so a caller can treat "wrong password" and "no password" alike.
+ */
+export async function verifyUserPassword(
+  userId: string,
+  password: string,
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({ password: accountTable.password })
+    .from(accountTable)
+    .where(
+      and(
+        eq(accountTable.userId, userId),
+        eq(accountTable.providerId, "credential"),
+      ),
+    )
     .limit(1);
-  const token = signSession({ uid: userId, exp, v: vRow[0]?.v ?? 0 });
-  const store = await cookies();
-  // Secure must track the *actual* scheme, not NODE_ENV: a production instance
-  // served over http://<ip> (no domain/TLS yet) would otherwise drop the cookie.
-  const secure = (process.env.DEPLO_PUBLIC_URL ?? "").startsWith("https://");
-  store.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure,
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_TTL_SECONDS,
-  });
+  const stored = rows[0]?.password;
+  if (!stored) return false;
+  return verifyPassword(password, stored);
 }
 
+/** Replace a user's stored credential. Used by admin reset + the recover script. */
+export async function setUserPassword(
+  userId: string,
+  password: string,
+  tx?: DbTx,
+): Promise<void> {
+  const db = tx ?? getDb();
+  const updated = await db
+    .update(accountTable)
+    .set({ password: hashPassword(password), updatedAt: new Date() })
+    .where(
+      and(
+        eq(accountTable.userId, userId),
+        eq(accountTable.providerId, "credential"),
+      ),
+    )
+    .returning({ id: accountTable.id });
+  // An account created before it had a credential row (or one whose provider row
+  // was deleted) still needs a password to be settable.
+  if (updated.length === 0)
+    await db.insert(accountTable).values({
+      id: newId("bacc"),
+      userId,
+      accountId: userId,
+      providerId: "credential",
+      password: hashPassword(password),
+    });
+}
+
+/**
+ * Delete every Better Auth session row for a user — the replacement for the old
+ * `token_version` bump. Called on password change (other sessions), admin reset,
+ * suspension, and 2FA enrolment. The caller's own session survives only if Better
+ * Auth re-issues it; when in doubt, sign the initiator back in explicitly.
+ */
+export async function revokeAllSessions(userId: string): Promise<void> {
+  const auth = getAuth();
+  if (!auth) return;
+  const ctx = await auth.$context;
+  await ctx.internalAdapter.deleteUserSessions(userId);
+}
+
+export interface LoginResult {
+  ok: boolean;
+  error?: string;
+  /** The account has 2FA: no session was created, a TOTP code is still required. */
+  requiresTwoFactor?: boolean;
+}
+
+/**
+ * Sign in with email + password (Better Auth, ADR-0014).
+ *
+ * When the account has 2FA enabled, Better Auth's twoFactor plugin answers with
+ * `twoFactorRedirect` and sets its own short-lived challenge cookie INSTEAD of a
+ * session — so `requiresTwoFactor` here means "correct password, not signed in
+ * yet". The caller must then send a code to `verifyTwoFactorCode`.
+ *
+ * User enumeration: Better Auth returns the same INVALID_EMAIL_OR_PASSWORD for an
+ * unknown email and a wrong password, and the custom scrypt `verify` runs on a
+ * dummy hash when no account matches, so both the message and the work are equal.
+ */
 export async function login(
   email: string,
-  password: string
-): Promise<{ ok: boolean; error?: string }> {
+  password: string,
+): Promise<LoginResult> {
   const normalized = email.toLowerCase().trim();
+  // Suspension is deplo's own concept: check it BEFORE handing Better Auth a
+  // valid credential, so a suspended account never gets a session row at all.
   const rows = await getDb()
-    .select({
-      id: usersTable.id,
-      passwordHash: usersTable.passwordHash,
-      suspended: usersTable.suspended,
-    })
+    .select({ suspended: usersTable.suspended })
     .from(usersTable)
     .where(eq(sql`lower(${usersTable.email})`, normalized))
     .limit(1);
-  const user = rows[0];
-  // Always run a hash comparison to reduce user-enumeration timing signal.
-  const stored =
-    user?.passwordHash ??
-    "scrypt$00000000000000000000000000000000$00000000000000000000000000000000";
-  const valid = verifyPassword(password, stored);
-  if (!user || !valid) return { ok: false, error: "Invalid email or password" };
-  if (user.suspended)
+  if (rows[0]?.suspended)
     return { ok: false, error: "This account has been suspended" };
-  await setSessionCookie(user.id);
-  return { ok: true };
+
+  try {
+    const res = await requireAuth().api.signInEmail({
+      body: { email: normalized, password },
+      headers: await cookieHeader(),
+      asResponse: false,
+    });
+    if (res && "twoFactorRedirect" in res && res.twoFactorRedirect)
+      return { ok: false, requiresTwoFactor: true };
+    return { ok: true };
+  } catch (e) {
+    // ONLY a genuine credential rejection becomes "Invalid email or password".
+    // Anything else (database down, cookie store unavailable, misconfiguration)
+    // is rethrown: reporting an outage as a wrong password sends the user to
+    // reset a password that was never the problem, and hides the real fault.
+    if (isCredentialRejection(e))
+      return { ok: false, error: "Invalid email or password" };
+    throw e;
+  }
+}
+
+/** Better Auth's own codes for "those credentials are wrong", and nothing else. */
+function isCredentialRejection(e: unknown): boolean {
+  const code = (e as { body?: { code?: string } } | null)?.body?.code;
+  return (
+    code === "INVALID_EMAIL_OR_PASSWORD" ||
+    code === "USER_NOT_FOUND" ||
+    code === "INVALID_PASSWORD" ||
+    code === "CREDENTIAL_ACCOUNT_NOT_FOUND"
+  );
+}
+
+/**
+ * Finish a login that stopped at `requiresTwoFactor`, with a TOTP code or one of
+ * the account's single-use backup codes. The challenge cookie Better Auth set
+ * during `login` is what ties this call to that attempt, so it is only valid for
+ * a few minutes and only from the same client.
+ */
+export async function verifyTwoFactorCode(
+  code: string,
+  kind: "totp" | "backup",
+): Promise<{ ok: boolean; error?: string }> {
+  const auth = requireAuth();
+  const headers = await cookieHeader();
+  try {
+    if (kind === "backup")
+      await auth.api.verifyBackupCode({ body: { code }, headers });
+    else await auth.api.verifyTOTP({ body: { code }, headers });
+    return { ok: true };
+  } catch (e) {
+    // The plugin's own message is the useful one ("Invalid code", or the lockout
+    // notice after too many failures), so surface it rather than a generic.
+    const message = e instanceof Error ? e.message : "";
+    return { ok: false, error: message || "That code is not valid" };
+  }
 }
 
 /**
@@ -508,21 +651,34 @@ export async function completeSetup(input: {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
   }
 
-  await setSessionCookie(user.id);
-  await setActiveTeamCookie(team.id);
+  await startSessionFor(user.email, input.password, team.id);
   return { ok: true };
 }
 
 /**
- * Sign a user in by id and make a team active. Used by the invite-accept flow,
- * which creates the user/membership in the data layer and then logs them in.
+ * Sign a freshly created account in and make a team active — the tail of setup
+ * and of the registration-link flow.
+ *
+ * Takes the credential rather than a user id because Better Auth mints sessions
+ * through `signInEmail`; the account was created microseconds ago in the same
+ * request, so the caller always has the plaintext. A brand-new account can never
+ * have 2FA, so there is no challenge branch to handle here.
  */
 export async function startSessionFor(
-  userId: string,
-  teamId: string,
+  email: string,
+  password: string,
+  teamId?: string,
 ): Promise<void> {
-  await setSessionCookie(userId);
-  await setActiveTeamCookie(teamId);
+  await requireAuth().api.signInEmail({
+    // Normalized the same way the account was stored, so a registrant who typed
+    // a capitalised address still matches their own brand-new row.
+    body: { email: email.toLowerCase().trim(), password },
+    headers: await cookieHeader(),
+    asResponse: false,
+  });
+  // Omitted when the caller is only re-issuing a session (e.g. after a password
+  // change), where the existing `deplo_team` cookie must survive untouched.
+  if (teamId) await setActiveTeamCookie(teamId);
 }
 
 /**
@@ -535,10 +691,20 @@ export async function setActiveTeamForCurrentUser(teamId: string): Promise<void>
   await setActiveTeamCookie(teamId);
 }
 
+/**
+ * Sign out: delete the session ROW (so the token is dead everywhere, not merely
+ * forgotten by this browser) and clear both cookies. Better Auth clears its own
+ * cookie via the `nextCookies` hook; `deplo_team` is deplo's, so it is cleared
+ * here. Best-effort on the Better Auth side — a failed revoke must still let the
+ * browser drop its cookies.
+ */
 export async function logout() {
+  const auth = getAuth();
+  if (auth)
+    await auth.api
+      .signOut({ headers: await cookieHeader() })
+      .catch(() => undefined);
   const store = await cookies();
-  store.delete(SESSION_COOKIE);
+  for (const name of sessionCookieNames()) store.delete(name);
   store.delete(ACTIVE_TEAM_COOKIE);
 }
-
-export { SESSION_COOKIE };

@@ -3,8 +3,13 @@ import "server-only";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { users as usersTable } from "../db/schema/control-plane";
-import { assertUser, setSessionCookie } from "../auth";
-import { hashPassword, verifyPassword } from "../crypto";
+import {
+  assertUser,
+  revokeAllSessions,
+  setUserPassword,
+  startSessionFor,
+  verifyUserPassword,
+} from "../auth";
 
 /** Update the current user's display name. */
 export async function updateProfile(input: { name: string }): Promise<void> {
@@ -28,15 +33,7 @@ export async function updateEmail(input: {
   const email = input.email.toLowerCase().trim();
   if (!email.includes("@")) throw new Error("Enter a valid email address");
   const db = getDb();
-  const me = (
-    await db
-      .select({ passwordHash: usersTable.passwordHash })
-      .from(usersTable)
-      .where(eq(usersTable.id, user.id))
-      .limit(1)
-  )[0];
-  if (!me) throw new Error("User not found");
-  if (!verifyPassword(input.currentPassword, me.passwordHash))
+  if (!(await verifyUserPassword(user.id, input.currentPassword)))
     throw new Error("Current password is incorrect");
   const dup = await db
     .select({ id: usersTable.id })
@@ -63,33 +60,19 @@ export async function changePassword(input: {
   const user = await assertUser();
   if (input.newPassword.length < 8)
     throw new Error("Choose a password of at least 8 characters");
-  const db = getDb();
-  const me = (
-    await db
-      .select({ passwordHash: usersTable.passwordHash })
-      .from(usersTable)
-      .where(eq(usersTable.id, user.id))
-      .limit(1)
-  )[0];
-  if (!me) throw new Error("User not found");
-  if (!verifyPassword(input.currentPassword, me.passwordHash))
+  if (!(await verifyUserPassword(user.id, input.currentPassword)))
     throw new Error("Current password is incorrect");
-  await db
-    .update(usersTable)
-    .set({
-      passwordHash: hashPassword(input.newPassword),
-      // Revoke every outstanding session: a changed password must log out anyone
-      // holding a stolen/old cookie. The initiator's own cookie is re-issued
-      // below so THEY stay signed in.
-      tokenVersion: sql`${usersTable.tokenVersion} + 1`,
-    })
-    .where(eq(usersTable.id, user.id));
-  // Best-effort: re-stamp the initiator's cookie at the new token_version so THEY
-  // stay signed in while other sessions die. Outside a request scope (tests) or on
-  // any failure the change still stands and the initiator simply re-authenticates
-  // with the new password — a safe fallback, never a leak.
+  await setUserPassword(user.id, input.newPassword);
+  // Revoke every outstanding session: a changed password must log out anyone
+  // holding a stolen/old cookie. That includes the initiator's own, so sign them
+  // straight back in with the password they just chose.
+  await revokeAllSessions(user.id);
+  // Best-effort: outside a request scope (tests) or on any failure the change
+  // still stands and the initiator simply re-authenticates with the new password
+  // — a safe fallback, never a leak. No team id is passed, so the existing
+  // `deplo_team` cookie survives.
   try {
-    await setSessionCookie(user.id);
+    await startSessionFor(user.email, input.newPassword);
   } catch {
     /* no request scope / cookie write unavailable — logged out is fine */
   }

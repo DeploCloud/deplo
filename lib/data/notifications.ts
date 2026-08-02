@@ -34,7 +34,7 @@ export async function updateNotificationSettings(
   next: NotificationSettings,
 ): Promise<NotificationSettings> {
   // Notifications are an infra-level team setting.
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("manage_notifications")).teamId;
   // Webhook URLs are dialed FROM the control plane (test send + alert
   // dispatch) — reject private/internal targets before they are ever
   // persisted, so no dispatcher can be fed one (SSRF).
@@ -64,7 +64,7 @@ export async function sendTestNotification(
   // Sending a real outbound POST is a side-effecting infra action — gate it the
   // same way as editing the settings, so a view-only member can't drive traffic
   // to the team's configured Discord/webhook endpoints.
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("manage_notifications")).teamId;
   const c =
     (await settingsRowFor(teamId))?.channels ??
     DEFAULT_NOTIFICATION_SETTINGS.channels;

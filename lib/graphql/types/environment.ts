@@ -52,12 +52,12 @@ builder.queryFields((t) => ({
 /* Mutations                                                           */
 /* ------------------------------------------------------------------ */
 
-const deployScope = { capability: "deploy" } as const;
+const environmentScope = { capability: "manage_environments" } as const;
 
 builder.mutationFields((t) => ({
   createEnvironment: t.field({
     type: EnvironmentRef,
-    authScopes: deployScope,
+    authScopes: environmentScope,
     description: "Add a custom environment to a Project container.",
     args: {
       projectId: t.arg.id({ required: true }),
@@ -68,7 +68,7 @@ builder.mutationFields((t) => ({
   }),
   renameEnvironment: t.field({
     type: "Boolean",
-    authScopes: deployScope,
+    authScopes: environmentScope,
     description: "Rename an environment.",
     args: {
       id: t.arg.id({ required: true }),
@@ -81,7 +81,7 @@ builder.mutationFields((t) => ({
   }),
   setEnvironmentBranch: t.field({
     type: "Boolean",
-    authScopes: deployScope,
+    authScopes: environmentScope,
     description:
       "Set the git branch an environment builds from (empty ⇒ the app's default branch).",
     args: {
@@ -95,7 +95,7 @@ builder.mutationFields((t) => ({
   }),
   setDefaultEnvironment: t.field({
     type: "Boolean",
-    authScopes: deployScope,
+    authScopes: environmentScope,
     description: "Make an environment the project's default (unsets the previous one).",
     args: { id: t.arg.id({ required: true }) },
     resolve: async (_r, { id }) => {
@@ -105,7 +105,7 @@ builder.mutationFields((t) => ({
   }),
   deleteEnvironment: t.field({
     type: "Boolean",
-    authScopes: deployScope,
+    authScopes: environmentScope,
     description:
       "Delete a non-default environment (never the default or the last remaining one).",
     args: { id: t.arg.id({ required: true }) },

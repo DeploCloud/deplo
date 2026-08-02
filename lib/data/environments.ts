@@ -174,7 +174,7 @@ export async function createEnvironment(
   projectId: string,
   name: string,
 ): Promise<Environment> {
-  await requireCapability("deploy");
+  await requireCapability("manage_environments");
   await requireOwnedProject(projectId);
   const clean = cleanName(name);
   const slug = await uniqueEnvSlug(projectId, clean);
@@ -201,7 +201,7 @@ export async function createEnvironment(
 }
 
 export async function renameEnvironment(id: string, name: string): Promise<void> {
-  await requireCapability("deploy");
+  await requireCapability("manage_environments");
   const clean = cleanName(name);
   const env = (
     await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
@@ -216,7 +216,7 @@ export async function renameEnvironment(id: string, name: string): Promise<void>
 
 /** Set the git branch this environment builds from ("" ⇒ the app default). */
 export async function setEnvironmentBranch(id: string, branch: string): Promise<void> {
-  await requireCapability("deploy");
+  await requireCapability("manage_environments");
   const env = (
     await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
   )[0];
@@ -230,7 +230,7 @@ export async function setEnvironmentBranch(id: string, branch: string): Promise<
 
 /** Make `id` the project's default environment (unsets the previous default). */
 export async function setDefaultEnvironment(id: string): Promise<void> {
-  await requireCapability("deploy");
+  await requireCapability("manage_environments");
   const env = (
     await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
   )[0];
@@ -261,7 +261,7 @@ export async function setDefaultEnvironment(id: string): Promise<void> {
  * so removing the sub-folder keeps its contents in the project).
  */
 export async function deleteEnvironment(id: string): Promise<void> {
-  await requireCapability("deploy");
+  await requireCapability("manage_environments");
   const env = (
     await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
   )[0];

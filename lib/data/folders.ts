@@ -228,7 +228,7 @@ export async function createFolder(
   // Creating a folder needs the SAME capability as creating a project: `deploy`.
   // The creator becomes the folder's owner and its per-folder caps are derived
   // live from their team caps (never stored) — see lib/data/folder-access.ts.
-  const { teamId, userId } = await requireCapability("deploy");
+  const { teamId, userId } = await requireCapability("create_folders");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const clean = cleanName(name);
   // Normalise at the trust boundary so every stored colour is a canonical
@@ -286,7 +286,7 @@ async function folderInTeam(folderId: string, teamId: string): Promise<boolean> 
 }
 
 export async function renameFolder(id: string, name: string): Promise<void> {
-  const { teamId, userName } = await requireFolderCapability(id, "deploy");
+  const { teamId, userName } = await requireFolderCapability(id, "organize_folders");
   const clean = cleanName(name);
   // No-op when unchanged (conditional UPDATE … RETURNING); verify existence only
   // when nothing changed so a rename-to-same-name doesn't error.
@@ -317,7 +317,7 @@ export async function setFolderColor(
   id: string,
   color: string | null,
 ): Promise<void> {
-  const { teamId, userName } = await requireFolderCapability(id, "deploy");
+  const { teamId, userName } = await requireFolderCapability(id, "organize_folders");
   const next = color ? normalizeHexColor(color) : null;
   const rows = await getDb()
     .select()
@@ -351,7 +351,7 @@ export async function moveFolder(
 ): Promise<void> {
   // Manage the moved folder itself, AND (when nesting) be able to see the
   // destination parent — so a user can't file a folder under one they can't use.
-  const { teamId, userName } = await requireFolderCapability(id, "deploy");
+  const { teamId, userName } = await requireFolderCapability(id, "organize_folders");
   if (parentId && !(await canSeeFolder(parentId)))
     throw new Error("Folder not found");
   const { folders } = await teamFoldersWithCounts(teamId);
@@ -383,7 +383,7 @@ export async function moveFolder(
  * intact one level up). The team_folder_order row CASCADEs on the delete.
  */
 export async function deleteFolder(id: string): Promise<void> {
-  const { teamId, userName } = await requireFolderCapability(id, "deploy");
+  const { teamId, userName } = await requireFolderCapability(id, "delete_folders");
   const name = await getDb().transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -420,7 +420,7 @@ export async function moveAppToFolder(
   appId: string,
   folderId: string | null,
 ): Promise<void> {
-  const { teamId } = await requireCapability("deploy");
+  const { teamId } = await requireCapability("move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const proj = await getDb()
     .select({ id: appsTable.id, name: appsTable.name, folderId: appsTable.folderId })
@@ -433,14 +433,14 @@ export async function moveAppToFolder(
   // folder (a no-op when the project is already at the top level). This blocks
   // a member from evicting a project from a folder they don't control.
   if (p.folderId && p.folderId !== folderId) {
-    await requireFolderCapability(p.folderId, "deploy");
+    await requireFolderCapability(p.folderId, "move_apps");
   }
   let msg = "";
   if (folderId) {
     // Filing INTO a folder needs `deploy` on that destination folder.
     if (!(await folderInTeam(folderId, teamId))) throw new Error("Folder not found");
     if (p.folderId === folderId) return;
-    await requireFolderCapability(folderId, "deploy");
+    await requireFolderCapability(folderId, "move_apps");
     const f = await getDb()
       .select({ name: foldersTable.name })
       .from(foldersTable)
@@ -473,7 +473,7 @@ export async function moveAppsToFolder(
   appIds: string[],
   folderId: string | null,
 ): Promise<number> {
-  const { teamId } = await requireCapability("deploy");
+  const { teamId } = await requireCapability("move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   let folderName = "";
   if (folderId) {
@@ -484,7 +484,7 @@ export async function moveAppsToFolder(
       .limit(1);
     if (!f[0] || f[0].teamId !== teamId) throw new Error("Folder not found");
     // Filing INTO a folder needs `deploy` on that destination folder.
-    await requireFolderCapability(folderId, "deploy");
+    await requireFolderCapability(folderId, "move_apps");
     folderName = f[0].name;
   }
   // Only the caller's own team apps that actually change folder.
@@ -505,7 +505,7 @@ export async function moveAppsToFolder(
       .map((p) => p.folderId as string),
   );
   for (const src of sourceFolders) {
-    await requireFolderCapability(src, "deploy");
+    await requireFolderCapability(src, "move_apps");
   }
   await getDb()
     .update(appsTable)

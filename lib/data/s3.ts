@@ -244,7 +244,7 @@ export async function createS3(input: {
   accessKey: string;
   secretKey: string;
 }): Promise<S3DestinationDTO> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("manage_s3");
   const user = (await getCurrentUser())!;
   if (!input.name.trim()) throw new Error("Name is required");
   if (!input.bucket.trim()) throw new Error("Bucket is required");
@@ -293,7 +293,7 @@ export async function createS3(input: {
  * ({@link AgentBackupUnsupportedError}) rather than flipping to `connected`.
  */
 export async function testS3(id: string): Promise<S3TestResult> {
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("manage_s3")).teamId;
   const cur = await loadS3(id, teamId);
   if (!cur) throw new Error("Not found");
   return probeAndRecord(id, teamId);
@@ -312,7 +312,7 @@ export async function testS3(id: string): Promise<S3TestResult> {
  * a host, and a team with twenty buckets should not open twenty at once.
  */
 export async function testAllS3(): Promise<S3DestinationDTO[]> {
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("manage_s3")).teamId;
   const current = await listS3();
   return mapBounded(current, PROBE_CONCURRENCY, async (d) => {
     try {
@@ -521,7 +521,7 @@ async function checkOnAnyBackupAgent(target: S3Target): Promise<{
 }
 
 export async function deleteS3(id: string): Promise<void> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("manage_s3");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   const s = await loadS3(id, teamId);

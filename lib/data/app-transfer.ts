@@ -124,7 +124,7 @@ const appColumns = {
  */
 export const appTransferInfo = cache(
   async (appId: string): Promise<AppTransferInfo> => {
-    const { userId, teamId } = await requireCapability("deploy");
+    const { userId, teamId } = await requireCapability("move_apps");
     const db = getDb();
     const app = (
       await db
@@ -146,7 +146,7 @@ export const appTransferInfo = cache(
         membershipCapabilitiesTable,
         and(
           eq(membershipCapabilitiesTable.membershipId, membershipsTable.id),
-          eq(membershipCapabilitiesTable.capability, "deploy"),
+          eq(membershipCapabilitiesTable.capability, "move_apps"),
         ),
       )
       .where(
@@ -279,7 +279,7 @@ export async function transferAppToTeam(
   appId: string,
   destTeamId: string,
 ): Promise<void> {
-  const { userId, teamId } = await requireCapability("deploy");
+  const { userId, teamId } = await requireCapability("move_apps");
   await requireCapability("manage_env");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const db = getDb();
@@ -297,12 +297,12 @@ export async function transferAppToTeam(
   // Evicting the app from a folder needs the same rights on that folder as the
   // team-level gates above. BEFORE any transaction: these read on their own
   // connection.
-  await requireFolderCapabilityForApp(appId, "deploy");
+  await requireFolderCapabilityForApp(appId, "move_apps");
   await requireFolderCapabilityForApp(appId, "manage_env");
 
   const dest = await membershipFor(userId, destTeamId);
   if (!dest) throw new Error("You're not a member of that team");
-  if (!dest.capabilities.includes("deploy"))
+  if (!dest.capabilities.includes("move_apps"))
     throw new Error("You don't have permission to manage apps in that team");
   const destTeam = (
     await db

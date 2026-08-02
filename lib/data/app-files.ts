@@ -4,6 +4,7 @@ import { realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 import { requireCapability, hasCapability, getActiveTeamId } from "../membership";
+import type { Capability } from "../types";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
 import { loadTeamApp } from "./app-graph-load";
@@ -106,13 +107,16 @@ export function normalizeRel(relPath: string): string {
  * owning server id so each op can route to that host's agent. */
 async function requireAppInTeam(
   appId: string,
+  // Reading a file and changing one are separate permissions, so each op names
+  // which it needs. Defaults to the read side — the weaker of the two.
+  cap: Capability = "read_app_files",
 ): Promise<{ slug: string; teamId: string; serverId: string }> {
-  const { teamId } = await requireCapability("manage_files");
+  const { teamId } = await requireCapability(cap);
   const project = await loadTeamApp(appId, teamId);
   if (!project) {
     throw new Error("App not found");
   }
-  await requireFolderCapabilityForApp(appId, "manage_files");
+  await requireFolderCapabilityForApp(appId, cap);
   return { slug: project.slug, teamId, serverId: project.serverId };
 }
 
@@ -146,7 +150,7 @@ function toEntry(e: {
  * no files dir, simply yields false and the tab is hidden.
  */
 export async function appFilesExist(appId: string): Promise<boolean> {
-  if (!(await hasCapability("manage_files"))) return false;
+  if (!(await hasCapability("read_app_files"))) return false;
   const teamId = await getActiveTeamId();
   if (!teamId) return false;
   const project = await loadTeamApp(appId, teamId);
@@ -210,7 +214,7 @@ export async function writeAppFile(
   path: string,
   content: string,
 ): Promise<FileEntry> {
-  const { slug, serverId } = await requireAppInTeam(appId);
+  const { slug, serverId } = await requireAppInTeam(appId, "write_app_files");
   if (Buffer.byteLength(content, "utf8") > MAX_WRITE_BYTES) {
     throw new Error("File is too large to save (1 MiB max)");
   }
@@ -324,7 +328,7 @@ export async function uploadAppFile(
   path: string,
   base64: string,
 ): Promise<FileEntry> {
-  const { slug, serverId } = await requireAppInTeam(appId);
+  const { slug, serverId } = await requireAppInTeam(appId, "write_app_files");
   let buf: Buffer;
   try {
     buf = Buffer.from(base64, "base64");
@@ -350,7 +354,7 @@ export async function createAppDir(
   appId: string,
   path: string,
 ): Promise<FileEntry> {
-  const { slug, serverId } = await requireAppInTeam(appId);
+  const { slug, serverId } = await requireAppInTeam(appId, "write_app_files");
   normalizeRel(path);
   const conn = await agentFor(serverId);
   try {
@@ -370,7 +374,7 @@ export async function deleteAppFile(
   appId: string,
   path: string,
 ): Promise<boolean> {
-  const { slug, serverId } = await requireAppInTeam(appId);
+  const { slug, serverId } = await requireAppInTeam(appId, "write_app_files");
   normalizeRel(path);
   const conn = await agentFor(serverId);
   try {
@@ -388,7 +392,7 @@ export async function renameAppFile(
   path: string,
   newPath: string,
 ): Promise<FileEntry> {
-  const { slug, serverId } = await requireAppInTeam(appId);
+  const { slug, serverId } = await requireAppInTeam(appId, "write_app_files");
   normalizeRel(path);
   normalizeRel(newPath);
   const conn = await agentFor(serverId);

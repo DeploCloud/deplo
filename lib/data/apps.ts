@@ -406,7 +406,7 @@ async function resolveNewAppPlacement(
         .limit(1)
     )[0];
     if (!f) throw new Error("Folder not found");
-    await requireFolderCapability(f.id, "deploy");
+    await requireFolderCapability(f.id, "create_apps");
     return { folderId: f.id, projectId: null, environmentId: null };
   }
   if (input.environmentId) {
@@ -471,7 +471,7 @@ function cleanAppName(name: string): string {
 export async function createApp(
   input: CreateAppInput
 ): Promise<AppSummary> {
-  const { membership, userId } = await requireCapability("deploy");
+  const { membership, userId } = await requireCapability("create_apps");
   input = { ...input, name: cleanAppName(input.name) };
   // A prebuilt image ref is interpolated raw into the compose `image:` scalar, so
   // reject anything that isn't a plain reference before it can inject service keys.
@@ -746,7 +746,7 @@ export async function updateAppBuild(
   id: string,
   build: Partial<BuildConfig>
 ): Promise<void> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("configure_apps");
   // build.port is only WHICH container port Traefik routes to (routing), not a
   // published host port, so changing it isn't gated behind the expose-ports
   // grant — any member who can deploy may edit build settings.
@@ -758,7 +758,7 @@ export async function updateAppBuild(
     const existing = await loadAppGraph(id, tx);
     if (!existing || existing.teamId !== membership.teamId)
       throw new Error("App not found");
-    await requireFolderCapabilityForApp(id, "deploy");
+    await requireFolderCapabilityForApp(id, "configure_apps");
     const merged: BuildConfig = {
       ...existing.build,
       ...build,
@@ -797,7 +797,7 @@ export async function updateAppSource(
   id: string,
   input: UpdateSourceInput
 ): Promise<void> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("configure_apps");
   // A prebuilt image ref is interpolated raw into the compose `image:` scalar, so
   // reject anything that isn't a plain reference before it can inject service keys.
   if (input.source === "docker-image" && input.dockerImage && !IMAGE_REF_RE.test(input.dockerImage))
@@ -824,7 +824,7 @@ export async function updateAppSource(
   await getDb().transaction(async (tx) => {
     const p = await loadAppGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("App not found");
-    await requireFolderCapabilityForApp(id, "deploy");
+    await requireFolderCapabilityForApp(id, "configure_apps");
     // Capture the OLD server IP before serverId is reassigned, so a move can
     // re-host the project's auto nip.io domains onto the new server's IP below.
     const oldIp = resolveServerIp(serversById.get(p.serverId));
@@ -1121,7 +1121,7 @@ export async function setAppVolumes(
   id: string,
   volumes: VolumeMount[],
 ): Promise<void> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("configure_apps");
   // A host bind mount escapes the per-project sandbox, so it needs the dedicated
   // grant on top of `deploy` (instance admins hold it implicitly).
   if (volumes.some((v) => v.type === "host")) {
@@ -1131,7 +1131,7 @@ export async function setAppVolumes(
   // the transaction — the same order as every other app-settings write here
   // (updateAppResources, setAppUpload, …). Cross-team ids are still caught by the
   // teamId check inside the transaction, which is the authoritative scope.
-  await requireFolderCapabilityForApp(id, "deploy");
+  await requireFolderCapabilityForApp(id, "configure_apps");
   const user = (await getCurrentUser())!;
   await getDb().transaction(async (tx) => {
     const p = await loadAppGraph(id, tx);
@@ -1281,8 +1281,8 @@ export async function updateAppResources(
   id: string,
   input: ResourceLimitsInput,
 ): Promise<void> {
-  const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForApp(id, "deploy");
+  const { membership } = await requireCapability("configure_apps");
+  await requireFolderCapabilityForApp(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const cleaned = cleanResourceLimits(input);
   await updateAppOwned(id, membership.teamId, {
@@ -1302,8 +1302,8 @@ export async function setAppUpload(
   id: string,
   upload: UploadArchive,
 ): Promise<void> {
-  const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForApp(id, "deploy");
+  const { membership } = await requireCapability("deploy_apps");
+  await requireFolderCapabilityForApp(id, "deploy_apps");
   const user = (await getCurrentUser())!;
   await updateAppOwned(id, membership.teamId, {
     source: "upload",
@@ -1331,8 +1331,8 @@ export async function setAppUpload(
 }
 
 export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
-  const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForApp(id, "deploy");
+  const { membership } = await requireCapability("configure_apps");
+  await requireFolderCapabilityForApp(id, "configure_apps");
   await updateAppOwned(id, membership.teamId, {
     autoDeploy: value,
     updatedAt: nowIso(),
@@ -1340,8 +1340,8 @@ export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
 }
 
 export async function renameApp(id: string, name: string): Promise<void> {
-  const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForApp(id, "deploy");
+  const { membership } = await requireCapability("configure_apps");
+  await requireFolderCapabilityForApp(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const clean = cleanAppName(name);
   await updateAppOwned(id, membership.teamId, {
@@ -1366,8 +1366,8 @@ export async function updateAppLogo(
   id: string,
   logo: string | null,
 ): Promise<void> {
-  const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForApp(id, "deploy");
+  const { membership } = await requireCapability("configure_apps");
+  await requireFolderCapabilityForApp(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const next = logo?.trim() ? logo.trim() : null;
   if (next && !isValidLogoValue(next)) {
@@ -1425,8 +1425,8 @@ function noIconFoundMessage(app: Parameters<typeof detectAppFavicon>[0]): string
  * a NULL logo.
  */
 export async function redetectAppLogo(id: string): Promise<string> {
-  const { membership } = await requireCapability("deploy");
-  await requireFolderCapabilityForApp(id, "deploy");
+  const { membership } = await requireCapability("configure_apps");
+  await requireFolderCapabilityForApp(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId) {
@@ -1501,7 +1501,7 @@ export async function previewRepoFramework(input: {
   buildMethod: BuildMethod;
   rootDirectory?: string | null;
 }): Promise<FrameworkId | null> {
-  await requireCapability("deploy");
+  await requireCapability("create_apps");
   if (!supportsFrameworkDetection(input.buildMethod)) return null;
 
   let installationId: string | null = null;
@@ -1534,12 +1534,12 @@ async function setAppStatus(id: string, status: AppStatus): Promise<void> {
 
 /** Stop the project's running container. */
 export async function stopApp(id: string): Promise<void> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("control_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(id, "deploy");
+  await requireFolderCapabilityForApp(id, "control_apps");
   // Persist "stopping" BEFORE the (up to 60s) container stop so the transition
   // is visible to every client immediately and survives a reload — not just a
   // local label on the clicking user's button. We settle to "idle" once the
@@ -1563,12 +1563,12 @@ export async function stopApp(id: string): Promise<void> {
 
 /** Start a previously stopped project's container. */
 export async function startApp(id: string): Promise<void> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("control_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(id, "deploy");
+  await requireFolderCapabilityForApp(id, "control_apps");
   try {
     await startContainer(project.slug);
   } catch (e) {
@@ -1584,11 +1584,11 @@ export async function startApp(id: string): Promise<void> {
 
 /** Rebuild the image from the current source and redeploy (real build). */
 export async function rebuildApp(id: string): Promise<void> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("deploy_apps");
   const user = (await getCurrentUser())!;
   if (!(await appInTeam(id, membership.teamId)))
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(id, "deploy");
+  await requireFolderCapabilityForApp(id, "deploy_apps");
   await startDeployment(id, {
     environment: "production",
     creator: user.name,
@@ -1597,12 +1597,12 @@ export async function rebuildApp(id: string): Promise<void> {
 }
 
 export async function deleteApp(id: string): Promise<void> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("delete_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(id, "deploy");
+  await requireFolderCapabilityForApp(id, "delete_apps");
   // Tear down the running container/stack before dropping the records. A REMOTE
   // whose agent is unreachable can't be torn down now — proceed with the delete
   // anyway (P6 spirit: never leave records pinned to a dead box) and warn so the
@@ -1649,7 +1649,7 @@ export async function deleteApp(id: string): Promise<void> {
  * Returns the number actually deleted.
  */
 export async function deleteApps(ids: string[]): Promise<number> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("delete_apps");
   const user = (await getCurrentUser())!;
   const idSet = [...new Set(ids)];
   // Team-scoped: only the caller's own apps, fully loaded for teardown.
@@ -1661,7 +1661,7 @@ export async function deleteApps(ids: string[]): Promise<number> {
   // Folder-scope EACH project: a project inside a folder the caller can't access
   // may not be bulk-deleted through this path either.
   for (const p of apps) {
-    await requireFolderCapabilityForApp(p.id, "deploy");
+    await requireFolderCapabilityForApp(p.id, "delete_apps");
   }
 
   const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));

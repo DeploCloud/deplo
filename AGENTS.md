@@ -5,7 +5,7 @@ templates into Docker stacks fronted by Traefik. Read this before writing code, 
 the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root) — authoritative glossary / ubiquitous language. Single-context repo.
-- **`docs/adr/`** — numbered decisions (0001–0013). Contradicting one? Surface it, don't silently override.
+- **`docs/adr/`** — numbered decisions (0001–0014). Contradicting one? Surface it, don't silently override.
 - **`docs/api/graphql.md`** — external API reference · **`schema.graphql`** (root) — generated SDL.
 - **`docs/agents/`** — `issue-tracker.md`, `triage-labels.md`, `domain.md`.
 
@@ -108,8 +108,8 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 
 Next.js 16 App Router · React 19 · TypeScript (strict) · Tailwind v4 (CSS-first) · shadcn/ui
 (new-york) · Pothos code-first GraphQL over graphql-yoga · Drizzle ORM · Postgres · **Bun**
-(package manager + runtime). Better Auth is configured in parallel but is **NOT the live login
-path** (see Persistence). Deploy execution is the Go agent over gRPC/mTLS.
+(package manager + runtime). **Better Auth IS the live login path** (ADR-0014) — its `user` model
+is remapped onto the control-plane `users` table. Deploy execution is the Go agent over gRPC/mTLS.
 
 ## Project layout
 
@@ -190,10 +190,18 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
 - Auth helpers: `getCurrentUser()` (nullable), `assertUser()` (**throws** — resolvers/data),
   `requireUser()` (**redirects** — RSC/pages). `recordActivity(...)` runs **outside** any open
   transaction (own connection; deadlocks pglite otherwise) and is fire-and-forget.
-- **Capabilities (8):** `view` (always-on floor), `deploy`, `manage_domains`, `manage_env`,
-  `manage_files`, `manage_infra`, `manage_members`, `manage_team`; plus instance-wide
-  `instanceAdmin` and the orthogonal grants `canExposePorts` / `canMountHostVolumes`.
-  **Creating** a folder/project/app is gated on `deploy`, not `manage_team`.
+- **Capabilities are FINE-GRAINED (40)** — one action each, catalogued with labels,
+  descriptions, search keywords and browse categories in **`lib/capabilities.ts`**
+  (`create_apps`, `deploy_apps`, `delete_apps`, `open_app_console`, `read_app_files` vs
+  `write_app_files`, `create_databases`, `restore_backups`, `manage_tokens`,
+  `organize_folders`, `view_logs`, `manage_roles`, `delete_team`, …). `view` is the always-on
+  floor; plus instance-wide `instanceAdmin` and the orthogonal grants `canExposePorts` /
+  `canMountHostVolumes`. **Never add a capability that covers two actions** — if an admin
+  might want them apart, they are two. Picking the right one at a call site is the whole
+  point: `deleteApp` is `delete_apps`, not `deploy_apps`.
+  The eight coarse names (`deploy`, `manage_infra`, …) are RETIRED — migration 0056 expanded
+  every stored row via `LEGACY_CAPABILITY_EXPANSION` (which is also what still translates an
+  old name arriving from an API client). Never reintroduce one.
 - **Roles are per-team ROWS** (`team_roles`, `lib/data/roles.ts`), not TS presets: three
   editable/resettable defaults (Owner locked at full access) plus the team's own. A role edit
   re-writes `membership_capabilities` for its members in the same transaction, so **every
@@ -217,9 +225,21 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
 - **Secrets are write-only / masked with no reveal path for the client.** `*_enc` ciphertext is
   never projected into DTOs; masked values decrypt only via `manage_env`-gated `reveal*` calls or
   at the deploy edge. **Never add a "show secret" affordance.** Passwords are scrypt + constant-time.
-- The **live** auth path is the built-in cookie `deplo_session` (`lib/auth.ts`, stateless HMAC;
-  `deplo_team` carries the active team). Better Auth (`/api/auth/*`) runs in parallel with its own
-  tables — don't assume it handles login.
+- **Better Auth is the live auth path** (ADR-0014, migration 0055): session cookie
+  `deplo.session_token` (a real `session` row, `__Secure-` prefixed over https), configured in
+  `lib/auth/better-auth.ts`. `deplo_team` still carries the active team and stays deplo's own.
+  Three settings are load-bearing: `user: { modelName: "users" }` (its `user` model IS the
+  control-plane table — never stand up a second one), `password: {hash, verify}` wired to deplo's
+  scrypt (change it and every credential dies), and `disableSignUp: true` (Better Auth must never
+  INSERT into `users`, which has NOT NULL columns it knows nothing about). The credential lives on
+  `account.password`; `users.password_hash` is GONE and `token_version` is dead — revoking sessions
+  is `revokeAllSessions(userId)`. `lib/auth.ts` keeps its exported surface; only its internals moved.
+- **2FA is a POLICY, not a ninth capability.** `teams.require_two_factor` /
+  `team_roles.require_two_factor`, both default false. Unmet ⇒ the member resolves NOTHING in that
+  team, UI and bearer API alike. The gate is exactly two calls in `lib/membership.ts` —
+  `membershipFor` (mutations + `authenticateToken`) and `requireActiveTeamId` (every read) — and
+  both are needed: reads never touch `membershipFor`. It raises `TwoFactorRequiredError`, which the
+  dashboard layout catches to return a lock screen INSTEAD of its children.
 
 ## UI conventions
 

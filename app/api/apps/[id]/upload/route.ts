@@ -59,8 +59,8 @@ export async function POST(
   // folder gate), but only after a potentially 512 MiB stream has already been
   // written. A viewer-only member must be refused here, not after the write.
   try {
-    await requireCapability("deploy");
-    await requireFolderCapabilityForApp(appId, "deploy");
+    await requireCapability("deploy_apps");
+    await requireFolderCapabilityForApp(appId, "deploy_apps");
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "You don't have permission to deploy";

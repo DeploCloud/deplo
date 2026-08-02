@@ -7,38 +7,118 @@ export type ID = string;
 export type Role = "owner" | "member" | "viewer";
 
 /**
- * A single thing a member is allowed to do within a team. Roles
- * (owner/member/viewer) are presets over this set; an admin can additionally
- * grant/revoke individual capabilities per member (see {@link Membership}).
- *  - deploy          create/redeploy/stop/start apps
- *  - manage_domains  add/verify/route/remove custom domains
- *  - manage_env      edit project & shared environment variables
- *  - manage_files    browse/edit/upload/delete a project's files dir
- *  - manage_infra    servers, databases, S3, registries, backups, GitHub apps
- *  - manage_members  invite/create/remove members, change their roles
- *  - manage_team     rename the team, edit team settings, delete the team
- *  - view            read-only access to the dashboard (always implied)
+ * A single thing a member is allowed to do within a team — ONE action, never a
+ * bundle. A {@link Role} is a named set of these, assigned per member; the labels,
+ * descriptions and browse categories live in `lib/capabilities.ts`.
+ *
+ * These replaced the original eight coarse capabilities (`deploy`,
+ * `manage_infra`, …), each of which was really a dozen actions wearing one name —
+ * so "can deploy but must not delete" or "can read files but not write them" was
+ * unsayable. `LEGACY_CAPABILITY_EXPANSION` (same file) maps every old name to the
+ * permissions it used to imply, and is what migration 0056 and the API's
+ * back-compat path both read.
+ *
+ * `view` is the always-on floor: every member of a team holds it, and it is never
+ * offered as a toggle.
  */
 export type Capability =
-  | "deploy"
+  | "view"
+  // Apps
+  | "create_apps"
+  | "deploy_apps"
+  | "control_apps"
+  | "configure_apps"
+  | "delete_apps"
+  | "move_apps"
+  | "open_app_console"
+  // App configuration
   | "manage_domains"
+  | "manage_basic_auth"
   | "manage_env"
-  | "manage_files"
-  | "manage_infra"
+  | "reveal_secrets"
+  | "read_app_files"
+  | "write_app_files"
+  // Folders & projects
+  | "create_folders"
+  | "organize_folders"
+  | "delete_folders"
+  | "create_projects"
+  | "organize_projects"
+  | "delete_projects"
+  | "manage_environments"
+  // Databases
+  | "create_databases"
+  | "configure_databases"
+  | "control_databases"
+  | "delete_databases"
+  | "open_database_console"
+  // Backups & storage
+  | "manage_backups"
+  | "restore_backups"
+  | "manage_s3"
+  // Integrations & API
+  | "manage_registries"
+  | "manage_git"
+  | "manage_tokens"
+  | "manage_notifications"
+  // Logs & monitoring
+  | "view_logs"
+  | "view_metrics"
+  | "manage_monitoring"
+  | "view_activity"
+  // Team administration
   | "manage_members"
+  | "manage_roles"
   | "manage_team"
-  | "view";
+  | "delete_team";
 
-/** Canonical ordered list of every capability (drives the settings UI). */
+/**
+ * Canonical order of every capability — the order the role editor lists them in
+ * and the order every stored set is normalised to. Keep it in step with
+ * `CAPABILITY_CATEGORIES` in `lib/capabilities.ts` (a test pins the two together).
+ */
 export const ALL_CAPABILITIES: Capability[] = [
   "view",
-  "deploy",
+  "create_apps",
+  "deploy_apps",
+  "control_apps",
+  "configure_apps",
+  "delete_apps",
+  "move_apps",
+  "open_app_console",
   "manage_domains",
+  "manage_basic_auth",
   "manage_env",
-  "manage_files",
-  "manage_infra",
+  "reveal_secrets",
+  "read_app_files",
+  "write_app_files",
+  "create_folders",
+  "organize_folders",
+  "delete_folders",
+  "create_projects",
+  "organize_projects",
+  "delete_projects",
+  "manage_environments",
+  "create_databases",
+  "configure_databases",
+  "control_databases",
+  "delete_databases",
+  "open_database_console",
+  "manage_backups",
+  "restore_backups",
+  "manage_s3",
+  "manage_registries",
+  "manage_git",
+  "manage_tokens",
+  "manage_notifications",
+  "view_logs",
+  "view_metrics",
+  "manage_monitoring",
+  "view_activity",
   "manage_members",
+  "manage_roles",
   "manage_team",
+  "delete_team",
 ];
 
 export interface User {
@@ -51,8 +131,6 @@ export interface User {
    */
   username: string;
   name: string;
-  /** scrypt hash, never leaves the server */
-  passwordHash: string;
   /**
    * Legacy instance-wide role. Retained for back-compat with documents written
    * before per-team memberships; the source of truth for what a user can do is
@@ -100,6 +178,12 @@ export interface PublicUser {
   role: Role;
   isInstanceAdmin: boolean;
   avatarColor: string;
+  /**
+   * True once the account has a verified TOTP factor. Safe to expose: it says
+   * whether a second factor exists, never anything about the factor itself.
+   * Drives the reminder modal and the "2FA required" gate's messaging.
+   */
+  twoFactorEnabled: boolean;
 }
 
 /**
@@ -180,6 +264,12 @@ export interface Team {
    * SET NULL`), leaving it with no protected founder. See `lib/data/members.ts`.
    */
   founderUserId?: ID | null;
+  /**
+   * Team-wide 2FA policy. When true, a member without a verified second factor
+   * resolves no capabilities in this team, over the UI and the bearer API alike.
+   * Never auto-enabled; enabling is refused unless the actor has 2FA themselves.
+   */
+  requireTwoFactor?: boolean;
   /**
    * Team-wide display order of apps in the Overview grid (array of project
    * ids, first = top-left). A team-level setting, not a per-user preference, so

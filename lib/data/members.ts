@@ -28,11 +28,10 @@ import { newId, nowIso } from "../ids";
 import {
   sha256Hex,
   randomToken,
-  hashPassword,
   encryptSecret,
   decryptSecret,
 } from "../crypto";
-import { getCurrentUser } from "../auth";
+import { getCurrentUser, revokeAllSessions, setUserPassword } from "../auth";
 import { recordActivity } from "./activity";
 import { instanceOwnerUserId } from "./instance-owner";
 import {
@@ -513,9 +512,18 @@ export async function addExistingMember(input: {
 
 // Administrative capabilities a team must never be left with zero holders of,
 // or it locks itself out of member/team management irrecoverably.
-const CRITICAL_CAPABILITIES: Capability[] = ["manage_members", "manage_team"];
+// `manage_roles` joined the list when the coarse `manage_members` split in two:
+// a team with nobody who can edit a role can no longer change what any of its
+// roles grant, which is the same irrecoverable corner. Kept in step with
+// `CRITICAL` in lib/data/roles.ts, which guards the role-edit side of it.
+const CRITICAL_CAPABILITIES: Capability[] = [
+  "manage_members",
+  "manage_roles",
+  "manage_team",
+];
 const CRITICAL_LABEL: Record<string, string> = {
   manage_members: "manage members",
+  manage_roles: "manage roles",
   manage_team: "manage the team",
 };
 
@@ -894,17 +902,19 @@ export async function updateUserAdmin(input: {
         suspended: input.suspended,
         canExposePorts: input.canExposePorts,
         canMountHostVolumes: input.canMountHostVolumes,
-        // An admin password reset also revokes the target's outstanding sessions
-        // (they no longer control the credential), by bumping token_version.
-        ...(newPassword
-          ? {
-              passwordHash: hashPassword(newPassword),
-              tokenVersion: sql`${usersTable.tokenVersion} + 1`,
-            }
-          : {}),
       })
       .where(eq(usersTable.id, input.userId));
+    // The credential lives on the Better Auth `account` row since 0055, so a
+    // reset writes there — in the same transaction, so a failed lockout check
+    // rolls the new password back with everything else.
+    if (newPassword) await setUserPassword(input.userId, newPassword, tx);
   });
+
+  // An admin password reset also revokes the target's outstanding sessions: they
+  // no longer control the credential, so any live cookie of theirs must die.
+  // Deliberately AFTER the transaction — the session rows are Better Auth's and
+  // deleting them is not something to roll back if the tx later fails.
+  if (newPassword) await revokeAllSessions(input.userId);
 
   const target = (
     await getDb()

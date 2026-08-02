@@ -40,7 +40,7 @@ export default async function AppStorageSettingsPage(
   // `manage_files` capability. Cosmetic here (the query and the mutation are
   // both gated server-side); it lets the editor say why the box is closed
   // instead of failing on save.
-  const mayEditFiles = await hasCapability("manage_files");
+  const mayEditFiles = await hasCapability("write_app_files");
 
   return (
     <section className="space-y-4">

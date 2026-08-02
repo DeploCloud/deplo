@@ -14,7 +14,12 @@ import { NextResponse, type NextRequest } from "next/server";
  * cookie presence; signature verification is done server-side downstream.
  */
 
-const SESSION_COOKIE = "deplo_session";
+// Better Auth's session cookie (ADR-0014). It carries the `__Secure-` prefix when
+// the instance runs `useSecureCookies`, so BOTH names must be accepted here — an
+// https instance that only checked the bare name would bounce every signed-in user
+// straight back to /login. Duplicated from lib/auth/better-auth.ts rather than
+// imported: the proxy runs in the Edge runtime and that module is `server-only`.
+const SESSION_COOKIES = ["deplo.session_token", "__Secure-deplo.session_token"];
 // Paths reachable WITHOUT a session. `/register/<token>` is how a brand-new
 // person self-registers an account + team from a single-use link, so it must be
 // public — otherwise the proxy bounces them to /login before the page renders.
@@ -60,7 +65,9 @@ export function proxy(request: NextRequest) {
     .trim();
 
   // ---- Optimistic auth redirect -------------------------------------------
-  const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
+  const hasSession = SESSION_COOKIES.some(
+    (name) => !!request.cookies.get(name)?.value,
+  );
   const isPublic = PUBLIC_PATHS.some(
     (p) => pathname === p || pathname.startsWith(p + "/"),
   );

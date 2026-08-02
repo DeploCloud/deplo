@@ -33,7 +33,7 @@ export default async function DatabaseAdvancedSettingsPage(
   if (!db) notFound();
   // A live shell into the container is infra-class — the console page itself
   // gates on manage_infra, so don't advertise a door the viewer can't open.
-  const canConsole = await hasCapability("manage_infra");
+  const canConsole = await hasCapability("open_database_console");
 
   return (
     <section className="space-y-6">

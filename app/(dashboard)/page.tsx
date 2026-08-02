@@ -67,7 +67,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     isInstanceAdmin(),
     hasCapability("manage_team"),
     hasCapability("manage_members"),
-    hasCapability("deploy"),
+    hasCapability("create_apps"),
   ]);
   const canManageOrder = isAdmin || canManageTeam;
   // Creating a folder or a project container is gated the same as creating an

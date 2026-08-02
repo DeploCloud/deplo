@@ -6,6 +6,7 @@ import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
   teams as teamsTable,
+  users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { assertUser } from "../auth";
@@ -34,6 +35,7 @@ function rowToTeam(t: {
   slug: string;
   plan: string;
   founderUserId?: string | null;
+  requireTwoFactor?: boolean;
   createdAt: string;
 }): Team {
   return {
@@ -42,6 +44,7 @@ function rowToTeam(t: {
     slug: t.slug,
     plan: t.plan as Team["plan"],
     founderUserId: t.founderUserId ?? null,
+    requireTwoFactor: t.requireTwoFactor ?? false,
     createdAt: t.createdAt,
   };
 }
@@ -95,7 +98,7 @@ export async function listMyTeams(): Promise<
  * minimal (id/name/…) and never exposes membership. Ordered by name.
  */
 export async function listAllTeams(): Promise<Team[]> {
-  await requireCapability("manage_infra");
+  await requireCapability("move_apps");
   const rows = await getDb()
     .select()
     .from(teamsTable)
@@ -121,12 +124,29 @@ export async function listAllTeamsForAdmin(): Promise<Team[]> {
 export async function updateTeam(input: {
   name: string;
   slug: string;
+  requireTwoFactor?: boolean;
 }): Promise<Team> {
-  const { teamId } = await requireCapability("manage_team");
+  const { teamId, userId } = await requireCapability("manage_team");
   const name = input.name.trim();
   const slug = slugify(input.slug);
   if (!name) throw new Error("Team name is required");
   if (!slug) throw new Error("Slug must contain letters or numbers");
+  // Self-lockout guard: switching the policy on while the actor has no second
+  // factor would refuse their very next request, including the one that would
+  // turn it back off. Read live rather than trusting the session's snapshot.
+  if (input.requireTwoFactor) {
+    const me = (
+      await getDb()
+        .select({ enabled: usersTable.twoFactorEnabled })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1)
+    )[0];
+    if (!me?.enabled)
+      throw new Error(
+        "Turn on two-factor authentication for your own account first, or you would lock yourself out.",
+      );
+  }
   return getDb().transaction(async (tx) => {
     const rows = await tx
       .select()
@@ -142,12 +162,34 @@ export async function updateTeam(input: {
       .limit(1);
     if (dup[0] && dup[0].id !== t.id)
       throw new Error("That slug is already in use");
+    const requireTwoFactor = input.requireTwoFactor ?? t.requireTwoFactor;
     await tx
       .update(teamsTable)
-      .set({ name, slug })
+      .set({ name, slug, requireTwoFactor })
       .where(eq(teamsTable.id, t.id));
-    return rowToTeam({ ...t, name, slug });
+    return rowToTeam({ ...t, name, slug, requireTwoFactor });
   });
+}
+
+/**
+ * How many members of the active team have no second factor yet — what the team
+ * Security card shows before an admin flips the policy on, so "3 of 8 members"
+ * is visible rather than discovered by those three being locked out.
+ */
+export async function membersWithoutTwoFactor(): Promise<{
+  without: number;
+  total: number;
+}> {
+  const teamId = await requireActiveTeamId();
+  const rows = await getDb()
+    .select({ enabled: usersTable.twoFactorEnabled })
+    .from(membershipsTable)
+    .innerJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
+    .where(eq(membershipsTable.teamId, teamId));
+  return {
+    without: rows.filter((r) => !r.enabled).length,
+    total: rows.length,
+  };
 }
 
 /**

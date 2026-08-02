@@ -19,7 +19,7 @@ export default async function AppDeploymentsPage(
 
   const [deployments, canDeploy, isAdmin] = await Promise.all([
     listDeployments({ appId: project.id }),
-    hasCapability("deploy"),
+    hasCapability("deploy_apps"),
     isInstanceAdmin(),
   ]);
   const inProgress = deployments.filter((d) => IN_PROGRESS.has(d.status)).length;

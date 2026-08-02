@@ -186,7 +186,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   createBackup: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_backups" },
     description: "Create a backup schedule. Returns true.",
     args: { input: t.arg({ type: CreateBackupInputType, required: true }) },
     resolve: async (_r, { input }) => {
@@ -204,7 +204,7 @@ builder.mutationFields((t) => ({
   }),
   runBackup: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_backups" },
     description: "Run a backup schedule manually now. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
@@ -214,7 +214,7 @@ builder.mutationFields((t) => ({
   }),
   runAppBackup: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_backups" },
     description:
       "Run an ad-hoc backup of an app now (no owning schedule). Returns " +
       "true.",
@@ -229,7 +229,7 @@ builder.mutationFields((t) => ({
   }),
   restoreBackup: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "restore_backups" },
     description:
       "Restore a backup run in place (overwrites the live target). Returns " +
       "true.",
@@ -241,7 +241,7 @@ builder.mutationFields((t) => ({
   }),
   toggleBackup: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_backups" },
     description: "Enable or disable a backup schedule. Returns true.",
     args: {
       id: t.arg.string({ required: true }),
@@ -254,7 +254,7 @@ builder.mutationFields((t) => ({
   }),
   updateBackup: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_backups" },
     description:
       "Edit a backup schedule's name, destination, cron and retention. The " +
       "target it backs up is fixed at creation and cannot be changed. Returns " +
@@ -275,7 +275,7 @@ builder.mutationFields((t) => ({
   }),
   deleteBackup: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_backups" },
     description: "Delete a backup schedule. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {

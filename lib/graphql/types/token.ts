@@ -65,7 +65,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   createToken: t.field({
     type: CreateTokenPayloadRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_tokens" },
     description:
       "Create a new API token. The raw secret is returned once in the payload.",
     args: { name: t.arg.string({ required: true }) },
@@ -73,7 +73,7 @@ builder.mutationFields((t) => ({
   }),
   revokeToken: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_tokens" },
     description: "Revoke (delete) an API token. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {

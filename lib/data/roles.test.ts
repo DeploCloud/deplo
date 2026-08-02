@@ -18,6 +18,7 @@ import {
   TEAM_B,
   USER_1,
 } from "./identity-test-helpers";
+import { CAPABILITY_PRESETS } from "../membership-shared";
 import { listMembers, updateMember } from "./members";
 import {
   createRole,
@@ -97,13 +98,13 @@ test("a hand-picked capability set is NOT adopted — it stays Custom", async ()
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       // Neither the member nor the viewer preset: a genuine one-off set.
-      { id: "odd", teamId: TEAM_A, role: "member", capabilities: ["view", "manage_infra"] },
+      { id: "odd", teamId: TEAM_A, role: "member", capabilities: ["view", "manage_backups"] },
     ],
   });
   const odd = (await asOwner(() => listMembers())).find((m) => m.userId === "odd")!;
   assert.equal(odd.roleId, null);
   assert.equal(odd.roleName, null);
-  assert.deepEqual(odd.capabilities.slice().sort(), ["manage_infra", "view"]);
+  assert.deepEqual(odd.capabilities.slice().sort(), ["manage_backups", "view"]);
 });
 
 test("createRole: named, view is implied, duplicate names refused", async () => {
@@ -112,11 +113,11 @@ test("createRole: named, view is implied, duplicate names refused", async () => 
     createRole({
       name: "  Deployer  ",
       description: "Ships apps",
-      capabilities: ["deploy"],
+      capabilities: ["deploy_apps"],
     }),
   );
   assert.equal(role.name, "Deployer", "the name is trimmed");
-  assert.deepEqual(role.capabilities, ["view", "deploy"], "view is the floor");
+  assert.deepEqual(role.capabilities, ["view", "deploy_apps"], "view is the floor");
   assert.equal(role.builtinKey, null);
   assert.equal(role.locked, false);
 
@@ -140,22 +141,22 @@ test("editing a role rewrites the capabilities of everyone holding it", async ()
     ],
   });
   const role = await asOwner(() =>
-    createRole({ name: "Deployer", capabilities: ["deploy"] }),
+    createRole({ name: "Deployer", capabilities: ["deploy_apps"] }),
   );
   await asOwner(() => updateMember({ userId: "dev1", roleId: role.id }));
   await asOwner(() => updateMember({ userId: "dev2", roleId: role.id }));
-  assert.deepEqual(await capsOf("dev1"), ["deploy", "view"]);
+  assert.deepEqual(await capsOf("dev1"), ["deploy_apps", "view"]);
 
   // Re-scoping the role reaches both members in the same write.
   await asOwner(() =>
     updateRole({
       id: role.id,
       name: "Deployer",
-      capabilities: ["deploy", "manage_domains"],
+      capabilities: ["deploy_apps", "manage_domains"],
     }),
   );
-  assert.deepEqual(await capsOf("dev1"), ["deploy", "manage_domains", "view"]);
-  assert.deepEqual(await capsOf("dev2"), ["deploy", "manage_domains", "view"]);
+  assert.deepEqual(await capsOf("dev1"), ["deploy_apps", "manage_domains", "view"]);
+  assert.deepEqual(await capsOf("dev2"), ["deploy_apps", "manage_domains", "view"]);
 
   // …and taking a permission away reaches them too.
   await asOwner(() =>
@@ -197,23 +198,21 @@ test("the Owner default is locked, and a default reverts to its preset", async (
       id: member.id,
       name: "Contributor",
       description: "Ours",
-      capabilities: ["deploy"],
+      capabilities: ["deploy_apps"],
     }),
   );
-  assert.deepEqual(await capsOf("m1"), ["deploy", "view"]);
+  assert.deepEqual(await capsOf("m1"), ["deploy_apps", "view"]);
   const edited = byName(await asOwner(() => listRoles()), "Contributor");
   assert.equal(edited.modified, true, "an edited default offers a reset");
 
   await asOwner(() => resetRole(member.id));
   const back = byName(await asOwner(() => listRoles()), "Member");
   assert.equal(back.modified, false);
-  assert.deepEqual(await capsOf("m1"), [
-    "deploy",
-    "manage_domains",
-    "manage_env",
-    "manage_files",
-    "view",
-  ]);
+  assert.deepEqual(
+    await capsOf("m1"),
+    [...CAPABILITY_PRESETS.member].sort(),
+    "the member holding it is back on the shipped preset, permission for permission",
+  );
   await assert.rejects(
     () => asOwner(() => resetRole(edited.id === back.id ? "role_nope" : back.id)),
     /not found|Only a default role/,
@@ -228,7 +227,7 @@ test("deleting a role: refused while held, refused for defaults, allowed when fr
     ],
   });
   const role = await asOwner(() =>
-    createRole({ name: "Deployer", capabilities: ["deploy"] }),
+    createRole({ name: "Deployer", capabilities: ["deploy_apps"] }),
   );
   await asOwner(() => updateMember({ userId: "m1", roleId: role.id }));
   await assert.rejects(
@@ -262,7 +261,7 @@ test("a role from another team is not found (cross-team ids hit nothing)", async
     ],
   });
   const foreign = await runWithIdentity({ userId: "b_owner", teamId: TEAM_B }, () =>
-    createRole({ name: "Beta only", capabilities: ["deploy"] }),
+    createRole({ name: "Beta only", capabilities: ["deploy_apps"] }),
   );
   await assert.rejects(
     () =>
@@ -285,29 +284,29 @@ test("a non-owner can't author or assign a role above their own rank", async () 
         id: "mgr",
         teamId: TEAM_A,
         role: "member",
-        capabilities: ["view", "deploy", "manage_members"],
+        capabilities: ["view", "deploy_apps", "manage_members", "manage_roles"],
       },
       { id: "m1", teamId: TEAM_A, role: "viewer", capabilities: ["view"] },
     ],
   });
-  // Authoring: the manager holds neither manage_infra nor manage_team.
+  // Authoring: the manager may run backups on nothing — they don't hold it.
   await assert.rejects(
     () =>
       asUser("mgr", () =>
-        createRole({ name: "Superuser", capabilities: ["manage_infra"] }),
+        createRole({ name: "Superuser", capabilities: ["manage_backups"] }),
       ),
     /only give a role permissions you hold yourself/,
   );
   // …but a role within their own set is fine.
   const ok = await asUser("mgr", () =>
-    createRole({ name: "Shipper", capabilities: ["deploy"] }),
+    createRole({ name: "Shipper", capabilities: ["deploy_apps"] }),
   );
-  assert.deepEqual(ok.capabilities, ["view", "deploy"]);
+  assert.deepEqual(ok.capabilities, ["view", "deploy_apps"]);
 
   // Assigning: an owner-authored role that outranks them is refused outright,
   // rather than quietly assigned with fewer permissions than it says.
   const powerful = await asOwner(() =>
-    createRole({ name: "Infra", capabilities: ["manage_infra"] }),
+    createRole({ name: "Infra", capabilities: ["manage_backups"] }),
   );
   await assert.rejects(
     () => asUser("mgr", () => updateMember({ userId: "m1", roleId: powerful.id })),
@@ -326,16 +325,20 @@ test("a role edit can't strip the team of its last administrator", async () => {
         id: USER_1,
         teamId: TEAM_A,
         role: "owner",
-        capabilities: ["view", "manage_members", "manage_team"],
+        capabilities: ["view", "manage_members", "manage_roles", "manage_team"],
       },
     ],
   });
   const admins = await asOwner(() =>
-    createRole({ name: "Admins", capabilities: ["manage_members", "manage_team"] }),
+    createRole({
+      name: "Admins",
+      capabilities: ["manage_members", "manage_roles", "manage_team"],
+    }),
   );
   await asOwner(() => updateMember({ userId: USER_1, roleId: admins.id }));
   assert.deepEqual(await capsOf(USER_1), [
     "manage_members",
+    "manage_roles",
     "manage_team",
     "view",
   ]);
@@ -347,7 +350,7 @@ test("a role edit can't strip the team of its last administrator", async () => {
         updateRole({
           id: admins.id,
           name: "Admins",
-          capabilities: ["manage_team"],
+          capabilities: ["manage_roles", "manage_team"],
         }),
       ),
     /at least one member who can manage members/,
@@ -355,12 +358,13 @@ test("a role edit can't strip the team of its last administrator", async () => {
   // The refusal rolled the whole edit back — role and member are untouched.
   assert.deepEqual(await capsOf(USER_1), [
     "manage_members",
+    "manage_roles",
     "manage_team",
     "view",
   ]);
   assert.deepEqual(
     byName(await asOwner(() => listRoles()), "Admins").capabilities.slice().sort(),
-    ["manage_members", "manage_team", "view"],
+    ["manage_members", "manage_roles", "manage_team", "view"],
   );
 });
 

@@ -36,7 +36,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 
 /** Returns the raw token ONCE; only the hash is persisted. */
 export async function createToken(name: string): Promise<{ raw: string; token: ApiTokenDTO }> {
-  const { teamId, userId } = await requireCapability("manage_infra");
+  const { teamId, userId } = await requireCapability("manage_tokens");
   if (!name.trim()) throw new Error("Name is required");
   const raw = `deplo_${randomToken(24)}`;
   const token: ApiTokenDTO = {
@@ -95,7 +95,7 @@ export async function authenticateToken(
 }
 
 export async function revokeToken(id: string): Promise<void> {
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("manage_tokens")).teamId;
   await getDb()
     .delete(apiTokens)
     .where(and(eq(apiTokens.id, id), eq(apiTokens.teamId, teamId)));

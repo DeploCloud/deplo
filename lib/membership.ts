@@ -7,6 +7,7 @@ import { getDb } from "./db/client";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
+  teamRoles as teamRolesTable,
   teams as teamsTable,
   users as usersTable,
 } from "./db/schema/control-plane";
@@ -94,11 +95,122 @@ export async function teamsForUser(userId: string): Promise<Team[]> {
   }));
 }
 
+/* ------------------------------------------------------------------ */
+/* Two-factor policy                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Thrown when a team (or the member's role in it) requires two-factor
+ * authentication and the account has not enrolled one. Carries the team id and a
+ * human reason so the caller can say WHICH policy is blocking them.
+ *
+ * This is a hard stop, not a downgrade: a member under an unmet 2FA policy gets
+ * NO capabilities, no reads, and no bearer-API access in that team — "niente 2FA,
+ * niente di niente". Their other teams are untouched, and their own account
+ * settings stay reachable, which is what makes the block recoverable.
+ */
+export class TwoFactorRequiredError extends Error {
+  constructor(
+    readonly teamId: string,
+    readonly reason: string,
+  ) {
+    super(
+      `${reason} requires two-factor authentication. Turn it on in Settings → Security to continue.`,
+    );
+    this.name = "TwoFactorRequiredError";
+  }
+}
+
+/**
+ * Whether `userId` satisfies `teamId`'s 2FA policy, and if not, what to name.
+ *
+ * Two independent sources, either of which is enough: the team-wide switch
+ * (`teams.require_two_factor`) and the member's own role
+ * (`team_roles.require_two_factor`). A membership with no role — the hand-picked
+ * "Custom" capability set — is covered by the team switch alone.
+ *
+ * Request-cached: the gate runs on every read AND every capability check, so
+ * without memoization a single page would re-run it dozens of times.
+ */
+const twoFactorMandate = cache(
+  async (
+    userId: string,
+    teamId: string,
+  ): Promise<{ satisfied: boolean; reason: string }> => {
+    const rows = await getDb()
+      .select({
+        enrolled: usersTable.twoFactorEnabled,
+        teamRequires: teamsTable.requireTwoFactor,
+        teamName: teamsTable.name,
+        roleRequires: teamRolesTable.requireTwoFactor,
+        roleName: teamRolesTable.name,
+      })
+      .from(membershipsTable)
+      .innerJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
+      .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId))
+      .leftJoin(teamRolesTable, eq(teamRolesTable.id, membershipsTable.roleId))
+      .where(
+        and(
+          eq(membershipsTable.userId, userId),
+          eq(membershipsTable.teamId, teamId),
+        ),
+      )
+      .limit(1);
+    const r = rows[0];
+    // No membership: not this gate's problem. The caller's own "not a member"
+    // handling is the right answer, and inventing a 2FA error here would be a
+    // confusing way to say "you were removed from this team".
+    if (!r) return { satisfied: true, reason: "" };
+    if (r.enrolled) return { satisfied: true, reason: "" };
+    if (r.roleRequires)
+      return { satisfied: false, reason: `The ${r.roleName} role` };
+    if (r.teamRequires) return { satisfied: false, reason: r.teamName };
+    return { satisfied: true, reason: "" };
+  },
+);
+
+/** Throw if `userId` is under an unmet 2FA policy in `teamId`. */
+async function assertTwoFactor(userId: string, teamId: string): Promise<void> {
+  const { satisfied, reason } = await twoFactorMandate(userId, teamId);
+  if (!satisfied) throw new TwoFactorRequiredError(teamId, reason);
+}
+
+/**
+ * The policy blocking (or that would block) the CURRENT user, across every team
+ * they belong to — what Settings → Security needs to explain why 2FA cannot be
+ * turned off. Returns null when nothing requires it.
+ */
+export async function twoFactorMandateForCurrentUser(): Promise<string | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const rows = await getDb()
+    .select({
+      teamRequires: teamsTable.requireTwoFactor,
+      teamName: teamsTable.name,
+      roleRequires: teamRolesTable.requireTwoFactor,
+      roleName: teamRolesTable.name,
+    })
+    .from(membershipsTable)
+    .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId))
+    .leftJoin(teamRolesTable, eq(teamRolesTable.id, membershipsTable.roleId))
+    .where(eq(membershipsTable.userId, user.id));
+  for (const r of rows) {
+    if (r.roleRequires) return `The ${r.roleName} role in ${r.teamName}`;
+    if (r.teamRequires) return r.teamName;
+  }
+  return null;
+}
+
 /** The user's membership in a specific team (with capabilities), or null. */
 export async function membershipFor(
   userId: string,
   teamId: string,
 ): Promise<Membership | null> {
+  // THE gate. Everything that resolves what a member may do runs through here —
+  // requireMembership, requireCapability, hasCapability, currentCapabilities, and
+  // authenticateToken for the bearer API — so one guard closes the UI and the API
+  // together. Reads go through requireActiveTeamId, which carries the twin call.
+  await assertTwoFactor(userId, teamId);
   const rows = await getDb()
     .select({
       id: membershipsTable.id,
@@ -167,6 +279,12 @@ export const getActiveTeamId = cache(async (): Promise<string | null> => {
 export async function requireActiveTeamId(): Promise<string> {
   const teamId = await getActiveTeamId();
   if (!teamId) throw new Error("No active team");
+  // The twin of the guard in `membershipFor`. Every READ in lib/data scopes
+  // itself through this function and never touches `membershipFor`, so without
+  // this second call a member under an unmet 2FA policy would still be able to
+  // list apps, logs and variables — blocked from writing, but not from looking.
+  const user = await getCurrentUser();
+  if (user) await assertTwoFactor(user.id, teamId);
   return teamId;
 }
 

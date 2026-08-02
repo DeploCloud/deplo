@@ -35,6 +35,10 @@ export const TeamRoleRef = builder
           "Exactly what a member holding this role can do. `view` is always included.",
         resolve: (r) => r.capabilities,
       }),
+      requireTwoFactor: t.exposeBoolean("requireTwoFactor", {
+        description:
+          "Holders of this role must have two-factor authentication; without it they resolve no capabilities at all, over the UI and the API alike.",
+      }),
       memberCount: t.exposeInt("memberCount"),
       modified: t.exposeBoolean("modified", {
         description:
@@ -58,6 +62,7 @@ const CreateRoleInputType = builder.inputType("CreateRoleInput", {
     description: t.string({ required: false }),
     // Omitted / empty ⇒ a view-only role. `view` is added server-side either way.
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
+    requireTwoFactor: t.boolean({ required: false }),
   }),
 });
 
@@ -67,6 +72,7 @@ const UpdateRoleInputType = builder.inputType("UpdateRoleInput", {
     name: t.string({ required: true }),
     description: t.string({ required: false }),
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
+    requireTwoFactor: t.boolean({ required: false }),
   }),
 });
 
@@ -91,7 +97,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   createRole: t.field({
     type: TeamRoleRef,
-    authScopes: { capability: "manage_members" },
+    authScopes: { capability: "manage_roles" },
     description: "Create a custom role for the active team.",
     args: { input: t.arg({ type: CreateRoleInputType, required: true }) },
     resolve: (_r, { input }) =>
@@ -99,11 +105,12 @@ builder.mutationFields((t) => ({
         name: input.name,
         description: input.description ?? null,
         capabilities: (input.capabilities ?? undefined) as never,
+        requireTwoFactor: input.requireTwoFactor ?? false,
       }),
   }),
   updateRole: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_members" },
+    authScopes: { capability: "manage_roles" },
     description:
       "Rename and/or re-scope a role. Every member holding it gets the new capability set immediately. Returns true.",
     args: { input: t.arg({ type: UpdateRoleInputType, required: true }) },
@@ -113,13 +120,14 @@ builder.mutationFields((t) => ({
         name: input.name,
         description: input.description ?? null,
         capabilities: (input.capabilities ?? undefined) as never,
+        requireTwoFactor: input.requireTwoFactor ?? false,
       });
       return true;
     },
   }),
   resetRole: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_members" },
+    authScopes: { capability: "manage_roles" },
     description:
       "Restore a default role to exactly what deplo ships, for its members too. Returns true.",
     args: { id: t.arg.string({ required: true }) },
@@ -130,7 +138,7 @@ builder.mutationFields((t) => ({
   }),
   deleteRole: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_members" },
+    authScopes: { capability: "manage_roles" },
     description:
       "Delete a custom role. Refuses while any member still holds it. Returns true.",
     args: { id: t.arg.string({ required: true }) },

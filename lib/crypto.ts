@@ -42,7 +42,7 @@ function rootSecret(): string {
  * derives fresh material rather than serving a stale key.
  */
 const keyCache = new Map<string, Buffer>();
-function deriveKey(purpose: string): Buffer {
+export function deriveKey(purpose: string): Buffer {
   const cacheKey = `${rootSecret()} ${purpose}`;
   let key = keyCache.get(cacheKey);
   if (!key) {

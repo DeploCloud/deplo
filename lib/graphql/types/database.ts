@@ -182,7 +182,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   createDatabase: t.field({
     type: DatabaseRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "create_databases" },
     args: { input: t.arg({ type: CreateDatabaseInputType, required: true }) },
     resolve: (_r, { input }) =>
       createDatabase({
@@ -199,7 +199,7 @@ builder.mutationFields((t) => ({
   }),
   updateDatabase: t.field({
     type: DatabaseRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "configure_databases" },
     description:
       "Edit a database's public exposure (publish/unpublish + host port) and, " +
       "optionally, the server it runs on. An in-place edit re-renders the compose " +
@@ -225,7 +225,7 @@ builder.mutationFields((t) => ({
   }),
   renameDatabase: t.field({
     type: DatabaseRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "configure_databases" },
     description:
       "Rename a database — its DISPLAY name only. The container's identity " +
       "(compose project, data volume, DNS name and therefore the connection " +
@@ -242,7 +242,7 @@ builder.mutationFields((t) => ({
   }),
   updateDatabaseLogo: t.field({
     type: DatabaseRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "configure_databases" },
     description:
       "Set the database's display logo (an image data-URI), or clear it with " +
       "null to fall back to the engine's own brand mark. Cosmetic only.",
@@ -257,7 +257,7 @@ builder.mutationFields((t) => ({
   }),
   generateAvailableDbPort: t.field({
     type: "Int",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "create_databases" },
     description:
       "Suggest a host port that is currently free on the target server, for the " +
       "database 'Expose publicly' flow. Requires the publish-ports grant.",
@@ -267,7 +267,7 @@ builder.mutationFields((t) => ({
   }),
   setDatabaseRunning: t.field({
     type: DatabaseRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "control_databases" },
     args: {
       id: t.arg.string({ required: true }),
       running: t.arg.boolean({ required: true }),
@@ -279,7 +279,7 @@ builder.mutationFields((t) => ({
   }),
   restartDatabase: t.field({
     type: DatabaseRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "control_databases" },
     description:
       "Restart the database container (stop + start) without re-rendering its " +
       "compose. Use redeployDatabase to apply pending settings.",
@@ -291,7 +291,7 @@ builder.mutationFields((t) => ({
   }),
   redeployDatabase: t.field({
     type: DatabaseRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "control_databases" },
     description:
       "Re-render the database's compose from its current settings (resource " +
       "limits, image/command overrides, exposure) and reroute it on its server. " +
@@ -305,7 +305,7 @@ builder.mutationFields((t) => ({
   }),
   rebuildDatabase: t.field({
     type: DatabaseRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "delete_databases" },
     description:
       "DESTRUCTIVE factory reset: tear down the database container AND its " +
       "data volume, then re-provision a fresh, empty stack from the current " +
@@ -320,7 +320,7 @@ builder.mutationFields((t) => ({
   }),
   updateDatabaseResources: t.field({
     type: DatabaseRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "configure_databases" },
     description:
       "Save the database's per-container resource limits. Applied on the next " +
       "redeploy or settings-driven reroute.",
@@ -335,7 +335,7 @@ builder.mutationFields((t) => ({
   }),
   updateDatabaseImage: t.field({
     type: DatabaseRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "configure_databases" },
     description:
       "Save the database's expert overrides: custom image, custom command, " +
       "and/or engine version (image tag). Applied on the next redeploy. An " +
@@ -355,7 +355,7 @@ builder.mutationFields((t) => ({
   }),
   rotateDatabasePassword: t.field({
     type: "String",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "configure_databases" },
     description:
       "Rotate the database's engine password (auto-generated when none is " +
       "given) and return the NEW connection string — shown once, like " +
@@ -372,7 +372,7 @@ builder.mutationFields((t) => ({
   }),
   deleteDatabase: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "delete_databases" },
     description:
       "Stop and destroy the database's container + data volume on its server, " +
       "then delete it (dependent backup schedules cascade). The teardown must " +
@@ -392,7 +392,7 @@ builder.mutationFields((t) => ({
   }),
   reorderDatabases: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "configure_databases" },
     description:
       "Persist the team-wide order of databases in the Storage grid. Ids are " +
       "sanitised to the team's own databases; omitted ones are appended. " +
@@ -405,7 +405,7 @@ builder.mutationFields((t) => ({
   }),
   revealConnection: t.field({
     type: "String",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "reveal_secrets" },
     description: "Reveal the full (unmasked) connection string for a database.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => getConnectionString(id),

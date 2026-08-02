@@ -10,6 +10,7 @@ import {
   instanceSettings,
   users as usersTable,
 } from "../db/schema/control-plane";
+import { account as accountTable } from "../db/schema/auth";
 import { verifyPassword } from "../crypto";
 import { runWithIdentity } from "../auth/request-context";
 import {
@@ -88,15 +89,18 @@ const edit = (userId: string, patch: Partial<Parameters<typeof updateUserAdmin>[
   ...patch,
 });
 
+// The credential lives on the Better Auth `account` row since migration 0055, so
+// the password assertions read it from there rather than from `users`.
 const userRow = async (id: string) =>
   (
     await db
       .select({
         isInstanceAdmin: usersTable.isInstanceAdmin,
         suspended: usersTable.suspended,
-        passwordHash: usersTable.passwordHash,
+        passwordHash: accountTable.password,
       })
       .from(usersTable)
+      .leftJoin(accountTable, eq(accountTable.userId, usersTable.id))
       .where(eq(usersTable.id, id))
       .limit(1)
   )[0]!;
@@ -139,7 +143,7 @@ test("another admin cannot RESET the instance owner's password", async () => {
   const after = await userRow(OWNER);
   assert.equal(after.passwordHash, before, "the hash must be untouched");
   assert.ok(
-    verifyPassword(SEEDED_PW, after.passwordHash),
+    verifyPassword(SEEDED_PW, after.passwordHash!),
     "the owner's original password still works",
   );
 });
@@ -165,7 +169,7 @@ test("the owner can still edit their own account (password included)", async () 
     updateUserAdmin(edit(OWNER, { newPassword: "a-new-password" })),
   );
   const row = await userRow(OWNER);
-  assert.ok(verifyPassword("a-new-password", row.passwordHash));
+  assert.ok(verifyPassword("a-new-password", row.passwordHash!));
   assert.equal(row.isInstanceAdmin, true);
 });
 

@@ -55,7 +55,7 @@ export async function addRegistry(input: {
   username: string;
   password: string;
 }): Promise<void> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("manage_registries");
   // The actor's display name for the activity log lives in the JSONB users
   // collection (cut-set b — still authoritative this step).
   const user = (await getCurrentUser())!;
@@ -82,7 +82,7 @@ export async function addRegistry(input: {
 }
 
 export async function deleteRegistry(id: string): Promise<void> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("manage_registries");
   const user = (await getCurrentUser())!;
   const rows = await getDb()
     .select({ name: registriesTable.name })

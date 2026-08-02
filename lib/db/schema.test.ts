@@ -41,12 +41,15 @@ after(async () => {
  * Better-Auth tables (schema/auth) + the live `scheduler_lease` mutex
  * (schema/scheduler) — the non-control-plane tables that survive. The legacy
  * `deplo_state` JSONB table was dropped in PLAN Step 7 (migration 0004).
+ *
+ * `user` is absent on purpose: migration 0055 dropped it and remapped Better Auth's
+ * `user` model onto the control-plane `users` table (ADR-0014).
  */
 const PRE_EXISTING = [
   "account",
   "session",
-  "user",
   "verification",
+  "two_factor",
   "scheduler_lease",
 ] as const;
 

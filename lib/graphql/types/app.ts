@@ -446,7 +446,7 @@ const AppTransferInfoRef = builder
 builder.queryFields((t) => ({
   appTransferInfo: t.field({
     type: AppTransferInfoRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "move_apps" },
     description:
       "What transferring this app to another team would change, and which of " +
       "the viewer's other teams could take it.",
@@ -469,7 +469,7 @@ builder.queryFields((t) => ({
   detectRepoFramework: t.field({
     type: RecognizedFrameworkRef,
     nullable: true,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "create_apps" },
     description:
       "Recognise the JavaScript framework in a GitHub repository before an app " +
       "exists for it — what the new-app wizard shows while you pick a repo. " +
@@ -587,7 +587,7 @@ function redactComposeEnvValues(yaml: string): string {
 builder.mutationFields((t) => ({
   createApp: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "create_apps" },
     args: { input: t.arg({ type: CreateAppInputType, required: true }) },
     resolve: (_r, { input }) =>
       createApp({
@@ -624,7 +624,7 @@ builder.mutationFields((t) => ({
   }),
   renameApp: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "configure_apps" },
     args: {
       id: t.arg.string({ required: true }),
       name: t.arg.string({ required: true }),
@@ -638,7 +638,7 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     // Team-wide setting: an instance admin OR a member with manage_team. The
     // data layer re-checks the same gate (defense-in-depth).
-    authScopes: { $any: { instanceAdmin: true, capability: "manage_team" } },
+    authScopes: { $any: { instanceAdmin: true, capability: "move_apps" } },
     description: "Set the team-wide display order of apps in Overview.",
     args: { appIds: t.arg.idList({ required: true }) },
     resolve: async (_r, { appIds }) => {
@@ -648,7 +648,7 @@ builder.mutationFields((t) => ({
   }),
   updateAppBuild: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "configure_apps" },
     args: {
       id: t.arg.string({ required: true }),
       build: t.arg({ type: BuildConfigInput, required: true }),
@@ -663,7 +663,7 @@ builder.mutationFields((t) => ({
     description:
       "Save the app's per-app resource caps (RAM/CPU/PIDs/disk/…). Applied on " +
       "the next deploy. A cleared field ⇒ that dimension is uncapped.",
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "configure_apps" },
     args: {
       id: t.arg.string({ required: true }),
       limits: t.arg({ type: ResourceLimitsInputType, required: true }),
@@ -675,7 +675,7 @@ builder.mutationFields((t) => ({
   }),
   updateAppSource: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "configure_apps" },
     args: {
       id: t.arg.string({ required: true }),
       input: t.arg({ type: UpdateSourceInputType, required: true }),
@@ -693,7 +693,7 @@ builder.mutationFields((t) => ({
   }),
   setAppVolumes: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "configure_apps" },
     description:
       "Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included — each volume names the service it mounts into.",
     args: {
@@ -726,7 +726,7 @@ builder.mutationFields((t) => ({
   }),
   setAppAutoDeploy: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "configure_apps" },
     args: {
       id: t.arg.string({ required: true }),
       value: t.arg.boolean({ required: true }),
@@ -738,7 +738,7 @@ builder.mutationFields((t) => ({
   }),
   updateAppLogo: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "configure_apps" },
     args: {
       id: t.arg.string({ required: true }),
       logo: t.arg.string({ required: false }),
@@ -750,7 +750,7 @@ builder.mutationFields((t) => ({
   }),
   detectAppLogo: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "configure_apps" },
     description:
       "Auto-detect a favicon from the app's own files — its GitHub repo, its uploaded archive, or (for a compose stack) its files dir on its server — and set it as the logo. Errors if none is found.",
     args: { id: t.arg.string({ required: true }) },
@@ -761,7 +761,7 @@ builder.mutationFields((t) => ({
   }),
   stopApp: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "control_apps" },
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await stopApp(id);
@@ -770,7 +770,7 @@ builder.mutationFields((t) => ({
   }),
   startApp: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "control_apps" },
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await startApp(id);
@@ -779,7 +779,7 @@ builder.mutationFields((t) => ({
   }),
   rebuildApp: t.field({
     type: AppRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "deploy_apps" },
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await rebuildApp(id);
@@ -788,7 +788,7 @@ builder.mutationFields((t) => ({
   }),
   reloadApp: t.field({
     type: "String",
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "control_apps" },
     description:
       "Re-apply the app's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.",
     args: { id: t.arg.string({ required: true }) },
@@ -799,7 +799,7 @@ builder.mutationFields((t) => ({
     // `deploy` is the introspectable floor; the data layer additionally demands
     // `manage_env` here (the app carries its encrypted variables across a
     // tenancy boundary) and `deploy` in the DESTINATION team.
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "move_apps" },
     description:
       "Hand this app over to another team the viewer belongs to. The app keeps " +
       "running: it leaves its folder/project, loses its shared-variable links " +
@@ -816,7 +816,7 @@ builder.mutationFields((t) => ({
   }),
   deleteApp: t.field({
     type: "Boolean",
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "delete_apps" },
     description: "Delete the app and tear down its stack. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
@@ -826,7 +826,7 @@ builder.mutationFields((t) => ({
   }),
   deleteApps: t.field({
     type: "Int",
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "delete_apps" },
     description:
       "Bulk-delete several apps (bounded-concurrency teardown + one write). Returns how many were deleted.",
     args: { ids: t.arg.idList({ required: true }) },
@@ -850,20 +850,20 @@ builder.mutationFields((t) => ({
   }),
   redeploy: t.field({
     type: DeploymentRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "deploy_apps" },
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => redeploy(appId),
   }),
   cancelDeployment: t.field({
     type: "Boolean",
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "deploy_apps" },
     args: { id: t.arg.string({ required: true }) },
     // Returns false if the deployment had already finished (nothing to stop).
     resolve: (_r, { id }) => cancelDeployment(id),
   }),
   cancelAllDeployments: t.field({
     type: "Int",
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "deploy_apps" },
     description:
       "Cancel every in-progress deployment (queued/building) for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. Terminal deployments are left. Returns how many builds were stopped.",
     args: {
@@ -882,7 +882,7 @@ builder.mutationFields((t) => ({
   }),
   promoteDeployment: t.field({
     type: "Boolean",
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "deploy_apps" },
     description: "Promote a preview deployment to production.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
@@ -892,7 +892,7 @@ builder.mutationFields((t) => ({
   }),
   deleteDeployments: t.field({
     type: "Int",
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "delete_apps" },
     description:
       "Delete finished deployments (ready/error/canceled) by id; in-progress ones (queued/building) are left to be canceled first. Returns how many were deleted.",
     args: { ids: t.arg.idList({ required: true }) },
@@ -900,7 +900,7 @@ builder.mutationFields((t) => ({
   }),
   deleteAllDeployments: t.field({
     type: "Int",
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "delete_apps" },
     description:
       "Delete every finished deployment for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. In-progress deployments are left. Returns how many were deleted.",
     args: {

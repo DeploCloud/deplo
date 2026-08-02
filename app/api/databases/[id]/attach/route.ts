@@ -194,7 +194,7 @@ async function stillAuthorized(
 ): Promise<boolean> {
   if (session.userId !== userId) return false;
   try {
-    const { teamId } = await requireCapability("manage_infra");
+    const { teamId } = await requireCapability("open_database_console");
     return teamId === session.teamId;
   } catch {
     return false;

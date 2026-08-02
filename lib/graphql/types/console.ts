@@ -268,7 +268,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   execConsole: t.field({
     type: ExecResultRef,
-    authScopes: { capability: "deploy" },
+    authScopes: { capability: "open_app_console" },
     description:
       "Run a command in the app's live container (docker exec). Gated on " +
       "the deploy capability — this is arbitrary code execution.",
@@ -282,7 +282,7 @@ builder.mutationFields((t) => ({
   }),
   execDatabaseConsole: t.field({
     type: ExecResultRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "open_database_console" },
     description:
       "Run a command in the database's live container (docker exec). Gated on " +
       "manage_infra — arbitrary code execution inside infrastructure.",

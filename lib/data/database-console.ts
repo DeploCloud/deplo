@@ -238,7 +238,7 @@ export async function resolveDatabaseAttachTarget(
   | { ok: true; instance: ConsoleInstance; serverId: string }
   | { ok: false; reason: "not-found" | "no-instance" | "stopped" | "unreachable" }
 > {
-  const { teamId } = await requireCapability("manage_infra");
+  const { teamId } = await requireCapability("open_database_console");
   const db = await loadDatabaseForTeam(id, teamId);
   if (!db) return { ok: false, reason: "not-found" };
 
@@ -303,7 +303,7 @@ export async function execInDatabase(
   id: string,
   rawCommand: string,
 ): Promise<{ output: string; detach?: boolean }> {
-  const { teamId } = await requireCapability("manage_infra");
+  const { teamId } = await requireCapability("open_database_console");
   const db = await loadDatabaseForTeam(id, teamId);
   if (!db) return { output: "Error: database not found" };
 

@@ -18,6 +18,7 @@ const viewer: PublicUser = {
   role: "viewer",
   isInstanceAdmin: false,
   avatarColor: "#000",
+  twoFactorEnabled: false,
 };
 
 function ctx(over: Partial<GraphQLContext> = {}): GraphQLContext {
@@ -54,7 +55,7 @@ test("a mutation the caller lacks the capability for is denied, not run", async 
   assert.equal(res.fields.length, 1);
   assert.equal(res.fields[0].field, "createToken");
   assert.equal(res.fields[0].allowed, false);
-  assert.equal(res.fields[0].requires, "manage_infra");
+  assert.equal(res.fields[0].requires, "manage_tokens");
   assert.match(res.fields[0].message, /[Pp]ermission denied/);
 });
 
@@ -63,7 +64,7 @@ test("a mutation the caller is allowed runs as a dry run, not for real", async (
     'mutation { createToken(name: "x") { raw } }',
     {},
     null,
-    ctx({ capabilities: ["view", "manage_infra"] }),
+    ctx({ capabilities: ["view", "manage_tokens"] }),
   );
   assert.equal(res.kind, "dry-run");
   if (res.kind !== "dry-run") return;
@@ -139,7 +140,7 @@ test("a read-only query executes for real", async () => {
     "query { apiContext }",
     {},
     null,
-    ctx({ capabilities: ["view", "deploy"] }),
+    ctx({ capabilities: ["view", "deploy_apps"] }),
   );
   assert.equal(res.kind, "query");
   if (res.kind !== "query") return;
@@ -169,7 +170,7 @@ test("mutations inside an inline fragment are gated too", async () => {
     `mutation { ... on Mutation { createToken(name: "x") { raw } } }`,
     {},
     null,
-    ctx({ capabilities: ["view", "manage_infra"] }),
+    ctx({ capabilities: ["view", "manage_tokens"] }),
   );
   assert.equal(res.kind, "dry-run");
   if (res.kind !== "dry-run") return;
@@ -186,12 +187,12 @@ test("a multi-field mutation reports each field independently", async () => {
      }`,
     {},
     null,
-    ctx({ capabilities: ["view", "manage_infra"] }),
+    ctx({ capabilities: ["view", "manage_tokens"] }),
   );
   assert.equal(res.kind, "dry-run");
   if (res.kind !== "dry-run") return;
   const byName = Object.fromEntries(res.fields.map((f) => [f.field, f]));
-  // Has manage_infra → createToken allowed; not admin → mint denied.
+  // Has manage_tokens → createToken allowed; not admin → mint denied.
   assert.equal(byName.createToken.allowed, true);
   assert.equal(byName.mintRegistrationLink.allowed, false);
 });

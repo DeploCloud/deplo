@@ -23,7 +23,7 @@
  * uses — there is no second password format to keep in sync.
  */
 
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { createInterface } from "node:readline";
 import { randomBytes } from "node:crypto";
 import { getDb } from "../lib/db/client";
@@ -31,6 +31,10 @@ import {
   instanceSettings,
   users as usersTable,
 } from "../lib/db/schema/control-plane";
+import {
+  account as accountTable,
+  session as sessionTable,
+} from "../lib/db/schema/auth";
 import { hashPassword } from "../lib/crypto";
 
 const USAGE = `
@@ -159,10 +163,29 @@ async function cmdPassword(handle: string, given: string | undefined) {
   }
   if (password.length < 8) fail("Choose a password of at least 8 characters.");
 
-  await getDb()
-    .update(usersTable)
-    .set({ passwordHash: hashPassword(password) })
-    .where(eq(usersTable.id, user.id));
+  // The credential lives on the Better Auth `account` row since migration 0055.
+  // Written with plain drizzle rather than through lib/auth so this script stays
+  // free of `next/headers` (it runs from a terminal, not a request).
+  const updated = await getDb()
+    .update(accountTable)
+    .set({ password: hashPassword(password), updatedAt: new Date() })
+    .where(
+      and(
+        eq(accountTable.userId, user.id),
+        eq(accountTable.providerId, "credential"),
+      ),
+    )
+    .returning({ id: accountTable.id });
+  if (updated.length === 0)
+    await getDb().insert(accountTable).values({
+      id: `bacc_${randomBytes(8).toString("hex")}`,
+      userId: user.id,
+      accountId: user.id,
+      providerId: "credential",
+      password: hashPassword(password),
+    });
+  // Kill every live session: whoever locked this account out must not keep a cookie.
+  await getDb().delete(sessionTable).where(eq(sessionTable.userId, user.id));
 
   console.log(`\n  Password updated for @${user.username}.`);
   if (given === "-") console.log(`  New password: ${password}`);

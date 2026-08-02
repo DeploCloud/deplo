@@ -31,6 +31,7 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { AppLogo } from "@/components/shared/project-logo";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, readableTextColor } from "@/lib/utils";
+import { WizardStepper } from "@/components/shared/wizard-stepper";
 import type { SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
@@ -308,8 +309,8 @@ export function SharedVarDialog({
           onSubmit={onSubmit}
           className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-4 overflow-hidden"
         >
-          <Stepper
-            steps={steps}
+          <WizardStepper
+            steps={steps.map((s) => ({ id: s, label: STEP_LABEL[s] }))}
             current={steps[index]}
             // A step is reachable once every step before it is complete — which,
             // when editing, is all of them from the first render.
@@ -467,64 +468,6 @@ export function SharedVarDialog({
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/** The step rail: where you are, what's left, and a way back to a done step. */
-function Stepper({
-  steps,
-  current,
-  reachable,
-  onSelect,
-}: {
-  steps: StepId[];
-  current: StepId;
-  reachable: (s: StepId) => boolean;
-  onSelect: (s: StepId) => void;
-}) {
-  const at = steps.indexOf(current);
-  return (
-    <ol className="flex items-center gap-1">
-      {steps.map((s, i) => {
-        const done = i < at;
-        const active = i === at;
-        const open = reachable(s);
-        return (
-          <li key={s} className="flex min-w-0 items-center gap-1">
-            {i > 0 && <span aria-hidden className="w-3 border-t border-border" />}
-            <button
-              type="button"
-              onClick={() => onSelect(s)}
-              disabled={!open}
-              aria-current={active ? "step" : undefined}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                active
-                  ? "bg-secondary font-medium text-foreground"
-                  : open
-                    ? "text-muted-foreground hover:text-foreground"
-                    : "text-muted-foreground/50",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px]",
-                  active
-                    ? "border-primary bg-primary/10 text-primary"
-                    : done
-                      ? "border-primary/40 text-primary"
-                      : "border-border",
-                )}
-              >
-                {done ? <Check className="size-3" /> : i + 1}
-              </span>
-              <span className="truncate">{STEP_LABEL[s]}</span>
-            </button>
-          </li>
-        );
-      })}
-    </ol>
   );
 }
 

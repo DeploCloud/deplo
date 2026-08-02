@@ -44,19 +44,30 @@ what deplo ships, plus any number it authors itself. **Owner is locked at full a
 the founder's rank is immutable by rule, so a team can never edit its way out of
 administering itself. A role IS its members' capabilities: editing one rewrites them for
 everyone holding it in the same transaction, and no edit may leave the team with zero
-holders of `manage_members` / `manage_team`. Seeded lazily per team by `ensureTeamRoles`,
-so every team-creation path gets them without knowing they exist.
+holders of `manage_members` / `manage_roles` / `manage_team`. Seeded lazily per team by
+`ensureTeamRoles`, so every team-creation path gets them without knowing they exist.
+Edited on its own **page** (`/settings/roles/[id]`, roles rail on the left, summary and the
+primary action on the right — the new-app shape), never in a dialog: forty permissions and
+a search box do not fit in a modal. "New role" asks first whether to start blank or from an
+existing role, so the editor has no "start from" field of its own.
 _Avoid_: permission group, preset (a role is not a template you copy — it stays bound to
 its members), user group, team role level.
 
 **Capability**:
-One permission a member may hold in a team — `view`, `deploy`, `manage_domains`,
-`manage_env`, `manage_files`, `manage_infra`, `manage_members`, `manage_team`. `view` is
-the always-on floor. Capabilities are the enforcement primitive; a **Role** is the named
-set a member is assigned, and the role editor shows the same set at two depths (a switch
-per area, or the individual permissions). Enforced server-side on every mutating action
-via `requireCapability`.
-_Avoid_: permission (use capability), scope, grant.
+ONE action a member may be allowed to take — `create_apps`, `deploy_apps`, `delete_apps`,
+`open_app_console`, `create_databases`, `restore_backups`, `manage_tokens`,
+`organize_folders`, … (forty of them; the catalog with labels, descriptions, search
+keywords and browse categories is `lib/capabilities.ts`). Never a bundle: if a name covers
+two actions an admin might want to separate, it is two capabilities. `view` is the
+always-on floor. Capabilities are the enforcement primitive; a **Role** is the named set a
+member is assigned. Enforced server-side on every mutating action via `requireCapability`.
+
+They replaced eight coarse ones (`deploy`, `manage_infra`, …) in migration 0056, which
+expanded every stored row into exactly what its old name already implied
+(`LEGACY_CAPABILITY_EXPANSION`) — so the split granted and revoked nothing. The old names
+are still accepted from API clients and expanded the same way; they are not capabilities.
+_Avoid_: permission (use capability), scope, grant, permission group / bundle (a capability
+is one action), the retired coarse names in new code.
 
 **Instance owner**:
 The single user who owns the Deplo instance — the tier ABOVE **instance admin**, and the
@@ -90,7 +101,9 @@ acts **as its creator, in the team it was created in** — it can only ever do w
 member's **Capabilities** allow, and there is no way for it to reach another team's data.
 Shown **once** at creation; only its **sha256** is stored, so it is revocable but never
 re-readable, and revoking one user's token cuts off only that user. The dashboard itself never
-uses one — the browser carries the `deplo_session` cookie instead.
+uses one — the browser carries the Better Auth session cookie (`deplo.session_token`) instead.
+A token also inherits its creator's **2FA** standing: if the team (or their role) requires
+two-factor authentication and they have not enrolled, the token resolves nothing at all.
 _Avoid_: caller token (a retired name), API key (reserve for third-party provider keys in
 env), secret key.
 

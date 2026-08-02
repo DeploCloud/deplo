@@ -8,6 +8,7 @@ import {
   membershipCapabilities as membershipCapabilitiesTable,
   teamRoles as teamRolesTable,
   teamRoleCapabilities as teamRoleCapabilitiesTable,
+  users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { getCurrentUser } from "../auth";
@@ -16,6 +17,7 @@ import { requireActiveTeamId, requireCapability } from "../membership";
 import {
   BUILTIN_ROLE_KEYS,
   CAPABILITY_META,
+  expandLegacyCapabilities,
   CAPABILITY_PRESETS,
   ROLE_DEFAULTS,
   capabilitiesForRole,
@@ -50,6 +52,12 @@ export interface TeamRoleDTO {
   /** 'owner' | 'member' | 'viewer' for a default role, null for a custom one. */
   builtinKey: Role | null;
   capabilities: Capability[];
+  /**
+   * Holders of this role must have two-factor authentication. A POLICY, not a
+   * capability: capabilities answer "may they do X", this answers "under what
+   * condition does any of it count". Unmet, the member resolves nothing at all.
+   */
+  requireTwoFactor: boolean;
   /** How many members of the team currently hold this role. */
   memberCount: number;
   /** A default role that no longer matches its shipped preset — offer "Reset". */
@@ -68,6 +76,7 @@ type Db = ReturnType<typeof getDb> | DbTx;
  */
 const CRITICAL: { cap: Capability; label: string }[] = [
   { cap: "manage_members", label: "manage members" },
+  { cap: "manage_roles", label: "manage roles" },
   { cap: "manage_team", label: "manage the team" },
 ];
 
@@ -224,6 +233,7 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
       builtinKey: teamRolesTable.builtinKey,
       name: teamRolesTable.name,
       description: teamRolesTable.description,
+      requireTwoFactor: teamRolesTable.requireTwoFactor,
       createdAt: teamRolesTable.createdAt,
     })
     .from(teamRolesTable)
@@ -270,6 +280,7 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
       description: r.description,
       builtinKey,
       capabilities,
+      requireTwoFactor: r.requireTwoFactor ?? false,
       memberCount: countByRole.get(r.id) ?? 0,
       modified: builtinKey
         ? r.name !== ROLE_DEFAULTS[builtinKey].name ||
@@ -286,6 +297,17 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
   const rank = (d: TeamRoleDTO) =>
     d.builtinKey ? BUILTIN_ROLE_KEYS.indexOf(d.builtinKey) : BUILTIN_ROLE_KEYS.length;
   return dtos.sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * One role of the active team, or null when the id belongs to another team (or
+ * to nothing) — the role editor page's loader. Reads through {@link listRoles} so
+ * the DTO, the member count and the "modified" verdict are computed in exactly
+ * one place; the team has at most a few dozen roles, so the extra rows cost
+ * nothing next to a second set of near-identical queries that could drift.
+ */
+export async function getRole(id: string): Promise<TeamRoleDTO | null> {
+  return (await listRoles()).find((r) => r.id === id) ?? null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -500,9 +522,13 @@ function cleanDescription(raw: string | undefined | null): string | null {
   return text;
 }
 
-/** Known capabilities only, `view` always included (it is the floor). */
+/**
+ * Known capabilities only, `view` always included (it is the floor). One of the
+ * eight retired coarse names arriving from an API client expands to the
+ * permissions it used to imply rather than being dropped on the floor.
+ */
 function sanitizeCapabilities(caps: Capability[] | undefined): Capability[] {
-  const set = new Set((caps ?? []).filter((c) => ALL_CAPABILITIES.includes(c)));
+  const set = new Set(expandLegacyCapabilities((caps ?? []) as string[]));
   set.add("view");
   return ALL_CAPABILITIES.filter((c) => set.has(c));
 }
@@ -553,6 +579,42 @@ async function actorUsername(): Promise<string> {
   return (await getCurrentUser())?.username ?? "an admin";
 }
 
+/**
+ * Refuse to put a 2FA mandate on a role the actor HOLDS while the actor has no
+ * second factor. They would be answering their own next request with a refusal —
+ * survivable in the dashboard (the lock screen offers enrolment) but a dead end
+ * over the bearer API, where the token that made the change is the token the
+ * change kills.
+ */
+async function assertActorCanMandateTwoFactor(
+  userId: string,
+  roleId: string,
+): Promise<void> {
+  const db = getDb();
+  const me = (
+    await db
+      .select({ enabled: usersTable.twoFactorEnabled })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1)
+  )[0];
+  if (me?.enabled) return;
+  const holds = await db
+    .select({ id: membershipsTable.id })
+    .from(membershipsTable)
+    .where(
+      and(
+        eq(membershipsTable.userId, userId),
+        eq(membershipsTable.roleId, roleId),
+      ),
+    )
+    .limit(1);
+  if (holds.length > 0)
+    throw new Error(
+      "You hold this role, so turn on two-factor authentication for your own account first.",
+    );
+}
+
 /* ------------------------------------------------------------------ */
 /* Mutations                                                           */
 /* ------------------------------------------------------------------ */
@@ -562,11 +624,15 @@ export async function createRole(input: {
   name: string;
   description?: string | null;
   capabilities?: Capability[];
+  requireTwoFactor?: boolean;
 }): Promise<TeamRoleDTO> {
-  const { teamId, membership } = await requireCapability("manage_members");
+  const { teamId, membership } = await requireCapability("manage_roles");
   const name = cleanRoleName(input.name);
   const description = cleanDescription(input.description);
   const capabilities = withinActor(input.capabilities, membership);
+  // No self-lockout check on create: a brand-new role has no members yet, so
+  // turning the mandate on cannot cut anyone off, the author included.
+  const requireTwoFactor = input.requireTwoFactor ?? false;
   const db = getDb();
   await ensureTeamRoles(db, teamId);
 
@@ -576,7 +642,15 @@ export async function createRole(input: {
     await assertNameFree(tx, teamId, name, null);
     await tx
       .insert(teamRolesTable)
-      .values({ id, teamId, builtinKey: null, name, description, createdAt });
+      .values({
+        id,
+        teamId,
+        builtinKey: null,
+        name,
+        description,
+        requireTwoFactor,
+        createdAt,
+      });
     await tx
       .insert(teamRoleCapabilitiesTable)
       .values(capabilities.map((c) => ({ roleId: id, capability: c })));
@@ -594,6 +668,7 @@ export async function createRole(input: {
     description,
     builtinKey: null,
     capabilities,
+    requireTwoFactor,
     memberCount: 0,
     modified: false,
     locked: false,
@@ -611,11 +686,14 @@ export async function updateRole(input: {
   name: string;
   description?: string | null;
   capabilities?: Capability[];
+  requireTwoFactor?: boolean;
 }): Promise<void> {
-  const { teamId, membership } = await requireCapability("manage_members");
+  const { teamId, userId, membership } = await requireCapability("manage_roles");
   const name = cleanRoleName(input.name);
   const description = cleanDescription(input.description);
   const capabilities = withinActor(input.capabilities, membership);
+  const requireTwoFactor = input.requireTwoFactor ?? false;
+  if (requireTwoFactor) await assertActorCanMandateTwoFactor(userId, input.id);
 
   await getDb().transaction(async (tx) => {
     const role = await roleInTeam(tx, teamId, input.id);
@@ -627,7 +705,7 @@ export async function updateRole(input: {
     await lockTeamMemberships(tx, teamId);
     await tx
       .update(teamRolesTable)
-      .set({ name, description })
+      .set({ name, description, requireTwoFactor })
       .where(
         and(eq(teamRolesTable.id, role.id), eq(teamRolesTable.teamId, teamId)),
       );
@@ -651,7 +729,7 @@ export async function updateRole(input: {
 
 /** Restore a default role to exactly what deplo ships. Built-ins only. */
 export async function resetRole(id: string): Promise<void> {
-  const { teamId } = await requireCapability("manage_members");
+  const { teamId } = await requireCapability("manage_roles");
   let name = "";
   await getDb().transaction(async (tx) => {
     const role = await roleInTeam(tx, teamId, id);
@@ -667,7 +745,12 @@ export async function resetRole(id: string): Promise<void> {
     await lockTeamMemberships(tx, teamId);
     await tx
       .update(teamRolesTable)
-      .set({ name: defaults.name, description: defaults.description })
+      .set({
+        name: defaults.name,
+        description: defaults.description,
+        // A shipped default mandates nothing; "reset" means all the way back.
+        requireTwoFactor: false,
+      })
       .where(
         and(eq(teamRolesTable.id, role.id), eq(teamRolesTable.teamId, teamId)),
       );
@@ -695,7 +778,7 @@ export async function resetRole(id: string): Promise<void> {
  * is RESTRICT, so the database refuses too).
  */
 export async function deleteRole(id: string): Promise<void> {
-  const { teamId } = await requireCapability("manage_members");
+  const { teamId } = await requireCapability("manage_roles");
   let name = "";
   await getDb().transaction(async (tx) => {
     const role = await roleInTeam(tx, teamId, id);

@@ -240,6 +240,10 @@ type AppTransferTarget {
 }
 
 type AuthPayload {
+  """
+  The password was correct but the account has 2FA: no session yet. Send a code to `verifyTwoFactorLogin`.
+  """
+  requiresTwoFactor: Boolean
   viewer: Viewer
 }
 
@@ -338,14 +342,50 @@ input BuildConfigInput {
 }
 
 enum Capability {
-  deploy
+  configure_apps
+  configure_databases
+  control_apps
+  control_databases
+  create_apps
+  create_databases
+  create_folders
+  create_projects
+  delete_apps
+  delete_databases
+  delete_folders
+  delete_projects
+  delete_team
+  deploy @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_apps, deploy_apps, control_apps, configure_apps, delete_apps, move_apps, open_app_console, create_folders, organize_folders, delete_folders, create_projects, organize_projects, delete_projects, manage_environments.")
+  deploy_apps
+  manage_backups
+  manage_basic_auth
   manage_domains
   manage_env
-  manage_files
-  manage_infra
+  manage_environments
+  manage_files @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: read_app_files, write_app_files.")
+  manage_git
+  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, manage_s3, manage_registries, manage_git, manage_tokens, manage_notifications, manage_monitoring.")
   manage_members
+  manage_monitoring
+  manage_notifications
+  manage_registries
+  manage_roles
+  manage_s3
   manage_team
+  manage_tokens
+  move_apps
+  open_app_console
+  open_database_console
+  organize_folders
+  organize_projects
+  read_app_files
+  restore_backups
+  reveal_secrets
   view
+  view_activity
+  view_logs
+  view_metrics
+  write_app_files
 }
 
 enum CertProvider {
@@ -485,6 +525,7 @@ input CreateRoleInput {
   capabilities: [Capability!]
   description: String
   name: String!
+  requireTwoFactor: Boolean
 }
 
 input CreateS3Input {
@@ -1250,7 +1291,7 @@ type Mutation {
   createEnvironment(name: String!, projectId: ID!): Environment
 
   """
-  Create a folder in the active team; nest it by passing a parent folder id. Requires the deploy capability; the creator becomes the folder's owner.
+  Create a folder in the active team; nest it by passing a parent folder id. Requires the create_folders capability; the creator becomes the folder's owner.
   """
   createFolder(color: String, name: String!, parentId: ID): Folder
 
@@ -1746,6 +1787,11 @@ type Mutation {
   Re-check the domain's DNS and (re)issue its certificate. A check that finds the host proxied through Cloudflare also moves a certificate-less domain onto the `cloudflare` provider.
   """
   verifyDomain(id: String!): Domain
+
+  """
+  Finish a login that returned `requiresTwoFactor`, with a TOTP code or a recovery code.
+  """
+  verifyTwoFactorLogin(code: String!, recoveryCode: Boolean): AuthPayload
 
   """Create or overwrite a text file in the app files tree."""
   writeAppFile(appId: String!, content: String!, path: String!): FileEntry
@@ -2579,6 +2625,9 @@ type Team {
   id: ID
   name: String
   plan: TeamPlan
+
+  """Whether every member of this team must have two-factor authentication."""
+  requireTwoFactor: Boolean
   slug: String
 }
 
@@ -2624,6 +2673,11 @@ type TeamRole {
   """A default role edited away from what deplo ships — it can be reset."""
   modified: Boolean
   name: String
+
+  """
+  Holders of this role must have two-factor authentication; without it they resolve no capabilities at all, over the UI and the API alike.
+  """
+  requireTwoFactor: Boolean
 }
 
 enum TestNotificationChannel {
@@ -2689,6 +2743,7 @@ input UpdateRoleInput {
   description: String
   id: String!
   name: String!
+  requireTwoFactor: Boolean
 }
 
 input UpdateSourceInput {
@@ -2701,6 +2756,7 @@ input UpdateSourceInput {
 
 input UpdateTeamInput {
   name: String!
+  requireTwoFactor: Boolean
   slug: String!
 }
 
@@ -2783,6 +2839,11 @@ type Viewer {
   isInstanceAdmin: Boolean
   name: String
   role: String
+
+  """
+  Whether this account has a verified second factor. Says only that one exists, never anything about it.
+  """
+  twoFactorEnabled: Boolean
   username: String
 }
 

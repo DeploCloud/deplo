@@ -1,94 +1,59 @@
 import type { Capability, Role } from "./types";
 import { ALL_CAPABILITIES } from "./types";
+import {
+  LEGACY_CAPABILITY_EXPANSION,
+  expandLegacyCapabilities,
+} from "./capabilities";
 
 /**
  * Pure capability/role helpers with no server-only or request-context deps, so
  * they are safe to import from the store hydration path (migrations) and from
- * client components (the capability picker UI) alike. The request-aware
- * authorization helpers live in `lib/membership.ts`.
+ * client components (the role editor) alike. The request-aware authorization
+ * helpers live in `lib/membership.ts`; the capability catalog (labels,
+ * descriptions, categories, search) lives in `lib/capabilities.ts`.
  */
 
-/** Capability sets the three named roles grant by default. */
+export {
+  CAPABILITY_META,
+  CAPABILITY_CATEGORIES,
+  LEGACY_CAPABILITY_EXPANSION,
+  LEGACY_CAPABILITY_NAMES,
+  RETIRED_CAPABILITY_NAMES,
+  expandLegacyCapabilities,
+  searchCapabilities,
+  capabilitySearchText,
+  type CapabilityMeta,
+} from "./capabilities";
+
+/**
+ * Capability sets the three built-in roles are born with.
+ *
+ * Member and Viewer are written as the expansion of what they granted when
+ * capabilities were coarse, so the split changed nobody's access: Member is
+ * exactly the old `deploy` + `manage_domains` + `manage_env` + `manage_files`,
+ * spelled out. An admin who wants a tighter Member edits it — that is the point
+ * of the roles page.
+ */
 export const CAPABILITY_PRESETS: Record<Role, Capability[]> = {
   owner: [...ALL_CAPABILITIES],
-  member: ["view", "deploy", "manage_domains", "manage_env", "manage_files"],
-  viewer: ["view"],
-};
-
-/** Human labels + descriptions for the capability picker UI. */
-export const CAPABILITY_META: Record<
-  Capability,
-  { label: string; description: string }
-> = {
-  view: {
-    label: "View",
-    description: "Read-only access to apps, deployments and settings.",
-  },
-  deploy: {
-    label: "Deploy",
-    description: "Create, redeploy, stop/start apps and dev environments.",
-  },
-  manage_domains: {
-    label: "Manage domains",
-    description: "Add, verify, route and remove custom domains.",
-  },
-  manage_env: {
-    label: "Manage env vars",
-    description: "Edit project and shared environment variables.",
-  },
-  manage_files: {
-    label: "Manage files",
-    description: "Browse, edit, upload and delete a project's files.",
-  },
-  manage_infra: {
-    label: "Manage infrastructure",
-    description: "Databases, S3, registries, backups and GitHub apps.",
-  },
-  manage_members: {
-    label: "Manage members",
-    description: "Invite, create and remove members; change their roles.",
-  },
-  manage_team: {
-    label: "Manage team",
-    description: "Rename the team, edit team settings, delete the team.",
-  },
+  member: presetOf("view", "deploy", "manage_domains", "manage_env", "manage_files"),
+  viewer: presetOf("view"),
 };
 
 /**
- * The SIMPLE tier of the role editor: every optional capability grouped into the
- * three areas a team actually reasons about. Flipping a group grants or revokes
- * all of its capabilities at once — the "one switch, many permissions" view — and
- * the advanced tier then ticks the individual rows underneath. Both tiers write
- * the same capability set; there is no second permission model behind this.
+ * Build a preset from the coarse names it used to be, through the MIGRATION's
+ * mapping — so a team that never touched its Member or Viewer role comes out of
+ * the split matching its preset exactly, and reads as unmodified.
  *
- * `view` is deliberately absent: it is the always-on floor, never a toggle.
+ * Deliberately not {@link expandLegacyCapabilities}, which answers the other
+ * question ("what does this name mean as INPUT today", where `view` is just the
+ * floor). Here the question is "what did this role already grant".
  */
-export const CAPABILITY_GROUPS: {
-  key: "apps" | "infrastructure" | "team";
-  label: string;
-  description: string;
-  caps: Capability[];
-}[] = [
-  {
-    key: "apps",
-    label: "Apps & configuration",
-    description:
-      "Deploy apps and manage their domains, variables and files.",
-    caps: ["deploy", "manage_domains", "manage_env", "manage_files"],
-  },
-  {
-    key: "infrastructure",
-    label: "Infrastructure",
-    description: "Databases, S3 destinations, backups, registries and Git.",
-    caps: ["manage_infra"],
-  },
-  {
-    key: "team",
-    label: "Team administration",
-    description: "Members, roles and the team's own settings.",
-    caps: ["manage_members", "manage_team"],
-  },
-];
+function presetOf(...legacy: string[]): Capability[] {
+  const set = new Set(legacy.flatMap((n) => LEGACY_CAPABILITY_EXPANSION[n] ?? []));
+  set.add("view");
+  return ALL_CAPABILITIES.filter((c) => set.has(c));
+}
 
 /**
  * Name + description each built-in role is born with (and reverts to). Kept
@@ -133,13 +98,18 @@ export function capabilitiesForRole(role: Role): Capability[] {
  * An empty/absent list falls back to the role's preset. Shared by the
  * add-member, invite and registration-link flows so every membership is seeded
  * with a coherent, validated capability set.
+ *
+ * A list still using one of the original eight coarse names (an API client, a
+ * saved script) is expanded to the permissions that name used to imply, so it
+ * keeps meaning exactly what it meant before the split.
  */
 export function cleanCapabilities(
   caps: Capability[] | undefined,
   role: Role,
 ): Capability[] {
   const base = caps?.length ? caps : capabilitiesForRole(role);
-  const set = new Set(base.filter((c) => ALL_CAPABILITIES.includes(c)));
+  // Current names pass through as themselves; only a retired one expands.
+  const set = new Set(expandLegacyCapabilities(base as string[]));
   set.add("view");
   return ALL_CAPABILITIES.filter((c) => set.has(c));
 }

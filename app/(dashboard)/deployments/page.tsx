@@ -9,7 +9,7 @@ export const metadata = { title: "Deployments" };
 export default async function DeploymentsPage() {
   const [deployments, canDeploy, isAdmin] = await Promise.all([
     listDeployments(),
-    hasCapability("deploy"),
+    hasCapability("deploy_apps"),
     isInstanceAdmin(),
   ]);
   const canManage = canDeploy || isAdmin;

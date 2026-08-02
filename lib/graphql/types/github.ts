@@ -144,7 +144,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   startGithubConnect: t.field({
     type: GithubConnectStartRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_git" },
     description:
       "Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.",
     args: { org: t.arg.string({ required: false }) },
@@ -167,7 +167,7 @@ builder.mutationFields((t) => ({
   }),
   removeGithubApp: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_git" },
     description: "Disconnect a GitHub App and its installations. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {

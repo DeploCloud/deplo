@@ -21,19 +21,25 @@
  * need no path change as the schema grows.
  */
 
-export { user, session, account, verification } from "./schema/auth";
+export { session, account, verification, twoFactor } from "./schema/auth";
 export { schedulerLease } from "./schema/scheduler";
 export * from "./schema/control-plane";
 
-import { user, session, account, verification } from "./schema/auth";
+import { session, account, verification, twoFactor } from "./schema/auth";
 import { schedulerLease } from "./schema/scheduler";
 import * as controlPlane from "./schema/control-plane";
 
+/**
+ * Note the key names: Better Auth's Drizzle adapter resolves a model to
+ * `schema[modelName]`, so `users` (spread in from control-plane) is what
+ * `user: { modelName: "users" }` binds its `user` model to. There is no `user`
+ * key on purpose — see [./schema/auth.ts](./schema/auth.ts).
+ */
 export const schema = {
-  user,
   session,
   account,
   verification,
+  twoFactor,
   schedulerLease,
   ...controlPlane,
 };

@@ -88,3 +88,13 @@ export function __setTestDb(db: unknown): void {
 export function __resetTestDb(): void {
   testOverride = null;
 }
+
+/**
+ * True when a test client is installed. Lets a module decide whether a database
+ * is reachable WITHOUT going through `isPostgresEnabled()`, which only knows
+ * about `DEPLO_DATABASE_URL` and is therefore false in the pglite harness.
+ * `lib/auth/better-auth.ts` needs exactly that distinction.
+ */
+export function hasTestDb(): boolean {
+  return testOverride !== null;
+}

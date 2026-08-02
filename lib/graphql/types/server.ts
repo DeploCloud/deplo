@@ -96,7 +96,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       // managers (the only ones who edit access) — `allTeams` above stays
       // readable by all for the count-only badge. No client selects this field
       // without the capability today.
-      authScopes: { capability: "manage_infra" },
+      authScopes: { capability: "manage_team" },
       description:
         "Teams explicitly granted access when `allTeams` is false (empty otherwise — every team has access). Requires manage_infra.",
       resolve: (s) => getServerTeams(s.id),

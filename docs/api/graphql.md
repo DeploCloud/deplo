@@ -19,9 +19,13 @@ team scope:
 
 ### 1. Session cookie (browser / same-origin)
 
-The web app calls the API same-origin; the `deplo_session` cookie is sent
-automatically. You never handle tokens in the UI. The active team comes from the
-`deplo_team` cookie.
+The web app calls the API same-origin; the Better Auth session cookie
+(`deplo.session_token`, `__Secure-` prefixed over https) is sent automatically.
+You never handle tokens in the UI. The active team comes from the `deplo_team`
+cookie.
+
+If the account has two-factor authentication, `login` returns
+`requiresTwoFactor: true` and NO session; finish with `verifyTwoFactorLogin`.
 
 ### 2. API token (external clients)
 
@@ -46,14 +50,34 @@ that requires a login (`Not authorized to resolve …`).
 
 Fields are gated by the same capability model as the dashboard:
 
-| Capability        | Covers                                                       |
-| ----------------- | ----------------------------------------------------------- |
-| `deploy`          | create/redeploy/stop/start/delete apps, deployments, projects & environments |
-| `manage_domains`  | add/verify/route/remove custom domains                      |
-| `manage_env`      | app, environment-scoped, team & shared variables        |
-| `manage_infra`    | servers, databases, S3, registries, backups, GitHub, tokens |
-| `manage_members`  | add/remove members, assign roles, author/edit/delete roles   |
-| `manage_team`     | rename/edit/delete the team                                 |
+Capabilities are fine-grained — one action each, not bundles — so a role can ship
+apps without being able to delete them, or read files without writing them. The
+full list is the `Capability` enum in [`schema.graphql`](../../schema.graphql);
+the ones you will meet most:
+
+| Capability                                          | Covers                                              |
+| --------------------------------------------------- | --------------------------------------------------- |
+| `create_apps` · `deploy_apps` · `control_apps`       | create an app · deploy/redeploy/promote · start/stop |
+| `configure_apps` · `delete_apps` · `move_apps`       | build & source settings · delete · folder/project/team |
+| `open_app_console`                                   | shell into a running container                       |
+| `manage_domains` · `manage_basic_auth`               | custom domains & routing · the edge password gate    |
+| `manage_env` · `reveal_secrets`                      | variables · reading a masked value back              |
+| `read_app_files` · `write_app_files`                 | browse/download · edit/upload/delete                 |
+| `create_folders` · `organize_folders` · `delete_folders` | the overview's folders                          |
+| `create_projects` · `organize_projects` · `delete_projects` · `manage_environments` | projects & their environments |
+| `create_databases` · `configure_databases` · `control_databases` · `delete_databases` · `open_database_console` | managed databases |
+| `manage_backups` · `restore_backups` · `manage_s3`   | schedules & runs · restoring over live data · buckets |
+| `manage_registries` · `manage_git` · `manage_tokens` · `manage_notifications` | integrations & API access |
+| `view_logs` · `view_metrics` · `manage_monitoring` · `view_activity` | logs, monitoring, the audit trail    |
+| `manage_members` · `manage_roles`                    | who is in the team · what each role grants           |
+| `manage_team` · `delete_team`                        | team settings · deleting the team                    |
+
+Three names from the old coarse model — `deploy`, `manage_infra` and
+`manage_files` — are still ACCEPTED on input (marked deprecated in the schema):
+each expands to exactly the permissions it used to imply, so an existing script
+keeps working unchanged. They are never returned. The other five old names
+(`view`, `manage_domains`, `manage_env`, `manage_members`, `manage_team`) survived
+the split as capabilities in their own right and mean exactly themselves.
 
 Some queries/mutations require **instance admin** (global): managing all users,
 minting registration links, the per-user admin editor, and Docker cleanup

@@ -5,6 +5,7 @@ import {
   teams,
   users,
 } from "../db/schema/control-plane";
+import { account } from "../db/schema/auth";
 import { capabilitiesForRole } from "../membership-shared";
 import { hashPassword, sha256Hex } from "../crypto";
 import type { TestDb } from "../db/test-harness";
@@ -92,14 +93,25 @@ export async function seedIdentity(
         email: u.email ?? `${u.id}@example.io`,
         username: u.id,
         name: u.id,
-        passwordHash: hashPassword(u.password ?? "password1"),
         role,
         isInstanceAdmin: u.isInstanceAdmin ?? role === "owner",
         suspended: u.suspended ?? false,
         avatarColor: "#abc",
         createdAt: T0,
+        updatedAt: T0,
       };
     }),
+  );
+  // The credential lives on the Better Auth `account` row since migration 0055,
+  // so a seeded user needs one too or every password re-check reads null.
+  await db.insert(account).values(
+    seedUsers.map((u) => ({
+      id: `bacc_${u.id}`,
+      userId: u.id,
+      accountId: u.id,
+      providerId: "credential",
+      password: hashPassword(u.password ?? "password1"),
+    })),
   );
   await db.insert(teams).values(
     seedTeams.map((t) => ({

@@ -11,7 +11,9 @@ import {
   registrationLinks as registrationLinksTable,
   users as usersTable,
 } from "./db/schema/control-plane";
+import { account as accountTable } from "./db/schema/auth";
 import { eq } from "drizzle-orm";
+import { verifyPassword } from "./crypto";
 import { runWithIdentity } from "./auth/request-context";
 import { createAccountWithTeam, createAccountWithTeams, login } from "./auth";
 import { consumeRegistrationLink } from "./data/members";
@@ -69,8 +71,13 @@ test("createAccountWithTeam writes user + team + owner membership with caps", as
   )[0]!;
   assert.equal(urow.email, "new@owner.io");
   assert.equal(urow.role, "owner");
-  // The password is stored hashed, never plaintext.
-  assert.notEqual(urow.passwordHash, "password1");
+  // The credential is on the Better Auth `account` row since 0055, stored hashed.
+  const arow = (
+    await db.select().from(accountTable).where(eq(accountTable.userId, user.id))
+  )[0]!;
+  assert.equal(arow.providerId, "credential");
+  assert.notEqual(arow.password, "password1");
+  assert.ok(verifyPassword("password1", arow.password!));
 
   const mrows = await db
     .select()

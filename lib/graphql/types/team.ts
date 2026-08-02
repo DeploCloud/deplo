@@ -32,6 +32,11 @@ export const TeamRef = builder.objectRef<Team>("Team").implement({
     name: t.exposeString("name"),
     slug: t.exposeString("slug"),
     plan: t.field({ type: TeamPlanEnum, resolve: (x) => x.plan }),
+    requireTwoFactor: t.boolean({
+      description:
+        "Whether every member of this team must have two-factor authentication.",
+      resolve: (x) => x.requireTwoFactor ?? false,
+    }),
     createdAt: t.exposeString("createdAt"),
   }),
 });
@@ -63,6 +68,9 @@ const UpdateTeamInputType = builder.inputType("UpdateTeamInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
     slug: t.string({ required: true }),
+    // Optional so a plain rename never silently rewrites the security policy:
+    // omitted means "leave it as it is", not "turn it off".
+    requireTwoFactor: t.boolean({ required: false }),
   }),
 });
 
@@ -85,7 +93,7 @@ builder.queryFields((t) => ({
   }),
   assignableTeams: t.field({
     type: [TeamRef],
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "move_apps" },
     description:
       "Every team in the instance, for the server team-access picker. Requires manage_infra.",
     resolve: () => listAllTeams(),
@@ -109,7 +117,11 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "manage_team" },
     args: { input: t.arg({ type: UpdateTeamInputType, required: true }) },
     resolve: (_r, { input }) =>
-      updateTeam({ name: input.name, slug: input.slug }),
+      updateTeam({
+        name: input.name,
+        slug: input.slug,
+        requireTwoFactor: input.requireTwoFactor ?? undefined,
+      }),
   }),
   createTeam: t.field({
     type: TeamRef,

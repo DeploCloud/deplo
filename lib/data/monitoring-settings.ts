@@ -79,7 +79,7 @@ export async function isMetricsSavingEnabled(): Promise<boolean> {
  * switch says "save", so off must mean nothing stays saved, not "stops growing".
  */
 export async function setSaveMetrics(enabled: boolean): Promise<MonitoringSettings> {
-  const { teamId } = await requireCapability("manage_infra");
+  const { teamId } = await requireCapability("manage_monitoring");
   const user = (await getCurrentUser())!;
 
   const now = nowIso();

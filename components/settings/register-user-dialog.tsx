@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CapabilityPicker } from "@/components/settings/capability-picker";
 import { atClock } from "@/components/settings/registration-link-row";
 import { gqlAction } from "@/lib/graphql-client";
 import { capabilitiesForRole } from "@/lib/membership-shared";
@@ -258,26 +257,36 @@ export function RegisterUserDialog({
                         />
                         <span className="text-sm font-medium">{tm.name}</span>
                       </label>
+                      {/* Which of that team's two joinable default roles they
+                          land in. Fine-tuning permissions belongs on the team's
+                          own Roles page, where a change reaches every member who
+                          holds the role — not baked one-off into a link. */}
                       {a && (
-                        <div className="mt-3">
-                          <CapabilityPicker
-                            role={a.role}
-                            capabilities={a.capabilities}
-                            availableRoles={["member", "viewer"]}
-                            onRoleChange={(role) =>
-                              setAssign((p) => ({
-                                ...p,
-                                [tm.id]: { ...p[tm.id], role },
-                              }))
-                            }
-                            onCapabilitiesChange={(capabilities) =>
-                              setAssign((p) => ({
-                                ...p,
-                                [tm.id]: { ...p[tm.id], capabilities },
-                              }))
-                            }
-                            idPrefix={`regteam-${tm.id}`}
-                          />
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {(["member", "viewer"] as Role[]).map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              aria-pressed={a.role === r}
+                              onClick={() =>
+                                setAssign((p) => ({
+                                  ...p,
+                                  [tm.id]: {
+                                    role: r,
+                                    capabilities: capabilitiesForRole(r),
+                                  },
+                                }))
+                              }
+                              className={cn(
+                                "rounded-md border px-2.5 py-1 text-xs font-medium capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                a.role === r
+                                  ? "border-primary bg-primary/5 text-foreground"
+                                  : "border-border text-muted-foreground hover:bg-accent",
+                              )}
+                            >
+                              {r}
+                            </button>
+                          ))}
                         </div>
                       )}
                     </div>

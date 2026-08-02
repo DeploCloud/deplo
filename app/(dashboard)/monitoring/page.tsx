@@ -17,7 +17,7 @@ export default async function MonitoringPage() {
     getInitialServerMetrics(),
     getMonitoringSettings(),
     // Cosmetic gate for the "save metrics" switch; the mutation enforces it.
-    hasCapability("manage_infra"),
+    hasCapability("manage_monitoring"),
   ]);
 
   return (

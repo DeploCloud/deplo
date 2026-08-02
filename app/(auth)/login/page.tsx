@@ -13,11 +13,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 const LOGIN = /* GraphQL */ `
   mutation Login($email: String!, $password: String!) {
     login(email: $email, password: $password) {
+      viewer { id }
+      requiresTwoFactor
+    }
+  }
+`;
+
+const VERIFY_2FA = /* GraphQL */ `
+  mutation VerifyTwoFactorLogin($code: String!, $recoveryCode: Boolean) {
+    verifyTwoFactorLogin(code: $code, recoveryCode: $recoveryCode) {
       viewer { id }
     }
   }
@@ -33,6 +42,17 @@ export default function LoginPage() {
   const next = useSearchParams().get("next");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // The password step succeeded but the account has a second factor. The
+  // challenge itself lives in a short-lived httpOnly cookie Better Auth set, so
+  // this flag is all the client needs to hold — no token in component state.
+  const [needsCode, setNeedsCode] = useState(false);
+  const [useRecovery, setUseRecovery] = useState(false);
+
+  function done() {
+    // The session cookie is now set; navigate and refresh the RSC tree.
+    router.push(safeNext(next));
+    router.refresh();
+  }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -42,15 +62,107 @@ export default function LoginPage() {
     setError(null);
     startTransition(async () => {
       try {
-        await gql(LOGIN, { email, password });
-        // The session cookie is now set; navigate and refresh the RSC tree.
-        router.push(safeNext(next));
-        router.refresh();
+        const res = await gql<{ login: { requiresTwoFactor: boolean } }>(LOGIN, {
+          email,
+          password,
+        });
+        if (res.login.requiresTwoFactor) {
+          setNeedsCode(true);
+          return;
+        }
+        done();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Sign in failed");
       }
     });
   }
+
+  function onSubmitCode(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const code = String(new FormData(e.currentTarget).get("code") ?? "").trim();
+    setError(null);
+    startTransition(async () => {
+      try {
+        await gql(VERIFY_2FA, { code, recoveryCode: useRecovery });
+        done();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "That code is not valid");
+      }
+    });
+  }
+
+  const banner = error && (
+    <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      <AlertCircle className="size-4 shrink-0" />
+      {error}
+    </div>
+  );
+
+  if (needsCode)
+    return (
+      <Card className="bg-transparent! border-transparent!">
+        <CardHeader>
+          <CardTitle className="text-2xl">Two-factor authentication</CardTitle>
+          <CardDescription>
+            {useRecovery
+              ? "Enter one of the recovery codes you saved when you turned on two-factor authentication."
+              : "Enter the 6-digit code from your authenticator app."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmitCode} className="space-y-4">
+            {banner}
+            <div className="space-y-2">
+              <Label htmlFor="code">
+                {useRecovery ? "Recovery code" : "Authentication code"}
+              </Label>
+              <Input
+                id="code"
+                name="code"
+                // A fresh field each time the kind changes, so the browser does
+                // not carry a half-typed TOTP into the recovery-code box.
+                key={useRecovery ? "recovery" : "totp"}
+                autoComplete="one-time-code"
+                inputMode={useRecovery ? "text" : "numeric"}
+                maxLength={useRecovery ? 24 : 6}
+                placeholder={useRecovery ? "xxxxx-xxxxx" : "123456"}
+                autoFocus
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={pending}>
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Verify
+            </Button>
+            <div className="flex items-center justify-between text-sm">
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setUseRecovery((v) => !v);
+                  setError(null);
+                }}
+              >
+                {useRecovery
+                  ? "Use your authenticator app"
+                  : "Use a recovery code"}
+              </button>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  setNeedsCode(false);
+                  setUseRecovery(false);
+                  setError(null);
+                }}
+              >
+                Back
+              </button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    );
 
   return (
     <Card className="bg-transparent! border-transparent!">
@@ -62,12 +174,7 @@ export default function LoginPage() {
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
-          {error && (
-            <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              <AlertCircle className="size-4 shrink-0" />
-              {error}
-            </div>
-          )}
+          {banner}
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -91,7 +198,8 @@ export default function LoginPage() {
             />
           </div>
           <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? "Signing in…" : "Sign in"}
+            {pending && <Loader2 className="size-4 animate-spin" />}
+            Sign in
           </Button>
         </form>
       </CardContent>

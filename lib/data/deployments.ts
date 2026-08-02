@@ -208,11 +208,11 @@ export async function getQueuePosition(
 export async function reloadApp(
   appId: string,
 ): Promise<"rerouted" | "unchanged" | "deferred"> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("control_apps");
   const user = (await getCurrentUser())!;
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "deploy");
+  await requireFolderCapabilityForApp(appId, "control_apps");
   const result = await rerouteApp(appId);
   if (result === "rerouted")
     await recordActivity("app", `Reloaded routing`, user.name, appId);
@@ -221,11 +221,11 @@ export async function reloadApp(
 
 /** Trigger a fresh production build + deploy of the latest commit. */
 export async function redeploy(appId: string): Promise<Deployment> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("deploy_apps");
   const user = (await getCurrentUser())!;
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "deploy");
+  await requireFolderCapabilityForApp(appId, "deploy_apps");
   const depId = await startDeployment(appId, {
     environment: "production",
     creator: user.name,
@@ -260,13 +260,13 @@ const elapsedBuildMs = sql`case when ${deploymentsTable.startedAt} is null then 
  * finished (0 rows), so the caller can avoid a misleading "Build stopped" toast.
  */
 export async function cancelDeployment(id: string): Promise<boolean> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("deploy_apps");
   const user = (await getCurrentUser())!;
   const dep = await loadDeployment(id);
   if (!dep) throw new Error("Deployment not found");
   if (!(await appInTeam(dep.appId, membership.teamId)))
     throw new Error("Deployment not found");
-  await requireFolderCapabilityForApp(dep.appId, "deploy");
+  await requireFolderCapabilityForApp(dep.appId, "deploy_apps");
   // The queued/building state is part of the WHERE, not just a pre-check: a build
   // that finished between the read above and this write must NOT be retroactively
   // flipped from ready/error to canceled (0 rows → no-op).
@@ -377,7 +377,7 @@ async function removeDeploymentRows(
  *  for the broad "delete all" sweep where a locked folder is skipped, not fatal. */
 async function mayManageAppFolder(appId: string): Promise<boolean> {
   try {
-    await requireFolderCapabilityForApp(appId, "deploy");
+    await requireFolderCapabilityForApp(appId, "deploy_apps");
     return true;
   } catch {
     return false;
@@ -392,14 +392,14 @@ async function mayManageAppFolder(appId: string): Promise<boolean> {
  * can't manage. Returns how many were actually deleted.
  */
 export async function deleteDeployments(ids: string[]): Promise<number> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("delete_apps");
   const user = (await getCurrentUser())!;
   const unique = [...new Set(ids)];
   if (unique.length === 0) return 0;
   const rows = await terminalDeploymentRows(membership.teamId, { ids: unique });
   if (rows.length === 0) return 0;
   for (const sid of new Set(rows.map((r) => r.appId)))
-    await requireFolderCapabilityForApp(sid, "deploy");
+    await requireFolderCapabilityForApp(sid, "delete_apps");
   return removeDeploymentRows(rows, membership.teamId, user.name);
 }
 
@@ -438,12 +438,12 @@ export async function deleteAllDeployments(
   environment?: string | null,
   status?: string | null,
 ): Promise<number> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("delete_apps");
   const user = (await getCurrentUser())!;
   if (appId) {
     if (!(await appInTeam(appId, membership.teamId)))
       throw new Error("App not found");
-    await requireFolderCapabilityForApp(appId, "deploy");
+    await requireFolderCapabilityForApp(appId, "delete_apps");
     const rows = await terminalDeploymentRows(membership.teamId, {
       appId,
       serverId: serverId ?? undefined,
@@ -586,12 +586,12 @@ export async function cancelAllDeployments(
   environment?: string | null,
   status?: string | null,
 ): Promise<number> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("deploy_apps");
   const user = (await getCurrentUser())!;
   if (appId) {
     if (!(await appInTeam(appId, membership.teamId)))
       throw new Error("App not found");
-    await requireFolderCapabilityForApp(appId, "deploy");
+    await requireFolderCapabilityForApp(appId, "deploy_apps");
     const rows = await inProgressDeploymentRows(membership.teamId, {
       appId,
       serverId: serverId ?? undefined,
@@ -610,13 +610,13 @@ export async function cancelAllDeployments(
 }
 
 export async function promoteToProduction(id: string): Promise<void> {
-  const { membership } = await requireCapability("deploy");
+  const { membership } = await requireCapability("deploy_apps");
   const user = (await getCurrentUser())!;
   const existing = await loadDeployment(id);
   if (!existing) throw new Error("Deployment not found");
   if (!(await appInTeam(existing.appId, membership.teamId)))
     throw new Error("Deployment not found");
-  await requireFolderCapabilityForApp(existing.appId, "deploy");
+  await requireFolderCapabilityForApp(existing.appId, "deploy_apps");
   // One tx: flip the deployment to production AND point the project at it.
   await getDb().transaction(async (tx) => {
     const dep = await tx

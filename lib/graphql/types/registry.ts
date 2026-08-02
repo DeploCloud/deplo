@@ -62,7 +62,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   addRegistry: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_registries" },
     description: "Add a registry credential to the active team. Returns true.",
     args: { input: t.arg({ type: AddRegistryInputType, required: true }) },
     resolve: async (_r, { input }) => {
@@ -78,7 +78,7 @@ builder.mutationFields((t) => ({
   }),
   deleteRegistry: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_registries" },
     description: "Delete a registry credential. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {

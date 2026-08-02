@@ -480,10 +480,10 @@ export async function resolveAttachTarget(
 > {
   // Attaching to PID 1 (full-duplex, stdin to the live container) is a
   // deploy-class operation — never available to a view-only member.
-  const { teamId } = await requireCapability("deploy");
+  const { teamId } = await requireCapability("open_app_console");
   const p = await loadTeamApp(appId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
-  await requireFolderCapabilityForApp(appId, "deploy");
+  await requireFolderCapabilityForApp(appId, "open_app_console");
 
   let instances: ConsoleInstance[];
   try {
@@ -547,10 +547,10 @@ export async function execInContainer(
 ): Promise<{ output: string; detach?: boolean }> {
   // Running arbitrary commands in the live container is RCE — gate on deploy,
   // never bare team membership (a viewer must never reach this).
-  const { teamId } = await requireCapability("deploy");
+  const { teamId } = await requireCapability("open_app_console");
   const p = await loadTeamApp(appId, teamId);
   if (!p) return { output: "Error: project not found" };
-  await requireFolderCapabilityForApp(appId, "deploy");
+  await requireFolderCapabilityForApp(appId, "open_app_console");
 
   const command = rawCommand.trim();
   if (!command) return { output: "" };

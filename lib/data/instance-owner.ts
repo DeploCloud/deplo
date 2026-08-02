@@ -1,11 +1,12 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb, type DbTx } from "../db/client";
 import {
   instanceSettings,
   users as usersTable,
 } from "../db/schema/control-plane";
+import { account as accountTable } from "../db/schema/auth";
 import { nowIso } from "../ids";
 import { assertUser, getCurrentUser } from "../auth";
 import { verifyPassword } from "../crypto";
@@ -135,12 +136,17 @@ export async function transferInstanceOwner(input: {
     // a hash rotated between the session being issued and this call must win.
     const me = (
       await tx
-        .select({ passwordHash: usersTable.passwordHash })
-        .from(usersTable)
-        .where(eq(usersTable.id, actingUserId))
+        .select({ password: accountTable.password })
+        .from(accountTable)
+        .where(
+          and(
+            eq(accountTable.userId, actingUserId),
+            eq(accountTable.providerId, "credential"),
+          ),
+        )
         .limit(1)
     )[0];
-    if (!me || !verifyPassword(input.password, me.passwordHash))
+    if (!me?.password || !verifyPassword(input.password, me.password))
       throw new Error("That password is not correct");
 
     const target = (

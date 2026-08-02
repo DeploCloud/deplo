@@ -90,8 +90,15 @@ before(async () => {
   // post-freeze column on a seeded table needs the same treatment.)
   // team_roles (0054) is the same case for `memberships.role_id`: self-contained
   // (it creates the table its FK points at) and invisible to 0027's backfill.
+  // two_factor / Better Auth (0055) is the same case again, and additionally
+  // DROPS `users.password_hash` — which the seed no longer writes. Its own
+  // credential backfill reads `users`, so running it before the seed simply
+  // copies zero rows, which is exactly right for a database with no accounts yet.
   const preSeed = (f: string): boolean =>
-    Number(f.slice(0, 4)) < 27 || f.startsWith("0043_") || f.startsWith("0054_");
+    Number(f.slice(0, 4)) < 27 ||
+    f.startsWith("0043_") ||
+    f.startsWith("0054_") ||
+    f.startsWith("0055_");
   const pre27 = files.filter(preSeed);
   const from27 = files.filter((f) => !preSeed(f));
 

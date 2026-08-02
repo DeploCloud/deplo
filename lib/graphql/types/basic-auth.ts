@@ -67,7 +67,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   addBasicAuthUser: t.field({
     type: BasicAuthUserRef,
-    authScopes: { capability: "manage_domains" },
+    authScopes: { capability: "manage_basic_auth" },
     description:
       "Add a basic-auth user to an app. The login is required on every one of " +
       "its domains within seconds — the routing is re-applied to the running " +
@@ -85,7 +85,7 @@ builder.mutationFields((t) => ({
   }),
   updateBasicAuthUserPassword: t.field({
     type: BasicAuthUserRef,
-    authScopes: { capability: "manage_domains" },
+    authScopes: { capability: "manage_basic_auth" },
     description:
       "Change a basic-auth user's password. The new password is live on every " +
       "domain of the app within seconds (the old one stops working).",
@@ -101,7 +101,7 @@ builder.mutationFields((t) => ({
   }),
   revealBasicAuthPassword: t.field({
     type: "String",
-    authScopes: { capability: "manage_domains" },
+    authScopes: { capability: "manage_basic_auth" },
     description:
       "Reveal one credential's password. A basic-auth login is handed to a " +
       "person, so whoever may change it may also read it back — otherwise the " +
@@ -112,7 +112,7 @@ builder.mutationFields((t) => ({
   }),
   removeBasicAuthUser: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_domains" },
+    authScopes: { capability: "manage_basic_auth" },
     description:
       "Remove a basic-auth user, so its login stops working within seconds. " +
       "Removing the last one drops the login prompt entirely. Returns true.",

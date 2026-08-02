@@ -65,7 +65,7 @@ const StorageFileRef = builder
 builder.queryFields((t) => ({
   appFilesExist: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_files" },
+    authScopes: { capability: "read_app_files" },
     description:
       "Whether the app has an on-disk files directory (drives the Files tab).",
     args: { appId: t.arg.string({ required: true }) },
@@ -73,7 +73,7 @@ builder.queryFields((t) => ({
   }),
   appFiles: t.field({
     type: [FileEntryRef],
-    authScopes: { capability: "manage_files" },
+    authScopes: { capability: "read_app_files" },
     description:
       "List the immediate children of a directory in the app files tree " +
       "(the root when path is omitted), directories first.",
@@ -86,7 +86,7 @@ builder.queryFields((t) => ({
   }),
   appFile: t.field({
     type: FileContentRef,
-    authScopes: { capability: "manage_files" },
+    authScopes: { capability: "read_app_files" },
     description: "Read a single project file's text body.",
     args: {
       appId: t.arg.string({ required: true }),
@@ -96,7 +96,7 @@ builder.queryFields((t) => ({
   }),
   appStorageFile: t.field({
     type: StorageFileRef,
-    authScopes: { capability: "manage_files" },
+    authScopes: { capability: "read_app_files" },
     description:
       "Read the file a File storage entry points at (Settings → Storage). " +
       "A path that is not there yet answers state \"new\" with an empty body " +
@@ -116,7 +116,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   writeAppFile: t.field({
     type: FileEntryRef,
-    authScopes: { capability: "manage_files" },
+    authScopes: { capability: "write_app_files" },
     description: "Create or overwrite a text file in the app files tree.",
     args: {
       appId: t.arg.string({ required: true }),
@@ -128,7 +128,7 @@ builder.mutationFields((t) => ({
   }),
   uploadAppFile: t.field({
     type: FileEntryRef,
-    authScopes: { capability: "manage_files" },
+    authScopes: { capability: "write_app_files" },
     description: "Upload a file from a base64 body (used for binary files).",
     args: {
       appId: t.arg.string({ required: true }),
@@ -140,7 +140,7 @@ builder.mutationFields((t) => ({
   }),
   createAppDir: t.field({
     type: FileEntryRef,
-    authScopes: { capability: "manage_files" },
+    authScopes: { capability: "write_app_files" },
     description: "Create a new (empty) folder in the app files tree.",
     args: {
       appId: t.arg.string({ required: true }),
@@ -150,7 +150,7 @@ builder.mutationFields((t) => ({
   }),
   renameAppFile: t.field({
     type: FileEntryRef,
-    authScopes: { capability: "manage_files" },
+    authScopes: { capability: "write_app_files" },
     description: "Rename or move a file/folder within the app files tree.",
     args: {
       appId: t.arg.string({ required: true }),
@@ -162,7 +162,7 @@ builder.mutationFields((t) => ({
   }),
   deleteAppFile: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_files" },
+    authScopes: { capability: "write_app_files" },
     description: "Delete a file or folder (recursively). Returns true.",
     args: {
       appId: t.arg.string({ required: true }),

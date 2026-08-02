@@ -74,11 +74,11 @@ export async function seedIdentity(
       email: `${u.id}@example.io`,
       username: u.id,
       name: u.id,
-      passwordHash: "h",
       role: u.role ?? "owner",
       isInstanceAdmin: (u.role ?? "owner") === "owner",
       avatarColor: "#abc",
       createdAt: T0,
+      updatedAt: T0,
     })),
   );
   // Memberships + capabilities are relational as of cut-set (b): the authz

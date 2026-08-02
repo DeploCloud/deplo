@@ -125,7 +125,7 @@ export async function listGithubInstallations(): Promise<GithubInstallationDTO[]
 export async function createGithubApp(
   conversion: ManifestConversion,
 ): Promise<GithubApp> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("manage_git");
   const user = (await getCurrentUser())!;
   const app: GithubApp = {
     id: newId("gha"),
@@ -169,7 +169,7 @@ export async function upsertInstallation(input: {
   accountType: "User" | "Organization";
   avatarUrl: string;
 }): Promise<GithubInstallation> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("manage_git");
   const user = (await getCurrentUser())!;
   const db = getDb();
   // The App this installation attaches to must belong to the caller's active
@@ -235,7 +235,7 @@ export async function latestGithubApp(): Promise<GithubApp | null> {
 }
 
 export async function removeGithubApp(id: string): Promise<void> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("manage_git");
   const user = (await getCurrentUser())!;
   const db = getDb();
   const app = await db

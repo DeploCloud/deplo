@@ -224,7 +224,7 @@ builder.mutationFields((t) => ({
   }),
   revealEnv: t.field({
     type: "String",
-    authScopes: { capability: "manage_env" },
+    authScopes: { capability: "reveal_secrets" },
     description: "Reveal a single secret's plaintext value.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => revealEnv(id),

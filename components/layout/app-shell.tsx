@@ -3,6 +3,7 @@ import { SidebarProvider } from "./sidebar-state";
 import { Topbar } from "./topbar";
 import { UpdateBanner } from "./update-banner";
 import { NavigationHistoryTracker } from "./navigation-history";
+import { TwoFactorReminder } from "@/components/security/two-factor-reminder";
 import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
 import type { PublicUser, Team, TeamSummary } from "@/lib/types";
 
@@ -47,6 +48,9 @@ export function AppShell({
             isAdmin={isAdmin}
           />
           <UpdateBanner />
+          {/* Renders nothing for an account that already has 2FA, and nothing at
+              all once the user has dismissed it for good. */}
+          <TwoFactorReminder enabled={user.twoFactorEnabled} />
           <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
             {/* Keyed by the active team so switching teams REMOUNTS the page
                 instead of re-rendering it in place. Switching now keeps you on

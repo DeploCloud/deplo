@@ -67,7 +67,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     canExposePorts(),
     // Gates drag-to-reorder of the databases grid (persisted team-wide) — the
     // same capability every database mutation is gated on.
-    hasCapability("manage_infra"),
+    hasCapability("configure_databases"),
   ]);
 
   // Only provisioned servers can host a database (provisioning routes through a

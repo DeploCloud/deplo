@@ -266,7 +266,7 @@ export async function createProject(
   color?: string | null,
 ): Promise<ProjectSummary> {
   // Same gate as creating a folder or an app: `deploy`.
-  const { teamId, userId } = await requireCapability("deploy");
+  const { teamId, userId } = await requireCapability("create_projects");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const clean = cleanName(name);
   const cleanColor = color ? normalizeHexColor(color) : null;
@@ -312,7 +312,7 @@ export async function createProject(
 }
 
 export async function renameProject(id: string, name: string): Promise<void> {
-  const { teamId } = await requireCapability("deploy");
+  const { teamId } = await requireCapability("organize_projects");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const clean = cleanName(name);
   const updated = await getDb()
@@ -337,7 +337,7 @@ export async function setProjectColor(
   id: string,
   color: string | null,
 ): Promise<void> {
-  const { teamId } = await requireCapability("deploy");
+  const { teamId } = await requireCapability("organize_projects");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const next = color ? normalizeHexColor(color) : null;
   const rows = await getDb()
@@ -367,7 +367,7 @@ export async function setProjectColor(
  * `team_project_order` row CASCADEs on the delete.
  */
 export async function deleteProject(id: string): Promise<void> {
-  const { teamId } = await requireCapability("deploy");
+  const { teamId } = await requireCapability("delete_projects");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const name = await getDb().transaction(async (tx) => {
     const rows = await tx
@@ -448,7 +448,7 @@ export async function moveAppToProject(
   appId: string,
   projectId: string | null,
 ): Promise<void> {
-  const { teamId } = await requireCapability("deploy");
+  const { teamId } = await requireCapability("move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const s = (
     await getDb()
@@ -461,7 +461,7 @@ export async function moveAppToProject(
   // Entering a project also pulls the app out of any folder (one home only) —
   // that eviction needs `deploy` on the source folder too, same as
   // moveAppToFolder. A no-op for a top-level app.
-  await requireFolderCapabilityForApp(appId, "deploy");
+  await requireFolderCapabilityForApp(appId, "move_apps");
   if ((s.projectId ?? null) === projectId) return;
   let msg: string;
   let environmentId: string | null = null;
@@ -503,7 +503,7 @@ export async function moveAppToEnvironment(
   appId: string,
   environmentId: string,
 ): Promise<void> {
-  const { teamId } = await requireCapability("deploy");
+  const { teamId } = await requireCapability("move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const s = (
     await getDb()
@@ -520,7 +520,7 @@ export async function moveAppToEnvironment(
   // Entering an environment also leaves any folder — that eviction needs
   // `deploy` on the source folder too, same as moveAppToFolder. A no-op for a
   // top-level app.
-  await requireFolderCapabilityForApp(appId, "deploy");
+  await requireFolderCapabilityForApp(appId, "move_apps");
   if ((s.environmentId ?? null) === environmentId) return;
   const env = (
     await getDb()

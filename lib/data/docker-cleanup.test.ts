@@ -87,7 +87,7 @@ beforeEach(async () => {
         id: USER_INFRA,
         teamId: TEAM_A,
         role: "member",
-        capabilities: ["view", "manage_infra"],
+        capabilities: ["view", "manage_backups"],
         isInstanceAdmin: false,
       },
     ],

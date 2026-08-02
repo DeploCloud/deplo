@@ -75,10 +75,17 @@ export const githubAccountType = pgEnum("github_account_type", [
 /* ================================================================== */
 
 /**
- * [User](../../types.ts). Flat. `password_hash` is the scrypt hash (excluded from
- * default projections). The 4 optional instance-wide booleans become NOT NULL
- * DEFAULT false. `UNIQUE(lower(email))` (the app does case-insensitive checks)
+ * [User](../../types.ts). Flat. The 4 optional instance-wide booleans become NOT
+ * NULL DEFAULT false. `UNIQUE(lower(email))` (the app does case-insensitive checks)
  * and `UNIQUE(username)` are enforced by indexes below; no FKs out.
+ *
+ * Since migration 0055 this table is ALSO Better Auth's `user` model (remapped via
+ * `user: { modelName: "users" }`), which is why `email_verified` / `image` /
+ * `updated_at` / `two_factor_enabled` sit here alongside deplo's own columns. The
+ * password moved out entirely: `account.password` is now the only stored credential.
+ * Better Auth never INSERTs here — `username` / `role` / `avatar_color` are NOT NULL
+ * columns it knows nothing about, so `disableSignUp: true` keeps account creation in
+ * `createAccountWithTeam`, which writes the matching `account` row itself.
  */
 export const users = pgTable(
   "users",
@@ -87,7 +94,6 @@ export const users = pgTable(
     email: text("email").notNull(),
     username: text("username").notNull(),
     name: text("name").notNull(),
-    passwordHash: text("password_hash").notNull(),
     role: text("role").notNull(),
     isInstanceAdmin: boolean("is_instance_admin").notNull().default(false),
     suspended: boolean("suspended").notNull().default(false),
@@ -96,10 +102,21 @@ export const users = pgTable(
       .notNull()
       .default(false),
     avatarColor: text("avatar_color").notNull(),
-    // Bumped to invalidate every outstanding deplo_session cookie for this user
-    // (password change / admin reset / sign-out-everywhere). The signed session
-    // payload carries this value; a mismatch fails auth (migration 0043).
+    // DEAD since 0055: sessions are Better Auth rows now, so revoking them is a
+    // DELETE, not a version bump. The column survives one release so a rollback
+    // still finds the schema it expects; dropping it is its own migration.
     tokenVersion: integer("token_version").notNull().default(0),
+    /** True when the account has a verified TOTP factor. Written ONLY by Better
+     *  Auth's twoFactor plugin; read by deplo's policy gate (lib/membership.ts). */
+    twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
+    // Better Auth's `user` model requires these three. deplo has no email
+    // verification flow, so `email_verified` is true for everyone and `image` is
+    // unused (avatars are `avatar_color`); they exist to satisfy the model.
+    emailVerified: boolean("email_verified").notNull().default(true),
+    image: text("image"),
+    updatedAt: isoTimestamptz("updated_at")
+      .notNull()
+      .default(sql`now()`),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
@@ -131,6 +148,11 @@ export const teams = pgTable(
     founderUserId: text("founder_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // Team-wide 2FA policy: when true, a member without a verified TOTP factor
+    // resolves NO capabilities in this team, over the UI and the bearer API alike
+    // (lib/membership.ts). Off by default; enabling it is refused unless the actor
+    // has 2FA themselves, so it can never lock its own author out.
+    requireTwoFactor: boolean("require_two_factor").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("teams_slug_uq").on(t.slug)],
@@ -359,6 +381,11 @@ export const teamRoles = pgTable(
     builtinKey: text("builtin_key"),
     name: text("name").notNull(),
     description: text("description"),
+    // Policy, NOT a capability: capabilities are a closed set of 8 that answer
+    // "may they do X", while this answers "under what condition does any of it
+    // count". Holders of this role resolve no capabilities until they enroll a
+    // TOTP factor — same gate as `teams.require_two_factor`, narrower blast radius.
+    requireTwoFactor: boolean("require_two_factor").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

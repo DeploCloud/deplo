@@ -150,7 +150,7 @@ builder.queryFields((t) => ({
   }),
   s3TestReport: t.field({
     type: S3TestReportRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_s3" },
     description:
       "The STORED result of this destination's last connection test — reading it " +
       "never re-dials the bucket. `never` is true until the first test.",
@@ -166,7 +166,7 @@ builder.queryFields((t) => ({
 builder.mutationFields((t) => ({
   createS3: t.field({
     type: S3DestinationRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_s3" },
     args: { input: t.arg({ type: CreateS3InputType, required: true }) },
     resolve: (_r, { input }) =>
       createS3({
@@ -181,7 +181,7 @@ builder.mutationFields((t) => ({
   }),
   testS3: t.field({
     type: S3TestResultRef,
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_s3" },
     description:
       "Probe the bucket through a backup-capable agent (head, write, remove) and " +
       "return BOTH the repainted destination and the verdict. A failed probe " +
@@ -192,7 +192,7 @@ builder.mutationFields((t) => ({
   }),
   testS3Destinations: t.field({
     type: [S3DestinationRef],
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_s3" },
     description:
       "Re-probe EVERY destination in the active team and return them with their " +
       "badges repainted, newest first. For pickers that must show live " +
@@ -203,7 +203,7 @@ builder.mutationFields((t) => ({
   }),
   deleteS3: t.field({
     type: "Boolean",
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_s3" },
     description: "Delete the S3 destination and its backups. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {

@@ -116,9 +116,9 @@ async function withAuthors(u: BasicAuthUser): Promise<BasicAuthUserDTO> {
 export async function listBasicAuthUsers(
   appId: string,
 ): Promise<BasicAuthUserDTO[]> {
-  const { teamId } = await requireCapability("manage_domains");
+  const { teamId } = await requireCapability("manage_basic_auth");
   if (!(await appInTeam(appId, teamId))) return [];
-  await requireFolderCapabilityForApp(appId, "manage_domains");
+  await requireFolderCapabilityForApp(appId, "manage_basic_auth");
   const rows = await getDb()
     .select()
     .from(basicAuthTable)
@@ -150,7 +150,7 @@ export async function listBasicAuthUsers(
  * means a decrypt failure — the same reasoning as {@link basicAuthUsersValue}.
  */
 export async function revealBasicAuthPassword(id: string): Promise<string> {
-  const { teamId } = await requireCapability("manage_domains");
+  const { teamId } = await requireCapability("manage_basic_auth");
   const [row] = await getDb()
     .select()
     .from(basicAuthTable)
@@ -158,7 +158,7 @@ export async function revealBasicAuthPassword(id: string): Promise<string> {
     .limit(1);
   if (!row) throw new Error("Not found");
   if (!(await appInTeam(row.appId, teamId))) throw new Error("Not found");
-  await requireFolderCapabilityForApp(row.appId, "manage_domains");
+  await requireFolderCapabilityForApp(row.appId, "manage_basic_auth");
   const password = decryptSecret(row.passwordEnc);
   if (password === "")
     throw new Error(
@@ -173,11 +173,11 @@ export async function addBasicAuthUser(
   username: string,
   password: string,
 ): Promise<BasicAuthUserDTO> {
-  const { membership } = await requireCapability("manage_domains");
+  const { membership } = await requireCapability("manage_basic_auth");
   const user = (await getCurrentUser())!;
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "manage_domains");
+  await requireFolderCapabilityForApp(appId, "manage_basic_auth");
   const name = username.trim();
   if (!USERNAME_RE.test(name))
     throw new Error("Username can't contain spaces, ':' or ','");
@@ -227,7 +227,7 @@ export async function updateBasicAuthUserPassword(
   id: string,
   password: string,
 ): Promise<BasicAuthUserDTO> {
-  const { membership } = await requireCapability("manage_domains");
+  const { membership } = await requireCapability("manage_basic_auth");
   const user = (await getCurrentUser())!;
   if (!password) throw new Error("Password is required");
   const [existing] = await getDb()
@@ -238,7 +238,7 @@ export async function updateBasicAuthUserPassword(
   if (!existing) throw new Error("Not found");
   if (!(await appInTeam(existing.appId, membership.teamId)))
     throw new Error("Not found");
-  await requireFolderCapabilityForApp(existing.appId, "manage_domains");
+  await requireFolderCapabilityForApp(existing.appId, "manage_basic_auth");
   const updated = {
     ...existing,
     passwordEnc: encryptSecret(password),
@@ -263,7 +263,7 @@ export async function updateBasicAuthUserPassword(
 }
 
 export async function removeBasicAuthUser(id: string): Promise<string> {
-  const { membership } = await requireCapability("manage_domains");
+  const { membership } = await requireCapability("manage_basic_auth");
   const user = (await getCurrentUser())!;
   const [existing] = await getDb()
     .select()
@@ -273,7 +273,7 @@ export async function removeBasicAuthUser(id: string): Promise<string> {
   if (!existing) throw new Error("Not found");
   if (!(await appInTeam(existing.appId, membership.teamId)))
     throw new Error("Not found");
-  await requireFolderCapabilityForApp(existing.appId, "manage_domains");
+  await requireFolderCapabilityForApp(existing.appId, "manage_basic_auth");
   await getDb().delete(basicAuthTable).where(eq(basicAuthTable.id, id));
   await recordActivity(
     "domain",

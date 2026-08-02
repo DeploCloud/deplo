@@ -81,18 +81,22 @@ builder.queryFields((t) => ({
 // The team-wide container order (like reorderFolders/reorderApps) stays gated
 // on a super-user: instance admin OR manage_team.
 const reorderScope = {
-  $any: { instanceAdmin: true, capability: "manage_team" },
+  $any: { instanceAdmin: true, capability: "organize_projects" },
 } as const;
 
-// Every other container mutation needs `deploy` (the same gate as creating a
-// folder or an app); the data layer re-verifies team scope. Per-container
-// owner+grants (cloning folder-access) is a follow-up.
-const deployScope = { capability: "deploy" } as const;
+// One scope per action — creating a project, renaming it, deleting it and
+// moving an app into it are four different permissions. The data layer
+// re-verifies team scope behind each. Per-container owner+grants (cloning
+// folder-access) is a follow-up.
+const createScope = { capability: "create_projects" } as const;
+const organizeScope = { capability: "organize_projects" } as const;
+const deleteScope = { capability: "delete_projects" } as const;
+const moveAppScope = { capability: "move_apps" } as const;
 
 builder.mutationFields((t) => ({
   createProject: t.field({
     type: ProjectRef,
-    authScopes: deployScope,
+    authScopes: createScope,
     description:
       "Create a Project container in the active team. Requires `deploy`; the creator becomes its owner.",
     args: {
@@ -103,7 +107,7 @@ builder.mutationFields((t) => ({
   }),
   renameProject: t.field({
     type: "Boolean",
-    authScopes: deployScope,
+    authScopes: organizeScope,
     description: "Rename a Project container.",
     args: {
       id: t.arg.id({ required: true }),
@@ -116,7 +120,7 @@ builder.mutationFields((t) => ({
   }),
   setProjectColor: t.field({
     type: "Boolean",
-    authScopes: deployScope,
+    authScopes: organizeScope,
     description:
       "Set a Project container's accent colour (hex), or clear it when color is omitted/null.",
     args: {
@@ -130,7 +134,7 @@ builder.mutationFields((t) => ({
   }),
   deleteProject: t.field({
     type: "Boolean",
-    authScopes: deployScope,
+    authScopes: deleteScope,
     description:
       "Delete a Project container; its folders and apps fall back to the team top level (not deleted).",
     args: { id: t.arg.id({ required: true }) },
@@ -151,7 +155,7 @@ builder.mutationFields((t) => ({
   }),
   moveAppToProject: t.field({
     type: "Boolean",
-    authScopes: deployScope,
+    authScopes: moveAppScope,
     description:
       "Move an app into a Project (landing in its default environment), or back to the top level when projectId is omitted/null.",
     args: {
@@ -168,7 +172,7 @@ builder.mutationFields((t) => ({
   }),
   moveAppToEnvironment: t.field({
     type: "Boolean",
-    authScopes: deployScope,
+    authScopes: moveAppScope,
     description:
       "Move an app into a specific environment of a Project (ADR-0009: each environment holds its own apps). The app's project follows the environment.",
     args: {

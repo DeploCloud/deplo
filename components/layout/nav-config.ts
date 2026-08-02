@@ -27,6 +27,7 @@ import {
   Network,
   HardDrive,
   ShieldCheck,
+  Fingerprint,
   SlidersHorizontal,
   Cpu,
   type LucideIcon,
@@ -211,6 +212,12 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/account",
         icon: User,
         tooltip: "Your personal account",
+      },
+      {
+        label: "Security",
+        href: "/settings/security",
+        icon: Fingerprint,
+        tooltip: "Two-factor authentication",
       },
       {
         label: "Notifications",
@@ -626,6 +633,9 @@ export function databaseSettingsNav(id: string): NavSection[] {
  */
 export const NON_TEAM_SETTINGS_PREFIXES = [
   "/settings/account",
+  // Two-factor enrolment belongs to the ACCOUNT, not to a team — and it must stay
+  // reachable when a team's 2FA policy has locked the member out of that team.
+  "/settings/security",
   "/settings/notifications",
   "/settings/tokens",
   "/settings/users",

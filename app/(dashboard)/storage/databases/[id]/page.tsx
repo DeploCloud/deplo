@@ -16,7 +16,7 @@ export default async function DatabaseOverviewPage(
   // the real gate).
   const [server, canReveal] = await Promise.all([
     getServerById(db.serverId),
-    hasCapability("manage_infra"),
+    hasCapability("reveal_secrets"),
   ]);
 
   return (

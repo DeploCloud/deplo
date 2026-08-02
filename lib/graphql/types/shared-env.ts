@@ -237,7 +237,7 @@ builder.mutationFields((t) => ({
   }),
   revealSharedVar: t.field({
     type: "String",
-    authScopes: { capability: "manage_env" },
+    authScopes: { capability: "reveal_secrets" },
     description:
       "Reveal one shared variable's decrypted value (the `manage_env`-gated reveal; the UI keeps secrets masked).",
     args: { id: t.arg.string({ required: true }) },

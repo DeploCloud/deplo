@@ -1,5 +1,5 @@
 import { hasCapability } from "@/lib/membership";
-import { getTeam } from "@/lib/data/teams";
+import { getTeam, membersWithoutTwoFactor } from "@/lib/data/teams";
 import { canDeleteTeam } from "@/lib/data/team-delete";
 import { DEPLO_VERSION } from "@/lib/version";
 import { PageHeader } from "@/components/shared/page-header";
@@ -12,16 +12,18 @@ import {
 import { InfoTip } from "@/components/ui/info-tip";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { TeamForm } from "@/components/settings/team-form";
+import { TeamSecurityCard } from "@/components/settings/team-security-card";
 import { UpdateCard } from "@/components/settings/update-card";
 import { DeleteTeamCard } from "@/components/settings/delete-team-card";
 
 export const metadata = { title: "Settings · General" };
 
 export default async function SettingsGeneralPage() {
-  const [team, canManageTeam, deletion] = await Promise.all([
+  const [team, canManageTeam, deletion, twoFactor] = await Promise.all([
     getTeam(),
     hasCapability("manage_team"),
     canDeleteTeam(),
+    membersWithoutTwoFactor(),
   ]);
 
   return (
@@ -47,6 +49,15 @@ export default async function SettingsGeneralPage() {
             />
           </CardContent>
         </Card>
+
+        <TeamSecurityCard
+          name={team.name}
+          slug={team.slug}
+          requireTwoFactor={team.requireTwoFactor ?? false}
+          canManage={canManageTeam}
+          without={twoFactor.without}
+          total={twoFactor.total}
+        />
 
         <Card>
           <CardHeader>

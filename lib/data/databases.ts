@@ -344,7 +344,7 @@ export async function listDatabases(): Promise<DatabaseDTO[]> {
  * makes the self-healing a DB invariant). Mirrors {@link import("./apps").reorderApps}.
  */
 export async function reorderDatabases(orderedIds: string[]): Promise<void> {
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("configure_databases")).teamId;
   await getDb().transaction(async (tx) => {
     // Newest-first, so a database the client omitted appends in a sensible,
     // deterministic order after the explicitly-ordered ones.
@@ -387,7 +387,7 @@ export async function getConnectionString(id: string): Promise<string> {
   // must enforce the capability at the data-layer boundary itself — not lean on
   // the revealConnection field's authScope alone (keep BOTH gates). Matches
   // revealEnv/rotateDatabasePassword, which self-gate their secret reveals.
-  const { teamId } = await requireCapability("manage_infra");
+  const { teamId } = await requireCapability("reveal_secrets");
   const db = await loadDatabase(id, teamId);
   if (!db) throw new Error("Not found");
   return decryptSecret(db.connectionStringEnc);
@@ -427,7 +427,7 @@ export async function createDatabase(input: {
    */
   exposedPort?: number;
 }): Promise<DatabaseDTO> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("create_databases");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   // Display name as typed (trimmed) vs. the slug the host artifacts are named
@@ -681,7 +681,7 @@ export async function setDatabaseRunning(
   id: string,
   running: boolean
 ): Promise<void> {
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("control_databases")).teamId;
   const db = await loadDatabase(id, teamId);
   if (!db) throw new Error("Not found");
   const host = db.host;
@@ -783,7 +783,7 @@ export async function updateDatabase(
     serverId?: string;
   },
 ): Promise<void> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("configure_databases");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   const db = await loadDatabase(id, teamId);
@@ -1101,7 +1101,7 @@ export async function deleteDatabase(
   id: string,
   opts: { force?: boolean } = {},
 ): Promise<void> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("delete_databases");
   const user = (await getCurrentUser())!;
   const db = await loadDatabase(id, membership.teamId);
   if (!db) throw new Error("Not found");
@@ -1178,7 +1178,7 @@ export async function deleteDatabase(
  * readable error, and caught again below for the concurrent-rename race.
  */
 export async function renameDatabase(id: string, name: string): Promise<void> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("configure_databases");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   const clean = cleanDatabaseName(name);
@@ -1230,7 +1230,7 @@ export async function updateDatabaseLogo(
   id: string,
   logo: string | null,
 ): Promise<void> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("configure_databases");
   const user = (await getCurrentUser())!;
   const next = logo?.trim() ? logo.trim() : null;
   if (next && !isValidLogoValue(next)) throw new Error("Unsupported logo image");
@@ -1277,7 +1277,7 @@ export async function updateDatabaseResources(
   id: string,
   input: ResourceLimitsInput,
 ): Promise<void> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("configure_databases");
   const user = (await getCurrentUser())!;
   const cleaned = cleanResourceLimits(input);
   const updated = await getDb()
@@ -1319,7 +1319,7 @@ export async function updateDatabaseImage(
     version?: string;
   },
 ): Promise<void> {
-  const { membership } = await requireCapability("manage_infra");
+  const { membership } = await requireCapability("configure_databases");
   const user = (await getCurrentUser())!;
 
   const patch: Partial<typeof databasesTable.$inferInsert> = {};
@@ -1366,7 +1366,7 @@ export async function updateDatabaseImage(
  * setDatabaseRunning.
  */
 export async function restartDatabase(id: string): Promise<void> {
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("control_databases")).teamId;
   const user = (await getCurrentUser())!;
   await withKeyedLock(id, async () => {
     const cur = await loadDatabase(id, teamId);
@@ -1404,7 +1404,7 @@ export async function restartDatabase(id: string): Promise<void> {
  * changed; the data volume is always preserved.
  */
 export async function redeployDatabase(id: string): Promise<void> {
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("control_databases")).teamId;
   const user = (await getCurrentUser())!;
   await withKeyedLock(id, async () => {
     const cur = await loadDatabase(id, teamId);
@@ -1454,7 +1454,7 @@ export async function redeployDatabase(id: string): Promise<void> {
  * failed flips the row to "error" — the stack is gone, so "running" would lie.
  */
 export async function rebuildDatabase(id: string): Promise<void> {
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("delete_databases")).teamId;
   const user = (await getCurrentUser())!;
   await withKeyedLock(id, async () => {
     const cur = await loadDatabase(id, teamId);
@@ -1567,7 +1567,7 @@ export async function rotateDatabasePassword(
   id: string,
   input: { password?: string } = {},
 ): Promise<string> {
-  const teamId = (await requireCapability("manage_infra")).teamId;
+  const teamId = (await requireCapability("configure_databases")).teamId;
   const user = (await getCurrentUser())!;
 
   const newPassword = input.password?.trim() || randomToken(24);

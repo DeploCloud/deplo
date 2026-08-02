@@ -133,7 +133,7 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       // A deployer WITHOUT manage_env — the source-side secret gate.
-      { id: "user_2", teamId: TEAM_A, capabilities: ["view", "deploy"] },
+      { id: "user_2", teamId: TEAM_A, capabilities: ["view", "move_apps", "create_apps"] },
     ],
   });
   await seedServer(db);
@@ -141,7 +141,7 @@ beforeEach(async () => {
 });
 
 test("transfers the app, and severs every tie to the team it came from", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "deploy", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
   const dest = await seedS3(db, { id: "s3_1", teamId: TEAM_A });
   await seedBackup(db, {
     id: "bkp_1",
@@ -243,7 +243,7 @@ test("refuses a team the caller doesn't belong to, or can't deploy in", async ()
 });
 
 test("refuses a caller who may deploy here but not read the variables", async () => {
-  await joinTeam("user_2", TEAM_B, ["view", "deploy", "manage_env"]);
+  await joinTeam("user_2", TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
   await asUser("user_2", async () => {
     await assert.rejects(transferAppToTeam(APP, TEAM_B), /permission/i);
   });
@@ -251,7 +251,7 @@ test("refuses a caller who may deploy here but not read the variables", async ()
 });
 
 test("refuses to strand the app on a server the destination team can't target", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "deploy", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
   await db
     .update(serversTable)
     .set({ allTeams: false })
@@ -286,7 +286,7 @@ test("a foreign app id is not found, and its team is never touched", async () =>
     createdAt: T0,
   });
   await seedApp(db, { id: "prj_other", teamId: TEAM_B, slug: "other" });
-  await joinTeam(USER_1, TEAM_B, ["view", "deploy", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
   await asOwner(async () => {
     await assert.rejects(
       transferAppToTeam("prj_other", TEAM_B),
@@ -296,7 +296,7 @@ test("a foreign app id is not found, and its team is never touched", async () =>
 });
 
 test("the GitHub connection is dropped unless the destination owns one on that account", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "deploy", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
   const sourceInstall = await seedGithub(TEAM_A, "acme", {
     app: "gha_a",
     install: "ghi_a",
@@ -323,7 +323,7 @@ test("the GitHub connection is dropped unless the destination owns one on that a
 });
 
 test("the GitHub connection follows when the destination has its own installation", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "deploy", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
   const sourceInstall = await seedGithub(TEAM_A, "acme", {
     app: "gha_a",
     install: "ghi_a",
@@ -361,7 +361,7 @@ test("appTransferInfo offers only the viewer's OTHER teams that can deploy", asy
     founderUserId: null,
     createdAt: T0,
   });
-  await joinTeam(USER_1, TEAM_B, ["view", "deploy"]);
+  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps"]);
   await joinTeam(USER_1, "team_c", ["view"]);
 
   await asOwner(async () => {
@@ -390,7 +390,7 @@ test("a transfer into the app's own team is refused", async () => {
 });
 
 test("only the app's own team may transfer it", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "deploy", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
   await asOwner(() => transferAppToTeam(APP, TEAM_B));
   // The app is TEAM_B's now: acting as TEAM_A, it is invisible again.
   await asOwner(async () => {

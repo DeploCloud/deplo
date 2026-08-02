@@ -1,5 +1,9 @@
 import { builder } from "../builder";
 import { ALL_CAPABILITIES } from "@/lib/types";
+import {
+  LEGACY_CAPABILITY_EXPANSION,
+  LEGACY_CAPABILITY_NAMES,
+} from "@/lib/capabilities";
 
 /**
  * Enums lifted from the domain types in `lib/types.ts`. Each is exported as a
@@ -12,8 +16,26 @@ export const RoleEnum = builder.enumType("Role", {
   values: ["owner", "member", "viewer"] as const,
 });
 
+/**
+ * Every capability, plus the eight coarse names they replaced — kept as
+ * DEPRECATED input aliases so a script written against the old API keeps working:
+ * each still expands to exactly the permissions it used to imply
+ * (`cleanCapabilities` / `sanitizeCapabilities` do the expanding). They are never
+ * returned; every read answers in current capabilities.
+ */
 export const CapabilityEnum = builder.enumType("Capability", {
-  values: ALL_CAPABILITIES,
+  values: Object.fromEntries([
+    ...ALL_CAPABILITIES.map((c) => [c, { value: c }]),
+    ...LEGACY_CAPABILITY_NAMES.filter(
+      (n) => !(ALL_CAPABILITIES as string[]).includes(n),
+    ).map((n) => [
+      n,
+      {
+        value: n,
+        deprecationReason: `Split into finer permissions. Still accepted on input, where it means: ${LEGACY_CAPABILITY_EXPANSION[n].join(", ")}.`,
+      },
+    ]),
+  ]) as Record<string, { value: string; deprecationReason?: string }>,
 });
 
 export const AppStatusEnum = builder.enumType("AppStatus", {

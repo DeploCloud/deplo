@@ -150,7 +150,7 @@ builder.queryFields((t) => ({
 // `reorderFolders` writes the team-wide folder order (like reorderApps), so
 // it stays gated on a super-user: an instance admin OR a member with manage_team.
 const folderScopes = {
-  $any: { instanceAdmin: true, capability: "manage_team" },
+  $any: { instanceAdmin: true, capability: "organize_folders" },
 } as const;
 
 // Every OTHER folder mutation is a PER-FOLDER decision (owner / grantee / super-
@@ -163,10 +163,10 @@ const perFolder = { loggedIn: true } as const;
 builder.mutationFields((t) => ({
   createFolder: t.field({
     type: FolderRef,
-    // Creating a folder requires `deploy` — the same gate as creating an app.
-    authScopes: { capability: "deploy" },
+    // Creating a folder is its own permission, like creating an app.
+    authScopes: { capability: "create_folders" },
     description:
-      "Create a folder in the active team; nest it by passing a parent folder id. Requires the deploy capability; the creator becomes the folder's owner.",
+      "Create a folder in the active team; nest it by passing a parent folder id. Requires the create_folders capability; the creator becomes the folder's owner.",
     args: {
       name: t.arg.string({ required: true }),
       color: t.arg.string({ required: false }),

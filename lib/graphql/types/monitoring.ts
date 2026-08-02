@@ -171,7 +171,7 @@ builder.queryFields((t) => ({
     // work) with no rate limit — an infra action, not a dashboard read. The
     // dashboards seed from `serverMetricsHistory` below, which stays at the
     // logged-in floor.
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "view_metrics" },
     description: "A fresh live metrics snapshot for one server.",
     args: { serverId: t.arg.string({ required: true }) },
     resolve: (_r, { serverId }) => getServerMetrics(serverId),
@@ -241,7 +241,7 @@ builder.mutationFields((t) => ({
     type: MonitoringSettingsRef,
     // Instance-wide infra, the cleanup-policy gate; enforced again in the data
     // layer (defense in depth).
-    authScopes: { capability: "manage_infra" },
+    authScopes: { capability: "manage_monitoring" },
     description:
       "Turn saving server metrics on the control plane on or off. Turning it " +
       "off also drops the buffered history.",

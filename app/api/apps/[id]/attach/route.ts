@@ -212,9 +212,9 @@ async function stillAuthorized(
 ): Promise<boolean> {
   if (session.userId !== userId) return false;
   try {
-    const { teamId } = await requireCapability("deploy");
+    const { teamId } = await requireCapability("open_app_console");
     if (teamId !== session.teamId) return false;
-    await requireFolderCapabilityForApp(appId, "deploy");
+    await requireFolderCapabilityForApp(appId, "open_app_console");
     return true;
   } catch {
     return false;

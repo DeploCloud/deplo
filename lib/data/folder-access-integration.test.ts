@@ -79,21 +79,21 @@ beforeEach(async () => {
         teamId: TEAM_A,
         role: "member",
         isInstanceAdmin: false,
-        capabilities: ["view", "deploy", "manage_domains", "manage_env", "manage_files"],
+        capabilities: ["view", "create_apps", "deploy_apps", "configure_apps", "manage_domains", "manage_env", "write_app_files"],
       },
       {
         id: GRANTEE,
         teamId: TEAM_A,
         role: "member",
         isInstanceAdmin: false,
-        capabilities: ["view", "deploy", "manage_domains", "manage_env", "manage_files"],
+        capabilities: ["view", "create_apps", "deploy_apps", "configure_apps", "manage_domains", "manage_env", "write_app_files"],
       },
       {
         id: INFRA,
         teamId: TEAM_A,
         role: "member",
         isInstanceAdmin: false,
-        capabilities: ["view", "manage_infra"],
+        capabilities: ["view", "manage_backups"],
       },
     ],
   });
@@ -120,7 +120,7 @@ beforeEach(async () => {
 });
 
 test("a team member without folder access can't act on a project inside the folder", async () => {
-  // MEMBER holds team `deploy` but no access to FLD → renaming PRJ_IN is blocked.
+  // MEMBER holds team `create_apps` but no access to FLD.→ renaming PRJ_IN is blocked.
   await as(MEMBER, async () => {
     await assert.rejects(
       () => renameApp(PRJ_IN, "hijacked"),
@@ -149,9 +149,9 @@ test("the folder owner can act on a project inside their folder", async () => {
   assert.equal(row.name, "owner-renamed");
 });
 
-test("a grantee with folder `deploy` can act; without it they can't", async () => {
-  // Owner shares the folder with GRANTEE, granting deploy.
-  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy"]));
+test("a grantee with a folder grant can act; without it they can't", async () => {
+  // Owner shares the folder with GRANTEE, granting the permission renameApp needs.
+  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["configure_apps"]));
   await as(GRANTEE, async () => {
     await renameApp(PRJ_IN, "grantee-renamed");
   });
@@ -173,11 +173,11 @@ test("a grantee with folder `deploy` can act; without it they can't", async () =
 test("a grant is bounded by the grantee's team caps and can't exceed the granter", async () => {
   // GRANTEE has no team manage_infra, so granting it is a no-op (bounded away):
   // their effective folder caps must not include manage_infra.
-  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy", "manage_infra"]));
+  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy_apps", "manage_backups"]));
   const caps = await as(GRANTEE, () => folderCapabilities(FLD));
-  assert.ok(caps.includes("deploy"), "granted+held deploy survives");
+  assert.ok(caps.includes("deploy_apps"), "granted+held deploy_apps survives");
   assert.ok(
-    !caps.includes("manage_infra"),
+    !caps.includes("manage_backups"),
     "manage_infra can't be granted to a user who lacks it at team level",
   );
 });
@@ -241,7 +241,7 @@ test("listFolders hides folders the caller can't see", async () => {
   assert.deepEqual(memberFolders.map((f) => f.id), [], "a non-member of the folder sees none");
 
   // Grant MEMBER view access → the folder appears for them.
-  await as(OWNER, () => setFolderGrant(FLD, MEMBER, ["deploy"]));
+  await as(OWNER, () => setFolderGrant(FLD, MEMBER, ["deploy_apps"]));
   const afterGrant = await as(MEMBER, () => listFolders());
   assert.deepEqual(afterGrant.map((f) => f.id), [FLD], "a grantee now sees the shared folder");
 });
@@ -270,13 +270,13 @@ test("createApp with no placement still lands at the top level", async () => {
   assert.equal(row.folderId, null);
 });
 
-test("creating into a folder needs `deploy` ON THAT FOLDER, not just team deploy", async () => {
-  // MEMBER holds team `deploy` but no access to FLD.
+test("creating into a folder needs `create_apps` ON THAT FOLDER, not just at team level", async () => {
+  // MEMBER holds team `create_apps` but no access to FLD.
   await as(MEMBER, async () => {
     await assert.rejects(
       () => newAppIn(FLD, "Sneaky"),
       /not found|permission/i,
-      "team deploy alone must not create an app inside someone else's folder",
+      "team-level create_apps alone must not create an app inside someone else's folder",
     );
   });
   // The whole create was refused — no orphan app row left behind.
@@ -284,8 +284,8 @@ test("creating into a folder needs `deploy` ON THAT FOLDER, not just team deploy
   assert.deepEqual(rows.map((r) => r.id), [PRJ_IN], "only the pre-seeded app is in the folder");
 });
 
-test("a grantee with folder `deploy` CAN create an app inside the folder", async () => {
-  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy"]));
+test("a grantee with folder `create_apps` CAN create an app inside the folder", async () => {
+  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["create_apps"]));
   const app = await as(GRANTEE, () => newAppIn(FLD, "Grantee app"));
   const row = (await db.select().from(appsTable).where(eq(appsTable.id, app.id)))[0]!;
   assert.equal(row.folderId, FLD);
@@ -306,12 +306,12 @@ test("createApp rejects an unknown folder id instead of silently creating top le
 });
 
 test("only the owner/super-user can administer grants; a grantee can't re-share", async () => {
-  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy"]));
+  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy_apps"]));
   // GRANTEE, even with folder deploy, cannot list or hand out grants.
   await as(GRANTEE, async () => {
     await assert.rejects(() => listFolderGrants(FLD), /owner|not found|permission/i);
     await assert.rejects(
-      () => setFolderGrant(FLD, MEMBER, ["deploy"]),
+      () => setFolderGrant(FLD, MEMBER, ["deploy_apps"]),
       /owner|not found|permission/i,
       "a grantee must never re-share the folder",
     );

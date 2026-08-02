@@ -9,6 +9,7 @@ import {
   createAccountWithTeam,
   createAccountWithTeams,
   startSessionFor,
+  verifyTwoFactorCode,
 } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/auth";
 import {
@@ -53,15 +54,21 @@ function checkLimits(
 }
 
 const AuthPayloadRef = builder
-  .objectRef<{ viewer: Awaited<ReturnType<typeof getCurrentUser>> }>(
-    "AuthPayload",
-  )
+  .objectRef<{
+    viewer: Awaited<ReturnType<typeof getCurrentUser>>;
+    requiresTwoFactor?: boolean;
+  }>("AuthPayload")
   .implement({
     fields: (t) => ({
       viewer: t.field({
         type: ViewerRef,
         nullable: true,
         resolve: (p) => p.viewer,
+      }),
+      requiresTwoFactor: t.boolean({
+        description:
+          "The password was correct but the account has 2FA: no session yet. Send a code to `verifyTwoFactorLogin`.",
+        resolve: (p) => p.requiresTwoFactor ?? false,
       }),
     }),
   });
@@ -116,7 +123,41 @@ builder.mutationFields((t) => ({
       ]);
       if (limited) throw new Error(limited);
       const res = await login(email, parsed.data.password);
+      // 2FA is not an error: the password was right, the login is just not
+      // finished. Returning a payload (rather than throwing) is what lets the
+      // client swap to the code step without treating it as a failed attempt.
+      if (res.requiresTwoFactor)
+        return { viewer: null, requiresTwoFactor: true };
       if (!res.ok) throw new Error(res.error ?? "Invalid email or password");
+      return { viewer: await getCurrentUser() };
+    },
+  }),
+  verifyTwoFactorLogin: t.field({
+    type: AuthPayloadRef,
+    description:
+      "Finish a login that returned `requiresTwoFactor`, with a TOTP code or a recovery code.",
+    args: {
+      code: t.arg.string({ required: true }),
+      // One mutation, not two: the user pastes whatever they have, and the form
+      // says which kind it is. Splitting them would leak nothing extra and would
+      // double the public surface.
+      recoveryCode: t.arg.boolean({ required: false }),
+    },
+    resolve: async (_r, args) => {
+      const code = args.code.trim();
+      if (!code) throw new Error("Enter the code from your authenticator app");
+      // Tighter than the password limiter: a 6-digit code is guessable in a way
+      // a password is not, so cap attempts hard. The plugin ALSO locks the
+      // factor out after repeated failures; this is the cheap outer bound.
+      const limited = checkLimits([
+        { key: await clientKey("2fa"), limit: 5, windowMs: 15 * 60_000 },
+      ]);
+      if (limited) throw new Error(limited);
+      const res = await verifyTwoFactorCode(
+        code,
+        args.recoveryCode ? "backup" : "totp",
+      );
+      if (!res.ok) throw new Error(res.error ?? "That code is not valid");
       return { viewer: await getCurrentUser() };
     },
   }),
@@ -187,7 +228,6 @@ builder.mutationFields((t) => ({
       const guard = (tx: Parameters<typeof consumeRegistrationLink>[0]) =>
         consumeRegistrationLink(tx, parsed.data.token, username);
 
-      let userId: string;
       let activeTeamId: string;
       if (info.mode === "existing_teams") {
         // Team(s) come from the link; any submitted teamName is ignored.
@@ -204,7 +244,6 @@ builder.mutationFields((t) => ({
           assignments,
           { guard },
         );
-        userId = res.user.id;
         activeTeamId = res.activeTeamId;
       } else {
         const teamName = parsed.data.teamName?.trim();
@@ -219,10 +258,13 @@ builder.mutationFields((t) => ({
           },
           { guard },
         );
-        userId = res.user.id;
         activeTeamId = res.team.id;
       }
-      await startSessionFor(userId, activeTeamId);
+      await startSessionFor(
+        parsed.data.email,
+        parsed.data.password,
+        activeTeamId,
+      );
       return { viewer: await getCurrentUser() };
     },
   }),

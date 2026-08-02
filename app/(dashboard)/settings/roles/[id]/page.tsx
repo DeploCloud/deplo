@@ -1,0 +1,23 @@
+import { notFound } from "next/navigation";
+import { hasCapability } from "@/lib/membership";
+import { getRole } from "@/lib/data/roles";
+import { RoleEditor } from "@/components/settings/roles/role-editor";
+
+export async function generateMetadata(props: PageProps<"/settings/roles/[id]">) {
+  const { id } = await props.params;
+  const role = await getRole(id);
+  return { title: role ? `Settings · ${role.name}` : "Settings · Roles" };
+}
+
+export default async function RolePage(props: PageProps<"/settings/roles/[id]">) {
+  const { id } = await props.params;
+  const [role, canManage] = await Promise.all([
+    getRole(id),
+    hasCapability("manage_roles"),
+  ]);
+  // A role of another team resolves to nothing here, exactly as it does in the
+  // data layer — there is no id to guess your way into.
+  if (!role) notFound();
+
+  return <RoleEditor mode="edit" role={role} canManage={canManage} />;
+}
