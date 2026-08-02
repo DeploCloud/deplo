@@ -12,6 +12,7 @@ import {
   UserCog,
   Crown,
   ShieldCheck,
+  Loader2,
 } from "lucide-react";
 import {
   Card,
@@ -37,23 +38,26 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CapabilityPicker } from "@/components/settings/capability-picker";
+import { RoleSelect } from "@/components/members/role-select";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
 import { EditUserDialog } from "@/components/settings/edit-user-dialog";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
-import type { Capability, Role } from "@/lib/types";
 import type { MemberDTO } from "@/lib/data/members";
+import type { TeamRoleDTO } from "@/lib/data/roles";
 
 export function MembersManager({
   members,
+  roles,
   currentUserId,
   canManage,
   isAdmin = false,
 }: {
   members: MemberDTO[];
+  /** The team's roles — what a member can be assigned. */
+  roles: TeamRoleDTO[];
   currentUserId: string;
   canManage: boolean;
   /** Instance admin: can create a brand-new user from the add-member modal. */
@@ -125,6 +129,7 @@ export function MembersManager({
             <MemberCard
               key={m.userId}
               member={m}
+              roles={roles}
               isSelf={m.userId === currentUserId}
               canManage={canManage}
               isAdmin={isAdmin}
@@ -139,12 +144,14 @@ export function MembersManager({
 
 function MemberCard({
   member,
+  roles,
   isSelf,
   canManage,
   isAdmin,
   viewerIsOwner,
 }: {
   member: MemberDTO;
+  roles: TeamRoleDTO[];
   isSelf: boolean;
   canManage: boolean;
   /** Viewer is an instance admin — may edit any user's global account. */
@@ -162,6 +169,7 @@ function MemberCard({
   // owner — a plain manager can't act on any owner.
   const isFounder = member.isPrimaryOwner;
   const isOwner = member.role === "owner";
+  const granted = member.capabilities.filter((c) => c !== "view").length;
 
   // What this viewer may do to THIS member. Editing team permissions and
   // removing need `manage_members`, a non-founder target, and — when the target
@@ -299,13 +307,14 @@ function MemberCard({
             Primary owner
           </Badge>
         ) : (
-          <Badge variant="outline" className="capitalize">
-            {member.role}
-          </Badge>
+          <Badge variant="outline">{member.roleName ?? "Custom"}</Badge>
         )}
+        {/* Counted the same way the Roles page counts a role: the always-on
+            `view` floor is not a permission you granted. */}
         <Badge variant="outline">
-          {member.capabilities.length} capabilit
-          {member.capabilities.length === 1 ? "y" : "ies"}
+          {granted === 0
+            ? "View only"
+            : `${granted} permission${granted === 1 ? "" : "s"}`}
         </Badge>
       </div>
     </div>
@@ -316,6 +325,7 @@ function MemberCard({
       {editOpen && (
         <EditMemberDialog
           member={member}
+          roles={roles}
           canAssignOwner={viewerIsOwner}
           open={editOpen}
           onOpenChange={setEditOpen}
@@ -355,11 +365,13 @@ function MemberCard({
 
 function EditMemberDialog({
   member,
+  roles,
   canAssignOwner,
   open,
   onOpenChange,
 }: {
   member: MemberDTO;
+  roles: TeamRoleDTO[];
   /** Viewer is an owner — only then may "Owner" be offered as a role. */
   canAssignOwner: boolean;
   open: boolean;
@@ -367,19 +379,20 @@ function EditMemberDialog({
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  const [role, setRole] = React.useState<Role>(member.role);
-  const [caps, setCaps] = React.useState<Capability[]>(member.capabilities);
+  const [roleId, setRoleId] = React.useState<string | null>(member.roleId);
 
-  function submit() {
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!roleId) return;
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($input: UpdateMemberInput!) {
           updateMember(input: $input) { userId }
         }`,
-        { input: { userId: member.userId, role, capabilities: caps } },
+        { input: { userId: member.userId, roleId } },
       );
       if (res.ok) {
-        toast.success("Permissions updated");
+        toast.success("Role updated");
         onOpenChange(false);
         router.refresh();
       } else {
@@ -406,29 +419,34 @@ function EditMemberDialog({
             {member.name && member.name !== member.username
               ? `${member.name} — `
               : ""}
-            Set what this member can do in the team.
+            Choose the role this member holds in the team.
           </DialogDescription>
         </DialogHeader>
-        <CapabilityPicker
-          role={role}
-          capabilities={caps}
-          onRoleChange={setRole}
-          onCapabilitiesChange={setCaps}
-          idPrefix={`edit-${member.userId}`}
-          availableRoles={canAssignOwner ? undefined : ["member", "viewer"]}
-        />
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending}>
-            {pending ? "Saving…" : "Save permissions"}
-          </Button>
-        </DialogFooter>
+        <form className="grid gap-4" onSubmit={submit}>
+          <RoleSelect
+            roles={roles}
+            value={roleId}
+            onChange={setRoleId}
+            canAssignOwner={canAssignOwner}
+            isCustom={member.roleId === null}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={pending || !roleId || roleId === member.roleId}
+            >
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Save role
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

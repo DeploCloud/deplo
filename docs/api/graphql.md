@@ -52,7 +52,7 @@ Fields are gated by the same capability model as the dashboard:
 | `manage_domains`  | add/verify/route/remove custom domains                      |
 | `manage_env`      | app, environment-scoped, team & shared variables        |
 | `manage_infra`    | servers, databases, S3, registries, backups, GitHub, tokens |
-| `manage_members`  | add/remove members, change roles                            |
+| `manage_members`  | add/remove members, assign roles, author/edit/delete roles   |
 | `manage_team`     | rename/edit/delete the team                                 |
 
 Some queries/mutations require **instance admin** (global): managing all users,
@@ -72,7 +72,8 @@ minting registration links, the per-user admin editor, and Docker cleanup
   GitHub repository *before* an App exists for it — what the new-app wizard shows
   while you pick a repo; an App carries the same answer on `App.framework`, re-derived
   by every deploy),
-  `members`, `apiTokens`, `activity`, `me`, `viewerTeam`, …. Object
+  `members`, `teamRoles` (the team's roles and exactly what each grants),
+  `apiTokens`, `activity`, `me`, `viewerTeam`, …. Object
   types are navigable — e.g. `App.deployments`, `App.latestDeployment`.
 - **Mutations** mirror every former server action: `createApp`, `redeploy`,
   `stopApp`, `createProject`, `createEnvironment`, `upsertEnvironmentEnv`,
@@ -81,7 +82,10 @@ minting registration links, the per-user admin editor, and Docker cleanup
   `rotateDatabasePassword`, `execDatabaseConsole`, `setSaveMetrics`,
   `setAppSaveMetrics(appId, enabled)`/`setDatabaseSaveMetrics(databaseId, enabled)`
   (the per-resource "Save metrics" switch, `manage_infra`, default off),
-  `createToken`, `updateTeam`, `login`, `logout`, ….
+  `createToken`, `updateTeam`, `createRole`/`updateRole`/`resetRole`/`deleteRole`
+  (a role edit applies to every member holding it), `login`, `logout`, ….
+  `addExistingMember`/`updateMember` take a `roleId`; the older `role` +
+  `capabilities` pair still works and lands on the matching role when there is one.
 - **Subscriptions** (SSE via graphql-yoga): `appStatus(slug)` and
   `databaseStatus(id)` — each emits the entity on every state change (initial
   snapshot, then live), so a client tracks provisioning/start/stop/deploy with

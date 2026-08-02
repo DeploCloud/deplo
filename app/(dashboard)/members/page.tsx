@@ -1,37 +1,10 @@
-import { Users } from "lucide-react";
-import { getCurrentUser } from "@/lib/auth";
-import { hasCapability, isInstanceAdmin } from "@/lib/membership";
-import { listMembers } from "@/lib/data/members";
-import { PageHeader } from "@/components/shared/page-header";
-import { MembersManager } from "@/components/members/members-manager";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Team members" };
-
-export default async function MembersPage() {
-  const [user, members, canManage, isAdmin] = await Promise.all([
-    getCurrentUser(),
-    listMembers(),
-    hasCapability("manage_members"),
-    isInstanceAdmin(),
-  ]);
-
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title={
-          <span className="flex items-center gap-2">
-            <Users className="size-5" />
-            Team members
-          </span>
-        }
-        description="People who can access this team's apps and resources."
-      />
-      <MembersManager
-        members={members}
-        currentUserId={user?.id ?? ""}
-        canManage={canManage}
-        isAdmin={isAdmin}
-      />
-    </div>
-  );
+/**
+ * Members moved under Settings → Team, next to the Roles page that defines what
+ * a member can do — the two are one decision, not two sections. This stub only
+ * keeps old bookmarks and links working.
+ */
+export default function MembersIndex() {
+  redirect("/settings/members");
 }

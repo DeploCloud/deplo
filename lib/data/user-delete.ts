@@ -658,6 +658,14 @@ async function healCriticalCapabilities(
       .insert(membershipCapabilitiesTable)
       .values(missing.map((c) => ({ membershipId: heir.id, capability: c })))
       .onConflictDoNothing();
+    // The heir now grants more than their assigned role does, so it is no longer
+    // their role: drop the link and let the membership read as the hand-picked
+    // ("Custom") set it has become. Leaving the link would make the Roles page
+    // claim a member holds a role whose capabilities they no longer match.
+    await tx
+      .update(membershipsTable)
+      .set({ roleId: null })
+      .where(eq(membershipsTable.id, heir.id));
     healed.push(teamId);
   }
   return healed;

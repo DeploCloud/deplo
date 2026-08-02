@@ -27,18 +27,35 @@ mutations call `requireCapability(cap)`. See `lib/membership.ts`.
 _Avoid_: current team (ambiguous with the team being viewed), selected team.
 
 **Membership**:
-The join row binding a user to a team with a `role` and an **effective `capabilities`**
-set. Seeded from the role preset on invite/create, then editable per member. The source
-of truth for what a user may do **in a team** — `User.role` is a legacy instance-wide
-label kept only for back-compat / defaults.
-_Avoid_: team user, role (a membership has a role; it is not one).
+The join row binding a user to a team: the assigned **Role** (`role_id`), the member's
+`role` **rank** (only `owner` outranks — it is what the "only an owner may act on an
+owner" guards read), and the **effective `capabilities`** set. The capabilities are
+written from the role and re-written whenever that role changes; a membership with no
+`role_id` carries a hand-picked ("Custom") set that belongs to no role. The source of
+truth for what a user may do **in a team** — `User.role` is a legacy instance-wide label
+kept only for back-compat / defaults.
+_Avoid_: team user, role (a membership *has* a role; it is not one).
+
+**Role**:
+A named capability set **owned by a team** (`team_roles`, id prefix `role_`) and assigned
+to its members from Settings → Team → Members. Every team has three **default** roles —
+Owner, Member, Viewer (`builtin_key`) — which it may rename and re-scope and then reset to
+what deplo ships, plus any number it authors itself. **Owner is locked at full access**:
+the founder's rank is immutable by rule, so a team can never edit its way out of
+administering itself. A role IS its members' capabilities: editing one rewrites them for
+everyone holding it in the same transaction, and no edit may leave the team with zero
+holders of `manage_members` / `manage_team`. Seeded lazily per team by `ensureTeamRoles`,
+so every team-creation path gets them without knowing they exist.
+_Avoid_: permission group, preset (a role is not a template you copy — it stays bound to
+its members), user group, team role level.
 
 **Capability**:
 One permission a member may hold in a team — `view`, `deploy`, `manage_domains`,
-`manage_env`, `manage_infra`, `manage_members`, `manage_team`. `view` is the always-on
-floor. **Roles are presets** over capabilities (`owner` = all; `member` = deploy +
-domains + env; `viewer` = view), but a member's exact set can be tailored beyond the
-preset. Enforced server-side on every mutating action via `requireCapability`.
+`manage_env`, `manage_files`, `manage_infra`, `manage_members`, `manage_team`. `view` is
+the always-on floor. Capabilities are the enforcement primitive; a **Role** is the named
+set a member is assigned, and the role editor shows the same set at two depths (a switch
+per area, or the individual permissions). Enforced server-side on every mutating action
+via `requireCapability`.
 _Avoid_: permission (use capability), scope, grant.
 
 **Instance owner**:

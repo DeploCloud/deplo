@@ -121,12 +121,8 @@ export const NAV: NavSection[] = [
   {
     title: "Workspace",
     items: [
-      {
-        label: "Members",
-        href: "/members",
-        icon: Users,
-        tooltip: "People in this team",
-      },
+      // Members lives under Settings → Team, beside the Roles page that defines
+      // what a member can do — one decision, one place.
       {
         label: "Activity",
         href: "/activity",
@@ -178,6 +174,18 @@ export const SETTINGS_NAV: NavSection[] = [
         icon: Building2,
         tooltip: "Team details & appearance",
         exact: true,
+      },
+      {
+        label: "Members",
+        href: "/settings/members",
+        icon: Users,
+        tooltip: "People in this team",
+      },
+      {
+        label: "Roles",
+        href: "/settings/roles",
+        icon: ShieldCheck,
+        tooltip: "What a member can do in this team",
       },
       {
         label: "Registries",

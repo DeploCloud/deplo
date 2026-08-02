@@ -379,6 +379,13 @@
       "when": 1784671800000,
       "tag": "0053_drop_preview_leftovers",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1784672000000,
+      "tag": "0054_add_team_roles",
+      "breakpoints": true
     }
   ]
 }

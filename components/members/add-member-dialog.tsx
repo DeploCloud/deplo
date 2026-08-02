@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Search, Check, UserPlus, ChevronRight } from "lucide-react";
+import { Search, Check, UserPlus, ChevronRight, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,16 +16,15 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CapabilityPicker } from "@/components/settings/capability-picker";
+import { RoleSelect } from "@/components/members/role-select";
 import { gqlAction } from "@/lib/graphql-client";
-import { capabilitiesForRole } from "@/lib/membership-shared";
-import type { Capability, Role } from "@/lib/types";
 import type { UserSearchResult } from "@/lib/data/members";
+import type { TeamRoleDTO } from "@/lib/data/roles";
 
 /**
- * Add an already-registered user to the active team, choosing their role and
- * capabilities. Controlled (no trigger of its own) so it can be opened from the
- * Members page header or the overview "Add new" menu.
+ * Add an already-registered user to the active team, choosing the role they
+ * hold. Controlled (no trigger of its own) so it can be opened from the Members
+ * page header or the overview "Add new" menu.
  */
 export function AddMemberDialog({
   open,
@@ -55,10 +54,53 @@ export function AddMemberDialog({
   // flashing the empty-state before the initial roster fetch resolves.
   const [searching, setSearching] = React.useState(true);
   const [picked, setPicked] = React.useState<UserSearchResult | null>(null);
-  const [role, setRole] = React.useState<Role>("member");
-  const [caps, setCaps] = React.useState<Capability[]>(
-    capabilitiesForRole("member"),
-  );
+  // The team's roles are read here rather than passed in, so the dialog shows the
+  // real list wherever it is opened from (the Members page AND the Overview "Add
+  // New" menu) and picks up a role created a moment ago in another tab.
+  const [roles, setRoles] = React.useState<TeamRoleDTO[]>([]);
+  const [roleId, setRoleId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      const res = await gqlAction<{ teamRoles: TeamRoleDTO[] }, TeamRoleDTO[]>(
+        `query {
+          teamRoles {
+            id
+            name
+            description
+            builtinKey
+            capabilities
+            memberCount
+            modified
+            locked
+            createdAt
+          }
+        }`,
+        {},
+        (d) => d.teamRoles,
+      );
+      if (cancelled || !res.ok || !res.data) return;
+      setRoles(res.data);
+      // Default to the team's Member role — what a new teammate almost always
+      // gets — falling back to the first assignable role for a team that
+      // reworked its defaults.
+      const assignable = res.data.filter(
+        (r) => canAssignOwner || r.builtinKey !== "owner",
+      );
+      setRoleId(
+        (current) =>
+          current ??
+          assignable.find((r) => r.builtinKey === "member")?.id ??
+          assignable[0]?.id ??
+          null,
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, canAssignOwner]);
 
   // Debounced username search. The empty query is a valid search that returns
   // the full available roster, so the list is populated as soon as the dialog
@@ -106,8 +148,7 @@ export function AddMemberDialog({
     setResults([]);
     setSearching(true);
     setPicked(null);
-    setRole("member");
-    setCaps(capabilitiesForRole("member"));
+    setRoleId(null);
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -116,13 +157,13 @@ export function AddMemberDialog({
   }
 
   function add() {
-    if (!picked) return;
+    if (!picked || !roleId) return;
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($input: AddMemberInput!) {
           addExistingMember(input: $input) { userId }
         }`,
-        { input: { userId: picked.userId, role, capabilities: caps } },
+        { input: { userId: picked.userId, roleId } },
       );
       if (res.ok) {
         toast.success(`Added @${picked.username} to the team`);
@@ -275,13 +316,11 @@ export function AddMemberDialog({
                   Change
                 </Button>
               </div>
-              <CapabilityPicker
-                role={role}
-                capabilities={caps}
-                onRoleChange={setRole}
-                onCapabilitiesChange={setCaps}
-                idPrefix="addmember"
-                availableRoles={canAssignOwner ? undefined : ["member", "viewer"]}
+              <RoleSelect
+                roles={roles}
+                value={roleId}
+                onChange={setRoleId}
+                canAssignOwner={canAssignOwner}
               />
             </div>
           )}
@@ -297,15 +336,13 @@ export function AddMemberDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={pending || !picked}>
+            <Button type="submit" disabled={pending || !picked || !roleId}>
               {pending ? (
-                "Adding…"
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <>
-                  <Check className="size-4" />
-                  Add to team
-                </>
+                <Check className="size-4" />
               )}
+              Add to team
             </Button>
           </DialogFooter>
         </form>

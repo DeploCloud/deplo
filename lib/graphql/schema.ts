@@ -27,6 +27,7 @@ import "./types/project";
 import "./types/app";
 import "./types/app-files";
 import "./types/registry";
+import "./types/role";
 import "./types/s3";
 import "./types/server";
 import "./types/shared-env";

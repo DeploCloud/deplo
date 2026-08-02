@@ -192,11 +192,17 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   transaction (own connection; deadlocks pglite otherwise) and is fire-and-forget.
 - **Capabilities (8):** `view` (always-on floor), `deploy`, `manage_domains`, `manage_env`,
   `manage_files`, `manage_infra`, `manage_members`, `manage_team`; plus instance-wide
-  `instanceAdmin` and the orthogonal grants `canExposePorts` / `canMountHostVolumes`. Roles are
-  presets. **Creating** a folder/project/app is gated on `deploy`, not `manage_team`.
+  `instanceAdmin` and the orthogonal grants `canExposePorts` / `canMountHostVolumes`.
+  **Creating** a folder/project/app is gated on `deploy`, not `manage_team`.
+- **Roles are per-team ROWS** (`team_roles`, `lib/data/roles.ts`), not TS presets: three
+  editable/resettable defaults (Owner locked at full access) plus the team's own. A role edit
+  re-writes `membership_capabilities` for its members in the same transaction, so **every
+  authorization check stays a read of the member's effective capabilities** — never resolve a
+  role at check time. `memberships.role` is the RANK (`owner` outranks); `role_id` NULL =
+  hand-picked "Custom" set. New teams need no seeding call: `ensureTeamRoles` is lazy.
 - **id prefixes not to confuse:** `prc_` = Project *container*, `prj_` = **App** (the deployable
-  app, legacy mint); `environ_` = Environment, `env_` = env-**var** row; `deplo_` = raw bearer
-  secret (sha256 at rest).
+  app, legacy mint); `environ_` = Environment, `env_` = env-**var** row; `role_` = a team Role;
+  `deplo_` = raw bearer secret (sha256 at rest).
 
 ## Persistence, secrets, auth
 

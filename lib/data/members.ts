@@ -17,6 +17,7 @@ import { getDb, type DbTx } from "../db/client";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
+  teamRoles as teamRolesTable,
   registrationLinks as registrationLinksTable,
   registrationLinkTeams as registrationLinkTeamsTable,
   registrationLinkTeamCapabilities as registrationLinkTeamCapabilitiesTable,
@@ -41,6 +42,7 @@ import {
   membershipFor,
 } from "../membership";
 import { cleanCapabilities } from "../membership-shared";
+import { ensureTeamRoles, matchTeamRole, roleAssignment } from "./roles";
 import { boundedBy, withView } from "./folder-access";
 import { resolvePublicBaseUrl } from "../public-url";
 import type {
@@ -62,7 +64,16 @@ export interface MemberDTO {
   membershipId: string;
   username: string;
   name: string;
+  /**
+   * The member's RANK — 'owner' outranks everyone else and is what the guards
+   * read. For what to SHOW, use {@link roleName}: two members can both rank as
+   * `member` while holding different roles.
+   */
   role: Role;
+  /** The assigned team role, or null for a hand-picked ("Custom") set. */
+  roleId: string | null;
+  /** The assigned role's name, or null when the member holds a custom set. */
+  roleName: string | null;
   capabilities: Capability[];
   /**
    * True for the team's ABSOLUTE owner — the founder who created the team (the
@@ -215,11 +226,17 @@ async function capabilitiesByMembership(
 export async function listMembers(): Promise<MemberDTO[]> {
   const teamId = await requireActiveTeamId();
   const db = getDb();
+  // Self-healing: a team that predates roles (or was created by another path)
+  // gets its three defaults here, and the memberships that already match one
+  // adopt it — so the list names a real role instead of "Custom" for everyone.
+  await ensureTeamRoles(db, teamId);
   const founderId = await teamFounderUserId(db, teamId);
   const rows = await db
     .select({
       membershipId: membershipsTable.id,
       role: membershipsTable.role,
+      roleId: membershipsTable.roleId,
+      roleName: teamRolesTable.name,
       createdAt: membershipsTable.createdAt,
       userId: usersTable.id,
       username: usersTable.username,
@@ -229,6 +246,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
     })
     .from(membershipsTable)
     .innerJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
+    .leftJoin(teamRolesTable, eq(teamRolesTable.id, membershipsTable.roleId))
     .where(eq(membershipsTable.teamId, teamId))
     .orderBy(membershipsTable.createdAt);
   const caps = await capabilitiesByMembership(
@@ -241,6 +259,8 @@ export async function listMembers(): Promise<MemberDTO[]> {
     username: r.username,
     name: r.name,
     role: r.role as Role,
+    roleId: r.roleId ?? null,
+    roleName: r.roleName ?? null,
     capabilities: caps.get(r.membershipId) ?? [],
     isPrimaryOwner: r.userId === founderId,
     isInstanceAdmin: r.isInstanceAdmin ?? false,
@@ -340,29 +360,90 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   }));
 }
 
-/** Add an already-registered user to the active team with a role + capabilities. */
-export async function addExistingMember(input: {
-  userId: string;
-  role: Role;
-  capabilities?: Capability[];
-}): Promise<MemberDTO> {
-  const { membership } = await requireCapability("manage_members");
-  const teamId = membership.teamId;
-  // Granting the `owner` role is escalation — only an existing owner (the founder
-  // or an assigned owner) may add another owner. A plain `manage_members` holder
-  // can add members/viewers but cannot mint an owner above their own rank.
-  if (input.role === "owner" && membership.role !== "owner")
-    throw new Error("Only an owner can add another owner");
+/**
+ * What a member assignment resolves to: the rank stamped on the membership row,
+ * the role it belongs to (null ⇒ a hand-picked "Custom" set), and the effective
+ * capabilities to write.
+ */
+interface ResolvedAssignment {
+  rank: Role;
+  roleId: string | null;
+  roleName: string | null;
+  capabilities: Capability[];
+}
+
+/**
+ * Resolve either shape of a member assignment:
+ *
+ *  - `roleId` — the current path: the member gets EXACTLY that role's
+ *    capabilities. A non-owner who doesn't hold all of them is refused outright
+ *    rather than handed a silently weakened copy, so "holds role X" always means
+ *    "can do what X says".
+ *  - `role` + `capabilities` — the legacy path kept for the public API and the
+ *    registration links: a rank plus a hand-picked set, clamped to the actor's own
+ *    capabilities as before. It still lands on a real role when the set matches one.
+ */
+async function resolveAssignment(
+  db: ReturnType<typeof getDb> | DbTx,
+  teamId: string,
+  input: { roleId?: string; role?: Role; capabilities?: Capability[] },
+  actor: { role: Role; capabilities: Capability[] },
+): Promise<ResolvedAssignment> {
+  if (input.roleId) {
+    const a = await roleAssignment(db, teamId, input.roleId);
+    if (actor.role !== "owner") {
+      const beyond = a.capabilities.filter(
+        (c) => !actor.capabilities.includes(c),
+      );
+      if (beyond.length > 0)
+        throw new Error(
+          `You can only assign a role whose permissions you hold yourself — ${a.name} grants more than you do`,
+        );
+    }
+    return {
+      rank: a.rank,
+      roleId: a.roleId,
+      roleName: a.name,
+      capabilities: a.capabilities,
+    };
+  }
+  if (!input.role) throw new Error("Choose a role for this member");
+  const raw = cleanCapabilities(input.capabilities, input.role);
   // A non-owner can only hand out capabilities they hold THEMSELVES — bounding
   // the assignment to the actor's own caps (same clamp as folder grants) closes
   // the escalation where a plain `manage_members` holder mints a member with
   // capabilities above their own rank.
-  const raw = cleanCapabilities(input.capabilities, input.role);
   const caps =
-    membership.role === "owner"
-      ? raw
-      : withView(boundedBy(raw, membership.capabilities));
+    actor.role === "owner" ? raw : withView(boundedBy(raw, actor.capabilities));
+  const matched = await matchTeamRole(db, teamId, input.role, caps);
+  return {
+    rank: input.role,
+    roleId: matched?.id ?? null,
+    roleName: matched?.name ?? null,
+    capabilities: caps,
+  };
+}
+
+/** Add an already-registered user to the active team with a role. */
+export async function addExistingMember(input: {
+  userId: string;
+  /** The team role to assign (Settings → Team → Roles). */
+  roleId?: string;
+  /** Legacy: rank + hand-picked capabilities. Ignored when `roleId` is given. */
+  role?: Role;
+  capabilities?: Capability[];
+}): Promise<MemberDTO> {
+  const { membership } = await requireCapability("manage_members");
+  const teamId = membership.teamId;
   const db = getDb();
+  await ensureTeamRoles(db, teamId);
+  const assignment = await resolveAssignment(db, teamId, input, membership);
+  // Granting the `owner` role is escalation — only an existing owner (the founder
+  // or an assigned owner) may add another owner. A plain `manage_members` holder
+  // can add members/viewers but cannot mint an owner above their own rank.
+  if (assignment.rank === "owner" && membership.role !== "owner")
+    throw new Error("Only an owner can add another owner");
+  const caps = assignment.capabilities;
   const targetRows = await db
     .select({
       id: usersTable.id,
@@ -390,7 +471,8 @@ export async function addExistingMember(input: {
         id: membershipId,
         userId: target.id,
         teamId,
-        role: input.role,
+        role: assignment.rank,
+        roleId: assignment.roleId,
         createdAt: now,
       })
       .onConflictDoNothing()
@@ -413,7 +495,9 @@ export async function addExistingMember(input: {
     membershipId,
     username: target.username,
     name: target.name,
-    role: input.role,
+    role: assignment.rank,
+    roleId: assignment.roleId,
+    roleName: assignment.roleName,
     capabilities: caps,
     // A freshly added member is never the founder (the team already has one).
     isPrimaryOwner: false,
@@ -480,10 +564,13 @@ async function assertAdminCoverage(
   }
 }
 
-/** Change a member's role and/or capabilities within the active team. */
+/** Assign a member's role (or, on the legacy path, their capability set). */
 export async function updateMember(input: {
   userId: string;
-  role: Role;
+  /** The team role to assign (Settings → Team → Roles). */
+  roleId?: string;
+  /** Legacy: rank + hand-picked capabilities. Ignored when `roleId` is given. */
+  role?: Role;
   capabilities?: Capability[];
 }): Promise<void> {
   const { teamId, userId: actingUserId, membership } = await requireCapability(
@@ -495,15 +582,11 @@ export async function updateMember(input: {
   // legitimate self-edit path (the founder guard below still protects the crown).
   if (input.userId === actingUserId && !actorIsOwner)
     throw new Error("You can't change your own role or permissions");
-  // A non-owner can only hand out capabilities they hold THEMSELVES — bounding
-  // the assignment to the actor's own caps (same clamp as folder grants) closes
-  // the escalation where a plain `manage_members` holder grants capabilities
-  // above their own rank.
-  const raw = cleanCapabilities(input.capabilities, input.role);
-  const caps = actorIsOwner
-    ? raw
-    : withView(boundedBy(raw, membership.capabilities));
-  await getDb().transaction(async (tx) => {
+  const db = getDb();
+  await ensureTeamRoles(db, teamId);
+  const assignment = await resolveAssignment(db, teamId, input, membership);
+  const caps = assignment.capabilities;
+  await db.transaction(async (tx) => {
     const founderId = await teamFounderUserId(tx, teamId);
     const rows = await tx
       .select({ id: membershipsTable.id, role: membershipsTable.role })
@@ -533,13 +616,13 @@ export async function updateMember(input: {
     }
     // Promoting someone to the `owner` role is escalation — only an owner may do
     // it (so a non-owner manager can't mint an owner above their own rank).
-    if (input.role === "owner" && !actorIsOwner) {
+    if (assignment.rank === "owner" && !actorIsOwner) {
       throw new Error("Only an owner can grant the owner role.");
     }
     await assertAdminCoverage(tx, teamId, input.userId, caps);
     await tx
       .update(membershipsTable)
-      .set({ role: input.role })
+      .set({ role: assignment.rank, roleId: assignment.roleId })
       .where(eq(membershipsTable.id, m.id));
     await tx
       .delete(membershipCapabilitiesTable)

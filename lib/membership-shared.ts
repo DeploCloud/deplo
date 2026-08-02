@@ -54,6 +54,75 @@ export const CAPABILITY_META: Record<
   },
 };
 
+/**
+ * The SIMPLE tier of the role editor: every optional capability grouped into the
+ * three areas a team actually reasons about. Flipping a group grants or revokes
+ * all of its capabilities at once — the "one switch, many permissions" view — and
+ * the advanced tier then ticks the individual rows underneath. Both tiers write
+ * the same capability set; there is no second permission model behind this.
+ *
+ * `view` is deliberately absent: it is the always-on floor, never a toggle.
+ */
+export const CAPABILITY_GROUPS: {
+  key: "apps" | "infrastructure" | "team";
+  label: string;
+  description: string;
+  caps: Capability[];
+}[] = [
+  {
+    key: "apps",
+    label: "Apps & configuration",
+    description:
+      "Deploy apps and manage their domains, variables and files.",
+    caps: ["deploy", "manage_domains", "manage_env", "manage_files"],
+  },
+  {
+    key: "infrastructure",
+    label: "Infrastructure",
+    description: "Databases, S3 destinations, backups, registries and Git.",
+    caps: ["manage_infra"],
+  },
+  {
+    key: "team",
+    label: "Team administration",
+    description: "Members, roles and the team's own settings.",
+    caps: ["manage_members", "manage_team"],
+  },
+];
+
+/**
+ * Name + description each built-in role is born with (and reverts to). Kept
+ * beside {@link CAPABILITY_PRESETS} so "reset to default" restores the whole row,
+ * not only its capabilities.
+ */
+export const ROLE_DEFAULTS: Record<
+  Role,
+  { name: string; description: string }
+> = {
+  owner: {
+    name: "Owner",
+    description: "Full control of the team and everything in it.",
+  },
+  member: {
+    name: "Member",
+    description: "Deploy and manage apps, domains, variables and files.",
+  },
+  viewer: {
+    name: "Viewer",
+    description: "Read-only access across the whole team.",
+  },
+};
+
+/** The three built-in roles, in the order they are shown. */
+export const BUILTIN_ROLE_KEYS: Role[] = ["owner", "member", "viewer"];
+
+/** True if two capability sets grant exactly the same thing (order-blind). */
+export function sameCapabilities(a: Capability[], b: Capability[]): boolean {
+  const left = new Set(a);
+  const right = new Set(b);
+  return left.size === right.size && [...left].every((c) => right.has(c));
+}
+
 /** Effective capabilities for a role preset (used when seeding a membership). */
 export function capabilitiesForRole(role: Role): Capability[] {
   return [...CAPABILITY_PRESETS[role]];

@@ -13,6 +13,8 @@ test("stays on team-agnostic section pages", () => {
     "/variables",
     "/templates",
     "/members",
+    "/settings/members",
+    "/settings/roles",
     "/activity",
     "/monitoring",
     "/new",

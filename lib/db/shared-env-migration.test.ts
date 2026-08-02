@@ -88,8 +88,10 @@ before(async () => {
   // `users` (0001) and touches nothing 0027's backfill reads, so apply it in the
   // pre-seed batch and exclude it from the post-0027 replay. (Any future
   // post-freeze column on a seeded table needs the same treatment.)
+  // team_roles (0054) is the same case for `memberships.role_id`: self-contained
+  // (it creates the table its FK points at) and invisible to 0027's backfill.
   const preSeed = (f: string): boolean =>
-    Number(f.slice(0, 4)) < 27 || f.startsWith("0043_");
+    Number(f.slice(0, 4)) < 27 || f.startsWith("0043_") || f.startsWith("0054_");
   const pre27 = files.filter(preSeed);
   const from27 = files.filter((f) => !preSeed(f));
 

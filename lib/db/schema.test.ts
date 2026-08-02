@@ -64,6 +64,10 @@ const CONTROL_PLANE = [
   "app_environments",
   "memberships",
   "membership_capabilities",
+  // team roles — the named capability sets a member is assigned (three built-ins
+  // per team plus the team's own); memberships.role_id points at one.
+  "team_roles",
+  "team_role_capabilities",
   "invites",
   "invite_capabilities",
   "registration_links",

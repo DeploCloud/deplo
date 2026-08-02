@@ -58,7 +58,21 @@ export const MemberRef = builder.objectRef<MemberDTO>("Member").implement({
     membershipId: t.exposeID("membershipId"),
     username: t.exposeString("username"),
     name: t.exposeString("name"),
-    role: t.field({ type: RoleEnum, resolve: (m) => m.role }),
+    role: t.field({
+      type: RoleEnum,
+      description:
+        "The member's RANK (only `owner` outranks). For what to show, read `roleName`.",
+      resolve: (m) => m.role,
+    }),
+    roleId: t.exposeID("roleId", {
+      nullable: true,
+      description:
+        "The assigned team role, or null when the member holds a hand-picked capability set.",
+    }),
+    roleName: t.exposeString("roleName", {
+      nullable: true,
+      description: "The assigned role's name, or null for a custom set.",
+    }),
     capabilities: t.field({
       type: [CapabilityEnum],
       resolve: (m) => m.capabilities,
@@ -259,10 +273,15 @@ export const RegistrationLinkRef = builder
 /* Inputs                                                              */
 /* ------------------------------------------------------------------ */
 
+// `roleId` is the current path: the member gets exactly that team role. `role` +
+// `capabilities` stay accepted (and unchanged in meaning) so existing API clients
+// keep working — they assign a rank and a hand-picked set, which lands on a real
+// role when it matches one. Exactly one of the two is required.
 const AddMemberInputType = builder.inputType("AddMemberInput", {
   fields: (t) => ({
     userId: t.string({ required: true }),
-    role: t.field({ type: RoleEnum, required: true }),
+    roleId: t.string({ required: false }),
+    role: t.field({ type: RoleEnum, required: false }),
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
   }),
 });
@@ -270,7 +289,8 @@ const AddMemberInputType = builder.inputType("AddMemberInput", {
 const UpdateMemberInputType = builder.inputType("UpdateMemberInput", {
   fields: (t) => ({
     userId: t.string({ required: true }),
-    role: t.field({ type: RoleEnum, required: true }),
+    roleId: t.string({ required: false }),
+    role: t.field({ type: RoleEnum, required: false }),
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
   }),
 });
@@ -395,7 +415,8 @@ builder.mutationFields((t) => ({
     resolve: (_r, { input }) =>
       addExistingMember({
         userId: input.userId,
-        role: input.role,
+        roleId: input.roleId ?? undefined,
+        role: input.role ?? undefined,
         capabilities: (input.capabilities ?? undefined) as never,
       }),
   }),
@@ -407,7 +428,8 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { input }) => {
       await updateMember({
         userId: input.userId,
-        role: input.role,
+        roleId: input.roleId ?? undefined,
+        role: input.role ?? undefined,
         capabilities: (input.capabilities ?? undefined) as never,
       });
       return reloadMember(input.userId);

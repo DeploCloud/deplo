@@ -335,6 +335,54 @@ export const folderGrants = pgTable(
 );
 
 /**
+ * A named, per-team capability set a member can be assigned — the team's Roles
+ * (Settings → Team → Roles). Every team owns its own rows: three built-ins
+ * (`builtin_key` 'owner' | 'member' | 'viewer', seeded lazily by
+ * `ensureTeamRoles`) plus any number of custom roles (`builtin_key` NULL) with a
+ * name and capability set the team's admins choose.
+ *
+ * The role is the SOURCE of a member's capabilities, not a second copy of them:
+ * `membership_capabilities` stays the effective set every authorization check
+ * reads, and editing a role re-writes those rows for its members in the same
+ * transaction. A membership whose `role_id` is NULL is a hand-picked ("Custom")
+ * set — the pre-roles shape, still legal and still enforced.
+ */
+export const teamRoles = pgTable(
+  "team_roles",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    // 'owner' | 'member' | 'viewer' for the three defaults (revertible to their
+    // preset, never deletable), NULL for a team-authored custom role.
+    builtinKey: text("builtin_key"),
+    name: text("name").notNull(),
+    description: text("description"),
+    createdAt: isoTimestamptz("created_at").notNull(),
+  },
+  (t) => [
+    // One row per built-in per team; custom roles (NULL) escape the predicate.
+    uniqueIndex("team_roles_builtin_uq")
+      .on(t.teamId, t.builtinKey)
+      .where(sql`${t.builtinKey} is not null`),
+    uniqueIndex("team_roles_name_uq").on(t.teamId, sql`lower(${t.name})`),
+  ],
+);
+
+/** [teamRoles.capabilities] → junction. PK on both columns. */
+export const teamRoleCapabilities = pgTable(
+  "team_role_capabilities",
+  {
+    roleId: text("role_id")
+      .notNull()
+      .references(() => teamRoles.id, { onDelete: "cascade" }),
+    capability: text("capability").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.roleId, t.capability] })],
+);
+
+/**
  * [Membership](../../types.ts). `UNIQUE(user_id, team_id)` closes the double-add
  * race. `capabilities` moved to the `membership_capabilities` junction.
  */
@@ -348,7 +396,18 @@ export const memberships = pgTable(
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
+    // The member's RANK: 'owner' outranks everyone (only an owner may act on
+    // another owner or hand out the owner role). Kept as a column — assigning a
+    // role writes it from that role's `builtin_key` (a custom role ranks as
+    // 'member') — so every rank guard stays a plain read of this row.
     role: text("role").notNull(),
+    // The assigned {@link teamRoles} row. NULL ⇒ a hand-picked "Custom"
+    // capability set that belongs to no role. `ON DELETE RESTRICT`: a role with
+    // members can't be deleted out from under them (the data layer refuses first,
+    // with a message naming the count).
+    roleId: text("role_id").references(() => teamRoles.id, {
+      onDelete: "restrict",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("memberships_user_team_uq").on(t.userId, t.teamId)],
