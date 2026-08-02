@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { OtpInput } from "@/components/ui/otp-input";
 import { AlertCircle, Loader2 } from "lucide-react";
 
 const LOGIN = /* GraphQL */ `
@@ -47,6 +48,7 @@ export default function LoginPage() {
   // this flag is all the client needs to hold — no token in component state.
   const [needsCode, setNeedsCode] = useState(false);
   const [useRecovery, setUseRecovery] = useState(false);
+  const [code, setCode] = useState("");
 
   function done() {
     // The session cookie is now set; navigate and refresh the RSC tree.
@@ -77,18 +79,27 @@ export default function LoginPage() {
     });
   }
 
-  function onSubmitCode(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const code = String(new FormData(e.currentTarget).get("code") ?? "").trim();
+  function submitCode(raw: string) {
+    const value = raw.trim();
+    if (!value || pending) return;
     setError(null);
     startTransition(async () => {
       try {
-        await gql(VERIFY_2FA, { code, recoveryCode: useRecovery });
+        await gql(VERIFY_2FA, { code: value, recoveryCode: useRecovery });
         done();
       } catch (err) {
         setError(err instanceof Error ? err.message : "That code is not valid");
+        // A rejected code is never worth resubmitting; an empty field says
+        // "try the next one" more clearly than a red field full of stale digits.
+        setCode("");
       }
     });
+  }
+
+  function switchCodeKind() {
+    setUseRecovery((v) => !v);
+    setCode("");
+    setError(null);
   }
 
   const banner = error && (
@@ -105,32 +116,57 @@ export default function LoginPage() {
           <CardTitle className="text-2xl">Two-factor authentication</CardTitle>
           <CardDescription>
             {useRecovery
-              ? "Enter one of the recovery codes you saved when you turned on two-factor authentication."
+              ? "Enter one of the recovery codes you saved when you turned this on."
               : "Enter the 6-digit code from your authenticator app."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onSubmitCode} className="space-y-4">
+          <form
+            // POST, even though JS always intercepts this: if the page has not
+            // hydrated yet (or its bundle failed to load) the browser submits
+            // natively, and a GET would put the code in the URL, the history
+            // and the proxy access logs. See the sign-in form below.
+            method="post"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitCode(code);
+            }}
+            className="space-y-4"
+          >
             {banner}
-            <div className="space-y-2">
-              <Label htmlFor="code">
-                {useRecovery ? "Recovery code" : "Authentication code"}
-              </Label>
-              <Input
-                id="code"
-                name="code"
-                // A fresh field each time the kind changes, so the browser does
-                // not carry a half-typed TOTP into the recovery-code box.
-                key={useRecovery ? "recovery" : "totp"}
-                autoComplete="one-time-code"
-                inputMode={useRecovery ? "text" : "numeric"}
-                maxLength={useRecovery ? 24 : 6}
-                placeholder={useRecovery ? "xxxxx-xxxxx" : "123456"}
+            {useRecovery ? (
+              <div className="space-y-2">
+                <Label htmlFor="code">Recovery code</Label>
+                <Input
+                  id="code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  autoComplete="one-time-code"
+                  maxLength={24}
+                  placeholder="xxxxx-xxxxx"
+                  className="font-mono"
+                  autoFocus
+                  required
+                />
+              </div>
+            ) : (
+              <OtpInput
+                value={code}
+                onChange={setCode}
+                // Six digits in, there is nothing left to decide — submitting
+                // for them saves a reach for the mouse mid-login.
+                onComplete={submitCode}
+                disabled={pending}
+                invalid={!!error}
                 autoFocus
-                required
+                label="Authentication code"
               />
-            </div>
-            <Button type="submit" className="w-full" disabled={pending}>
+            )}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={pending || (!useRecovery && code.length !== 6)}
+            >
               {pending && <Loader2 className="size-4 animate-spin" />}
               Verify
             </Button>
@@ -138,10 +174,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 className="text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  setUseRecovery((v) => !v);
-                  setError(null);
-                }}
+                onClick={switchCodeKind}
               >
                 {useRecovery
                   ? "Use your authenticator app"
@@ -153,6 +186,7 @@ export default function LoginPage() {
                 onClick={() => {
                   setNeedsCode(false);
                   setUseRecovery(false);
+                  setCode("");
                   setError(null);
                 }}
               >

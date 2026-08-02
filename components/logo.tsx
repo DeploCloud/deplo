@@ -37,6 +37,29 @@ export function DeploMark({
   );
 }
 
+/**
+ * The Deplo mark as a standalone `data:` URI — a rounded white badge with the
+ * black "d" on it.
+ *
+ * For consumers that need an IMAGE rather than an element: `qrcode.react` takes
+ * an `imageSettings.src` and excavates the modules underneath it, so the badge
+ * has to be one self-contained picture. Colours are fixed rather than
+ * `currentColor` on purpose — this ends up inside a QR code that a phone camera
+ * has to read off a screen, where contrast beats theme-awareness. A theme-aware
+ * mark would be a white "d" on white in light mode.
+ *
+ * Not base64: a URI-encoded SVG is smaller and stays greppable in the DOM.
+ */
+export function deploMarkDataUri(): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<rect width="100" height="100" rx="22" fill="#ffffff"/>
+<svg viewBox="${MARK_VIEWBOX}" x="24" y="24" width="52" height="52">
+<path d="${LOGO_PATH}" fill="#0a0a0a"/>
+</svg>
+</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 /** Deplo logo — the full "deplo" wordmark. Scales with the surrounding font size. */
 export function DeploLogo({
   className,

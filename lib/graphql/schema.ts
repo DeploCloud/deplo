@@ -30,9 +30,11 @@ import "./types/registry";
 import "./types/role";
 import "./types/s3";
 import "./types/server";
+import "./types/session";
 import "./types/shared-env";
 import "./types/team";
 import "./types/token";
+import "./types/two-factor";
 import "./types/updates";
 import "./types/viewer";
 

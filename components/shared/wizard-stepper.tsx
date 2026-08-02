@@ -65,7 +65,10 @@ export function WizardStepper<T extends string>({
               >
                 {done ? <Check className="size-3" /> : i + 1}
               </span>
-              <span className="truncate">{s.label}</span>
+              {/* Numbers only on a narrow viewport: four labelled chips do not
+                  fit a phone-width dialog, and a rail that overflows is worse
+                  than one that leans on its numbers. Still announced. */}
+              <span className="truncate max-sm:sr-only">{s.label}</span>
             </button>
           </li>
         );

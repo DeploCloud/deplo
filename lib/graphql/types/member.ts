@@ -9,6 +9,7 @@ import {
   listAllUsers,
   getUserDetail,
   updateUserAdmin,
+  resetUserTwoFactor,
   mintRegistrationLink,
   listRegistrationLinks,
   revealRegistrationLink,
@@ -155,6 +156,10 @@ export const UserDetailRef = builder
       suspended: t.exposeBoolean("suspended"),
       canExposePorts: t.exposeBoolean("canExposePorts"),
       canMountHostVolumes: t.exposeBoolean("canMountHostVolumes"),
+      twoFactorEnabled: t.exposeBoolean("twoFactorEnabled", {
+        description:
+          "Has an authenticator app enrolled. Only then is `resetUserTwoFactor` offered.",
+      }),
       createdAt: t.exposeString("createdAt"),
       teams: t.field({ type: [UserDetailTeamRef], resolve: (u) => u.teams }),
     }),
@@ -502,6 +507,17 @@ builder.mutationFields((t) => ({
         newPassword: input.newPassword ?? undefined,
       });
       return getUserDetail(input.userId);
+    },
+  }),
+  resetUserTwoFactor: t.field({
+    type: UserDetailRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Clear a user's two-factor enrolment so they can sign in with their password again. The escape hatch for a lost phone AND lost recovery codes; touches no credential and no session.",
+    args: { userId: t.arg.string({ required: true }) },
+    resolve: async (_r, { userId }) => {
+      await resetUserTwoFactor(userId);
+      return getUserDetail(userId);
     },
   }),
   deleteUser: t.field({

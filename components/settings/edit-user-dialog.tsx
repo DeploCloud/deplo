@@ -10,6 +10,7 @@ import {
   KeyRound,
   Loader2,
   ShieldCheck,
+  ShieldOff,
   Trash2,
   UserCheck,
   type LucideIcon,
@@ -152,6 +153,11 @@ export function EditUserDialog({
 
   const [confirmSuspend, setConfirmSuspend] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [confirmResetTwoFactor, setConfirmResetTwoFactor] =
+    React.useState(false);
+  // Mirrors the server, like `suspended`: the reset applies on confirm rather
+  // than waiting for Save changes, so it can only ever reflect what came back.
+  const [twoFactorEnabled, setTwoFactorEnabled] = React.useState(false);
   // The two narrow grants are folded away (the house "Advanced" affordance) so the
   // section leads with the permission that actually matters. Folded away is not
   // hidden, though: a grant that is ON opens the panel, or the admin would have to
@@ -180,6 +186,7 @@ export function EditUserDialog({
           suspended
           canExposePorts
           canMountHostVolumes
+          twoFactorEnabled
           teams { teamId teamName role }
         }
       }`,
@@ -197,6 +204,7 @@ export function EditUserDialog({
           canMountHostVolumes: res.data.canMountHostVolumes,
         });
         setSuspended(res.data.suspended);
+        setTwoFactorEnabled(res.data.twoFactorEnabled);
         // …but it seeds the FORM only when the caller had nothing to seed it
         // with — never clobber a switch the admin just flipped.
         if (!hasSeed) {
@@ -292,6 +300,24 @@ export function EditUserDialog({
         toast.error(res.error);
       }
     });
+  }
+
+  /** Clear the user's enrolment. Applies on confirm, like the danger zone. */
+  async function resetTwoFactor() {
+    const res = await gqlAction<
+      { resetUserTwoFactor: { userId: string } },
+      { userId: string }
+    >(
+      `mutation ($userId: String!) {
+        resetUserTwoFactor(userId: $userId) { userId }
+      }`,
+      { userId: user.userId },
+      (d) => d.resetUserTwoFactor,
+    );
+    if (!res.ok) return { ok: false as const, error: res.error };
+    setTwoFactorEnabled(false);
+    router.refresh();
+    return { ok: true as const };
   }
 
   /** Reactivating is safe, so it applies on the spot — no confirm to sit through. */
@@ -504,6 +530,26 @@ export function EditUserDialog({
                 </div>
               </Section>
 
+              {twoFactorEnabled && !isSelf && !ownerLocked && (
+                <Section icon={ShieldOff} title="Two-factor authentication">
+                  <ActionRow
+                    title="Reset two-factor"
+                    info="For someone who lost their phone and their recovery codes. Their account goes back to password only, and they can set it up again. Nothing else changes: not their password, not their sessions."
+                    action={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={pending}
+                        onClick={() => setConfirmResetTwoFactor(true)}
+                      >
+                        <ShieldOff className="size-4" />
+                        Reset
+                      </Button>
+                    }
+                  />
+                </Section>
+              )}
+
               {showDanger && (
                 <Section
                   icon={AlertTriangle}
@@ -617,6 +663,16 @@ export function EditUserDialog({
             }
             return res;
           }}
+        />
+        <ConfirmAction
+          open={confirmResetTwoFactor}
+          onOpenChange={setConfirmResetTwoFactor}
+          title={`Reset two-factor for @${user.username}?`}
+          description="Their next sign-in asks for the password only, and their old authenticator entry and recovery codes stop working. Do this when they have lost the phone AND the codes — check it is really them asking."
+          confirmLabel="Reset two-factor"
+          variant="default"
+          successMessage="Two-factor reset"
+          onConfirm={resetTwoFactor}
         />
         {confirmDelete && (
           <DeleteUserDialog

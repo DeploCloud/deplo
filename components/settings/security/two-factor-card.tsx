@@ -17,14 +17,29 @@ import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { TwoFactorWizard } from "./two-factor-wizard";
-import { authClient } from "@/lib/auth/client";
+import { gqlAction } from "@/lib/graphql-client";
+
+const DISABLE = /* GraphQL */ `
+  mutation DisableTwoFactor($password: String!, $code: String!) {
+    disableTwoFactor(password: $password, code: $code)
+  }
+`;
+
+const REGENERATE = /* GraphQL */ `
+  mutation RegenerateRecoveryCodes($password: String!, $code: String!) {
+    regenerateRecoveryCodes(password: $password, code: $code)
+  }
+`;
 
 /**
  * Two-factor status and the three things you can do with it: turn it on (the
  * wizard), mint a fresh set of recovery codes, and turn it off.
  *
- * All three go through Better Auth's own endpoints rather than GraphQL — see
- * [lib/auth/client.ts](../../../lib/auth/client.ts) for why that exception exists.
+ * The last two ask for the password AND a live code, which is the whole point:
+ * a password on its own is exactly what two-factor is there to survive, so
+ * letting it switch two-factor off would make the feature protect nothing
+ * against the attack it exists for. A recovery code counts as the second factor,
+ * so losing the phone is not a dead end. See lib/data/two-factor.ts.
  */
 export function TwoFactorCard({
   enabled,
@@ -37,27 +52,58 @@ export function TwoFactorCard({
   const router = useRouter();
   const [wizard, setWizard] = React.useState(false);
   const [password, setPassword] = React.useState("");
+  const [code, setCode] = React.useState("");
   const [codes, setCodes] = React.useState<string[] | null>(null);
 
-  async function disable(): Promise<{ ok: true } | { ok: false; error: string }> {
-    const res = await authClient.twoFactor.disable({ password });
-    if (res.error)
-      return { ok: false, error: res.error.message ?? "That password is not correct" };
+  async function disable() {
+    const res = await gqlAction(DISABLE, { password, code });
+    if (!res.ok) return res;
     setPassword("");
+    setCode("");
     router.refresh();
-    return { ok: true };
+    return res;
   }
 
-  async function regenerate(): Promise<
-    { ok: true } | { ok: false; error: string }
-  > {
-    const res = await authClient.twoFactor.generateBackupCodes({ password });
-    if (res.error)
-      return { ok: false, error: res.error.message ?? "That password is not correct" };
+  async function regenerate() {
+    const res = await gqlAction<{ regenerateRecoveryCodes: string[] }, string[]>(
+      REGENERATE,
+      { password, code },
+      (d) => d.regenerateRecoveryCodes,
+    );
+    if (!res.ok) return res;
     setPassword("");
-    setCodes(res.data.backupCodes);
-    return { ok: true };
+    setCode("");
+    setCodes(res.data ?? []);
+    return res;
   }
+
+  /**
+   * The password + code pair both dialogs collect.
+   *
+   * One field for the code, not a TOTP/recovery toggle: a recovery code never
+   * looks like six digits, so the server can tell them apart on its own, and
+   * somebody reaching for one has already lost their phone and does not need to
+   * find a switch first.
+   */
+  const stepUpFields = (
+    <div className="space-y-2">
+      <Input
+        type="password"
+        autoComplete="current-password"
+        placeholder="Current password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
+      <Input
+        autoComplete="one-time-code"
+        inputMode="text"
+        placeholder="Authenticator code, or a recovery code"
+        className="font-mono"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+      />
+    </div>
+  );
 
   return (
     <Card>
@@ -100,16 +146,8 @@ export function TwoFactorCard({
               description="Your existing recovery codes stop working immediately. The new set is shown once."
               confirmLabel="Generate"
               onConfirm={regenerate}
-              confirmDisabled={!password}
-              extra={
-                <Input
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder="Current password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              }
+              confirmDisabled={!password || !code.trim()}
+              extra={stepUpFields}
             />
             <ConfirmAction
               trigger={
@@ -126,18 +164,8 @@ export function TwoFactorCard({
               confirmLabel="Turn off"
               variant="destructive"
               onConfirm={disable}
-              confirmDisabled={!password || !!requiredBy}
-              extra={
-                requiredBy ? undefined : (
-                  <Input
-                    type="password"
-                    autoComplete="current-password"
-                    placeholder="Current password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                )
-              }
+              confirmDisabled={!password || !code.trim() || !!requiredBy}
+              extra={requiredBy ? undefined : stepUpFields}
             />
           </div>
         )}

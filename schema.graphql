@@ -728,6 +728,13 @@ enum DeploymentStatus {
   ready
 }
 
+enum DeviceKind {
+  desktop
+  mobile
+  tablet
+  unknown
+}
+
 """
 The instance-wide Docker cleanup schedule. One policy, not one per server: a host opts OUT via `excludedServerIds`, so a newly added server cannot silently go un-swept. Until it is saved once it reads as the defaults — ENABLED, daily at 04:00 UTC, every scope — so a fresh install sweeps its hosts without anyone finding this setting first; a saved row (including an explicit disable) always wins.
 """
@@ -1278,6 +1285,11 @@ type Mutation {
 
   """First-run setup: create the first account + team. Signs in."""
   completeSetup(email: String!, name: String!, password: String!, teamName: String!, username: String!): AuthPayload
+
+  """
+  Finish enrolment with the first code from the authenticator app. Turns two-factor on.
+  """
+  confirmTwoFactorEnrolment(code: String!): Boolean
   createApp(input: CreateAppInput!): App
 
   """Create a new (empty) folder in the app files tree."""
@@ -1395,6 +1407,11 @@ type Mutation {
   detectAppLogo(id: String!): App
 
   """
+  Turn two-factor off. Requires the password AND a current code (a recovery code also works).
+  """
+  disableTwoFactor(code: String!, password: String!): Boolean
+
+  """
   Run a command in the app's live container (docker exec). Gated on the deploy capability — this is arbitrary code execution.
   """
   execConsole(input: ExecConsoleInput!): ExecResult
@@ -1462,6 +1479,11 @@ type Mutation {
   Re-render the database's compose from its current settings (resource limits, image/command overrides, exposure) and reroute it on its server. The container is recreated only when its config actually changed; the data volume is always preserved.
   """
   redeployDatabase(id: String!): Database
+
+  """
+  Replace every recovery code with a fresh set, returned once. Requires the password AND a current code.
+  """
+  regenerateRecoveryCodes(code: String!, password: String!): [String!]
 
   """
   Create a new account + team via a single-use registration link. Signs in.
@@ -1546,6 +1568,11 @@ type Mutation {
   resetRole(id: String!): Boolean
 
   """
+  Clear a user's two-factor enrolment so they can sign in with their password again. The escape hatch for a lost phone AND lost recovery codes; touches no credential and no session.
+  """
+  resetUserTwoFactor(userId: String!): UserDetail
+
+  """
   Restart the database container (stop + start) without re-rendering its compose. Use redeployDatabase to apply pending settings.
   """
   restartDatabase(id: String!): Database
@@ -1579,8 +1606,18 @@ type Mutation {
   """
   revealSharedVar(id: String!): String
 
+  """
+  Sign out every device except the one making the request, and return how many were ended.
+  """
+  revokeOtherSessions: Int
+
   """Revoke a pending registration link. Returns true."""
   revokeRegistrationLink(id: String!): Boolean
+
+  """
+  Sign one device out. Refuses the viewer's own session — use `logout` for that. Returns true.
+  """
+  revokeSession(id: String!): Boolean
 
   """Revoke (delete) an API token. Returns true."""
   revokeToken(id: String!): Boolean
@@ -1668,6 +1705,11 @@ type Mutation {
   Begin the GitHub App manifest flow; returns the form's POST target, manifest and signed state.
   """
   startGithubConnect(org: String): GithubConnectStart
+
+  """
+  Mint a TOTP secret and recovery codes. Requires the account password. Refused when two-factor is already on.
+  """
+  startTwoFactorEnrolment(password: String!): TwoFactorEnrolment
   stopApp(id: String!): App
 
   """Switch the active team (sets a cookie server-side). Returns true."""
@@ -2052,6 +2094,11 @@ type Query {
 
   """The instance-wide monitoring settings."""
   monitoringSettings: MonitoringSettings
+
+  """
+  Every device currently signed in to the viewer's account, most recently seen first.
+  """
+  mySessions: [UserSession!]
 
   """Every team the viewer belongs to, for the team switcher."""
   myTeams: [TeamMembership!]
@@ -2686,6 +2733,17 @@ enum TestNotificationChannel {
   webhook
 }
 
+"""
+A pending enrolment: the secret to scan and the codes to save. Two-factor is not on until `confirmTwoFactorEnrolment` succeeds.
+"""
+type TwoFactorEnrolment {
+  """Single-use codes, shown this once and never again."""
+  recoveryCodes: [String!]
+
+  """The otpauth:// URI an authenticator app scans."""
+  totpUri: String
+}
+
 input UpdateBackupInput {
   destinationId: String!
   name: String!
@@ -2800,6 +2858,11 @@ type UserDetail {
   name: String
   suspended: Boolean
   teams: [UserDetailTeam!]
+
+  """
+  Has an authenticator app enrolled. Only then is `resetUserTwoFactor` offered.
+  """
+  twoFactorEnabled: Boolean
   userId: ID
   username: String
 }
@@ -2819,6 +2882,30 @@ type UserSearchResult {
   teamName: String
   userId: ID
   username: String
+}
+
+"""
+A browser or client currently signed in to the viewer's account. Carries no credential — a session is addressed by its id, never by its token.
+"""
+type UserSession {
+  createdAt: String
+
+  """
+  This is the session making the request. It cannot be revoked from here; sign out instead.
+  """
+  current: Boolean
+  device: DeviceKind
+  expiresAt: String
+  id: ID
+  ipAddress: String
+
+  """Human description, e.g. "Chrome on macOS"."""
+  label: String
+
+  """
+  When the session was last refreshed, which stands in for last used. Accurate to about 15 minutes.
+  """
+  lastSeenAt: String
 }
 
 """

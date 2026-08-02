@@ -31,6 +31,7 @@ import {
   encryptSecret,
   decryptSecret,
 } from "../crypto";
+import { twoFactor as twoFactorTable } from "../db/schema/auth";
 import { getCurrentUser, revokeAllSessions, setUserPassword } from "../auth";
 import { recordActivity } from "./activity";
 import { instanceOwnerUserId } from "./instance-owner";
@@ -134,6 +135,8 @@ export interface UserDetailDTO {
   suspended: boolean;
   canExposePorts: boolean;
   canMountHostVolumes: boolean;
+  /** Drives the admin "Reset two-factor" escape hatch, which is only offered when on. */
+  twoFactorEnabled: boolean;
   createdAt: string;
   teams: { teamId: string; teamName: string; role: Role }[];
 }
@@ -765,6 +768,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
       suspended: usersTable.suspended,
       canExposePorts: usersTable.canExposePorts,
       canMountHostVolumes: usersTable.canMountHostVolumes,
+      twoFactorEnabled: usersTable.twoFactorEnabled,
       createdAt: usersTable.createdAt,
     })
     .from(usersTable)
@@ -792,6 +796,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     suspended: u.suspended ?? false,
     canExposePorts: u.canExposePorts ?? false,
     canMountHostVolumes: u.canMountHostVolumes ?? false,
+    twoFactorEnabled: u.twoFactorEnabled ?? false,
     createdAt: u.createdAt,
     teams: teamRows.map((t) => ({
       teamId: t.teamId,
@@ -927,6 +932,69 @@ export async function updateUserAdmin(input: {
     "member",
     `Updated user @${target.username}` +
       (newPassword ? " (password reset)" : ""),
+    await actorUsername(),
+    null,
+  );
+}
+
+/**
+ * Clear a user's two-factor enrolment. Instance admin only.
+ *
+ * The backstop for the one thing requiring a code to turn 2FA off takes away:
+ * before it, someone who lost their phone could still disable 2FA with their
+ * password, and now they cannot. Without an admin able to undo it, the only
+ * remaining fix for a lost phone AND lost recovery codes would be a hand-written
+ * DELETE against `two_factor` — which is exactly the "drop to a shell" that
+ * deplo exists to not require.
+ *
+ * It does NOT touch the password or any session, so it is not a takeover route:
+ * the account is left protected by its password, in the state it was in before
+ * anyone enrolled. The instance owner's row is off limits to everyone but the
+ * owner, the same rule `updateUserAdmin` applies and for the same reason.
+ */
+export async function resetUserTwoFactor(userId: string): Promise<void> {
+  const { userId: actingUserId } = await requireInstanceAdmin();
+  // Never your own. Not a courtesy rule: this path asks for no code, so a
+  // self-reset would be the password-only disable that lib/data/two-factor.ts
+  // exists to forbid, reopened for anyone with the admin flag. It costs nothing
+  // in recovery either — reaching this screen at all means signing in, which
+  // means already passing the 2FA you would be trying to escape.
+  //
+  // ponytail: an instance whose ONLY admin loses both their phone and all ten
+  // recovery codes has no way back in short of the database. Recovery codes are
+  // downloadable at enrolment and the disable path accepts one, so a break-glass
+  // is not worth building until someone actually gets stuck.
+  if (userId === actingUserId)
+    throw new Error(
+      "You can't reset your own two-factor here. Turn it off from Settings → Security, which asks for a code.",
+    );
+  const ownerUserId = await instanceOwnerUserId();
+  if (ownerUserId !== null && userId === ownerUserId && actingUserId !== ownerUserId)
+    throw new Error(
+      "Only the instance owner can edit the instance owner's account",
+    );
+  const target = (
+    await getDb()
+      .select({ username: usersTable.username, enabled: usersTable.twoFactorEnabled })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1)
+  )[0];
+  if (!target) throw new Error("User not found");
+  if (!target.enabled)
+    throw new Error("That account does not have two-factor authentication on");
+
+  await getDb().transaction(async (tx) => {
+    await tx
+      .update(usersTable)
+      .set({ twoFactorEnabled: false })
+      .where(eq(usersTable.id, userId));
+    await tx.delete(twoFactorTable).where(eq(twoFactorTable.userId, userId));
+  });
+
+  await recordActivity(
+    "member",
+    `Reset two-factor authentication for @${target.username}`,
     await actorUsername(),
     null,
   );

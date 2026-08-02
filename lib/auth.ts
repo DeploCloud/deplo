@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, count, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb, type DbTx } from "./db/client";
@@ -20,6 +20,7 @@ import { normalizeUsername, validateUsername } from "./username";
 import { newId } from "./ids";
 import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
+import { authRequestHeaders } from "./auth/request-headers";
 import { getAuth, requireAuth, sessionCookieNames } from "./auth/better-auth";
 
 // Kept in sync with lib/membership.ts (ACTIVE_TEAM_COOKIE). Set here on
@@ -373,29 +374,55 @@ export async function createAccountWithTeams(
 }
 
 /**
- * The current request's cookies, rendered as a `cookie` header for Better Auth.
+ * The headers for a Better Auth server call: this request's session metadata
+ * (user agent + IP chain) plus its current cookies.
  *
- * Deliberately built from `next/headers` `cookies()` rather than `headers()`:
- * the cookie store reflects writes made EARLIER IN THE SAME REQUEST, so a
- * `getCurrentUser()` immediately after `login()` sees the session that was just
- * minted. Reading the raw request headers would not.
+ * The cookie half comes from the cookie STORE and not from the raw request
+ * headers, because the store reflects writes made EARLIER IN THE SAME REQUEST —
+ * so a `getCurrentUser()` immediately after `login()` sees the session that was
+ * just minted. The metadata half is what lets Better Auth stamp a new session
+ * row with the device that created it; see
+ * [./auth/request-headers.ts](./auth/request-headers.ts) for why the set is
+ * exactly what it is.
+ *
+ * Outside a request scope (a script, or `node --test`) both halves degrade to
+ * empty. That keeps a READ from failing a call that never needed cookies — a
+ * cookie WRITE still throws, which is correct, because that one does.
  */
-async function cookieHeader(): Promise<Headers> {
+export async function authHeaders(): Promise<Headers> {
+  let request: Headers | null = null;
+  try {
+    request = await headers();
+  } catch {
+    /* no request scope */
+  }
+  let cookie = "";
   try {
     const store = await cookies();
-    return new Headers({
-      cookie: store
-        .getAll()
-        .map((c) => `${c.name}=${c.value}`)
-        .join("; "),
-    });
+    cookie = store
+      .getAll()
+      .map((c) => `${c.name}=${c.value}`)
+      .join("; ");
   } catch {
-    // No request scope (a script, or `node --test`). "No cookies" is the honest
-    // answer, and it keeps a READ from failing a call that never needed one — a
-    // cookie WRITE still throws, which is correct, because that one does.
-    return new Headers();
+    /* no request scope */
   }
+  return authRequestHeaders(request, cookie);
 }
+
+/**
+ * This request's Better Auth session, resolved AT MOST ONCE.
+ *
+ * `getCurrentUser` and `currentSessionId` both need it and each `cache()`s only
+ * its own return value, so a page that renders both (Settings → Security) paid
+ * for two `getSession` round trips. Null for a bearer-token request, which
+ * carries no session, and outside a request scope.
+ */
+const currentSession = cache(async () => {
+  if (currentIdentity()) return null;
+  const auth = getAuth();
+  if (!auth) return null;
+  return auth.api.getSession({ headers: await authHeaders() }).catch(() => null);
+});
 
 /**
  * Resolve the current user from the Better Auth session (ADR-0014).
@@ -411,14 +438,7 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   // the request-context override and carries no session cookie.
   const override = currentIdentity();
   let uid = override?.userId;
-  if (!uid) {
-    const auth = getAuth();
-    if (!auth) return null;
-    const session = await auth.api
-      .getSession({ headers: await cookieHeader() })
-      .catch(() => null);
-    uid = session?.user?.id;
-  }
+  if (!uid) uid = (await currentSession())?.user?.id;
   if (!uid) return null;
   const rows = await getDb()
     .select({ ...PUBLIC_USER_COLS, suspended: usersTable.suspended })
@@ -429,6 +449,18 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   // A suspended account loses access immediately, even with a live session.
   if (!user || user.suspended) return null;
   return toPublic(user);
+});
+
+/**
+ * The id of the session row this request is authenticated by, or null.
+ *
+ * Null for a bearer-token request (which carries no session) and for anything
+ * running outside a request scope. Exists so the signed-in-devices list can mark
+ * "this device" and refuse to revoke the session doing the revoking — the raw
+ * session TOKEN never leaves the server for that comparison.
+ */
+export const currentSessionId = cache(async (): Promise<string | null> => {
+  return (await currentSession())?.session?.id ?? null;
 });
 
 /**
@@ -559,7 +591,7 @@ export async function login(
   try {
     const res = await requireAuth().api.signInEmail({
       body: { email: normalized, password },
-      headers: await cookieHeader(),
+      headers: await authHeaders(),
       asResponse: false,
     });
     if (res && "twoFactorRedirect" in res && res.twoFactorRedirect)
@@ -598,11 +630,12 @@ export async function verifyTwoFactorCode(
   kind: "totp" | "backup",
 ): Promise<{ ok: boolean; error?: string }> {
   const auth = requireAuth();
-  const headers = await cookieHeader();
+  // Not named `headers`: that shadows the `next/headers` import in this module.
+  const reqHeaders = await authHeaders();
   try {
     if (kind === "backup")
-      await auth.api.verifyBackupCode({ body: { code }, headers });
-    else await auth.api.verifyTOTP({ body: { code }, headers });
+      await auth.api.verifyBackupCode({ body: { code }, headers: reqHeaders });
+    else await auth.api.verifyTOTP({ body: { code }, headers: reqHeaders });
     return { ok: true };
   } catch (e) {
     // The plugin's own message is the useful one ("Invalid code", or the lockout
@@ -673,7 +706,7 @@ export async function startSessionFor(
     // Normalized the same way the account was stored, so a registrant who typed
     // a capitalised address still matches their own brand-new row.
     body: { email: email.toLowerCase().trim(), password },
-    headers: await cookieHeader(),
+    headers: await authHeaders(),
     asResponse: false,
   });
   // Omitted when the caller is only re-issuing a session (e.g. after a password
@@ -702,7 +735,7 @@ export async function logout() {
   const auth = getAuth();
   if (auth)
     await auth.api
-      .signOut({ headers: await cookieHeader() })
+      .signOut({ headers: await authHeaders() })
       .catch(() => undefined);
   const store = await cookies();
   for (const name of sessionCookieNames()) store.delete(name);

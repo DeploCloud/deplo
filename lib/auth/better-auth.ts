@@ -1,6 +1,7 @@
 import "server-only";
 
 import { betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { twoFactor } from "better-auth/plugins/two-factor";
@@ -55,6 +56,36 @@ export function sessionCookieNames(): [string, string] {
   return [SESSION_COOKIE_NAME, `__Secure-${SESSION_COOKIE_NAME}`];
 }
 
+/**
+ * Refuse every `/two-factor/*` endpoint that arrived over HTTP.
+ *
+ * The plugin gates enrol / disable / regenerate on the PASSWORD alone, which is
+ * one factor short of the bar the account itself set: whoever holds a stolen
+ * session plus a phished password can turn 2FA off, or call `/two-factor/enable`
+ * (which deletes the existing secret and mints a new one) and walk away owning
+ * the second factor. `generate-backup-codes` is the quiet one — 2FA stays lit
+ * while the attacker leaves with ten durable bypass credentials.
+ *
+ * So the endpoints are closed to the network and reachable only from
+ * `lib/data/two-factor.ts`, which verifies a TOTP or recovery code first. The
+ * discriminator is `ctx.request`: better-call's router puts the incoming
+ * `Request` on the context (better-call/dist/router.mjs), while a direct
+ * `auth.api.*({ body, headers })` call leaves it undefined. A browser cannot
+ * manufacture the second shape — reaching it requires already executing in the
+ * control plane, at which point 2FA is not what is protecting anything.
+ *
+ * Login-time verification does not go through here either: it is
+ * `verifyTwoFactorCode` in lib/auth.ts, also an in-process call.
+ */
+const twoFactorGate = createAuthMiddleware(async (ctx) => {
+  if (!ctx.path.startsWith("/two-factor/") || !ctx.request) return;
+  throw new APIError("FORBIDDEN", {
+    message:
+      "Two-factor settings are changed through deplo, which asks for a code first.",
+    code: "TWO_FACTOR_STEP_UP_REQUIRED",
+  });
+});
+
 function createAuth(db: DrizzleClient) {
   return betterAuth({
     appName: "Deplo",
@@ -75,14 +106,34 @@ function createAuth(db: DrizzleClient) {
     },
     session: {
       expiresIn: SESSION_TTL_SECONDS,
-      updateAge: 60 * 60 * 24, // refresh daily
+      // Every refresh rewrites `session.updated_at`, which is the ONLY thing the
+      // signed-in-devices list can call "last seen". At the default of a day,
+      // a device used a minute ago can read "23 hours ago", so the column lies
+      // in the exact situation it exists for: deciding whether a session is
+      // yours. Fifteen minutes costs one UPDATE per session per quarter hour
+      // and makes the number mean what the label says.
+      updateAge: 60 * 15,
     },
     advanced: {
       // Cookies are Secure when the instance is actually served over HTTPS.
       useSecureCookies: secureCookies(),
       cookiePrefix: "deplo",
       database: { generateId: () => newId("bas") },
+      ipAddress: {
+        // Better Auth defaults to `x-forwarded-for` alone, and — this is the
+        // part that bites — it REFUSES a forwarded chain with more than one hop
+        // unless `trustedProxies` is configured, returning no address at all.
+        //
+        // A deplo instance is typically Cloudflare -> Traefik -> app, where
+        // Traefik appends Cloudflare's edge address and makes that chain two
+        // hops long. So the single-valued headers are listed FIRST: they carry
+        // the client address unambiguously and need no proxy list, which deplo
+        // cannot know for an operator's own topology. Traefik alone still leaves
+        // a one-hop `x-forwarded-for`, which resolves fine.
+        ipAddressHeaders: ["cf-connecting-ip", "x-real-ip", "x-forwarded-for"],
+      },
     },
+    hooks: { before: twoFactorGate },
     plugins: [
       // `issuer` is what an authenticator app labels the entry. Backup codes stay
       // at the plugin's default (10 codes, single-use), stored encrypted.

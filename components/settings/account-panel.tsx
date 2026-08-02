@@ -22,7 +22,6 @@ export function AccountPanel({ user }: { user: PublicUser }) {
     <div className="space-y-4">
       <ProfileCard user={user} />
       <EmailCard user={user} />
-      <PasswordCard />
     </div>
   );
 }
@@ -147,86 +146,6 @@ function EmailCard({ user }: { user: PublicUser }) {
             disabled={pending || !dirty || !password}
           >
             {pending ? "Saving…" : "Update email"}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function PasswordCard() {
-  const [pending, startTransition] = React.useTransition();
-  const [current, setCurrent] = React.useState("");
-  const [next, setNext] = React.useState("");
-  const [confirm, setConfirm] = React.useState("");
-
-  function save() {
-    if (next !== confirm) {
-      toast.error("New passwords don't match");
-      return;
-    }
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation ($currentPassword: String!, $newPassword: String!) { changePassword(currentPassword: $currentPassword, newPassword: $newPassword) }`,
-        { currentPassword: current, newPassword: next },
-      );
-      if (res.ok) {
-        toast.success("Password changed");
-        setCurrent("");
-        setNext("");
-        setConfirm("");
-      } else {
-        toast.error(res.error);
-      }
-    });
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex w-fit items-center gap-2 text-base">
-          Password
-          <InfoTip content="Choose a strong, unique password." />
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="acct-current">Current password</Label>
-          <Input
-            id="acct-current"
-            type="password"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-          />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="acct-new">New password</Label>
-            <Input
-              id="acct-new"
-              type="password"
-              value={next}
-              onChange={(e) => setNext(e.target.value)}
-              placeholder="At least 8 characters"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="acct-confirm">Confirm new password</Label>
-            <Input
-              id="acct-confirm"
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="flex justify-end">
-          <Button
-            size="sm"
-            onClick={save}
-            disabled={pending || !current || next.length < 8}
-          >
-            {pending ? "Saving…" : "Change password"}
           </Button>
         </div>
       </CardContent>
