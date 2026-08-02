@@ -119,6 +119,8 @@ networks:
         pullImage: false,
         mounts: [{ path: "deplo-msg.txt", content: "MOUNTED_OK\n" }],
         devWorkspaceSubdir: "",
+        noBuildCache: false,
+        forceRecreate: false,
       })) {
         if (ev.log) console.log(`  [${ev.log.level}] ${ev.log.text}`);
         if (ev.result) {

@@ -706,6 +706,22 @@ export interface BuildConfig {
    * redeploy always runs regardless.
    */
   skipUnchangedDeployments: boolean;
+  /**
+   * Reuse the owning server's Docker layer cache (and the builder's own cache
+   * mounts) between this app's builds. Default true — it is what makes a redeploy
+   * of an unchanged app take seconds instead of minutes. False ⇒ every build runs
+   * `docker build --no-cache` with nothing carried over from the last one, which
+   * is the setting for a build that reads "latest" from somewhere and must not be
+   * frozen at whatever it resolved to last week.
+   */
+  buildCache: boolean;
+  /**
+   * Armed by "Clear build cache", consumed by the next build (which then runs
+   * cache-less exactly once). READ-ONLY through the build config: it is set by
+   * `clearAppBuildCache` and cleared by the deploy, never by a build-settings
+   * save.
+   */
+  buildCacheClearPending: boolean;
   installCommand: string;
   buildCommand: string;
   outputDirectory: string;
@@ -956,6 +972,13 @@ export interface Deployment {
   startedAt: string | null;
   readyAt: string | null;
   buildDurationMs: number | null;
+  /**
+   * Replace the running containers even if the rendered stack is unchanged
+   * (`compose up --force-recreate`). Set only by "Rebuild container" — every
+   * other deploy leaves it false, so an unchanged reroute still causes no
+   * restart.
+   */
+  forceRecreate: boolean;
   creator: string;
 }
 

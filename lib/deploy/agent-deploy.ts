@@ -227,6 +227,10 @@ export async function runAgentDeploy(opts: {
   env: Record<string, string>;
   plan: AgentBuildPlan;
   readyTimeoutMs?: number;
+  /** Build with `--no-cache` (the app's Build cache is off, or a clear is armed). */
+  noCache?: boolean;
+  /** `compose up --force-recreate` — the explicit "Rebuild container" action. */
+  forceRecreate?: boolean;
   sink: AgentDeploySink;
 }): Promise<AgentDeployResult> {
   // P5: fail fast if the agent doesn't answer, rather than hanging a deploy.
@@ -234,6 +238,25 @@ export async function runAgentDeploy(opts: {
   if (!hello.dockerAvailable) {
     throw new AgentUnavailableError(
       "the agent reports Docker is not available on the target server",
+    );
+  }
+  // Both freshness switches are additive wire fields: an agent that predates them
+  // ignores the field and quietly does the cached / non-recreating thing. That is
+  // a lie the user would have no way to see, so say it in the build log rather
+  // than failing the deploy — the deploy itself is still perfectly valid.
+  if (opts.noCache && !hello.capabilities.includes("deploy.nocache")) {
+    opts.sink.log(
+      "warn",
+      "This server's agent is too old to skip the build cache — this build may reuse " +
+        "cached layers. Update the agent (reissue the install command from the server's actions menu).",
+    );
+  }
+  if (opts.forceRecreate && !hello.capabilities.includes("deploy.force-recreate")) {
+    opts.sink.log(
+      "warn",
+      "This server's agent is too old to force a fresh container — if nothing about the " +
+        "stack changed, the running container is kept. Update the agent (reissue the install " +
+        "command from the server's actions menu).",
     );
   }
 
@@ -405,6 +428,8 @@ export async function buildDeployRequest(opts: {
   env: Record<string, string>;
   plan: AgentBuildPlan;
   readyTimeoutMs?: number;
+  noCache?: boolean;
+  forceRecreate?: boolean;
 }): Promise<DeployRequest> {
   const base: DeployRequest = {
     deployId: opts.deployId,
@@ -423,6 +448,12 @@ export async function buildDeployRequest(opts: {
     // Dead V1 wire field (dev mode removed); the generated type still requires it.
     devWorkspaceSubdir: "",
     buildSpec: undefined,
+    // Freshness switches, both default-off so an ordinary deploy's request is
+    // byte-identical to what it always was. They ride on every plan kind: an
+    // image/compose deploy never builds (so no_build_cache is inert there), but
+    // it is exactly the kind whose container `up -d` would otherwise not replace.
+    noBuildCache: opts.noCache ?? false,
+    forceRecreate: opts.forceRecreate ?? false,
   };
 
   if (opts.plan.kind === "compose") {

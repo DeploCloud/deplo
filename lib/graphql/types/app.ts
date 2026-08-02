@@ -13,6 +13,7 @@ import {
   getAppById,
   createApp,
   updateAppBuild,
+  clearAppBuildCache,
   updateAppSource,
   setAutoDeploy,
   renameApp,
@@ -262,6 +263,12 @@ const BuildConfigInput = builder.inputType("BuildConfigInput", {
     // Same names as BuildConfig, so remapBuildInput forwards them untouched.
     includeFilesOutsideRoot: t.boolean({ required: false }),
     skipUnchangedDeployments: t.boolean({ required: false }),
+    buildCache: t.boolean({
+      required: false,
+      description:
+        "Reuse the owning server's Docker layer cache between builds of this " +
+        "app (default true). False rebuilds every layer from scratch each time.",
+    }),
     installCommand: t.string({ required: false }),
     buildCommand: t.string({ required: false }),
     outputDir: t.string({ required: false }),
@@ -779,10 +786,27 @@ builder.mutationFields((t) => ({
   }),
   rebuildApp: t.field({
     type: AppRef,
+    description:
+      "Rebuild the image from the current source and REPLACE the running " +
+      "container, even if nothing about the stack changed. Volumes, domains " +
+      "and data are untouched.",
     authScopes: { capability: "deploy_apps" },
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await rebuildApp(id);
+      return reloadApp(id);
+    },
+  }),
+  clearAppBuildCache: t.field({
+    type: AppRef,
+    description:
+      "Clear this app's build cache: the next deployment builds from scratch " +
+      "instead of reusing cached layers, then caches again. Nothing is pruned " +
+      "on the server — the build cache is shared by every app on it.",
+    authScopes: { capability: "configure_apps" },
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await clearAppBuildCache(id);
       return reloadApp(id);
     },
   }),

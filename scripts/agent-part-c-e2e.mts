@@ -98,6 +98,8 @@ networks:
         pullImage: false,
         mounts: [],
         devWorkspaceSubdir: "",
+        noBuildCache: false,
+        forceRecreate: false,
       })) {
         if (ev.result && !ev.result.ready) throw new Error("deploy failed: " + ev.result.error);
       }

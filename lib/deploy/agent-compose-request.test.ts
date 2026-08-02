@@ -12,6 +12,8 @@ function baseBuild(overrides: Partial<BuildConfig> = {}): BuildConfig {
     rootDirectory: "",
     includeFilesOutsideRoot: true,
     skipUnchangedDeployments: false,
+    buildCache: true,
+    buildCacheClearPending: false,
     installCommand: "",
     buildCommand: "",
     outputDirectory: "",
@@ -164,4 +166,36 @@ test("git plan with the static method → BUILD_KIND_STATIC + a BuildSpec", asyn
   assert.equal(req.buildSpec?.method, "static");
   assert.equal(req.buildSpec?.outputDirectory, "dist");
   assert.equal(req.buildSpec?.staticSinglePageApp, true);
+});
+
+/* ---- the two freshness switches ------------------------------------- */
+
+const gitPlan = {
+  kind: "git" as const,
+  url: "https://x@github.com/o/r.git",
+  branch: "main",
+  subdir: "",
+  build: baseBuild(),
+};
+
+test("an ordinary deploy asks for neither a cache-less build nor a recreate", async () => {
+  const req = await buildDeployRequest({ ...base, plan: gitPlan });
+  assert.equal(req.noBuildCache, false);
+  assert.equal(req.forceRecreate, false);
+});
+
+test("no-cache and force-recreate ride the request independently", async () => {
+  const fresh = await buildDeployRequest({ ...base, plan: gitPlan, noCache: true });
+  assert.equal(fresh.noBuildCache, true);
+  assert.equal(fresh.forceRecreate, false);
+
+  // "Rebuild container" on a compose stack: nothing to build, but the containers
+  // must be replaced — the case `up -d` alone silently skips.
+  const rebuilt = await buildDeployRequest({
+    ...base,
+    plan: { kind: "compose", mounts: [] },
+    forceRecreate: true,
+  });
+  assert.equal(rebuilt.forceRecreate, true);
+  assert.equal(rebuilt.noBuildCache, false);
 });

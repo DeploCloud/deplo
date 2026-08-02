@@ -11,6 +11,8 @@ function build(overrides: Partial<BuildConfig> = {}): BuildConfig {
     rootDirectory: "",
     includeFilesOutsideRoot: true,
     skipUnchangedDeployments: false,
+    buildCache: true,
+    buildCacheClearPending: false,
     installCommand: "",
     buildCommand: "npm run build",
     outputDirectory: "",

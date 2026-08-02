@@ -15,12 +15,13 @@ import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Advanced settings: rebuild the container from scratch. Surfaces the
- * `rebuildApp` mutation (previously API-only) — a full deployment that
- * rebuilds the image from the current source and rolls the container. Not
- * destructive (volumes/domains/env survive), so a plain button with an honest
- * description, no confirmation dialog. On success we follow the build to the
- * Deployments page, same destination the header Redeploy flow lands on.
+ * Advanced settings: rebuild the container. Surfaces the `rebuildApp` mutation —
+ * a full deployment that rebuilds the image from the current source and REPLACES
+ * the running container, even when nothing about the stack changed (the deploy
+ * carries `forceRecreate`, so `compose up` can't decide there is nothing to do).
+ * Not destructive (volumes/domains/env survive), so a plain button with an honest
+ * description, no confirmation dialog. On success we follow the build itself, so
+ * the user watches it instead of hunting for it in the list.
  */
 export function RebuildContainerCard({
   appId,
@@ -35,13 +36,23 @@ export function RebuildContainerCard({
   function rebuild() {
     startTransition(async () => {
       const res = await gqlAction(
-        `mutation($id: String!) { rebuildApp(id: $id) { id } }`,
+        `mutation($id: String!) { rebuildApp(id: $id) { id latestDeployment { id } } }`,
         { id: appId },
+        (d: { rebuildApp: { latestDeployment: { id: string } | null } | null }) =>
+          d.rebuildApp?.latestDeployment?.id ?? null,
       );
-      if (res.ok) {
-        toast.success("Rebuild started");
-        router.push(`/apps/${slug}/deployments`);
-      } else toast.error(res.error);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Rebuild started");
+      // Land on the live build when we know which one it is; the list is the
+      // fallback (it shows the same build at the top, already building).
+      router.push(
+        res.data
+          ? `/apps/${slug}/deployments/${res.data}`
+          : `/apps/${slug}/deployments`,
+      );
     });
   }
 
@@ -58,7 +69,9 @@ export function RebuildContainerCard({
           latest code, environment variables and settings. Attached volumes,
           domains and data are untouched; the current container keeps serving
           until the new build is ready. Use it when the container looks stuck
-          or out of sync with its configuration.
+          or out of sync with its configuration. Cached layers are reused — to
+          build from scratch, clear the build cache first (Settings →
+          Deployment → Build &amp; Output → Advanced).
         </CardDescription>
       </CardHeader>
       <CardFooter className="justify-end">

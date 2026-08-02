@@ -24,6 +24,8 @@ function build(method: BuildConfig["buildMethod"]): BuildConfig {
     rootDirectory: "",
     includeFilesOutsideRoot: true,
     skipUnchangedDeployments: false,
+    buildCache: true,
+    buildCacheClearPending: false,
     installCommand: "",
     buildCommand: "",
     outputDirectory: "",

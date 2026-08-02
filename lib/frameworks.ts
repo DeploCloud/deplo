@@ -44,6 +44,8 @@ export function buildConfigFor(overrides: Partial<BuildConfig> = {}): BuildConfi
     rootDirectory: "./",
     includeFilesOutsideRoot: true,
     skipUnchangedDeployments: false,
+    buildCache: true,
+    buildCacheClearPending: false,
     installCommand: "",
     buildCommand: "",
     outputDirectory: "",
@@ -82,12 +84,18 @@ export function normalizeBuildConfig(build: BuildConfig): BuildConfig {
   // every normalized config carries them (whole repo in context; don't skip).
   if (
     normalized.includeFilesOutsideRoot == null ||
-    normalized.skipUnchangedDeployments == null
+    normalized.skipUnchangedDeployments == null ||
+    normalized.buildCache == null ||
+    normalized.buildCacheClearPending == null
   ) {
     normalized = {
       ...normalized,
       includeFilesOutsideRoot: normalized.includeFilesOutsideRoot ?? true,
       skipUnchangedDeployments: normalized.skipUnchangedDeployments ?? false,
+      // Caching is the default: a config read before the column existed is an
+      // app that has been building WITH the cache all along.
+      buildCache: normalized.buildCache ?? true,
+      buildCacheClearPending: normalized.buildCacheClearPending ?? false,
     };
   }
 

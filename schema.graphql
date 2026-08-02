@@ -328,6 +328,10 @@ type BasicAuthUser {
 
 """Partial build configuration; only the provided fields are changed."""
 input BuildConfigInput {
+  """
+  Reuse the owning server's Docker layer cache between builds of this app (default true). False rebuilds every layer from scratch each time.
+  """
+  buildCache: Boolean
   buildCommand: String
   buildMethod: String
   includeFilesOutsideRoot: Boolean
@@ -1283,6 +1287,11 @@ type Mutation {
   """
   checkServerReadiness(id: String!): ServerReadinessReport
 
+  """
+  Clear this app's build cache: the next deployment builds from scratch instead of reusing cached layers, then caches again. Nothing is pruned on the server — the build cache is shared by every app on it.
+  """
+  clearAppBuildCache(id: String!): App
+
   """First-run setup: create the first account + team. Signs in."""
   completeSetup(email: String!, name: String!, password: String!, teamName: String!, username: String!): AuthPayload
 
@@ -1467,6 +1476,10 @@ type Mutation {
 
   """Promote a preview deployment to production."""
   promoteDeployment(id: String!): Boolean
+
+  """
+  Rebuild the image from the current source and REPLACE the running container, even if nothing about the stack changed. Volumes, domains and data are untouched.
+  """
   rebuildApp(id: String!): App
 
   """

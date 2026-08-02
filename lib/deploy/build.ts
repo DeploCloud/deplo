@@ -11,6 +11,7 @@ import { withKeyedLock } from "../data/keyed-mutex";
 import {
   deployments as deploymentsTable,
   apps as appsTable,
+  appBuild as appBuildTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { decryptSecret } from "../crypto";
@@ -254,6 +255,44 @@ async function settleIfCanceled(
   if (rows[0]?.status !== "canceled") return false;
   await markStopped(depId, appId);
   return true;
+}
+
+/**
+ * Whether this build reads the owning server's build cache, and the line the
+ * build log opens with when it doesn't. Two ways to end up cache-less: the app's
+ * Build cache setting is off (every build), or a manual "Clear build cache" armed
+ * the one-shot (this build only). Saying WHICH in the log matters — "why did my
+ * deploy take four minutes" has two different answers.
+ */
+export function noCacheForDeploy(build: {
+  buildCache: boolean;
+  buildCacheClearPending: boolean;
+}): { noCache: boolean; reason: string } {
+  if (build.buildCacheClearPending) {
+    return {
+      noCache: true,
+      reason: "Build cache cleared — building from scratch, then caching again.",
+    };
+  }
+  if (!build.buildCache) {
+    return {
+      noCache: true,
+      reason: "Build cache is off for this app — building from scratch.",
+    };
+  }
+  return { noCache: false, reason: "" };
+}
+
+/**
+ * Spend the one-shot "Clear build cache". Called once a build has actually been
+ * dispatched with it, so the NEXT deploy caches normally again. A no-op UPDATE
+ * when nothing was armed.
+ */
+export async function consumeCacheClear(appId: string): Promise<void> {
+  await getDb()
+    .update(appBuildTable)
+    .set({ buildCacheClearPending: false })
+    .where(eq(appBuildTable.appId, appId));
 }
 
 /**
@@ -736,6 +775,12 @@ export async function startDeployment(
     creator: string;
     commitMessage?: string;
     branch?: string;
+    /**
+     * Replace the running containers even when the rendered stack is unchanged
+     * ("Rebuild container"). Stored on the row because the deploy runs later, out
+     * of the queue, in a call stack that has nothing left of this request.
+     */
+    forceRecreate?: boolean;
   },
 ): Promise<string> {
   const project = await loadAppGraph(appId);
@@ -780,6 +825,7 @@ export async function startDeployment(
     startedAt: null,
     readyAt: null,
     buildDurationMs: null,
+    forceRecreate: opts.forceRecreate ?? false,
     creator: opts.creator,
   };
 
@@ -921,6 +967,10 @@ async function tryAgent(opts: {
    * 60s (the single-image path); the compose path passes 90s since a multi-service
    * stack may pull several images first. */
   readyTimeoutMs?: number;
+  /** Build this one without the host's layer cache (see `noCacheForDeploy`). */
+  noCache?: boolean;
+  /** Recreate the containers even if the stack is unchanged ("Rebuild container"). */
+  forceRecreate?: boolean;
 }): Promise<AgentAttempt> {
   // Serialize the agent bring-up against deleteApp/deleteApps on the app's
   // lifecycle lock (the same mutex the databases use for provision/delete). Two
@@ -950,6 +1000,8 @@ async function tryAgent(opts: {
         env: opts.env,
         plan: opts.plan,
         readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
+        noCache: opts.noCache,
+        forceRecreate: opts.forceRecreate,
         sink: { log: (level, text) => log(opts.depId, level, text) },
       });
       return { outcome: ready ? "agent" : "failed", commitSha };
@@ -1025,6 +1077,14 @@ async function runDeployment(depId: string): Promise<void> {
     // never consults project.build — so it is handled by its own branch first and
     // is exempt from the build-method capability gate.
 
+    // Freshness for THIS deploy: whether it may read the server's build cache
+    // (the app's Build cache setting, plus any armed one-shot clear), and whether
+    // the containers must be replaced even when the rendered stack is identical
+    // ("Rebuild container"). Resolved once, here, so every source arm below ships
+    // the agent the same decision.
+    const { noCache, reason: noCacheReason } = noCacheForDeploy(project.build);
+    const forceRecreate = dep.forceRecreate;
+
     // Multi-service compose / one-click template deploy: deploy the project's
     // own compose stack, wired to Traefik on the generated domain. The compose
     // interpolates its ${VARS} from an env-file we write alongside it. Selecting
@@ -1043,6 +1103,7 @@ async function runDeployment(depId: string): Promise<void> {
         name,
         slug,
         domain,
+        forceRecreate,
         // Compose stacks route via their own service/port model (expose/exposes
         // + host pins). Per-domain ports don't apply, but a domain CAN pick a
         // service and/or a path prefix — pass the full routes so those become
@@ -1181,6 +1242,8 @@ async function runDeployment(depId: string): Promise<void> {
         composeYaml,
         env,
         plan: { kind: "dockerfile", buildDir, build: normalizeBuildConfig(project.build) },
+        noCache,
+        forceRecreate,
       });
       agentOutcome = outcome === "agent" ? "agent" : "failed";
     };
@@ -1196,6 +1259,14 @@ async function runDeployment(depId: string): Promise<void> {
     // shared buildImageFromTree, so the rootDirectory containment + build
     // dispatch live in one place.
     const plan = planDeploySource(project);
+    // A cache-less build is minutes slower than a cached one, so say why before
+    // the log fills with build output — and spend the one-shot clear here, where
+    // a build is genuinely about to run (a prebuilt image never builds, so its
+    // deploy must not swallow the clear the user armed for the next real build).
+    if (noCache && (plan.kind === "git" || plan.kind === "upload")) {
+      log(depId, "info", noCacheReason);
+      if (project.build.buildCacheClearPending) await consumeCacheClear(project.id);
+    }
     switch (plan.kind) {
       case "docker-image": {
         imageRef = plan.image;
@@ -1209,6 +1280,7 @@ async function runDeployment(depId: string): Promise<void> {
           composeYaml,
           env,
           plan: { kind: "image", image: plan.image },
+          forceRecreate,
         });
         agentOutcome = outcome === "agent" ? "agent" : "failed";
         break;
@@ -1261,6 +1333,8 @@ async function runDeployment(depId: string): Promise<void> {
             subdir: project.build.rootDirectory ?? "",
             build: normalizeBuildConfig(project.build),
           },
+          noCache,
+          forceRecreate,
         });
         if (attempt.commitSha) {
           commitSha = attempt.commitSha;
@@ -1417,6 +1491,13 @@ interface ComposeStackOpts {
   domainRoutes: RoutableDomain[];
   environment: DeploymentEnvironment;
   started: number;
+  /**
+   * Recreate the stack's containers even when the rendered YAML is unchanged
+   * ("Rebuild container"). A compose stack is precisely the case where `up -d`
+   * would otherwise do nothing at all: its images are prebuilt, so nothing about
+   * the stack moves between two deploys of the same configuration.
+   */
+  forceRecreate: boolean;
 }
 
 /**
@@ -1593,6 +1674,7 @@ async function deployComposeStackViaAgent(
     plan: { kind: "compose", mounts: project.mounts ?? [] },
     // several images on the agent before any service reports running.
     readyTimeoutMs: 90_000,
+    forceRecreate: opts.forceRecreate,
   });
 
   // tryAgent already logged the failure reason / unreachable-agent message.

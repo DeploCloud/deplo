@@ -112,6 +112,8 @@ export function assembleBuild(
     rootDirectory: build.rootDirectory,
     includeFilesOutsideRoot: build.includeFilesOutsideRoot,
     skipUnchangedDeployments: build.skipUnchangedDeployments,
+    buildCache: build.buildCache,
+    buildCacheClearPending: build.buildCacheClearPending,
     installCommand: build.installCommand,
     buildCommand: build.buildCommand,
     outputDirectory: build.outputDirectory,
@@ -423,6 +425,8 @@ export function buildToRow(appId: string, b: BuildConfig): AppBuildInsert {
     rootDirectory: b.rootDirectory,
     includeFilesOutsideRoot: b.includeFilesOutsideRoot,
     skipUnchangedDeployments: b.skipUnchangedDeployments,
+    buildCache: b.buildCache,
+    buildCacheClearPending: b.buildCacheClearPending,
     installCommand: b.installCommand,
     buildCommand: b.buildCommand,
     outputDirectory: b.outputDirectory,
@@ -625,6 +629,7 @@ export function assembleDeployment(row: DeploymentRow): Deployment {
     startedAt: row.startedAt,
     readyAt: row.readyAt,
     buildDurationMs: row.buildDurationMs,
+    forceRecreate: row.forceRecreate,
     creator: row.creator,
   };
 }
@@ -644,6 +649,7 @@ export function deploymentToRow(d: Deployment): typeof deployments.$inferInsert 
     startedAt: d.startedAt ?? null,
     readyAt: d.readyAt ?? null,
     buildDurationMs: d.buildDurationMs ?? null,
+    forceRecreate: d.forceRecreate ?? false,
     creator: d.creator,
     createdAt: d.createdAt,
   };

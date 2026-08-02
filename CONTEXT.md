@@ -371,6 +371,16 @@ A single build-and-release event that produces or updates the production stack (
 preview). Always image-based; recorded as a `Deployment` row.
 _Avoid_: build (the build is one phase of a deployment), release.
 
+**Build cache**:
+The layers and builder cache mounts a **server** keeps from previous builds, so a redeploy
+that changes nothing takes seconds. It lives on the **server** (one BuildKit cache per host,
+shared by every app on it), not on the app — which is why an app can only turn its own use of
+it off (`build_cache`, every build then runs `--no-cache`) or **clear** it
+(`build_cache_clear_pending`, the next build reads nothing and rewrites what it replaces).
+Nothing is pruned from a per-app control: reclaiming disk is **Docker cleanup**'s job, server-wide.
+_Avoid_: "delete the build cache" for the per-app action (nothing is deleted), layer cache
+(that is only part of it — the builders' `type=cache` mounts are the other).
+
 **Database**:
 A managed datastore container (`postgres`/`mysql`/`mariadb`/`mongodb`/`redis`/`clickhouse`)
 keyed by slug `db-<name>` on the `deplo` network, so apps reach it by a stable DNS name and

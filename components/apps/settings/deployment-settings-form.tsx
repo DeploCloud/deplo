@@ -35,6 +35,7 @@ import {
 import { UploadInput, type CurrentUpload } from "@/components/apps/upload-input";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { BuildConfigFields } from "@/components/apps/build-config-fields";
+import { BuildCachePanel } from "@/components/apps/settings/build-cache-panel";
 import { RootDirectoryFields } from "@/components/apps/settings/root-directory-fields";
 import {
   GitDeployOptions,
@@ -165,6 +166,8 @@ export function DeploymentSettingsForm({
   // The Root Directory now lives in a second collapsed "Additional options" panel
   // of the Deploy Source card (advanced, rarely changed for a single-folder repo).
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  // The Build & Output card's own "Advanced" panel (build cache).
+  const [buildAdvancedOpen, setBuildAdvancedOpen] = React.useState(false);
 
   // Compose stack (template / multi-service deploys). Lives as a source tab.
   const [compose, setCompose] = React.useState(initialCompose ?? "");
@@ -843,13 +846,64 @@ export function DeploymentSettingsForm({
                 <InfoTip content="How Deplo installs, builds and runs your app inside Docker." />
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <BuildConfigFields
                 build={build}
                 onBuildChange={setBuild}
                 framework={framework}
                 frameworkCaption="Detected in your source on the last deploy. Deplo re-checks on every one."
               />
+              {/* Advanced: the build cache. Collapsed by default (nobody's first
+                  deploy needs it) with its current state in the closed header, so
+                  "why is my build slow" is answerable without expanding. Saves on
+                  change, so it does NOT join this card's Save button. */}
+              <div className="rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setBuildAdvancedOpen((v) => !v)}
+                  aria-expanded={buildAdvancedOpen}
+                  className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="font-medium">Advanced</span>
+                    {!buildAdvancedOpen && (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {!build.buildCache
+                          ? "Build cache off"
+                          : build.buildCacheClearPending
+                            ? "Build cache cleared"
+                            : "Build cache on"}
+                      </span>
+                    )}
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "size-4 shrink-0 text-muted-foreground transition-transform",
+                      buildAdvancedOpen && "rotate-180",
+                    )}
+                  />
+                </button>
+                {buildAdvancedOpen && (
+                  <div className="border-t border-border p-4">
+                    <BuildCachePanel
+                      appId={appId}
+                      buildCache={build.buildCache}
+                      clearPending={build.buildCacheClearPending}
+                      // Mirror the committed value into the build state the
+                      // header summary reads. Neither field is part of
+                      // currentBuildKey, so this can never light up "unsaved
+                      // changes" for something already saved.
+                      onChange={(next) =>
+                        setBuild((b) => ({
+                          ...b,
+                          buildCache: next.buildCache,
+                          buildCacheClearPending: next.clearPending,
+                        }))
+                      }
+                    />
+                  </div>
+                )}
+              </div>
             </CardContent>
             <CardFooter className="justify-between border-t border-border pt-4">
               <DirtyHint dirty={buildDirty} />

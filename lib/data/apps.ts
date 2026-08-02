@@ -751,6 +751,12 @@ export async function updateAppBuild(
   // published host port, so changing it isn't gated behind the expose-ports
   // grant — any member who can deploy may edit build settings.
   const user = (await getCurrentUser())!;
+  // The folder gate reads on its OWN connection, so it must not run inside the
+  // transaction below: under pglite (one connection, the test harness) an outer
+  // query issued while a tx is open waits for that tx and the whole thing
+  // deadlocks. It is a read-only precondition either way — same answer before
+  // the tx as inside it.
+  await requireFolderCapabilityForApp(id, "configure_apps");
   // One tx (PLAN cut-set (c) Decision 15): the parent `app_build` columns
   // MERGE field-by-field, while a provided `methodSettings` object FULLY REPLACES
   // the 1-to-1 method-settings row.
@@ -758,12 +764,15 @@ export async function updateAppBuild(
     const existing = await loadAppGraph(id, tx);
     if (!existing || existing.teamId !== membership.teamId)
       throw new Error("App not found");
-    await requireFolderCapabilityForApp(id, "configure_apps");
     const merged: BuildConfig = {
       ...existing.build,
       ...build,
       // methodSettings replaces wholesale when provided, else keep the existing.
       methodSettings: build.methodSettings ?? existing.build.methodSettings,
+      // The pending cache clear is armed by clearAppBuildCache and consumed by
+      // the next build — never by a build-settings save. Saving the form while a
+      // clear is armed must not swallow it (nor could a caller arm one here).
+      buildCacheClearPending: existing.build.buildCacheClearPending,
     };
     await tx
       .update(appsTable)
@@ -782,6 +791,41 @@ export async function updateAppBuild(
     }
   });
   await recordActivity("app", `Updated build settings`, user.name, id);
+}
+
+/**
+ * Clear this app's build cache: arm the one-shot flag the NEXT build consumes,
+ * so that build reads nothing from the cache and rewrites what it replaces.
+ *
+ * There is deliberately nothing to delete here. The BuildKit cache lives on the
+ * SERVER and is shared by every app on it (and, on a managed deplo, by other
+ * tenants), so pruning it from one app's settings page would quietly slow down
+ * everyone else's next deploy — an app can only clear its OWN cache by refusing
+ * to read it once. Reclaiming disk stays the server-wide Docker cleanup's job.
+ *
+ * Idempotent: clearing twice before a deploy is still one cache-less build.
+ */
+export async function clearAppBuildCache(id: string): Promise<void> {
+  const { membership } = await requireCapability("configure_apps");
+  const user = (await getCurrentUser())!;
+  const project = await loadAppGraph(id);
+  if (!project || project.teamId !== membership.teamId)
+    throw new Error("App not found");
+  await requireFolderCapabilityForApp(id, "configure_apps");
+  await getDb()
+    .update(appBuildTable)
+    .set({ buildCacheClearPending: true })
+    .where(eq(appBuildTable.appId, id));
+  await getDb()
+    .update(appsTable)
+    .set({ updatedAt: nowIso() })
+    .where(eq(appsTable.id, id));
+  await recordActivity(
+    "app",
+    `Cleared the build cache for ${project.name}`,
+    user.name,
+    id,
+  );
 }
 
 export interface UpdateSourceInput {
@@ -821,10 +865,13 @@ export async function updateAppSource(
   );
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;
+  // Outside the tx: the folder gate queries on its own connection, which under
+  // pglite (single connection) would deadlock against an open transaction. Same
+  // read-only precondition, just before the write instead of inside it.
+  await requireFolderCapabilityForApp(id, "configure_apps");
   await getDb().transaction(async (tx) => {
     const p = await loadAppGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("App not found");
-    await requireFolderCapabilityForApp(id, "configure_apps");
     // Capture the OLD server IP before serverId is reassigned, so a move can
     // re-host the project's auto nip.io domains onto the new server's IP below.
     const oldIp = resolveServerIp(serversById.get(p.serverId));
@@ -1582,7 +1629,17 @@ export async function startApp(id: string): Promise<void> {
   await recordActivity("app", `Started ${project.name}`, user.name, id);
 }
 
-/** Rebuild the image from the current source and redeploy (real build). */
+/**
+ * Rebuild the image from the current source and replace the running container —
+ * a full deployment that also FORCES the container to be recreated.
+ *
+ * The force matters: `docker compose up -d` compares compose's own config hash
+ * and does nothing when it matches, so for a compose stack or a prebuilt image
+ * whose config had not moved, "Rebuild container" used to finish green with the
+ * same container still running — the one case the button exists for. A source
+ * Deplo builds tags a new image per deploy, so it recreated anyway; forcing it
+ * only makes the promise the same for every source.
+ */
 export async function rebuildApp(id: string): Promise<void> {
   const { membership } = await requireCapability("deploy_apps");
   const user = (await getCurrentUser())!;
@@ -1593,6 +1650,7 @@ export async function rebuildApp(id: string): Promise<void> {
     environment: "production",
     creator: user.name,
     commitMessage: "Rebuild container",
+    forceRecreate: true,
   });
 }
 

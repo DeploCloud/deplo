@@ -831,6 +831,19 @@ export const appBuild = pgTable("app_build", {
   skipUnchangedDeployments: boolean("skip_unchanged_deployments")
     .notNull()
     .default(false),
+  // Reuse the owning server's Docker layer cache (and the builder's own cache
+  // mounts) between this app's builds — default ON, which is what makes a
+  // redeploy of an unchanged app take seconds. OFF ⇒ every build of this app runs
+  // `docker build --no-cache` and nixpacks is left on its per-build-dir cache key,
+  // so nothing is carried over. Advanced setting; see lib/deploy/build.ts.
+  buildCache: boolean("build_cache").notNull().default(true),
+  // Armed by "Clear build cache": the NEXT build of this app ignores the cache,
+  // then the deploy clears the flag. A one-shot rather than a stored "cleared at"
+  // because there is nothing to delete on the host — the cache is per-server and
+  // shared, so an app clears its own by refusing to read it once and rewriting it.
+  buildCacheClearPending: boolean("build_cache_clear_pending")
+    .notNull()
+    .default(false),
   installCommand: text("install_command").notNull(),
   buildCommand: text("build_command").notNull(),
   outputDirectory: text("output_directory").notNull(),
@@ -944,6 +957,13 @@ export const deployments = pgTable(
     // count the queue wait as build time.
     startedAt: isoTimestamptz("started_at"),
     buildDurationMs: bigint("build_duration_ms", { mode: "number" }),
+    // This deploy must REPLACE the running containers even when the rendered
+    // stack is unchanged (`docker compose up --force-recreate`). Set only by the
+    // explicit "Rebuild container" action — `up -d` is a no-op when compose's
+    // config hash matches, which for a compose stack or a prebuilt image meant
+    // Rebuild reported success without ever replacing the container. Every other
+    // deploy leaves it false so an unchanged reroute still causes no restart.
+    forceRecreate: boolean("force_recreate").notNull().default(false),
     creator: text("creator").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
   },

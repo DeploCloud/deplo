@@ -741,7 +741,26 @@ export interface DeployRequest {
    * and ignores the rest. Absent for BUILD_KIND_DOCKERFILE (which uses
    * `dockerfile` above) and BUILD_KIND_NONE.
    */
-  buildSpec?: BuildSpec | undefined;
+  buildSpec?:
+    | BuildSpec
+    | undefined;
+  /**
+   * Build this deploy WITHOUT the host's layer cache: every `docker build` runs
+   * with --no-cache, and nixpacks is left on its default (per-build-dir) cache
+   * key so its BuildKit cache mounts start empty too. Set when the app's Build
+   * cache setting is off, or for the one build that follows a manual "Clear
+   * build cache". Capability: "deploy.nocache" (an older agent silently caches).
+   */
+  noBuildCache: boolean;
+  /**
+   * Replace the running containers even when the rendered stack is unchanged
+   * (`docker compose up --force-recreate`). `up -d` alone is a no-op for a
+   * compose stack or a prebuilt image whose config hash did not move, which is
+   * exactly the case the "Rebuild container" action exists for. Ordinary deploys
+   * leave it false so an unchanged reroute still causes no restart.
+   * Capability: "deploy.force-recreate".
+   */
+  forceRecreate: boolean;
 }
 
 export interface DeployRequest_EnvEntry {
@@ -3354,6 +3373,8 @@ function createBaseDeployRequest(): DeployRequest {
     mounts: [],
     devWorkspaceSubdir: "",
     buildSpec: undefined,
+    noBuildCache: false,
+    forceRecreate: false,
   };
 }
 
@@ -3406,6 +3427,12 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.buildSpec !== undefined) {
       BuildSpec.encode(message.buildSpec, writer.uint32(130).fork()).join();
+    }
+    if (message.noBuildCache !== false) {
+      writer.uint32(136).bool(message.noBuildCache);
+    }
+    if (message.forceRecreate !== false) {
+      writer.uint32(144).bool(message.forceRecreate);
     }
     return writer;
   },
@@ -3548,6 +3575,22 @@ export const DeployRequest: MessageFns<DeployRequest> = {
           message.buildSpec = BuildSpec.decode(reader, reader.uint32());
           continue;
         }
+        case 17: {
+          if (tag !== 136) {
+            break;
+          }
+
+          message.noBuildCache = reader.bool();
+          continue;
+        }
+        case 18: {
+          if (tag !== 144) {
+            break;
+          }
+
+          message.forceRecreate = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3629,6 +3672,16 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.build_spec)
         ? BuildSpec.fromJSON(object.build_spec)
         : undefined,
+      noBuildCache: isSet(object.noBuildCache)
+        ? globalThis.Boolean(object.noBuildCache)
+        : isSet(object.no_build_cache)
+        ? globalThis.Boolean(object.no_build_cache)
+        : false,
+      forceRecreate: isSet(object.forceRecreate)
+        ? globalThis.Boolean(object.forceRecreate)
+        : isSet(object.force_recreate)
+        ? globalThis.Boolean(object.force_recreate)
+        : false,
     };
   },
 
@@ -3688,6 +3741,12 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.buildSpec !== undefined) {
       obj.buildSpec = BuildSpec.toJSON(message.buildSpec);
     }
+    if (message.noBuildCache !== false) {
+      obj.noBuildCache = message.noBuildCache;
+    }
+    if (message.forceRecreate !== false) {
+      obj.forceRecreate = message.forceRecreate;
+    }
     return obj;
   },
 
@@ -3724,6 +3783,8 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.buildSpec = (object.buildSpec !== undefined && object.buildSpec !== null)
       ? BuildSpec.fromPartial(object.buildSpec)
       : undefined;
+    message.noBuildCache = object.noBuildCache ?? false;
+    message.forceRecreate = object.forceRecreate ?? false;
     return message;
   },
 };

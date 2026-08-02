@@ -150,6 +150,7 @@ export async function seedDeployment(
     appId: opts.appId,
     status: opts.status ?? "ready",
     environment: "production",
+    forceRecreate: false,
     commitSha: "",
     commitMessage: "deploy",
     commitAuthor: "Owner",
