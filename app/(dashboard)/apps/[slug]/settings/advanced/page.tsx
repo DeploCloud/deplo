@@ -19,9 +19,9 @@ export const metadata = { title: "Advanced" };
 /**
  * Advanced app settings: the powerful, less-everyday controls in one place — an
  * entry point into the container Console, a from-scratch container Rebuild, and
- * the Danger Zone (delete). Folding these under "Advanced" keeps a destructive
- * action off the everyday sections, so it's never one stray click away from
- * Name & logo.
+ * the Danger Zone (transfer to another team, delete). Folding these under
+ * "Advanced" keeps a destructive action off the everyday sections, so it's never
+ * one stray click away from Name & logo.
  */
 export default async function AppAdvancedSettingsPage(
   props: PageProps<"/apps/[slug]/settings/advanced">,
@@ -35,7 +35,7 @@ export default async function AppAdvancedSettingsPage(
       <SettingsSection
         icon={SlidersHorizontal}
         title="Advanced"
-        info="Open the container console, rebuild the container from scratch, or permanently delete this app."
+        info="Open the container console, rebuild the container from scratch, hand the app to another team, or permanently delete it."
       />
 
       <Card>

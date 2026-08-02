@@ -33,6 +33,12 @@ import {
   type ResourceLimitsInput,
 } from "@/lib/data/apps";
 import {
+  appTransferInfo,
+  transferAppToTeam,
+  type AppTransferInfo,
+  type AppTransferTarget,
+} from "@/lib/data/app-transfer";
+import {
   frameworkById,
   type FrameworkDefinition,
 } from "@/lib/apps/framework-catalog";
@@ -377,11 +383,76 @@ const RecognizedFrameworkRef = builder
     }),
   });
 
+const AppTransferTargetRef = builder
+  .objectRef<AppTransferTarget>("AppTransferTarget")
+  .implement({
+    description:
+      "A team the viewer could hand this app to — one of their OWN other teams " +
+      "where they hold the deploy capability.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+      serverAvailable: t.exposeBoolean("serverAvailable", {
+        description:
+          "False when the app's server is restricted and not shared with that " +
+          "team — the transfer is refused until an instance admin grants access.",
+      }),
+      githubFollows: t.exposeBoolean("githubFollows", {
+        description:
+          "True when the repository connection survives the move, because that " +
+          "team has its own GitHub App installed on the repository's account. " +
+          "False ⇒ the connection and auto-deploy are dropped and must be " +
+          "reconnected there. Always true when the app has no GitHub connection.",
+      }),
+    }),
+  });
+
+const AppTransferInfoRef = builder
+  .objectRef<AppTransferInfo>("AppTransferInfo")
+  .implement({
+    description:
+      "What a transfer of this app would cost, plus the teams that could take it.",
+    fields: (t) => ({
+      appName: t.exposeString("appName"),
+      serverName: t.exposeString("serverName"),
+      homeLabel: t.exposeString("homeLabel", {
+        nullable: true,
+        description:
+          'Where the app currently sits in its team ("folder Marketing"), or ' +
+          "null at the top level. It leaves that home on transfer.",
+      }),
+      sharedVarCount: t.exposeInt("sharedVarCount", {
+        description:
+          "Shared variables linked to this app. The links do not survive the " +
+          "move (the variables belong to the current team).",
+      }),
+      backupCount: t.exposeInt("backupCount", {
+        description:
+          "Backup schedules targeting this app — removed on transfer, because " +
+          "they point at the current team's S3 destination.",
+      }),
+      githubConnected: t.exposeBoolean("githubConnected"),
+      targets: t.field({
+        type: [AppTransferTargetRef],
+        resolve: (x) => x.targets,
+      }),
+    }),
+  });
+
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
 /* ------------------------------------------------------------------ */
 
 builder.queryFields((t) => ({
+  appTransferInfo: t.field({
+    type: AppTransferInfoRef,
+    authScopes: { capability: "deploy" },
+    description:
+      "What transferring this app to another team would change, and which of " +
+      "the viewer's other teams could take it.",
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: (_r, { appId }) => appTransferInfo(appId),
+  }),
   apps: t.field({
     type: [AppRef],
     authScopes: { loggedIn: true },
@@ -722,6 +793,26 @@ builder.mutationFields((t) => ({
       "Re-apply the app's routing (domains + basic auth) to the running stack without a rebuild. Returns 'rerouted', 'unchanged', or 'deferred'.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => reapplyRouting(id),
+  }),
+  transferAppToTeam: t.field({
+    type: "Boolean",
+    // `deploy` is the introspectable floor; the data layer additionally demands
+    // `manage_env` here (the app carries its encrypted variables across a
+    // tenancy boundary) and `deploy` in the DESTINATION team.
+    authScopes: { capability: "deploy" },
+    description:
+      "Hand this app over to another team the viewer belongs to. The app keeps " +
+      "running: it leaves its folder/project, loses its shared-variable links " +
+      "and backup schedules, and keeps its GitHub connection only if the " +
+      "destination team has its own installation on that account. Returns true.",
+    args: {
+      appId: t.arg.string({ required: true }),
+      teamId: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { appId, teamId }) => {
+      await transferAppToTeam(appId, teamId);
+      return true;
+    },
   }),
   deleteApp: t.field({
     type: "Boolean",
