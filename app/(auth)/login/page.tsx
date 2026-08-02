@@ -173,7 +173,20 @@ export default function LoginPage() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={onSubmit} className="space-y-4">
+        {/*
+          `method="post"` is load-bearing SECURITY, not a formality. `onSubmit`
+          only runs once React has hydrated. A click before that (slow bundle, a
+          chunk 404 after a redeploy, JS blocked, the server restarting
+          mid-load) falls through to a NATIVE browser submit, and a form with no
+          method defaults to GET: every field is appended to the URL as
+          `/login?email=x&password=<plaintext>`, which then lands in the address
+          bar, browser history, the Referer of every subsequent same-origin
+          request, and every reverse-proxy access log in front of us. POST puts
+          them in a body nobody logs. Next has no POST handler for this route so
+          it just re-renders the page: the failure mode is an unhelpful reload
+          instead of a leaked password.
+        */}
+        <form method="post" onSubmit={onSubmit} className="space-y-4">
           {banner}
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
