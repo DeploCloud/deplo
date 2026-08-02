@@ -29,6 +29,31 @@
 
 export type ServerConnectionState = "connected" | "disconnected";
 
+/**
+ * The ONE user-facing sentence for anything the panel refuses (or loses)
+ * because the web server can't be reached. Every client that talks to the
+ * server surfaces this instead of the raw failure — "Failed to fetch", or the
+ * `Unexpected token '<', "<!DOCTYPE "… is not valid JSON` that a reverse
+ * proxy's HTML error page produces when it lands where JSON was expected.
+ * Neither means anything to a user, and both look like a bug in deplo.
+ */
+export const SERVER_UNREACHABLE_MESSAGE =
+  "Can’t reach the server — navigation and actions are paused until the connection is back.";
+
+/**
+ * Thrown in place of whatever low-level failure actually happened when a
+ * same-origin request dies because the server is gone. Carries
+ * `SERVER_UNREACHABLE_MESSAGE`, so every call site that already renders
+ * `error.message` / `res.error` in a toast shows the custom copy with no
+ * change of its own.
+ */
+export class ServerUnreachableError extends Error {
+  constructor(message: string = SERVER_UNREACHABLE_MESSAGE) {
+    super(message);
+    this.name = "ServerUnreachableError";
+  }
+}
+
 const PING_TIMEOUT_MS = 5_000;
 const RETRY_DELAY_MS = 1_500;
 
@@ -46,6 +71,16 @@ export function subscribeServerConnection(listener: () => void): () => void {
 
 export function getServerConnectionSnapshot(): ServerConnectionState {
   return state;
+}
+
+/**
+ * True once the state has latched — i.e. the notification is up, navigation is
+ * paused, and any request a client fires can only fail. Clients check this
+ * BEFORE hitting the network so a click lands on the custom message instead of
+ * a five-second timeout followed by a raw parse error.
+ */
+export function isServerDisconnected(): boolean {
+  return state === "disconnected";
 }
 
 async function ping(): Promise<boolean> {
@@ -117,4 +152,19 @@ export function reportServerUnreachable(): void {
     return;
   }
   void checkServerConnection();
+}
+
+/**
+ * Test-only: wait out any check still in flight — so its delayed second ping
+ * can't latch a LATER test — then drop the latch, leaving a clean "connected"
+ * module. Never called by the app: the app's only way back to "connected" is a
+ * full reload.
+ */
+export async function __resetServerConnectionForTests(): Promise<void> {
+  // A check's `finally` can chain one more (the recheck), so drain until none.
+  while (inFlightCheck) await inFlightCheck;
+  state = "connected";
+  inFlightCheck = null;
+  recheckAfterInFlight = false;
+  listeners.clear();
 }

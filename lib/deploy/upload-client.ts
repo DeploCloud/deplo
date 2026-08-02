@@ -9,6 +9,11 @@
 
 import { formatBytes } from "@/lib/utils";
 import { MAX_UPLOAD_BYTES, ACCEPT_RE } from "@/lib/deploy/upload-shared";
+import {
+  isServerDisconnected,
+  reportServerUnreachable,
+  ServerUnreachableError,
+} from "@/lib/server-connection";
 
 /**
  * Reject an archive the server would refuse anyway — an unsupported extension or
@@ -38,6 +43,13 @@ export function uploadArchive(
   onProgress?: (percent: number) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    // Offline: refuse before streaming megabytes at a server that isn't there,
+    // and say the same thing every other paused interaction says.
+    if (isServerDisconnected()) {
+      reject(new ServerUnreachableError());
+      return;
+    }
+
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `/api/apps/${appId}/upload`);
     xhr.setRequestHeader("X-Upload-Filename", file.name);
@@ -52,16 +64,30 @@ export function uploadArchive(
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        let msg = "Upload failed";
         try {
-          msg = JSON.parse(xhr.responseText)?.error ?? msg;
+          const msg = JSON.parse(xhr.responseText)?.error;
+          if (msg) {
+            reject(new Error(msg));
+            return;
+          }
         } catch {
-          /* non-JSON error body */
+          /* not JSON — handled below */
         }
-        reject(new Error(msg));
+        // The route always answers JSON, so a body we can't parse (a proxy's
+        // HTML error page) or a gateway status means we never reached it.
+        if (xhr.status >= 500 || xhr.status === 0) {
+          reportServerUnreachable();
+          reject(new ServerUnreachableError());
+          return;
+        }
+        reject(new Error("Upload failed"));
       }
     };
-    xhr.onerror = () => reject(new Error("Upload failed"));
+    // A transport-level failure is the server being gone, not a bad archive.
+    xhr.onerror = () => {
+      reportServerUnreachable();
+      reject(new ServerUnreachableError());
+    };
     xhr.send(file);
   });
 }

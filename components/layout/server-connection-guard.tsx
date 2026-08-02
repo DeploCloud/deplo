@@ -196,18 +196,20 @@ const NAV_BLOCK_TOAST_ID = "deplo-nav-paused";
  *    several traversals before the handler runs can still slip past the pin.
  *
  * Programmatic `router.push` from a button isn't intercepted here: those almost
- * always sit behind a server round-trip that fails while disconnected, so they
- * never reach the navigation. The listeners live only while this hook is
- * mounted (i.e. only while disconnected) and unwind cleanly on the reload.
+ * always sit behind a server round-trip, and while disconnected `gql()` refuses
+ * that round-trip outright with `SERVER_UNREACHABLE_MESSAGE` (the same "paused"
+ * copy this toast carries), so they never reach the navigation. The listeners
+ * live only while this hook is mounted (i.e. only while disconnected) and
+ * unwind cleanly on the reload.
  */
 function useBlockNavigationWhileDisconnected(active: boolean): void {
   React.useEffect(() => {
     if (!active) return;
 
     const notePaused = () =>
-      toast("Navigation is paused until the connection is restored.", {
+      toast("Navigation and actions are paused while the server is unreachable.", {
         id: NAV_BLOCK_TOAST_ID,
-        description: "You can stay on this page — it'll reload itself once the server is back.",
+        description: "You can stay on this page — it reloads itself once the server is back.",
       });
 
     // Is this click headed for an in-app route change we should hold back?
@@ -351,8 +353,8 @@ function DisconnectedNotification() {
             className="mt-2 text-xs leading-relaxed text-muted-foreground"
           >
             {restored
-              ? "Reconnected — reloading to pick up right where you left off…"
-              : "Can’t reach the server. This page stays usable — navigation is paused until it’s back."}
+              ? "Reconnected — reloading to pick up right where you left off."
+              : "Can’t reach the server. You can keep reading this page — navigation and actions are paused until it’s back."}
           </p>
 
           {/* One button. Its own fill IS the timer: a bar sweeps left-to-right
@@ -375,12 +377,12 @@ function DisconnectedNotification() {
               {restored ? (
                 <>
                   <Loader2 className="animate-spin" />
-                  Reloading…
+                  Reloading
                 </>
               ) : checking ? (
                 <>
                   <Loader2 className="animate-spin" />
-                  Checking…
+                  Checking
                 </>
               ) : (
                 <>

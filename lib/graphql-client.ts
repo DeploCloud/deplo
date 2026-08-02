@@ -12,6 +12,13 @@
  * box — the message text (e.g. "You don't have permission to deploy") is
  * preserved verbatim by the server's masked error formatter.
  *
+ * Offline: every failure that means "the server isn't there" — a network-level
+ * fetch rejection, a body that isn't JSON (a proxy's HTML error page), or a
+ * request fired while the connection guard has already latched — throws a
+ * `ServerUnreachableError` carrying `SERVER_UNREACHABLE_MESSAGE`. Call sites
+ * that toast `res.error` therefore show the same "navigation and actions are
+ * paused" copy the guard shows, never `Unexpected token '<', "<!DOCTYPE "…`.
+ *
  * Cache: server actions used to call `revalidatePath`. The GraphQL API has no
  * Next cache to revalidate, so after a mutation the caller refreshes the RSC
  * tree with `useRouter().refresh()` (see `useGraphqlMutation`), which re-runs
@@ -30,9 +37,48 @@ export class GraphQLRequestError extends Error {
 
 import type { ActionResult } from "./result";
 import {
-  getServerConnectionSnapshot,
+  isServerDisconnected,
   reportServerUnreachable,
+  ServerUnreachableError,
 } from "./server-connection";
+
+/** An abort is the caller's own doing, never a connection problem. */
+function isAbort(e: unknown): boolean {
+  return e instanceof DOMException && e.name === "AbortError";
+}
+
+/**
+ * Turn "the server is gone" into the one custom message, and tell the
+ * connection guard so it raises the notification (and pauses navigation) if it
+ * hasn't already. Returns the error to throw.
+ */
+function unreachable(): ServerUnreachableError {
+  reportServerUnreachable();
+  return new ServerUnreachableError();
+}
+
+/**
+ * Read a response that MUST be JSON — `/api/graphql` never answers anything
+ * else. Anything that fails to parse therefore did not come from the app: it is
+ * a reverse proxy's HTML error page (Cloudflare 502/504, an nginx 503) or a
+ * truncated body from a connection dying mid-read. Handing that to `res.json()`
+ * is what produced `Unexpected token '<', "<!DOCTYPE "… is not valid JSON` in a
+ * toast, so it is treated as an outage and reported as one.
+ */
+async function readJsonBody<T>(res: Response): Promise<T> {
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (e) {
+    if (isAbort(e)) throw e;
+    throw unreachable();
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw unreachable();
+  }
+}
 
 /**
  * Run a GraphQL operation and box the outcome as an `ActionResult` — the shape
@@ -65,6 +111,12 @@ export async function gql<TData = unknown>(
   variables?: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<TData> {
+  // Already latched offline: the request can only fail, so refuse it up front
+  // with the custom message instead of making the user wait out a timeout for a
+  // raw "Failed to fetch". This is what makes an interaction attempted while
+  // the guard is up say the same thing the guard does.
+  if (isServerDisconnected()) throw new ServerUnreachableError();
+
   let res: Response;
   try {
     res = await fetch("/api/graphql", {
@@ -75,16 +127,17 @@ export async function gql<TData = unknown>(
       signal,
     });
   } catch (e) {
-    // A network-level failure (TypeError, not an abort) means the panel's web
-    // server may be gone — let the connection guard verify and lock the UI.
-    if (e instanceof TypeError) reportServerUnreachable();
-    throw e;
+    // An abort is the caller's; anything else at the network level means the
+    // panel's web server may be gone — let the connection guard verify and
+    // raise the notification.
+    if (isAbort(e)) throw e;
+    throw unreachable();
   }
 
-  const json = (await res.json()) as {
+  const json = await readJsonBody<{
     data?: TData;
     errors?: { message: string }[];
-  };
+  }>(res);
 
   if (json.errors?.length) {
     throw new GraphQLRequestError(json.errors[0].message, json.errors);
@@ -118,18 +171,29 @@ export function gqlSubscribe<TData = unknown>(
   let closed = false;
 
   async function connect(): Promise<void> {
-    const res = await fetch("/api/graphql", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "text/event-stream",
-      },
-      body: JSON.stringify({ query, variables }),
-      credentials: "same-origin",
-      signal: controller.signal,
-    });
+    let res: Response;
+    try {
+      res = await fetch("/api/graphql", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "text/event-stream",
+        },
+        body: JSON.stringify({ query, variables }),
+        credentials: "same-origin",
+        signal: controller.signal,
+      });
+    } catch (e) {
+      if (isAbort(e)) throw e;
+      throw unreachable();
+    }
 
     if (!res.ok || !res.body) {
+      // A gateway status or an HTML body means we never reached the app — the
+      // proxy answered for a server that isn't there. Report it as an outage
+      // rather than as a subscription that failed on its own merits.
+      const html = (res.headers.get("content-type") ?? "").includes("text/html");
+      if (res.status >= 500 || html || !res.body) throw unreachable();
       throw new GraphQLRequestError(`Subscription failed (${res.status})`, []);
     }
 
@@ -159,10 +223,15 @@ export function gqlSubscribe<TData = unknown>(
         if (event === "complete") return;
         if (event !== "next" || dataLines.length === 0) continue;
 
-        const json = JSON.parse(dataLines.join("\n")) as {
-          data?: TData;
-          errors?: { message: string }[];
-        };
+        // Our own frames are always JSON. One that isn't means the stream got
+        // cut and something else's bytes landed in it — drop the frame rather
+        // than letting a raw SyntaxError reach `onError` (and a toast).
+        let json: { data?: TData; errors?: { message: string }[] };
+        try {
+          json = JSON.parse(dataLines.join("\n")) as typeof json;
+        } catch {
+          continue;
+        }
         if (json.errors?.length) {
           throw new GraphQLRequestError(json.errors[0].message, json.errors);
         }
@@ -180,7 +249,7 @@ export function gqlSubscribe<TData = unknown>(
       // overlay, stop self-healing: retrying would keep hammering a dead
       // server (and spawning error toasts) behind a screen that promises
       // nothing reconnects until the user reloads.
-      if (getServerConnectionSnapshot() === "disconnected") return;
+      if (isServerDisconnected()) return;
       try {
         await connect();
         // Clean `complete` or EOF — for a status stream that should not happen
@@ -188,9 +257,9 @@ export function gqlSubscribe<TData = unknown>(
         if (!closed) return;
       } catch (e) {
         if (closed || controller.signal.aborted) return;
-        // Same signal as gql(): the SSE fetch dying at the network level hints
-        // the web server itself is unreachable.
-        if (e instanceof TypeError) reportServerUnreachable();
+        // `connect()` has already reported the outage and swapped the raw
+        // failure for the custom message, so whatever surfaces here is safe to
+        // show verbatim.
         onError?.(e instanceof Error ? e : new Error(String(e)));
         await new Promise((r) => setTimeout(r, backoff));
         backoff = Math.min(backoff * 2, 10_000);

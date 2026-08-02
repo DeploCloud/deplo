@@ -16,6 +16,11 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { GraphqlEditor } from "./graphql-editor";
 import { CURATED_EXAMPLES } from "./examples";
 import { cn } from "@/lib/utils";
+import {
+  isServerDisconnected,
+  reportServerUnreachable,
+  SERVER_UNREACHABLE_MESSAGE,
+} from "@/lib/server-connection";
 import type { PlaygroundResult } from "./types";
 
 /**
@@ -96,6 +101,15 @@ export function Playground({
           return;
         }
       }
+      // Offline: the run can only fail, and its failure would be a proxy's HTML
+      // page blowing up the JSON parse below. Say what the guard says instead.
+      if (isServerDisconnected()) {
+        setResult({
+          kind: "error",
+          errors: [{ message: SERVER_UNREACHABLE_MESSAGE }],
+        });
+        return;
+      }
       const res = await fetch("/api/graphql/playground", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -108,12 +122,26 @@ export function Playground({
           operationName: firstOperationName(source),
         }),
       });
-      const json = (await res.json()) as PlaygroundResult;
+      // The route always answers JSON; anything else came from between us and
+      // it (a proxy error page), so treat it as the server being unreachable.
+      const text = await res.text();
+      let json: PlaygroundResult;
+      try {
+        json = JSON.parse(text) as PlaygroundResult;
+      } catch {
+        reportServerUnreachable();
+        setResult({
+          kind: "error",
+          errors: [{ message: SERVER_UNREACHABLE_MESSAGE }],
+        });
+        return;
+      }
       setResult(json);
     } catch {
+      reportServerUnreachable();
       setResult({
         kind: "error",
-        errors: [{ message: "Network error — could not reach the playground." }],
+        errors: [{ message: SERVER_UNREACHABLE_MESSAGE }],
       });
     } finally {
       setRunning(false);
