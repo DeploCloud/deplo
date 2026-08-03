@@ -14,6 +14,11 @@ Also binding:
 - **Every feature must make sense in the UX and name its audience — exactly two exist:**
   **non-expert** (default-on, obvious, zero config) or **expert** (*advanced mode*: opt-in, behind
   an "Advanced" affordance, never on the first-run path).
+- **Design for teams and companies, not just the solo self-hoster.** Assume several people with
+  different Capabilities share one instance and that the actor is not the instance owner:
+  active-team scoping, server-side Capability gates, per-folder grants, an Activity trail readable
+  in the UI. Roles/members/tokens/2FA are product, not plumbing. Orthogonal to non-expert vs
+  expert; the single-user path must not get heavier for it.
 - **Don't build what almost nobody will realistically use long-term.** The goal is being far
   simpler than competing self-hosted platforms, not matching their feature list. First launch must
   sell the **pricing difference vs. Vercel/Railway**, not force a tour of tons of settings with

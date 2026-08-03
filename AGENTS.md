@@ -32,6 +32,11 @@ Consequences that bind every design and review decision:
   configuration) or it is **for the expert** (*advanced mode*: opt-in, behind an "Advanced"
   affordance, never on the first-run path). If you can't say which of the two a feature is for,
   it isn't designed yet.
+- **Design for a team, not a lone operator.** deplo's users are teams and companies as much as the
+  solo developer. Assume several people with different Capabilities share one instance, and that
+  whoever takes an action is not the instance owner. A flow that only works when you own the
+  instance, or that expects someone to fix it by hand out of band, is broken for the audience deplo
+  wants. This axis is orthogonal to non-expert/expert: every feature answers both.
 - **Don't build what nobody will realistically use.** Losing focus on deplo's principles looks
   exactly like a stream of individually-defensible features that, long-term, almost no one turns
   on. Breadth is not the goal — being *far simpler than every competing self-hosted platform* is.
@@ -48,6 +53,26 @@ difference** — not by having to inspect and configure a mountain of options, w
 staring at them by default. Ship opinionated defaults, keep the default surface as small as it can
 be while still useful, and put everything else behind advanced mode. Every knob visible at first
 run is a tax on the one thing that makes the switch worth it.
+
+### Teams and companies are first-class, not an afterthought
+
+Coolify and Dokploy are shaped around one operator on one box, with sharing bolted on afterwards.
+deplo aims at the collaboration case from the start: a team, up to a whole company, working in the
+same instance under least privilege. Concretely:
+
+- **Multi-person is the default assumption, never a later plan.** Everything is scoped to the
+  active team, every mutating action is Capability-gated server-side, and per-folder grants let a
+  member hold exactly one corner of the fleet. Never ship a feature whose happy path needs
+  instance ownership.
+- **The collaboration surfaces are product, not plumbing.** Roles, members, folders and grants,
+  Activity, API tokens, the 2FA policy: same UX bar as deploying an App, obvious to a non-expert,
+  no shell, no hand-edited config.
+- **A company's questions must be answerable in the UI:** who did what and when, who can do what,
+  how to take access away, how ownership moves when someone leaves. If the honest answer is "look
+  in the database" or "ask whoever runs the box", the feature is unfinished.
+
+The solo developer stays first-class: the team case must never make the single-user path heavier,
+so anything only a company needs obeys the first-run rule above and stays out of the way by default.
 
 ### Everything must be easy to turn into a managed service
 
