@@ -3,6 +3,8 @@ import { KeyRound, BookOpen, ArrowRight } from "lucide-react";
 import { hasCapability } from "@/lib/membership";
 import { listTokens } from "@/lib/data/tokens";
 import { listProjects } from "@/lib/data/projects";
+import { listApps } from "@/lib/data/apps";
+import { listMyTeams } from "@/lib/data/teams";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { NewTokenMenu } from "@/components/settings/tokens/new-token-menu";
@@ -11,12 +13,18 @@ import { TokensList } from "@/components/settings/tokens/tokens-list";
 export const metadata = { title: "Settings · API tokens" };
 
 export default async function TokensPage() {
-  const [tokens, projects, canManage] = await Promise.all([
+  const [tokens, projects, apps, teams, canManage] = await Promise.all([
     listTokens(),
     listProjects(),
+    listApps(),
+    listMyTeams(),
     hasCapability("manage_tokens"),
   ]);
-  const projectNames = Object.fromEntries(projects.map((p) => [p.id, p.name]));
+  // A token can reach teams and apps this page can't name; `scopeLabel` falls
+  // back to a count for anything missing here rather than showing a blank.
+  const names = Object.fromEntries(
+    [...teams, ...projects, ...apps].map((n) => [n.id, n.name]),
+  );
 
   return (
     <div className="space-y-6">
@@ -54,11 +62,7 @@ export default async function TokensPage() {
           }
         />
       ) : (
-        <TokensList
-          tokens={tokens}
-          projectNames={projectNames}
-          canManage={canManage}
-        />
+        <TokensList tokens={tokens} names={names} canManage={canManage} />
       )}
     </div>
   );

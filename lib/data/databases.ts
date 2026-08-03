@@ -8,7 +8,7 @@ import {
   getServerById,
 } from "./servers";
 import { getDb } from "../db/client";
-import { tokenProjectScope } from "../auth/request-context";
+import { narrowedScope } from "../auth/request-context";
 import {
   databases as databasesTable,
   teamDatabaseOrder,
@@ -301,7 +301,7 @@ async function loadDatabase(
   id: string,
   teamId: string,
 ): Promise<Database | null> {
-  if (tokenProjectScope()) return null;
+  if (narrowedScope()) return null;
   const rows = await getDb()
     .select()
     .from(databasesTable)

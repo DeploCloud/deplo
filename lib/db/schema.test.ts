@@ -119,7 +119,9 @@ const CONTROL_PLANE = [
   // per-team leaf
   "api_tokens",
   "api_token_capabilities",
+  "api_token_teams",
   "api_token_projects",
+  "api_token_apps",
   "activities",
   "notification_settings",
   "registries",

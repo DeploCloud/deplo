@@ -1,6 +1,6 @@
 # ADR-0015: An API token is a principal with its own capabilities
 
-- **Status**: Accepted — 2026-08-03.
+- **Status**: Accepted — 2026-08-03. §3 amended the same day (migration `0062`).
 - **Amends**: the "API token" entry in `CONTEXT.md` (which said a token "acts as
   its creator" and "can only ever do what that member's Capabilities allow") and
   the authentication section of `docs/api/graphql.md`. Migration `0061`.
@@ -34,7 +34,15 @@ config, or an AI agent's configuration file.
    do, and nothing has to be re-materialized when a role changes. One
    intersection, no new authorization concept, no new gate at 132 call sites.
 
-3. **A token may be limited to Projects, and "limited" includes reads.** A
+3. **A token's scope is a TREE, and "limited" includes reads.** *(amended: it
+   started as one team plus a set of projects; migration `0062` made it whole
+   teams, whole projects or individual apps, ticked at any depth, with nothing
+   ticked meaning every team the creator belongs to. Breadth and depth stay
+   separate questions — holding several whole teams restricts nothing inside
+   them, and only naming a project or an app strips that team's team-wide
+   capabilities. A bearer request acts in ONE of the token's teams, chosen with
+   `X-Deplo-Team` and defaulting to the first in scope; the token is managed from
+   the team it was created in, and any team it reaches can revoke it.)* A
    scoped token cannot READ an app outside its projects, not merely not write
    one — an out-of-scope app answers exactly what a nonexistent id answers, so
    the scope is never an oracle for which ids exist. Enforcement is a pure,
@@ -57,10 +65,12 @@ config, or an AI agent's configuration file.
    than an absent one.
 
 6. **The intent to be scoped is a column, not "zero rows".**
-   `api_tokens.project_scoped` exists because deleting a Project cascades its
-   `api_token_projects` rows away; without the flag an emptied scope would read
-   as "unscoped" and silently WIDEN the token to the whole team. Scoped with no
-   rows reaches nothing.
+   `api_tokens.scoped` exists because deleting a team, project or app cascades its
+   scope row away; without the flag an emptied scope would read as "unscoped" and
+   silently WIDEN the token to everything. A scope with no nodes left resolves to
+   no team at all, so the token stops authenticating rather than quietly widening
+   — a 401 is a far easier thing to debug than a credential that authenticates and
+   then finds nothing anywhere.
 
 7. **Templates ship in-tree and are not editable.** Five of them (Read only,
    Deploy hook & CI, MCP & AI agents, App automation, Root access) in

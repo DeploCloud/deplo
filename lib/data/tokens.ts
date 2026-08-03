@@ -6,8 +6,13 @@ import { getDb, type DbTx } from "../db/client";
 import {
   apiTokens,
   apiTokenCapabilities,
+  apiTokenTeams,
   apiTokenProjects,
+  apiTokenApps,
+  apps as appsTable,
+  memberships as membershipsTable,
   projects as projectsTable,
+  teams as teamsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
@@ -17,24 +22,31 @@ import {
   requireCapability,
   requireInstanceAdmin,
   requireUnscoped,
+  teamsForUser,
 } from "../membership";
 import { withinActor } from "./roles";
 import { recordActivity } from "./activity";
-import { getCurrentUser } from "../auth";
+import { assertUser, getCurrentUser } from "../auth";
 import { sha256Hex, randomToken } from "../crypto";
 import { ALL_CAPABILITIES, type Capability } from "../types";
-import type { RequestIdentity } from "../auth/request-context";
+import type { RequestIdentity, TokenScope } from "../auth/request-context";
 
 /**
- * API tokens — bearer credentials that drive this team over the public API.
+ * API tokens — bearer credentials that drive deplo's API from outside the
+ * dashboard.
  *
  * A token is a PRINCIPAL WITH ITS OWN CAPABILITIES, not an impersonation of the
- * member who minted it. It carries the same forty fine-grained capabilities a
- * Role is built from, plus an optional Project scope and an opt-in
- * instance-admin bit. Its EFFECTIVE power is the intersection of what it was
- * granted and what its creator can still do in the team, resolved live on every
- * request by the clamp in `lib/membership.ts` — so nothing is materialized here,
- * and revoking a person's access blunts every token they ever minted.
+ * member who minted it, and its reach is a TREE: whole teams, whole projects,
+ * or individual apps, ticked at whatever depth makes sense. Its effective power
+ * is the intersection of what it was granted and what its creator can still do
+ * in the team the request resolves to, computed live on every request by the
+ * clamp in `lib/membership.ts` — so nothing is materialized here, and revoking a
+ * person's access blunts every token they ever minted.
+ *
+ * Breadth and depth are separate questions. Naming several teams restricts
+ * nothing inside them. Naming a project or an app inside a team is what strips
+ * that team's team-wide capabilities, because there is no per-project version of
+ * "manage members".
  */
 
 const MAX_NAME = 40;
@@ -45,11 +57,17 @@ export interface ApiTokenDTO {
   prefix: string;
   /** What the token itself may do — its own set, before the creator clamp. */
   capabilities: Capability[];
-  /** True when the token is limited to Projects at all. */
-  projectScoped: boolean;
-  /** The Projects it is limited to. Meaningful only when `projectScoped`. */
+  /** False ⇒ every team its creator belongs to, and everything in it. */
+  scoped: boolean;
+  /** Whole teams in the scope. */
+  teamIds: string[];
+  /** Whole projects in the scope. */
   projectIds: string[];
+  /** Individually-named apps in the scope. */
+  appIds: string[];
   instanceAdmin: boolean;
+  /** The team this token is MANAGED from — where it was created. */
+  homeTeamId: string;
   /** The member it acts as. Its power is clamped to theirs, so name them. */
   createdByUsername: string | null;
   lastUsedAt: string | null;
@@ -61,91 +79,253 @@ const DTO_COLUMNS = {
   id: apiTokens.id,
   name: apiTokens.name,
   prefix: apiTokens.prefix,
-  projectScoped: apiTokens.projectScoped,
+  scoped: apiTokens.scoped,
   instanceAdmin: apiTokens.instanceAdmin,
+  homeTeamId: apiTokens.teamId,
   lastUsedAt: apiTokens.lastUsedAt,
   createdAt: apiTokens.createdAt,
 } as const;
 
+/**
+ * Every token that can act in `teamId` — not merely the ones created there.
+ *
+ * A token's scope tree can span teams, so the team it was minted in is not the
+ * only team it touches. A team that cannot SEE a credential operating inside it
+ * cannot revoke it either, and "remove the person from the team" is too blunt an
+ * instrument to be the only lever. Four indexed lookups, unioned in memory.
+ */
+async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
+  const db = getDb();
+  const [byTeam, byProject, byApp, unscoped] = await Promise.all([
+    db
+      .select({ id: apiTokenTeams.tokenId })
+      .from(apiTokenTeams)
+      .where(eq(apiTokenTeams.teamId, teamId)),
+    db
+      .select({ id: apiTokenProjects.tokenId })
+      .from(apiTokenProjects)
+      .innerJoin(projectsTable, eq(projectsTable.id, apiTokenProjects.projectId))
+      .where(eq(projectsTable.teamId, teamId)),
+    db
+      .select({ id: apiTokenApps.tokenId })
+      .from(apiTokenApps)
+      .innerJoin(appsTable, eq(appsTable.id, apiTokenApps.appId))
+      .where(eq(appsTable.teamId, teamId)),
+    // An unrestricted token reaches every team its CREATOR belongs to, so it
+    // shows up wherever they are a member.
+    db
+      .select({ id: apiTokens.id })
+      .from(apiTokens)
+      .innerJoin(
+        membershipsTable,
+        eq(membershipsTable.userId, apiTokens.userId),
+      )
+      .where(
+        and(eq(apiTokens.scoped, false), eq(membershipsTable.teamId, teamId)),
+      ),
+  ]);
+  return new Set(
+    [...byTeam, ...byProject, ...byApp, ...unscoped].map((r) => r.id),
+  );
+}
+
 export async function listTokens(): Promise<ApiTokenDTO[]> {
   const teamId = await requireActiveTeamId();
-  // A project-scoped token must not enumerate the team's OTHER credentials: its
+  // A narrowed token must not enumerate the team's OTHER credentials: its
   // capability clamp already stops it minting one, this stops it reading them.
   requireUnscoped("API tokens");
+  const reaching = await tokenIdsReaching(teamId);
+  if (reaching.size === 0) return [];
   const rows = await getDb()
     .select({ ...DTO_COLUMNS, createdByUsername: usersTable.username })
     .from(apiTokens)
     .leftJoin(usersTable, eq(usersTable.id, apiTokens.userId))
-    .where(eq(apiTokens.teamId, teamId))
+    .where(inArray(apiTokens.id, [...reaching]))
     .orderBy(desc(apiTokens.createdAt));
   if (rows.length === 0) return [];
 
   const ids = rows.map((r) => r.id);
-  // Both junctions in one query each — never per-token (PLAN §6 "batch-load").
-  const [caps, scopes] = await Promise.all([
+  // Every junction in one query each — never per-token (PLAN §6 "batch-load").
+  const [caps, teamRows, projRows, appRows] = await Promise.all([
     getDb()
       .select({
         tokenId: apiTokenCapabilities.tokenId,
-        capability: apiTokenCapabilities.capability,
+        value: apiTokenCapabilities.capability,
       })
       .from(apiTokenCapabilities)
       .where(inArray(apiTokenCapabilities.tokenId, ids)),
     getDb()
+      .select({ tokenId: apiTokenTeams.tokenId, value: apiTokenTeams.teamId })
+      .from(apiTokenTeams)
+      .where(inArray(apiTokenTeams.tokenId, ids)),
+    getDb()
       .select({
         tokenId: apiTokenProjects.tokenId,
-        projectId: apiTokenProjects.projectId,
+        value: apiTokenProjects.projectId,
       })
       .from(apiTokenProjects)
       .where(inArray(apiTokenProjects.tokenId, ids)),
+    getDb()
+      .select({ tokenId: apiTokenApps.tokenId, value: apiTokenApps.appId })
+      .from(apiTokenApps)
+      .where(inArray(apiTokenApps.tokenId, ids)),
   ]);
-  const capsById = new Map<string, Capability[]>();
-  for (const c of caps)
-    capsById.set(c.tokenId, [
-      ...(capsById.get(c.tokenId) ?? []),
-      c.capability as Capability,
-    ]);
-  const scopeById = new Map<string, string[]>();
-  for (const s of scopes)
-    scopeById.set(s.tokenId, [...(scopeById.get(s.tokenId) ?? []), s.projectId]);
+  const group = (rows: { tokenId: string; value: string }[]) => {
+    const m = new Map<string, string[]>();
+    for (const r of rows) m.set(r.tokenId, [...(m.get(r.tokenId) ?? []), r.value]);
+    return m;
+  };
+  const capsById = group(caps);
+  const teamsById = group(teamRows);
+  const projectsById = group(projRows);
+  const appsById = group(appRows);
 
   return rows.map((r) => ({
     ...r,
-    capabilities: inCatalogOrder(capsById.get(r.id) ?? []),
-    projectIds: scopeById.get(r.id) ?? [],
+    capabilities: inCatalogOrder(
+      (capsById.get(r.id) ?? []) as Capability[],
+    ),
+    teamIds: teamsById.get(r.id) ?? [],
+    projectIds: projectsById.get(r.id) ?? [],
+    appIds: appsById.get(r.id) ?? [],
   }));
 }
 
 /**
  * One token by id. Deliberately `listTokens().find(…)` — the same trick
  * `getRole` uses — so there is exactly ONE place that assembles the DTO and its
- * two junctions, and no way for the detail page to disagree with the list.
+ * four junctions, and no way for the detail page to disagree with the list.
  */
 export async function getToken(id: string): Promise<ApiTokenDTO | null> {
   return (await listTokens()).find((t) => t.id === id) ?? null;
 }
 
-/** Returns the raw token ONCE; only the hash is persisted. */
-export async function createToken(input: {
+/* ------------------------------------------------------------------ */
+/* The scope tree (what the editor picks from)                         */
+/* ------------------------------------------------------------------ */
+
+export interface ScopeTreeApp {
+  id: string;
   name: string;
-  capabilities?: Capability[];
+  slug: string;
+}
+export interface ScopeTreeProject {
+  id: string;
+  name: string;
+  color: string | null;
+  apps: ScopeTreeApp[];
+}
+export interface ScopeTreeTeam {
+  id: string;
+  name: string;
+  projects: ScopeTreeProject[];
+  /** Apps of this team that sit at the top level, in no project. */
+  looseApps: ScopeTreeApp[];
+}
+
+/**
+ * Every team the CURRENT USER belongs to, with its projects and their apps —
+ * the tree the scope picker draws.
+ *
+ * Deliberately not filtered to the active team: a token may span teams, and you
+ * can only give it what you can reach yourself. That is also the bound — the
+ * tree is built from the user's own memberships, so a picker can never offer a
+ * team the actor isn't in.
+ */
+export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
+  // Deliberately NOT gated on `manage_tokens`: a member without it still opens a
+  // token page (read-only, like the roles page), and the tree holds nothing they
+  // can't already see — it is built from their OWN memberships, which is also
+  // what bounds it. A narrowed token is refused: it must not enumerate the teams
+  // its creator belongs to.
+  const user = await assertUser();
+  requireUnscoped("the token scope picker");
+  const mine = await teamsForUser(user.id);
+  if (mine.length === 0) return [];
+  const teamIds = mine.map((t) => t.id);
+
+  const db = getDb();
+  const [projectRows, appRows] = await Promise.all([
+    db
+      .select({
+        id: projectsTable.id,
+        teamId: projectsTable.teamId,
+        name: projectsTable.name,
+        color: projectsTable.color,
+      })
+      .from(projectsTable)
+      .where(inArray(projectsTable.teamId, teamIds)),
+    db
+      .select({
+        id: appsTable.id,
+        teamId: appsTable.teamId,
+        projectId: appsTable.projectId,
+        name: appsTable.name,
+        slug: appsTable.slug,
+      })
+      .from(appsTable)
+      .where(inArray(appsTable.teamId, teamIds)),
+  ]);
+
+  const appsByProject = new Map<string, ScopeTreeApp[]>();
+  const looseByTeam = new Map<string, ScopeTreeApp[]>();
+  for (const a of appRows) {
+    const entry = { id: a.id, name: a.name, slug: a.slug };
+    const bucket = a.projectId ? appsByProject : looseByTeam;
+    const key = a.projectId ?? a.teamId;
+    bucket.set(key, [...(bucket.get(key) ?? []), entry]);
+  }
+  const byName = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name);
+
+  return mine.map((t) => ({
+    id: t.id,
+    name: t.name,
+    projects: projectRows
+      .filter((p) => p.teamId === t.id)
+      .sort(byName)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        color: p.color ?? null,
+        apps: (appsByProject.get(p.id) ?? []).sort(byName),
+      })),
+    looseApps: (looseByTeam.get(t.id) ?? []).sort(byName),
+  }));
+}
+
+/* ------------------------------------------------------------------ */
+/* Mutations                                                           */
+/* ------------------------------------------------------------------ */
+
+export interface TokenScopeInput {
+  /** Whole teams. */
+  teamIds?: string[];
+  /** Whole projects. */
   projectIds?: string[];
-  instanceAdmin?: boolean;
-}): Promise<{ raw: string; token: ApiTokenDTO }> {
+  /** Individual apps. */
+  appIds?: string[];
+}
+
+/** Returns the raw token ONCE; only the hash is persisted. */
+export async function createToken(
+  input: { name: string; capabilities?: Capability[]; instanceAdmin?: boolean } &
+    TokenScopeInput,
+): Promise<{ raw: string; token: ApiTokenDTO }> {
   const { teamId, userId, membership } = await requireCapability("manage_tokens");
   const name = cleanTokenName(input.name);
   const capabilities = withinActor(input.capabilities, membership, "token");
-  const { projectScoped, instanceAdmin } = await validateScope(input);
+  const { scoped, instanceAdmin } = await validateScope(input);
+  const scope = await resolveScopeInput(input, userId);
 
   const raw = `deplo_${randomToken(24)}`;
   const id = newId("tok");
   const createdAt = nowIso();
-  const db = getDb();
-  const projectIds = await db.transaction(async (tx) => {
-    const scope = projectScoped
-      ? await projectsInTeam(tx, teamId, input.projectIds ?? [])
-      : [];
+  await getDb().transaction(async (tx) => {
     await tx.insert(apiTokens).values({
       id,
+      // The team it is MANAGED from. Its reach is the scope below, which may be
+      // wider — but exactly one team owns the row that can edit it.
       teamId,
       // The token acts as its creator for user-scoped fields, and its power is
       // clamped to theirs on every request — but it is NOT them: what it may do
@@ -155,18 +335,14 @@ export async function createToken(input: {
       prefix: raw.slice(0, 12),
       tokenHash: sha256Hex(raw),
       instanceAdmin,
-      projectScoped,
+      scoped,
       lastUsedAt: null,
       createdAt,
     });
     await tx
       .insert(apiTokenCapabilities)
       .values(capabilities.map((c) => ({ tokenId: id, capability: c })));
-    if (scope.length > 0)
-      await tx
-        .insert(apiTokenProjects)
-        .values(scope.map((projectId) => ({ tokenId: id, projectId })));
-    return scope;
+    await writeScope(tx, id, scope);
   });
 
   await recordActivity(
@@ -183,9 +359,12 @@ export async function createToken(input: {
       name,
       prefix: raw.slice(0, 12),
       capabilities,
-      projectScoped,
-      projectIds,
+      scoped,
+      teamIds: scope.teamIds,
+      projectIds: scope.projectIds,
+      appIds: scope.appIds,
       instanceAdmin,
+      homeTeamId: teamId,
       createdByUsername: (await getCurrentUser())?.username ?? null,
       lastUsedAt: null,
       createdAt,
@@ -198,44 +377,55 @@ export async function createToken(input: {
  * tightening a token costs one save instead of a rotation across every CI
  * secret, webhook and client config that carries it — and a tightening that
  * costs a rotation is a tightening nobody performs.
+ *
+ * Editable only from the team it was created in: a token can reach several
+ * teams, and re-authoring one from a team that merely happens to be in its scope
+ * would let that team's admin quietly cut another team's automation. Any team it
+ * reaches can still REVOKE it, which is the lever that matters.
  */
-export async function updateToken(input: {
-  id: string;
-  name: string;
-  capabilities?: Capability[];
-  projectIds?: string[];
-  instanceAdmin?: boolean;
-}): Promise<void> {
-  const { teamId, membership } = await requireCapability("manage_tokens");
+export async function updateToken(
+  input: { id: string; name: string; capabilities?: Capability[]; instanceAdmin?: boolean } &
+    TokenScopeInput,
+): Promise<void> {
+  const { teamId, userId, membership } = await requireCapability("manage_tokens");
   const name = cleanTokenName(input.name);
   const capabilities = withinActor(input.capabilities, membership, "token");
-  const { projectScoped, instanceAdmin } = await validateScope(input);
+  const { scoped, instanceAdmin } = await validateScope(input);
+  const scope = await resolveScopeInput(input, userId);
 
   const db = getDb();
   // Read and gate BEFORE opening the transaction: these helpers query on their
   // own connection, and pglite deadlocks if that happens inside one.
   const existing = (
     await db
-      .select({ instanceAdmin: apiTokens.instanceAdmin })
+      .select({
+        instanceAdmin: apiTokens.instanceAdmin,
+        homeTeamId: apiTokens.teamId,
+      })
       .from(apiTokens)
-      .where(and(eq(apiTokens.id, input.id), eq(apiTokens.teamId, teamId)))
+      .where(eq(apiTokens.id, input.id))
       .limit(1)
   )[0];
   if (!existing) throw new Error("Token not found");
+  if (existing.homeTeamId !== teamId) {
+    // Don't leak that it exists to a team it can't reach at all.
+    if (!(await tokenIdsReaching(teamId)).has(input.id))
+      throw new Error("Token not found");
+    throw new Error(
+      "This token is managed in the team it was created in. You can revoke it here, but not change it.",
+    );
+  }
   // Editing an instance-admin token is itself an instance-admin action: a plain
   // manage_tokens holder must not be able to rename it, re-scope it, or keep the
   // bit alive under a permission set of their own choosing.
   if (existing.instanceAdmin) await requireInstanceAdmin();
 
   await db.transaction(async (tx) => {
-    const scope = projectScoped
-      ? await projectsInTeam(tx, teamId, input.projectIds ?? [])
-      : [];
     await tx
       .update(apiTokens)
-      .set({ name, instanceAdmin, projectScoped })
+      .set({ name, instanceAdmin, scoped })
       .where(and(eq(apiTokens.id, input.id), eq(apiTokens.teamId, teamId)));
-    // Whole-set replace on both junctions: an edit says what the token grants
+    // Whole-set replace on every junction: an edit says what the token grants
     // now, it does not add to what it granted before.
     await tx
       .delete(apiTokenCapabilities)
@@ -243,13 +433,12 @@ export async function updateToken(input: {
     await tx
       .insert(apiTokenCapabilities)
       .values(capabilities.map((c) => ({ tokenId: input.id, capability: c })));
+    await tx.delete(apiTokenTeams).where(eq(apiTokenTeams.tokenId, input.id));
     await tx
       .delete(apiTokenProjects)
       .where(eq(apiTokenProjects.tokenId, input.id));
-    if (scope.length > 0)
-      await tx
-        .insert(apiTokenProjects)
-        .values(scope.map((projectId) => ({ tokenId: input.id, projectId })));
+    await tx.delete(apiTokenApps).where(eq(apiTokenApps.tokenId, input.id));
+    await writeScope(tx, input.id, scope);
   });
 
   await recordActivity(
@@ -263,12 +452,17 @@ export async function updateToken(input: {
 
 /**
  * Resolve an incoming `deplo_…` bearer token to the identity the whole data
- * layer runs under, or null if it does not match a live token. Bumps
- * `lastUsedAt`. Never throws for an unknown token (an unmet 2FA policy on the
- * creator does throw, deliberately — see `membershipFor`).
+ * layer runs under, or null if it does not match a live token.
+ *
+ * `teamHint` picks WHICH of the token's teams this request acts in (the
+ * `X-Deplo-Team` header, or the owning team of a deploy hook's app); an absent
+ * or unreachable hint falls back to the first team in scope, deterministically.
+ * Bumps `lastUsedAt`. Never throws for an unknown token (an unmet 2FA policy on
+ * the creator does throw, deliberately — see `membershipFor`).
  */
 export async function authenticateToken(
   raw: string,
+  teamHint?: string | null,
 ): Promise<RequestIdentity | null> {
   if (!raw.startsWith("deplo_")) return null;
   const hash = sha256Hex(raw);
@@ -278,34 +472,39 @@ export async function authenticateToken(
       userId: apiTokens.userId,
       teamId: apiTokens.teamId,
       instanceAdmin: apiTokens.instanceAdmin,
-      projectScoped: apiTokens.projectScoped,
+      scoped: apiTokens.scoped,
     })
     .from(apiTokens)
     .where(eq(apiTokens.tokenHash, hash))
     .limit(1);
   const match = rows[0];
   if (!match) return null;
-  // Fail CLOSED on a stale token: if its creator has since left (or been
-  // removed from) the token's team, the token stops resolving — it must never
-  // re-scope the request to another of the user's teams.
-  //
-  // Note this runs OUTSIDE runWithIdentity, so `membershipFor` sees the member's
-  // UNCLAMPED set. That is correct — this is a liveness check, and clamping it
-  // with the very token being authenticated would be circular.
-  if (!(await membershipFor(match.userId, match.teamId))) return null;
 
-  const [caps, scope] = await Promise.all([
-    getDb()
-      .select({ capability: apiTokenCapabilities.capability })
-      .from(apiTokenCapabilities)
-      .where(eq(apiTokenCapabilities.tokenId, match.id)),
-    match.projectScoped
-      ? getDb()
-          .select({ projectId: apiTokenProjects.projectId })
-          .from(apiTokenProjects)
-          .where(eq(apiTokenProjects.tokenId, match.id))
-      : Promise.resolve([]),
-  ]);
+  const scope = match.scoped ? await loadScope(match.id) : null;
+
+  // Fail CLOSED: the token acts only in teams its creator is STILL a member of,
+  // so losing a membership silently narrows every token that person minted, and
+  // losing the last one stops the token resolving at all.
+  const mine = await teamsForUser(match.userId);
+  const reachable = scope
+    ? mine.filter((t) => scope.teamIds.includes(t.id))
+    : mine;
+  if (reachable.length === 0) return null;
+  const picked =
+    (teamHint &&
+      reachable.find((t) => t.id === teamHint || t.slug === teamHint)) ||
+    reachable[0];
+
+  // The 2FA / membership guard, on the team the request actually resolved to.
+  // Runs OUTSIDE runWithIdentity, so `membershipFor` sees the member's UNCLAMPED
+  // set — correct, and it must stay that way: clamping it with the very token
+  // being authenticated would be circular.
+  if (!(await membershipFor(match.userId, picked.id))) return null;
+
+  const caps = await getDb()
+    .select({ capability: apiTokenCapabilities.capability })
+    .from(apiTokenCapabilities)
+    .where(eq(apiTokenCapabilities.tokenId, match.id));
 
   // Fire-and-forget usage stamp; a failed write must not block the request.
   void getDb()
@@ -318,27 +517,28 @@ export async function authenticateToken(
 
   return {
     userId: match.userId,
-    teamId: match.teamId,
+    teamId: picked.id,
     token: {
       id: match.id,
       capabilities: inCatalogOrder(caps.map((c) => c.capability as Capability)),
-      // A scoped token whose projects were all deleted keeps an EMPTY scope, not
-      // a missing one: `[]` reaches nothing, `null` would silently promote it
-      // back to the whole team.
-      projectIds: match.projectScoped ? scope.map((s) => s.projectId) : null,
+      scope,
       // Belt and braces for a hand-edited row: the two are mutually exclusive,
       // because an instance-admin gate never consults team capabilities and so
-      // could not be narrowed by a project scope anyway.
-      instanceAdmin: match.instanceAdmin && !match.projectScoped,
+      // could not be narrowed by a scope anyway.
+      instanceAdmin: match.instanceAdmin && !match.scoped,
     },
   };
 }
 
 export async function revokeToken(id: string): Promise<void> {
   const { teamId } = await requireCapability("manage_tokens");
+  // Any team the token can act in may cut it off — that is the lever a team has
+  // over a credential someone else minted into it.
+  if (!(await tokenIdsReaching(teamId)).has(id))
+    throw new Error("Token not found");
   const gone = await getDb()
     .delete(apiTokens)
-    .where(and(eq(apiTokens.id, id), eq(apiTokens.teamId, teamId)))
+    .where(eq(apiTokens.id, id))
     .returning({ id: apiTokens.id, name: apiTokens.name });
   if (gone.length === 0) throw new Error("Token not found");
   await recordActivity(
@@ -367,45 +567,143 @@ function inCatalogOrder(caps: Capability[]): Capability[] {
   return ALL_CAPABILITIES.filter((c) => set.has(c));
 }
 
+/** The three ticked-node lists, validated and de-duplicated. */
+interface ResolvedScope {
+  teamIds: string[];
+  projectIds: string[];
+  appIds: string[];
+}
+
 /**
  * Decide the two orthogonal switches, refusing the combination that cannot mean
  * what it says. Instance-admin gates read the user's admin flag and nothing
- * else, so a project scope could not narrow one — offering both would be a
- * switch that lies. Runs its gates BEFORE any transaction is opened (a data
- * function that queries on its own connection inside one deadlocks pglite).
+ * else, so a scope could not narrow one — offering both would be a switch that
+ * lies. Runs its gates BEFORE any transaction is opened (a data function that
+ * queries on its own connection inside one deadlocks pglite).
  */
-async function validateScope(input: {
-  projectIds?: string[];
-  instanceAdmin?: boolean;
-}): Promise<{ projectScoped: boolean; instanceAdmin: boolean }> {
-  const projectScoped = (input.projectIds?.length ?? 0) > 0;
+async function validateScope(
+  input: { instanceAdmin?: boolean } & TokenScopeInput,
+): Promise<{ scoped: boolean; instanceAdmin: boolean }> {
+  const scoped =
+    (input.teamIds?.length ?? 0) +
+      (input.projectIds?.length ?? 0) +
+      (input.appIds?.length ?? 0) >
+    0;
   const instanceAdmin = input.instanceAdmin ?? false;
-  if (instanceAdmin && projectScoped)
+  if (instanceAdmin && scoped)
     throw new Error(
-      "A token limited to projects can't administer the instance. Pick one.",
+      "A token limited to teams, projects or apps can't administer the instance. Pick one.",
     );
   // Only an instance admin can hand out instance administration.
   if (instanceAdmin) await requireInstanceAdmin();
-  return { projectScoped, instanceAdmin };
+  return { scoped, instanceAdmin };
 }
 
-/** Never trust a client-supplied project id: every one must be in this team. */
-async function projectsInTeam(
+/**
+ * Validate every ticked node against what the ACTOR can reach. You can only put
+ * a team in a token's scope if you are in that team, and a project or app only
+ * if it lives in one of those teams — otherwise the scope picker would be a way
+ * to discover, and reach into, teams you don't belong to.
+ */
+async function resolveScopeInput(
+  input: TokenScopeInput,
+  userId: string,
+): Promise<ResolvedScope> {
+  const teamIds = [...new Set(input.teamIds ?? [])];
+  const projectIds = [...new Set(input.projectIds ?? [])];
+  const appIds = [...new Set(input.appIds ?? [])];
+  if (teamIds.length + projectIds.length + appIds.length === 0)
+    return { teamIds: [], projectIds: [], appIds: [] };
+
+  const mine = new Set((await teamsForUser(userId)).map((t) => t.id));
+  for (const id of teamIds)
+    if (!mine.has(id)) throw new Error("You're not a member of one of those teams");
+
+  const db = getDb();
+  if (projectIds.length > 0) {
+    const rows = await db
+      .select({ id: projectsTable.id, teamId: projectsTable.teamId })
+      .from(projectsTable)
+      .where(inArray(projectsTable.id, projectIds));
+    if (rows.length !== projectIds.length || rows.some((r) => !mine.has(r.teamId)))
+      throw new Error("One of those projects isn't in a team you belong to");
+  }
+  if (appIds.length > 0) {
+    const rows = await db
+      .select({ id: appsTable.id, teamId: appsTable.teamId })
+      .from(appsTable)
+      .where(inArray(appsTable.id, appIds));
+    if (rows.length !== appIds.length || rows.some((r) => !mine.has(r.teamId)))
+      throw new Error("One of those apps isn't in a team you belong to");
+  }
+  return { teamIds, projectIds, appIds };
+}
+
+async function writeScope(
   tx: DbTx,
-  teamId: string,
-  ids: string[],
-): Promise<string[]> {
-  const wanted = [...new Set(ids)];
-  if (wanted.length === 0) return [];
-  const rows = await tx
-    .select({ id: projectsTable.id })
-    .from(projectsTable)
-    .where(
-      and(eq(projectsTable.teamId, teamId), inArray(projectsTable.id, wanted)),
-    );
-  if (rows.length !== wanted.length)
-    throw new Error("One of those projects isn't in this team");
-  return rows.map((r) => r.id);
+  tokenId: string,
+  scope: ResolvedScope,
+): Promise<void> {
+  if (scope.teamIds.length > 0)
+    await tx
+      .insert(apiTokenTeams)
+      .values(scope.teamIds.map((teamId) => ({ tokenId, teamId })));
+  if (scope.projectIds.length > 0)
+    await tx
+      .insert(apiTokenProjects)
+      .values(scope.projectIds.map((projectId) => ({ tokenId, projectId })));
+  if (scope.appIds.length > 0)
+    await tx
+      .insert(apiTokenApps)
+      .values(scope.appIds.map((appId) => ({ tokenId, appId })));
+}
+
+/**
+ * Flatten a stored scope for the request identity. The team set is DERIVED — a
+ * project knows its team, an app knows its team — so a node deleted anywhere
+ * simply drops out of the join and the token narrows instead of widening.
+ */
+async function loadScope(tokenId: string): Promise<TokenScope> {
+  const db = getDb();
+  const [teamRows, projRows, appRows] = await Promise.all([
+    db
+      .select({ teamId: apiTokenTeams.teamId })
+      .from(apiTokenTeams)
+      .innerJoin(teamsTable, eq(teamsTable.id, apiTokenTeams.teamId))
+      .where(eq(apiTokenTeams.tokenId, tokenId)),
+    db
+      .select({ id: projectsTable.id, teamId: projectsTable.teamId })
+      .from(apiTokenProjects)
+      .innerJoin(projectsTable, eq(projectsTable.id, apiTokenProjects.projectId))
+      .where(eq(apiTokenProjects.tokenId, tokenId)),
+    db
+      .select({
+        id: appsTable.id,
+        teamId: appsTable.teamId,
+        projectId: appsTable.projectId,
+      })
+      .from(apiTokenApps)
+      .innerJoin(appsTable, eq(appsTable.id, apiTokenApps.appId))
+      .where(eq(apiTokenApps.tokenId, tokenId)),
+  ]);
+  const wholeTeamIds = teamRows.map((r) => r.teamId);
+  return {
+    teamIds: [
+      ...new Set([
+        ...wholeTeamIds,
+        ...projRows.map((r) => r.teamId),
+        ...appRows.map((r) => r.teamId),
+      ]),
+    ],
+    wholeTeamIds,
+    projectIds: projRows.map((r) => r.id),
+    appIds: appRows.map((r) => r.id),
+    appProjectIds: [
+      ...new Set(
+        appRows.map((r) => r.projectId).filter((id): id is string => id != null),
+      ),
+    ],
+  };
 }
 
 async function actorUsername(): Promise<string> {

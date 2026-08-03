@@ -95,16 +95,22 @@ registered users by username and attaches a `Membership` directly.
 _Avoid_: invite (reserved for adding an existing user to a team), email invite (removed).
 
 **API token**:
-The team-scoped `deplo_` bearer token a **user** mints from Settings → API tokens to drive
+The `deplo_` bearer token a **user** mints from Settings → API tokens to drive
 Deplo's GraphQL API from outside the dashboard (a script, CI, an AI agent). It is a
 **principal with its own Capabilities**, chosen when it is created and editable afterwards
 without re-minting it — never an impersonation of its creator. Its **effective** power is the
-INTERSECTION of what it was granted and what its creator can still do in that team, resolved
+INTERSECTION of what it was granted and what its creator can still do in the team the request
+resolves to, computed
 live on every request, so revoking a person's access blunts every token they minted. Two
-orthogonal switches ride alongside: a **project scope** (a set of **Project** containers; a
-scoped token reaches only apps inside them, and every team-wide capability it holds stops
-applying) and an opt-in **instance-admin** bit, which only an instance admin can grant and
-which is mutually exclusive with a scope. Shown **once** at creation; only its **sha256** is
+orthogonal switches ride alongside: a **scope** and an opt-in **instance-admin** bit (only an
+instance admin can grant it; mutually exclusive with a scope). The scope is a TREE — whole
+**Teams**, whole **Projects**, or individual **Apps**, ticked at whatever depth fits, and
+nothing ticked means every team its creator belongs to. Breadth and depth are different
+questions: holding several whole teams restricts nothing inside them, while naming a project or
+an app narrows the token in that team and drops every team-wide capability it holds there. A
+bearer request acts in ONE of the token's teams, picked with the `X-Deplo-Team` header and
+defaulting to the first in scope. It is MANAGED from the team it was created in; any team it
+reaches can revoke it. Shown **once** at creation; only its **sha256** is
 stored, so it is revocable but never re-readable. The dashboard itself never uses one — the
 browser carries the Better Auth session cookie (`deplo.session_token`) instead.
 _Avoid_: "the token inherits its creator's capabilities" (pre-0061 language), personal access

@@ -85,8 +85,10 @@ test("createToken persists its own capability set, in catalog order, with the vi
     assert.equal(list[0]!.id, token.id);
     assert.equal(list[0]!.prefix, raw.slice(0, 12));
     assert.deepEqual(list[0]!.capabilities, ["view", "deploy_apps", "view_logs"]);
-    assert.equal(list[0]!.projectScoped, false);
+    assert.equal(list[0]!.scoped, false);
+    assert.deepEqual(list[0]!.teamIds, []);
     assert.deepEqual(list[0]!.projectIds, []);
+    assert.deepEqual(list[0]!.appIds, []);
     assert.equal(list[0]!.createdByUsername, USER_1);
     // The DTO never carries the hash.
     assert.equal("tokenHash" in list[0]!, false);
@@ -168,7 +170,7 @@ test("a project scope round-trips, and a foreign project writes nothing", async 
       capabilities: ["deploy_apps"],
       projectIds: ["prc_a"],
     });
-    assert.equal(token.projectScoped, true);
+    assert.equal(token.scoped, true);
     assert.deepEqual(token.projectIds, ["prc_a"]);
 
     await assert.rejects(
@@ -177,7 +179,7 @@ test("a project scope round-trips, and a foreign project writes nothing", async 
           name: "Foreign",
           projectIds: ["prc_b"],
         }),
-      /isn't in this team/,
+      /isn't in a team you belong to/,
     );
   });
   // The refusal rolled the whole insert back — no half-created token.
@@ -201,7 +203,7 @@ test("authenticateToken returns the token's own grant and bumps lastUsedAt", asy
     token: {
       id,
       capabilities: ["view", "deploy_apps"],
-      projectIds: null,
+      scope: null,
       instanceAdmin: false,
     },
   });
@@ -216,7 +218,7 @@ test("authenticateToken returns the token's own grant and bumps lastUsedAt", asy
   assert.ok(stamped, "lastUsedAt was stamped after authentication");
 });
 
-test("a scope whose projects were all deleted reaches NOTHING, not everything", async () => {
+test("a scope whose every node was deleted stops resolving, it does not widen", async () => {
   await seedProject("prc_a", TEAM_A, "Alpha");
   const raw = await asUser1(
     async () =>
@@ -228,12 +230,15 @@ test("a scope whose projects were all deleted reaches NOTHING, not everything", 
         })
       ).raw,
   );
-  // The FK cascades the junction row away. Without `project_scoped` on the token
+  // The FK cascades the junction row away. Without `scoped` on the token
   // itself, this is exactly where the token would silently widen to the team.
   await db.delete(projectsTable).where(eq(projectsTable.id, "prc_a"));
 
-  const identity = await authenticateToken(raw);
-  assert.deepEqual(identity?.token?.projectIds, []);
+  // It stops resolving entirely rather than reading as "unscoped" and widening:
+  // its team set is DERIVED from the nodes it named, and there are none left, so
+  // there is no team it may act in. Fail closed, and a 401 is a far easier thing
+  // to debug than a token that authenticates and then finds nothing anywhere.
+  assert.equal(await authenticateToken(raw), null);
 });
 
 test("authenticateToken returns null for an unknown or non-deplo token", async () => {
@@ -315,7 +320,7 @@ test("updateToken rewrites both junctions rather than merging into them", async 
     const t = (await listTokens())[0]!;
     assert.equal(t.name, "Narrowed");
     assert.deepEqual(t.capabilities, ["view", "view_logs"]);
-    assert.equal(t.projectScoped, false);
+    assert.equal(t.scoped, false);
     assert.deepEqual(t.projectIds, []);
   });
   assert.equal(

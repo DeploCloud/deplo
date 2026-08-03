@@ -40,13 +40,39 @@ export interface TokenGrant {
   id: string;
   capabilities: Capability[];
   /**
-   * The Projects this token may reach. `null` means unscoped (the whole team);
-   * `[]` means scoped to nothing left — a scope whose projects were all deleted,
-   * which must fail closed rather than read as "no scope".
+   * What the token may REACH. `null` means unrestricted — every team its creator
+   * belongs to, and everything in it. Otherwise it is the tree the editor drew,
+   * and an EMPTY one (every node it named has since been deleted) reaches
+   * nothing, which is the whole reason the intent is stored separately.
    */
-  projectIds: string[] | null;
-  /** May administer the whole instance. Never true alongside a project scope. */
+  scope: TokenScope | null;
+  /** May administer the whole instance. Never true alongside a narrowed scope. */
   instanceAdmin: boolean;
+}
+
+/**
+ * A token's resolved scope tree, flattened for lookup.
+ *
+ * Depth and breadth are different questions and are answered separately. WHICH
+ * teams is breadth: a token holding two whole teams is not restricted inside
+ * either of them. HOW MUCH of a team is depth: naming a project or an app inside
+ * a team is what strips that team's team-wide capabilities, because there is no
+ * per-project version of "manage members".
+ */
+export interface TokenScope {
+  /** Every team the token can act in at all (whole ones plus derived ones). */
+  teamIds: string[];
+  /** Teams reachable WHOLLY — every project, every app, every team-wide setting. */
+  wholeTeamIds: string[];
+  /** Projects reachable wholly (every app in them, now and later). */
+  projectIds: string[];
+  /** Individually-named apps. */
+  appIds: string[];
+  /**
+   * The Projects that individually-named apps live in, so a token given one app
+   * can still see the container it sits in. Derived at authentication time.
+   */
+  appProjectIds: string[];
 }
 
 // In `next dev` the RSC layer and the route-handler layer compile into separate
@@ -75,26 +101,52 @@ export function currentIdentity(): RequestIdentity | null {
 }
 
 /**
- * The Projects the current request is limited to, or null when it isn't limited.
+ * The scope narrowing this request BELOW the whole of its active team, or null
+ * when nothing is: a cookie session, an unrestricted token, and a token holding
+ * the active team wholly all answer null and are treated identically.
+ *
+ * That is the load-bearing distinction. Naming several teams is breadth and
+ * restricts nothing inside them; naming a project or an app is depth, and depth
+ * is what every check below (and the capability clamp) keys on.
  *
  * Synchronous and query-free by design: the scope rides on the identity, so it
  * can be consulted inside a `getDb().transaction()` (where opening a second
  * connection deadlocks pglite) and inside a subscription generator tick, where
  * nothing request-scoped is reachable.
  */
-export function tokenProjectScope(): string[] | null {
-  return currentIdentity()?.token?.projectIds ?? null;
+export function narrowedScope(): TokenScope | null {
+  const id = currentIdentity();
+  const scope = id?.token?.scope;
+  if (!scope) return null;
+  return scope.wholeTeamIds.includes(id!.teamId) ? null : scope;
 }
 
 /**
  * Whether a resource filed under `projectId` is reachable by this request.
  *
  * A resource with no Project (a top-level app, a folder at the team root)
- * belongs to no scope and is therefore outside every scope — fail-closed, and it
- * keeps a scope from widening the moment someone drags a tile out of a project.
- * Always true for a cookie request and for an unscoped token.
+ * belongs to no project and is therefore outside every narrowed scope —
+ * fail-closed, and it keeps a scope from widening the moment someone drags a
+ * tile out of a project. An individually-named app makes its container visible,
+ * so a token given one app can still navigate to where it lives.
  */
 export function inProjectScope(projectId: string | null | undefined): boolean {
-  const ids = tokenProjectScope();
-  return !ids || (projectId != null && ids.includes(projectId));
+  const scope = narrowedScope();
+  if (!scope) return true;
+  if (projectId == null) return false;
+  return (
+    scope.projectIds.includes(projectId) ||
+    scope.appProjectIds.includes(projectId)
+  );
+}
+
+/** Whether an app row is reachable — by its own id, or by its project. */
+export function inAppScope(app: {
+  id: string;
+  projectId?: string | null;
+}): boolean {
+  const scope = narrowedScope();
+  if (!scope) return true;
+  if (scope.appIds.includes(app.id)) return true;
+  return app.projectId != null && scope.projectIds.includes(app.projectId);
 }

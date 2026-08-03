@@ -1543,15 +1543,15 @@ export const apiTokens = pgTable(
     tokenHash: text("token_hash").notNull(),
     prefix: text("prefix").notNull(),
     // May administer the WHOLE INSTANCE (users, servers, global env), not just its
-    // team. Only an instance admin can mint one, and it is mutually exclusive with
-    // `project_scoped`: instance-admin gates never consult team capabilities, so a
-    // project scope could not narrow them.
+    // teams. Only an instance admin can mint one, and it is mutually exclusive
+    // with a narrowed scope: instance-admin gates never consult team
+    // capabilities, so a scope could not narrow them.
     instanceAdmin: boolean("instance_admin").notNull().default(false),
-    // The INTENT to be scoped, stored separately from the junction on purpose: a
-    // project delete cascades `api_token_projects` away, and without this flag an
-    // emptied scope would read as "no scope" and silently WIDEN the token to the
-    // whole team. Scoped with zero rows means "reaches nothing".
-    projectScoped: boolean("project_scoped").notNull().default(false),
+    // The INTENT to be scoped, stored separately from the junctions on purpose: a
+    // deleted project or app cascades its scope row away, and without this flag an
+    // emptied scope would read as "no scope" and silently WIDEN the token to
+    // everything. Scoped with zero rows means "reaches nothing".
+    scoped: boolean("scoped").notNull().default(false),
     lastUsedAt: isoTimestamptz("last_used_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
@@ -1576,11 +1576,36 @@ export const apiTokenCapabilities = pgTable(
 );
 
 /**
- * The Projects a token is limited to. Read together with `api_tokens.project_scoped`:
- * the flag says whether a scope exists at all, these rows say which. Both FKs
- * CASCADE — a deleted project drops out of every scope, which is why the flag has
- * to carry the intent.
+ * What a token may REACH, as three junctions — one per level of the tree the
+ * editor shows: whole Teams, whole Projects, individual Apps. A row means "this
+ * node, and everything under it".
+ *
+ * Read together with `api_tokens.scoped`: the flag says whether a scope exists at
+ * all, these rows say what is in it. Every FK CASCADEs, so a deleted node simply
+ * drops out — which is exactly why the flag has to carry the intent separately.
+ *
+ * Three tables rather than one with nullable columns: a Postgres PRIMARY KEY
+ * cannot contain a nullable column, and the alternatives (a surrogate id plus a
+ * COALESCE unique index, or a `kind`/`ref_id` pair with no FK at all) both trade
+ * a real foreign key for a discriminant. The token's TEAM set is derived — a
+ * project knows its team, an app knows its team — so nothing is denormalized.
  */
+export const apiTokenTeams = pgTable(
+  "api_token_teams",
+  {
+    tokenId: text("token_id")
+      .notNull()
+      .references(() => apiTokens.id, { onDelete: "cascade" }),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tokenId, t.teamId] }),
+    index("api_token_teams_team_idx").on(t.teamId),
+  ],
+);
+
 export const apiTokenProjects = pgTable(
   "api_token_projects",
   {
@@ -1594,6 +1619,22 @@ export const apiTokenProjects = pgTable(
   (t) => [
     primaryKey({ columns: [t.tokenId, t.projectId] }),
     index("api_token_projects_project_idx").on(t.projectId),
+  ],
+);
+
+export const apiTokenApps = pgTable(
+  "api_token_apps",
+  {
+    tokenId: text("token_id")
+      .notNull()
+      .references(() => apiTokens.id, { onDelete: "cascade" }),
+    appId: text("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tokenId, t.appId] }),
+    index("api_token_apps_app_idx").on(t.appId),
   ],
 );
 

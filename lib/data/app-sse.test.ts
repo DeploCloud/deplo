@@ -133,7 +133,13 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
     id: "tok_test",
     capabilities: [...ALL_CAPABILITIES],
     // Scoped to a project the app is NOT in.
-    projectIds: ["prc_in"],
+    scope: {
+      teamIds: [TEAM_A],
+      wholeTeamIds: [],
+      projectIds: ["prc_in"],
+      appIds: [],
+      appProjectIds: [],
+    },
     instanceAdmin: false,
   };
   const asScoped = <T>(fn: () => T) =>
@@ -148,7 +154,13 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
   const ok = {
     id: "tok_test",
     capabilities: [...ALL_CAPABILITIES],
-    projectIds: ["prc_out"],
+    scope: {
+      teamIds: [TEAM_A],
+      wholeTeamIds: [],
+      projectIds: ["prc_out"],
+      appIds: [],
+      appProjectIds: [],
+    },
     instanceAdmin: false,
   };
   const asOk = <T>(fn: () => T) =>

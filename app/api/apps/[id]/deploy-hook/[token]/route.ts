@@ -3,6 +3,7 @@ import { appInTeam } from "@/lib/data/app-graph-load";
 import { verifyDeployHookToken } from "@/lib/data/deploy-hook";
 import { redeploy } from "@/lib/data/deployments";
 import { runWithIdentity } from "@/lib/auth/request-context";
+import { owningTeamId } from "@/lib/data/deploy-hook";
 
 /**
  * The deploy hook: `POST /api/apps/<id>/deploy-hook/<token>` deploys the app.
@@ -66,7 +67,13 @@ export async function POST(
   // exists, or whether its hook is switched off.
   const header = request.headers.get("authorization") ?? "";
   const raw = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  const principal = raw ? await authenticateToken(raw) : null;
+  const { id: hookAppId } = await ctx.params;
+  // A token's scope can span teams, so say which one this call is about: the
+  // team that owns the app in the URL. An un-gated id → team_id lookup, which
+  // leaks nothing on its own — every check below still runs as the token.
+  const principal = raw
+    ? await authenticateToken(raw, await owningTeamId(hookAppId))
+    : null;
   if (!principal)
     return Response.json(
       {
@@ -76,7 +83,8 @@ export async function POST(
       { status: 401 },
     );
 
-  const { id: appId, token } = await ctx.params;
+  const { token } = await ctx.params;
+  const appId = hookAppId;
   // Everything from here runs as the token, so an app its project scope excludes
   // answers exactly like an app that isn't there. The reachability check has to
   // come BEFORE the "hook is off" branch, or the 403 stays an existence oracle.

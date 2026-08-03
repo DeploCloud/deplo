@@ -24,6 +24,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import { CAPABILITY_META } from "@/lib/capabilities";
 import { TOKEN_PRESETS, presetIdFor } from "@/lib/token-presets";
+import { scopeLabel } from "@/components/settings/tokens/scope-label";
 import type { ApiTokenDTO } from "@/lib/data/tokens";
 
 /**
@@ -34,12 +35,12 @@ import type { ApiTokenDTO } from "@/lib/data/tokens";
  */
 export function TokensList({
   tokens,
-  projectNames,
+  names,
   canManage,
 }: {
   tokens: ApiTokenDTO[];
-  /** Project id → name, for the scope column. */
-  projectNames: Record<string, string>;
+  /** Team / project / app id → name, as far as this team can resolve them. */
+  names: Record<string, string>;
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -67,9 +68,7 @@ export function TokensList({
             const sensitive = t.capabilities.some(
               (c) => CAPABILITY_META[c]?.sensitive,
             );
-            const scope = t.projectIds
-              .map((id) => projectNames[id])
-              .filter(Boolean);
+            const scope = scopeLabel(t, names);
             return (
               <TableRow key={t.id}>
                 <TableCell>
@@ -112,22 +111,20 @@ export function TokensList({
                   </span>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {!t.projectScoped ? (
-                    "Whole team"
-                  ) : scope.length === 0 ? (
-                    <SimpleTooltip content="Every project it was limited to has been deleted, so it reaches nothing. Edit it to pick another.">
+                  {!t.scoped ? (
+                    scope.text
+                  ) : scope.empty ? (
+                    <SimpleTooltip content="Every team, project and app it was limited to has been deleted, so it reaches nothing and no longer authenticates. Edit it to pick another, or revoke it.">
                       <span className="flex w-fit items-center gap-1 text-amber-500">
                         <FolderTree className="size-3.5" aria-hidden />
-                        No projects left
+                        {scope.text}
                       </span>
                     </SimpleTooltip>
                   ) : (
-                    <SimpleTooltip content={scope.join(", ")}>
-                      <span className="flex w-fit items-center gap-1">
-                        <FolderTree className="size-3.5" aria-hidden />
-                        {scope.length === 1 ? scope[0] : `${scope.length} projects`}
-                      </span>
-                    </SimpleTooltip>
+                    <span className="flex w-fit items-center gap-1">
+                      <FolderTree className="size-3.5" aria-hidden />
+                      {scope.text}
+                    </span>
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">

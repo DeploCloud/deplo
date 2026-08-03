@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import { inProjectScope, tokenProjectScope } from "../auth/request-context";
+import { inAppScope, narrowedScope } from "../auth/request-context";
 import type { DbTx } from "../db/client";
 import {
   deployments,
@@ -399,31 +399,41 @@ export async function insertEnvVars(db: DbReader, vars: EnvVar[]): Promise<void>
 /* ------------------------------------------------------------------ */
 
 /**
- * The project-scope predicate for any query over `apps`, or undefined when the
- * caller isn't scoped (every browser request, and every unscoped token).
+ * The scope predicate for any query over `apps`, or undefined when the caller
+ * isn't narrowed below the whole of its active team (every browser request, an
+ * unrestricted token, and a token holding this team wholly).
  *
- * An API token can be limited to a set of Projects, and "limited" means it
- * cannot READ the rest either — so the predicate belongs in the ownership gates
- * below and in every team-wide app query, not in a second gate beside them.
- * Pure and synchronous: the scope rides on the request identity, so this is
- * safe inside a transaction and inside a subscription tick.
+ * An API token can be limited to whole Projects and to individual Apps, and
+ * "limited" means it cannot READ the rest either — so the predicate belongs in
+ * the ownership gates below and in every team-wide app query, not in a second
+ * gate beside them. Pure and synchronous: the scope rides on the request
+ * identity, so this is safe inside a transaction and inside a subscription tick.
  *
- * An app at the TOP LEVEL (`project_id IS NULL`) belongs to no Project and is
- * therefore outside every scope. `NULL IN (…)` is NULL in SQL, so the safe
- * answer is also the free one — and the alternative would mean dragging an app
- * out of a project silently WIDENS every token scoped to it.
+ * Ids from the token's OTHER teams can sit harmlessly in the predicate: every
+ * caller ANDs it with `apps.team_id`, so they can never match.
+ *
+ * An app at the TOP LEVEL (`project_id IS NULL`) belongs to no Project, so a
+ * project row never reaches it — only naming the app itself does. That is
+ * fail-closed, and it keeps a scope from widening the moment someone drags an
+ * app out of a project.
  *
  * ponytail: matches on `apps.project_id` only. An app filed under a folder that
  * itself sits in a project (the legacy nesting `listProjects` still credits) is
- * out of scope — fail-closed; walk the folder chain if that ever matters.
+ * reachable only by naming the app — fail-closed; walk the folder chain if that
+ * ever matters.
  */
 export function appScopeWhere(): SQL | undefined {
-  const ids = tokenProjectScope();
-  if (!ids) return undefined;
-  // Scoped to nothing left (every project in the scope was deleted): reaches no
-  // app at all. Spelled out rather than relying on `inArray(col, [])`, whose
+  const scope = narrowedScope();
+  if (!scope) return undefined;
+  const clauses: SQL[] = [];
+  if (scope.projectIds.length > 0)
+    clauses.push(inArray(apps.projectId, scope.projectIds));
+  if (scope.appIds.length > 0) clauses.push(inArray(apps.id, scope.appIds));
+  // Nothing left in the scope (every node it named was deleted): reaches no app
+  // at all. Spelled out rather than relying on `inArray(col, [])`, whose
   // behaviour has changed across Drizzle versions.
-  return ids.length > 0 ? inArray(apps.projectId, ids) : sql`false`;
+  if (clauses.length === 0) return sql`false`;
+  return clauses.length === 1 ? clauses[0] : or(...clauses)!;
 }
 
 /**
@@ -441,7 +451,7 @@ export async function loadTeamApp(
   db: DbReader = getDb(),
 ): Promise<App | null> {
   const p = await loadAppGraph(appId, db);
-  return p && p.teamId === teamId && inProjectScope(p.projectId) ? p : null;
+  return p && p.teamId === teamId && inAppScope(p) ? p : null;
 }
 
 /** True if a project belongs to a team, and is in the caller's scope. */

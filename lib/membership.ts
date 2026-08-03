@@ -18,7 +18,7 @@ import {
   PROJECT_SCOPED_CAPABILITIES,
   boundedBy,
 } from "./membership-shared";
-import { currentIdentity, tokenProjectScope } from "./auth/request-context";
+import { currentIdentity, narrowedScope } from "./auth/request-context";
 
 export {
   CAPABILITY_PRESETS,
@@ -254,8 +254,10 @@ export async function membershipFor(
  * Two intersections, in order:
  *  - the token's own set, so it can never exceed its creator (and loses a
  *    permission the moment they do — nothing is materialized, this is read live);
- *  - and, when the token is limited to Projects, {@link PROJECT_SCOPED_CAPABILITIES},
- *    which drops every team-wide permission that has no per-project meaning.
+ *  - and, when the token is narrowed BELOW this whole team (to a project or a
+ *    single app), {@link PROJECT_SCOPED_CAPABILITIES}, which drops every
+ *    team-wide permission that has no per-project meaning. Naming several whole
+ *    teams is breadth and strips nothing.
  *
  * Keyed on the (userId, teamId) PAIR because `membershipFor` is also called to
  * hydrate OTHER people's memberships (the member list, the roles page, a folder
@@ -270,9 +272,11 @@ function clampToToken(
   const id = currentIdentity();
   if (!id?.token || id.userId !== userId || id.teamId !== teamId) return caps;
   const own = boundedBy(caps, id.token.capabilities);
-  return id.token.projectIds
-    ? boundedBy(own, PROJECT_SCOPED_CAPABILITIES)
-    : own;
+  // Depth strips, breadth doesn't: a token holding this team WHOLLY keeps every
+  // capability it was given, however many other teams it also reaches. Only
+  // being narrowed to a project or an app inside this team drops the team-wide
+  // ones, which have no per-project meaning.
+  return narrowedScope() ? boundedBy(own, PROJECT_SCOPED_CAPABILITIES) : own;
 }
 
 /**
@@ -414,9 +418,9 @@ function tokenHoldsInstanceAdmin(): boolean {
 }
 
 /**
- * Refuse a resource that has no per-Project meaning to a project-scoped token.
+ * Refuse a resource that has no per-Project meaning to a narrowed token.
  *
- * A token limited to Projects reaches apps in those Projects and nothing else.
+ * A token narrowed below the whole of this team reaches its apps and nothing else.
  * Its capability set already drops every team-wide permission (see
  * {@link PROJECT_SCOPED_CAPABILITIES}), which closes the MUTATIONS — but `view`
  * is an always-on floor that no capability check consults, so team-wide READS
@@ -429,7 +433,7 @@ function tokenHoldsInstanceAdmin(): boolean {
  * transaction. A no-op for every cookie request and every unscoped token.
  */
 export function requireUnscoped(what: string): void {
-  if (tokenProjectScope())
+  if (narrowedScope())
     throw new Error(
       `This API token is limited to specific projects and can't access ${what}.`,
     );

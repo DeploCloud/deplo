@@ -62,6 +62,9 @@ type AddServerPayload {
 A team API token. Only the prefix is ever exposed — the raw token is shown once at creation and only its hash is persisted.
 """
 type ApiToken {
+  """Individually-named apps in the scope."""
+  appIds: [String!]
+
   """
   What this token itself may do. Its effective power is this set intersected with what its creator can still do in the team, so a token can never outlive the access of the member who minted it.
   """
@@ -70,6 +73,11 @@ type ApiToken {
 
   """The member this token acts as, and is clamped to."""
   createdByUsername: String
+
+  """
+  The team this token is MANAGED from — where it was created. Any team it reaches can revoke it; only this one can change it.
+  """
+  homeTeamId: ID
   id: ID
 
   """
@@ -81,14 +89,17 @@ type ApiToken {
   prefix: String
 
   """
-  The projects this token is limited to. Only meaningful when `projectScoped` is true; a scoped token reaches only apps in these projects, and team-wide permissions such as managing members stop applying to it.
+  Whole projects in the scope: every app in them, now and later. Naming one narrows the token inside that team, so the team-wide permissions it holds (managing members, roles, databases) stop applying there.
   """
   projectIds: [String!]
 
   """
-  Whether this token is limited to specific projects at all. False means it reaches the whole team.
+  Whether this token is limited at all. False means every team its creator belongs to, and everything in it.
   """
-  projectScoped: Boolean
+  scoped: Boolean
+
+  """Whole teams in the scope: every project and every app in them."""
+  teamIds: [String!]
 }
 
 """A deployable application owned by a team."""
@@ -580,10 +591,12 @@ input CreateS3Input {
 }
 
 input CreateTokenInput {
+  appIds: [String!]
   capabilities: [Capability!]
   instanceAdmin: Boolean
   name: String!
   projectIds: [String!]
+  teamIds: [String!]
 }
 
 """
@@ -2906,11 +2919,13 @@ input UpdateTeamInput {
 }
 
 input UpdateTokenInput {
+  appIds: [String!]
   capabilities: [Capability!]
   id: String!
   instanceAdmin: Boolean
   name: String!
   projectIds: [String!]
+  teamIds: [String!]
 }
 
 input UpdateUserAdminInput {

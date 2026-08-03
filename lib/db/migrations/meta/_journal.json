@@ -435,6 +435,13 @@
       "when": 1784673400000,
       "tag": "0061_token_capabilities",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1784673600000,
+      "tag": "0062_token_scope_tree",
+      "breakpoints": true
     }
   ]
 }

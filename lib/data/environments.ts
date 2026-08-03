@@ -10,7 +10,7 @@ import {
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
-import { inProjectScope, tokenProjectScope } from "../auth/request-context";
+import { inProjectScope } from "../auth/request-context";
 import type { Environment, EnvironmentKind } from "../types";
 
 /**
@@ -141,9 +141,8 @@ export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
     .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
     .where(eq(projectsTable.teamId, teamId))
     .orderBy(asc(projectsTable.name), asc(environmentsTable.position));
-  const scope = tokenProjectScope();
   return rows
-    .filter((r) => !scope || scope.includes(r.projectId))
+    .filter((r) => inProjectScope(r.projectId))
     .map((r) => ({
     id: r.id,
     name: r.name,

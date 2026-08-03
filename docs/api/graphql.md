@@ -43,19 +43,28 @@ A token carries **its own capabilities**, chosen when you create it — the same
 fine-grained set a Role is built from. Its effective power is the intersection of
 two things: what the token was granted, and what its creator can still do in that
 team, so revoking a person's access also blunts every token they minted. An
-optional **project scope** narrows it further: a scoped token reaches only apps in
-those projects, and team-wide permissions such as managing members stop applying
-to it. Every query and mutation is filtered to the token's team automatically —
-there is no way for a token to reach another team's data.
+optional **scope** narrows what it reaches, as a tree: whole teams, whole
+projects, or individual apps. Ticking a node grants everything under it; ticking
+nothing means every team its creator belongs to. Naming a project or an app
+narrows the token inside that team, and the team-wide permissions it holds
+(managing members, roles, registries, databases) stop applying there — naming
+several whole teams restricts nothing inside them.
+
+A request acts in exactly ONE team. Send **`X-Deplo-Team: <team id or slug>`** to
+pick which; without it the first team in the token's scope is used, and a team
+the token doesn't hold is ignored rather than honoured. `myTeams` lists the ones
+it may switch between. Every query and mutation is then filtered to that team
+automatically.
 
 Settings → API tokens ships templates — Read only, Deploy hook & CI, MCP & AI
 agents, App automation, Root access — or you can start from scratch.
 
 > **Breaking change:** `createToken` now takes an input object and a permission
 > list: `createToken(input: { name: "ci", capabilities: [deploy_apps, view_logs] })`.
-> There is no default: a token with no capabilities named is view-only. Use
-> `updateToken` to change a live token's permissions or scope without re-minting
-> it.
+> There is no default: a token with no capabilities named is view-only. The scope
+> is three optional lists on the same input — `teamIds`, `projectIds`, `appIds` —
+> and `updateToken` changes a live token's permissions or scope without
+> re-minting it.
 
 Unauthenticated requests resolve `me` to `null` and are rejected by any field
 that requires a login (`Not authorized to resolve …`).
@@ -236,4 +245,4 @@ the deploy runs through exactly the gates the dashboard button does. Answers `20
 
 `401` — no/invalid API token. `403` — the hook is switched off, or the token (or the member it
 acts as) may not deploy this app. `404` — no such app, wrong URL token, the app belongs to
-another team, or it is outside the token's project scope.
+another team, or it is outside the token's scope.

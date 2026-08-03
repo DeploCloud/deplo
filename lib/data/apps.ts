@@ -96,7 +96,7 @@ import {
 import { listGithubInstallations } from "./github";
 import { AgentUnreachableError } from "../infra/agent-client";
 import { publishAppChanged } from "../graphql/pubsub";
-import { inProjectScope } from "../auth/request-context";
+import { inAppScope, inProjectScope } from "../auth/request-context";
 import {
   insertEnvVars,
   loadDomainsForApp,
@@ -244,7 +244,7 @@ export async function listApps(): Promise<AppSummary[]> {
   // `loadAppsByTeam` is an engine primitive (the deploy queue and team teardown
   // read through it too) and must never filter itself — the project scope of an
   // API token is applied HERE, where the answer is a user-facing list.
-  const proj = all.filter((p) => inProjectScope(p.projectId));
+  const proj = all.filter((p) => inAppScope(p));
   const pre = await preloadSummaries(proj);
   // Honour the team's manual order (Overview drag-and-drop) when present:
   // explicitly-ordered apps come first in that order, anything not listed
@@ -319,7 +319,7 @@ export const getAppBySlug = cache(async function getAppBySlug(
 ): Promise<AppSummary | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadAppGraphBySlug(slug);
-  return p && p.teamId === teamId && inProjectScope(p.projectId)
+  return p && p.teamId === teamId && inAppScope(p)
     ? summarizeOne(p)
     : null;
 });
@@ -349,7 +349,7 @@ export async function summarizeForTeam(
   teamId: string,
 ): Promise<AppSummary | null> {
   const p = await loadAppGraph(id);
-  return p && p.teamId === teamId && inProjectScope(p.projectId)
+  return p && p.teamId === teamId && inAppScope(p)
     ? summarizeOne(p)
     : null;
 }
@@ -360,7 +360,7 @@ export async function findAppSummaryBySlugForTeam(
   teamId: string,
 ): Promise<AppSummary | null> {
   const p = await loadAppGraphBySlug(slug);
-  return p && p.teamId === teamId && inProjectScope(p.projectId)
+  return p && p.teamId === teamId && inAppScope(p)
     ? summarizeOne(p)
     : null;
 }
@@ -1844,7 +1844,7 @@ export async function deleteApps(ids: string[]): Promise<number> {
   const idSet = [...new Set(ids)];
   // Team- and scope-scoped: only the caller's own apps, fully loaded for teardown.
   const apps = (await loadAppsByIds(idSet)).filter(
-    (p) => p.teamId === membership.teamId && inProjectScope(p.projectId),
+    (p) => p.teamId === membership.teamId && inAppScope(p),
   );
   if (apps.length === 0) return 0;
 

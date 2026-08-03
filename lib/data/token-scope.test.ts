@@ -53,10 +53,17 @@ const T0 = "2026-01-01T00:00:00.000Z";
 const PRC_IN = "prc_in";
 const PRC_OUT = "prc_out";
 
+/** Scoped to the whole of `prc_in`, holding every capability. */
 const grant = (over: Partial<TokenGrant> = {}): TokenGrant => ({
   id: "tok_test",
   capabilities: [...ALL_CAPABILITIES],
-  projectIds: [PRC_IN],
+  scope: {
+    teamIds: [TEAM_A],
+    wholeTeamIds: [],
+    projectIds: [PRC_IN],
+    appIds: [],
+    appProjectIds: [],
+  },
   instanceAdmin: false,
   ...over,
 });
@@ -193,7 +200,15 @@ test("a bulk delete silently drops the ids the scope excludes", async () => {
 test("a scope with no projects left reaches nothing at all", async () => {
   const ids = await scoped(
     async () => (await listApps()).map((a) => a.id),
-    { projectIds: [] },
+    {
+      scope: {
+        teamIds: [TEAM_A],
+        wholeTeamIds: [],
+        projectIds: [],
+        appIds: [],
+        appProjectIds: [],
+      },
+    },
   );
   assert.deepEqual(ids, []);
 });
@@ -201,9 +216,25 @@ test("a scope with no projects left reaches nothing at all", async () => {
 test("an unscoped token, and a cookie session, are both untouched", async () => {
   const viaToken = await scoped(
     async () => (await listApps()).map((a) => a.id),
-    { projectIds: null },
+    { scope: null },
   );
   assert.deepEqual(viaToken.sort(), ["prj_in", "prj_out", "prj_top"]);
+
+  // And a token holding the WHOLE team is not narrowed either — breadth is not
+  // depth, so it sees everything and keeps every capability.
+  const wholeTeam = await scoped(
+    async () => (await listApps()).map((a) => a.id),
+    {
+      scope: {
+        teamIds: [TEAM_A],
+        wholeTeamIds: [TEAM_A],
+        projectIds: [],
+        appIds: [],
+        appProjectIds: [],
+      },
+    },
+  );
+  assert.deepEqual(wholeTeam.sort(), ["prj_in", "prj_out", "prj_top"]);
 });
 
 test("the capability clamp keys on the (user, team) pair, and drops team-wide caps when scoped", async () => {
@@ -223,7 +254,7 @@ test("the capability clamp keys on the (user, team) pair, and drops team-wide ca
       const m = await membershipFor(USER_1, TEAM_A);
       assert.deepEqual(m!.capabilities, ["view", "view_logs"]);
     },
-    { projectIds: null, capabilities: ["view", "view_logs"] as Capability[] },
+    { scope: null, capabilities: ["view", "view_logs"] as Capability[] },
   );
 
   // Outside any identity override the member keeps their real set.
@@ -236,13 +267,13 @@ test("instance administration is opt-in per token, even for an admin's token", a
     async () => {
       await assert.rejects(() => requireInstanceAdmin(), /Only an instance admin/);
     },
-    { projectIds: null },
+    { scope: null },
   );
   await scoped(
     async () => {
       assert.deepEqual(await requireInstanceAdmin(), { userId: USER_1 });
     },
-    { projectIds: null, instanceAdmin: true },
+    { scope: null, instanceAdmin: true },
   );
   // The cookie session of the same (admin) user is unaffected.
   await asUser(async () => {

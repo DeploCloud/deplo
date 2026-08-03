@@ -25,27 +25,22 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { PermissionPicker } from "@/components/settings/permission-picker";
+import {
+  ScopePicker,
+  type ScopeSelection,
+} from "@/components/settings/tokens/scope-picker";
 import { TokenCreated } from "@/components/settings/tokens/token-created";
 import { gqlAction } from "@/lib/graphql-client";
 import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
 import { sameCapabilities } from "@/lib/membership-shared";
 import type { TokenPreset } from "@/lib/token-presets";
-import type { ApiTokenDTO } from "@/lib/data/tokens";
-
-/** The projects a token's scope can name, as the editor needs them. */
-export interface ScopeProject {
-  id: string;
-  name: string;
-  color: string | null;
-  appCount: number;
-}
+import type { ApiTokenDTO, ScopeTreeTeam } from "@/lib/data/tokens";
 
 /**
  * The API-token editor: a full-width page, reached from the token LIST.
@@ -60,7 +55,7 @@ export function TokenEditor({
   mode,
   token,
   preset,
-  projects,
+  tree,
   canManage,
   canGrantInstanceAdmin,
   publicUrl,
@@ -70,8 +65,8 @@ export function TokenEditor({
   token?: ApiTokenDTO;
   /** The template a new token was started from (chosen in the "New token" menu). */
   preset?: TokenPreset | null;
-  /** Every project of the team, for the scope picker. */
-  projects: ScopeProject[];
+  /** Every team, project and app the actor can reach — the scope picker's tree. */
+  tree: ScopeTreeTeam[];
   canManage: boolean;
   /** Only an instance admin may hand out instance administration. */
   canGrantInstanceAdmin: boolean;
@@ -88,7 +83,11 @@ export function TokenEditor({
       name: token?.name ?? "",
       capabilities:
         token?.capabilities ?? preset?.capabilities ?? (["view"] as Capability[]),
-      projectIds: token?.projectIds ?? [],
+      scope: {
+        teamIds: token?.teamIds ?? [],
+        projectIds: token?.projectIds ?? [],
+        appIds: token?.appIds ?? [],
+      } as ScopeSelection,
       instanceAdmin: token?.instanceAdmin ?? false,
     }),
     [token, preset],
@@ -96,36 +95,33 @@ export function TokenEditor({
 
   const [name, setName] = React.useState(initial.name);
   const [caps, setCaps] = React.useState<Capability[]>(initial.capabilities);
-  const [scope, setScope] = React.useState<string[]>(initial.projectIds);
+  const [scope, setScope] = React.useState<ScopeSelection>(initial.scope);
   const [instanceAdmin, setInstanceAdmin] = React.useState(
     initial.instanceAdmin,
   );
 
   const readOnly = !canManage;
-  const scoped = scope.length > 0;
+  const picked =
+    scope.teamIds.length + scope.projectIds.length + scope.appIds.length;
+  const scoped = picked > 0;
   const granted = caps.filter((c) => c !== "view").length;
   const sensitive = caps.filter((c) => CAPABILITY_META[c].sensitive).length;
   const dirty =
     name !== initial.name ||
     instanceAdmin !== initial.instanceAdmin ||
-    scope.length !== initial.projectIds.length ||
-    scope.some((id) => !initial.projectIds.includes(id)) ||
+    !sameScope(scope, initial.scope) ||
     !sameCapabilities(caps, initial.capabilities);
 
   // The two are mutually exclusive by rule (the server refuses the pair), so the
-  // UI never lets them disagree: naming a project turns the bit off rather than
-  // leaving a switch on screen that would be ignored.
-  function toggleProject(id: string, on: boolean) {
-    setScope((prev) => {
-      const next = on ? [...prev, id] : prev.filter((p) => p !== id);
-      if (next.length > 0) setInstanceAdmin(false);
-      return next;
-    });
+  // UI never lets them disagree: narrowing the scope turns the bit off rather
+  // than leaving a switch on screen that would be ignored.
+  function changeScope(next: ScopeSelection) {
+    if (next.teamIds.length + next.projectIds.length + next.appIds.length > 0)
+      setInstanceAdmin(false);
+    setScope(next);
   }
 
-  const scopeNames = projects
-    .filter((p) => scope.includes(p.id))
-    .map((p) => p.name);
+  const scopeLabel = describeScope(scope, tree);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -133,7 +129,9 @@ export function TokenEditor({
     const input = {
       name,
       capabilities: caps,
-      projectIds: scope,
+      teamIds: scope.teamIds,
+      projectIds: scope.projectIds,
+      appIds: scope.appIds,
       instanceAdmin,
     };
     startTransition(async () => {
@@ -177,7 +175,7 @@ export function TokenEditor({
         raw={created}
         name={name.trim()}
         granted={granted}
-        scopeNames={scopeNames}
+        scope={scopeLabel}
         publicUrl={publicUrl}
       />
     );
@@ -256,77 +254,13 @@ export function TokenEditor({
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="flex w-fit items-center gap-2 text-base">
-              Scope
-              <InfoTip content="Which projects this token can reach. Leave every box unticked and it reaches the whole team." />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {projects.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                This team has no projects yet, so the token covers everything its
-                permissions allow. Create a project first if you want to limit a
-                token to part of the team.
-              </p>
-            ) : (
-              <>
-                <div className="max-h-64 divide-y divide-border/60 overflow-y-auto rounded-lg border border-border">
-                  {projects.map((p) => (
-                    <label
-                      key={p.id}
-                      htmlFor={`scope-${p.id}`}
-                      className={
-                        readOnly
-                          ? "flex items-center gap-3 px-3 py-2.5"
-                          : "flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-accent"
-                      }
-                    >
-                      <Checkbox
-                        id={`scope-${p.id}`}
-                        checked={scope.includes(p.id)}
-                        disabled={readOnly}
-                        onCheckedChange={(v) => toggleProject(p.id, v === true)}
-                      />
-                      <span
-                        className="size-2.5 shrink-0 rounded-full"
-                        style={{ background: p.color ?? "var(--muted-foreground)" }}
-                        aria-hidden
-                      />
-                      <span className="min-w-0 flex-1 truncate text-sm">
-                        {p.name}
-                      </span>
-                      <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
-                        {p.appCount} {p.appCount === 1 ? "app" : "apps"}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {!scoped ? (
-                    <>
-                      Whole team. This token reaches every app, database and
-                      setting its permissions allow.
-                    </>
-                  ) : (
-                    <>
-                      Limited to{" "}
-                      <span className="font-medium text-foreground">
-                        {scopeNames.length === 1
-                          ? scopeNames[0]
-                          : `${scopeNames.length} projects`}
-                      </span>
-                      . This token can only reach apps in{" "}
-                      {scopeNames.length === 1 ? "that project" : "those projects"}
-                      {" — "}
-                      team-wide permissions such as Manage members, Manage roles
-                      and Manage team settings stop applying, even while they are
-                      ticked below.
-                    </>
-                  )}
-                </p>
-              </>
-            )}
+          <CardContent className="pt-6">
+            <ScopePicker
+              tree={tree}
+              selection={scope}
+              onChange={changeScope}
+              disabled={readOnly}
+            />
           </CardContent>
         </Card>
 
@@ -388,11 +322,7 @@ export function TokenEditor({
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Scope</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {!scoped
-                    ? "Whole team"
-                    : scopeNames.length === 1
-                      ? scopeNames[0]
-                      : `${scopeNames.length} projects`}
+                  {scopeLabel}
                 </dd>
               </div>
               {mode === "edit" && (
@@ -441,7 +371,7 @@ export function TokenEditor({
             {scoped && (
               <Badge variant="outline" className="w-full justify-center gap-1.5">
                 <FolderTree className="size-3" />
-                Limited to projects
+                Limited scope
               </Badge>
             )}
             {instanceAdmin && (
@@ -515,4 +445,44 @@ export function TokenEditor({
       )}
     </form>
   );
+}
+
+/** Order-blind equality, so re-ticking the same boxes isn't "dirty". */
+function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
+  const eq = (x: string[], y: string[]) =>
+    x.length === y.length && x.every((v) => y.includes(v));
+  return (
+    eq(a.teamIds, b.teamIds) &&
+    eq(a.projectIds, b.projectIds) &&
+    eq(a.appIds, b.appIds)
+  );
+}
+
+/** One short line for the summary rail: name one node, else count them. */
+function describeScope(scope: ScopeSelection, tree: ScopeTreeTeam[]): string {
+  const total =
+    scope.teamIds.length + scope.projectIds.length + scope.appIds.length;
+  if (total === 0) return "Everything I can access";
+  if (total === 1) {
+    const [teamId] = scope.teamIds;
+    if (teamId) return tree.find((t) => t.id === teamId)?.name ?? "1 team";
+    const [projectId] = scope.projectIds;
+    if (projectId)
+      return (
+        tree.flatMap((t) => t.projects).find((p) => p.id === projectId)?.name ??
+        "1 project"
+      );
+    const [appId] = scope.appIds;
+    return (
+      tree
+        .flatMap((t) => [...t.projects.flatMap((p) => p.apps), ...t.looseApps])
+        .find((a) => a.id === appId)?.name ?? "1 app"
+    );
+  }
+  const parts: string[] = [];
+  if (scope.teamIds.length) parts.push(`${scope.teamIds.length} teams`);
+  if (scope.projectIds.length)
+    parts.push(`${scope.projectIds.length} projects`);
+  if (scope.appIds.length) parts.push(`${scope.appIds.length} apps`);
+  return parts.join(", ");
 }

@@ -21,7 +21,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
-import { tokenProjectScope } from "../auth/request-context";
+import { narrowedScope } from "../auth/request-context";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import {
   loadAppGraph,
@@ -157,7 +157,7 @@ export async function listBackups(): Promise<BackupDTO[]> {
 async function filterBackupsToScope<T extends { targetKind: BackupTargetKind; appId: string | null }>(
   rows: T[],
 ): Promise<T[]> {
-  const scope = tokenProjectScope();
+  const scope = narrowedScope();
   if (!scope) return rows;
   const appIds = [
     ...new Set(rows.map((r) => r.appId).filter((id): id is string => !!id)),
@@ -185,7 +185,7 @@ async function backupTargetInScope(
   targetId: string,
   teamId: string,
 ): Promise<boolean> {
-  if (!tokenProjectScope()) return true;
+  if (!narrowedScope()) return true;
   if (kind !== "app" || !targetId) return false;
   return appInTeam(targetId, teamId);
 }

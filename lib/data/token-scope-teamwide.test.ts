@@ -50,7 +50,13 @@ const LIMITED = /limited to specific projects/;
 const grant: TokenGrant = {
   id: "tok_test",
   capabilities: [...ALL_CAPABILITIES],
-  projectIds: [PRC],
+  scope: {
+    teamIds: [TEAM_A],
+    wholeTeamIds: [],
+    projectIds: [PRC],
+    appIds: [],
+    appProjectIds: [],
+  },
   instanceAdmin: false,
 };
 

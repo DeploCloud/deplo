@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
-import { listProjects } from "@/lib/data/projects";
+
+import { listScopeTree } from "@/lib/data/tokens";
 import { tokenPreset } from "@/lib/token-presets";
 import { PageHeader } from "@/components/shared/page-header";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
@@ -14,10 +15,10 @@ export default async function NewTokenPage(
 ) {
   const sp = await props.searchParams;
   const wanted = Array.isArray(sp.preset) ? sp.preset[0] : sp.preset;
-  const [canManage, canGrantInstanceAdmin, projects] = await Promise.all([
+  const [canManage, canGrantInstanceAdmin, tree] = await Promise.all([
     hasCapability("manage_tokens"),
     isInstanceAdmin(),
-    listProjects(),
+    listScopeTree(),
   ]);
   // Reachable only from the "New token" menu, which is itself gated — but a
   // typed URL must not open an editor whose save can only fail.
@@ -49,12 +50,7 @@ export default async function NewTokenPage(
       <TokenEditor
         mode="create"
         preset={preset}
-        projects={projects.map((p) => ({
-          id: p.id,
-          name: p.name,
-          color: p.color ?? null,
-          appCount: p.appCount,
-        }))}
+        tree={tree}
         canManage
         canGrantInstanceAdmin={canGrantInstanceAdmin}
         publicUrl={process.env.DEPLO_PUBLIC_URL ?? ""}

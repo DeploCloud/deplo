@@ -2,6 +2,7 @@ import "server-only";
 
 import { asc, count, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
+import { currentIdentity } from "../auth/request-context";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
@@ -70,7 +71,12 @@ export async function listMyTeams(): Promise<
 > {
   const user = await assertUser();
   const db = getDb();
-  const teams = await teamsForUser(user.id);
+  // A bearer token acts only in the teams its scope names, so this is the list
+  // it may switch between with `X-Deplo-Team` — not every team the person is in.
+  const scope = currentIdentity()?.token?.scope;
+  const teams = (await teamsForUser(user.id)).filter(
+    (t) => !scope || scope.teamIds.includes(t.id),
+  );
   if (teams.length === 0) return [];
 
   // The current user's role per team + each team's member count, in two queries.

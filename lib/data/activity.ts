@@ -12,7 +12,8 @@ import { assembleActivity, activityToRow } from "./infra-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId } from "../membership";
-import { tokenProjectScope } from "../auth/request-context";
+import { appScopeWhere } from "./app-graph-load";
+import { narrowedScope } from "../auth/request-context";
 import type { Activity, ActivityType } from "../types";
 
 /** Activity for the active team only, newest-first, with the LIMIT pushed into SQL. */
@@ -37,17 +38,15 @@ export async function listActivity(limit = 20): Promise<Activity[]> {
   return rows.map(assembleActivity);
 }
 
-/** The scope predicate for the audit feed, or undefined for an unscoped caller. */
+/** The scope predicate for the audit feed, or undefined for an unnarrowed caller. */
 function scopedActivityWhere(): SQL | undefined {
-  const ids = tokenProjectScope();
-  if (!ids) return undefined;
-  if (ids.length === 0) return sql`false`;
+  if (!narrowedScope()) return undefined;
+  const reachable = appScopeWhere();
+  // Reuses the ONE app predicate the whole data layer scopes by, so the feed can
+  // never disagree with what `listApps` shows.
   return inArray(
     activitiesTable.appId,
-    getDb()
-      .select({ id: appsTable.id })
-      .from(appsTable)
-      .where(inArray(appsTable.projectId, ids)),
+    getDb().select({ id: appsTable.id }).from(appsTable).where(reachable),
   );
 }
 

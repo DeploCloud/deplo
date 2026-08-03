@@ -25,7 +25,7 @@ import { recordActivity } from "./activity";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
-import { inProjectScope, tokenProjectScope } from "../auth/request-context";
+import { inProjectScope } from "../auth/request-context";
 import { appScopeWhere } from "./app-graph-load";
 import type { Project, AppStatus } from "../types";
 
@@ -194,15 +194,14 @@ export const listProjects = cache(async function listProjects(): Promise<
   ProjectSummary[]
 > {
   const teamId = await requireActiveTeamId();
-  const scope = tokenProjectScope();
   const rows = (
     await getDb()
       .select()
       .from(projectsTable)
       .where(eq(projectsTable.teamId, teamId))
-  // An API token limited to Projects sees ONLY those Projects — the containers
-  // themselves, not just the apps inside them.
-  ).filter((p) => !scope || scope.includes(p.id));
+  // A narrowed API token sees ONLY the containers it reaches — the ones it was
+  // given wholly, plus the ones holding an app it was given individually.
+  ).filter((p) => inProjectScope(p.id));
   const rank = await projectOrderRank(teamId);
   const { folders, apps, environments } = await counts(teamId);
   return rows

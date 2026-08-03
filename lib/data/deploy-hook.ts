@@ -189,3 +189,22 @@ export async function verifyDeployHookToken(
     return { ok: false, reason: "bad-token" };
   return { ok: true, teamId: row.teamId };
 }
+
+/**
+ * The team that owns an app, by id — un-gated on purpose, and deliberately kept
+ * beside the other pre-identity helper in this file.
+ *
+ * A bearer token's scope can span teams, so the deploy-hook route has to say
+ * WHICH team the call is about before it can resolve the token to an identity;
+ * the app in the URL is the answer. It returns nothing to the caller — every
+ * gate downstream still runs as the token — so an unknown id just yields null
+ * and the token falls back to the first team in its scope.
+ */
+export async function owningTeamId(appId: string): Promise<string | null> {
+  const rows = await getDb()
+    .select({ teamId: appsTable.teamId })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  return rows[0]?.teamId ?? null;
+}

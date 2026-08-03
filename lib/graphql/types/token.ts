@@ -31,17 +31,29 @@ export const ApiTokenRef = builder
           "intersected with what its creator can still do in the team, so a " +
           "token can never outlive the access of the member who minted it.",
       }),
-      projectScoped: t.exposeBoolean("projectScoped", {
+      scoped: t.exposeBoolean("scoped", {
         description:
-          "Whether this token is limited to specific projects at all. False " +
-          "means it reaches the whole team.",
+          "Whether this token is limited at all. False means every team its " +
+          "creator belongs to, and everything in it.",
+      }),
+      teamIds: t.exposeStringList("teamIds", {
+        description:
+          "Whole teams in the scope: every project and every app in them.",
       }),
       projectIds: t.exposeStringList("projectIds", {
         description:
-          "The projects this token is limited to. Only meaningful when " +
-          "`projectScoped` is true; a scoped token reaches only apps in these " +
-          "projects, and team-wide permissions such as managing members stop " +
-          "applying to it.",
+          "Whole projects in the scope: every app in them, now and later. " +
+          "Naming one narrows the token inside that team, so the team-wide " +
+          "permissions it holds (managing members, roles, databases) stop " +
+          "applying there.",
+      }),
+      appIds: t.exposeStringList("appIds", {
+        description: "Individually-named apps in the scope.",
+      }),
+      homeTeamId: t.exposeID("homeTeamId", {
+        description:
+          "The team this token is MANAGED from — where it was created. Any team " +
+          "it reaches can revoke it; only this one can change it.",
       }),
       instanceAdmin: t.exposeBoolean("instanceAdmin", {
         description:
@@ -87,9 +99,14 @@ const CreateTokenInputType = builder.inputType("CreateTokenInput", {
     // way. There is no "everything" default: a token that quietly held its
     // creator's whole access is exactly what this input replaced.
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
-    // Empty ⇒ the whole team. Naming projects limits the token to apps inside
-    // them and drops every team-wide capability it was given.
+    // The scope tree, one list per level. All three empty ⇒ unrestricted: every
+    // team the creator belongs to, and everything in it. A team id means that
+    // WHOLE team; a project id means that whole project; an app id means just
+    // that app. Naming a project or an app narrows the token inside its team and
+    // drops the team-wide capabilities it was given there.
+    teamIds: t.stringList({ required: false }),
     projectIds: t.stringList({ required: false }),
+    appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
   }),
 });
@@ -99,7 +116,9 @@ const UpdateTokenInputType = builder.inputType("UpdateTokenInput", {
     id: t.string({ required: true }),
     name: t.string({ required: true }),
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
+    teamIds: t.stringList({ required: false }),
     projectIds: t.stringList({ required: false }),
+    appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
   }),
 });
@@ -135,7 +154,9 @@ builder.mutationFields((t) => ({
         capabilities: (input.capabilities ?? undefined) as
           | Capability[]
           | undefined,
+        teamIds: input.teamIds ?? undefined,
         projectIds: input.projectIds ?? undefined,
+        appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
       }),
   }),
@@ -153,7 +174,9 @@ builder.mutationFields((t) => ({
         capabilities: (input.capabilities ?? undefined) as
           | Capability[]
           | undefined,
+        teamIds: input.teamIds ?? undefined,
         projectIds: input.projectIds ?? undefined,
+        appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
       });
       return true;

@@ -44,7 +44,14 @@ export async function buildContext(
     : null;
 
   if (bearer) {
-    const identity = await authenticateToken(bearer);
+    // A token's scope can span teams, and everything below this line is scoped
+    // to exactly one. `X-Deplo-Team` picks which (by id or slug) — the bearer
+    // equivalent of the topbar switcher. Unset or unreachable falls back to the
+    // first team in the token's scope, deterministically.
+    const identity = await authenticateToken(
+      bearer,
+      request.headers.get("x-deplo-team"),
+    );
     if (!identity) {
       return {
         viewer: null,

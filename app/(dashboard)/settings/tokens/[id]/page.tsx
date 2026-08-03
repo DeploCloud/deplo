@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
-import { getToken } from "@/lib/data/tokens";
-import { listProjects } from "@/lib/data/projects";
+import { getToken, listScopeTree } from "@/lib/data/tokens";
+
 import { PageHeader } from "@/components/shared/page-header";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
 import { timeAgo } from "@/lib/utils";
@@ -20,11 +20,11 @@ export default async function TokenPage(
   props: PageProps<"/settings/tokens/[id]">,
 ) {
   const { id } = await props.params;
-  const [token, canManage, canGrantInstanceAdmin, projects] = await Promise.all([
+  const [token, canManage, canGrantInstanceAdmin, tree] = await Promise.all([
     getToken(id),
     hasCapability("manage_tokens"),
     isInstanceAdmin(),
-    listProjects(),
+    listScopeTree(),
   ]);
   // A token of another team resolves to nothing here, exactly as it does in the
   // data layer — there is no id to guess your way into.
@@ -59,12 +59,7 @@ export default async function TokenPage(
       <TokenEditor
         mode="edit"
         token={token}
-        projects={projects.map((p) => ({
-          id: p.id,
-          name: p.name,
-          color: p.color ?? null,
-          appCount: p.appCount,
-        }))}
+        tree={tree}
         canManage={canManage}
         canGrantInstanceAdmin={canGrantInstanceAdmin}
         publicUrl={process.env.DEPLO_PUBLIC_URL ?? ""}

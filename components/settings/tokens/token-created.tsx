@@ -19,13 +19,14 @@ export function TokenCreated({
   raw,
   name,
   granted,
-  scopeNames,
+  scope,
   publicUrl,
 }: {
   raw: string;
   name: string;
   granted: number;
-  scopeNames: string[];
+  /** One short line describing what it reaches. */
+  scope: string;
   publicUrl: string;
 }) {
   const host = publicUrl.replace(/\/+$/, "") || "https://your-deplo-host";
@@ -60,11 +61,7 @@ export function TokenCreated({
 
       <p className="text-xs text-muted-foreground">
         {name} · {granted === 0 ? "View only" : `${granted} permissions`} ·{" "}
-        {scopeNames.length === 0
-          ? "Whole team"
-          : scopeNames.length === 1
-            ? scopeNames[0]
-            : `${scopeNames.length} projects`}
+        {scope}
       </p>
 
       <div className="flex gap-2">
