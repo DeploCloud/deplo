@@ -126,6 +126,8 @@ test("the team's shared-variable library stays closed to a node-only holder", as
       value: "sk_live_secret",
       type: "secret",
       teamWide: true,
+      environmentIds: [],
+      projectIds: [],
     }),
   );
   await as(DEV, async () => {

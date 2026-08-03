@@ -276,7 +276,18 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
   // its creator belongs to.
   const user = await assertUser();
   requireUnscoped("the token scope picker");
-  const mine = await teamsForUser(user.id);
+  return buildScopeTree(await teamsForUser(user.id));
+}
+
+/**
+ * The tree for an explicit set of teams. Split out of {@link listScopeTree} so
+ * the instance-admin user editor can build the same picker rooted at SOMEONE
+ * ELSE's memberships — it carries no gate of its own, so every caller supplies
+ * the teams it has already decided the actor may see.
+ */
+export async function buildScopeTree(
+  mine: { id: string; name: string }[],
+): Promise<ScopeTreeTeam[]> {
   if (mine.length === 0) return [];
   const teamIds = mine.map((t) => t.id);
 

@@ -36,6 +36,7 @@ import "./types/team";
 import "./types/token";
 import "./types/two-factor";
 import "./types/updates";
+import "./types/user-access";
 import "./types/viewer";
 
 /**

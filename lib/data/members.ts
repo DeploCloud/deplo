@@ -280,7 +280,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
  * truth for the absolute-owner distinction. Accepts the live db or a tx so the
  * mutation paths can read it under the same transaction as their guards.
  */
-async function teamFounderUserId(
+export async function teamFounderUserId(
   db: ReturnType<typeof getDb> | DbTx,
   teamId: string,
 ): Promise<string | null> {
@@ -545,7 +545,7 @@ const CRITICAL_LABEL: Record<string, string> = {
  * target is being removed entirely. MUST run inside the caller's `db.transaction`
  * so the lock is held until commit.
  */
-async function assertAdminCoverage(
+export async function assertAdminCoverage(
   tx: DbTx,
   teamId: string,
   targetUserId: string,

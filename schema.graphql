@@ -1,3 +1,20 @@
+"""
+A capability set attached to one project, folder or app. It REPLACES the team role's set inside that node, and may grant more than the role does.
+"""
+type AccessNodeGrant {
+  capabilities: [Capability!]
+  kind: AccessNodeKind
+  name: String
+  nodeId: ID
+}
+
+"""What a per-node capability set is attached to."""
+enum AccessNodeKind {
+  app
+  folder
+  project
+}
+
 """A single audit-log event in the active team's timeline."""
 type Activity {
   actor: String
@@ -1307,6 +1324,9 @@ type Mutation {
   addRegistry(input: AddRegistryInput!): Boolean
   addServer(input: AddServerInput!): AddServerPayload
 
+  """Put this person in a team with a role."""
+  addUserToTeam(input: UserTeamInput!): [UserTeamAccess!]
+
   """
   Cancel every in-progress deployment (queued/building) for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. Terminal deployments are left. Returns how many builds were stopped.
   """
@@ -1599,6 +1619,11 @@ type Mutation {
   Remove a server: revoke its agent's trust and forget the row. This does NOT uninstall anything on the host — the agent, Traefik and the deplo network keep running there — so the returned payload always carries the host-side uninstall command. Blocked while any App or database still lives on the server.
   """
   removeServer(id: String!): ServerRemoval
+
+  """
+  Take this person out of a team. Since node grants are scoped to a team, this is the one action that revokes all of them at once.
+  """
+  removeUserFromTeam(input: UserTeamInput!): [UserTeamAccess!]
   renameApp(id: String!, name: String!): App
 
   """Rename or move a file/folder within the app files tree."""
@@ -1800,6 +1825,11 @@ type Mutation {
 
   """Link or unlink a shared variable to one app. Returns true."""
   setSharedVarAppLink(appId: String!, linked: Boolean!, varId: String!): Boolean
+
+  """
+  Set one person's role and per-node overrides in one team. Whole-set replace: node grants not sent are removed.
+  """
+  setUserTeamAccess(input: SetUserTeamAccessInput!): [UserTeamAccess!]
   startApp(id: String!): App
 
   """
@@ -1943,6 +1973,16 @@ type Mutation {
 
   """Create or overwrite a text file in the app files tree."""
   writeAppFile(appId: String!, content: String!, path: String!): FileEntry
+}
+
+"""
+One capability set, applied to every node named here. Send several to give different nodes different sets.
+"""
+input NodeGrantInput {
+  appIds: [String!]
+  capabilities: [Capability!]!
+  folderIds: [String!]
+  projectIds: [String!]
 }
 
 """Per-team notification channels + per-event delivery toggles."""
@@ -2707,6 +2747,14 @@ input SetServerTeamsInput {
   teamIds: [String!]
 }
 
+input SetUserTeamAccessInput {
+  grants: [NodeGrantInput!]
+  granular: Boolean!
+  roleId: String!
+  teamId: String!
+  userId: String!
+}
+
 """
 A shared environment variable (ADR-0010/0012). Secret values are masked. Team-wide / environment / project scopes say who it is AVAILABLE to; it injects only through explicit per-app links (opt-in).
 """
@@ -3023,6 +3071,36 @@ type UserSession {
   When the session was last refreshed, which stands in for last used. Accurate to about 15 minutes.
   """
   lastSeenAt: String
+}
+
+"""What one person can do in one team, as an instance admin sets it."""
+type UserTeamAccess {
+  """What applies outside every granted node."""
+  baseCapabilities: [Capability!]
+
+  """
+  Per-node overrides are in play on top of the role. Stored as the admin's choice, so deleting the last granted node doesn't silently turn it off.
+  """
+  granular: Boolean
+
+  """
+  The team's primary owner. Their access can't be changed by anyone, instance admins included.
+  """
+  isFounder: Boolean
+  nodes: [AccessNodeGrant!]
+
+  """`owner` outranks everyone; anything else ranks as a member."""
+  rank: String
+  roleId: ID
+  roleName: String
+  teamId: ID
+  teamName: String
+}
+
+input UserTeamInput {
+  roleId: String
+  teamId: String!
+  userId: String!
 }
 
 """
