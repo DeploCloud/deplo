@@ -66,14 +66,6 @@ const SOURCE_TABS: {
   { id: "compose", label: "Compose", icon: FileText },
 ];
 
-/** How a repo's provider is named in the deploy-hook note. */
-const PROVIDER_LABELS: Record<string, string> = {
-  github: "GitHub",
-  gitlab: "GitLab",
-  bitbucket: "Bitbucket",
-  git: "Your git provider",
-};
-
 type SourceKeyInput = {
   source: DeploySource;
   serverId: string;
@@ -128,8 +120,8 @@ function computeSourceKey(s: SourceKeyInput): string {
  * deploy again. Three cards on one page because they all read the live `source`
  * state — Deploy Source, Build & Output (which owns deploy-on-push, since "run
  * all of this again on every push" is the last stage of the same pipeline), and
- * Advanced settings (the build cache, the app's own `compose up` flags, and the
- * deploy hook).
+ * Advanced settings (the build cache, the app's own `compose up` flags, and —
+ * for the sources a git provider does NOT already trigger — the deploy hook).
  */
 export function DeploymentSettingsForm({
   appId,
@@ -174,8 +166,10 @@ export function DeploymentSettingsForm({
   /** Whether the app's deploy hook answers at all (Advanced settings). */
   deployHookEnabled: boolean;
   /** The hook URL with its secret segment dotted out — resolved server-side so
-   * the page can show the link's shape without the token reaching the browser. */
-  deployHookUrlMasked: string;
+   * the page can show the link's shape without the token reaching the browser.
+   * NULL for an app that deploys from a git provider: its provider already
+   * triggers it, so it has no deploy hook here and no link in the payload. */
+  deployHookUrlMasked: string | null;
   /** Extra flags appended to this app's `docker compose up`, or null for the
    * untouched command (Advanced settings). */
   composeUpArgs: string | null;
@@ -281,19 +275,6 @@ export function DeploymentSettingsForm({
     (usesGithubApp ? ghSelection?.branch : branch) ||
     initialRepo?.branch ||
     "main";
-
-  // The deploy hook belongs to the app as SAVED, not to whichever source tab is
-  // on screen: its controls write straight through to the server, so they must
-  // reflect what this app actually deploys from rather than an unsaved draft.
-  // A repo source's deploys are the git provider's job, so its hook is read-only.
-  const savedRepoProvider =
-    initialSource === "github" || initialSource === "git"
-      ? (initialRepo?.provider ?? "git")
-      : null;
-  const hookManagedByProvider = savedRepoProvider !== null;
-  const providerLabel = savedRepoProvider
-    ? (PROVIDER_LABELS[savedRepoProvider] ?? "Your git provider")
-    : undefined;
 
   // ── Per-section dirty tracking ──────────────────────────────────────────────
   // Each editable card keeps a snapshot of its last-saved value; it is "dirty"
@@ -979,13 +960,16 @@ export function DeploymentSettingsForm({
               value={composeUpArgs}
               usesEnvFile={isComposeStack}
             />
-            <DeployHookPanel
-              appId={appId}
-              enabled={deployHookEnabled}
-              maskedUrl={deployHookUrlMasked}
-              managed={hookManagedByProvider}
-              providerLabel={providerLabel}
-            />
+            {/* No hook for an app a git provider already triggers: the page
+                sends no URL for those (a second trigger beside the provider's
+                own is one more credential to leak for a job already done). */}
+            {deployHookUrlMasked && (
+              <DeployHookPanel
+                appId={appId}
+                enabled={deployHookEnabled}
+                maskedUrl={deployHookUrlMasked}
+              />
+            )}
           </CardContent>
         </Card>
       </div>

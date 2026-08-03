@@ -30,27 +30,21 @@ import { gqlAction } from "@/lib/graphql-client";
  * (the same `RevealChip` the Variables page uses for a secret), because it is
  * still half a credential — and it is never in the DOM while covered.
  *
- * `managed` marks the apps whose deploys a git provider already drives (a GitHub
- * / GitLab source): there, changing the hook by hand is not the operator's job,
- * so the link is shown read-only — no rotate, no kill switch — and the note says
- * where the deploys are actually coming from.
+ * Only for apps that DON'T deploy from a git provider. An app on a GitHub or Git
+ * source already has a deploy trigger — the provider's own webhook — and the
+ * parent renders nothing here for it: a second URL beside it would be one more
+ * credential to leak for a job that is already done.
  */
 export function DeployHookPanel({
   appId,
   enabled: initialEnabled,
   maskedUrl,
-  managed,
-  providerLabel,
 }: {
   appId: string;
   enabled: boolean;
   /** The hook URL with its secret segment dotted out — what the covered chip
    * shows, so the shape of the link is legible without revealing it. */
   maskedUrl: string;
-  /** A git provider drives this app's deploys ⇒ the hook is read-only here. */
-  managed: boolean;
-  /** That provider's name, for the note ("GitHub", "GitLab", …). */
-  providerLabel?: string;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = React.useState(initialEnabled);
@@ -127,28 +121,16 @@ export function DeployHookPanel({
             />
           </p>
           <p className="text-xs text-muted-foreground">
-            {managed ? (
-              <>
-                {providerLabel ?? "Your git provider"} drives this app&apos;s
-                deploys, so its hook is managed for you and can&apos;t be changed
-                here.
-              </>
-            ) : (
-              <>
-                POST to this URL to deploy the app. Turn it off and every call is
-                refused.
-              </>
-            )}
+            POST to this URL to deploy the app. Turn it off and every call is
+            refused.
           </p>
         </div>
-        {!managed && (
-          <Switch
-            checked={enabled}
-            onCheckedChange={toggle}
-            disabled={saving}
-            aria-label="Deploy hook"
-          />
-        )}
+        <Switch
+          checked={enabled}
+          onCheckedChange={toggle}
+          disabled={saving}
+          aria-label="Deploy hook"
+        />
       </div>
 
       <div className="flex min-w-0 items-center gap-1.5">
@@ -171,26 +153,24 @@ export function DeployHookPanel({
           labels={{ reveal: "Reveal deploy hook URL", hide: "Hide deploy hook URL" }}
         />
         <CopyResolved resolve={resolve} />
-        {!managed && (
-          <ConfirmAction
-            title="Rotate the deploy hook URL?"
-            description="The current URL stops working immediately. Anything already using it — a webhook in your git provider, a CI job — has to be updated with the new one."
-            confirmLabel="Rotate URL"
-            successMessage="Deploy hook rotated"
-            onConfirm={rotate}
-            trigger={
-              <Button
-                variant="outline"
-                size="icon-sm"
-                className="size-7 shrink-0"
-                aria-label="Rotate deploy hook URL"
-                title="Rotate deploy hook URL"
-              >
-                <RefreshCw className="size-3.5" />
-              </Button>
-            }
-          />
-        )}
+        <ConfirmAction
+          title="Rotate the deploy hook URL?"
+          description="The current URL stops working immediately. Anything already using it — a webhook in your git provider, a CI job — has to be updated with the new one."
+          confirmLabel="Rotate URL"
+          successMessage="Deploy hook rotated"
+          onConfirm={rotate}
+          trigger={
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="size-7 shrink-0"
+              aria-label="Rotate deploy hook URL"
+              title="Rotate deploy hook URL"
+            >
+              <RefreshCw className="size-3.5" />
+            </Button>
+          }
+        />
       </div>
 
       {/* The whole call, ready to paste — only once the URL is on screen, so a

@@ -52,8 +52,15 @@ export default async function AppDeploymentSettingsPage(
         deployHookEnabled={project.deployHookEnabled}
         composeUpArgs={project.composeUpArgs}
         // The link's shape, never its token: the real URL is fetched only when
-        // someone with `configure_apps` deliberately reveals it.
-        deployHookUrlMasked={await deployHookUrlMasked(project.id)}
+        // someone with `configure_apps` deliberately reveals it. An app that
+        // deploys from a git provider is already triggered by that provider, so
+        // it gets no deploy hook in the UI at all — and null here keeps its link
+        // out of the page payload entirely, rather than merely hiding it.
+        deployHookUrlMasked={
+          project.source === "github" || project.source === "git"
+            ? null
+            : await deployHookUrlMasked(project.id)
+        }
       />
     </section>
   );
