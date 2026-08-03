@@ -26,6 +26,34 @@ import { runWithIdentity } from "@/lib/auth/request-context";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Opening the hook URL in a browser is the first thing anyone does with it, and
+ * a bare 405 renders as the browser's own "this page isn't working" — which
+ * reads as "Deplo is broken", not "you used the wrong verb".
+ *
+ * So GET answers in JSON, saying what to do instead. It deliberately answers the
+ * SAME thing for every URL under this path: it never looks at the app or the
+ * token, so it can't become an oracle for guessing either. It also never
+ * deploys — a deploy from a GET would fire on every link preview, prefetch and
+ * security scanner that ever touched the URL.
+ *
+ * 405 (with the `Allow` header RFC 9110 requires) rather than 200: the request
+ * genuinely was not acceptable, and a 200 here would make a "test my URL" click
+ * look like a working deploy.
+ */
+export async function GET() {
+  return Response.json(
+    {
+      error:
+        "Method not allowed. A deploy hook is triggered with POST, and the call " +
+        'must carry an API token: `Authorization: Bearer deplo_…`. Create one in ' +
+        "Settings → API tokens.",
+      example: 'curl -X POST -H "Authorization: Bearer deplo_your_token" <this url>',
+    },
+    { status: 405, headers: { Allow: "POST" } },
+  );
+}
+
 export async function POST(
   request: Request,
   // Spelled out rather than `RouteContext<"…">`: that generated type only exists
