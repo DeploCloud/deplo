@@ -3,7 +3,10 @@
 ## Core mission (north star)
 
 **deplo makes self-hosting exhaustively simple, Vercel-style. The user must NEVER be required to
-know Docker or SSH** — that non-requirement is the whole differentiator vs. Coolify / Dokploy.
+know Docker or SSH** — that non-requirement is the whole differentiator vs. the open-source
+competitors. The experience to match is the big clouds (Vercel, Railway, Render) on the user's own
+infrastructure, and the audience is everyone who wants it — people leaving a cloud over the bill,
+teams that never self-hosted, and competitors' users too, but never *only* that last group.
 Every feature is tested exhaustively and judged on UX/DX for a non-expert: if the happy path only
 works from a shell or by hand-editing YAML, the feature is unfinished. Favor
 derived/live/automatic over manual, and use infrastructure the user already has rather than

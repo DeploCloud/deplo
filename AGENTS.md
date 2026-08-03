@@ -11,9 +11,16 @@ the deeper docs it links (this file points; it does not restate them).
 
 ## Core mission — the north star every feature answers to
 
-**deplo exists to make self-hosting exhaustively simple, Vercel-style.** The user must **never
-be required to know Docker or SSH** to get full value out of deplo — that non-requirement is the
-whole differentiator from Coolify / Dokploy, which both assume the operator lives in a shell.
+**deplo exists to make self-hosting exhaustively simple, Vercel-style.** The experience to match is
+the one the big cloud platforms give (Vercel, Railway, Render): push, and it is live, with the
+platform doing the operations. The user must **never be required to know Docker or SSH** to get
+full value out of deplo — that non-requirement is the whole differentiator from the open-source
+competitors, which assume the operator lives in a shell.
+
+The audience is everyone who wants that experience on their own infrastructure: people leaving a
+cloud over the bill, teams that never self-hosted at all, and people already running a competing
+open-source platform who are tired of the shell. Winning the last group matters, but designing only
+for it would aim the product far too low.
 
 Consequences that bind every design and review decision:
 
@@ -40,7 +47,7 @@ Consequences that bind every design and review decision:
 - **Don't build what nobody will realistically use.** Losing focus on deplo's principles looks
   exactly like a stream of individually-defensible features that, long-term, almost no one turns
   on. Breadth is not the goal — being *far simpler than every competing self-hosted platform* is.
-  "Coolify/Dokploy have that setting too" is an argument *against* shipping it, not for.
+  "a competitor has that setting too" is an argument *against* shipping it, not for.
 
 When weighing a design, ask: *would a competent developer who has never touched Docker or SSH
 succeed on the happy path, with the platform doing the operational heavy lifting?* If not,
@@ -56,9 +63,10 @@ run is a tax on the one thing that makes the switch worth it.
 
 ### Teams and companies are first-class, not an afterthought
 
-Coolify and Dokploy are shaped around one operator on one box, with sharing bolted on afterwards.
-deplo aims at the collaboration case from the start: a team, up to a whole company, working in the
-same instance under least privilege. Concretely:
+The open-source competitors are shaped around one operator on one box, with sharing bolted on
+afterwards; the clouds deplo measures itself against are not. deplo aims at the collaboration case
+from the start: a team, up to a whole company, working in the same instance under least privilege.
+Concretely:
 
 - **Multi-person is the default assumption, never a later plan.** Everything is scoped to the
   active team, every mutating action is Capability-gated server-side, and per-folder grants let a
@@ -280,6 +288,11 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   re-runs RSC reads; subscriptions via `gqlSubscribe` (SSE).
 - **Toasts:** `import { toast } from "sonner"`; surface the server's message verbatim
   (`toast.error(res.error)`), don't invent generic copy.
+- **Descriptive copy is SHORT and self-explanatory.** Every description, subtitle, empty state,
+  tooltip and field help is one line a non-expert understands without stopping to parse it. Say
+  what the thing does or what to do next; don't restate the control's own label, don't narrate
+  implementation, don't explain Docker. If it needs a paragraph to make sense, the UI is wrong, not
+  the copy. Errors and server messages are the exception: surface those verbatim.
 - **Field help lives in the tooltip:** `FieldLabel info={…}` / `InfoTip` (`components/ui/info-tip.tsx`)
   — don't duplicate it as helper text below the input.
 - **A description under a title always gets a gap.** Any muted description stacked under its own

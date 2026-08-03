@@ -21,7 +21,7 @@ Measured against the core mission it does not hold up *yet*:
   sees, leading to a page whose only content was one plugin from one repository. First launch is
   supposed to sell the price difference against Vercel/Railway, not open with an extension store.
 - **Nobody was going to install it.** One plugin, and one aimed at a narrow audience (people
-  driving their deploy platform from an LLM client). "Coolify has a marketplace too" is an
+  driving their deploy platform from an LLM client). "a competitor has a marketplace too" is an
   argument against shipping ours, not for it.
 - **The catalog defaulted to a private host.** `DEPLO_PLUGIN_REPO_URL` fell back to
   `devrepo.pixelfederico.com` — an open-source control plane making an outbound call to a

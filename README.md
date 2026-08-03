@@ -19,7 +19,7 @@
 
 ## 💡 Why
 
-I wanted the **developer experience of Vercel** with the **feature set of Coolify / Dokploy / Easypanel** — but running entirely on **my own infrastructure**, with **zero vendor lock-in**. No per-seat pricing, no build minutes, no black box. Just a VPS, a Docker socket and a domain.
+I wanted the **developer experience of Vercel** with the **feature set of a self-hosted platform** — but running entirely on **my own infrastructure**, with **zero vendor lock-in**. No per-seat pricing, no build minutes, no black box. Just a VPS, a Docker socket and a domain.
 
 Deplo is that: a self-hostable control plane. Push a repository or pick a template, and Deplo builds it in Docker and exposes it through Traefik with automatic HTTPS — on your master host or any remote server you connect.
 
