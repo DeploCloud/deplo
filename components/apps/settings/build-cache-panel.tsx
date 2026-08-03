@@ -7,18 +7,21 @@ import { Eraser } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { InfoTip } from "@/components/ui/info-tip";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * Build cache controls for one app: reuse the layers from its last build (on by
- * default — it is what makes a redeploy of an unchanged app take seconds), and a
- * button to start the next build from scratch.
+ * The build cache of one app, as ONE setting: reuse the layers from its last
+ * build (on by default — it is what makes a redeploy of an unchanged app take
+ * seconds), with the button that starts the next build from scratch sitting
+ * beside its own switch. Clearing is an action ON this setting, not a second
+ * feature, so it does not get a panel of its own.
  *
- * Both are ADVANCED: the parent renders this inside the Build & Output card's
- * "Advanced" panel, so a first-run user never meets them, and both are inert
- * until touched. They save on change / on click rather than joining the card's
- * Save button — a switch that needs a separate Save is the classic way to make
- * someone think a setting stuck when it didn't.
+ * ADVANCED: the parent renders this in the Deployment page's "Advanced settings"
+ * card, so a first-run user never meets it, and both controls are inert until
+ * touched. They save on change / on click rather than joining a Save button —
+ * a switch that needs a separate Save is the classic way to make someone think a
+ * setting stuck when it didn't.
  *
  * "Clear" arms a one-shot the next build consumes; nothing is pruned on the
  * server. The BuildKit cache is per-SERVER and shared by every app on it, so
@@ -78,55 +81,63 @@ export function BuildCachePanel({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
-        <div className="space-y-0.5">
-          <p className="flex items-center gap-1.5 text-sm font-medium">
-            Build cache
-            <InfoTip
-              content={
-                <>
-                  Deplo reuses the Docker layers your last build produced on this
-                  app&apos;s server, so a deploy that changes nothing takes
-                  seconds instead of minutes. Turn it off when a build must pull
-                  fresh dependencies every time — it makes every deploy slower.
-                </>
-              }
-            />
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Reuse the layers from this app&apos;s last build. Off rebuilds
-            everything, on every deploy.
-          </p>
-        </div>
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+      <div className="space-y-0.5">
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          Build cache
+          <InfoTip
+            content={
+              <>
+                Deplo reuses the Docker layers your last build produced on this
+                app&apos;s server, so a deploy that changes nothing takes seconds
+                instead of minutes. Turn it off when a build must pull fresh
+                dependencies every time — it makes every deploy slower.
+              </>
+            }
+          />
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {pending
+            ? "Cleared — the next deployment builds from scratch, then caches again."
+            : "Reuse the layers from this app's last build. Off rebuilds everything, on every deploy."}
+        </p>
+      </div>
+      {/* Clearing sits WITH the setting it acts on, ahead of the switch: it is
+          the same subject, and a whole panel for one button read as a second
+          feature. Disabled while the cache is off (nothing is being reused) or
+          already armed — the tooltip says which, so the dead button still
+          answers "why can't I press this". */}
+      <div className="flex shrink-0 items-center gap-3">
+        <SimpleTooltip
+          content={
+            !enabled
+              ? "Not needed while the build cache is off — every build already starts from scratch."
+              : pending
+                ? "Already armed. The next deployment builds from scratch."
+                : "The next deployment builds from scratch, then caches again. Only this app is affected — the server's cache is shared, so nothing is deleted from it."
+          }
+        >
+          {/* A disabled button fires no pointer events, so the tooltip needs a
+              wrapper to hang off — otherwise the explanation is unreachable in
+              exactly the state that needs it. */}
+          <span className="inline-flex">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={clear}
+              disabled={saving || !enabled || pending}
+            >
+              <Eraser className="size-4" />
+              {pending ? "Cleared" : "Clear cache"}
+            </Button>
+          </span>
+        </SimpleTooltip>
         <Switch
           checked={enabled}
           onCheckedChange={toggle}
           disabled={saving}
           aria-label="Build cache"
         />
-      </div>
-
-      <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
-        <div className="space-y-0.5">
-          <p className="text-sm font-medium">Clear build cache</p>
-          <p className="text-xs text-muted-foreground">
-            {!enabled
-              ? "Not needed while the build cache is off — every build already starts from scratch."
-              : pending
-                ? "Cleared. The next deployment builds from scratch, then caches again."
-                : "The next deployment builds from scratch, then caches again. Only this app is affected."}
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={clear}
-          disabled={saving || !enabled || pending}
-        >
-          <Eraser className="size-4" />
-          {pending ? "Cleared" : "Clear cache"}
-        </Button>
       </div>
     </div>
   );
