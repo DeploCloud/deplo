@@ -1,7 +1,10 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { listProjects } from "@/lib/data/projects";
 import { tokenPreset } from "@/lib/token-presets";
+import { PageHeader } from "@/components/shared/page-header";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
 
 export const metadata = { title: "Settings · New API token" };
@@ -25,18 +28,37 @@ export default async function NewTokenPage(
   const preset = wanted ? tokenPreset(wanted) : null;
 
   return (
-    <TokenEditor
-      mode="create"
-      preset={preset}
-      projects={projects.map((p) => ({
-        id: p.id,
-        name: p.name,
-        color: p.color ?? null,
-        appCount: p.appCount,
-      }))}
-      canManage
-      canGrantInstanceAdmin={canGrantInstanceAdmin}
-      publicUrl={process.env.DEPLO_PUBLIC_URL ?? ""}
-    />
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <Link
+          href="/settings/tokens"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" />
+          All tokens
+        </Link>
+        <PageHeader
+          title="New API token"
+          description={
+            preset
+              ? `Starting from ${preset.name}. Change anything you like before creating it.`
+              : "Pick exactly what this token should be able to do. Nothing is granted by default."
+          }
+        />
+      </div>
+      <TokenEditor
+        mode="create"
+        preset={preset}
+        projects={projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          color: p.color ?? null,
+          appCount: p.appCount,
+        }))}
+        canManage
+        canGrantInstanceAdmin={canGrantInstanceAdmin}
+        publicUrl={process.env.DEPLO_PUBLIC_URL ?? ""}
+      />
+    </div>
   );
 }

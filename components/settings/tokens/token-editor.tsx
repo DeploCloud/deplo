@@ -33,7 +33,6 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { PermissionPicker } from "@/components/settings/permission-picker";
 import { TokenCreated } from "@/components/settings/tokens/token-created";
 import { gqlAction } from "@/lib/graphql-client";
-import { timeAgo } from "@/lib/utils";
 import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
 import { sameCapabilities } from "@/lib/membership-shared";
@@ -49,10 +48,13 @@ export interface ScopeProject {
 }
 
 /**
- * The API-token editor: the same page shape as the role editor, because it is
- * the same decision. Forty permissions, a search box and a summary of what the
- * credential ends up able to do do not fit in a modal, and a token is no less
- * consequential than a role — it is a role someone can paste into a script.
+ * The API-token editor: a full-width page, reached from the token LIST.
+ *
+ * A page and not a dialog because forty permissions, a search box, a project
+ * scope and a summary of what the credential ends up able to do do not fit in a
+ * modal. Full width and not a master-detail rail because nobody compares two
+ * tokens side by side — the list is where you scan them, and the space a rail
+ * would take is space the permission checkboxes actually use.
  */
 export function TokenEditor({
   mode,
@@ -181,7 +183,7 @@ export function TokenEditor({
     );
 
   return (
-    <form className="grid items-start gap-6 xl:grid-cols-[1fr_320px]" onSubmit={submit}>
+    <form className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]" onSubmit={submit}>
       <div className="min-w-0 space-y-6">
         <Card>
           <CardHeader>
@@ -342,7 +344,7 @@ export function TokenEditor({
 
       {/* Right rail: what this token will be able to do, and the primary action —
           sticky on desktop so it stays reachable while scrolling the list. */}
-      <aside className="h-fit space-y-4 xl:sticky xl:top-20">
+      <aside className="h-fit space-y-4 lg:sticky lg:top-20">
         <Card>
           <CardHeader>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
@@ -394,7 +396,6 @@ export function TokenEditor({
                 </dd>
               </div>
               {mode === "edit" && (
-                <>
                   <div className="flex items-center gap-3">
                     <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
                       Acts as
@@ -408,13 +409,6 @@ export function TokenEditor({
                       {token!.createdByUsername ?? "—"}
                     </dd>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <dt className="shrink-0 text-muted-foreground">Last used</dt>
-                    <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                      {token!.lastUsedAt ? timeAgo(token!.lastUsedAt) : "Never used"}
-                    </dd>
-                  </div>
-                </>
               )}
             </dl>
 

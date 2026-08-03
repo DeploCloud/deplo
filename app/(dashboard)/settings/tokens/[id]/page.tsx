@@ -1,8 +1,12 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { getToken } from "@/lib/data/tokens";
 import { listProjects } from "@/lib/data/projects";
+import { PageHeader } from "@/components/shared/page-header";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
+import { timeAgo } from "@/lib/utils";
 
 export async function generateMetadata(
   props: PageProps<"/settings/tokens/[id]">,
@@ -27,18 +31,44 @@ export default async function TokenPage(
   if (!token) notFound();
 
   return (
-    <TokenEditor
-      mode="edit"
-      token={token}
-      projects={projects.map((p) => ({
-        id: p.id,
-        name: p.name,
-        color: p.color ?? null,
-        appCount: p.appCount,
-      }))}
-      canManage={canManage}
-      canGrantInstanceAdmin={canGrantInstanceAdmin}
-      publicUrl={process.env.DEPLO_PUBLIC_URL ?? ""}
-    />
+    <div className="space-y-6">
+      <div className="space-y-3">
+        <Link
+          href="/settings/tokens"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" />
+          All tokens
+        </Link>
+        <PageHeader
+          title={token.name}
+          description={
+            <>
+              <code className="font-mono">{`${token.prefix}${"•".repeat(8)}`}</code>
+              {" · created "}
+              {timeAgo(token.createdAt)}
+              {token.createdByUsername ? ` by ${token.createdByUsername}` : ""}
+              {" · "}
+              {token.lastUsedAt
+                ? `last used ${timeAgo(token.lastUsedAt)}`
+                : "never used"}
+            </>
+          }
+        />
+      </div>
+      <TokenEditor
+        mode="edit"
+        token={token}
+        projects={projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          color: p.color ?? null,
+          appCount: p.appCount,
+        }))}
+        canManage={canManage}
+        canGrantInstanceAdmin={canGrantInstanceAdmin}
+        publicUrl={process.env.DEPLO_PUBLIC_URL ?? ""}
+      />
+    </div>
   );
 }

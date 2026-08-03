@@ -2,31 +2,28 @@ import Link from "next/link";
 import { KeyRound, BookOpen, ArrowRight } from "lucide-react";
 import { hasCapability } from "@/lib/membership";
 import { listTokens } from "@/lib/data/tokens";
+import { listProjects } from "@/lib/data/projects";
+import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { NewTokenMenu } from "@/components/settings/tokens/new-token-menu";
+import { TokensList } from "@/components/settings/tokens/tokens-list";
 
 export const metadata = { title: "Settings · API tokens" };
 
-export default async function TokensIndexPage() {
-  const [tokens, canManage] = await Promise.all([
+export default async function TokensPage() {
+  const [tokens, projects, canManage] = await Promise.all([
     listTokens(),
+    listProjects(),
     hasCapability("manage_tokens"),
   ]);
-  const empty = tokens.length === 0;
+  const projectNames = Object.fromEntries(projects.map((p) => [p.id, p.name]));
 
   return (
-    <div className="space-y-4">
-      <EmptyState
-        icon={KeyRound}
-        title={empty ? "No API tokens yet" : "Pick a token to see what it can do"}
-        description={
-          empty
-            ? canManage
-              ? "A token lets a script, a CI job or an assistant call this team's API. Start from one of our templates and give it only the permissions it needs."
-              : "Only members who can manage API tokens can create one. Ask a team admin if you need API access."
-            : canManage
-              ? "Every token is on the left. Open one to change its permissions or its project scope — the secret is unchanged, so tightening a live token costs no rotation."
-              : "Every token is on the left. Open one to see exactly what a client holding it can do."
-        }
+    <div className="space-y-6">
+      <PageHeader
+        title="API tokens"
+        description="Tokens that let scripts, CI jobs and other clients drive this team over the API. Each one carries its own permissions."
+        actions={canManage ? <NewTokenMenu /> : undefined}
       />
 
       <Link
@@ -45,6 +42,24 @@ export default async function TokensIndexPage() {
         </div>
         <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
       </Link>
+
+      {tokens.length === 0 ? (
+        <EmptyState
+          icon={KeyRound}
+          title="No API tokens yet"
+          description={
+            canManage
+              ? "A token lets a script, a CI job or an assistant call this team's API. Start from one of our templates and give it only the permissions it needs."
+              : "Only members who can manage API tokens can create one. Ask a team admin if you need API access."
+          }
+        />
+      ) : (
+        <TokensList
+          tokens={tokens}
+          projectNames={projectNames}
+          canManage={canManage}
+        />
+      )}
     </div>
   );
 }
