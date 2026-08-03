@@ -126,7 +126,7 @@ export function TokensPanel({ tokens }: { tokens: ApiTokenDTO[] }) {
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">API reference & playground</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             Browse every GraphQL query and mutation, and try read-only calls
             live — mutations run as a safe dry run.
           </p>

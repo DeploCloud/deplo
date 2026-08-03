@@ -200,7 +200,7 @@ export default async function AppOverview(
                   <p className="line-clamp-1 text-sm font-medium">
                     {d.commitMessage}
                   </p>
-                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                     <CommitLink
                       sha={d.commitSha}
                       url={d.commitUrl}

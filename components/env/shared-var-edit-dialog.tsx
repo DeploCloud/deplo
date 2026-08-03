@@ -173,7 +173,7 @@ export function SharedVarEditDialog({
             <div className="flex items-center justify-between rounded-lg border border-border p-3">
               <div>
                 <p className="text-sm font-medium">Secret</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Hide the value in the UI after saving. It can never be read back.
                 </p>
               </div>

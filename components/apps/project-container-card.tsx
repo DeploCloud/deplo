@@ -327,7 +327,7 @@ export function ProjectContainerCard({
           {tile}
           <div className="min-w-0 flex-1">
             <span className="truncate font-medium">{project.name}</span>
-            <p className="text-xs text-muted-foreground">{countLabel}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
           </div>
         </div>
         {actions}
@@ -347,7 +347,7 @@ export function ProjectContainerCard({
             {tile}
             <div className="min-w-0">
               <span className="block truncate font-medium">{project.name}</span>
-              <p className="text-xs text-muted-foreground">{countLabel}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
             </div>
           </div>
           {actions}

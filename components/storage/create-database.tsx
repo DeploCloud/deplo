@@ -281,7 +281,7 @@ export function CreateDatabase({
             <div className="space-y-3 rounded-lg border border-border p-3">
               <div>
                 <p className="text-sm font-medium">Credentials</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Optional. Leave blank to use generated defaults. These are set
                   only when the database is first created and can&apos;t be changed
                   later.
@@ -374,7 +374,7 @@ export function CreateDatabase({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium">Expose publicly</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Publish the port to the internet. Keep off unless required.
                   </p>
                 </div>

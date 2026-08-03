@@ -107,7 +107,7 @@ export function UploadInput({
           <FileArchive className="size-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{shown.filename}</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-muted-foreground">
               {formatBytes(shown.size)}
               {shown.uploadedAt
                 ? ` · uploaded ${timeAgo(shown.uploadedAt)}`

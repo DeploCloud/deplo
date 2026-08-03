@@ -70,7 +70,7 @@ export default async function SettingsGeneralPage() {
             <div className="flex items-center justify-between rounded-lg border border-border p-3">
               <div>
                 <p className="text-sm font-medium">Theme</p>
-                <p className="text-xs text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Defaults to dark, matches your system if enabled.
                 </p>
               </div>

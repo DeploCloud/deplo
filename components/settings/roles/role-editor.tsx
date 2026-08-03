@@ -189,7 +189,7 @@ export function RoleEditor({
                   <Fingerprint className="size-4 text-muted-foreground" />
                   Require two-factor authentication
                 </p>
-                <p className="text-xs leading-snug text-muted-foreground">
+                <p className="mt-1 text-xs leading-snug text-muted-foreground">
                   Members with this role must have 2FA enrolled. Until they do,
                   they resolve no permissions at all — in the dashboard and over
                   the API alike.

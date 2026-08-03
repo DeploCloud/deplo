@@ -207,7 +207,7 @@ export function SharedVarsManager({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">Shared variables</h3>
-          <p className="text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Define a variable once and make it available to the whole team, to
             projects, or add it to single apps. Apps opt in — a shared variable
             is never added to an app automatically.

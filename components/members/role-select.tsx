@@ -74,7 +74,7 @@ export function RoleSelect({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-medium">Custom</span>
-              <span className="block text-xs leading-snug text-muted-foreground">
+              <span className="mt-1 block text-xs leading-snug text-muted-foreground">
                 A hand-picked set of permissions. Pick a role to replace it.
               </span>
             </span>

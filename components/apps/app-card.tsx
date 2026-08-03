@@ -548,7 +548,7 @@ export function AppCard({
             {/* Same subtitle slot the app's own header uses: the live URL when
                 a domain is linked, otherwise what this App *is* — "No domain
                 yet" only restated the absence the empty slot already showed. */}
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="mt-1 truncate text-xs text-muted-foreground">
               {project.productionUrl
                 ? project.productionUrl.replace(/^https?:\/\//, "")
                 : appTypeLabel(project)}
@@ -601,7 +601,7 @@ export function AppCard({
                 <span className="block truncate font-medium">{project.name}</span>
                 {/* See the list view above: URL when there is one, else the
                     App's kind, exactly as its management header reads. */}
-                <p className="truncate text-xs text-muted-foreground">
+                <p className="mt-1 truncate text-xs text-muted-foreground">
                   {project.productionUrl
                     ? project.productionUrl.replace(/^https?:\/\//, "")
                     : appTypeLabel(project)}

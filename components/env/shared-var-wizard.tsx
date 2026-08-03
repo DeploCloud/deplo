@@ -359,7 +359,7 @@ export function SharedVarDialog({
               <div className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div>
                   <p className="text-sm font-medium">Secret</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Hide the value in the UI after saving. It can never be read back.
                   </p>
                 </div>
@@ -574,7 +574,7 @@ function ProjectsSection({
     <section className="space-y-2">
       <div>
         <h4 className="text-sm font-medium">Projects</h4>
-        <p className="text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-muted-foreground">
           Pick the projects whose apps should see this variable suggested —
           narrow a project to single environments if you like. Each app still
           adds it itself. {count > 0 && `${count} selected.`}
@@ -624,7 +624,7 @@ function ProjectsSection({
                 <ProjectTile color={p.color} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
+                  <span className="mt-1 block truncate text-xs text-muted-foreground">
                     {p.appCount} app{p.appCount === 1 ? "" : "s"} ·{" "}
                     {envs.length} environment{envs.length === 1 ? "" : "s"}
                   </span>
@@ -757,7 +757,7 @@ function AppsSection({
     <section className="space-y-2">
       <div>
         <h4 className="text-sm font-medium">Apps</h4>
-        <p className="text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-muted-foreground">
           Pick the apps to add this variable to — it reaches them on their next
           deploy. {selected.length > 0 && `${selected.length} selected.`}
         </p>
@@ -811,7 +811,7 @@ function AppsSection({
                   </span>
                   {/* The primary domain is the app's identity at a glance; the
                       slug stands in until one exists. */}
-                  <span className="block truncate text-xs text-muted-foreground">
+                  <span className="mt-1 block truncate text-xs text-muted-foreground">
                     {a.primaryDomain ?? `${a.slug} · no domain yet`}
                   </span>
                 </span>

@@ -425,7 +425,7 @@ function Option({
         >
           {title}
         </span>
-        <span className="block text-xs text-muted-foreground">{detail}</span>
+        <span className="mt-1 block text-xs text-muted-foreground">{detail}</span>
         {children}
       </span>
     </label>

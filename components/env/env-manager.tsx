@@ -158,7 +158,7 @@ export function EnvManager({
     <div className="space-y-4">
       <div>
         <h3 className="text-sm font-medium">Environment Variables</h3>
-        <p className="text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           Secret values are encrypted at rest and never shown again.
         </p>
       </div>

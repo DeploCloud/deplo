@@ -294,7 +294,7 @@ function QueuedBanner({ position }: { position: number | null }) {
       <Clock className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
       <div className="min-w-0 text-sm">
         <p className="font-medium text-foreground">This deployment is queued</p>
-        <p className="text-muted-foreground">
+        <p className="mt-1 text-muted-foreground">
           {position == null
             ? "Waiting for a free build slot on the owning server."
             : ahead === 0

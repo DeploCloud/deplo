@@ -257,6 +257,11 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   (`toast.error(res.error)`), don't invent generic copy.
 - **Field help lives in the tooltip:** `FieldLabel info={…}` / `InfoTip` (`components/ui/info-tip.tsx`)
   — don't duplicate it as helper text below the input.
+- **A description under a title always gets a gap.** Any muted description stacked under its own
+  title (setting rows, card subtitles, list rows, empty states) carries **`mt-1`** — or its wrapper
+  carries `space-y-1`, never both. Two stacked lines with no spacing read as one cramped block; the
+  4px is what separates them. The rule is global, not per-screen: a card that skips it misaligns
+  with every sibling in the same grid.
 - **Every dialog with fields is a real `<form>` — Enter submits.** Wrap the body + `DialogFooter`
   in `<form className="grid gap-4" onSubmit={…}>` (matching `DialogContent`'s own grid, so the
   layout is unchanged), `preventDefault()`, and give the primary button `type="submit"` instead of

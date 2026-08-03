@@ -23,7 +23,7 @@ export function PermissionsSummary({
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-medium">Your API permissions</h3>
-          <p className="text-xs text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             What your account can call in the active team. Mutations you lack are
             denied (in the playground and the real API alike).
           </p>
@@ -69,7 +69,7 @@ export function PermissionsSummary({
                     — {held ? "Granted" : "Not granted"}
                   </span>
                 </p>
-                <p className="truncate text-[11px] text-muted-foreground">
+                <p className="mt-1 truncate text-[11px] text-muted-foreground">
                   {meta.description}
                 </p>
               </div>

@@ -106,7 +106,7 @@ export function S3Card({ dest }: { dest: S3DestinationDTO }) {
             </div>
             <div>
               <p className="font-medium">{dest.name}</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {PROVIDER_LABEL[dest.provider] ?? dest.provider}
               </p>
             </div>

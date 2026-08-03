@@ -91,7 +91,7 @@ export function AppBackups({
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-medium">Back up this app</h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-muted-foreground">
               Captures the app&apos;s persistent volumes, files and its
               compose/env snapshot to an S3 destination. Linked databases are
               backed up separately, as databases.
@@ -143,7 +143,7 @@ export function AppBackups({
           <AlertTriangle className="size-5 shrink-0 text-[var(--warning)]" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">No S3 destination configured</p>
-            <p className="text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-muted-foreground">
               App backups are uploaded to an S3 bucket. Add a destination to
               run or schedule backups — completed artifacts then appear here.
             </p>

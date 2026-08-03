@@ -328,7 +328,7 @@ export function ShareFolderDialog({
                         </span>
                       )}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground">
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
                       {g.isOwner ? "Full access" : capSummary(g.capabilities)}
                     </p>
                   </div>

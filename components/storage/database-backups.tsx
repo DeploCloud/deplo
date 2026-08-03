@@ -37,7 +37,7 @@ export function DatabaseBackups({
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-medium">Back up this database</h2>
-          <p className="text-xs text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             Schedule a periodic dump of {database.name} to an S3 destination, then
             restore it from any run.
           </p>

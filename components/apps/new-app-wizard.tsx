@@ -606,7 +606,7 @@ export function NewAppWizard({
                   <GitBranch className="size-5 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Automatic deployments</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Deploy on every push to{" "}
                       {(source === "github" ? ghSelection?.branch : branch) ||
                         "main"}
@@ -664,7 +664,7 @@ export function NewAppWizard({
               </div>
               <div>
                 <p className="font-medium">{template!.name}</p>
-                <p className="line-clamp-2 text-sm text-muted-foreground">
+                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                   {template!.description}
                 </p>
               </div>

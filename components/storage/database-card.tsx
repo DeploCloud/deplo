@@ -128,7 +128,7 @@ function DatabaseCardGrid({
             <DatabaseLogo type={db.type} logo={db.logo} size={36} />
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{db.name}</p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="mt-1 truncate text-xs text-muted-foreground">
                 {DB_NAMES[db.type] ?? db.type} · v{db.version}
               </p>
             </div>
@@ -172,7 +172,7 @@ function DatabaseCardList({ db, serverName, dragHandle, dragActive, pollMs }: In
         <DatabaseLogo type={db.type} logo={db.logo} size={36} />
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{db.name}</p>
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="mt-1 truncate text-xs text-muted-foreground">
             {DB_NAMES[db.type] ?? db.type} · v{db.version} ·{" "}
             <span className="font-mono">
               {db.host}:{db.port}

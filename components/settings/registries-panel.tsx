@@ -93,7 +93,7 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
                       {r.type}
                     </Badge>
                   </p>
-                  <p className="truncate font-mono text-xs text-muted-foreground">
+                  <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
                     {r.username}@{r.registryUrl}
                   </p>
                 </div>

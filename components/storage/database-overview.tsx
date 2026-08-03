@@ -47,7 +47,7 @@ export function DatabaseOverview({
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" />
           <div>
             <p className="font-medium">Redeploy to enable live tools</p>
-            <p className="text-muted-foreground">
+            <p className="mt-1 text-muted-foreground">
               This database was created before live status, logs and the terminal
               were available. Click <strong className="font-medium text-foreground">Redeploy</strong>{" "}
               above to enable them — the data volume is preserved.

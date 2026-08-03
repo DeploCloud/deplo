@@ -134,7 +134,7 @@ export function RegistrationLinkRow({ link }: { link: RegistrationLinkDTO }) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">Registration link</p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="mt-1 truncate text-xs text-muted-foreground">
                 Created by {link.createdBy} · {scope}
               </p>
             </div>

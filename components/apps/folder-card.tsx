@@ -507,7 +507,7 @@ export function FolderCard({
           </div>
           <div className="min-w-0 flex-1">
             <span className="truncate font-medium">{folder.name}</span>
-            <p className="text-xs text-muted-foreground">{countLabel}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
           </div>
         </div>
         {actions}
@@ -534,7 +534,7 @@ export function FolderCard({
             </div>
             <div className="min-w-0">
               <span className="truncate font-medium">{folder.name}</span>
-              <p className="text-xs text-muted-foreground">{countLabel}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
             </div>
           </div>
           {actions}

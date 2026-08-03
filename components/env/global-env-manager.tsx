@@ -102,7 +102,7 @@ export function GlobalEnvManager({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium">All-teams variables</h3>
-          <p className="text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             Injected into every app of every team. Any shared or app variable
             with the same key overrides it.
           </p>

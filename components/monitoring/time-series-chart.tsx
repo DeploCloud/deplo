@@ -578,7 +578,7 @@ export function TimeSeriesChart({
             {fmtTime(hoverTs, true)}
           </p>
           <p className="font-medium text-popover-foreground">No data</p>
-          <p className="whitespace-nowrap text-muted-foreground">
+          <p className="mt-1 whitespace-nowrap text-muted-foreground">
             no sample recorded here
           </p>
         </div>

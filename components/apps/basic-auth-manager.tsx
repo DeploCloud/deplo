@@ -136,7 +136,7 @@ export function BasicAuthManager({
           HTTP Basic Auth
           <InfoTip content="A browser login in front of every domain of this app — the quickest way to keep a staging or internal app private. Changes take effect within seconds, with no redeploy." />
         </h3>
-        <p className="text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           Anyone who reaches this app has to sign in with one of these
           credentials first. Passwords are encrypted at rest and revealed one at
           a time.
@@ -262,7 +262,7 @@ function CredentialCard({
             >
               {user.username}
             </p>
-            <p className="text-xs text-muted-foreground">Username</p>
+            <p className="mt-1 text-xs text-muted-foreground">Username</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">

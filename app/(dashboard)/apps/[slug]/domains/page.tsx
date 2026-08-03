@@ -95,7 +95,7 @@ export default async function AppDomainsPage(
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-medium">Domains</h3>
-            <p className="text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-muted-foreground">
               Custom domains routed to this app with automatic TLS.
             </p>
           </div>

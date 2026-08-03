@@ -288,7 +288,7 @@ function MethodSettings({
           />
           <span>
             <span className="text-sm font-medium">Single-page application</span>
-            <span className="block text-xs text-muted-foreground">
+            <span className="mt-1 block text-xs text-muted-foreground">
               Route unknown paths to index.html so client-side routing works
               (history-API fallback).
             </span>

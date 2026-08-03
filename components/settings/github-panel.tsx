@@ -91,7 +91,7 @@ export function GithubPanel({
                         <ExternalLink className="size-3.5" />
                       </a>
                     </p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       {app.installations.length} installation
                       {app.installations.length === 1 ? "" : "s"}
                     </p>

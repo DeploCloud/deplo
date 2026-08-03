@@ -830,7 +830,7 @@ function ProjectSectionHeader({
           <span className="block truncate text-sm font-medium">
             {section.name}
           </span>
-          <span className="block truncate text-xs text-muted-foreground">
+          <span className="mt-1 block truncate text-xs text-muted-foreground">
             {plural(section.apps.length, "app")} ·{" "}
             {plural(section.rowCount, "variable")}
           </span>
@@ -898,7 +898,7 @@ function AppVarsCard({
             </span>
             {/* Where the app is reached, and — once the table is folded away —
                 how much it is hiding. */}
-            <span className="block truncate text-xs text-muted-foreground">
+            <span className="mt-1 block truncate text-xs text-muted-foreground">
               {[subtitle, open ? null : plural(rows.length, "variable")]
                 .filter(Boolean)
                 .join(" · ") || plural(rows.length, "variable")}

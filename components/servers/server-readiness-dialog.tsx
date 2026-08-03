@@ -293,7 +293,7 @@ export function ServerReadinessDialog({
               />
               <div className="min-w-0">
                 <p className={cn("text-sm font-medium", verdict.tone)}>{verdict.label}</p>
-                <p className="text-xs text-muted-foreground">{report.summary}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{report.summary}</p>
               </div>
             </div>
 
@@ -343,7 +343,7 @@ export function ServerReadinessDialog({
                             />
                             <div className="min-w-0">
                               <p className="text-xs font-medium">{c.label}</p>
-                              <p className="text-[11px] text-muted-foreground">
+                              <p className="mt-1 text-[11px] text-muted-foreground">
                                 {c.detail}
                               </p>
                               {c.hint ? (

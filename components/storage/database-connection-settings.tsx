@@ -179,7 +179,7 @@ function ExposureCard({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Expose publicly</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Publish the port to the internet. Keep off unless required.
               </p>
             </div>
