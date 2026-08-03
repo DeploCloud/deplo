@@ -29,12 +29,26 @@ _Avoid_: current team (ambiguous with the team being viewed), selected team.
 **Membership**:
 The join row binding a user to a team: the assigned **Role** (`role_id`), the member's
 `role` **rank** (only `owner` outranks — it is what the "only an owner may act on an
-owner" guards read), and the **effective `capabilities`** set. The capabilities are
+owner" guards read), and the **base capabilities** set. The capabilities are
 written from the role and re-written whenever that role changes; a membership with no
 `role_id` carries a hand-picked ("Custom") set that belongs to no role. The source of
-truth for what a user may do **in a team** — `User.role` is a legacy instance-wide label
-kept only for back-compat / defaults.
-_Avoid_: team user, role (a membership *has* a role; it is not one).
+truth for what a user may do **in a team**, except where a **node grant** overrides it —
+`User.role` is a legacy instance-wide label kept only for back-compat / defaults.
+`granular` records that the member has node grants on top of the role (ADR-0016); it is
+the admin's mode choice, not a derived fact.
+_Avoid_: team user, role (a membership *has* a role; it is not one), effective
+capabilities for the base set (the effective set is per node).
+
+**Node grant**:
+A capability set attached to ONE **App**, **Folder** or **Project** (`app_grants`,
+`folder_grants`, `project_grants`), which **replaces** the member's base set inside that
+node and **may exceed it** — the way to hand someone one corner of the fleet without
+widening their role. Precedence is most-specific-wins: app, then the nearest ancestor
+folder, then further ancestors, then the project, then the membership. Resolved in
+`lib/data/node-access.ts` and gated by `requireAppCapability`; bounded to
+`NODE_GRANTABLE_CAPABILITIES`, so a node can never carry a team-wide capability.
+Removing the membership is what revokes every node grant at once (ADR-0016).
+_Avoid_: per-folder permission, scoped role, ACL.
 
 **Role**:
 A named capability set **owned by a team** (`team_roles`, id prefix `role_`) and assigned
@@ -60,7 +74,9 @@ ONE action a member may be allowed to take — `create_apps`, `deploy_apps`, `de
 keywords and browse categories is `lib/capabilities.ts`). Never a bundle: if a name covers
 two actions an admin might want to separate, it is two capabilities. `view` is the
 always-on floor. Capabilities are the enforcement primitive; a **Role** is the named set a
-member is assigned. Enforced server-side on every mutating action via `requireCapability`.
+member is assigned. Enforced server-side on every mutating action via `requireCapability`
+for the team-wide ones, and `requireAppCapability` for anything that lives under an App —
+which asks about that one app, because a **node grant** may say something different there.
 
 They replaced eight coarse ones (`deploy`, `manage_infra`, …) in migration 0056, which
 expanded every stored row into exactly what its old name already implied
