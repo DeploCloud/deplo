@@ -1,16 +1,10 @@
 "use client";
 
 import * as React from "react";
-import {
-  ChevronRight,
-  Building2,
-  FolderTree,
-  Folder,
-  Box,
-  Search,
-  X,
-} from "lucide-react";
+import { ChevronRight, FolderTree, Folder, Box, Search, X } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
+import { LogoImage } from "@/components/shared/project-logo";
 import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
@@ -178,7 +172,7 @@ export function ScopePicker({
       <div key={folder.id}>
         <Row
           depth={depth}
-          icon={Folder}
+          mark={<TintedMark icon={Folder} color={folder.color} />}
           label={folder.name}
           meta={folderMeta(folder)}
           checked={on}
@@ -198,7 +192,7 @@ export function ScopePicker({
               <Row
                 key={app.id}
                 depth={depth + 1}
-                icon={Box}
+                mark={<AppMark logo={app.logo} />}
                 label={app.name}
                 meta={app.slug}
                 checked={on || apps.has(app.id)}
@@ -269,7 +263,7 @@ export function ScopePicker({
                   <div key={team.id}>
                     <Row
                       depth={0}
-                      icon={Building2}
+                      mark={<TeamMark name={team.name} />}
                       label={team.name}
                       meta={teamMeta(team)}
                       checked={teamOn}
@@ -291,7 +285,12 @@ export function ScopePicker({
                             <div key={project.id}>
                               <Row
                                 depth={1}
-                                icon={FolderTree}
+                                mark={
+                                  <TintedMark
+                                    icon={FolderTree}
+                                    color={project.color}
+                                  />
+                                }
                                 label={project.name}
                                 meta={projectMeta(project)}
                                 checked={projOn}
@@ -315,7 +314,7 @@ export function ScopePicker({
                                     <Row
                                       key={app.id}
                                       depth={2}
-                                      icon={Box}
+                                      mark={<AppMark logo={app.logo} />}
                                       label={app.name}
                                       meta={app.slug}
                                       checked={projOn || apps.has(app.id)}
@@ -336,7 +335,7 @@ export function ScopePicker({
                           <Row
                             key={app.id}
                             depth={1}
-                            icon={Box}
+                            mark={<AppMark logo={app.logo} />}
                             label={app.name}
                             meta={app.slug}
                             checked={teamOn || apps.has(app.id)}
@@ -427,6 +426,49 @@ function openForSelection(
   return out;
 }
 
+/**
+ * A team has no logo of its own — its identity everywhere in deplo is the
+ * two-letter avatar the topbar switcher shows, so the picker shows the same one
+ * rather than inventing a generic glyph for it.
+ */
+function TeamMark({ name }: { name: string }) {
+  return (
+    <Avatar className="size-4">
+      <AvatarFallback className="bg-foreground text-[8px] text-background">
+        {name.slice(0, 2).toUpperCase()}
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+/** An app's own logo when it has one, else the generic app glyph. */
+function AppMark({ logo }: { logo: string | null }) {
+  return (
+    <LogoImage
+      src={logo}
+      size={16}
+      fallback={<Box className="size-3" />}
+      className="rounded-sm bg-transparent"
+    />
+  );
+}
+
+/** Projects and folders carry a colour, not an image — tint their glyph with it. */
+function TintedMark({
+  icon: Icon,
+  color,
+}: {
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  color: string | null;
+}) {
+  return (
+    <Icon
+      className={cn("size-3.5", !color && "text-muted-foreground")}
+      style={color ? { color } : undefined}
+    />
+  );
+}
+
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 function countApps(node: { folders: ScopeTreeFolder[]; apps: ScopeTreeApp[] }): number {
@@ -460,7 +502,7 @@ function describe(
 
 function Row({
   depth,
-  icon: Icon,
+  mark,
   label,
   meta,
   checked,
@@ -472,7 +514,8 @@ function Row({
   id,
 }: {
   depth: number;
-  icon: React.ComponentType<{ className?: string }>;
+  /** The node's own identity: an avatar, a logo, or a tinted glyph. */
+  mark: React.ReactNode;
   label: string;
   meta?: string;
   checked: boolean;
@@ -521,7 +564,9 @@ function Row({
           !disabled && "cursor-pointer",
         )}
       >
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="flex size-4 shrink-0 items-center justify-center">
+          {mark}
+        </span>
         <span
           className={cn(
             "min-w-0 flex-1 truncate text-sm",

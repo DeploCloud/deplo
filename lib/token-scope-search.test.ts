@@ -11,7 +11,12 @@ import type { ScopeTreeTeam } from "./data/tokens";
  * node that matches ITSELF keeps all of its children (otherwise ticking it would
  * no longer mean "everything in here").
  */
-const app = (id: string, name = id, slug = id) => ({ id, name, slug });
+const app = (id: string, name = id, slug = id) => ({
+  id,
+  name,
+  slug,
+  logo: null,
+});
 
 const TREE: ScopeTreeTeam[] = [
   {

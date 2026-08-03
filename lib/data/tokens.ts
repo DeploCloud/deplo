@@ -226,6 +226,8 @@ export interface ScopeTreeApp {
   id: string;
   name: string;
   slug: string;
+  /** The app's own logo, when it has one. Null falls back to a generic glyph. */
+  logo: string | null;
 }
 export interface ScopeTreeFolder {
   id: string;
@@ -308,6 +310,7 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
         folderId: appsTable.folderId,
         name: appsTable.name,
         slug: appsTable.slug,
+        logo: appsTable.logo,
       })
       .from(appsTable)
       .where(inArray(appsTable.teamId, teamIds)),
@@ -322,7 +325,7 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
     const key = a.folderId ?? a.projectId ?? a.teamId;
     appsIn.set(key, [
       ...(appsIn.get(key) ?? []),
-      { id: a.id, name: a.name, slug: a.slug },
+      { id: a.id, name: a.name, slug: a.slug, logo: a.logo ?? null },
     ]);
   }
   /** Child folders keyed by their parent folder id. */
