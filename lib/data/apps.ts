@@ -595,6 +595,9 @@ export async function createApp(
     productionUrl: null,
     status: isUpload ? "idle" : "queued",
     autoDeploy: input.autoDeploy ?? true,
+    // The deploy hook answers as soon as someone opens it (it mints its URL on
+    // first read and is bearer-gated either way) — nothing to configure at create.
+    deployHookEnabled: true,
     // New apps start uncapped; limits are set later from Settings → Resources.
     resources: null,
     latestDeploymentId: null,

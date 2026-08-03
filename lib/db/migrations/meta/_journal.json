@@ -414,6 +414,13 @@
       "when": 1784672800000,
       "tag": "0058_add_app_framework_override",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1784673000000,
+      "tag": "0059_add_app_deploy_hook",
+      "breakpoints": true
     }
   ]
 }

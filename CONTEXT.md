@@ -371,6 +371,18 @@ A single build-and-release event that produces or updates the production stack (
 preview). Always image-based; recorded as a `Deployment` row.
 _Avoid_: build (the build is one phase of a deployment), release.
 
+**Deploy hook**:
+The per-app URL that starts a **Deployment** from outside Deplo — a GitLab/Bitbucket webhook,
+a CI job, a script — `POST /api/apps/<id>/deploy-hook/<token>`. It carries **two** independent
+secrets, and neither is sufficient alone: the URL's last segment (per app, rotatable, stored
+encrypted so the operator can read their own link back) says *which* app, and an **API token**
+sent as `Authorization: Bearer deplo_…` says *who* — the deploy then runs through the same
+gates the dashboard button does. Per-app `deploy_hook_enabled` is the kill switch. Distinct
+from **automatic deployments** (deploy-on-push), which only the GitHub App source can drive
+because it is the only provider that delivers pushes to Deplo.
+_Avoid_: webhook on its own (ambiguous with the inbound GitHub App webhook and with a plugin
+**Event**'s delivery), deploy key (that is an SSH credential), trigger URL.
+
 **Build cache**:
 The layers and builder cache mounts a **server** keeps from previous builds, so a redeploy
 that changes nothing takes seconds. It lives on the **server** (one BuildKit cache per host,

@@ -35,6 +35,11 @@ import {
   type ResourceLimitsInput,
 } from "@/lib/data/apps";
 import {
+  revealDeployHook,
+  rotateDeployHook,
+  setDeployHookEnabled,
+} from "@/lib/data/deploy-hook";
+import {
   appTransferInfo,
   transferAppToTeam,
   type AppTransferInfo,
@@ -201,6 +206,11 @@ export const AppRef = builder
       productionUrl: t.exposeString("productionUrl", { nullable: true }),
       status: t.field({ type: AppStatusEnum, resolve: (p) => p.status }),
       autoDeploy: t.exposeBoolean("autoDeploy"),
+      deployHookEnabled: t.exposeBoolean("deployHookEnabled", {
+        description:
+          "Whether this app's deploy hook answers. The hook URL itself is never " +
+          "a field — read it back with revealAppDeployHook.",
+      }),
       domainCount: t.exposeInt("domainCount"),
       createdAt: t.exposeString("createdAt"),
       updatedAt: t.exposeString("updatedAt"),
@@ -768,6 +778,39 @@ builder.mutationFields((t) => ({
       await setAutoDeploy(id, value);
       return reloadApp(id);
     },
+  }),
+  setAppDeployHookEnabled: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Turn this app's deploy hook on or off. Off ⇒ the endpoint refuses every " +
+      "call, whatever URL or API token it carries.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.boolean({ required: true }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setDeployHookEnabled(id, value);
+      return reloadApp(id);
+    },
+  }),
+  revealAppDeployHook: t.field({
+    type: "String",
+    authScopes: { capability: "configure_apps" },
+    description:
+      "The app's full deploy hook URL, minting it on first read. Calling it " +
+      "still requires an API token as `Authorization: Bearer deplo_…`.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => revealDeployHook(id),
+  }),
+  rotateAppDeployHook: t.field({
+    type: "String",
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Mint a new deploy hook URL for the app and return it. Every copy of the " +
+      "previous URL stops working immediately.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => rotateDeployHook(id),
   }),
   updateAppLogo: t.field({
     type: AppRef,

@@ -760,6 +760,15 @@ export const apps = pgTable(
     productionUrl: text("production_url"),
     status: text("status").notNull(),
     autoDeploy: boolean("auto_deploy").notNull(),
+    // Deploy hook (migration 0059): the unguessable segment of this app's
+    // "deploy now" URL, AES-GCM encrypted because the link has to be readable
+    // back, and NULL until someone first opens the hook (minted on demand, so no
+    // app carries a live credential it never asked for). The token never gates a
+    // deploy on its own — the endpoint also requires an API token as
+    // `Authorization: Bearer deplo_…` belonging to a member with `deploy_apps`.
+    deployHookTokenEnc: text("deploy_hook_token_enc"),
+    // The hook's kill switch, ON by default (it is already bearer-gated).
+    deployHookEnabled: boolean("deploy_hook_enabled").notNull().default(true),
     // Per-app resource limits (flattened ResourceLimits, like repo_*/upload_*).
     // Every column NULLABLE with NO default: NULL ⇒ that dimension is UNCAPPED,
     // and an all-NULL row ⇒ `resources` assembles to null (no limits set), so an

@@ -76,6 +76,11 @@ type App {
   createdAt: String
 
   """
+  Whether this app's deploy hook answers. The hook URL itself is never a field — read it back with revealAppDeployHook.
+  """
+  deployHookEnabled: Boolean
+
+  """
   The app's most recent deployments, newest first (capped so a nested query can't fan out over the whole history + per-deployment logs).
   """
   deployments: [Deployment!]
@@ -1601,6 +1606,11 @@ type Mutation {
   restoreBackup(runId: String!): Boolean
 
   """
+  The app's full deploy hook URL, minting it on first read. Calling it still requires an API token as `Authorization: Bearer deplo_…`.
+  """
+  revealAppDeployHook(id: String!): String
+
+  """
   Reveal one credential's password. A basic-auth login is handed to a person, so whoever may change it may also read it back — otherwise the only answer to “what is the password?” is to reset it and lock everyone out. A mutation, not a query, so it is never cached or prefetched.
   """
   revealBasicAuthPassword(id: String!): String
@@ -1641,6 +1651,11 @@ type Mutation {
   revokeToken(id: String!): Boolean
 
   """
+  Mint a new deploy hook URL for the app and return it. Every copy of the previous URL stops working immediately.
+  """
+  rotateAppDeployHook(id: String!): String
+
+  """
   Rotate the database's engine password (auto-generated when none is given) and return the NEW connection string — shown once, like revealConnection. Engines that persist users in the data volume are told first via an exec in the running container; the compose is then re-rendered so env/command/healthcheck agree. Requires the database to be running.
   """
   rotateDatabasePassword(id: String!, password: String): String
@@ -1662,6 +1677,11 @@ type Mutation {
   """Create or update a shared variable; returns the saved entity."""
   saveSharedVar(input: SaveSharedVarInput!): SharedVar
   setAppAutoDeploy(id: String!, value: Boolean!): App
+
+  """
+  Turn this app's deploy hook on or off. Off ⇒ the endpoint refuses every call, whatever URL or API token it carries.
+  """
+  setAppDeployHookEnabled(id: String!, value: Boolean!): App
 
   """
   Replace an app's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.

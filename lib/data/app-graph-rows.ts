@@ -201,6 +201,10 @@ export function assembleApp(
     productionUrl: row.productionUrl,
     status: row.status as App["status"],
     autoDeploy: row.autoDeploy,
+    // The hook's on/off state travels with the app; its TOKEN never does — that
+    // column is read only by lib/data/deploy-hook.ts, which decrypts it behind
+    // its own gate (App is the shape every DTO is built from).
+    deployHookEnabled: row.deployHookEnabled,
     // All-NULL resource columns ⇒ no limits set (null), like assembleRepo.
     resources: assembleResources(row),
     latestDeploymentId: row.latestDeploymentId,
@@ -412,6 +416,9 @@ export function appToRow(p: App): AppInsert {
     productionUrl: p.productionUrl ?? null,
     status: p.status,
     autoDeploy: p.autoDeploy,
+    // A new app's hook is ENABLED but not yet minted: `deploy_hook_token_enc`
+    // stays NULL until someone opens the hook (lib/data/deploy-hook.ts).
+    deployHookEnabled: p.deployHookEnabled ?? true,
     // Flattened ResourceLimits (null ⇒ that dimension is uncapped). An app with
     // `resources: null` writes every column NULL, so it round-trips to null.
     ...resourceLimitsToRow(p.resources),

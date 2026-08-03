@@ -1,0 +1,87 @@
+import { authenticateToken } from "@/lib/data/tokens";
+import { verifyDeployHookToken } from "@/lib/data/deploy-hook";
+import { redeploy } from "@/lib/data/deployments";
+import { runWithIdentity } from "@/lib/auth/request-context";
+
+/**
+ * The deploy hook: `POST /api/apps/<id>/deploy-hook/<token>` deploys the app.
+ *
+ *   curl -X POST -H "Authorization: Bearer deplo_…" \
+ *     https://deplo.example.com/api/apps/prj_123/deploy-hook/<token>
+ *
+ * TWO secrets, on purpose (see lib/data/deploy-hook.ts). The URL's last segment
+ * says WHICH app — rotatable, and useless on its own. The bearer API token says
+ * WHO — it resolves to a real member, and the deploy then runs through the exact
+ * same gates the dashboard button does (`redeploy` re-checks the team, the folder
+ * grant, `deploy_apps` and the two-factor policy), so a hook can never do more
+ * than the person whose token it carries. Revoking that token stops every hook
+ * call made with it everywhere, without touching a single app's settings.
+ *
+ * REST rather than GraphQL because a webhook sender — GitLab, a CI runner, a
+ * registry — posts to a URL it is given and cannot compose a query. It is the
+ * one endpoint here authenticated by bearer token INSTEAD of the session cookie;
+ * every other app route under /api/apps is cookie-authenticated.
+ */
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function POST(
+  request: Request,
+  // Spelled out rather than `RouteContext<"…">`: that generated type only exists
+  // after a build has run, and this file must typecheck before one has.
+  ctx: { params: Promise<{ id: string; token: string }> },
+) {
+  // The bearer token comes FIRST: until the caller has proved they are a member
+  // of some team, the URL token must not be able to tell them whether an app
+  // exists, or whether its hook is switched off.
+  const header = request.headers.get("authorization") ?? "";
+  const raw = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  const principal = raw ? await authenticateToken(raw) : null;
+  if (!principal)
+    return Response.json(
+      {
+        error:
+          "Missing or invalid API token. Send an `Authorization: Bearer deplo_…` header — create the token in Settings → API tokens.",
+      },
+      { status: 401 },
+    );
+
+  const { id: appId, token } = await ctx.params;
+  const hook = await verifyDeployHookToken(appId, token);
+  if (!hook.ok) {
+    if (hook.reason === "disabled")
+      return Response.json(
+        {
+          error:
+            "This app's deploy hook is turned off. Turn it back on in the app's Deployment settings.",
+        },
+        { status: 403 },
+      );
+    // A wrong token and an unknown app answer identically: a caller holding a
+    // token for team A must not be able to probe team B's app ids.
+    return Response.json({ error: "Deploy hook not found" }, { status: 404 });
+  }
+  if (hook.teamId !== principal.teamId)
+    return Response.json({ error: "Deploy hook not found" }, { status: 404 });
+
+  try {
+    // Back onto the normal path: inside runWithIdentity the whole data layer
+    // resolves this API token's owner, so `redeploy` applies every gate — no
+    // capability check is duplicated here, and none can be skipped.
+    const deployment = await runWithIdentity(
+      { userId: principal.userId, teamId: principal.teamId },
+      () => redeploy(appId),
+    );
+    return Response.json({
+      deploymentId: deployment.id,
+      appId,
+      status: deployment.status,
+      url: deployment.url || null,
+    });
+  } catch (e) {
+    // `redeploy` throws for a real reason the caller can act on — no
+    // `deploy_apps`, no access to the app's folder, two-factor required.
+    return Response.json({ error: (e as Error).message }, { status: 403 });
+  }
+}

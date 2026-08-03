@@ -1,0 +1,25 @@
+-- Per-app deploy hook: a URL that triggers a production deployment.
+--
+-- deplo can already deploy on push, but only for the GitHub App source — the one
+-- provider it receives webhooks from. Everything else (a raw Git URL on GitLab or
+-- Bitbucket, an uploaded archive, a compose stack, a CI job that just built an
+-- image) has no way to say "deploy now" without a human opening the dashboard.
+-- The deploy hook is that way: one URL, POSTed to.
+--
+-- `deploy_hook_token_enc` — the unguessable segment of that URL, AES-GCM encrypted
+-- like every other reversible secret (the operator has to be able to read the link
+-- back, so it cannot be a one-way hash). NULL until the app's hook is first shown:
+-- minting on demand means no existing row grows a live credential it never asked
+-- for, and rotating is a single UPDATE that invalidates the old link instantly.
+--
+-- The token alone does NOT authorize a deploy. The endpoint also requires an API
+-- token as `Authorization: Bearer deplo_…`, resolved to a real member who must hold
+-- `deploy_apps` in the app's team — so a leaked URL is inert on its own, and a
+-- revoked API token kills every hook call that used it, everywhere, at once.
+--
+-- `deploy_hook_enabled` — the kill switch, ON by default (the hook is already
+-- behind a bearer token, and a switch that starts off would just read as broken).
+-- OFF makes the endpoint refuse before it looks at anything else.
+ALTER TABLE "apps" ADD COLUMN IF NOT EXISTS "deploy_hook_token_enc" text;
+--> statement-breakpoint
+ALTER TABLE "apps" ADD COLUMN IF NOT EXISTS "deploy_hook_enabled" boolean DEFAULT true NOT NULL;

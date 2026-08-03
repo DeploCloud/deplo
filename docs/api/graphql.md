@@ -198,3 +198,27 @@ A few endpoints stay REST because GraphQL is the wrong transport for them
 | `GET /api/apps/[id]/attach`   | interactive console session      |
 | `GET /api/github/callback`        | GitHub App OAuth callback        |
 | `POST /api/github/webhook`        | GitHub webhook receiver          |
+| `POST /api/apps/[id]/deploy-hook/[token]` | deploy hook — a webhook sender posts a URL, it can't compose a query |
+
+### Deploy hook
+
+The one REST endpoint that takes an **API token** instead of the session cookie, so a git
+provider, a CI job or a script can deploy an app:
+
+```bash
+curl -X POST -H "Authorization: Bearer deplo_your_token" \
+  https://deplo.example.com/api/apps/prj_123/deploy-hook/<token>
+```
+
+Both secrets are required. The URL's `<token>` says which app (read it back with
+`revealAppDeployHook`, replace it with `rotateAppDeployHook`, switch the hook off entirely
+with `setAppDeployHookEnabled`); the bearer token says who, and must belong to a member with
+`deploy_apps` in that app's team — the deploy runs through exactly the gates the dashboard
+button does. Answers `200` with the queued deployment:
+
+```json
+{ "deploymentId": "dpl_…", "appId": "prj_123", "status": "queued", "url": "https://…" }
+```
+
+`401` — no/invalid API token. `403` — the hook is switched off, or the token's owner may not
+deploy this app. `404` — no such app, wrong URL token, or the app belongs to another team.

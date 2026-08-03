@@ -1,0 +1,181 @@
+import { test, before, after, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import type { PGlite } from "@electric-sql/pglite";
+
+process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
+// Set BEFORE the module loads: with a configured public URL the hook never has
+// to reach for request headers, which is also what makes it testable here.
+process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
+
+import { makeTestDb, type TestDb } from "../db/test-harness";
+import { __setTestDb, __resetTestDb } from "../db/client";
+import { runWithIdentity } from "../auth/request-context";
+import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
+import { seedServer, seedApp, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import {
+  deployHookUrlMasked,
+  revealDeployHook,
+  rotateDeployHook,
+  setDeployHookEnabled,
+  verifyDeployHookToken,
+} from "./deploy-hook";
+
+/**
+ * The deploy hook: the URL that lets something outside deplo trigger a deploy.
+ *
+ * What has to hold: the token is minted only when someone asks for it, the same
+ * URL comes back until it is rotated, rotating kills the old one, the kill
+ * switch is really a kill switch, and none of it crosses a team boundary.
+ */
+
+let db: TestDb;
+let pg: PGlite;
+
+before(async () => {
+  ({ db, pg } = await makeTestDb());
+  __setTestDb(db);
+});
+
+after(async () => {
+  __resetTestDb();
+  await pg.close();
+});
+
+beforeEach(async () => {
+  await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
+    truncate table users, teams restart identity cascade;`);
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "user_2", teamId: TEAM_B, role: "owner" },
+      // In TEAM_A, but read-only: the hook is a `configure_apps` surface.
+      { id: "user_viewer", teamId: TEAM_A, role: "member", capabilities: ["view"] },
+    ],
+  });
+  await seedServer(db);
+});
+
+const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+const asUser2 = <T>(fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity({ userId: "user_2", teamId: TEAM_B }, fn);
+
+/** The secret last segment of a hook URL. */
+const tokenOf = (url: string) => url.slice(url.lastIndexOf("/") + 1);
+
+test("no app carries a live hook token until someone opens it", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+
+  // Nothing minted yet, so no URL can be valid for this app — not even an empty
+  // one, which is what a naive compare against a missing token would accept.
+  assert.deepEqual(await verifyDeployHookToken("prj_1", ""), {
+    ok: false,
+    reason: "bad-token",
+  });
+  assert.equal(
+    await deployHookUrlMasked("prj_1"),
+    "https://deplo.test/api/apps/prj_1/deploy-hook/••••••••••••",
+  );
+
+  const url = await asUser1(() => revealDeployHook("prj_1"));
+  assert.match(url, /^https:\/\/deplo\.test\/api\/apps\/prj_1\/deploy-hook\/.+/);
+  assert.deepEqual(await verifyDeployHookToken("prj_1", tokenOf(url)), {
+    ok: true,
+    teamId: TEAM_A,
+  });
+});
+
+test("revealing twice returns the SAME url — reading a link never changes it", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+  const first = await asUser1(() => revealDeployHook("prj_1"));
+  const second = await asUser1(() => revealDeployHook("prj_1"));
+  assert.equal(first, second);
+});
+
+test("rotating mints a new url and kills the old one on the spot", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+  const before = await asUser1(() => revealDeployHook("prj_1"));
+  const after = await asUser1(() => rotateDeployHook("prj_1"));
+
+  assert.notEqual(before, after);
+  assert.deepEqual(await verifyDeployHookToken("prj_1", tokenOf(before)), {
+    ok: false,
+    reason: "bad-token",
+  });
+  assert.deepEqual(await verifyDeployHookToken("prj_1", tokenOf(after)), {
+    ok: true,
+    teamId: TEAM_A,
+  });
+});
+
+test("the kill switch refuses the RIGHT token too", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+  const url = await asUser1(() => revealDeployHook("prj_1"));
+
+  await asUser1(() => setDeployHookEnabled("prj_1", false));
+  assert.deepEqual(await verifyDeployHookToken("prj_1", tokenOf(url)), {
+    ok: false,
+    reason: "disabled",
+  });
+
+  // And back: turning it on again restores the same URL, so a temporary
+  // shutdown doesn't force every caller to be re-configured.
+  await asUser1(() => setDeployHookEnabled("prj_1", true));
+  assert.deepEqual(await verifyDeployHookToken("prj_1", tokenOf(url)), {
+    ok: true,
+    teamId: TEAM_A,
+  });
+});
+
+test("an unknown app and a wrong token answer the same: no hook", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+  await asUser1(() => revealDeployHook("prj_1"));
+
+  assert.deepEqual(await verifyDeployHookToken("prj_nope", "whatever"), {
+    ok: false,
+    reason: "not-found",
+  });
+  assert.deepEqual(await verifyDeployHookToken("prj_1", "not-the-token"), {
+    ok: false,
+    reason: "bad-token",
+  });
+});
+
+test("another team's app has no hook to read, rotate or switch off", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+
+  await assert.rejects(
+    () => asUser2(() => revealDeployHook("prj_1")),
+    /not found/i,
+  );
+  await assert.rejects(
+    () => asUser2(() => rotateDeployHook("prj_1")),
+    /not found/i,
+  );
+  await assert.rejects(
+    () => asUser2(() => setDeployHookEnabled("prj_1", false)),
+    /not found/i,
+  );
+
+  // And the app is untouched: still no token, still enabled.
+  assert.deepEqual(await verifyDeployHookToken("prj_1", ""), {
+    ok: false,
+    reason: "bad-token",
+  });
+});
+
+test("a member without configure_apps can't open the hook", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A });
+
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: "user_viewer", teamId: TEAM_A }, () =>
+        revealDeployHook("prj_1"),
+      ),
+    /permission/i,
+  );
+});

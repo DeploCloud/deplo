@@ -116,6 +116,7 @@ export async function seedApp(
     productionUrl: null,
     status: opts.status ?? "active",
     autoDeploy: true,
+    deployHookEnabled: true,
     resources: opts.resources ?? null,
     latestDeploymentId: null,
     createdAt: T0,

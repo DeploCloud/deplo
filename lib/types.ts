@@ -951,6 +951,14 @@ export interface App {
   status: AppStatus;
   autoDeploy: boolean;
   /**
+   * Whether this app's deploy hook — the URL that triggers a production deploy
+   * from outside the dashboard — answers at all. On by default; the endpoint is
+   * bearer-gated regardless (see `lib/data/deploy-hook.ts`), so this is the kill
+   * switch, not the lock. The hook's secret URL segment is deliberately NOT part
+   * of this type: it is decrypted only by that module, behind its own gate.
+   */
+  deployHookEnabled: boolean;
+  /**
    * Per-app resource caps applied at deploy time, or `null` when the app has no
    * limits set (the default). See {@link ResourceLimits}.
    */
