@@ -1,16 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Hammer,
-  Play,
-  RotateCcw,
-  Save,
-  Search,
-  Terminal,
-  Wand2,
-  Webhook,
-} from "lucide-react";
+import { Hammer, Play, Save, Terminal, Webhook } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -21,26 +12,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
-import {
-  BUILD_METHODS,
-  BuildMethodFields,
-} from "@/components/apps/build-method-fields";
+import { BuildMethodFields } from "@/components/apps/build-method-fields";
 import { NodeVersionInput } from "@/components/apps/node-version-input";
-import { FrameworkIcon } from "@/components/shared/framework-icons";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
-import {
-  FRAMEWORKS,
-  frameworkById,
-  supportsFrameworkDetection,
-} from "@/lib/apps/framework-catalog";
+import { frameworkById } from "@/lib/apps/framework-catalog";
 import { DEFAULT_NODE_MAJOR, usesDefaultNodeMajor } from "@/lib/frameworks";
 import { cn } from "@/lib/utils";
 import type { BuildConfig, BuildMethod, BuildMethodSettings } from "@/lib/types";
@@ -49,16 +25,17 @@ import type { BuildConfig, BuildMethod, BuildMethodSettings } from "@/lib/types"
  * Build & Output — the card that answers "what happens between my code and a
  * running container", laid out as the PIPELINE it actually is.
  *
- * Every setting here belongs to one stage of one story: deplo reads the source
- * (Framework), picks how the image is made (Builder), runs the build (Build),
- * starts the container and routes to it (Run), and then does the whole thing
- * again on the next push (Deploy on push). Rendering it as a rail of stages
- * rather than a flat stack of field groups is the point: a user who has never
- * touched Docker can read the card top to bottom and learn what a deploy IS,
- * and every input sits under the stage it affects instead of floating in a
- * grid of unrelated boxes. The card header carries the same story compressed
- * into three chips (framework · builder · port), so the answer is legible
- * without reading a single field.
+ * Every setting here belongs to one stage of one story: deplo picks how the
+ * image is made (Builder), runs the build (Build), starts the container and
+ * routes to it (Run), and then does the whole thing again on the next push
+ * (Deploy on push). Rendering it as a rail of stages rather than a flat stack of
+ * field groups is the point: a user who has never touched Docker can read the
+ * card top to bottom and learn what a deploy IS, and every input sits under the
+ * stage it affects instead of floating in a grid of unrelated boxes.
+ *
+ * The framework is deliberately NOT a stage: it is a setting of the Builder —
+ * only Nixpacks and Railpack read the source and act on what they find — so it
+ * lives inside their options panel, next to the other things they read.
  *
  * Stages appear only where they exist: a Dockerfile owns its own install/build/
  * run, so it has no Build stage and no start command; a static site has no
@@ -126,12 +103,6 @@ export function BuildOutputCard({
     method === "nixpacks" || method === "railpack" || method === "static";
   const showBuildStage = showBuildCommand || showNodeVersion;
 
-  const frameworkVisible = supportsFrameworkDetection(method);
-  const current = frameworkById(framework);
-  const detectedDef = frameworkById(detectedFramework);
-  const overridden = framework != null && framework !== detectedFramework;
-  const methodMeta = BUILD_METHODS.find((m) => m.id === method);
-
   // The port field keeps a DRAFT of what is typed so it can be emptied mid-edit.
   // Only a valid positive integer is committed; while the box is blank or
   // invalid the last committed port stays put (so clearing it to type a new
@@ -171,108 +142,15 @@ export function BuildOutputCard({
 
   return (
     <Card>
-      <CardHeader className="gap-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <CardTitle className="flex w-fit items-center gap-2 text-base">
-              Build &amp; Output
-              <InfoTip content="Every stage between your code and a running container — what deplo recognised, how the image is built, and how it comes up." />
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              How deplo turns this repository into a running container.
-            </p>
-          </div>
-        </div>
-        {/* The whole card in three chips: what it is, how it's built, where it
-            answers. Legible without reading a single field. */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {frameworkVisible && (
-            <Chip
-              icon={
-                current ? (
-                  <FrameworkIcon id={current.id} className="size-3.5" />
-                ) : (
-                  <Search className="size-3.5" />
-                )
-              }
-            >
-              {current?.name ?? "No framework detected"}
-            </Chip>
-          )}
-          {methodMeta && (
-            <Chip icon={<methodMeta.icon className="size-3.5" />}>
-              {methodMeta.name}
-            </Chip>
-          )}
-          <Chip icon={<Play className="size-3.5" />}>port {build.port}</Chip>
-        </div>
+      <CardHeader>
+        <CardTitle className="flex w-fit items-center gap-2 text-base">
+          Build &amp; Output
+          <InfoTip content="Every stage between your code and a running container — how the image is built, what runs during the build, and how it comes up." />
+        </CardTitle>
       </CardHeader>
 
       <CardContent>
         <div>
-          {frameworkVisible && (
-            <Stage
-              marker={
-                current ? (
-                  <FrameworkIcon id={current.id} className="size-4" />
-                ) : (
-                  <Search className="size-4" />
-                )
-              }
-              title="Framework"
-              hint={
-                overridden
-                  ? detectedDef
-                    ? `Your choice, kept through every deploy — deplo detected ${detectedDef.name}.`
-                    : "Your choice, kept through every deploy — deplo didn't recognise a framework."
-                  : current
-                    ? "Read from your source on the last deploy, and re-checked on every one."
-                    : "Nothing recognised yet. Pick one if you already know — otherwise the next deploy names it."
-              }
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <Select
-                  value={framework ?? AUTO}
-                  onValueChange={(v) => pickFramework(v === AUTO ? null : v)}
-                >
-                  <SelectTrigger className="w-full max-w-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={AUTO}>
-                      <span className="flex items-center gap-2">
-                        <Wand2 className="size-4 text-muted-foreground" />
-                        Detect automatically
-                      </span>
-                    </SelectItem>
-                    {FRAMEWORK_CHOICES.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        <span className="flex items-center gap-2">
-                          <FrameworkIcon id={f.id} className="size-4" />
-                          {f.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {overridden && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 text-xs"
-                    onClick={() => pickFramework(null)}
-                  >
-                    <RotateCcw className="size-3.5" />
-                    {detectedDef
-                      ? `Use detected (${detectedDef.name})`
-                      : "Back to automatic"}
-                  </Button>
-                )}
-              </div>
-            </Stage>
-          )}
-
           <Stage
             marker={<Hammer className="size-4" />}
             title="Builder"
@@ -290,6 +168,12 @@ export function BuildOutputCard({
                   methodSettings: { ...b.methodSettings, ...patch },
                 }))
               }
+              // The framework is one of the BUILDER's settings — only the
+              // auto-detecting ones read the source — so it renders inside their
+              // options panel rather than as a stage of its own.
+              framework={framework}
+              detectedFramework={detectedFramework}
+              onFrameworkChange={pickFramework}
             />
           </Stage>
 
@@ -426,31 +310,6 @@ export function BuildOutputCard({
         </Button>
       </CardFooter>
     </Card>
-  );
-}
-
-/** The Select's stand-in for "no override" — Radix cannot hold an empty value. */
-const AUTO = "__auto";
-
-/** The frameworks a user picks from, by display name — a picker is searched
- * alphabetically, unlike the catalog's detection-priority order. */
-const FRAMEWORK_CHOICES = [...FRAMEWORKS].sort((a, b) =>
-  a.name.localeCompare(b.name),
-);
-
-/** One compressed fact in the card header. */
-function Chip({
-  icon,
-  children,
-}: {
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs text-muted-foreground">
-      <span className="shrink-0 [&>svg]:size-3.5">{icon}</span>
-      <span className="truncate font-medium text-foreground/80">{children}</span>
-    </span>
   );
 }
 

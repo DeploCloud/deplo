@@ -1,25 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { RotateCcw, Search, Wand2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { BuildMethodFields } from "@/components/apps/build-method-fields";
 import { NodeVersionInput } from "@/components/apps/node-version-input";
-import { FrameworkIcon } from "@/components/shared/framework-icons";
-import {
-  FRAMEWORKS,
-  frameworkById,
-  supportsFrameworkDetection,
-} from "@/lib/apps/framework-catalog";
 import { DEFAULT_NODE_MAJOR, usesDefaultNodeMajor } from "@/lib/frameworks";
 import type {
   BuildConfig,
@@ -28,40 +13,21 @@ import type {
 } from "@/lib/types";
 
 /**
- * The build-method-aware "Build & Output" section shared by the new-project
- * wizard and the app settings form, so the two stay in sync.
+ * The build-method-aware "Build & Output" section of the NEW-APP WIZARD: build
+ * method, the commands, and the runtime, in the order the questions get asked.
  *
  * Owns no persistence: the parent holds the BuildConfig and decides how/when to
- * save it. Four groups, in the order the questions actually get asked —
- * Framework (what is this app?), Build method (how is the image made?), Commands
- * (what runs during the build?), Runtime & networking (how does it come up?) —
- * so no field floats without a heading explaining which question it answers.
+ * save it. The app's settings page does NOT use this — it lays the same
+ * configuration out as a pipeline (`settings/build-output-card.tsx`), where a
+ * deployed app can also correct the framework deplo detected. Nothing to correct
+ * here: the wizard runs before the first deploy has read anything.
  */
 export function BuildConfigFields({
   build,
   onBuildChange,
-  framework,
-  detectedFramework,
-  onFrameworkChange,
 }: {
   build: BuildConfig;
   onBuildChange: (next: BuildConfig) => void;
-  /**
-   * The framework this app is treated as — the user's correction if they made
-   * one, else what the last deploy read. Only shown under a build method
-   * recognition applies to, so switching to a Dockerfile drops the whole group
-   * with the feature. Absent ⇒ the group is hidden, which is what a caller with
-   * no source to read (the create wizard) passes.
-   */
-  framework?: string | null;
-  /** What DETECTION found, so the group can say whether `framework` is Deplo's
-   * answer or the user's, and offer the way back. */
-  detectedFramework?: string | null;
-  /**
-   * Correct the framework (null ⇒ go back to detection). Omitted ⇒ the group is
-   * read-only, showing what Deplo recognised with no way to change it.
-   */
-  onFrameworkChange?: (id: string | null) => void;
 }) {
   function setBuild(updater: (b: BuildConfig) => BuildConfig) {
     onBuildChange(updater(build));
@@ -100,9 +66,9 @@ export function BuildConfigFields({
   // type a new number no longer snaps the default straight back).
   //
   // `null` means "no draft — show the committed port", which is also what makes
-  // a port set from OUTSIDE (framework recognition picking the port that
-  // framework's server binds) appear immediately, while a draft in progress keeps
-  // the user's own text until they leave the field.
+  // a port set from OUTSIDE (the wizard seeding the framework's own port) appear
+  // immediately, while a draft in progress keeps the user's own text until they
+  // leave the field.
   const [portDraft, setPortDraft] = React.useState<string | null>(null);
   const portText = portDraft ?? String(build.port);
 
@@ -120,43 +86,9 @@ export function BuildConfigFields({
     setPortDraft(null);
   }
 
-  /**
-   * Correcting the framework carries the container port with it — that is the
-   * whole reason the setting is worth having (`vite preview` binds 4173 and
-   * ignores PORT, so an app mis-read as Next.js deploys green and answers
-   * nothing). Only when the port is still the OUTGOING framework's default,
-   * though: a port the user typed themselves is an answer, not a leftover.
-   *
-   * Clearing the correction (`next === null`) hands the port back to DETECTION's
-   * framework, not to nothing — otherwise "use what Deplo detected" would undo
-   * the name and leave the wrong port behind, which is the whole failure this
-   * setting exists to fix.
-   */
-  function pickFramework(next: string | null) {
-    const previousPort = frameworkById(framework)?.defaultPort ?? 3000;
-    const nextPort = frameworkById(next ?? detectedFramework)?.defaultPort;
-    if (nextPort && build.port === previousPort) {
-      setPortDraft(null);
-      setBuild((b) => ({ ...b, port: nextPort }));
-    }
-    onFrameworkChange?.(next);
-  }
-
-  const frameworkVisible =
-    supportsFrameworkDetection(method) &&
-    (framework != null || onFrameworkChange != null);
-
   return (
     <div className="space-y-5">
-      {frameworkVisible && (
-        <FrameworkGroup
-          framework={framework ?? null}
-          detected={detectedFramework ?? null}
-          onChange={onFrameworkChange ? pickFramework : undefined}
-        />
-      )}
-
-      <FieldGroup title="Build method" first={!frameworkVisible}>
+      <FieldGroup title="Build method" first>
         <BuildMethodFields
           method={build.buildMethod}
           settings={build.methodSettings}
@@ -280,134 +212,6 @@ function FieldGroup({
         {hint && <p className="text-xs text-muted-foreground/80">{hint}</p>}
       </div>
       {children}
-    </div>
-  );
-}
-
-/** The frameworks a user can pick from, by display name — a picker is searched
- * alphabetically, unlike the catalog's detection-priority order. */
-const FRAMEWORK_CHOICES = [...FRAMEWORKS].sort((a, b) =>
-  a.name.localeCompare(b.name),
-);
-
-/** The Select's stand-in for "no override" — Radix cannot hold an empty value. */
-const AUTO = "__auto";
-
-/**
- * The framework group: the platform's "we know what this is" moment, and the
- * one control that lets the user say otherwise.
- *
- * It gets the most space in the card on purpose. Detection is a heuristic over a
- * `package.json`, and where it is wrong it is wrong about the container PORT —
- * so the answer has to be both prominent and correctable, with what Deplo
- * detected still visible next to the correction.
- */
-function FrameworkGroup({
-  framework,
-  detected,
-  onChange,
-}: {
-  framework: string | null;
-  detected: string | null;
-  onChange?: (id: string | null) => void;
-}) {
-  const current = frameworkById(framework);
-  const detectedDef = frameworkById(detected);
-  const overridden = framework != null && framework !== detected;
-
-  return (
-    <div className="rounded-lg border border-border bg-muted/20 p-4">
-      <div className="flex items-start gap-4">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
-          {current ? (
-            <FrameworkIcon id={current.id} className="size-6" />
-          ) : (
-            <Search className="size-5 text-muted-foreground" />
-          )}
-        </span>
-
-        <div className="min-w-0 flex-1 space-y-2">
-          <FieldLabel
-            info={
-              <>
-                Deplo reads your source on every deploy and names the framework
-                itself. Change it only when it got that wrong — the pick sticks
-                through later deploys and sets the container port that
-                framework&apos;s server binds.
-              </>
-            }
-          >
-            Framework
-          </FieldLabel>
-
-          {onChange ? (
-            <Select
-              value={framework ?? AUTO}
-              onValueChange={(v) => onChange(v === AUTO ? null : v)}
-            >
-              <SelectTrigger className="max-w-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={AUTO}>
-                  <span className="flex items-center gap-2">
-                    <Wand2 className="size-4 text-muted-foreground" />
-                    Detect automatically
-                  </span>
-                </SelectItem>
-                {FRAMEWORK_CHOICES.map((f) => (
-                  <SelectItem key={f.id} value={f.id}>
-                    <span className="flex items-center gap-2">
-                      <FrameworkIcon id={f.id} className="size-4" />
-                      {f.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <p className="text-sm font-medium">
-              {current?.name ?? "Not recognised yet"}
-            </p>
-          )}
-
-          <p className="text-xs leading-snug text-muted-foreground">
-            {overridden ? (
-              <>
-                Your choice, kept through every deploy.{" "}
-                {detectedDef
-                  ? `Deplo detected ${detectedDef.name} in your source.`
-                  : "Deplo didn't recognise a framework in your source."}
-              </>
-            ) : current ? (
-              <>
-                Detected in your source on the last deploy. Deplo re-checks on
-                every one.
-              </>
-            ) : (
-              <>
-                Nothing recognised in your source yet. Pick one if you already
-                know — otherwise the next deploy names it.
-              </>
-            )}
-          </p>
-
-          {overridden && onChange && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="-ml-2 h-7 text-xs"
-              onClick={() => onChange(null)}
-            >
-              <RotateCcw className="size-3.5" />
-              {detectedDef
-                ? `Use detected (${detectedDef.name})`
-                : "Back to automatic"}
-            </Button>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
