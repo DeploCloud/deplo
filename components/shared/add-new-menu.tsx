@@ -31,7 +31,7 @@ import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { CreateFolderDialog } from "@/components/apps/create-folder-dialog";
 import { CreateProjectDialog } from "@/components/apps/create-project-dialog";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
-import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
+import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
 import {
   newAppHref,
   templatesHref,
@@ -194,7 +194,7 @@ export function AddNewMenu({
         />
       )}
       {isAdmin && (
-        <RegisterUserDialog open={userOpen} onOpenChange={setUserOpen} />
+        <RegisterUserWizard open={userOpen} onOpenChange={setUserOpen} />
       )}
     </>
   );

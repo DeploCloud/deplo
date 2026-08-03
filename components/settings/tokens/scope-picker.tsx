@@ -15,6 +15,15 @@ import type {
   ScopeTreeTeam,
 } from "@/lib/data/tokens";
 
+/** One node, as {@link ScopePicker.renderMeta} sees it. */
+export interface ScopeNode {
+  kind: "team" | "project" | "folder" | "app";
+  id: string;
+  name: string;
+  /** Ticked, or covered by a ticked ancestor. */
+  checked: boolean;
+}
+
 export interface ScopeSelection {
   teamIds: string[];
   projectIds: string[];
@@ -42,11 +51,30 @@ export function ScopePicker({
   selection,
   onChange,
   disabled = false,
+  title = "Scope",
+  info = "What this token can reach. Tick a team for all of it, a project or a folder for everything inside it, or single apps. Tick nothing and it reaches everything you can.",
+  emptyNote = "You aren't in any team yet, so there is nothing to narrow this token to.",
+  footer,
+  renderMeta,
 }: {
   tree: ScopeTreeTeam[];
   selection: ScopeSelection;
   onChange: (next: ScopeSelection) => void;
   disabled?: boolean;
+  /** The card heading. Defaults to the token wording. */
+  title?: string;
+  /** The heading's tooltip. */
+  info?: React.ReactNode;
+  /** Shown instead of the tree when there is nothing to pick from. */
+  emptyNote?: React.ReactNode;
+  /** Replaces the sentence under the tree. Undefined keeps the token one. */
+  footer?: React.ReactNode;
+  /**
+   * An extra control on the right of a row — the per-node affordance the user
+   * editor hangs its capability sets off. Rendered OUTSIDE the row's `<label>`,
+   * so clicking it doesn't toggle the checkbox next to it.
+   */
+  renderMeta?: (node: ScopeNode) => React.ReactNode;
 }) {
   const teams = new Set(selection.teamIds);
   const projects = new Set(selection.projectIds);
@@ -182,6 +210,12 @@ export function ScopePicker({
           expanded={expanded}
           onToggleExpand={() => toggleOpen(folder.id)}
           id={`scope-folder-${folder.id}`}
+          right={renderMeta?.({
+            kind: "folder",
+            id: folder.id,
+            name: folder.name,
+            checked: on,
+          })}
         />
         {expanded && (
           <>
@@ -199,6 +233,12 @@ export function ScopePicker({
                 disabled={disabled || on}
                 onCheckedChange={(v) => toggleApp(app.id, v, on)}
                 id={`scope-app-${app.id}`}
+                right={renderMeta?.({
+                  kind: "app",
+                  id: app.id,
+                  name: app.name,
+                  checked: on || apps.has(app.id),
+                })}
               />
             ))}
           </>
@@ -214,15 +254,12 @@ export function ScopePicker({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1.5">
-        <h3 className="text-sm font-medium">Scope</h3>
-        <InfoTip content="What this token can reach. Tick a team for all of it, a project or a folder for everything inside it, or single apps. Tick nothing and it reaches everything you can." />
+        <h3 className="text-sm font-medium">{title}</h3>
+        <InfoTip content={info} />
       </div>
 
       {tree.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          You aren&apos;t in any team yet, so there is nothing to narrow this
-          token to.
-        </p>
+        <p className="text-sm text-muted-foreground">{emptyNote}</p>
       ) : (
         <>
           <div className="relative">
@@ -273,6 +310,12 @@ export function ScopePicker({
                       expanded={expanded}
                       onToggleExpand={() => toggleOpen(team.id)}
                       id={`scope-team-${team.id}`}
+                      right={renderMeta?.({
+                        kind: "team",
+                        id: team.id,
+                        name: team.name,
+                        checked: teamOn,
+                      })}
                     />
                     {expanded && (
                       <>
@@ -304,6 +347,12 @@ export function ScopePicker({
                                 expanded={projExpanded}
                                 onToggleExpand={() => toggleOpen(project.id)}
                                 id={`scope-project-${project.id}`}
+                                right={renderMeta?.({
+                                  kind: "project",
+                                  id: project.id,
+                                  name: project.name,
+                                  checked: projOn,
+                                })}
                               />
                               {projExpanded && (
                                 <>
@@ -323,6 +372,12 @@ export function ScopePicker({
                                         toggleApp(app.id, v, projOn)
                                       }
                                       id={`scope-app-${app.id}`}
+                                      right={renderMeta?.({
+                                        kind: "app",
+                                        id: app.id,
+                                        name: app.name,
+                                        checked: projOn || apps.has(app.id),
+                                      })}
                                     />
                                   ))}
                                 </>
@@ -344,6 +399,12 @@ export function ScopePicker({
                               toggleApp(app.id, v, teamOn)
                             }
                             id={`scope-app-${app.id}`}
+                            right={renderMeta?.({
+                              kind: "app",
+                              id: app.id,
+                              name: app.name,
+                              checked: teamOn || apps.has(app.id),
+                            })}
                           />
                         ))}
                       </>
@@ -356,6 +417,7 @@ export function ScopePicker({
         </>
       )}
 
+      {footer ?? (
       <p className="text-xs text-muted-foreground">
         {nothingPicked ? (
           <>
@@ -377,6 +439,7 @@ export function ScopePicker({
           </>
         )}
       </p>
+      )}
     </div>
   );
 }
@@ -512,6 +575,7 @@ function Row({
   expanded = false,
   onToggleExpand,
   id,
+  right,
 }: {
   depth: number;
   /** The node's own identity: an avatar, a logo, or a tinted glyph. */
@@ -525,6 +589,9 @@ function Row({
   expanded?: boolean;
   onToggleExpand?: () => void;
   id: string;
+  /** An interactive cell after the label. OUTSIDE the label, or clicking it
+   *  would toggle the checkbox. */
+  right?: React.ReactNode;
 }) {
   return (
     <div
@@ -581,6 +648,7 @@ function Row({
           </span>
         )}
       </label>
+      {right && <div className="flex shrink-0 items-center">{right}</div>}
     </div>
   );
 }

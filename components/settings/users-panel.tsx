@@ -35,7 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
-import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
+import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
 import { EditUserDialog } from "@/components/settings/edit-user-dialog";
 import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
 import { RegistrationLinkRow } from "@/components/settings/registration-link-row";
@@ -72,7 +72,7 @@ export function UsersPanel({
             <UserPlus className="size-4" />
             Register user
           </Button>
-          <RegisterUserDialog
+          <RegisterUserWizard
             open={registerOpen}
             onOpenChange={setRegisterOpen}
             pinActiveTeam={false}

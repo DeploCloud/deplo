@@ -40,7 +40,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RoleSelect } from "@/components/members/role-select";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
-import { RegisterUserDialog } from "@/components/settings/register-user-dialog";
+import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
 import { EditUserDialog } from "@/components/settings/edit-user-dialog";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -113,7 +113,7 @@ export function MembersManager({
                   onCreateUser={() => setUserOpen(true)}
                 />
                 {isAdmin && (
-                  <RegisterUserDialog
+                  <RegisterUserWizard
                     open={userOpen}
                     onOpenChange={setUserOpen}
                   />

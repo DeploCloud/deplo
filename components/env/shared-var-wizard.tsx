@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import {
   AppWindow,
   Boxes,
-  Check,
   ChevronLeft,
   ChevronRight,
   Folders,
@@ -32,6 +31,7 @@ import { AppLogo } from "@/components/shared/project-logo";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, readableTextColor } from "@/lib/utils";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
+import { ChoiceCard, CheckMark } from "@/components/shared/choice-card";
 import type { SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
@@ -377,7 +377,8 @@ export function SharedVarDialog({
               </p>
               <div role="group" aria-label="Shared with" className="space-y-2">
                 {SCOPES.map((s) => (
-                  <ScopeCard
+                  <ChoiceCard
+                    multi
                     key={s.id}
                     title={s.title}
                     blurb={s.blurb}
@@ -468,61 +469,6 @@ export function SharedVarDialog({
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/** One sharing mode, as a big multi-select card (this is a checkbox, not a radio). */
-function ScopeCard({
-  title,
-  blurb,
-  icon: Icon,
-  selected,
-  disabled,
-  disabledNote,
-  onSelect,
-}: {
-  title: string;
-  blurb: string;
-  icon: React.ComponentType<{ className?: string }>;
-  selected: boolean;
-  disabled: boolean;
-  disabledNote: string;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={selected}
-      disabled={disabled}
-      onClick={onSelect}
-      className={cn(
-        "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        selected
-          ? "border-primary bg-primary/[0.06] ring-1 ring-primary/60"
-          : "border-border hover:border-foreground/20 hover:bg-muted/40",
-      )}
-    >
-      <span
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors",
-          selected
-            ? "border-primary/40 bg-background text-primary"
-            : "border-border bg-muted/50 text-muted-foreground",
-        )}
-      >
-        <Icon className="size-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{title}</span>
-        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-          {disabled ? disabledNote : blurb}
-        </span>
-      </span>
-      <CheckMark selected={selected} className="mt-0.5" />
-    </button>
   );
 }
 
@@ -843,30 +789,6 @@ function ProjectTile({ color }: { color: string | null }) {
       }
     >
       <Boxes className="size-4" />
-    </span>
-  );
-}
-
-/** The square tick of a card that IS a checkbox (ScopeCard, app cards). */
-function CheckMark({
-  selected,
-  className,
-}: {
-  selected: boolean;
-  className?: string;
-}) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
-        selected
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-muted-foreground/40",
-        className,
-      )}
-    >
-      {selected && <Check className="size-3" />}
     </span>
   );
 }
