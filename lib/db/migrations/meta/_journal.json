@@ -421,6 +421,13 @@
       "when": 1784673000000,
       "tag": "0059_add_app_deploy_hook",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1784673200000,
+      "tag": "0060_add_app_compose_up_args",
+      "breakpoints": true
     }
   ]
 }

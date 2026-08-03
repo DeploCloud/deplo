@@ -271,6 +271,10 @@ export interface AgentConnection {
     composeYaml: string;
     env: Record<string, string>;
     mounts: { path: string; content: string }[];
+    /** The app's extra `compose up` flags (already split into argv tokens). A
+     *  reroute brings the stack up too, so they apply here exactly as on a
+     *  deploy; an agent without "deploy.compose-args" ignores them. */
+    composeUpArgs?: string[];
   }): Promise<{ ok: boolean; error: string }>;
   /** Cert renewal, step 1: ask the agent for a fresh CSR (it generates a new
    *  keypair whose private key never leaves the host). Gated on the "cert-renewal"
@@ -1114,6 +1118,7 @@ function dial(target: DialTarget): AgentConnection {
       composeYaml: string;
       env: Record<string, string>;
       mounts: { path: string; content: string }[];
+      composeUpArgs?: string[];
     }) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.reroute(
@@ -1122,6 +1127,7 @@ function dial(target: DialTarget): AgentConnection {
             composeYaml: req.composeYaml,
             env: req.env,
             mounts: req.mounts,
+            composeUpArgs: req.composeUpArgs ?? [],
           },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },

@@ -73,6 +73,11 @@ type ApiToken {
 type App {
   autoDeploy: Boolean
   compose: String
+
+  """
+  Extra flags this app appends to the `docker compose up` that brings it up, or null for the untouched command. Additive only — the flags that choose the project, stack file or env-file are refused.
+  """
+  composeUpArgs: String
   createdAt: String
 
   """
@@ -1677,6 +1682,11 @@ type Mutation {
   """Create or update a shared variable; returns the saved entity."""
   saveSharedVar(input: SaveSharedVarInput!): SharedVar
   setAppAutoDeploy(id: String!, value: Boolean!): App
+
+  """
+  Set (or clear, with null) the extra flags appended to this app's `docker compose up`. Rejects anything that isn't a plain flag, and any flag that would choose the project, stack file or env-file.
+  """
+  setAppComposeUpArgs(id: String!, value: String): App
 
   """
   Turn this app's deploy hook on or off. Off ⇒ the endpoint refuses every call, whatever URL or API token it carries.

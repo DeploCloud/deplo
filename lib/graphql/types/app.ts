@@ -31,6 +31,7 @@ import {
   summarizeForTeam,
   previewRepoFramework,
   setAppFramework,
+  setAppComposeUpArgs,
   type AppSummary,
   type ResourceLimitsInput,
 } from "@/lib/data/apps";
@@ -210,6 +211,13 @@ export const AppRef = builder
         description:
           "Whether this app's deploy hook answers. The hook URL itself is never " +
           "a field — read it back with revealAppDeployHook.",
+      }),
+      composeUpArgs: t.exposeString("composeUpArgs", {
+        nullable: true,
+        description:
+          "Extra flags this app appends to the `docker compose up` that brings " +
+          "it up, or null for the untouched command. Additive only — the flags " +
+          "that choose the project, stack file or env-file are refused.",
       }),
       domainCount: t.exposeInt("domainCount"),
       createdAt: t.exposeString("createdAt"),
@@ -776,6 +784,22 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, value }) => {
       await setAutoDeploy(id, value);
+      return reloadApp(id);
+    },
+  }),
+  setAppComposeUpArgs: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Set (or clear, with null) the extra flags appended to this app's " +
+      "`docker compose up`. Rejects anything that isn't a plain flag, and any " +
+      "flag that would choose the project, stack file or env-file.",
+    args: {
+      id: t.arg.string({ required: true }),
+      value: t.arg.string({ required: false }),
+    },
+    resolve: async (_r, { id, value }) => {
+      await setAppComposeUpArgs(id, value ?? null);
       return reloadApp(id);
     },
   }),

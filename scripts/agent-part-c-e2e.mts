@@ -100,6 +100,7 @@ networks:
         devWorkspaceSubdir: "",
         noBuildCache: false,
         forceRecreate: false,
+    composeUpArgs: [],
       })) {
         if (ev.result && !ev.result.ready) throw new Error("deploy failed: " + ev.result.error);
       }

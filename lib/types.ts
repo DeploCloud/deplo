@@ -959,6 +959,16 @@ export interface App {
    */
   deployHookEnabled: boolean;
   /**
+   * Extra flags this app appends to the `docker compose up` that brings it up,
+   * as the operator typed them (`"--pull always --scale web=3"`), or null for
+   * the untouched command — which is every app that never opened the setting.
+   *
+   * Additive, never a replacement: deplo keeps choosing the project name, the
+   * stack file and the env-file, and the flags that would change them are
+   * refused. See {@link lib/deploy/compose-args.ts}.
+   */
+  composeUpArgs: string | null;
+  /**
    * Per-app resource caps applied at deploy time, or `null` when the app has no
    * limits set (the default). See {@link ResourceLimits}.
    */

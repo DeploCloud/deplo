@@ -63,6 +63,7 @@ import { sweepSupersededAppImages } from "../data/docker-cleanup";
 import { traefikRouterLabels } from "./routing";
 import { renderResourceLimitsYaml } from "./resources";
 import { buildComposeStack } from "./compose-stack";
+import { parseComposeUpArgs } from "./compose-args";
 import {
   primaryDomainName,
   primaryDomainRow,
@@ -958,7 +959,9 @@ interface AgentAttempt {
 async function tryAgent(opts: {
   depId: string;
   serverId: string;
-  project: { id: string; slug: string };
+  /** Only what the bring-up needs: identity, plus the app's own extra flags for
+   *  the `compose up` (the RAW stored string; split at the edge below). */
+  project: { id: string; slug: string; composeUpArgs: string | null };
   imageRef: string;
   composeYaml: string;
   env: Record<string, string>;
@@ -1002,6 +1005,8 @@ async function tryAgent(opts: {
         readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
         noCache: opts.noCache,
         forceRecreate: opts.forceRecreate,
+        // The app's own extra flags for the bring-up, split into argv tokens.
+        composeUpArgs: parseComposeUpArgs(opts.project.composeUpArgs),
         sink: { log: (level, text) => log(opts.depId, level, text) },
       });
       return { outcome: ready ? "agent" : "failed", commitSha };
@@ -1237,7 +1242,7 @@ async function runDeployment(depId: string): Promise<void> {
       const { outcome } = await tryAgent({
         depId,
         serverId,
-        project: { id: project.id, slug },
+        project: { id: project.id, slug, composeUpArgs: project.composeUpArgs },
         imageRef: treeOpts.imageRef,
         composeYaml,
         env,
@@ -1275,7 +1280,7 @@ async function runDeployment(depId: string): Promise<void> {
         const { outcome } = await tryAgent({
           depId,
           serverId,
-          project: { id: project.id, slug },
+          project: { id: project.id, slug, composeUpArgs: project.composeUpArgs },
           imageRef,
           composeYaml,
           env,
@@ -1322,7 +1327,7 @@ async function runDeployment(depId: string): Promise<void> {
         const attempt = await tryAgent({
           depId,
           serverId,
-          project: { id: project.id, slug },
+          project: { id: project.id, slug, composeUpArgs: project.composeUpArgs },
           imageRef,
           composeYaml,
           env,
@@ -1470,6 +1475,8 @@ async function runDeployment(depId: string): Promise<void> {
 interface ComposeStackApp {
   id: string;
   compose: string | null;
+  /** The app's extra flags for the `compose up`, as stored (null ⇒ none). */
+  composeUpArgs?: string | null;
   mounts?: { filePath: string; content: string }[] | null;
   /** Per-app resource caps applied to every service in the stack (existing-wins). */
   resources?: ResourceLimits | null;
@@ -1665,7 +1672,7 @@ async function deployComposeStackViaAgent(
   const { outcome } = await tryAgent({
     depId,
     serverId,
-    project: { id: project.id, slug },
+    project: { id: project.id, slug, composeUpArgs: project.composeUpArgs ?? null },
     // A compose stack has no single image_ref (each service brings its own); the
     // agent neither builds nor pulls one. Pass an empty ref.
     imageRef: "",
@@ -1988,7 +1995,16 @@ export async function rerouteApp(
     // For a single-image stack the env is baked into the YAML, so send no env-file
     // (mirrors the deploy path); compose stacks interpolate ${VAR} from the env.
     const env = useCompose && hasCompose ? await appEnv(appId) : {};
-    const r = await conn.reroute({ slug, composeYaml: rendered, env, mounts });
+    // A reroute is a bring-up too, so the app's extra flags apply here as well —
+    // otherwise "re-apply routing" would quietly run a different command than a
+    // deploy does.
+    const r = await conn.reroute({
+      slug,
+      composeYaml: rendered,
+      env,
+      mounts,
+      composeUpArgs: parseComposeUpArgs(project.composeUpArgs),
+    });
     if (!r.ok) throw new Error(r.error || "agent failed to reroute the stack");
     return "rerouted";
   } finally {

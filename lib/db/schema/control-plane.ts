@@ -769,6 +769,12 @@ export const apps = pgTable(
     deployHookTokenEnc: text("deploy_hook_token_enc"),
     // The hook's kill switch, ON by default (it is already bearer-gated).
     deployHookEnabled: boolean("deploy_hook_enabled").notNull().default(true),
+    // Extra flags this app adds to the `docker compose up` its server runs
+    // (migration 0060) — the RAW string as typed; the deploy edge splits it into
+    // argv tokens. NULL/empty ⇒ the untouched command. Flags only: the ones that
+    // decide WHICH stack comes up are refused on both sides. See
+    // lib/deploy/compose-args.ts.
+    composeUpArgs: text("compose_up_args"),
     // Per-app resource limits (flattened ResourceLimits, like repo_*/upload_*).
     // Every column NULLABLE with NO default: NULL ⇒ that dimension is UNCAPPED,
     // and an all-NULL row ⇒ `resources` assembles to null (no limits set), so an

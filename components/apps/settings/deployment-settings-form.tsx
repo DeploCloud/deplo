@@ -35,6 +35,7 @@ import { UploadInput, type CurrentUpload } from "@/components/apps/upload-input"
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { BuildOutputCard } from "@/components/apps/settings/build-output-card";
 import { BuildCachePanel } from "@/components/apps/settings/build-cache-panel";
+import { ComposeArgsPanel } from "@/components/apps/settings/compose-args-panel";
 import { DeployHookPanel } from "@/components/apps/settings/deploy-hook-panel";
 import { RootDirectoryFields } from "@/components/apps/settings/root-directory-fields";
 import {
@@ -127,7 +128,8 @@ function computeSourceKey(s: SourceKeyInput): string {
  * deploy again. Three cards on one page because they all read the live `source`
  * state — Deploy Source, Build & Output (which owns deploy-on-push, since "run
  * all of this again on every push" is the last stage of the same pipeline), and
- * Advanced settings (the build cache and the deploy hook).
+ * Advanced settings (the build cache, the app's own `compose up` flags, and the
+ * deploy hook).
  */
 export function DeploymentSettingsForm({
   appId,
@@ -146,6 +148,7 @@ export function DeploymentSettingsForm({
   frameworkOverride: initialFrameworkOverride,
   deployHookEnabled,
   deployHookUrlMasked,
+  composeUpArgs,
 }: {
   appId: string;
   slug: string;
@@ -173,6 +176,9 @@ export function DeploymentSettingsForm({
   /** The hook URL with its secret segment dotted out — resolved server-side so
    * the page can show the link's shape without the token reaching the browser. */
   deployHookUrlMasked: string;
+  /** Extra flags appended to this app's `docker compose up`, or null for the
+   * untouched command (Advanced settings). */
+  composeUpArgs: string | null;
 }) {
   const router = useRouter();
   const [build, setBuild] = React.useState<BuildConfig>(initialBuild);
@@ -967,6 +973,12 @@ export function DeploymentSettingsForm({
                 }
               />
             )}
+            <ComposeArgsPanel
+              appId={appId}
+              slug={slug}
+              value={composeUpArgs}
+              usesEnvFile={isComposeStack}
+            />
             <DeployHookPanel
               appId={appId}
               enabled={deployHookEnabled}

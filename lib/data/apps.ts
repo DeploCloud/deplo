@@ -37,6 +37,10 @@ import {
 } from "../deploy/compose-lint";
 import { composeServiceNames } from "../deploy/compose-stack";
 import {
+  parseComposeUpArgs,
+  validateComposeUpArgs,
+} from "../deploy/compose-args";
+import {
   RESERVED_MOUNT_PREFIXES,
   VOLUME_NAME_MAX,
   VOLUME_NAME_RE,
@@ -598,6 +602,8 @@ export async function createApp(
     // The deploy hook answers as soon as someone opens it (it mints its URL on
     // first read and is bearer-gated either way) — nothing to configure at create.
     deployHookEnabled: true,
+    // The bring-up command starts untouched; extra flags are an advanced setting.
+    composeUpArgs: null,
     // New apps start uncapped; limits are set later from Settings → Resources.
     resources: null,
     latestDeploymentId: null,
@@ -1612,6 +1618,48 @@ export async function setAppFramework(
     value
       ? `Set framework to ${frameworkById(value)?.name ?? value}`
       : `Reset framework to what deplo detects`,
+    user.name,
+    id,
+  );
+  publishAppChanged(id);
+}
+
+/**
+ * Set (or clear) the extra flags this app adds to its `docker compose up`.
+ *
+ * Validated here, not only in the form: the same value arrives from the bearer
+ * API, and a bad one would reach a host's argv. The agent vets it a second time
+ * and drops the whole set rather than half-applying it — see
+ * lib/deploy/compose-args.ts for why those flags are additive by design.
+ */
+export async function setAppComposeUpArgs(
+  id: string,
+  value: string | null,
+): Promise<void> {
+  const { membership } = await requireCapability("configure_apps");
+  const user = (await getCurrentUser())!;
+  await requireFolderCapabilityForApp(id, "configure_apps");
+  const raw = value?.trim() || null;
+  if (raw) {
+    const problem = validateComposeUpArgs(raw);
+    if (problem) throw new Error(problem);
+  }
+  const updated = await getDb()
+    .update(appsTable)
+    // Store the tokens as the deploy edge will send them, so what the settings
+    // page shows next is exactly what runs (no stray double spaces to puzzle over).
+    .set({
+      composeUpArgs: raw ? parseComposeUpArgs(raw).join(" ") : null,
+      updatedAt: nowIso(),
+    })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+    .returning({ id: appsTable.id });
+  if (updated.length === 0) throw new Error("App not found");
+  await recordActivity(
+    "app",
+    raw
+      ? `Set extra compose flags to ${parseComposeUpArgs(raw).join(" ")}`
+      : "Cleared the extra compose flags",
     user.name,
     id,
   );

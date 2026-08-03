@@ -761,6 +761,16 @@ export interface DeployRequest {
    * Capability: "deploy.force-recreate".
    */
   forceRecreate: boolean;
+  /**
+   * Extra flags APPENDED to the `docker compose … up -d --remove-orphans` the
+   * agent already assembles (e.g. ["--pull", "always"]). One token per element,
+   * already split by the control plane; never a whole command — the project name,
+   * the stack file and the env-file stay the agent's to choose, so a flag can
+   * never repoint compose at another project. The agent re-validates and drops
+   * anything that would (see sanitizeComposeArgs).
+   * Capability: "deploy.compose-args" (an older agent silently ignores them).
+   */
+  composeUpArgs: string[];
 }
 
 export interface DeployRequest_EnvEntry {
@@ -937,6 +947,12 @@ export interface RerouteRequest {
    * bringing the stack up. Empty for single-image projects.
    */
   mounts: MountFile[];
+  /**
+   * The app's extra `compose up` flags, same contract as
+   * DeployRequest.compose_up_args — a reroute brings the stack up too, so the
+   * flags the operator asked for apply here as well.
+   */
+  composeUpArgs: string[];
 }
 
 export interface RerouteRequest_EnvEntry {
@@ -3375,6 +3391,7 @@ function createBaseDeployRequest(): DeployRequest {
     buildSpec: undefined,
     noBuildCache: false,
     forceRecreate: false,
+    composeUpArgs: [],
   };
 }
 
@@ -3433,6 +3450,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     if (message.forceRecreate !== false) {
       writer.uint32(144).bool(message.forceRecreate);
+    }
+    for (const v of message.composeUpArgs) {
+      writer.uint32(154).string(v!);
     }
     return writer;
   },
@@ -3591,6 +3611,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
           message.forceRecreate = reader.bool();
           continue;
         }
+        case 19: {
+          if (tag !== 154) {
+            break;
+          }
+
+          message.composeUpArgs.push(reader.string());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3682,6 +3710,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : isSet(object.force_recreate)
         ? globalThis.Boolean(object.force_recreate)
         : false,
+      composeUpArgs: globalThis.Array.isArray(object?.composeUpArgs)
+        ? object.composeUpArgs.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.compose_up_args)
+        ? object.compose_up_args.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -3747,6 +3780,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.forceRecreate !== false) {
       obj.forceRecreate = message.forceRecreate;
     }
+    if (message.composeUpArgs?.length) {
+      obj.composeUpArgs = message.composeUpArgs;
+    }
     return obj;
   },
 
@@ -3785,6 +3821,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
       : undefined;
     message.noBuildCache = object.noBuildCache ?? false;
     message.forceRecreate = object.forceRecreate ?? false;
+    message.composeUpArgs = object.composeUpArgs?.map((e) => e) || [];
     return message;
   },
 };
@@ -4890,7 +4927,7 @@ export const FilesChunk_Header: MessageFns<FilesChunk_Header> = {
 };
 
 function createBaseRerouteRequest(): RerouteRequest {
-  return { slug: "", composeYaml: "", env: {}, mounts: [] };
+  return { slug: "", composeYaml: "", env: {}, mounts: [], composeUpArgs: [] };
 }
 
 export const RerouteRequest: MessageFns<RerouteRequest> = {
@@ -4906,6 +4943,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     });
     for (const v of message.mounts) {
       MountFile.encode(v!, writer.uint32(34).fork()).join();
+    }
+    for (const v of message.composeUpArgs) {
+      writer.uint32(42).string(v!);
     }
     return writer;
   },
@@ -4952,6 +4992,14 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
           message.mounts.push(MountFile.decode(reader, reader.uint32()));
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.composeUpArgs.push(reader.string());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -4979,6 +5027,11 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
         )
         : {},
       mounts: globalThis.Array.isArray(object?.mounts) ? object.mounts.map((e: any) => MountFile.fromJSON(e)) : [],
+      composeUpArgs: globalThis.Array.isArray(object?.composeUpArgs)
+        ? object.composeUpArgs.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.compose_up_args)
+        ? object.compose_up_args.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -5002,6 +5055,9 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
     if (message.mounts?.length) {
       obj.mounts = message.mounts.map((e) => MountFile.toJSON(e));
     }
+    if (message.composeUpArgs?.length) {
+      obj.composeUpArgs = message.composeUpArgs;
+    }
     return obj;
   },
 
@@ -5022,6 +5078,7 @@ export const RerouteRequest: MessageFns<RerouteRequest> = {
       {},
     );
     message.mounts = object.mounts?.map((e) => MountFile.fromPartial(e)) || [];
+    message.composeUpArgs = object.composeUpArgs?.map((e) => e) || [];
     return message;
   },
 };

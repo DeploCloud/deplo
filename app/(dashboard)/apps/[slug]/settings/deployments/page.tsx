@@ -50,6 +50,7 @@ export default async function AppDeploymentSettingsPage(
         servers={servers}
         installations={installations}
         deployHookEnabled={project.deployHookEnabled}
+        composeUpArgs={project.composeUpArgs}
         // The link's shape, never its token: the real URL is fetched only when
         // someone with `configure_apps` deliberately reveals it.
         deployHookUrlMasked={await deployHookUrlMasked(project.id)}

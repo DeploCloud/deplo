@@ -231,6 +231,8 @@ export async function runAgentDeploy(opts: {
   noCache?: boolean;
   /** `compose up --force-recreate` — the explicit "Rebuild container" action. */
   forceRecreate?: boolean;
+  /** The app's extra `docker compose up` flags, already split into argv tokens. */
+  composeUpArgs?: string[];
   sink: AgentDeploySink;
 }): Promise<AgentDeployResult> {
   // P5: fail fast if the agent doesn't answer, rather than hanging a deploy.
@@ -256,6 +258,20 @@ export async function runAgentDeploy(opts: {
       "warn",
       "This server's agent is too old to force a fresh container — if nothing about the " +
         "stack changed, the running container is kept. Update the agent (reissue the install " +
+        "command from the server's actions menu).",
+    );
+  }
+  // Same reasoning, louder: extra compose flags are a deliberate instruction, so
+  // an agent that drops them is running a DIFFERENT command than the settings
+  // page shows. Say which flags went missing, not just that some did.
+  if (
+    opts.composeUpArgs?.length &&
+    !hello.capabilities.includes("deploy.compose-args")
+  ) {
+    opts.sink.log(
+      "warn",
+      `This server's agent is too old to apply this app's extra compose flags (${opts.composeUpArgs.join(" ")}) — ` +
+        "it is bringing the stack up without them. Update the agent (reissue the install " +
         "command from the server's actions menu).",
     );
   }
@@ -430,6 +446,9 @@ export async function buildDeployRequest(opts: {
   readyTimeoutMs?: number;
   noCache?: boolean;
   forceRecreate?: boolean;
+  /** The app's extra `docker compose up` flags, already split into argv tokens
+   *  (lib/deploy/compose-args.ts). Empty for every app that never set any. */
+  composeUpArgs?: string[];
 }): Promise<DeployRequest> {
   const base: DeployRequest = {
     deployId: opts.deployId,
@@ -454,6 +473,9 @@ export async function buildDeployRequest(opts: {
     // it is exactly the kind whose container `up -d` would otherwise not replace.
     noBuildCache: opts.noCache ?? false,
     forceRecreate: opts.forceRecreate ?? false,
+    // Appended to the bring-up the AGENT assembles — the project name, stack file
+    // and env-file are never ours to send. Empty for almost every app.
+    composeUpArgs: opts.composeUpArgs ?? [],
   };
 
   if (opts.plan.kind === "compose") {

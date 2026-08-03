@@ -198,6 +198,7 @@ async function main() {
     devWorkspaceSubdir: "",
     noBuildCache: false,
     forceRecreate: false,
+    composeUpArgs: [],
   })) {
     if (ev.seq) lastSeq = Number(ev.seq);
     if (ev.log) process.stdout.write(`  [${ev.log.level}] ${ev.log.text}\n`);
@@ -252,6 +253,7 @@ async function main() {
     devWorkspaceSubdir: "",
     noBuildCache: false,
     forceRecreate: false,
+    composeUpArgs: [],
   })) {
     if (ev.seq) cursor = Number(ev.seq);
     break; // DROP: simulate the control plane losing the stream mid-build

@@ -121,6 +121,7 @@ networks:
         devWorkspaceSubdir: "",
         noBuildCache: false,
         forceRecreate: false,
+    composeUpArgs: [],
       })) {
         if (ev.log) console.log(`  [${ev.log.level}] ${ev.log.text}`);
         if (ev.result) {
