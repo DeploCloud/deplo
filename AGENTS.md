@@ -134,9 +134,9 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   the only live caller is the boot sweep that removes ones an older version left behind. Don't
   wire anything new to it, and read ADR-0013 before reviving it — the return is expected to go
   through the agent, not the socket.
-  `lib/deploy/build.ts` also retains a now-dead local build path + host `ensureNetwork`/`mkdir`;
-  the live path passes `skipBuild:true → runAgentDeploy`. Don't mistake the dead path for a
-  violation and don't revive it.
+  `lib/deploy/build.ts` still calls host `ensureNetwork`/`mkdir` at deploy start; the build
+  itself is agent-side only (the in-process `lib/deploy/builders.ts` is GONE — its unreachable
+  `fs`/`docker` calls were also what made Turbopack trace the whole project). Don't revive it.
 
 ## Tech stack
 
