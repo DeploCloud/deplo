@@ -58,7 +58,10 @@ export function PermissionPicker({
     ...cat,
     shown: cat.caps.filter(matches),
   })).filter((cat) => cat.shown.length > 0);
-  const shownCount = sections.reduce((n, s) => n + s.shown.length, 0);
+  /** The always-on floor is listed like any other permission — it just can't be unticked. */
+  const viewShown = matches("view");
+  const shownCount =
+    sections.reduce((n, s) => n + s.shown.length, 0) + (viewShown ? 1 : 0);
   const grantedCount = capabilities.filter((c) => c !== "view").length;
 
   function write(next: Set<Capability>) {
@@ -128,19 +131,7 @@ export function PermissionPicker({
         )}
       </div>
 
-      {/* view — the locked floor, never a toggle. */}
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-        <Lock className="size-3.5 shrink-0" aria-hidden />
-        <span>
-          <span className="font-medium text-foreground/80">
-            {CAPABILITY_META.view.label}
-          </span>
-          {" — always granted. "}
-          {CAPABILITY_META.view.description}
-        </span>
-      </div>
-
-      {sections.length === 0 ? (
+      {sections.length === 0 && !viewShown ? (
         <p className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
           No permission matches “{query}”.
         </p>
@@ -225,7 +216,36 @@ export function PermissionPicker({
         </div>
       )}
 
-      {query && sections.length > 0 && (
+      {/* view — the floor, last and category-less: same row, permanently ticked. */}
+      {viewShown && (
+        <div className="overflow-hidden rounded-lg border border-border">
+          <div className="flex items-start gap-3 px-3 py-2.5">
+            <Checkbox
+              checked
+              disabled
+              aria-label={`${CAPABILITY_META.view.label} — always granted`}
+              className="mt-0.5"
+            />
+            <span className="min-w-0">
+              <span className="flex flex-wrap items-center gap-1.5">
+                <span className="text-sm font-medium leading-tight">
+                  {CAPABILITY_META.view.label}
+                </span>
+                <SimpleTooltip content="Always granted: every member can see the team, so this one can't be taken away.">
+                  <span className="leading-none text-muted-foreground">
+                    <Lock className="size-3.5" aria-label="Always granted" />
+                  </span>
+                </SimpleTooltip>
+              </span>
+              <span className="block text-xs leading-snug text-muted-foreground">
+                {CAPABILITY_META.view.description}
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {query && shownCount > 0 && (
         <p aria-live="polite" className="text-xs text-muted-foreground">
           {shownCount} permission{shownCount === 1 ? "" : "s"} match “{query}”.
         </p>
