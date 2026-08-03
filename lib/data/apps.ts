@@ -30,6 +30,7 @@ import {
   requireExposePorts,
   requireMountHostVolumes,
   isInstanceAdmin,
+  requireUnscoped,
 } from "../membership";
 import {
   composeHasHostBindMount,
@@ -95,6 +96,7 @@ import {
 import { listGithubInstallations } from "./github";
 import { AgentUnreachableError } from "../infra/agent-client";
 import { publishAppChanged } from "../graphql/pubsub";
+import { inProjectScope } from "../auth/request-context";
 import {
   insertEnvVars,
   loadDomainsForApp,
@@ -102,6 +104,7 @@ import {
   loadAppGraphBySlug,
   loadAppsByIds,
   loadAppsByTeam,
+  loadTeamApp,
   preloadSummaries,
   appInTeam,
   type SummaryPreload,
@@ -234,10 +237,14 @@ async function appOrderRank(teamId: string): Promise<Map<string, number>> {
 
 export async function listApps(): Promise<AppSummary[]> {
   const teamId = await requireActiveTeamId();
-  const [proj, rank] = await Promise.all([
+  const [all, rank] = await Promise.all([
     loadAppsByTeam(teamId),
     appOrderRank(teamId),
   ]);
+  // `loadAppsByTeam` is an engine primitive (the deploy queue and team teardown
+  // read through it too) and must never filter itself — the project scope of an
+  // API token is applied HERE, where the answer is a user-facing list.
+  const proj = all.filter((p) => inProjectScope(p.projectId));
   const pre = await preloadSummaries(proj);
   // Honour the team's manual order (Overview drag-and-drop) when present:
   // explicitly-ordered apps come first in that order, anything not listed
@@ -264,6 +271,10 @@ export async function listApps(): Promise<AppSummary[]> {
  */
 export async function reorderApps(orderedIds: string[]): Promise<void> {
   const teamId = await requireActiveTeamId();
+  // A team-wide arrangement is not something a project-scoped token rewrites —
+  // and this is the one gate an instance admin bypasses, so the clamp on
+  // `manage_team` wouldn't have covered it.
+  requireUnscoped("the team-wide app order");
   // Instance admins bypass team capabilities; everyone else needs manage_team.
   if (!(await isInstanceAdmin())) {
     await requireCapability("manage_team");
@@ -308,13 +319,13 @@ export const getAppBySlug = cache(async function getAppBySlug(
 ): Promise<AppSummary | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadAppGraphBySlug(slug);
-  return p && p.teamId === teamId ? summarizeOne(p) : null;
+  return p && p.teamId === teamId && inProjectScope(p.projectId)
+    ? summarizeOne(p)
+    : null;
 });
 
 export async function getAppById(id: string): Promise<App | null> {
-  const teamId = await requireActiveTeamId();
-  const p = await loadAppGraph(id);
-  return p && p.teamId === teamId ? p : null;
+  return loadTeamApp(id, await requireActiveTeamId());
 }
 
 /**
@@ -328,13 +339,19 @@ export async function getAppById(id: string): Promise<App | null> {
  * Stays cookie-free: it queries Postgres with the passed `teamId` directly and
  * never calls `requireActiveTeamId()` / a cookie-reading helper (PLAN §6 "SSE
  * generators must stay cookie-free").
+ *
+ * `appInScope` is safe here for the same reason: it reads the request identity,
+ * which the yoga subscribe hook re-establishes around every iterator tick, and
+ * never touches cookies or a request-scoped cache.
  */
 export async function summarizeForTeam(
   id: string,
   teamId: string,
 ): Promise<AppSummary | null> {
   const p = await loadAppGraph(id);
-  return p && p.teamId === teamId ? summarizeOne(p) : null;
+  return p && p.teamId === teamId && inProjectScope(p.projectId)
+    ? summarizeOne(p)
+    : null;
 }
 
 /** Cookie-free slug → summary lookup scoped to an explicit team (see above). */
@@ -343,7 +360,9 @@ export async function findAppSummaryBySlugForTeam(
   teamId: string,
 ): Promise<AppSummary | null> {
   const p = await loadAppGraphBySlug(slug);
-  return p && p.teamId === teamId ? summarizeOne(p) : null;
+  return p && p.teamId === teamId && inProjectScope(p.projectId)
+    ? summarizeOne(p)
+    : null;
 }
 
 export interface CreateAppInput {
@@ -394,6 +413,23 @@ export interface CreateAppInput {
  * foreign id never leaks existence.
  */
 async function resolveNewAppPlacement(
+  input: CreateAppInput,
+  teamId: string,
+): Promise<{
+  folderId: string | null;
+  projectId: string | null;
+  environmentId: string | null;
+}> {
+  const placement = await resolvePlacement(input, teamId);
+  // A project-scoped API token creates INSIDE its scope or not at all —
+  // otherwise the create path is how a token walks out of its own boundary.
+  // Same message the destination lookups use, so nothing leaks.
+  if (!inProjectScope(placement.projectId))
+    throw new Error("Project not found");
+  return placement;
+}
+
+async function resolvePlacement(
   input: CreateAppInput,
   teamId: string,
 ): Promise<{
@@ -1806,9 +1842,9 @@ export async function deleteApps(ids: string[]): Promise<number> {
   const { membership } = await requireCapability("delete_apps");
   const user = (await getCurrentUser())!;
   const idSet = [...new Set(ids)];
-  // Team-scoped: only the caller's own apps, fully loaded for teardown.
+  // Team- and scope-scoped: only the caller's own apps, fully loaded for teardown.
   const apps = (await loadAppsByIds(idSet)).filter(
-    (p) => p.teamId === membership.teamId,
+    (p) => p.teamId === membership.teamId && inProjectScope(p.projectId),
   );
   if (apps.length === 0) return 0;
 

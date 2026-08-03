@@ -80,6 +80,9 @@ export interface SeedAppOpts {
   compose?: string | null;
   /** Park the app inside a folder (seed the folder row yourself first). */
   folderId?: string | null;
+  /** File the app under a Project container (seed the project row yourself). */
+  projectId?: string | null;
+  environmentId?: string | null;
   /**
    * Authorship — NOT on the App type (it never reaches the renderer), so it is
    * written straight onto the row, exactly as `createApp` does.
@@ -101,6 +104,8 @@ export async function seedApp(
     slug: opts.slug ?? opts.id,
     teamId,
     folderId: opts.folderId ?? null,
+    projectId: opts.projectId ?? null,
+    environmentId: opts.environmentId ?? null,
     serverId,
     logo: null,
     frameworkOverride: null,

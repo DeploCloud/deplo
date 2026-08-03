@@ -6,7 +6,7 @@ import { getCurrentUser } from "../auth";
 import { getDb } from "../db/client";
 import { registries as registriesTable } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import { requireActiveTeamId, requireCapability, requireUnscoped } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret } from "../crypto";
 import type { RegistryType } from "../types";
@@ -39,6 +39,7 @@ const DTO_COLUMNS = {
 } as const;
 
 export async function listRegistries(): Promise<RegistryDTO[]> {
+  requireUnscoped("container registries");
   const teamId = await requireActiveTeamId();
   // Newest-first sort pushed into SQL (matches registries_team_created_idx).
   return getDb()

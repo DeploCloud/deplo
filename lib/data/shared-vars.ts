@@ -16,7 +16,7 @@ import {
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireCapability } from "../membership";
+import { requireCapability, requireUnscoped } from "../membership";
 import { recordActivity } from "./activity";
 import { folderCapabilities, requireFolderCapabilityForApp } from "./folder-access";
 import { appInTeam } from "./app-graph-load";
@@ -177,6 +177,7 @@ async function teamLookups(teamId: string): Promise<{
 
 /** Every shared variable of the active team, key-sorted, decorated for the UI. */
 export async function listSharedVars(): Promise<SharedVarDTO[]> {
+  requireUnscoped("shared variables");
   const { teamId } = await requireCapability("manage_env");
   const [vars, lookups] = await Promise.all([
     loadSharedVarsForTeam(teamId),
@@ -321,6 +322,7 @@ export interface AppliedSharedVarDTO {
  * (no per-app query fan-out).
  */
 export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[]> {
+  requireUnscoped("shared variables");
   const { teamId } = await requireCapability("manage_env");
   const vars = await loadSharedVarsForTeam(teamId);
   // One identity query for every card on the page.

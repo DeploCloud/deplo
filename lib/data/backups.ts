@@ -7,6 +7,7 @@ import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
   databases as databasesTable,
+  apps as appsTable,
   s3Destination as s3DestinationTable,
 } from "../db/schema/control-plane";
 import {
@@ -20,8 +21,14 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
+import { tokenProjectScope } from "../auth/request-context";
 import { requireFolderCapabilityForApp } from "./folder-access";
-import { loadAppGraph, loadTeamApp } from "./app-graph-load";
+import {
+  loadAppGraph,
+  loadTeamApp,
+  appInTeam,
+  appScopeWhere,
+} from "./app-graph-load";
 import { decryptSecret } from "../crypto";
 import {
   DEFAULT_SCHEDULE,
@@ -139,7 +146,48 @@ export async function listBackups(): Promise<BackupDTO[]> {
     .from(backupsTable)
     .where(eq(backupsTable.teamId, teamId))
     .orderBy(desc(backupsTable.createdAt));
-  return Promise.all(rows.map((r) => toDTO(assembleBackup(r))));
+  // A project-scoped API token sees the schedules of its own apps only: a
+  // database schedule belongs to no Project, and an app outside the scope is
+  // invisible to it everywhere else too.
+  const scoped = await filterBackupsToScope(rows.map(assembleBackup));
+  return Promise.all(scoped.map((b) => toDTO(b)));
+}
+
+/** Drop the schedules a project-scoped caller can't reach. Inert when unscoped. */
+async function filterBackupsToScope<T extends { targetKind: BackupTargetKind; appId: string | null }>(
+  rows: T[],
+): Promise<T[]> {
+  const scope = tokenProjectScope();
+  if (!scope) return rows;
+  const appIds = [
+    ...new Set(rows.map((r) => r.appId).filter((id): id is string => !!id)),
+  ];
+  if (appIds.length === 0) return [];
+  const inScope = new Set(
+    (
+      await getDb()
+        .select({ id: appsTable.id })
+        .from(appsTable)
+        .where(and(inArray(appsTable.id, appIds), appScopeWhere()))
+    ).map((r) => r.id),
+  );
+  return rows.filter((r) => r.targetKind === "app" && r.appId && inScope.has(r.appId));
+}
+
+/**
+ * Whether a backup TARGET is reachable by this request. A database target never
+ * is for a project-scoped token (a database belongs to no Project); an app
+ * target is exactly when the app is. Inert for every unscoped caller, which is
+ * every browser request.
+ */
+async function backupTargetInScope(
+  kind: BackupTargetKind,
+  targetId: string,
+  teamId: string,
+): Promise<boolean> {
+  if (!tokenProjectScope()) return true;
+  if (kind !== "app" || !targetId) return false;
+  return appInTeam(targetId, teamId);
 }
 
 /**
@@ -803,6 +851,10 @@ export async function listBackupRuns(filter: {
   databaseId?: string;
 }): Promise<BackupRun[]> {
   const teamId = await requireActiveTeamId();
+  // A run history is reachable only through a target the caller can reach: an
+  // out-of-scope app, or any database, yields nothing for a scoped token.
+  if (!(await backupTargetInScope(filter.appId ? "app" : "database", filter.appId ?? filter.databaseId ?? "", teamId)))
+    return [];
   // Exactly one of appId/databaseId selects the target; neither ⇒ no runs.
   const targetWhere = filter.appId
     ? eq(backupRunsTable.appId, filter.appId)
@@ -924,6 +976,10 @@ export async function deleteBackupArtifacts(input: {
   serverId: string;
 }): Promise<number> {
   const teamId = await requireActiveTeamId();
+  // Destructive, and gated on the view floor alone — so the scope check has to
+  // be here: a caller-supplied targetId must be one this request can reach.
+  if (!(await backupTargetInScope(input.kind, input.targetId, teamId)))
+    throw new Error("Not found");
   const creds = await getS3WithSecretsForTeam(teamId, input.destinationId);
   const prefix = targetPrefix(teamId, input.kind, input.targetId);
 
@@ -982,6 +1038,8 @@ export async function countBackupArtifacts(input: {
   targetId: string;
 }): Promise<number> {
   const teamId = await requireActiveTeamId();
+  if (!(await backupTargetInScope(input.kind, input.targetId, teamId)))
+    return 0;
   const [row] = await getDb()
     .select({ n: count() })
     .from(backupRunsTable)
@@ -1005,6 +1063,8 @@ export async function backupDestinationsForTarget(input: {
   targetId: string;
 }): Promise<string[]> {
   const teamId = await requireActiveTeamId();
+  if (!(await backupTargetInScope(input.kind, input.targetId, teamId)))
+    return [];
   const rows = await getDb()
     .selectDistinct({ destinationId: backupRunsTable.destinationId })
     .from(backupRunsTable)

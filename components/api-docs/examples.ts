@@ -145,7 +145,9 @@ export const CURATED_EXAMPLES: CuratedExample[] = [
       "A mutation — it will NOT run. You'll see whether you're allowed to.",
     kind: "mutation",
     operation: `mutation CreateToken {
-  createToken(name: "my-ci-token") {
+  createToken(
+    input: { name: "my-ci-token", capabilities: [deploy_apps, view_logs] }
+  ) {
     raw
   }
 }`,

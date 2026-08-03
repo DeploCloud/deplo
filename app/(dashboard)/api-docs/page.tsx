@@ -27,7 +27,7 @@ export default async function ApiDocsPage() {
     <div className="space-y-6">
       <PageHeader
         title="API Reference"
-        description="Every GraphQL query and mutation Deplo exposes, with a live, read-only playground. Authenticate external clients with an API token from Settings → API Tokens."
+        description="Every GraphQL query and mutation Deplo exposes, with a live, read-only playground. Authenticate external clients with an API token from Settings → API tokens, which calls only what that token's own permissions allow."
       />
       <ApiDocs
         catalog={catalog}

@@ -19,6 +19,7 @@ import {
   loadDeployment,
   loadDeploymentsForApp,
   appInTeam,
+  appScopeWhere,
 } from "./app-graph-load";
 import { assembleDeployment } from "./app-graph-rows";
 import { loadDeploymentLogs } from "./deployment-logs";
@@ -63,7 +64,7 @@ export async function listDeployments(filter?: {
       repoUrl: appsTable.repoUrl,
     })
     .from(appsTable)
-    .where(eq(appsTable.teamId, teamId));
+    .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
   const byId = new Map(teamApps.map((p) => [p.id, p] as const));
   const appIds = filter?.appId
     ? byId.has(filter.appId)

@@ -13,7 +13,7 @@ import {
 import { newId, nowIso } from "../ids";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import { requireActiveTeamId, requireCapability, requireUnscoped } from "../membership";
 import {
   BUILTIN_ROLE_KEYS,
   CAPABILITY_META,
@@ -223,6 +223,7 @@ async function capabilitiesByMembership(
 
 /** Every role of the active team: defaults first, then custom roles by age. */
 export async function listRoles(): Promise<TeamRoleDTO[]> {
+  requireUnscoped("roles");
   const teamId = await requireActiveTeamId();
   const db = getDb();
   await ensureTeamRoles(db, teamId);
@@ -534,23 +535,29 @@ function sanitizeCapabilities(caps: Capability[] | undefined): Capability[] {
 }
 
 /**
- * A non-owner can only put capabilities they hold THEMSELVES into a role —
- * without it, a plain `manage_members` holder could author an all-powerful role
- * and hand it out. Unlike the member-level clamp this REFUSES rather than
- * silently dropping: a role editor that saves fewer permissions than were ticked,
- * with no explanation, is how an admin ends up believing a role grants something
- * it doesn't.
+ * A non-owner can only put capabilities they hold THEMSELVES into a role (or an
+ * API token) — without it, a plain `manage_members` holder could author an
+ * all-powerful role and hand it out, and a `manage_tokens` holder could mint a
+ * token more powerful than themselves. Unlike the member-level clamp this
+ * REFUSES rather than silently dropping: an editor that saves fewer permissions
+ * than were ticked, with no explanation, is how an admin ends up believing a
+ * role grants something it doesn't.
+ *
+ * Shared with `lib/data/tokens.ts` — `subject` only names the thing in the
+ * error, the rule is identical. It also carries `sanitizeCapabilities` along, so
+ * a retired coarse name arriving from an API client expands on both paths.
  */
-function withinActor(
+export function withinActor(
   caps: Capability[] | undefined,
   actor: Membership,
+  subject: "role" | "token" = "role",
 ): Capability[] {
   const wanted = sanitizeCapabilities(caps);
   if (actor.role === "owner") return wanted;
   const beyond = wanted.filter((c) => !actor.capabilities.includes(c));
   if (beyond.length > 0)
     throw new Error(
-      `You can only give a role permissions you hold yourself: ${beyond
+      `You can only give a ${subject} permissions you hold yourself: ${beyond
         .map((c) => CAPABILITY_META[c].label.toLowerCase())
         .join(", ")}`,
     );

@@ -12,7 +12,7 @@ import {
 } from "../db/schema/control-plane";
 import { assertUser, getCurrentUser } from "../auth";
 import { membershipFor } from "../membership";
-import { CAPABILITY_META } from "../membership-shared";
+import { CAPABILITY_META, boundedBy } from "../membership-shared";
 import { ALL_CAPABILITIES, type Capability } from "../types";
 
 /**
@@ -51,16 +51,13 @@ export interface FolderGrant {
 /* ------------------------------------------------------------------ */
 
 /**
- * Intersect `caps` with `bound`, returned in canonical {@link ALL_CAPABILITIES}
- * order and de-duplicated. This is how a per-folder capability set is clamped to
- * a user's live team caps (and how a grant is clamped to what the granter holds).
- * Pure.
+ * Intersect `caps` with `bound` — how a per-folder capability set is clamped to a
+ * user's live team caps (and how a grant is clamped to what the granter holds).
+ * Lives in `membership-shared` because `lib/membership.ts` needs it too for the
+ * API-token clamp and cannot import this module. Re-exported here so the folder
+ * story reads in one place.
  */
-export function boundedBy(caps: Capability[], bound: Capability[]): Capability[] {
-  const allowed = new Set(bound);
-  const wanted = new Set(caps);
-  return ALL_CAPABILITIES.filter((c) => wanted.has(c) && allowed.has(c));
-}
+export { boundedBy };
 
 /**
  * Add the always-implied `view` capability, returning the set in canonical

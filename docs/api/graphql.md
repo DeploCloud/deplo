@@ -39,9 +39,23 @@ curl https://your-host/api/graphql \
   -d '{"query":"{ me { username } apps { name status } }"}'
 ```
 
-A token is scoped to the team it was created in and acts with its creator's
-capabilities. Every query and mutation is filtered to that team automatically —
+A token carries **its own capabilities**, chosen when you create it — the same
+fine-grained set a Role is built from. Its effective power is the intersection of
+two things: what the token was granted, and what its creator can still do in that
+team, so revoking a person's access also blunts every token they minted. An
+optional **project scope** narrows it further: a scoped token reaches only apps in
+those projects, and team-wide permissions such as managing members stop applying
+to it. Every query and mutation is filtered to the token's team automatically —
 there is no way for a token to reach another team's data.
+
+Settings → API tokens ships templates — Read only, Deploy hook & CI, MCP & AI
+agents, App automation, Root access — or you can start from scratch.
+
+> **Breaking change:** `createToken` now takes an input object and a permission
+> list: `createToken(input: { name: "ci", capabilities: [deploy_apps, view_logs] })`.
+> There is no default: a token with no capabilities named is view-only. Use
+> `updateToken` to change a live token's permissions or scope without re-minting
+> it.
 
 Unauthenticated requests resolve `me` to `null` and are rejected by any field
 that requires a login (`Not authorized to resolve …`).
@@ -212,13 +226,14 @@ curl -X POST -H "Authorization: Bearer deplo_your_token" \
 
 Both secrets are required. The URL's `<token>` says which app (read it back with
 `revealAppDeployHook`, replace it with `rotateAppDeployHook`, switch the hook off entirely
-with `setAppDeployHookEnabled`); the bearer token says who, and must belong to a member with
-`deploy_apps` in that app's team — the deploy runs through exactly the gates the dashboard
-button does. Answers `200` with the queued deployment:
+with `setAppDeployHookEnabled`); the bearer token says who, and must itself HOLD
+`deploy_apps` in that app's team (the **Deploy hook & CI** template is exactly this set) —
+the deploy runs through exactly the gates the dashboard button does. Answers `200` with the queued deployment:
 
 ```json
 { "deploymentId": "dpl_…", "appId": "prj_123", "status": "queued", "url": "https://…" }
 ```
 
-`401` — no/invalid API token. `403` — the hook is switched off, or the token's owner may not
-deploy this app. `404` — no such app, wrong URL token, or the app belongs to another team.
+`401` — no/invalid API token. `403` — the hook is switched off, or the token (or the member it
+acts as) may not deploy this app. `404` — no such app, wrong URL token, the app belongs to
+another team, or it is outside the token's project scope.

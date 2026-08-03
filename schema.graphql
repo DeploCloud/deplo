@@ -62,11 +62,33 @@ type AddServerPayload {
 A team API token. Only the prefix is ever exposed — the raw token is shown once at creation and only its hash is persisted.
 """
 type ApiToken {
+  """
+  What this token itself may do. Its effective power is this set intersected with what its creator can still do in the team, so a token can never outlive the access of the member who minted it.
+  """
+  capabilities: [String!]
   createdAt: String
+
+  """The member this token acts as, and is clamped to."""
+  createdByUsername: String
   id: ID
+
+  """
+  The token may administer the whole instance — users, servers and the global environment — not just its team. Mutually exclusive with a project scope.
+  """
+  instanceAdmin: Boolean
   lastUsedAt: String
   name: String
   prefix: String
+
+  """
+  The projects this token is limited to. Only meaningful when `projectScoped` is true; a scoped token reaches only apps in these projects, and team-wide permissions such as managing members stop applying to it.
+  """
+  projectIds: [String!]
+
+  """
+  Whether this token is limited to specific projects at all. False means it reaches the whole team.
+  """
+  projectScoped: Boolean
 }
 
 """A deployable application owned by a team."""
@@ -555,6 +577,13 @@ input CreateS3Input {
   provider: S3Provider!
   region: String
   secretKey: String!
+}
+
+input CreateTokenInput {
+  capabilities: [Capability!]
+  instanceAdmin: Boolean
+  name: String!
+  projectIds: [String!]
 }
 
 """
@@ -1344,9 +1373,9 @@ type Mutation {
   createTeam(name: String!): Team
 
   """
-  Create a new API token. The raw secret is returned once in the payload.
+  Create a new API token with its own permissions. The raw secret is returned once in the payload.
   """
-  createToken(name: String!): CreateTokenPayload
+  createToken(input: CreateTokenInput!): CreateTokenPayload
 
   """
   Delete every finished deployment for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. In-progress deployments are left. Returns how many were deleted.
@@ -1863,6 +1892,11 @@ type Mutation {
   """
   updateServerAgent(id: String!): String
   updateTeam(input: UpdateTeamInput!): Team
+
+  """
+  Change a token's name, permissions or project scope. The secret is unchanged, so tightening a live token costs no rotation. Returns true.
+  """
+  updateToken(input: UpdateTokenInput!): Boolean
 
   """Edit a user's instance-admin flag, suspended state, and password."""
   updateUserAdmin(input: UpdateUserAdminInput!): UserDetail
@@ -2869,6 +2903,14 @@ input UpdateTeamInput {
   name: String!
   requireTwoFactor: Boolean
   slug: String!
+}
+
+input UpdateTokenInput {
+  capabilities: [Capability!]
+  id: String!
+  instanceAdmin: Boolean
+  name: String!
+  projectIds: [String!]
 }
 
 input UpdateUserAdminInput {

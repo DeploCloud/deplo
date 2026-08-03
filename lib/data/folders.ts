@@ -24,6 +24,7 @@ import {
   visibleFolderIds,
 } from "./folder-access";
 import { recordActivity } from "./activity";
+import { tokenProjectScope } from "../auth/request-context";
 import { normalizeHexColor } from "../utils";
 import { assembleFolder, folderToRow } from "./app-graph-rows";
 import type { Folder } from "../types";
@@ -149,6 +150,11 @@ export const listFolders = cache(async function listFolders(): Promise<
   FolderSummary[]
 > {
   const teamId = await requireActiveTeamId();
+  // A Folder never lives inside a Project (CONTEXT.md), so an API token limited
+  // to Projects has no folder story at all — and all three folder capabilities
+  // are clamped away from it anyway. Fail closed rather than list the team's
+  // organisation to a credential that can do nothing with it.
+  if (tokenProjectScope()) return [];
   const { folders, appCounts, subfolderCounts } =
     await teamFoldersWithCounts(teamId);
   const rank = await folderOrderRank(teamId);

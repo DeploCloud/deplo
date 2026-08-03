@@ -25,7 +25,8 @@ export function PermissionsSummary({
           <h3 className="text-sm font-medium">Your API permissions</h3>
           <p className="mt-1 text-xs text-muted-foreground">
             What your account can call in the active team. Mutations you lack are
-            denied (in the playground and the real API alike).
+            denied (in the playground and the real API alike). An API token you
+            mint can hold fewer of these, never more.
           </p>
         </div>
         {isInstanceAdmin && (

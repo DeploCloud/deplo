@@ -7,7 +7,10 @@ import { maxAliasesPlugin } from "@escape.tech/graphql-armor-max-aliases";
 import { costLimitPlugin } from "@escape.tech/graphql-armor-cost-limit";
 import { schema } from "./schema";
 import { buildContext, type GraphQLContext } from "./context";
-import { runWithIdentity } from "@/lib/auth/request-context";
+import {
+  runWithIdentity,
+  type RequestIdentity,
+} from "@/lib/auth/request-context";
 
 /**
  * Wrap the operation's execution in the bearer-token identity (when present) so
@@ -27,11 +30,51 @@ const identityPlugin: Plugin<GraphQLContext> = {
   onSubscribe({ args, setSubscribeFn, subscribeFn }) {
     const identity = (args.contextValue as GraphQLContext).identity;
     if (!identity) return;
-    setSubscribeFn((subArgs) =>
-      runWithIdentity(identity, () => subscribeFn(subArgs)),
-    );
+    setSubscribeFn(async (subArgs) => {
+      const result = await runWithIdentity(identity, () =>
+        subscribeFn(subArgs),
+      );
+      return isAsyncIterable(result)
+        ? withIdentityPerTick(result, identity)
+        : result;
+    });
   },
 };
+
+function isAsyncIterable(v: unknown): v is AsyncIterable<unknown> {
+  return typeof (v as AsyncIterable<unknown>)?.[Symbol.asyncIterator] === "function";
+}
+
+/**
+ * Re-apply the identity around every TICK of a subscription, not just around the
+ * iterator's creation.
+ *
+ * An async generator body does NOT inherit the async context of whoever created
+ * it — it runs in the context of whoever calls `next()`, which for a
+ * long-lived SSE response is the server's event loop, long after
+ * `runWithIdentity` returned. Measured, not assumed: without this the store is
+ * `undefined` on every tick including the first, so a project-scoped token would
+ * stream an app it cannot otherwise see. Wrapping each `next()` restores it on
+ * every tick and across every await inside the body.
+ */
+function withIdentityPerTick<T>(
+  source: AsyncIterable<T>,
+  identity: RequestIdentity,
+): AsyncIterableIterator<T> {
+  const it = source[Symbol.asyncIterator]() as AsyncIterator<T>;
+  return {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next: (...a) => runWithIdentity(identity, () => it.next(...a)),
+    return: it.return
+      ? (v?: unknown) => runWithIdentity(identity, () => it.return!(v))
+      : undefined,
+    throw: it.throw
+      ? (e?: unknown) => runWithIdentity(identity, () => it.throw!(e))
+      : undefined,
+  } as AsyncIterableIterator<T>;
+}
 
 /**
  * An INFRASTRUCTURE error whose message must never reach a client: a Drizzle

@@ -13,8 +13,12 @@ import {
 } from "./db/schema/control-plane";
 import { assertUser, getCurrentUser } from "./auth";
 import type { Capability, Membership, Team } from "./types";
-import { CAPABILITY_META } from "./membership-shared";
-import { currentIdentity } from "./auth/request-context";
+import {
+  CAPABILITY_META,
+  PROJECT_SCOPED_CAPABILITIES,
+  boundedBy,
+} from "./membership-shared";
+import { currentIdentity, tokenProjectScope } from "./auth/request-context";
 
 export {
   CAPABILITY_PRESETS,
@@ -235,9 +239,40 @@ export async function membershipFor(
     userId: m.userId,
     teamId: m.teamId,
     role: m.role as Membership["role"],
-    capabilities: caps,
+    capabilities: clampToToken(caps, userId, teamId),
     createdAt: m.createdAt,
   };
+}
+
+/**
+ * Narrow a member's effective capabilities to what the API token making this
+ * request was granted. THE clamp: because every authorization decision — the
+ * mutation gates, the nav, `ctx.capabilities`, the per-folder maths — reads
+ * `membershipFor`, one intersection here is what makes a token a principal with
+ * its own permissions instead of an impersonation of its creator.
+ *
+ * Two intersections, in order:
+ *  - the token's own set, so it can never exceed its creator (and loses a
+ *    permission the moment they do — nothing is materialized, this is read live);
+ *  - and, when the token is limited to Projects, {@link PROJECT_SCOPED_CAPABILITIES},
+ *    which drops every team-wide permission that has no per-project meaning.
+ *
+ * Keyed on the (userId, teamId) PAIR because `membershipFor` is also called to
+ * hydrate OTHER people's memberships (the member list, the roles page, a folder
+ * grant's bound) — clamping those would make a token see the rest of the team
+ * through its own permissions. A cookie request carries no token and is untouched.
+ */
+function clampToToken(
+  caps: Capability[],
+  userId: string,
+  teamId: string,
+): Capability[] {
+  const id = currentIdentity();
+  if (!id?.token || id.userId !== userId || id.teamId !== teamId) return caps;
+  const own = boundedBy(caps, id.token.capabilities);
+  return id.token.projectIds
+    ? boundedBy(own, PROJECT_SCOPED_CAPABILITIES)
+    : own;
 }
 
 /**
@@ -351,17 +386,53 @@ export async function requireCapability(
  */
 export async function isInstanceAdmin(): Promise<boolean> {
   const user = await getCurrentUser();
-  return Boolean(user?.isInstanceAdmin);
+  if (!user?.isInstanceAdmin) return false;
+  return tokenHoldsInstanceAdmin();
 }
 
 /** Throwing variant for admin-only data functions / actions. */
 export async function requireInstanceAdmin(): Promise<{ userId: string }> {
   const user = await assertUser();
-  if (!user.isInstanceAdmin)
+  if (!user.isInstanceAdmin || !tokenHoldsInstanceAdmin())
     // Generic on purpose: this gates every instance-admin action (users, teams,
     // global env, servers), not just user management.
     throw new Error("Only an instance admin can do that");
   return { userId: user.id };
+}
+
+/**
+ * Instance-admin is opt-in PER TOKEN, not inherited from the person.
+ *
+ * Otherwise a token minted by an admin would quietly administer users, servers
+ * and the global environment — the exact implicit root the capability set exists
+ * to remove, and one that no team capability can narrow (these gates never
+ * consult them). A cookie session is unaffected: no token, no restriction.
+ */
+function tokenHoldsInstanceAdmin(): boolean {
+  const token = currentIdentity()?.token;
+  return !token || token.instanceAdmin;
+}
+
+/**
+ * Refuse a resource that has no per-Project meaning to a project-scoped token.
+ *
+ * A token limited to Projects reaches apps in those Projects and nothing else.
+ * Its capability set already drops every team-wide permission (see
+ * {@link PROJECT_SCOPED_CAPABILITIES}), which closes the MUTATIONS — but `view`
+ * is an always-on floor that no capability check consults, so team-wide READS
+ * need this explicit refusal: the member roster, the other tokens, the
+ * registries, the databases (which carry no `project_id` to scope by at all).
+ *
+ * Use it for collections and team-level actions. For a point lookup by id,
+ * prefer behaving as NOT FOUND instead — a scope must never become an oracle for
+ * whether some id exists. Synchronous and query-free, so it is safe inside a
+ * transaction. A no-op for every cookie request and every unscoped token.
+ */
+export function requireUnscoped(what: string): void {
+  if (tokenProjectScope())
+    throw new Error(
+      `This API token is limited to specific projects and can't access ${what}.`,
+    );
 }
 
 /* ------------------------------------------------------------------ */

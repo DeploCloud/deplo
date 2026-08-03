@@ -10,6 +10,7 @@ import {
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
+import { inProjectScope, tokenProjectScope } from "../auth/request-context";
 import type { Environment, EnvironmentKind } from "../types";
 
 /**
@@ -80,7 +81,10 @@ async function requireOwnedProject(projectId: string): Promise<string> {
     .from(projectsTable)
     .where(eq(projectsTable.id, projectId))
     .limit(1);
-  if (rows[0]?.teamId !== teamId) throw new Error("Project not found");
+  // A container outside an API token's project scope reads exactly like one that
+  // doesn't exist — same message, no existence oracle.
+  if (rows[0]?.teamId !== teamId || !inProjectScope(projectId))
+    throw new Error("Project not found");
   return teamId;
 }
 
@@ -89,6 +93,7 @@ export async function listEnvironmentsForProject(
   projectId: string,
 ): Promise<Environment[]> {
   const teamId = await requireActiveTeamId();
+  if (!inProjectScope(projectId)) return [];
   // Team-scope through the owning Project (as listAllEnvironmentsForTeam does):
   // a foreign or unknown project id yields nothing, never another team's rows.
   const rows = await getDb()
@@ -136,7 +141,10 @@ export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
     .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
     .where(eq(projectsTable.teamId, teamId))
     .orderBy(asc(projectsTable.name), asc(environmentsTable.position));
-  return rows.map((r) => ({
+  const scope = tokenProjectScope();
+  return rows
+    .filter((r) => !scope || scope.includes(r.projectId))
+    .map((r) => ({
     id: r.id,
     name: r.name,
     slug: r.slug,

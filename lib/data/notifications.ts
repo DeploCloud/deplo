@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { notificationSettings } from "../db/schema/control-plane";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import { requireActiveTeamId, requireCapability, requireUnscoped } from "../membership";
 import { defaultNotificationSettings } from "../types";
 import { rowToSettings, settingsToRow } from "./notification-row";
 import { assertSafeOutboundUrl } from "./s3";
@@ -25,6 +25,7 @@ async function settingsRowFor(teamId: string): Promise<NotificationSettings | nu
 }
 
 export async function getNotificationSettings(): Promise<NotificationSettings> {
+  requireUnscoped("notification settings");
   const teamId = await requireActiveTeamId();
   // Absent row = never configured → the default (PLAN §2 "Missing row = default").
   return (await settingsRowFor(teamId)) ?? defaultNotificationSettings();

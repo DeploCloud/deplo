@@ -81,6 +81,63 @@ export const ROLE_DEFAULTS: Record<
 /** The three built-in roles, in the order they are shown. */
 export const BUILTIN_ROLE_KEYS: Role[] = ["owner", "member", "viewer"];
 
+/**
+ * Intersect `caps` with `bound`, in canonical {@link ALL_CAPABILITIES} order and
+ * de-duplicated. The one way a capability set is ever narrowed by another: a
+ * folder grant clamped to the grantee's live team caps, and an API token's own
+ * set clamped to what its creator can still do. Pure.
+ *
+ * Lives here rather than beside either caller because both need it and
+ * `lib/membership.ts` cannot import `lib/data/folder-access.ts` (which imports
+ * `lib/membership.ts`).
+ */
+export function boundedBy(
+  caps: Capability[],
+  bound: Capability[],
+): Capability[] {
+  const allowed = new Set(bound);
+  const wanted = new Set(caps);
+  return ALL_CAPABILITIES.filter((c) => wanted.has(c) && allowed.has(c));
+}
+
+/**
+ * The capabilities that can mean anything INSIDE a single Project.
+ *
+ * An API token limited to a set of Projects is intersected with this on top of
+ * its own set, so the twenty-two team-wide ones fall away with no extra gate:
+ * there is no per-project version of "manage members", "manage roles",
+ * "manage the team's registries" or "delete the team", and `databases` carries
+ * no `project_id` at all, so no database capability can be scoped either.
+ *
+ * `move_apps` is deliberately absent even though it is app-shaped: its own
+ * description is "move an app into a folder, project or another team", which is
+ * a token editing its own boundary. Dropping it closes moveAppToFolder,
+ * moveAppToProject, moveAppToEnvironment and transferAppToTeam at once.
+ *
+ * Folder capabilities are absent for a simpler reason: a Folder never lives
+ * inside a Project, so a project-scoped token has no folder story.
+ */
+export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
+  "view",
+  "create_apps",
+  "deploy_apps",
+  "control_apps",
+  "configure_apps",
+  "delete_apps",
+  "open_app_console",
+  "manage_domains",
+  "manage_basic_auth",
+  "manage_env",
+  "reveal_secrets",
+  "read_app_files",
+  "write_app_files",
+  "manage_backups",
+  "restore_backups",
+  "view_logs",
+  "view_metrics",
+  "view_activity",
+];
+
 /** True if two capability sets grant exactly the same thing (order-blind). */
 export function sameCapabilities(a: Capability[], b: Capability[]): boolean {
   const left = new Set(a);

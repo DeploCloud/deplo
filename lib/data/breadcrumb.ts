@@ -1,11 +1,12 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane";
 import { requireActiveTeamId } from "../membership";
 import { listFolders } from "./folders";
+import { appScopeWhere } from "./app-graph-load";
 import { listProjects } from "./projects";
 import type { BreadcrumbGraph } from "../breadcrumb-model";
 
@@ -37,7 +38,7 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
         logo: appsTable.logo,
       })
       .from(appsTable)
-      .where(eq(appsTable.teamId, teamId)),
+      .where(and(eq(appsTable.teamId, teamId), appScopeWhere())),
   ]);
   return {
     folders: folders.map((f) => ({

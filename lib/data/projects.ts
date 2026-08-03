@@ -25,6 +25,8 @@ import { recordActivity } from "./activity";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
+import { inProjectScope, tokenProjectScope } from "../auth/request-context";
+import { appScopeWhere } from "./app-graph-load";
 import type { Project, AppStatus } from "../types";
 
 /**
@@ -155,7 +157,7 @@ async function counts(
       folderId: appsTable.folderId,
     })
     .from(appsTable)
-    .where(eq(appsTable.teamId, teamId))) {
+    .where(and(eq(appsTable.teamId, teamId), appScopeWhere()))) {
     const pid = r.projectId ?? (r.folderId ? projectOfFolder(r.folderId) : null);
     if (pid) apps.set(pid, (apps.get(pid) ?? 0) + 1);
   }
@@ -192,10 +194,15 @@ export const listProjects = cache(async function listProjects(): Promise<
   ProjectSummary[]
 > {
   const teamId = await requireActiveTeamId();
-  const rows = await getDb()
-    .select()
-    .from(projectsTable)
-    .where(eq(projectsTable.teamId, teamId));
+  const scope = tokenProjectScope();
+  const rows = (
+    await getDb()
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.teamId, teamId))
+  // An API token limited to Projects sees ONLY those Projects — the containers
+  // themselves, not just the apps inside them.
+  ).filter((p) => !scope || scope.includes(p.id));
   const rank = await projectOrderRank(teamId);
   const { folders, apps, environments } = await counts(teamId);
   return rows
@@ -215,6 +222,9 @@ export async function projectContents(projectId: string): Promise<{
   apps: { id: string; name: string; slug: string; status: AppStatus }[];
 }> {
   const teamId = await requireActiveTeamId();
+  // Out of scope reads exactly like a container that isn't there — never a
+  // different answer that would confirm it exists.
+  if (!inProjectScope(projectId)) return { folders: [], apps: [] };
   const folders = (
     await getDb()
       .select({ id: foldersTable.id, name: foldersTable.name, color: foldersTable.color })
@@ -248,17 +258,17 @@ export async function getProjectBySlug(slug: string): Promise<Project | null> {
     .from(projectsTable)
     .where(and(eq(projectsTable.teamId, teamId), eq(projectsTable.slug, slug)))
     .limit(1);
-  return rows[0] ? assembleProject(rows[0]) : null;
+  return rows[0] && inProjectScope(rows[0].id) ? assembleProject(rows[0]) : null;
 }
 
-/** True if a container belongs to a team. */
+/** True if a container belongs to a team, and is in the caller's scope. */
 async function projectInTeam(id: string, teamId: string): Promise<boolean> {
   const rows = await getDb()
     .select({ teamId: projectsTable.teamId })
     .from(projectsTable)
     .where(eq(projectsTable.id, id))
     .limit(1);
-  return rows[0]?.teamId === teamId;
+  return rows[0]?.teamId === teamId && inProjectScope(id);
 }
 
 export async function createProject(

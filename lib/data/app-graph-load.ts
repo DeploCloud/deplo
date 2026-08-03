@@ -1,8 +1,9 @@
 import "server-only";
 
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 
 import { getDb } from "../db/client";
+import { inProjectScope, tokenProjectScope } from "../auth/request-context";
 import type { DbTx } from "../db/client";
 import {
   deployments,
@@ -393,11 +394,46 @@ export async function insertEnvVars(db: DbReader, vars: EnvVar[]): Promise<void>
   if (targets.length > 0) await db.insert(envVarTargets).values(targets);
 }
 
+/* ------------------------------------------------------------------ */
+/* Project scope (API tokens)                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The project-scope predicate for any query over `apps`, or undefined when the
+ * caller isn't scoped (every browser request, and every unscoped token).
+ *
+ * An API token can be limited to a set of Projects, and "limited" means it
+ * cannot READ the rest either — so the predicate belongs in the ownership gates
+ * below and in every team-wide app query, not in a second gate beside them.
+ * Pure and synchronous: the scope rides on the request identity, so this is
+ * safe inside a transaction and inside a subscription tick.
+ *
+ * An app at the TOP LEVEL (`project_id IS NULL`) belongs to no Project and is
+ * therefore outside every scope. `NULL IN (…)` is NULL in SQL, so the safe
+ * answer is also the free one — and the alternative would mean dragging an app
+ * out of a project silently WIDENS every token scoped to it.
+ *
+ * ponytail: matches on `apps.project_id` only. An app filed under a folder that
+ * itself sits in a project (the legacy nesting `listProjects` still credits) is
+ * out of scope — fail-closed; walk the folder chain if that ever matters.
+ */
+export function appScopeWhere(): SQL | undefined {
+  const ids = tokenProjectScope();
+  if (!ids) return undefined;
+  // Scoped to nothing left (every project in the scope was deleted): reaches no
+  // app at all. Spelled out rather than relying on `inArray(col, [])`, whose
+  // behaviour has changed across Drizzle versions.
+  return ids.length > 0 ? inArray(apps.projectId, ids) : sql`false`;
+}
+
 /**
  * Load a project only if it belongs to `teamId` (the standard ownership gate as
  * a single call): the full assembled {@link App} or null when absent / not
  * owned. The relational replacement for the old
  * `read().apps.find(p => p.id === id && p.teamId === teamId)`.
+ *
+ * Also enforces the caller's project scope, so all ~50 call sites of the two
+ * gates close at once and keep the "App not found" copy they already had.
  */
 export async function loadTeamApp(
   appId: string,
@@ -405,10 +441,10 @@ export async function loadTeamApp(
   db: DbReader = getDb(),
 ): Promise<App | null> {
   const p = await loadAppGraph(appId, db);
-  return p && p.teamId === teamId ? p : null;
+  return p && p.teamId === teamId && inProjectScope(p.projectId) ? p : null;
 }
 
-/** True if a project belongs to a team (the standard ownership gate). */
+/** True if a project belongs to a team, and is in the caller's scope. */
 export async function appInTeam(
   appId: string,
   teamId: string,
@@ -417,7 +453,7 @@ export async function appInTeam(
   const rows = await db
     .select({ id: apps.id })
     .from(apps)
-    .where(and(eq(apps.id, appId), eq(apps.teamId, teamId)))
+    .where(and(eq(apps.id, appId), eq(apps.teamId, teamId), appScopeWhere()))
     .limit(1);
   return rows.length > 0;
 }

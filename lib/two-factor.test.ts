@@ -260,7 +260,7 @@ test("a team mandate blocks mutations, reads AND the bearer API", async () => {
   // Mint the token BEFORE the mandate exists: the point is that an already-issued
   // token stops working, not that minting one is blocked (it is, but that is just
   // requireCapability again).
-  const raw = await asUser(USER_1, async () => (await createToken("CI")).raw);
+  const raw = await asUser(USER_1, async () => (await createToken({ name: "CI" })).raw);
   await requireForTeam();
 
   // Mutations.
@@ -300,9 +300,12 @@ test("the same member passes every gate once enrolled", async () => {
     assert.equal(ctx.userId, USER_1);
   });
 
-  const raw = await asUser(USER_1, async () => (await createToken("CI")).raw);
+  const raw = await asUser(USER_1, async () => (await createToken({ name: "CI" })).raw);
   const principal = await authenticateToken(raw);
-  assert.deepEqual(principal, { userId: USER_1, teamId: TEAM_A });
+  assert.equal(principal?.userId, USER_1);
+  assert.equal(principal?.teamId, TEAM_A);
+  // The token's own grant rides along; what it holds is tokens.test.ts's business.
+  assert.ok(principal?.token);
 });
 
 test("the mandate names the team, and only that team", async () => {

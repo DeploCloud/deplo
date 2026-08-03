@@ -226,10 +226,10 @@ export const SETTINGS_NAV: NavSection[] = [
         tooltip: "Alerts & delivery channels",
       },
       {
-        label: "API Tokens",
+        label: "API tokens",
         href: "/settings/tokens",
         icon: KeyRound,
-        tooltip: "Personal access tokens",
+        tooltip: "Bearer tokens, and what each one may do",
       },
     ],
   },

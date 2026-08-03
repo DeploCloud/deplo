@@ -24,6 +24,7 @@ import {
   loadEnvVarsForApp,
   loadEnvVarsForApps,
   appInTeam,
+  appScopeWhere,
 } from "./app-graph-load";
 import { authorOf, loadUserIdentities } from "./user-identity";
 import { ALL_ENV_TARGETS, sanitizeTargets } from "../types";
@@ -121,7 +122,7 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
       folderId: appsTable.folderId,
     })
     .from(appsTable)
-    .where(eq(appsTable.teamId, teamId));
+    .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
   // Folder scope, mirroring the per-app `listEnv` gate: an app inside a folder
   // where the caller lacks `manage_env` is dropped instead of leaking its values
   // through the global tab. A top-level app (no folder) is always included.

@@ -1,4 +1,5 @@
 import { authenticateToken } from "@/lib/data/tokens";
+import { appInTeam } from "@/lib/data/app-graph-load";
 import { verifyDeployHookToken } from "@/lib/data/deploy-hook";
 import { redeploy } from "@/lib/data/deployments";
 import { runWithIdentity } from "@/lib/auth/request-context";
@@ -76,6 +77,16 @@ export async function POST(
     );
 
   const { id: appId, token } = await ctx.params;
+  // Everything from here runs as the token, so an app its project scope excludes
+  // answers exactly like an app that isn't there. The reachability check has to
+  // come BEFORE the "hook is off" branch, or the 403 stays an existence oracle.
+  const notFound = await runWithIdentity(principal, async () => {
+    if (!(await appInTeam(appId, principal.teamId))) return true;
+    return false;
+  });
+  if (notFound)
+    return Response.json({ error: "Deploy hook not found" }, { status: 404 });
+
   const hook = await verifyDeployHookToken(appId, token);
   if (!hook.ok) {
     if (hook.reason === "disabled")
@@ -95,12 +106,9 @@ export async function POST(
 
   try {
     // Back onto the normal path: inside runWithIdentity the whole data layer
-    // resolves this API token's owner, so `redeploy` applies every gate — no
+    // resolves this API token's grant, so `redeploy` applies every gate — no
     // capability check is duplicated here, and none can be skipped.
-    const deployment = await runWithIdentity(
-      { userId: principal.userId, teamId: principal.teamId },
-      () => redeploy(appId),
-    );
+    const deployment = await runWithIdentity(principal, () => redeploy(appId));
     return Response.json({
       deploymentId: deployment.id,
       appId,

@@ -45,7 +45,7 @@ test("anonymous callers are rejected", async () => {
 test("a mutation the caller lacks the capability for is denied, not run", async () => {
   // `createToken` requires manage_infra; a plain viewer lacks it.
   const res = await runPlayground(
-    'mutation { createToken(name: "x") { raw } }',
+    'mutation { createToken(input: { name: "x" }) { raw } }',
     {},
     null,
     ctx({ capabilities: ["view"] }),
@@ -61,7 +61,7 @@ test("a mutation the caller lacks the capability for is denied, not run", async 
 
 test("a mutation the caller is allowed runs as a dry run, not for real", async () => {
   const res = await runPlayground(
-    'mutation { createToken(name: "x") { raw } }',
+    'mutation { createToken(input: { name: "x" }) { raw } }',
     {},
     null,
     ctx({ capabilities: ["view", "manage_tokens"] }),
@@ -152,7 +152,7 @@ test("a read-only query executes for real", async () => {
 test("mutations reached through a fragment spread are still gated", async () => {
   const res = await runPlayground(
     `mutation { ...Tok }
-     fragment Tok on Mutation { createToken(name: "x") { raw } }`,
+     fragment Tok on Mutation { createToken(input: { name: "x" }) { raw } }`,
     {},
     null,
     ctx({ capabilities: ["view"] }),
@@ -167,7 +167,7 @@ test("mutations reached through a fragment spread are still gated", async () => 
 
 test("mutations inside an inline fragment are gated too", async () => {
   const res = await runPlayground(
-    `mutation { ... on Mutation { createToken(name: "x") { raw } } }`,
+    `mutation { ... on Mutation { createToken(input: { name: "x" }) { raw } } }`,
     {},
     null,
     ctx({ capabilities: ["view", "manage_tokens"] }),
@@ -182,7 +182,7 @@ test("mutations inside an inline fragment are gated too", async () => {
 test("a multi-field mutation reports each field independently", async () => {
   const res = await runPlayground(
     `mutation {
-       createToken(name: "x") { raw }
+       createToken(input: { name: "x" }) { raw }
        mintRegistrationLink(input: { mode: own_team })
      }`,
     {},

@@ -8,6 +8,7 @@ import {
   getServerById,
 } from "./servers";
 import { getDb } from "../db/client";
+import { tokenProjectScope } from "../auth/request-context";
 import {
   databases as databasesTable,
   teamDatabaseOrder,
@@ -21,6 +22,7 @@ import {
   requireActiveTeamId,
   requireCapability,
   canExposePorts,
+  requireUnscoped,
 } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
@@ -286,11 +288,20 @@ export async function getDatabaseForTeam(
   return db ? toDTO(db) : null;
 }
 
-/** Load one team-scoped database row, assembled, or null. */
+/**
+ * Load one team-scoped database row, assembled, or null.
+ *
+ * THE ownership gate for databases, and therefore where a project-scoped API
+ * token is refused: `databases` carries no `project_id`, so there is nothing to
+ * scope by and the only honest answer is that the token cannot reach any of
+ * them. It reads as NOT FOUND rather than as a scope error, so a scope can never
+ * become an oracle for which database ids exist.
+ */
 async function loadDatabase(
   id: string,
   teamId: string,
 ): Promise<Database | null> {
+  if (tokenProjectScope()) return null;
   const rows = await getDb()
     .select()
     .from(databasesTable)
@@ -312,6 +323,7 @@ async function databaseOrderRank(teamId: string): Promise<Map<string, number>> {
 }
 
 export async function listDatabases(): Promise<DatabaseDTO[]> {
+  requireUnscoped("databases");
   const teamId = await requireActiveTeamId();
   const [rows, rank] = await Promise.all([
     getDb()

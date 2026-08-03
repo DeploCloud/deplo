@@ -19,10 +19,10 @@ import {
 const OPTIONAL = ALL_CAPABILITIES.filter((c) => c !== "view");
 
 /**
- * The permission list of the role editor: every capability deplo enforces, one
- * checkbox each, grouped into categories only so they can be FOUND — there is no
- * category-level grant, because a permission you can only take in a bundle isn't
- * a permission.
+ * The permission list shared by the role editor and the API-token editor: every
+ * capability deplo enforces, one checkbox each, grouped into categories only so
+ * they can be FOUND — there is no category-level grant, because a permission you
+ * can only take in a bundle isn't a permission.
  *
  * With forty of them the search box is the primary navigation: it matches the
  * label, the description and a keyword list (so "ssh" finds the console, "api"
@@ -32,11 +32,14 @@ export function PermissionPicker({
   capabilities,
   onChange,
   disabled = false,
+  hint = "Every action deplo can gate, one permission each. Tick exactly what this role should be able to do — search by what you want it to reach.",
 }: {
   capabilities: Capability[];
   onChange: (caps: Capability[]) => void;
-  /** Read-only rendering (the locked Owner role). */
+  /** Read-only rendering (the locked Owner role, or a viewer). */
   disabled?: boolean;
+  /** Tooltip beside the heading — name the thing being granted. */
+  hint?: string;
 }) {
   const [query, setQuery] = React.useState("");
   const enabled = React.useMemo(() => new Set(capabilities), [capabilities]);
@@ -86,7 +89,7 @@ export function PermissionPicker({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <h3 className="text-sm font-medium">Permissions</h3>
-          <InfoTip content="Every action deplo can gate, one permission each. Tick exactly what this role should be able to do — search by what you want it to reach." />
+          <InfoTip content={hint} />
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">

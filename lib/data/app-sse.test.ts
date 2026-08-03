@@ -17,6 +17,9 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { publishAppChanged } from "../graphql/pubsub";
+import { runWithIdentity } from "../auth/request-context";
+import { projects as projectsTable } from "../db/schema/control-plane";
+import { ALL_CAPABILITIES } from "../types";
 import { appStatusStream } from "../graphql/types/app";
 
 /**
@@ -44,7 +47,7 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
-    truncate table users, teams restart identity cascade;`);
+    truncate table projects, users, teams restart identity cascade;`);
   await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
   await seedServer(db);
 });
@@ -97,4 +100,63 @@ test("appStatusStream ends when the project is deleted mid-stream", async () => 
   publishAppChanged("prj_1");
   const next = await p;
   assert.equal(next.done, true, "generator ends when the project vanishes");
+});
+
+/**
+ * The identity seam for subscriptions.
+ *
+ * An async generator body does NOT inherit the async context of whoever created
+ * it — it runs in the context of whoever calls `next()`, which for a long-lived
+ * SSE response is the event loop, long after the request handler returned. So
+ * the yoga plugin re-applies `runWithIdentity` around every tick; this asserts
+ * the shape it relies on, and that a project scope survives into tick 2 (where
+ * an unscoped tick would have streamed an app the token cannot otherwise see).
+ */
+test("a project scope holds on EVERY tick of the stream, not just the first", async () => {
+  await db.insert(projectsTable).values({
+    id: "prc_out",
+    teamId: TEAM_A,
+    name: "Out",
+    slug: "out",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "alpha",
+    teamId: TEAM_A,
+    status: "active",
+    projectId: "prc_out",
+  });
+
+  const token = {
+    id: "tok_test",
+    capabilities: [...ALL_CAPABILITIES],
+    // Scoped to a project the app is NOT in.
+    projectIds: ["prc_in"],
+    instanceAdmin: false,
+  };
+  const asScoped = <T>(fn: () => T) =>
+    runWithIdentity({ userId: USER_1, teamId: TEAM_A, token }, fn);
+
+  // Tick 0: the initial snapshot is refused, exactly like an unknown slug.
+  const gen = asScoped(() => appStatusStream("alpha", TEAM_A));
+  await assert.rejects(() => asScoped(() => gen.next()), /App not found/);
+
+  // And with the scope covering the app, the stream survives past tick 1 — the
+  // regression this wrapper exists for.
+  const ok = {
+    id: "tok_test",
+    capabilities: [...ALL_CAPABILITIES],
+    projectIds: ["prc_out"],
+    instanceAdmin: false,
+  };
+  const asOk = <T>(fn: () => T) =>
+    runWithIdentity({ userId: USER_1, teamId: TEAM_A, token: ok }, fn);
+  const gen2 = asOk(() => appStatusStream("alpha", TEAM_A));
+  assert.equal((await asOk(() => gen2.next())).value.id, "prj_1");
+  const pending = asOk(() => gen2.next());
+  publishAppChanged("prj_1");
+  assert.equal((await pending).value.id, "prj_1");
+  await asOk(() => gen2.return(undefined as never));
 });

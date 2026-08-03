@@ -6,7 +6,7 @@ import {
 } from "../db/schema/control-plane";
 import { capabilitiesForRole } from "../membership-shared";
 import type { TestDb } from "../db/test-harness";
-import type { Role } from "../types";
+import type { Capability, Role } from "../types";
 
 /**
  * Shared seeding for the leaf cut-set data-layer tests (relational-store PLAN
@@ -38,6 +38,8 @@ interface SeedUser {
   id: string;
   teamId: string;
   role?: Role;
+  /** Override the role's preset — for gates that need a deliberately narrow set. */
+  capabilities?: Capability[];
 }
 
 const DEFAULT_TEAMS: SeedTeam[] = [
@@ -93,7 +95,7 @@ export async function seedIdentity(
     })),
   );
   const caps = seedUsers.flatMap((u) =>
-    capabilitiesForRole(u.role ?? "owner").map((c) => ({
+    (u.capabilities ?? capabilitiesForRole(u.role ?? "owner")).map((c) => ({
       membershipId: `mem_${u.id}`,
       capability: c,
     })),

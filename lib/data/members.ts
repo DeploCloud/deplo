@@ -40,6 +40,7 @@ import {
   requireActiveTeamId,
   requireInstanceAdmin,
   membershipFor,
+  requireUnscoped,
 } from "../membership";
 import { cleanCapabilities } from "../membership-shared";
 import { ensureTeamRoles, matchTeamRole, roleAssignment } from "./roles";
@@ -226,6 +227,7 @@ async function capabilitiesByMembership(
 
 /** Members of the active team. Email is never projected to the client. */
 export async function listMembers(): Promise<MemberDTO[]> {
+  requireUnscoped("team members");
   const teamId = await requireActiveTeamId();
   const db = getDb();
   // Self-healing: a team that predates roles (or was created by another path)

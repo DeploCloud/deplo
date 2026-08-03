@@ -1,13 +1,18 @@
 import "server-only";
 
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import { activities as activitiesTable, teams } from "../db/schema/control-plane";
+import {
+  activities as activitiesTable,
+  apps as appsTable,
+  teams,
+} from "../db/schema/control-plane";
 import { assembleActivity, activityToRow } from "./infra-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId } from "../membership";
+import { tokenProjectScope } from "../auth/request-context";
 import type { Activity, ActivityType } from "../types";
 
 /** Activity for the active team only, newest-first, with the LIMIT pushed into SQL. */
@@ -16,12 +21,34 @@ export async function listActivity(limit = 20): Promise<Activity[]> {
   const rows = await getDb()
     .select()
     .from(activitiesTable)
-    .where(eq(activitiesTable.teamId, teamId))
+    .where(
+      and(
+        eq(activitiesTable.teamId, teamId),
+        // An API token limited to Projects reads only its own apps' history.
+        // Team-level events (`app_id IS NULL` — members, roles, tokens, the team
+        // itself) belong to nothing it can reach, so they drop out with the rest.
+        scopedActivityWhere(),
+      ),
+    )
     // `seq` (bigint identity) breaks a same-timestamp tie deterministically
     // (PLAN §5); the `(team_id, created_at DESC, seq DESC)` index serves this.
     .orderBy(desc(activitiesTable.createdAt), desc(activitiesTable.seq))
     .limit(limit);
   return rows.map(assembleActivity);
+}
+
+/** The scope predicate for the audit feed, or undefined for an unscoped caller. */
+function scopedActivityWhere(): SQL | undefined {
+  const ids = tokenProjectScope();
+  if (!ids) return undefined;
+  if (ids.length === 0) return sql`false`;
+  return inArray(
+    activitiesTable.appId,
+    getDb()
+      .select({ id: appsTable.id })
+      .from(appsTable)
+      .where(inArray(appsTable.projectId, ids)),
+  );
 }
 
 /**

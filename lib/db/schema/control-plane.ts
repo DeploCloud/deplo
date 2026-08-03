@@ -1522,6 +1522,12 @@ export const backupRuns = pgTable(
 /**
  * [ApiToken](../../types.ts). `token_hash` UNIQUE (hot auth lookup). CASCADE on
  * team and user. A LEAF collection (cut-set (a) — zero-cost-revert) (PLAN §2).
+ *
+ * A token carries its OWN capabilities (`api_token_capabilities`) and an optional
+ * Project scope (`api_token_projects`); it is never root by construction. Its
+ * effective power is what it was granted INTERSECTED with what its creator can
+ * still do in the team, so revoking a person's access blunts every token they
+ * minted (the clamp lives in `lib/membership.ts`).
  */
 export const apiTokens = pgTable(
   "api_tokens",
@@ -1536,10 +1542,59 @@ export const apiTokens = pgTable(
     name: text("name").notNull(),
     tokenHash: text("token_hash").notNull(),
     prefix: text("prefix").notNull(),
+    // May administer the WHOLE INSTANCE (users, servers, global env), not just its
+    // team. Only an instance admin can mint one, and it is mutually exclusive with
+    // `project_scoped`: instance-admin gates never consult team capabilities, so a
+    // project scope could not narrow them.
+    instanceAdmin: boolean("instance_admin").notNull().default(false),
+    // The INTENT to be scoped, stored separately from the junction on purpose: a
+    // project delete cascades `api_token_projects` away, and without this flag an
+    // emptied scope would read as "no scope" and silently WIDEN the token to the
+    // whole team. Scoped with zero rows means "reaches nothing".
+    projectScoped: boolean("project_scoped").notNull().default(false),
     lastUsedAt: isoTimestamptz("last_used_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("api_tokens_token_hash_uq").on(t.tokenHash)],
+);
+
+/**
+ * A token's own capabilities — the same forty from `lib/capabilities.ts` a Role is
+ * built from. Same shape as `membership_capabilities` / `team_role_capabilities`:
+ * one row per granted capability, reassembled into an array on read. `view` is the
+ * always-on floor and is stored explicitly, so "no rows" never has two meanings.
+ */
+export const apiTokenCapabilities = pgTable(
+  "api_token_capabilities",
+  {
+    tokenId: text("token_id")
+      .notNull()
+      .references(() => apiTokens.id, { onDelete: "cascade" }),
+    capability: text("capability").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tokenId, t.capability] })],
+);
+
+/**
+ * The Projects a token is limited to. Read together with `api_tokens.project_scoped`:
+ * the flag says whether a scope exists at all, these rows say which. Both FKs
+ * CASCADE — a deleted project drops out of every scope, which is why the flag has
+ * to carry the intent.
+ */
+export const apiTokenProjects = pgTable(
+  "api_token_projects",
+  {
+    tokenId: text("token_id")
+      .notNull()
+      .references(() => apiTokens.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tokenId, t.projectId] }),
+    index("api_token_projects_project_idx").on(t.projectId),
+  ],
 );
 
 /**

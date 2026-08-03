@@ -2,6 +2,8 @@ import "server-only";
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import type { Capability } from "../types";
+
 /**
  * Identity override for non-cookie callers (the public GraphQL API).
  *
@@ -23,6 +25,28 @@ import { AsyncLocalStorage } from "node:async_hooks";
 export interface RequestIdentity {
   userId: string;
   teamId: string;
+  /**
+   * Present ONLY for a bearer-token request: the token's own grant. A token is
+   * never root — `membershipFor` in `lib/membership.ts` intersects the member's
+   * live capabilities with these, so the token can do at most what it was given
+   * AND at most what its creator can still do. Absent means a cookie session,
+   * which is unclamped.
+   */
+  token?: TokenGrant;
+}
+
+/** What an API token was granted when it was minted. See {@link RequestIdentity}. */
+export interface TokenGrant {
+  id: string;
+  capabilities: Capability[];
+  /**
+   * The Projects this token may reach. `null` means unscoped (the whole team);
+   * `[]` means scoped to nothing left — a scope whose projects were all deleted,
+   * which must fail closed rather than read as "no scope".
+   */
+  projectIds: string[] | null;
+  /** May administer the whole instance. Never true alongside a project scope. */
+  instanceAdmin: boolean;
 }
 
 // In `next dev` the RSC layer and the route-handler layer compile into separate
@@ -48,4 +72,29 @@ export function runWithIdentity<T>(identity: RequestIdentity, fn: () => T): T {
 /** The overriding identity for the current async context, or null. */
 export function currentIdentity(): RequestIdentity | null {
   return store.getStore() ?? null;
+}
+
+/**
+ * The Projects the current request is limited to, or null when it isn't limited.
+ *
+ * Synchronous and query-free by design: the scope rides on the identity, so it
+ * can be consulted inside a `getDb().transaction()` (where opening a second
+ * connection deadlocks pglite) and inside a subscription generator tick, where
+ * nothing request-scoped is reachable.
+ */
+export function tokenProjectScope(): string[] | null {
+  return currentIdentity()?.token?.projectIds ?? null;
+}
+
+/**
+ * Whether a resource filed under `projectId` is reachable by this request.
+ *
+ * A resource with no Project (a top-level app, a folder at the team root)
+ * belongs to no scope and is therefore outside every scope — fail-closed, and it
+ * keeps a scope from widening the moment someone drags a tile out of a project.
+ * Always true for a cookie request and for an unscoped token.
+ */
+export function inProjectScope(projectId: string | null | undefined): boolean {
+  const ids = tokenProjectScope();
+  return !ids || (projectId != null && ids.includes(projectId));
 }

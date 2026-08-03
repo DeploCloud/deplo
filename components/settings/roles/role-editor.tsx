@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { PermissionPicker } from "@/components/settings/roles/permission-picker";
+import { PermissionPicker } from "@/components/settings/permission-picker";
 import { gqlAction } from "@/lib/graphql-client";
 import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";

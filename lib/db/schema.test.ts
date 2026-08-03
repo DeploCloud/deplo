@@ -118,6 +118,8 @@ const CONTROL_PLANE = [
   "backup_runs",
   // per-team leaf
   "api_tokens",
+  "api_token_capabilities",
+  "api_token_projects",
   "activities",
   "notification_settings",
   "registries",

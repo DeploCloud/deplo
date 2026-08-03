@@ -40,6 +40,7 @@ import {
   loadDomainsForApps,
   loadAppGraph,
   appInTeam,
+  appScopeWhere,
 } from "./app-graph-load";
 import { domainToRow, domainMiddlewaresToRows } from "./app-graph-rows";
 import { requireFolderCapabilityForApp } from "./folder-access";
@@ -340,7 +341,8 @@ export async function listDomains(
 ): Promise<(Domain & { serviceName: string; appSlug: string })[]> {
   const teamId = await requireActiveTeamId();
   // Only the active team's apps own routable domains; a appId filter
-  // that points outside the team resolves to no project and so yields nothing.
+  // that points outside the team (or outside an API token's project scope)
+  // resolves to no project and so yields nothing.
   const teamApps = new Map(
     (
       await getDb()
@@ -350,7 +352,7 @@ export async function listDomains(
           slug: appsTable.slug,
         })
         .from(appsTable)
-        .where(eq(appsTable.teamId, teamId))
+        .where(and(eq(appsTable.teamId, teamId), appScopeWhere()))
     ).map((p) => [p.id, p] as const),
   );
   const ids = appId
