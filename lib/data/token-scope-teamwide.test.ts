@@ -54,6 +54,7 @@ const grant: TokenGrant = {
     teamIds: [TEAM_A],
     wholeTeamIds: [],
     projectIds: [PRC],
+    folderIds: [],
     appIds: [],
     appProjectIds: [],
   },

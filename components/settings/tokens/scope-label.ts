@@ -10,6 +10,7 @@ export function scopeLabel(
     scoped: boolean;
     teamIds: string[];
     projectIds: string[];
+    folderIds: string[];
     appIds: string[];
   },
   names: Record<string, string> = {},
@@ -17,7 +18,10 @@ export function scopeLabel(
   if (!token.scoped) return { text: "Everything I can access", empty: false };
 
   const total =
-    token.teamIds.length + token.projectIds.length + token.appIds.length;
+    token.teamIds.length +
+    token.projectIds.length +
+    token.folderIds.length +
+    token.appIds.length;
   // Every node it named has been deleted: it reaches nothing and no longer
   // authenticates at all, which is worth saying out loud rather than showing a
   // blank cell.
@@ -25,14 +29,20 @@ export function scopeLabel(
 
   if (total === 1) {
     const only =
-      token.teamIds[0] ?? token.projectIds[0] ?? token.appIds[0] ?? "";
+      token.teamIds[0] ??
+      token.projectIds[0] ??
+      token.folderIds[0] ??
+      token.appIds[0] ??
+      "";
     const named = names[only];
     if (named) return { text: named, empty: false };
     const noun = token.teamIds.length
       ? "1 team"
       : token.projectIds.length
         ? "1 project"
-        : "1 app";
+        : token.folderIds.length
+          ? "1 folder"
+          : "1 app";
     return { text: noun, empty: false };
   }
 
@@ -42,6 +52,10 @@ export function scopeLabel(
   if (token.projectIds.length)
     parts.push(
       `${token.projectIds.length} ${token.projectIds.length === 1 ? "project" : "projects"}`,
+    );
+  if (token.folderIds.length)
+    parts.push(
+      `${token.folderIds.length} ${token.folderIds.length === 1 ? "folder" : "folders"}`,
     );
   if (token.appIds.length)
     parts.push(`${token.appIds.length} ${token.appIds.length === 1 ? "app" : "apps"}`);

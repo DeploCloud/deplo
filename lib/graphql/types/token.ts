@@ -47,6 +47,12 @@ export const ApiTokenRef = builder
           "permissions it holds (managing members, roles, databases) stop " +
           "applying there.",
       }),
+      folderIds: t.exposeStringList("folderIds", {
+        description:
+          "Whole folders in the scope: every app in them and in the folders " +
+          "nested under them. Most apps live in a folder, so this is usually " +
+          "the level a scope is drawn at.",
+      }),
       appIds: t.exposeStringList("appIds", {
         description: "Individually-named apps in the scope.",
       }),
@@ -99,13 +105,15 @@ const CreateTokenInputType = builder.inputType("CreateTokenInput", {
     // way. There is no "everything" default: a token that quietly held its
     // creator's whole access is exactly what this input replaced.
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
-    // The scope tree, one list per level. All three empty ⇒ unrestricted: every
+    // The scope tree, one list per level. All four empty ⇒ unrestricted: every
     // team the creator belongs to, and everything in it. A team id means that
-    // WHOLE team; a project id means that whole project; an app id means just
-    // that app. Naming a project or an app narrows the token inside its team and
-    // drops the team-wide capabilities it was given there.
+    // WHOLE team; a project or folder id means that whole container, subfolders
+    // included; an app id means just that app. Naming anything below a team
+    // narrows the token inside it and drops the team-wide capabilities it was
+    // given there.
     teamIds: t.stringList({ required: false }),
     projectIds: t.stringList({ required: false }),
+    folderIds: t.stringList({ required: false }),
     appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
   }),
@@ -118,6 +126,7 @@ const UpdateTokenInputType = builder.inputType("UpdateTokenInput", {
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
     teamIds: t.stringList({ required: false }),
     projectIds: t.stringList({ required: false }),
+    folderIds: t.stringList({ required: false }),
     appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
   }),
@@ -156,6 +165,7 @@ builder.mutationFields((t) => ({
           | undefined,
         teamIds: input.teamIds ?? undefined,
         projectIds: input.projectIds ?? undefined,
+        folderIds: input.folderIds ?? undefined,
         appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
       }),
@@ -176,6 +186,7 @@ builder.mutationFields((t) => ({
           | undefined,
         teamIds: input.teamIds ?? undefined,
         projectIds: input.projectIds ?? undefined,
+        folderIds: input.folderIds ?? undefined,
         appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
       });

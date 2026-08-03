@@ -8,8 +8,10 @@ import {
   apiTokenCapabilities,
   apiTokenTeams,
   apiTokenProjects,
+  apiTokenFolders,
   apiTokenApps,
   apps as appsTable,
+  folders as foldersTable,
   memberships as membershipsTable,
   projects as projectsTable,
   teams as teamsTable,
@@ -63,6 +65,8 @@ export interface ApiTokenDTO {
   teamIds: string[];
   /** Whole projects in the scope. */
   projectIds: string[];
+  /** Whole folders in the scope (their subtrees come with them). */
+  folderIds: string[];
   /** Individually-named apps in the scope. */
   appIds: string[];
   instanceAdmin: boolean;
@@ -92,11 +96,11 @@ const DTO_COLUMNS = {
  * A token's scope tree can span teams, so the team it was minted in is not the
  * only team it touches. A team that cannot SEE a credential operating inside it
  * cannot revoke it either, and "remove the person from the team" is too blunt an
- * instrument to be the only lever. Four indexed lookups, unioned in memory.
+ * instrument to be the only lever. Five indexed lookups, unioned in memory.
  */
 async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
   const db = getDb();
-  const [byTeam, byProject, byApp, unscoped] = await Promise.all([
+  const [byTeam, byProject, byFolder, byApp, unscoped] = await Promise.all([
     db
       .select({ id: apiTokenTeams.tokenId })
       .from(apiTokenTeams)
@@ -106,6 +110,11 @@ async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
       .from(apiTokenProjects)
       .innerJoin(projectsTable, eq(projectsTable.id, apiTokenProjects.projectId))
       .where(eq(projectsTable.teamId, teamId)),
+    db
+      .select({ id: apiTokenFolders.tokenId })
+      .from(apiTokenFolders)
+      .innerJoin(foldersTable, eq(foldersTable.id, apiTokenFolders.folderId))
+      .where(eq(foldersTable.teamId, teamId)),
     db
       .select({ id: apiTokenApps.tokenId })
       .from(apiTokenApps)
@@ -125,7 +134,7 @@ async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
       ),
   ]);
   return new Set(
-    [...byTeam, ...byProject, ...byApp, ...unscoped].map((r) => r.id),
+    [...byTeam, ...byProject, ...byFolder, ...byApp, ...unscoped].map((r) => r.id),
   );
 }
 
@@ -146,7 +155,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 
   const ids = rows.map((r) => r.id);
   // Every junction in one query each — never per-token (PLAN §6 "batch-load").
-  const [caps, teamRows, projRows, appRows] = await Promise.all([
+  const [caps, teamRows, projRows, folderRows, appRows] = await Promise.all([
     getDb()
       .select({
         tokenId: apiTokenCapabilities.tokenId,
@@ -166,6 +175,13 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
       .from(apiTokenProjects)
       .where(inArray(apiTokenProjects.tokenId, ids)),
     getDb()
+      .select({
+        tokenId: apiTokenFolders.tokenId,
+        value: apiTokenFolders.folderId,
+      })
+      .from(apiTokenFolders)
+      .where(inArray(apiTokenFolders.tokenId, ids)),
+    getDb()
       .select({ tokenId: apiTokenApps.tokenId, value: apiTokenApps.appId })
       .from(apiTokenApps)
       .where(inArray(apiTokenApps.tokenId, ids)),
@@ -178,6 +194,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
   const capsById = group(caps);
   const teamsById = group(teamRows);
   const projectsById = group(projRows);
+  const foldersById = group(folderRows);
   const appsById = group(appRows);
 
   return rows.map((r) => ({
@@ -187,6 +204,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
     ),
     teamIds: teamsById.get(r.id) ?? [],
     projectIds: projectsById.get(r.id) ?? [],
+    folderIds: foldersById.get(r.id) ?? [],
     appIds: appsById.get(r.id) ?? [],
   }));
 }
@@ -194,7 +212,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 /**
  * One token by id. Deliberately `listTokens().find(…)` — the same trick
  * `getRole` uses — so there is exactly ONE place that assembles the DTO and its
- * four junctions, and no way for the detail page to disagree with the list.
+ * five junctions, and no way for the detail page to disagree with the list.
  */
 export async function getToken(id: string): Promise<ApiTokenDTO | null> {
   return (await listTokens()).find((t) => t.id === id) ?? null;
@@ -209,23 +227,39 @@ export interface ScopeTreeApp {
   name: string;
   slug: string;
 }
+export interface ScopeTreeFolder {
+  id: string;
+  name: string;
+  color: string | null;
+  folders: ScopeTreeFolder[];
+  apps: ScopeTreeApp[];
+}
 export interface ScopeTreeProject {
   id: string;
   name: string;
   color: string | null;
+  folders: ScopeTreeFolder[];
   apps: ScopeTreeApp[];
 }
 export interface ScopeTreeTeam {
   id: string;
   name: string;
   projects: ScopeTreeProject[];
-  /** Apps of this team that sit at the top level, in no project. */
+  /** Folders at the team top level, in no project. */
+  folders: ScopeTreeFolder[];
+  /** Apps of this team in no folder and no project. */
   looseApps: ScopeTreeApp[];
 }
 
 /**
- * Every team the CURRENT USER belongs to, with its projects and their apps —
- * the tree the scope picker draws.
+ * Every team the CURRENT USER belongs to, with its projects, its folders and
+ * their apps — the tree the scope picker draws.
+ *
+ * Folders are first-class here because they are where apps actually live: filing
+ * an app into a folder CLEARS its `project_id`, so a tree without them showed
+ * nearly everything as "outside a project", which was both useless and untrue.
+ * A folder is placed under its parent when it has one, else under its project,
+ * else at the team top level — the same arrangement the Overview shows.
  *
  * Deliberately not filtered to the active team: a token may span teams, and you
  * can only give it what you can reach yourself. That is also the bound — the
@@ -245,7 +279,7 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
   const teamIds = mine.map((t) => t.id);
 
   const db = getDb();
-  const [projectRows, appRows] = await Promise.all([
+  const [projectRows, folderRows, appRows] = await Promise.all([
     db
       .select({
         id: projectsTable.id,
@@ -257,9 +291,21 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
       .where(inArray(projectsTable.teamId, teamIds)),
     db
       .select({
+        id: foldersTable.id,
+        teamId: foldersTable.teamId,
+        parentId: foldersTable.parentId,
+        projectId: foldersTable.projectId,
+        name: foldersTable.name,
+        color: foldersTable.color,
+      })
+      .from(foldersTable)
+      .where(inArray(foldersTable.teamId, teamIds)),
+    db
+      .select({
         id: appsTable.id,
         teamId: appsTable.teamId,
         projectId: appsTable.projectId,
+        folderId: appsTable.folderId,
         name: appsTable.name,
         slug: appsTable.slug,
       })
@@ -267,16 +313,47 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
       .where(inArray(appsTable.teamId, teamIds)),
   ]);
 
-  const appsByProject = new Map<string, ScopeTreeApp[]>();
-  const looseByTeam = new Map<string, ScopeTreeApp[]>();
-  for (const a of appRows) {
-    const entry = { id: a.id, name: a.name, slug: a.slug };
-    const bucket = a.projectId ? appsByProject : looseByTeam;
-    const key = a.projectId ?? a.teamId;
-    bucket.set(key, [...(bucket.get(key) ?? []), entry]);
-  }
   const byName = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name);
+
+  /** Apps keyed by the ONE container they live in (folder, else project, else team). */
+  const appsIn = new Map<string, ScopeTreeApp[]>();
+  for (const a of appRows) {
+    const key = a.folderId ?? a.projectId ?? a.teamId;
+    appsIn.set(key, [
+      ...(appsIn.get(key) ?? []),
+      { id: a.id, name: a.name, slug: a.slug },
+    ]);
+  }
+  /** Child folders keyed by their parent folder id. */
+  const subfoldersOf = new Map<string, typeof folderRows>();
+  for (const f of folderRows)
+    if (f.parentId)
+      subfoldersOf.set(f.parentId, [...(subfoldersOf.get(f.parentId) ?? []), f]);
+
+  // Cycle-safe, like every other walk over this tree: a stale parent chain must
+  // not hang the page.
+  const build = (
+    f: (typeof folderRows)[number],
+    seen: Set<string>,
+  ): ScopeTreeFolder => {
+    seen.add(f.id);
+    return {
+      id: f.id,
+      name: f.name,
+      color: f.color ?? null,
+      folders: (subfoldersOf.get(f.id) ?? [])
+        .filter((c) => !seen.has(c.id))
+        .sort(byName)
+        .map((c) => build(c, seen)),
+      apps: (appsIn.get(f.id) ?? []).sort(byName),
+    };
+  };
+  const rootFolders = (predicate: (f: (typeof folderRows)[number]) => boolean) =>
+    folderRows
+      .filter((f) => !f.parentId && predicate(f))
+      .sort(byName)
+      .map((f) => build(f, new Set()));
 
   return mine.map((t) => ({
     id: t.id,
@@ -288,9 +365,11 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
         id: p.id,
         name: p.name,
         color: p.color ?? null,
-        apps: (appsByProject.get(p.id) ?? []).sort(byName),
+        folders: rootFolders((f) => f.projectId === p.id),
+        apps: (appsIn.get(p.id) ?? []).sort(byName),
       })),
-    looseApps: (looseByTeam.get(t.id) ?? []).sort(byName),
+    folders: rootFolders((f) => f.teamId === t.id && !f.projectId),
+    looseApps: (appsIn.get(t.id) ?? []).sort(byName),
   }));
 }
 
@@ -303,6 +382,8 @@ export interface TokenScopeInput {
   teamIds?: string[];
   /** Whole projects. */
   projectIds?: string[];
+  /** Whole folders (their subtrees come with them). */
+  folderIds?: string[];
   /** Individual apps. */
   appIds?: string[];
 }
@@ -362,6 +443,7 @@ export async function createToken(
       scoped,
       teamIds: scope.teamIds,
       projectIds: scope.projectIds,
+      folderIds: scope.folderIds,
       appIds: scope.appIds,
       instanceAdmin,
       homeTeamId: teamId,
@@ -437,6 +519,9 @@ export async function updateToken(
     await tx
       .delete(apiTokenProjects)
       .where(eq(apiTokenProjects.tokenId, input.id));
+    await tx
+      .delete(apiTokenFolders)
+      .where(eq(apiTokenFolders.tokenId, input.id));
     await tx.delete(apiTokenApps).where(eq(apiTokenApps.tokenId, input.id));
     await writeScope(tx, input.id, scope);
   });
@@ -571,6 +656,7 @@ function inCatalogOrder(caps: Capability[]): Capability[] {
 interface ResolvedScope {
   teamIds: string[];
   projectIds: string[];
+  folderIds: string[];
   appIds: string[];
 }
 
@@ -587,6 +673,7 @@ async function validateScope(
   const scoped =
     (input.teamIds?.length ?? 0) +
       (input.projectIds?.length ?? 0) +
+      (input.folderIds?.length ?? 0) +
       (input.appIds?.length ?? 0) >
     0;
   const instanceAdmin = input.instanceAdmin ?? false;
@@ -611,9 +698,10 @@ async function resolveScopeInput(
 ): Promise<ResolvedScope> {
   const teamIds = [...new Set(input.teamIds ?? [])];
   const projectIds = [...new Set(input.projectIds ?? [])];
+  const folderIds = [...new Set(input.folderIds ?? [])];
   const appIds = [...new Set(input.appIds ?? [])];
-  if (teamIds.length + projectIds.length + appIds.length === 0)
-    return { teamIds: [], projectIds: [], appIds: [] };
+  if (teamIds.length + projectIds.length + folderIds.length + appIds.length === 0)
+    return { teamIds: [], projectIds: [], folderIds: [], appIds: [] };
 
   const mine = new Set((await teamsForUser(userId)).map((t) => t.id));
   for (const id of teamIds)
@@ -628,6 +716,14 @@ async function resolveScopeInput(
     if (rows.length !== projectIds.length || rows.some((r) => !mine.has(r.teamId)))
       throw new Error("One of those projects isn't in a team you belong to");
   }
+  if (folderIds.length > 0) {
+    const rows = await db
+      .select({ id: foldersTable.id, teamId: foldersTable.teamId })
+      .from(foldersTable)
+      .where(inArray(foldersTable.id, folderIds));
+    if (rows.length !== folderIds.length || rows.some((r) => !mine.has(r.teamId)))
+      throw new Error("One of those folders isn't in a team you belong to");
+  }
   if (appIds.length > 0) {
     const rows = await db
       .select({ id: appsTable.id, teamId: appsTable.teamId })
@@ -636,7 +732,7 @@ async function resolveScopeInput(
     if (rows.length !== appIds.length || rows.some((r) => !mine.has(r.teamId)))
       throw new Error("One of those apps isn't in a team you belong to");
   }
-  return { teamIds, projectIds, appIds };
+  return { teamIds, projectIds, folderIds, appIds };
 }
 
 async function writeScope(
@@ -652,6 +748,10 @@ async function writeScope(
     await tx
       .insert(apiTokenProjects)
       .values(scope.projectIds.map((projectId) => ({ tokenId, projectId })));
+  if (scope.folderIds.length > 0)
+    await tx
+      .insert(apiTokenFolders)
+      .values(scope.folderIds.map((folderId) => ({ tokenId, folderId })));
   if (scope.appIds.length > 0)
     await tx
       .insert(apiTokenApps)
@@ -659,13 +759,22 @@ async function writeScope(
 }
 
 /**
- * Flatten a stored scope for the request identity. The team set is DERIVED — a
- * project knows its team, an app knows its team — so a node deleted anywhere
- * simply drops out of the join and the token narrows instead of widening.
+ * Flatten a stored scope for the request identity.
+ *
+ * The team set is DERIVED — a project knows its team, a folder knows its team,
+ * an app knows its team — so a node deleted anywhere simply drops out of the
+ * join and the token narrows instead of widening.
+ *
+ * Folders are EXPANDED here rather than stored expanded: a ticked folder brings
+ * its whole subtree, and a ticked project brings every folder filed under it (an
+ * app in a folder has no `project_id` of its own, so without this a project
+ * scope would miss most of what people mean by it). Doing it per authentication
+ * means moving or nesting a folder takes effect on the very next request, with
+ * nothing to re-materialize.
  */
 async function loadScope(tokenId: string): Promise<TokenScope> {
   const db = getDb();
-  const [teamRows, projRows, appRows] = await Promise.all([
+  const [teamRows, projRows, folderRows, appRows] = await Promise.all([
     db
       .select({ teamId: apiTokenTeams.teamId })
       .from(apiTokenTeams)
@@ -678,32 +787,117 @@ async function loadScope(tokenId: string): Promise<TokenScope> {
       .where(eq(apiTokenProjects.tokenId, tokenId)),
     db
       .select({
+        id: foldersTable.id,
+        teamId: foldersTable.teamId,
+        projectId: foldersTable.projectId,
+      })
+      .from(apiTokenFolders)
+      .innerJoin(foldersTable, eq(foldersTable.id, apiTokenFolders.folderId))
+      .where(eq(apiTokenFolders.tokenId, tokenId)),
+    db
+      .select({
         id: appsTable.id,
         teamId: appsTable.teamId,
         projectId: appsTable.projectId,
+        folderId: appsTable.folderId,
       })
       .from(apiTokenApps)
       .innerJoin(appsTable, eq(appsTable.id, apiTokenApps.appId))
       .where(eq(apiTokenApps.tokenId, tokenId)),
   ]);
+
   const wholeTeamIds = teamRows.map((r) => r.teamId);
+  const projectIds = projRows.map((r) => r.id);
+  const teamIds = [
+    ...new Set([
+      ...wholeTeamIds,
+      ...projRows.map((r) => r.teamId),
+      ...folderRows.map((r) => r.teamId),
+      ...appRows.map((r) => r.teamId),
+    ]),
+  ];
+
+  const { folderIds, folderProjectIds } = await expandFolders(
+    teamIds,
+    folderRows.map((r) => r.id),
+    projectIds,
+  );
+
   return {
-    teamIds: [
-      ...new Set([
-        ...wholeTeamIds,
-        ...projRows.map((r) => r.teamId),
-        ...appRows.map((r) => r.teamId),
-      ]),
-    ],
+    teamIds,
     wholeTeamIds,
-    projectIds: projRows.map((r) => r.id),
+    projectIds,
+    folderIds,
     appIds: appRows.map((r) => r.id),
     appProjectIds: [
       ...new Set(
-        appRows.map((r) => r.projectId).filter((id): id is string => id != null),
+        [
+          ...appRows.map((r) => r.projectId),
+          ...folderRows.map((r) => r.projectId),
+          ...folderProjectIds,
+        ].filter((id): id is string => id != null),
       ),
     ],
   };
+}
+
+/**
+ * Every folder a scope actually reaches: the ticked ones, everything nested
+ * under them, and everything filed under a ticked project — plus the projects
+ * those folders sit in, so the containers stay navigable.
+ *
+ * One query for the whole folder set of the token's teams, then a walk in
+ * memory: folder trees are small (an Overview a person browses), and this runs
+ * once per authentication, not once per query. Cycle-safe by the seen-set, the
+ * same tolerance the rest of the folder-tree code applies to a stale parent.
+ */
+async function expandFolders(
+  teamIds: string[],
+  ticked: string[],
+  scopedProjectIds: string[],
+): Promise<{ folderIds: string[]; folderProjectIds: string[] }> {
+  if (teamIds.length === 0 || (ticked.length === 0 && scopedProjectIds.length === 0))
+    return { folderIds: [], folderProjectIds: [] };
+  const rows = await getDb()
+    .select({
+      id: foldersTable.id,
+      parentId: foldersTable.parentId,
+      projectId: foldersTable.projectId,
+    })
+    .from(foldersTable)
+    .where(inArray(foldersTable.teamId, teamIds));
+
+  const childrenOf = new Map<string, string[]>();
+  for (const f of rows)
+    if (f.parentId)
+      childrenOf.set(f.parentId, [...(childrenOf.get(f.parentId) ?? []), f.id]);
+
+  // Roots: the ticked folders, plus every folder filed DIRECTLY under a ticked
+  // project (their own subtrees follow below).
+  const projects = new Set(scopedProjectIds);
+  const roots = [
+    ...ticked,
+    ...rows.filter((f) => f.projectId && projects.has(f.projectId)).map((f) => f.id),
+  ];
+
+  const reached = new Set<string>();
+  const stack = [...roots];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (reached.has(id)) continue;
+    reached.add(id);
+    for (const child of childrenOf.get(id) ?? []) stack.push(child);
+  }
+
+  const byId = new Map(rows.map((f) => [f.id, f] as const));
+  const folderProjectIds = [
+    ...new Set(
+      ticked
+        .map((id) => byId.get(id)?.projectId)
+        .filter((id): id is string => id != null),
+    ),
+  ];
+  return { folderIds: [...reached], folderProjectIds };
 }
 
 async function actorUsername(): Promise<string> {

@@ -442,6 +442,13 @@
       "when": 1784673600000,
       "tag": "0062_token_scope_tree",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1784673800000,
+      "tag": "0063_token_scope_folders",
+      "breakpoints": true
     }
   ]
 }

@@ -412,15 +412,15 @@ export async function insertEnvVars(db: DbReader, vars: EnvVar[]): Promise<void>
  * Ids from the token's OTHER teams can sit harmlessly in the predicate: every
  * caller ANDs it with `apps.team_id`, so they can never match.
  *
- * An app at the TOP LEVEL (`project_id IS NULL`) belongs to no Project, so a
- * project row never reaches it — only naming the app itself does. That is
- * fail-closed, and it keeps a scope from widening the moment someone drags an
- * app out of a project.
+ * An app lives in exactly ONE place — a folder, a project, or the team top level
+ * (filing it into a folder clears its project link) — so the three clauses are
+ * alternatives. An app at the top level is in no container at all and is reached
+ * only by naming it: fail-closed, and it keeps a scope from widening the moment
+ * someone drags an app out of a folder.
  *
- * ponytail: matches on `apps.project_id` only. An app filed under a folder that
- * itself sits in a project (the legacy nesting `listProjects` still credits) is
- * reachable only by naming the app — fail-closed; walk the folder chain if that
- * ever matters.
+ * `folderIds` arrives already flattened (the ticked folders' whole subtrees, plus
+ * every folder filed under a ticked project), so this stays one `IN` and no tree
+ * walk happens per query.
  */
 export function appScopeWhere(): SQL | undefined {
   const scope = narrowedScope();
@@ -428,6 +428,8 @@ export function appScopeWhere(): SQL | undefined {
   const clauses: SQL[] = [];
   if (scope.projectIds.length > 0)
     clauses.push(inArray(apps.projectId, scope.projectIds));
+  if (scope.folderIds.length > 0)
+    clauses.push(inArray(apps.folderId, scope.folderIds));
   if (scope.appIds.length > 0) clauses.push(inArray(apps.id, scope.appIds));
   // Nothing left in the scope (every node it named was deleted): reaches no app
   // at all. Spelled out rather than relying on `inArray(col, [])`, whose

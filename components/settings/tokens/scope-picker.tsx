@@ -1,27 +1,43 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight, Building2, FolderTree, Box } from "lucide-react";
+import {
+  ChevronRight,
+  Building2,
+  FolderTree,
+  Folder,
+  Box,
+  Search,
+  X,
+} from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
 import { cn } from "@/lib/utils";
-import type { ScopeTreeTeam } from "@/lib/data/tokens";
+import { filterScopeTree } from "@/lib/token-scope-search";
+import type {
+  ScopeTreeApp,
+  ScopeTreeFolder,
+  ScopeTreeTeam,
+} from "@/lib/data/tokens";
 
 export interface ScopeSelection {
   teamIds: string[];
   projectIds: string[];
+  folderIds: string[];
   appIds: string[];
 }
 
 /**
  * What an API token may reach, as the tree it actually is: teams, then their
- * projects, then the apps inside them.
+ * projects and folders, then the apps inside them, folders nesting as deep as
+ * they do on the Overview.
  *
  * One rule makes the whole control readable — ticking a node grants everything
- * under it, now and later. So a whole team is one click, a whole project is one
- * click, and a single app is one click, and the deeper boxes go checked-and-
- * disabled to show they are already covered rather than silently disagreeing
- * with their parent.
+ * under it, now and later. So a whole team is one click, a whole folder is one
+ * click, and a single app is one click, and the deeper boxes go
+ * checked-and-disabled to show they are already covered rather than silently
+ * disagreeing with their parent.
  *
  * Nothing ticked means unrestricted. That is deliberate: an empty scope with a
  * separate "all / specific" radio above it is two controls for one decision, and
@@ -40,25 +56,25 @@ export function ScopePicker({
 }) {
   const teams = new Set(selection.teamIds);
   const projects = new Set(selection.projectIds);
+  const folders = new Set(selection.folderIds);
   const apps = new Set(selection.appIds);
 
-  const [open, setOpen] = React.useState<Set<string>>(() => {
-    // Open whatever already has a selection inside it, so an edit lands on what
-    // it is editing instead of on a wall of collapsed rows.
-    const s = new Set<string>();
-    for (const t of tree) {
-      const touched =
-        t.projects.some((p) => projects.has(p.id) || p.apps.some((a) => apps.has(a.id))) ||
-        t.looseApps.some((a) => apps.has(a.id));
-      if (touched) {
-        s.add(t.id);
-        for (const p of t.projects)
-          if (p.apps.some((a) => apps.has(a.id))) s.add(p.id);
-      }
-    }
-    return s;
-  });
+  const [query, setQuery] = React.useState("");
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matched = React.useMemo(
+    () => (terms.length === 0 ? null : filterScopeTree(tree, terms)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tree, query],
+  );
+  const shown = matched ?? tree;
+  const searching = matched !== null;
 
+  const [open, setOpen] = React.useState<Set<string>>(() =>
+    openForSelection(tree, selection),
+  );
+  // While searching every surviving branch is open — a hit three folders deep is
+  // useless if you still have to find and expand its ancestors.
+  const isOpen = (id: string) => searching || open.has(id);
   const toggleOpen = (id: string) =>
     setOpen((prev) => {
       const next = new Set(prev);
@@ -70,65 +86,142 @@ export function ScopePicker({
   function emit(next: {
     teams: Set<string>;
     projects: Set<string>;
+    folders: Set<string>;
     apps: Set<string>;
   }) {
     onChange({
       teamIds: [...next.teams],
       projectIds: [...next.projects],
+      folderIds: [...next.folders],
       appIds: [...next.apps],
     });
   }
 
-  /** Ticking a team covers everything under it, so its own rows are redundant. */
+  /** Everything under a node becomes redundant the moment the node is ticked. */
+  function clearBelow(
+    node: { folders: ScopeTreeFolder[]; apps: ScopeTreeApp[] },
+    p: Set<string>,
+    f: Set<string>,
+    a: Set<string>,
+  ) {
+    for (const app of node.apps) a.delete(app.id);
+    for (const folder of node.folders) {
+      f.delete(folder.id);
+      clearBelow(folder, p, f, a);
+    }
+  }
+
   function toggleTeam(team: ScopeTreeTeam, on: boolean) {
     if (disabled) return;
     const t = new Set(teams);
     const p = new Set(projects);
+    const f = new Set(folders);
     const a = new Set(apps);
     if (on) {
       t.add(team.id);
       for (const proj of team.projects) {
         p.delete(proj.id);
-        for (const app of proj.apps) a.delete(app.id);
+        clearBelow(proj, p, f, a);
       }
-      for (const app of team.looseApps) a.delete(app.id);
+      clearBelow({ folders: team.folders, apps: team.looseApps }, p, f, a);
       setOpen((prev) => new Set(prev).add(team.id));
     } else t.delete(team.id);
-    emit({ teams: t, projects: p, apps: a });
+    emit({ teams: t, projects: p, folders: f, apps: a });
   }
 
   function toggleProject(
-    team: ScopeTreeTeam,
     project: ScopeTreeTeam["projects"][number],
     on: boolean,
+    covered: boolean,
   ) {
-    if (disabled || teams.has(team.id)) return;
+    if (disabled || covered) return;
     const p = new Set(projects);
+    const f = new Set(folders);
     const a = new Set(apps);
     if (on) {
       p.add(project.id);
-      for (const app of project.apps) a.delete(app.id);
+      clearBelow(project, p, f, a);
     } else p.delete(project.id);
-    emit({ teams, projects: p, apps: a });
+    emit({ teams, projects: p, folders: f, apps: a });
   }
 
-  function toggleApp(covered: boolean, appId: string, on: boolean) {
+  function toggleFolder(folder: ScopeTreeFolder, on: boolean, covered: boolean) {
+    if (disabled || covered) return;
+    const p = new Set(projects);
+    const f = new Set(folders);
+    const a = new Set(apps);
+    if (on) {
+      f.add(folder.id);
+      clearBelow(folder, p, f, a);
+    } else f.delete(folder.id);
+    emit({ teams, projects: p, folders: f, apps: a });
+  }
+
+  function toggleApp(appId: string, on: boolean, covered: boolean) {
     if (disabled || covered) return;
     const a = new Set(apps);
     if (on) a.add(appId);
     else a.delete(appId);
-    emit({ teams, projects, apps: a });
+    emit({ teams, projects, folders, apps: a });
+  }
+
+  /** Render a folder and everything under it, at `depth`. */
+  function renderFolder(
+    folder: ScopeTreeFolder,
+    depth: number,
+    covered: boolean,
+  ): React.ReactNode {
+    const on = covered || folders.has(folder.id);
+    const expanded = isOpen(folder.id);
+    const hasChildren = folder.folders.length > 0 || folder.apps.length > 0;
+    return (
+      <div key={folder.id}>
+        <Row
+          depth={depth}
+          icon={Folder}
+          label={folder.name}
+          meta={folderMeta(folder)}
+          checked={on}
+          disabled={disabled || covered}
+          onCheckedChange={(v) => toggleFolder(folder, v, covered)}
+          expandable={hasChildren}
+          expanded={expanded}
+          onToggleExpand={() => toggleOpen(folder.id)}
+          id={`scope-folder-${folder.id}`}
+        />
+        {expanded && (
+          <>
+            {folder.folders.map((child) =>
+              renderFolder(child, depth + 1, on),
+            )}
+            {folder.apps.map((app) => (
+              <Row
+                key={app.id}
+                depth={depth + 1}
+                icon={Box}
+                label={app.name}
+                meta={app.slug}
+                checked={on || apps.has(app.id)}
+                disabled={disabled || on}
+                onCheckedChange={(v) => toggleApp(app.id, v, on)}
+                id={`scope-app-${app.id}`}
+              />
+            ))}
+          </>
+        )}
+      </div>
+    );
   }
 
   const nothingPicked =
-    teams.size === 0 && projects.size === 0 && apps.size === 0;
-  const narrowed = projects.size > 0 || apps.size > 0;
+    teams.size === 0 && projects.size === 0 && folders.size === 0 && apps.size === 0;
+  const narrowed = projects.size > 0 || folders.size > 0 || apps.size > 0;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1.5">
         <h3 className="text-sm font-medium">Scope</h3>
-        <InfoTip content="What this token can reach. Tick a team for all of it, a project for every app in it, or single apps. Tick nothing and it reaches everything you can." />
+        <InfoTip content="What this token can reach. Tick a team for all of it, a project or a folder for everything inside it, or single apps. Tick nothing and it reaches everything you can." />
       </div>
 
       {tree.length === 0 ? (
@@ -137,99 +230,131 @@ export function ScopePicker({
           token to.
         </p>
       ) : (
-        <div className="divide-y divide-border/60 overflow-hidden rounded-lg border border-border">
-          {tree.map((team) => {
-            const teamOn = teams.has(team.id);
-            const expanded = open.has(team.id);
-            const hasChildren =
-              team.projects.length > 0 || team.looseApps.length > 0;
-            return (
-              <div key={team.id}>
-                <Row
-                  depth={0}
-                  icon={Building2}
-                  label={team.name}
-                  meta={
-                    team.projects.length === 1
-                      ? "1 project"
-                      : `${team.projects.length} projects`
-                  }
-                  checked={teamOn}
-                  disabled={disabled}
-                  onCheckedChange={(v) => toggleTeam(team, v)}
-                  expandable={hasChildren}
-                  expanded={expanded}
-                  onToggleExpand={() => toggleOpen(team.id)}
-                  id={`scope-team-${team.id}`}
-                />
-                {expanded &&
-                  team.projects.map((project) => {
-                    const projOn = teamOn || projects.has(project.id);
-                    const projExpanded = open.has(project.id);
-                    return (
-                      <div key={project.id}>
-                        <Row
-                          depth={1}
-                          icon={FolderTree}
-                          label={project.name}
-                          meta={
-                            project.apps.length === 1
-                              ? "1 app"
-                              : `${project.apps.length} apps`
-                          }
-                          checked={projOn}
-                          // Covered by its team: shown ticked, not editable
-                          // here, so the tree never contradicts itself.
-                          disabled={disabled || teamOn}
-                          onCheckedChange={(v) => toggleProject(team, project, v)}
-                          expandable={project.apps.length > 0}
-                          expanded={projExpanded}
-                          onToggleExpand={() => toggleOpen(project.id)}
-                          id={`scope-project-${project.id}`}
-                        />
-                        {projExpanded &&
-                          project.apps.map((app) => (
-                            <Row
-                              key={app.id}
-                              depth={2}
-                              icon={Box}
-                              label={app.name}
-                              meta={app.slug}
-                              checked={projOn || apps.has(app.id)}
-                              disabled={disabled || projOn}
-                              onCheckedChange={(v) =>
-                                toggleApp(projOn, app.id, v)
-                              }
-                              id={`scope-app-${app.id}`}
-                            />
-                          ))}
-                      </div>
-                    );
-                  })}
-                {expanded && team.looseApps.length > 0 && (
-                  <>
-                    <p className="bg-muted/30 px-3 py-1.5 pl-11 text-xs text-muted-foreground">
-                      Apps outside a project
-                    </p>
-                    {team.looseApps.map((app) => (
-                      <Row
-                        key={app.id}
-                        depth={1}
-                        icon={Box}
-                        label={app.name}
-                        meta={app.slug}
-                        checked={teamOn || apps.has(app.id)}
-                        disabled={disabled || teamOn}
-                        onCheckedChange={(v) => toggleApp(teamOn, app.id, v)}
-                        id={`scope-app-${app.id}`}
-                      />
-                    ))}
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search teams, projects, folders and apps"
+              aria-label="Search the scope"
+              className="pl-9 pr-9"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Clear the search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          {shown.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+              Nothing matches &ldquo;{query}&rdquo;.
+            </div>
+          ) : (
+            <div className="max-h-96 divide-y divide-border/60 overflow-y-auto rounded-lg border border-border">
+              {shown.map((team) => {
+                const teamOn = teams.has(team.id);
+                const expanded = isOpen(team.id);
+                const hasChildren =
+                  team.projects.length > 0 ||
+                  team.folders.length > 0 ||
+                  team.looseApps.length > 0;
+                return (
+                  <div key={team.id}>
+                    <Row
+                      depth={0}
+                      icon={Building2}
+                      label={team.name}
+                      meta={teamMeta(team)}
+                      checked={teamOn}
+                      disabled={disabled}
+                      onCheckedChange={(v) => toggleTeam(team, v)}
+                      expandable={hasChildren}
+                      expanded={expanded}
+                      onToggleExpand={() => toggleOpen(team.id)}
+                      id={`scope-team-${team.id}`}
+                    />
+                    {expanded && (
+                      <>
+                        {team.projects.map((project) => {
+                          const projOn = teamOn || projects.has(project.id);
+                          const projExpanded = isOpen(project.id);
+                          const projHasChildren =
+                            project.folders.length > 0 || project.apps.length > 0;
+                          return (
+                            <div key={project.id}>
+                              <Row
+                                depth={1}
+                                icon={FolderTree}
+                                label={project.name}
+                                meta={projectMeta(project)}
+                                checked={projOn}
+                                // Covered by its team: ticked, not editable
+                                // here, so the tree never contradicts itself.
+                                disabled={disabled || teamOn}
+                                onCheckedChange={(v) =>
+                                  toggleProject(project, v, teamOn)
+                                }
+                                expandable={projHasChildren}
+                                expanded={projExpanded}
+                                onToggleExpand={() => toggleOpen(project.id)}
+                                id={`scope-project-${project.id}`}
+                              />
+                              {projExpanded && (
+                                <>
+                                  {project.folders.map((f) =>
+                                    renderFolder(f, 2, projOn),
+                                  )}
+                                  {project.apps.map((app) => (
+                                    <Row
+                                      key={app.id}
+                                      depth={2}
+                                      icon={Box}
+                                      label={app.name}
+                                      meta={app.slug}
+                                      checked={projOn || apps.has(app.id)}
+                                      disabled={disabled || projOn}
+                                      onCheckedChange={(v) =>
+                                        toggleApp(app.id, v, projOn)
+                                      }
+                                      id={`scope-app-${app.id}`}
+                                    />
+                                  ))}
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {team.folders.map((f) => renderFolder(f, 1, teamOn))}
+                        {team.looseApps.map((app) => (
+                          <Row
+                            key={app.id}
+                            depth={1}
+                            icon={Box}
+                            label={app.name}
+                            meta={app.slug}
+                            checked={teamOn || apps.has(app.id)}
+                            disabled={disabled || teamOn}
+                            onCheckedChange={(v) =>
+                              toggleApp(app.id, v, teamOn)
+                            }
+                            id={`scope-app-${app.id}`}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       <p className="text-xs text-muted-foreground">
@@ -244,10 +369,11 @@ export function ScopePicker({
         ) : (
           <>
             <span className="font-medium text-foreground">
-              Limited to {describe(teams.size, projects.size, apps.size)}.
+              Limited to{" "}
+              {describe(teams.size, projects.size, folders.size, apps.size)}.
             </span>{" "}
             {narrowed
-              ? "Naming a project or an app narrows the token inside its team, so team-wide permissions such as Manage members, Manage roles and Manage team settings stop applying there, even while they are ticked below."
+              ? "Naming a project, a folder or an app narrows the token inside its team, so team-wide permissions such as Manage members, Manage roles and Manage team settings stop applying there, even while they are ticked below."
               : "Whole teams, so every permission ticked below applies in all of them."}
           </>
         )}
@@ -256,12 +382,78 @@ export function ScopePicker({
   );
 }
 
-function describe(teams: number, projects: number, apps: number): string {
+/* ------------------------------------------------------------------ */
+/* Pure helpers                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Open whatever already holds a selection, so an edit lands on what it edits —
+ * plus every TEAM, always. A collapsed team row is a dead end on first sight,
+ * and most instances have exactly one; its projects and folders stay closed so
+ * the list opens at a readable size.
+ */
+function openForSelection(
+  tree: ScopeTreeTeam[],
+  selection: ScopeSelection,
+): Set<string> {
+  const picked = new Set([
+    ...selection.projectIds,
+    ...selection.folderIds,
+    ...selection.appIds,
+  ]);
+  const out = new Set<string>(tree.map((t) => t.id));
+  const walkFolder = (f: ScopeTreeFolder): boolean => {
+    const inside =
+      f.apps.some((a) => picked.has(a.id)) ||
+      f.folders.map(walkFolder).some(Boolean);
+    if (picked.has(f.id) || inside) {
+      if (inside) out.add(f.id);
+      return true;
+    }
+    return false;
+  };
+  for (const team of tree) {
+    let touched = false;
+    for (const p of team.projects) {
+      const inside =
+        p.apps.some((a) => picked.has(a.id)) ||
+        p.folders.map(walkFolder).some(Boolean);
+      if (inside) out.add(p.id);
+      if (picked.has(p.id) || inside) touched = true;
+    }
+    team.folders.forEach(walkFolder);
+    void touched;
+  }
+  return out;
+}
+
+const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
+
+function countApps(node: { folders: ScopeTreeFolder[]; apps: ScopeTreeApp[] }): number {
+  return node.apps.length + node.folders.reduce((n, f) => n + countApps(f), 0);
+}
+const folderMeta = (f: ScopeTreeFolder) => plural(countApps(f), "app");
+const projectMeta = (p: ScopeTreeTeam["projects"][number]) =>
+  plural(countApps(p), "app");
+const teamMeta = (t: ScopeTreeTeam) =>
+  plural(
+    t.projects.reduce((n, p) => n + countApps(p), 0) +
+      t.folders.reduce((n, f) => n + countApps(f), 0) +
+      t.looseApps.length,
+    "app",
+  );
+
+function describe(
+  teams: number,
+  projects: number,
+  folders: number,
+  apps: number,
+): string {
   const parts: string[] = [];
-  if (teams > 0) parts.push(`${teams} ${teams === 1 ? "team" : "teams"}`);
-  if (projects > 0)
-    parts.push(`${projects} ${projects === 1 ? "project" : "projects"}`);
-  if (apps > 0) parts.push(`${apps} ${apps === 1 ? "app" : "apps"}`);
+  if (teams > 0) parts.push(plural(teams, "team"));
+  if (projects > 0) parts.push(plural(projects, "project"));
+  if (folders > 0) parts.push(plural(folders, "folder"));
+  if (apps > 0) parts.push(plural(apps, "app"));
   if (parts.length <= 1) return parts[0] ?? "nothing";
   return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
@@ -279,7 +471,7 @@ function Row({
   onToggleExpand,
   id,
 }: {
-  depth: 0 | 1 | 2;
+  depth: number;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   meta?: string;
@@ -291,14 +483,15 @@ function Row({
   onToggleExpand?: () => void;
   id: string;
 }) {
-  const pad = ["pl-3", "pl-8", "pl-13"][depth];
   return (
     <div
       className={cn(
         "flex items-center gap-2 py-2 pr-3",
-        pad,
         depth === 0 && "bg-muted/20",
       )}
+      // Indent by depth rather than by a class per level: folders nest as deep
+      // as the Overview lets them, so there is no fixed set of levels.
+      style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
     >
       {expandable ? (
         <button

@@ -1,6 +1,6 @@
 # ADR-0015: An API token is a principal with its own capabilities
 
-- **Status**: Accepted — 2026-08-03. §3 amended the same day (migration `0062`).
+- **Status**: Accepted — 2026-08-03. §3 amended the same day (migrations `0062`, `0063`).
 - **Amends**: the "API token" entry in `CONTEXT.md` (which said a token "acts as
   its creator" and "can only ever do what that member's Capabilities allow") and
   the authentication section of `docs/api/graphql.md`. Migration `0061`.
@@ -36,8 +36,11 @@ config, or an AI agent's configuration file.
 
 3. **A token's scope is a TREE, and "limited" includes reads.** *(amended: it
    started as one team plus a set of projects; migration `0062` made it whole
-   teams, whole projects or individual apps, ticked at any depth, with nothing
-   ticked meaning every team the creator belongs to. Breadth and depth stay
+   teams, whole projects or individual apps, and `0063` added the level most apps
+   actually live in — whole FOLDERS, subtree included, expanded at authentication
+   time so moving or nesting one takes effect on the next request, with a project
+   scope also covering the folders filed under it. Ticked at any depth, with
+   nothing ticked meaning every team the creator belongs to. Breadth and depth stay
    separate questions — holding several whole teams restricts nothing inside
    them, and only naming a project or an app strips that team's team-wide
    capabilities. A bearer request acts in ONE of the token's teams, chosen with

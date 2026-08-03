@@ -44,11 +44,14 @@ fine-grained set a Role is built from. Its effective power is the intersection o
 two things: what the token was granted, and what its creator can still do in that
 team, so revoking a person's access also blunts every token they minted. An
 optional **scope** narrows what it reaches, as a tree: whole teams, whole
-projects, or individual apps. Ticking a node grants everything under it; ticking
-nothing means every team its creator belongs to. Naming a project or an app
-narrows the token inside that team, and the team-wide permissions it holds
-(managing members, roles, registries, databases) stop applying there — naming
-several whole teams restricts nothing inside them.
+projects, whole folders (subfolders included), or individual apps. Ticking a
+node grants everything under it, now and later; ticking nothing means every team
+its creator belongs to. Folders matter here — filing an app into one clears its
+project link, so a folder is where most apps actually live, and a project scope
+also covers the folders filed under it. Naming anything below a team narrows the
+token inside that team, and the team-wide permissions it holds (managing
+members, roles, registries, databases) stop applying there — naming several
+whole teams restricts nothing inside them.
 
 A request acts in exactly ONE team. Send **`X-Deplo-Team: <team id or slug>`** to
 pick which; without it the first team in the token's scope is used, and a team
@@ -62,9 +65,9 @@ agents, App automation, Root access — or you can start from scratch.
 > **Breaking change:** `createToken` now takes an input object and a permission
 > list: `createToken(input: { name: "ci", capabilities: [deploy_apps, view_logs] })`.
 > There is no default: a token with no capabilities named is view-only. The scope
-> is three optional lists on the same input — `teamIds`, `projectIds`, `appIds` —
-> and `updateToken` changes a live token's permissions or scope without
-> re-minting it.
+> is four optional lists on the same input — `teamIds`, `projectIds`,
+> `folderIds`, `appIds` — and `updateToken` changes a live token's permissions or
+> scope without re-minting it.
 
 Unauthenticated requests resolve `me` to `null` and are rejected by any field
 that requires a login (`Not authorized to resolve …`).

@@ -24,7 +24,7 @@ import {
   visibleFolderIds,
 } from "./folder-access";
 import { recordActivity } from "./activity";
-import { narrowedScope } from "../auth/request-context";
+import { inFolderScope } from "../auth/request-context";
 import { normalizeHexColor } from "../utils";
 import { assembleFolder, folderToRow } from "./app-graph-rows";
 import type { Folder } from "../types";
@@ -150,18 +150,16 @@ export const listFolders = cache(async function listFolders(): Promise<
   FolderSummary[]
 > {
   const teamId = await requireActiveTeamId();
-  // A Folder never lives inside a Project (CONTEXT.md), so an API token limited
-  // to Projects has no folder story at all — and all three folder capabilities
-  // are clamped away from it anyway. Fail closed rather than list the team's
-  // organisation to a credential that can do nothing with it.
-  if (narrowedScope()) return [];
   const { folders, appCounts, subfolderCounts } =
     await teamFoldersWithCounts(teamId);
   const rank = await folderOrderRank(teamId);
   // Only surface folders the caller may SEE: the ones they own or hold a grant
   // on, or every folder when they're a super-user (admin / manage_team).
   const visible = await visibleFolderIds(teamId);
-  const seen = visible === "all" ? folders : folders.filter((f) => visible.has(f.id));
+  const granted = visible === "all" ? folders : folders.filter((f) => visible.has(f.id));
+  // …and then only the ones a narrowed API token reaches. Its `folderIds` are
+  // already flattened, so a token given a parent folder sees the whole subtree.
+  const seen = granted.filter((f) => inFolderScope(f.id));
   // Recompute subfolderCount over the VISIBLE set so a folder doesn't disclose the
   // existence of child folders the caller can't see (child folders carry their own
   // independent ownership/grants). appCount stays team-scoped — a folder's

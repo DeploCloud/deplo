@@ -6,6 +6,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
+  folders as foldersTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
   projects as projectsTable,
@@ -28,9 +29,15 @@ import { capabilitiesForRole } from "../membership-shared";
 
 import { listApps } from "./apps";
 import { listProjects } from "./projects";
+import { listFolders } from "./folders";
 import { listMembers } from "./members";
 import { membershipFor } from "../membership";
-import { authenticateToken, createToken, listTokens } from "./tokens";
+import {
+  authenticateToken,
+  createToken,
+  listScopeTree,
+  listTokens,
+} from "./tokens";
 
 /**
  * The two axes 0062 added: WHICH teams a token reaches, and how far down inside
@@ -78,7 +85,9 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(TRUNCATE_PROJECT_GRAPH);
   await pg.exec(TRUNCATE_IDENTITY);
-  await pg.exec(`truncate table projects, api_tokens restart identity cascade;`);
+  await pg.exec(
+    `truncate table projects, folders, api_tokens restart identity cascade;`,
+  );
   await seedIdentity(db);
   // The same person in a SECOND team — the case a one-team token could not express.
   await db
@@ -116,6 +125,7 @@ const appScope = (appIds: string[], appProjectIds: string[] = []) => ({
     teamIds: [TEAM_A],
     wholeTeamIds: [],
     projectIds: [],
+    folderIds: [],
     appIds,
     appProjectIds,
   },
@@ -174,6 +184,7 @@ test("holding a WHOLE team is breadth: nothing inside it is restricted", async (
       teamIds: [TEAM_A, TEAM_B],
       wholeTeamIds: [TEAM_A, TEAM_B],
       projectIds: [],
+      folderIds: [],
       appIds: [],
       appProjectIds: [],
     },
@@ -203,6 +214,7 @@ test("a token narrowed in one team is unrestricted in another it holds wholly", 
       teamIds: [TEAM_A, TEAM_B],
       wholeTeamIds: [TEAM_B],
       projectIds: [PRC_IN],
+      folderIds: [],
       appIds: [],
       appProjectIds: [],
     },
@@ -306,6 +318,150 @@ test("a foreign team can't be put in a scope", async () => {
     await assert.rejects(
       () => createToken({ name: "Reach", teamIds: [TEAM_B] }),
       /not a member of one of those teams/,
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Folders — the level most apps actually live in                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Filing an app into a folder CLEARS its `project_id`, so before folders were in
+ * the tree a project scope reached almost nothing people expected it to, and the
+ * picker showed nearly every app as "outside a project".
+ *
+ * Fixture on top of the one above: TEAM_A gains `fld_root` (filed under
+ * `prc_in`) with `fld_child` nested inside it, and `fld_loose` at the team top
+ * level. One app in each.
+ */
+async function seedFolders() {
+  await db.insert(foldersTable).values([
+    { id: "fld_root", teamId: TEAM_A, name: "Root", projectId: PRC_IN, createdAt: T0, updatedAt: T0 },
+    { id: "fld_child", teamId: TEAM_A, name: "Child", parentId: "fld_root", createdAt: T0, updatedAt: T0 },
+    { id: "fld_loose", teamId: TEAM_A, name: "Loose", createdAt: T0, updatedAt: T0 },
+  ]);
+  await seedApp(db, { id: "prj_root", slug: "root-app", folderId: "fld_root" });
+  await seedApp(db, { id: "prj_child", slug: "child-app", folderId: "fld_child" });
+  await seedApp(db, { id: "prj_loose_f", slug: "loose-app", folderId: "fld_loose" });
+}
+
+/** Resolve a real stored scope the way a request does, then run `fn` under it. */
+async function underToken<T>(
+  input: Parameters<typeof createToken>[0],
+  fn: () => Promise<T>,
+): Promise<T> {
+  const raw = await asUser1(async () => (await createToken(input)).raw);
+  const identity = await authenticateToken(raw);
+  assert.ok(identity, "the token resolves");
+  return runWithIdentity(identity!, fn);
+}
+
+test("a folder scope reaches its whole subtree, resolved live", async () => {
+  await seedFolders();
+  await underToken(
+    { name: "Root folder", capabilities: ["deploy_apps"], folderIds: ["fld_root"] },
+    async () => {
+      assert.deepEqual(
+        (await listApps()).map((a) => a.id).sort(),
+        ["prj_child", "prj_root"],
+        "the nested folder's app comes with the parent",
+      );
+      // The folders it reaches are listed; the unrelated one is not.
+      assert.deepEqual(
+        (await listFolders()).map((f) => f.id).sort(),
+        ["fld_child", "fld_root"],
+      );
+    },
+  );
+});
+
+test("a project scope covers the folders filed under it, not just its own apps", async () => {
+  await seedFolders();
+  await underToken(
+    { name: "Whole project", capabilities: ["deploy_apps"], projectIds: [PRC_IN] },
+    async () => {
+      assert.deepEqual(
+        (await listApps()).map((a) => a.id).sort(),
+        ["prj_child", "prj_in", "prj_root", "prj_sibling"],
+        "its direct apps AND everything in its folders",
+      );
+      assert.deepEqual((await listProjects()).map((p) => p.id), [PRC_IN]);
+    },
+  );
+});
+
+test("a top-level folder is reachable, and reaches nothing outside itself", async () => {
+  await seedFolders();
+  await underToken(
+    { name: "Loose folder", capabilities: ["deploy_apps"], folderIds: ["fld_loose"] },
+    async () => {
+      assert.deepEqual((await listApps()).map((a) => a.id), ["prj_loose_f"]);
+      assert.deepEqual((await listFolders()).map((f) => f.id), ["fld_loose"]);
+      // It sits in no project, so there is no container to surface.
+      assert.deepEqual(await listProjects(), []);
+    },
+  );
+});
+
+test("moving a folder re-scopes the token on the next request, with nothing stored", async () => {
+  await seedFolders();
+  const raw = await asUser1(
+    async () =>
+      (
+        await createToken({
+          name: "Root folder",
+          capabilities: ["deploy_apps"],
+          folderIds: ["fld_root"],
+        })
+      ).raw,
+  );
+  const before = await runWithIdentity((await authenticateToken(raw))!, async () =>
+    (await listApps()).map((a) => a.id).sort(),
+  );
+  assert.deepEqual(before, ["prj_child", "prj_root"]);
+
+  // Un-nest the child folder: it leaves the subtree, and so does its app.
+  await pg.exec(`update folders set parent_id = null where id = 'fld_child';`);
+  const after = await runWithIdentity((await authenticateToken(raw))!, async () =>
+    (await listApps()).map((a) => a.id).sort(),
+  );
+  assert.deepEqual(after, ["prj_root"]);
+});
+
+test("the scope tree nests folders instead of dumping their apps at the top level", async () => {
+  await seedFolders();
+  const tree = await asUser1(() => listScopeTree());
+  const teamA = tree.find((t) => t.id === TEAM_A)!;
+
+  // The regression this level exists for: an app in a folder is NOT loose.
+  assert.deepEqual(teamA.looseApps.map((a) => a.id), ["prj_top"]);
+
+  const project = teamA.projects.find((p) => p.id === PRC_IN)!;
+  assert.deepEqual(project.apps.map((a) => a.id).sort(), ["prj_in", "prj_sibling"]);
+  assert.deepEqual(project.folders.map((f) => f.id), ["fld_root"]);
+  assert.deepEqual(project.folders[0]!.apps.map((a) => a.id), ["prj_root"]);
+  assert.deepEqual(project.folders[0]!.folders.map((f) => f.id), ["fld_child"]);
+  assert.deepEqual(project.folders[0]!.folders[0]!.apps.map((a) => a.id), [
+    "prj_child",
+  ]);
+
+  assert.deepEqual(teamA.folders.map((f) => f.id), ["fld_loose"]);
+});
+
+test("a folder in a team you don't belong to can't be put in a scope", async () => {
+  await db.insert(foldersTable).values({
+    id: "fld_other",
+    teamId: TEAM_B,
+    name: "Other",
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await pg.exec(`delete from memberships where id = 'mem_user_1_b';`);
+  await asUser1(async () => {
+    await assert.rejects(
+      () => createToken({ name: "Reach", folderIds: ["fld_other"] }),
+      /isn't in a team you belong to/,
     );
   });
 });

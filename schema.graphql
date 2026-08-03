@@ -75,6 +75,11 @@ type ApiToken {
   createdByUsername: String
 
   """
+  Whole folders in the scope: every app in them and in the folders nested under them. Most apps live in a folder, so this is usually the level a scope is drawn at.
+  """
+  folderIds: [String!]
+
+  """
   The team this token is MANAGED from — where it was created. Any team it reaches can revoke it; only this one can change it.
   """
   homeTeamId: ID
@@ -593,6 +598,7 @@ input CreateS3Input {
 input CreateTokenInput {
   appIds: [String!]
   capabilities: [Capability!]
+  folderIds: [String!]
   instanceAdmin: Boolean
   name: String!
   projectIds: [String!]
@@ -2921,6 +2927,7 @@ input UpdateTeamInput {
 input UpdateTokenInput {
   appIds: [String!]
   capabilities: [Capability!]
+  folderIds: [String!]
   id: String!
   instanceAdmin: Boolean
   name: String!

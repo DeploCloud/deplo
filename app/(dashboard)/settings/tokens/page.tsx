@@ -4,6 +4,7 @@ import { hasCapability } from "@/lib/membership";
 import { listTokens } from "@/lib/data/tokens";
 import { listProjects } from "@/lib/data/projects";
 import { listApps } from "@/lib/data/apps";
+import { listFolders } from "@/lib/data/folders";
 import { listMyTeams } from "@/lib/data/teams";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -13,9 +14,10 @@ import { TokensList } from "@/components/settings/tokens/tokens-list";
 export const metadata = { title: "Settings · API tokens" };
 
 export default async function TokensPage() {
-  const [tokens, projects, apps, teams, canManage] = await Promise.all([
+  const [tokens, projects, folders, apps, teams, canManage] = await Promise.all([
     listTokens(),
     listProjects(),
+    listFolders(),
     listApps(),
     listMyTeams(),
     hasCapability("manage_tokens"),
@@ -23,7 +25,7 @@ export default async function TokensPage() {
   // A token can reach teams and apps this page can't name; `scopeLabel` falls
   // back to a count for anything missing here rather than showing a blank.
   const names = Object.fromEntries(
-    [...teams, ...projects, ...apps].map((n) => [n.id, n.name]),
+    [...teams, ...projects, ...folders, ...apps].map((n) => [n.id, n.name]),
   );
 
   return (

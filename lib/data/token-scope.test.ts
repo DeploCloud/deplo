@@ -61,6 +61,7 @@ const grant = (over: Partial<TokenGrant> = {}): TokenGrant => ({
     teamIds: [TEAM_A],
     wholeTeamIds: [],
     projectIds: [PRC_IN],
+    folderIds: [],
     appIds: [],
     appProjectIds: [],
   },
@@ -185,7 +186,7 @@ test("projects, environments and folders follow the same scope", async () => {
       "prj_in",
     ]);
     assert.deepEqual(await listEnvironmentsForProject(PRC_OUT), []);
-    // A folder never lives inside a Project, so a scoped token has none.
+    // This fixture files nothing in a folder, so the project scope reaches none.
     assert.deepEqual(await listFolders(), []);
   });
 });
@@ -205,6 +206,7 @@ test("a scope with no projects left reaches nothing at all", async () => {
         teamIds: [TEAM_A],
         wholeTeamIds: [],
         projectIds: [],
+        folderIds: [],
         appIds: [],
         appProjectIds: [],
       },
@@ -229,6 +231,7 @@ test("an unscoped token, and a cookie session, are both untouched", async () => 
         teamIds: [TEAM_A],
         wholeTeamIds: [TEAM_A],
         projectIds: [],
+        folderIds: [],
         appIds: [],
         appProjectIds: [],
       },

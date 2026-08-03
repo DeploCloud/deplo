@@ -121,6 +121,7 @@ const CONTROL_PLANE = [
   "api_token_capabilities",
   "api_token_teams",
   "api_token_projects",
+  "api_token_folders",
   "api_token_apps",
   "activities",
   "notification_settings",

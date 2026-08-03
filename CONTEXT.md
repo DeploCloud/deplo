@@ -104,8 +104,10 @@ resolves to, computed
 live on every request, so revoking a person's access blunts every token they minted. Two
 orthogonal switches ride alongside: a **scope** and an opt-in **instance-admin** bit (only an
 instance admin can grant it; mutually exclusive with a scope). The scope is a TREE — whole
-**Teams**, whole **Projects**, or individual **Apps**, ticked at whatever depth fits, and
-nothing ticked means every team its creator belongs to. Breadth and depth are different
+**Teams**, whole **Projects**, whole **Folders** (subfolders included), or individual **Apps**,
+ticked at whatever depth fits, and nothing ticked means every team its creator belongs to. A
+folder's subtree is expanded at authentication time, never stored, so moving or nesting one
+takes effect on the next request; a Project scope also covers the folders filed under it. Breadth and depth are different
 questions: holding several whole teams restricts nothing inside them, while naming a project or
 an app narrows the token in that team and drops every team-wide capability it holds there. A
 bearer request acts in ONE of the token's teams, picked with the `X-Deplo-Team` header and

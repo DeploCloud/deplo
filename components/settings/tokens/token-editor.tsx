@@ -40,7 +40,11 @@ import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
 import { sameCapabilities } from "@/lib/membership-shared";
 import type { TokenPreset } from "@/lib/token-presets";
-import type { ApiTokenDTO, ScopeTreeTeam } from "@/lib/data/tokens";
+import type {
+  ApiTokenDTO,
+  ScopeTreeFolder,
+  ScopeTreeTeam,
+} from "@/lib/data/tokens";
 
 /**
  * The API-token editor: a full-width page, reached from the token LIST.
@@ -86,6 +90,7 @@ export function TokenEditor({
       scope: {
         teamIds: token?.teamIds ?? [],
         projectIds: token?.projectIds ?? [],
+        folderIds: token?.folderIds ?? [],
         appIds: token?.appIds ?? [],
       } as ScopeSelection,
       instanceAdmin: token?.instanceAdmin ?? false,
@@ -102,7 +107,10 @@ export function TokenEditor({
 
   const readOnly = !canManage;
   const picked =
-    scope.teamIds.length + scope.projectIds.length + scope.appIds.length;
+    scope.teamIds.length +
+    scope.projectIds.length +
+    scope.folderIds.length +
+    scope.appIds.length;
   const scoped = picked > 0;
   const granted = caps.filter((c) => c !== "view").length;
   const sensitive = caps.filter((c) => CAPABILITY_META[c].sensitive).length;
@@ -116,7 +124,13 @@ export function TokenEditor({
   // UI never lets them disagree: narrowing the scope turns the bit off rather
   // than leaving a switch on screen that would be ignored.
   function changeScope(next: ScopeSelection) {
-    if (next.teamIds.length + next.projectIds.length + next.appIds.length > 0)
+    if (
+      next.teamIds.length +
+        next.projectIds.length +
+        next.folderIds.length +
+        next.appIds.length >
+      0
+    )
       setInstanceAdmin(false);
     setScope(next);
   }
@@ -131,6 +145,7 @@ export function TokenEditor({
       capabilities: caps,
       teamIds: scope.teamIds,
       projectIds: scope.projectIds,
+      folderIds: scope.folderIds,
       appIds: scope.appIds,
       instanceAdmin,
     };
@@ -454,6 +469,7 @@ function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
   return (
     eq(a.teamIds, b.teamIds) &&
     eq(a.projectIds, b.projectIds) &&
+    eq(a.folderIds, b.folderIds) &&
     eq(a.appIds, b.appIds)
   );
 }
@@ -461,28 +477,50 @@ function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
 /** One short line for the summary rail: name one node, else count them. */
 function describeScope(scope: ScopeSelection, tree: ScopeTreeTeam[]): string {
   const total =
-    scope.teamIds.length + scope.projectIds.length + scope.appIds.length;
+    scope.teamIds.length +
+    scope.projectIds.length +
+    scope.folderIds.length +
+    scope.appIds.length;
   if (total === 0) return "Everything I can access";
   if (total === 1) {
-    const [teamId] = scope.teamIds;
-    if (teamId) return tree.find((t) => t.id === teamId)?.name ?? "1 team";
-    const [projectId] = scope.projectIds;
-    if (projectId)
-      return (
-        tree.flatMap((t) => t.projects).find((p) => p.id === projectId)?.name ??
-        "1 project"
-      );
-    const [appId] = scope.appIds;
-    return (
-      tree
-        .flatMap((t) => [...t.projects.flatMap((p) => p.apps), ...t.looseApps])
-        .find((a) => a.id === appId)?.name ?? "1 app"
-    );
+    const only =
+      scope.teamIds[0] ??
+      scope.projectIds[0] ??
+      scope.folderIds[0] ??
+      scope.appIds[0];
+    return nameOf(tree, only) ?? "1 item";
   }
   const parts: string[] = [];
-  if (scope.teamIds.length) parts.push(`${scope.teamIds.length} teams`);
-  if (scope.projectIds.length)
-    parts.push(`${scope.projectIds.length} projects`);
-  if (scope.appIds.length) parts.push(`${scope.appIds.length} apps`);
+  const n = (v: number, one: string) => `${v} ${v === 1 ? one : `${one}s`}`;
+  if (scope.teamIds.length) parts.push(n(scope.teamIds.length, "team"));
+  if (scope.projectIds.length) parts.push(n(scope.projectIds.length, "project"));
+  if (scope.folderIds.length) parts.push(n(scope.folderIds.length, "folder"));
+  if (scope.appIds.length) parts.push(n(scope.appIds.length, "app"));
   return parts.join(", ");
+}
+
+/** Find any node in the tree by id — teams, projects, folders (nested) or apps. */
+function nameOf(tree: ScopeTreeTeam[], id: string): string | null {
+  const inFolder = (f: ScopeTreeFolder): string | null => {
+    if (f.id === id) return f.name;
+    return (
+      f.apps.find((a) => a.id === id)?.name ??
+      f.folders.reduce<string | null>((hit, c) => hit ?? inFolder(c), null)
+    );
+  };
+  for (const t of tree) {
+    if (t.id === id) return t.name;
+    for (const p of t.projects) {
+      if (p.id === id) return p.name;
+      const inProject =
+        p.apps.find((a) => a.id === id)?.name ??
+        p.folders.reduce<string | null>((hit, f) => hit ?? inFolder(f), null);
+      if (inProject) return inProject;
+    }
+    const inTeam =
+      t.looseApps.find((a) => a.id === id)?.name ??
+      t.folders.reduce<string | null>((hit, f) => hit ?? inFolder(f), null);
+    if (inTeam) return inTeam;
+  }
+  return null;
 }

@@ -66,11 +66,19 @@ export interface TokenScope {
   wholeTeamIds: string[];
   /** Projects reachable wholly (every app in them, now and later). */
   projectIds: string[];
+  /**
+   * Folders reachable wholly, SUBTREE ALREADY EXPANDED — the ticked folders,
+   * every folder nested under them, and every folder filed under a ticked
+   * project. Expanded at authentication time rather than stored, so moving or
+   * nesting a folder takes effect on the next request.
+   */
+  folderIds: string[];
   /** Individually-named apps. */
   appIds: string[];
   /**
-   * The Projects that individually-named apps live in, so a token given one app
-   * can still see the container it sits in. Derived at authentication time.
+   * The Projects a scoped node lives in — the container of an individually-named
+   * app, or of a reachable folder — so a token given one app or one folder can
+   * still see where it sits. Derived at authentication time.
    */
   appProjectIds: string[];
 }
@@ -124,11 +132,11 @@ export function narrowedScope(): TokenScope | null {
 /**
  * Whether a resource filed under `projectId` is reachable by this request.
  *
- * A resource with no Project (a top-level app, a folder at the team root)
- * belongs to no project and is therefore outside every narrowed scope —
- * fail-closed, and it keeps a scope from widening the moment someone drags a
- * tile out of a project. An individually-named app makes its container visible,
- * so a token given one app can still navigate to where it lives.
+ * A resource with no Project (an app or folder at the team root) belongs to no
+ * project and is therefore outside every narrowed scope — fail-closed, and it
+ * keeps a scope from widening the moment someone drags a tile out of a project.
+ * An individually-named app or folder makes its container visible, so a token
+ * given one of them can still navigate to where it lives.
  */
 export function inProjectScope(projectId: string | null | undefined): boolean {
   const scope = narrowedScope();
@@ -140,13 +148,28 @@ export function inProjectScope(projectId: string | null | undefined): boolean {
   );
 }
 
-/** Whether an app row is reachable — by its own id, or by its project. */
+/** Whether a Folder is reachable — its subtree is already expanded into the scope. */
+export function inFolderScope(folderId: string | null | undefined): boolean {
+  const scope = narrowedScope();
+  if (!scope) return true;
+  return folderId != null && scope.folderIds.includes(folderId);
+}
+
+/**
+ * Whether an app row is reachable — by its own id, by its folder, or by its
+ * project. An app lives in exactly ONE of those places (filing it into a folder
+ * clears its project link), so the three are alternatives, not a hierarchy to
+ * walk here: the folder subtree and the project's folders were flattened into
+ * `folderIds` when the token authenticated.
+ */
 export function inAppScope(app: {
   id: string;
   projectId?: string | null;
+  folderId?: string | null;
 }): boolean {
   const scope = narrowedScope();
   if (!scope) return true;
   if (scope.appIds.includes(app.id)) return true;
+  if (app.folderId != null && scope.folderIds.includes(app.folderId)) return true;
   return app.projectId != null && scope.projectIds.includes(app.projectId);
 }

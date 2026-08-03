@@ -1576,9 +1576,11 @@ export const apiTokenCapabilities = pgTable(
 );
 
 /**
- * What a token may REACH, as three junctions — one per level of the tree the
- * editor shows: whole Teams, whole Projects, individual Apps. A row means "this
- * node, and everything under it".
+ * What a token may REACH, as four junctions — one per level of the tree the
+ * editor shows: whole Teams, whole Projects, whole Folders, individual Apps. A
+ * row means "this node, and everything under it", and a Folder's subtree (its
+ * nested folders and their apps) is expanded at authentication time rather than
+ * stored, so moving or nesting a folder takes effect immediately.
  *
  * Read together with `api_tokens.scoped`: the flag says whether a scope exists at
  * all, these rows say what is in it. Every FK CASCADEs, so a deleted node simply
@@ -1619,6 +1621,22 @@ export const apiTokenProjects = pgTable(
   (t) => [
     primaryKey({ columns: [t.tokenId, t.projectId] }),
     index("api_token_projects_project_idx").on(t.projectId),
+  ],
+);
+
+export const apiTokenFolders = pgTable(
+  "api_token_folders",
+  {
+    tokenId: text("token_id")
+      .notNull()
+      .references(() => apiTokens.id, { onDelete: "cascade" }),
+    folderId: text("folder_id")
+      .notNull()
+      .references(() => folders.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tokenId, t.folderId] }),
+    index("api_token_folders_folder_idx").on(t.folderId),
   ],
 );
 
