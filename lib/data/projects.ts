@@ -22,7 +22,7 @@ import {
   isInstanceAdmin,
 } from "../membership";
 import { recordActivity } from "./activity";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import { requireAppCapability } from "./node-access";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
 import { inProjectScope } from "../auth/request-context";
@@ -457,7 +457,7 @@ export async function moveAppToProject(
   appId: string,
   projectId: string | null,
 ): Promise<void> {
-  const { teamId } = await requireCapability("move_apps");
+  const { teamId } = await requireAppCapability(appId, "move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const s = (
     await getDb()
@@ -467,10 +467,6 @@ export async function moveAppToProject(
       .limit(1)
   )[0];
   if (!s) throw new Error("App not found");
-  // Entering a project also pulls the app out of any folder (one home only) —
-  // that eviction needs `deploy` on the source folder too, same as
-  // moveAppToFolder. A no-op for a top-level app.
-  await requireFolderCapabilityForApp(appId, "move_apps");
   if ((s.projectId ?? null) === projectId) return;
   let msg: string;
   let environmentId: string | null = null;
@@ -512,7 +508,7 @@ export async function moveAppToEnvironment(
   appId: string,
   environmentId: string,
 ): Promise<void> {
-  const { teamId } = await requireCapability("move_apps");
+  const { teamId } = await requireAppCapability(appId, "move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const s = (
     await getDb()
@@ -526,10 +522,6 @@ export async function moveAppToEnvironment(
       .limit(1)
   )[0];
   if (!s) throw new Error("App not found");
-  // Entering an environment also leaves any folder — that eviction needs
-  // `deploy` on the source folder too, same as moveAppToFolder. A no-op for a
-  // top-level app.
-  await requireFolderCapabilityForApp(appId, "move_apps");
   if ((s.environmentId ?? null) === environmentId) return;
   const env = (
     await getDb()

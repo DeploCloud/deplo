@@ -5,14 +5,20 @@ import { cookies } from "next/headers";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./db/client";
 import {
+  appGrants as appGrantsTable,
+  apps as appsTable,
+  folderGrants as folderGrantsTable,
+  folders as foldersTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
+  projectGrants as projectGrantsTable,
+  projects as projectsTable,
   teamRoles as teamRolesTable,
   teams as teamsTable,
   users as usersTable,
 } from "./db/schema/control-plane";
 import { assertUser, getCurrentUser } from "./auth";
-import type { Capability, Membership, Team } from "./types";
+import { ALL_CAPABILITIES, type Capability, type Membership, type Team } from "./types";
 import {
   CAPABILITY_META,
   PROJECT_SCOPED_CAPABILITIES,
@@ -370,6 +376,67 @@ export async function currentCapabilities(): Promise<Capability[]> {
   const teamId = await getActiveTeamId();
   if (!teamId) return [];
   return (await membershipFor(user.id, teamId))?.capabilities ?? [];
+}
+
+/**
+ * Everything the current user could do SOMEWHERE in the active team: their role's
+ * set, plus every capability any node grant hands them (ADR-0016).
+ *
+ * This is deliberately WIDER than the truth at any one place, and it must only be
+ * used where being wider is the correct answer — showing a nav item or a tab that
+ * is useful for at least one app, and the GraphQL `authScopes` pre-check, which
+ * `lib/graphql/context.ts` has always documented as a convenience snapshot rather
+ * than the boundary. The boundary is `requireAppCapability`, which asks about one
+ * specific app and is the only thing that may decide a mutation.
+ *
+ * Three cheap DISTINCT lookups, each already narrowed to this user and team.
+ */
+export async function reachableCapabilities(): Promise<Capability[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  const teamId = await getActiveTeamId();
+  if (!teamId) return [];
+  const own = (await membershipFor(user.id, teamId))?.capabilities ?? [];
+  if (own.length === 0) return [];
+
+  const db = getDb();
+  const [fromApps, fromFolders, fromProjects] = await Promise.all([
+    db
+      .selectDistinct({ capability: appGrantsTable.capability })
+      .from(appGrantsTable)
+      .innerJoin(appsTable, eq(appsTable.id, appGrantsTable.appId))
+      .where(and(eq(appGrantsTable.userId, user.id), eq(appsTable.teamId, teamId))),
+    db
+      .selectDistinct({ capability: folderGrantsTable.capability })
+      .from(folderGrantsTable)
+      .innerJoin(foldersTable, eq(foldersTable.id, folderGrantsTable.folderId))
+      .where(
+        and(eq(folderGrantsTable.userId, user.id), eq(foldersTable.teamId, teamId)),
+      ),
+    db
+      .selectDistinct({ capability: projectGrantsTable.capability })
+      .from(projectGrantsTable)
+      .innerJoin(projectsTable, eq(projectsTable.id, projectGrantsTable.projectId))
+      .where(
+        and(eq(projectGrantsTable.userId, user.id), eq(projectsTable.teamId, teamId)),
+      ),
+  ]);
+  const granted = [...fromApps, ...fromFolders, ...fromProjects].map(
+    (r) => r.capability as Capability,
+  );
+  if (granted.length === 0) return own;
+  // A grant bypasses `membershipFor`, so the token clamp has to be applied here
+  // too — the same reason `lib/data/node-access.ts` ends with it.
+  const union = new Set<Capability>([
+    ...own,
+    ...clampToToken(granted, user.id, teamId),
+  ]);
+  return ALL_CAPABILITIES.filter((c) => union.has(c));
+}
+
+/** True if the user holds `cap` anywhere in the active team. See the caveat above. */
+export async function hasCapabilityAnywhere(cap: Capability): Promise<boolean> {
+  return (await reachableCapabilities()).includes(cap);
 }
 
 /**

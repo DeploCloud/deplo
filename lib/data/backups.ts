@@ -19,10 +19,14 @@ import {
 } from "./backup-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import {
+  requireActiveTeamId,
+  requireCapability,
+  requireMembership,
+} from "../membership";
 import { recordActivity } from "./activity";
 import { narrowedScope } from "../auth/request-context";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import { requireAppCapability } from "./node-access";
 import {
   loadAppGraph,
   loadTeamApp,
@@ -213,7 +217,12 @@ export async function createBackup(input: {
   schedule: string;
   retentionDays: number;
 }): Promise<BackupDTO> {
-  const { membership } = await requireCapability("manage_backups");
+  // The capability is asked ONCE, on the right thing: a database target has no
+  // node dimension and stays team-gated, an app target answers to its own node.
+  const { membership } =
+    (input.targetKind ?? "database") === "app" && input.appId
+      ? await requireAppCapability(input.appId, "manage_backups")
+      : await requireCapability("manage_backups");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   if (!input.name.trim()) throw new Error("Name is required");
@@ -236,9 +245,6 @@ export async function createBackup(input: {
     if (!appId) throw new Error("Select a project to back up");
     if (!(await loadTeamApp(appId, teamId)))
       throw new Error("App not found");
-    // Folder-scope: backing up a project inside a folder needs manage_infra on
-    // that folder too, not just at the team level.
-    await requireFolderCapabilityForApp(appId, "manage_backups");
   }
 
   const b: Backup = {
@@ -683,16 +689,30 @@ async function loadRunsForTarget(
 /* Public entry points                                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Gate a backup operation on its TARGET. An app target answers to its own node —
+ * `manage_backups` / `restore_backups` can be held on one app or folder alone
+ * (ADR-0016) — while a database target has no node dimension and stays team-wide.
+ */
+async function requireBackupCapability(
+  target: { targetKind: BackupTargetKind; appId: string | null },
+  cap: "manage_backups" | "restore_backups",
+): Promise<void> {
+  if (target.targetKind === "app" && target.appId) {
+    await requireAppCapability(target.appId, cap);
+    return;
+  }
+  await requireCapability(cap);
+}
+
 /** Run a backup SCHEDULE now (manual "Run now"). Real dump + upload + history. */
 export async function runBackup(id: string): Promise<void> {
-  const { membership } = await requireCapability("manage_backups");
+  const { membership } = await requireMembership();
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   const b = await loadBackup(id, teamId);
   if (!b) throw new Error("Not found");
-  // A project-target schedule additionally requires folder access to its project.
-  if (b.targetKind === "app" && b.appId)
-    await requireFolderCapabilityForApp(b.appId, "manage_backups");
+  await requireBackupCapability(b, "manage_backups");
   await executeBackup(teamId, user.name, {
     backupId: b.id,
     kind: b.targetKind,
@@ -753,13 +773,11 @@ export async function runAppBackup(
   destinationId: string,
   retentionDays = 7,
 ): Promise<BackupRun> {
-  const { membership } = await requireCapability("manage_backups");
+  const { membership } = await requireAppCapability(appId, "manage_backups");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   if (!(await loadTeamApp(appId, teamId)))
     throw new Error("App not found");
-  // Folder-scope the ad-hoc project backup, matching the scheduled path.
-  await requireFolderCapabilityForApp(appId, "manage_backups");
   if (!(await destinationExists(destinationId, teamId)))
     throw new Error("Select a destination");
   return executeBackup(teamId, user.name, {
@@ -780,7 +798,7 @@ export async function runAppBackup(
  * UI adds a typed confirmation (Step 5). Throws on a failed restore.
  */
 export async function restoreBackup(runId: string): Promise<void> {
-  const { membership } = await requireCapability("restore_backups");
+  const { membership } = await requireMembership();
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
 
@@ -793,10 +811,9 @@ export async function restoreBackup(runId: string): Promise<void> {
   const run = assembleBackupRun(runRows[0]);
   if (run.status !== "success")
     throw new Error("This backup did not complete successfully and cannot be restored");
-  // Restoring INTO a project inside a folder needs manage_infra on that folder —
-  // restore is destructive (stop → wipe → untar), so it's gated like the backup.
-  if (run.targetKind === "app" && run.appId)
-    await requireFolderCapabilityForApp(run.appId, "restore_backups");
+  // Restore is destructive (stop → wipe → untar), so it is gated exactly like the
+  // backup it replays — on the run's own target.
+  await requireBackupCapability(run, "restore_backups");
 
   const creds = await getS3WithSecretsForTeam(teamId, run.destinationId);
   const target = await resolveTarget(
@@ -876,12 +893,11 @@ export async function toggleBackup(
   id: string,
   enabled: boolean,
 ): Promise<void> {
-  const teamId = (await requireCapability("manage_backups")).teamId;
-  // Load first so a project-target schedule can be folder-scoped before the write.
+  const teamId = await requireActiveTeamId();
+  // Load first so the gate can be asked about the target, not just the team.
   const b = await loadBackup(id, teamId);
   if (!b) throw new Error("Not found");
-  if (b.targetKind === "app" && b.appId)
-    await requireFolderCapabilityForApp(b.appId, "manage_backups");
+  await requireBackupCapability(b, "manage_backups");
   await getDb()
     .update(backupsTable)
     .set({ enabled })
@@ -904,7 +920,7 @@ export async function updateBackup(
     retentionDays: number;
   },
 ): Promise<BackupDTO> {
-  const { membership } = await requireCapability("manage_backups");
+  const { membership } = await requireMembership();
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   if (!input.name.trim()) throw new Error("Name is required");
@@ -915,11 +931,9 @@ export async function updateBackup(
   if (!(await destinationExists(input.destinationId, teamId)))
     throw new Error("Select a destination");
 
-  // A project-target schedule may only be edited by someone with folder access.
   const cur = await loadBackup(id, teamId);
   if (!cur) throw new Error("Not found");
-  if (cur.targetKind === "app" && cur.appId)
-    await requireFolderCapabilityForApp(cur.appId, "manage_backups");
+  await requireBackupCapability(cur, "manage_backups");
 
   const updated = await getDb()
     .update(backupsTable)
@@ -944,12 +958,10 @@ export async function updateBackup(
 }
 
 export async function deleteBackup(id: string): Promise<void> {
-  const teamId = (await requireCapability("manage_backups")).teamId;
-  // Deleting a project-target schedule requires folder access to its project.
+  const teamId = await requireActiveTeamId();
   const b = await loadBackup(id, teamId);
   if (!b) throw new Error("Not found");
-  if (b.targetKind === "app" && b.appId)
-    await requireFolderCapabilityForApp(b.appId, "manage_backups");
+  await requireBackupCapability(b, "manage_backups");
   await getDb()
     .delete(backupsTable)
     .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)));
@@ -1100,15 +1112,10 @@ export async function deleteAllBackupArtifacts(input: {
   // Gate on the same capability the target's own deletion requires, enforced in
   // the data layer (the real gate) rather than relying on a single static
   // GraphQL authScope that can't vary by kind.
-  const { teamId } = await requireCapability(
-    input.kind === "database" ? "manage_backups" : "delete_apps",
-  );
-  // Folder-scope the project branch like every sibling backup op: wiping a
-  // project's artifacts inside a folder needs `deploy` on that folder too.
-  // (A no-op for a missing/foreign id — the team-scoped server lookup below
-  // stays the authority on existence.)
-  if (input.kind === "app")
-    await requireFolderCapabilityForApp(input.targetId, "delete_apps");
+  const { teamId } =
+    input.kind === "app"
+      ? await requireAppCapability(input.targetId, "delete_apps")
+      : await requireCapability("manage_backups");
   // Resolve the owning server straight off the target row — no agent round-trip
   // (a project's full descriptor needs `readStack`, which we don't need just to
   // delete objects). A missing/foreign row yields no server and nothing to do.

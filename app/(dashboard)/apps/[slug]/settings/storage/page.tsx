@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { HardDrive } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
-import { canMountHostVolumes, hasCapability } from "@/lib/membership";
+import { canMountHostVolumes } from "@/lib/membership";
+import { hasAppCapability } from "@/lib/data/node-access";
 import { containerWorkdir } from "@/lib/apps/volume-model";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { StorageSettingsForm } from "@/components/apps/settings/storage-settings-form";
@@ -40,7 +41,7 @@ export default async function AppStorageSettingsPage(
   // `manage_files` capability. Cosmetic here (the query and the mutation are
   // both gated server-side); it lets the editor say why the box is closed
   // instead of failing on save.
-  const mayEditFiles = await hasCapability("write_app_files");
+  const mayEditFiles = await hasAppCapability(project.id, "write_app_files");
 
   return (
     <section className="space-y-4">

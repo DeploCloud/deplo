@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
-import { hasCapability } from "@/lib/membership";
+import { hasAppCapability } from "@/lib/data/node-access";
 import { listBackups, listBackupRuns } from "@/lib/data/backups";
 import { listS3, toDestinationOption } from "@/lib/data/s3";
 import { AppBackups } from "@/components/apps/app-backups";
@@ -17,9 +17,10 @@ export default async function AppBackupsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  // Backup/restore are infra ops (overwrite-in-place); gate on manage_backups. The
-  // tab is hidden without it, but guard the page too against a direct link.
-  if (!(await hasCapability("manage_backups"))) {
+  // Backup/restore are infra ops (overwrite-in-place); gate on manage_backups ON
+  // THIS APP, which can be held here and nowhere else (ADR-0016). The tab is
+  // hidden without it, but guard the page too against a direct link.
+  if (!(await hasAppCapability(project.id, "manage_backups"))) {
     return (
       <EmptyState
         icon={Lock}

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getCurrentUser } from "@/lib/auth";
-import { currentCapabilities, getActiveTeamId } from "@/lib/membership";
+import { getActiveTeamId, reachableCapabilities } from "@/lib/membership";
 import { authenticateToken } from "@/lib/data/tokens";
 import { runWithIdentity, type RequestIdentity } from "@/lib/auth/request-context";
 import type { Capability, PublicUser } from "@/lib/types";
@@ -12,6 +12,13 @@ import type { Capability, PublicUser } from "@/lib/types";
  * the scope-auth layer can read them synchronously; the underlying data
  * functions still re-derive identity (they call getCurrentUser/getActiveTeamId
  * themselves), so this is a convenience snapshot, not the security boundary.
+ *
+ * `capabilities` is `reachableCapabilities()` — the role's set UNION everything a
+ * node grant hands them somewhere in the team (ADR-0016). It has to be the union,
+ * because a field's `authScopes` runs BEFORE the resolver and would otherwise
+ * refuse someone who legitimately holds the capability on one app; and it is safe
+ * to be that wide precisely because it was never the boundary. The boundary is
+ * `requireAppCapability` inside the data function, which asks about one app.
  */
 export interface GraphQLContext {
   viewer: PublicUser | null;
@@ -64,7 +71,7 @@ export async function buildContext(
     return runWithIdentity(identity, async () => {
       const viewer = await getCurrentUser();
       const teamId = await getActiveTeamId();
-      const capabilities = await currentCapabilities();
+      const capabilities = await reachableCapabilities();
       return { viewer, teamId, capabilities, via: "token" as const, identity };
     });
   }
@@ -72,7 +79,7 @@ export async function buildContext(
   // Cookie path — same-origin browser. No override needed.
   const viewer = await getCurrentUser();
   const teamId = await getActiveTeamId();
-  const capabilities = await currentCapabilities();
+  const capabilities = await reachableCapabilities();
   return {
     viewer,
     teamId,

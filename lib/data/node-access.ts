@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -52,9 +52,15 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
  *    Project or an App is as visible as it always was, so a grant on one is a
  *    capability override and nothing more.
  *
- * The set a grant may name is bounded to {@link NODE_GRANTABLE_CAPABILITIES} at
- * every write site, which is what stops a node from becoming a route back to
- * team administration.
+ * The set a grant may name is bounded to `NODE_GRANTABLE_CAPABILITIES` at every
+ * write site, which is what stops a node from becoming a route back to team
+ * administration.
+ *
+ * Everything below resolves through ONE {@link GrantIndex} — every folder, grant
+ * and ownership row for a (user, team) pair, loaded in a fixed five queries. A
+ * single node builds a small index; a whole page's worth of apps builds one and
+ * answers them all in memory, so the global Variables tab is five queries and not
+ * five per app.
  */
 
 /** The three things a capability set can be attached to. */
@@ -63,24 +69,33 @@ export type NodeRef =
   | { kind: "folder"; id: string }
   | { kind: "project"; id: string };
 
-/**
- * One rung of the precedence ladder, most specific first. `owner` means the user
- * owns this node, which resolves to their whole base set (an owner is not a
- * grantee and holds no grant rows).
- */
-interface Rung {
-  kind: NodeRef["kind"];
+/** An app as the resolver needs it — the two columns that place it. */
+export interface AppPlacement {
   id: string;
-  owner: boolean;
-  grants: Capability[];
+  folderId: string | null;
+  projectId: string | null;
 }
 
-/** The resolved shape of a node: which team owns it, and its ancestor ladder. */
-interface Chain {
+/**
+ * Every row the precedence ladder can consult for one (user, team) pair. Built
+ * once, read many times — the batch and single-node paths share it, so there is
+ * exactly one implementation of the precedence rules.
+ */
+interface GrantIndex {
   teamId: string;
-  rungs: Rung[];
-  /** True when at least one folder is involved (folders carry the privacy rule). */
-  hasFolder: boolean;
+  userId: string;
+  /** The member's base capabilities (already token-clamped by `membershipFor`). */
+  base: Capability[];
+  /** Instance admin or `manage_team`: their base set applies to every node. */
+  superUser: boolean;
+  folders: Map<
+    string,
+    { parentId: string | null; projectId: string | null; ownerUserId: string | null }
+  >;
+  projectOwners: Map<string, string | null>;
+  folderGrants: Map<string, Capability[]>;
+  projectGrants: Map<string, Capability[]>;
+  appGrants: Map<string, Capability[]>;
 }
 
 /**
@@ -94,196 +109,208 @@ export function withView(caps: Capability[]): Capability[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Chain building                                                      */
+/* The index                                                           */
 /* ------------------------------------------------------------------ */
 
-/** Every folder in a team, keyed by id — one query, walked in memory. */
-async function teamFolders(teamId: string): Promise<
-  Map<string, { parentId: string | null; projectId: string | null; ownerUserId: string | null }>
-> {
-  const rows = await getDb()
-    .select({
-      id: foldersTable.id,
-      parentId: foldersTable.parentId,
-      projectId: foldersTable.projectId,
-      ownerUserId: foldersTable.ownerUserId,
-    })
-    .from(foldersTable)
-    .where(eq(foldersTable.teamId, teamId));
-  return new Map(
-    rows.map((r) => [
-      r.id,
-      {
-        parentId: r.parentId ?? null,
-        projectId: r.projectId ?? null,
-        ownerUserId: r.ownerUserId ?? null,
-      },
-    ]),
-  );
+/** Group `(key, capability)` rows into a map. */
+function groupCaps<T extends { key: string; capability: string }>(
+  rows: T[],
+): Map<string, Capability[]> {
+  const out = new Map<string, Capability[]>();
+  for (const r of rows) {
+    const list = out.get(r.key) ?? [];
+    list.push(r.capability as Capability);
+    out.set(r.key, list);
+  }
+  return out;
 }
 
 /**
- * The node's team plus its ancestor ladder, most specific first, with each rung's
- * ownership and grant rows filled in. Returns null when the node doesn't exist.
- *
- * The parent walk is cycle-safe (a `seen` set): `folders.parent_id` is a
- * self-reference with no database-level acyclicity guarantee, and a resolver that
- * hangs is a worse outage than one that stops early.
+ * Build the index. `null` when the user can't act in this team at all — not a
+ * member and not an instance admin, which is the first and last word on access.
  */
-async function buildChain(
+async function buildIndex(
   userId: string,
-  node: NodeRef,
-): Promise<Chain | null> {
+  teamId: string,
+  admin: boolean,
+): Promise<GrantIndex | null> {
+  // THE gate, first and always: membership existence carries the 2FA policy and
+  // the "are they still in this team" question, and nothing below survives it.
+  const membership = await membershipFor(userId, teamId);
+  const base = membership?.capabilities ?? [];
+  if (!admin && base.length === 0) return null;
+
   const db = getDb();
-
-  let teamId: string;
-  let appId: string | null = null;
-  let folderId: string | null = null;
-  let projectId: string | null = null;
-
-  if (node.kind === "app") {
-    const rows = await db
+  const [folderRows, projectRows, fGrants, pGrants, aGrants] = await Promise.all([
+    db
       .select({
-        teamId: appsTable.teamId,
-        folderId: appsTable.folderId,
-        projectId: appsTable.projectId,
+        id: foldersTable.id,
+        parentId: foldersTable.parentId,
+        projectId: foldersTable.projectId,
+        ownerUserId: foldersTable.ownerUserId,
       })
-      .from(appsTable)
-      .where(eq(appsTable.id, node.id))
-      .limit(1);
-    if (!rows[0]) return null;
-    teamId = rows[0].teamId;
-    appId = node.id;
-    folderId = rows[0].folderId ?? null;
-    projectId = rows[0].projectId ?? null;
-  } else if (node.kind === "folder") {
-    const rows = await db
-      .select({ teamId: foldersTable.teamId })
       .from(foldersTable)
-      .where(eq(foldersTable.id, node.id))
-      .limit(1);
-    if (!rows[0]) return null;
-    teamId = rows[0].teamId;
-    folderId = node.id;
-  } else {
-    const rows = await db
-      .select({ teamId: projectsTable.teamId })
+      .where(eq(foldersTable.teamId, teamId)),
+    db
+      .select({ id: projectsTable.id, ownerUserId: projectsTable.ownerUserId })
       .from(projectsTable)
-      .where(eq(projectsTable.id, node.id))
-      .limit(1);
-    if (!rows[0]) return null;
-    teamId = rows[0].teamId;
-    projectId = node.id;
-  }
-
-  // Walk the folder chain, nearest first. A folder's own `project_id` wins over
-  // the app's: filing an app into a folder CLEARS its `project_id`, so the folder
-  // is the only thing that still knows which container it belongs to.
-  const folderIds: string[] = [];
-  const folderOwners = new Map<string, string | null>();
-  if (folderId) {
-    const all = await teamFolders(teamId);
-    const seen = new Set<string>();
-    let cursor: string | null = folderId;
-    while (cursor && !seen.has(cursor)) {
-      seen.add(cursor);
-      const f = all.get(cursor);
-      if (!f) break;
-      folderIds.push(cursor);
-      folderOwners.set(cursor, f.ownerUserId);
-      if (!projectId && f.projectId) projectId = f.projectId;
-      cursor = f.parentId;
-    }
-  }
-
-  // Three grant lookups, each already narrowed to this user.
-  const [appRows, folderRows, projectRows] = await Promise.all([
-    appId
-      ? db
-          .select({ capability: appGrantsTable.capability })
-          .from(appGrantsTable)
-          .where(
-            and(
-              eq(appGrantsTable.appId, appId),
-              eq(appGrantsTable.userId, userId),
-            ),
-          )
-      : Promise.resolve([]),
-    folderIds.length
-      ? db
-          .select({
-            folderId: folderGrantsTable.folderId,
-            capability: folderGrantsTable.capability,
-          })
-          .from(folderGrantsTable)
-          .where(
-            and(
-              inArray(folderGrantsTable.folderId, folderIds),
-              eq(folderGrantsTable.userId, userId),
-            ),
-          )
-      : Promise.resolve([]),
-    projectId
-      ? db
-          .select({ capability: projectGrantsTable.capability })
-          .from(projectGrantsTable)
-          .where(
-            and(
-              eq(projectGrantsTable.projectId, projectId),
-              eq(projectGrantsTable.userId, userId),
-            ),
-          )
-      : Promise.resolve([]),
+      .where(eq(projectsTable.teamId, teamId)),
+    db
+      .select({
+        key: folderGrantsTable.folderId,
+        capability: folderGrantsTable.capability,
+      })
+      .from(folderGrantsTable)
+      .innerJoin(foldersTable, eq(foldersTable.id, folderGrantsTable.folderId))
+      .where(
+        and(eq(folderGrantsTable.userId, userId), eq(foldersTable.teamId, teamId)),
+      ),
+    db
+      .select({
+        key: projectGrantsTable.projectId,
+        capability: projectGrantsTable.capability,
+      })
+      .from(projectGrantsTable)
+      .innerJoin(projectsTable, eq(projectsTable.id, projectGrantsTable.projectId))
+      .where(
+        and(eq(projectGrantsTable.userId, userId), eq(projectsTable.teamId, teamId)),
+      ),
+    db
+      .select({ key: appGrantsTable.appId, capability: appGrantsTable.capability })
+      .from(appGrantsTable)
+      .innerJoin(appsTable, eq(appsTable.id, appGrantsTable.appId))
+      .where(and(eq(appGrantsTable.userId, userId), eq(appsTable.teamId, teamId))),
   ]);
 
-  const byFolder = new Map<string, Capability[]>();
-  for (const r of folderRows) {
-    const list = byFolder.get(r.folderId) ?? [];
-    list.push(r.capability as Capability);
-    byFolder.set(r.folderId, list);
-  }
+  return {
+    teamId,
+    userId,
+    base,
+    superUser: admin || base.includes("manage_team"),
+    folders: new Map(
+      folderRows.map((f) => [
+        f.id,
+        {
+          parentId: f.parentId ?? null,
+          projectId: f.projectId ?? null,
+          ownerUserId: f.ownerUserId ?? null,
+        },
+      ]),
+    ),
+    projectOwners: new Map(projectRows.map((p) => [p.id, p.ownerUserId ?? null])),
+    folderGrants: groupCaps(fGrants),
+    projectGrants: groupCaps(pGrants),
+    appGrants: groupCaps(aGrants),
+  };
+}
 
-  const rungs: Rung[] = [];
-  if (appId) {
+/** The team that owns a node, or null when it doesn't exist. */
+async function teamOf(node: NodeRef): Promise<string | null> {
+  const db = getDb();
+  const table =
+    node.kind === "app"
+      ? appsTable
+      : node.kind === "folder"
+        ? foldersTable
+        : projectsTable;
+  const rows = await db
+    .select({ teamId: table.teamId })
+    .from(table)
+    .where(eq(table.id, node.id))
+    .limit(1);
+  return rows[0]?.teamId ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Resolution (one implementation, shared by every caller)             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The ancestor ladder for a node, most specific first: the app itself, then its
+ * folder chain, then the Project container. Cycle-safe — `folders.parent_id` is a
+ * self-reference with no acyclicity guarantee, and a resolver that hangs is a
+ * worse outage than one that stops early.
+ */
+function ladder(
+  index: GrantIndex,
+  node: { kind: NodeRef["kind"]; id: string; folderId?: string | null; projectId?: string | null },
+): { kind: NodeRef["kind"]; id: string; owner: boolean; grants: Capability[] }[] {
+  const rungs: { kind: NodeRef["kind"]; id: string; owner: boolean; grants: Capability[] }[] = [];
+  let projectId = node.projectId ?? null;
+
+  if (node.kind === "app") {
     rungs.push({
       kind: "app",
-      id: appId,
+      id: node.id,
       owner: false, // an App has no owner column
-      grants: appRows.map((r) => r.capability as Capability),
+      grants: index.appGrants.get(node.id) ?? [],
     });
   }
-  for (const id of folderIds) {
+
+  // A folder's own `project_id` wins over the app's: filing an app into a folder
+  // CLEARS its `project_id`, so the folder is the only thing that still knows
+  // which container it belongs to.
+  const start = node.kind === "folder" ? node.id : (node.folderId ?? null);
+  const seen = new Set<string>();
+  let cursor: string | null = start;
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    const f = index.folders.get(cursor);
+    if (!f) break;
     rungs.push({
       kind: "folder",
-      id,
-      owner: folderOwners.get(id) === userId,
-      grants: byFolder.get(id) ?? [],
+      id: cursor,
+      owner: f.ownerUserId === index.userId,
+      grants: index.folderGrants.get(cursor) ?? [],
     });
+    if (!projectId && f.projectId) projectId = f.projectId;
+    cursor = f.parentId;
   }
-  if (projectId) {
-    const owner = await projectOwnedBy(projectId, userId);
+
+  if (node.kind === "project") projectId = node.id;
+  if (projectId && index.projectOwners.has(projectId)) {
     rungs.push({
       kind: "project",
       id: projectId,
-      owner,
-      grants: projectRows.map((r) => r.capability as Capability),
+      owner: index.projectOwners.get(projectId) === index.userId,
+      grants: index.projectGrants.get(projectId) ?? [],
     });
   }
-
-  return { teamId, rungs, hasFolder: folderIds.length > 0 };
+  return rungs;
 }
 
-/** True when `userId` owns the Project container. */
-async function projectOwnedBy(
-  projectId: string,
-  userId: string,
-): Promise<boolean> {
-  const rows = await getDb()
-    .select({ ownerUserId: projectsTable.ownerUserId })
-    .from(projectsTable)
-    .where(eq(projectsTable.id, projectId))
-    .limit(1);
-  return rows[0]?.ownerUserId === userId;
+/** Walk the ladder. See the module docblock for the rules it implements. */
+function resolveFrom(
+  index: GrantIndex,
+  node: { kind: NodeRef["kind"]; id: string; folderId?: string | null; projectId?: string | null },
+): Capability[] {
+  const clamp = (caps: Capability[]) =>
+    withView(clampCapabilitiesToToken(caps, index.userId, index.teamId));
+
+  // Super-user: their full team set on every node, grants and folder privacy
+  // alike. An instance admin who isn't a member still administers it, with
+  // everything.
+  if (index.superUser) {
+    return clamp(index.base.length === 0 ? [...ALL_CAPABILITIES] : index.base);
+  }
+
+  const rungs = ladder(index, node);
+
+  // Folder privacy, unchanged: a folder is invisible unless you own one in the
+  // chain or hold a grant on one. A grant on an ancestor reaches its subtree,
+  // which is the tree the admin ticks in.
+  const folders = rungs.filter((r) => r.kind === "folder");
+  if (folders.length > 0 && !folders.some((r) => r.owner || r.grants.length > 0)) {
+    return [];
+  }
+
+  // Most-specific-wins. An owned rung resolves to the base set (an owner holds no
+  // grant rows); the first rung with grants replaces the base outright.
+  for (const rung of rungs) {
+    if (rung.owner) return clamp(index.base);
+    if (rung.grants.length > 0) return clamp(rung.grants);
+  }
+  return clamp(index.base);
 }
 
 /** The `is_instance_admin` flag as stored, for hydrating SOMEONE ELSE's access. */
@@ -297,67 +324,38 @@ async function storedInstanceAdmin(userId: string): Promise<boolean> {
 }
 
 /* ------------------------------------------------------------------ */
-/* Effective capabilities (the single source of truth)                 */
+/* Public API                                                          */
 /* ------------------------------------------------------------------ */
 
-async function resolve(
+async function resolveOne(
   userId: string,
   node: NodeRef,
   admin: boolean,
 ): Promise<Capability[]> {
-  const chain = await buildChain(userId, node);
-  if (!chain) return [];
+  const teamId = await teamOf(node);
+  if (!teamId) return [];
+  const index = await buildIndex(userId, teamId, admin);
+  if (!index) return [];
 
-  // THE gate, first and always: membership existence carries the 2FA policy and
-  // the "are they still in this team" question, and nothing below can survive it.
-  const membership = await membershipFor(userId, chain.teamId);
-  const base = membership?.capabilities ?? [];
-  if (!admin && base.length === 0) return [];
-
-  // Super-user (instance admin, or a member holding `manage_team`): their full
-  // team set on every node, grants and folder privacy alike. An instance admin
-  // who isn't a member of this team still administers it, with everything.
-  if (admin || base.includes("manage_team")) {
-    return withView(admin && base.length === 0 ? ALL_CAPABILITIES : base);
-  }
-
-  // Folder privacy, unchanged: a folder is invisible unless you own one in the
-  // chain or hold a grant on one. A grant on an ancestor reaches its subtree,
-  // which is what the scope tree the admin ticks in draws.
-  if (chain.hasFolder) {
-    const reachable = chain.rungs.some(
-      (r) => r.kind === "folder" && (r.owner || r.grants.length > 0),
-    );
-    if (!reachable) return [];
-  }
-
-  // Most-specific-wins. An owned rung resolves to the base set (an owner holds no
-  // grant rows); the first rung with grants replaces the base outright.
-  for (const rung of chain.rungs) {
-    if (rung.owner) return withView(clamp(base, userId, chain.teamId));
-    if (rung.grants.length > 0) {
-      return withView(clamp(rung.grants, userId, chain.teamId));
-    }
-  }
-  return withView(clamp(base, userId, chain.teamId));
-}
-
-/**
- * The API-token intersection, applied here because a node grant REPLACES the
- * membership set and so never passes through `membershipFor`'s own clamp. Without
- * it a CI token holding only `deploy_apps` would inherit its creator's
- * `manage_env` grant on a folder. `base` is already clamped, so re-applying it
- * there is a no-op.
- */
-function clamp(caps: Capability[], userId: string, teamId: string): Capability[] {
-  return clampCapabilitiesToToken(caps, userId, teamId);
+  if (node.kind !== "app") return resolveFrom(index, node);
+  const rows = await getDb()
+    .select({ folderId: appsTable.folderId, projectId: appsTable.projectId })
+    .from(appsTable)
+    .where(eq(appsTable.id, node.id))
+    .limit(1);
+  return resolveFrom(index, {
+    kind: "app",
+    id: node.id,
+    folderId: rows[0]?.folderId ?? null,
+    projectId: rows[0]?.projectId ?? null,
+  });
 }
 
 /** The CURRENT caller's effective capabilities on a node. `[]` ⇒ no access. */
 export async function nodeCapabilities(node: NodeRef): Promise<Capability[]> {
   const user = await getCurrentUser();
   if (!user) return [];
-  return resolve(user.id, node, await isInstanceAdmin());
+  return resolveOne(user.id, node, await isInstanceAdmin());
 }
 
 /**
@@ -371,7 +369,27 @@ export async function nodeCapabilitiesFor(
   userId: string,
   node: NodeRef,
 ): Promise<Capability[]> {
-  return resolve(userId, node, await storedInstanceAdmin(userId));
+  return resolveOne(userId, node, await storedInstanceAdmin(userId));
+}
+
+/**
+ * The caller's capabilities on MANY apps of one team at once — five queries for
+ * the whole set. For list pages that must drop the apps a member can't reach:
+ * ask this instead of looping, or a fifty-app team becomes a fifty-fold fan-out.
+ */
+export async function appCapabilitiesForTeam(
+  teamId: string,
+  apps: AppPlacement[],
+): Promise<Map<string, Capability[]>> {
+  const out = new Map<string, Capability[]>();
+  const user = await getCurrentUser();
+  if (!user || apps.length === 0) return out;
+  const index = await buildIndex(user.id, teamId, await isInstanceAdmin());
+  if (!index) return out;
+  for (const app of apps) {
+    out.set(app.id, resolveFrom(index, { kind: "app", ...app }));
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -379,15 +397,16 @@ export async function nodeCapabilitiesFor(
 /* ------------------------------------------------------------------ */
 
 /**
- * Gate a mutation on a node. Throws "not found" when the caller can't reach it at
- * all (never leak existence), else a user-facing permission error.
+ * Gate a mutation on a Folder or Project node. Throws "not found" when the caller
+ * can't reach it at all (never leak existence), else a permission error.
  */
 export async function requireNodeCapability(
   node: NodeRef,
   cap: Capability,
 ): Promise<void> {
   const caps = await nodeCapabilities(node);
-  const label = node.kind === "app" ? "App" : node.kind === "folder" ? "Folder" : "Project";
+  const label =
+    node.kind === "app" ? "App" : node.kind === "folder" ? "Folder" : "Project";
   if (caps.length === 0) throw new Error(`${label} not found`);
   if (!caps.includes(cap)) {
     throw new Error(
@@ -404,15 +423,47 @@ export async function requireNodeCapability(
  *
  * It cannot be split back into "team check, then node check": a node grant may
  * exceed the team role, so a team-level check would refuse before the node was
- * ever consulted. That is why the 71 app-shaped call sites route through here and
+ * ever consulted. That is why the app-shaped call sites route through here and
  * the team-wide ones keep `requireCapability`.
  */
 export async function requireAppCapability(
   appId: string,
   cap: Capability,
 ): Promise<ActiveMembership> {
-  const ctx = await requireMembership();
+  const gate = await appGate(appId);
+  // An app that isn't there, isn't ours, isn't in the request's token scope, or
+  // sits in a folder the caller can't see all answer the same thing — the gate is
+  // never an oracle for which ids exist.
+  if (!gate || gate.caps.length === 0) throw new Error("App not found");
+  if (!gate.caps.includes(cap)) {
+    throw new Error(
+      gate.folderId
+        ? `You don't have permission to ${CAPABILITY_META[cap].label.toLowerCase()} in this folder`
+        : `You don't have permission to ${CAPABILITY_META[cap].label.toLowerCase()}`,
+    );
+  }
+  return gate.ctx;
+}
 
+/**
+ * The soft twin of {@link requireAppCapability}, for READS that answer "nothing"
+ * rather than throwing when the caller can't reach an app.
+ */
+export async function hasAppCapability(
+  appId: string,
+  cap: Capability,
+): Promise<boolean> {
+  const gate = await appGate(appId);
+  return Boolean(gate?.caps.includes(cap));
+}
+
+/** Membership + app ownership + token scope + the caller's caps ON the app. */
+async function appGate(appId: string): Promise<{
+  ctx: ActiveMembership;
+  folderId: string | null;
+  caps: Capability[];
+} | null> {
+  const ctx = await requireMembership();
   const rows = await getDb()
     .select({
       teamId: appsTable.teamId,
@@ -423,26 +474,19 @@ export async function requireAppCapability(
     .where(eq(appsTable.id, appId))
     .limit(1);
   const app = rows[0];
-  // A foreign id, or one the request's token scope doesn't reach, answers exactly
-  // what a nonexistent id answers — the scope is never an oracle for what exists.
   if (
     !app ||
     app.teamId !== ctx.teamId ||
     !inAppScope({ id: appId, folderId: app.folderId, projectId: app.projectId })
   ) {
-    throw new Error("App not found");
+    return null;
   }
-
-  const caps = await nodeCapabilities({ kind: "app", id: appId });
-  // An invisible folder makes the app inside it off-limits; don't leak that the
-  // app exists through a capability-specific message.
-  if (caps.length === 0) throw new Error("App not found");
-  if (!caps.includes(cap)) {
-    throw new Error(
-      app.folderId
-        ? `You don't have permission to ${CAPABILITY_META[cap].label.toLowerCase()} in this folder`
-        : `You don't have permission to ${CAPABILITY_META[cap].label.toLowerCase()}`,
-    );
-  }
-  return ctx;
+  const caps = await appCapabilitiesForTeam(ctx.teamId, [
+    { id: appId, folderId: app.folderId ?? null, projectId: app.projectId ?? null },
+  ]);
+  return {
+    ctx,
+    folderId: app.folderId ?? null,
+    caps: caps.get(appId) ?? [],
+  };
 }

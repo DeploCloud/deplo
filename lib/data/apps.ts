@@ -28,6 +28,7 @@ import {
   requireActiveTeamId,
   requireCapability,
   requireExposePorts,
+  requireMembership,
   requireMountHostVolumes,
   isInstanceAdmin,
   requireUnscoped,
@@ -118,7 +119,7 @@ import {
   volumesToRows,
 } from "./app-graph-rows";
 import { detectDefaultApp } from "../deploy/compose-stack";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import { requireAppCapability } from "./node-access";
 
 /** Heuristic: treat secret-looking keys as masked secrets. */
 function isSecretKey(key: string): boolean {
@@ -795,17 +796,11 @@ export async function updateAppBuild(
   id: string,
   build: Partial<BuildConfig>
 ): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   // build.port is only WHICH container port Traefik routes to (routing), not a
   // published host port, so changing it isn't gated behind the expose-ports
   // grant — any member who can deploy may edit build settings.
   const user = (await getCurrentUser())!;
-  // The folder gate reads on its OWN connection, so it must not run inside the
-  // transaction below: under pglite (one connection, the test harness) an outer
-  // query issued while a tx is open waits for that tx and the whole thing
-  // deadlocks. It is a read-only precondition either way — same answer before
-  // the tx as inside it.
-  await requireFolderCapabilityForApp(id, "configure_apps");
   // One tx (PLAN cut-set (c) Decision 15): the parent `app_build` columns
   // MERGE field-by-field, while a provided `methodSettings` object FULLY REPLACES
   // the 1-to-1 method-settings row.
@@ -855,12 +850,11 @@ export async function updateAppBuild(
  * Idempotent: clearing twice before a deploy is still one cache-less build.
  */
 export async function clearAppBuildCache(id: string): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(id, "configure_apps");
   await getDb()
     .update(appBuildTable)
     .set({ buildCacheClearPending: true })
@@ -890,7 +884,7 @@ export async function updateAppSource(
   id: string,
   input: UpdateSourceInput
 ): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   // A prebuilt image ref is interpolated raw into the compose `image:` scalar, so
   // reject anything that isn't a plain reference before it can inject service keys.
   if (input.source === "docker-image" && input.dockerImage && !IMAGE_REF_RE.test(input.dockerImage))
@@ -914,10 +908,6 @@ export async function updateAppSource(
   );
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;
-  // Outside the tx: the folder gate queries on its own connection, which under
-  // pglite (single connection) would deadlock against an open transaction. Same
-  // read-only precondition, just before the write instead of inside it.
-  await requireFolderCapabilityForApp(id, "configure_apps");
   await getDb().transaction(async (tx) => {
     const p = await loadAppGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("App not found");
@@ -1217,17 +1207,12 @@ export async function setAppVolumes(
   id: string,
   volumes: VolumeMount[],
 ): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   // A host bind mount escapes the per-project sandbox, so it needs the dedicated
   // grant on top of `deploy` (instance admins hold it implicitly).
   if (volumes.some((v) => v.type === "host")) {
     await requireMountHostVolumes();
   }
-  // The folder gate reads folder grants on its own connection, so it runs BEFORE
-  // the transaction — the same order as every other app-settings write here
-  // (updateAppResources, setAppUpload, …). Cross-team ids are still caught by the
-  // teamId check inside the transaction, which is the authoritative scope.
-  await requireFolderCapabilityForApp(id, "configure_apps");
   const user = (await getCurrentUser())!;
   await getDb().transaction(async (tx) => {
     const p = await loadAppGraph(id, tx);
@@ -1377,8 +1362,7 @@ export async function updateAppResources(
   id: string,
   input: ResourceLimitsInput,
 ): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
-  await requireFolderCapabilityForApp(id, "configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const cleaned = cleanResourceLimits(input);
   await updateAppOwned(id, membership.teamId, {
@@ -1398,8 +1382,7 @@ export async function setAppUpload(
   id: string,
   upload: UploadArchive,
 ): Promise<void> {
-  const { membership } = await requireCapability("deploy_apps");
-  await requireFolderCapabilityForApp(id, "deploy_apps");
+  const { membership } = await requireAppCapability(id, "deploy_apps");
   const user = (await getCurrentUser())!;
   await updateAppOwned(id, membership.teamId, {
     source: "upload",
@@ -1427,8 +1410,7 @@ export async function setAppUpload(
 }
 
 export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
-  await requireFolderCapabilityForApp(id, "configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   await updateAppOwned(id, membership.teamId, {
     autoDeploy: value,
     updatedAt: nowIso(),
@@ -1436,8 +1418,7 @@ export async function setAutoDeploy(id: string, value: boolean): Promise<void> {
 }
 
 export async function renameApp(id: string, name: string): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
-  await requireFolderCapabilityForApp(id, "configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const clean = cleanAppName(name);
   await updateAppOwned(id, membership.teamId, {
@@ -1462,8 +1443,7 @@ export async function updateAppLogo(
   id: string,
   logo: string | null,
 ): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
-  await requireFolderCapabilityForApp(id, "configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const next = logo?.trim() ? logo.trim() : null;
   if (next && !isValidLogoValue(next)) {
@@ -1521,8 +1501,7 @@ function noIconFoundMessage(app: Parameters<typeof detectAppFavicon>[0]): string
  * a NULL logo.
  */
 export async function redetectAppLogo(id: string): Promise<string> {
-  const { membership } = await requireCapability("configure_apps");
-  await requireFolderCapabilityForApp(id, "configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId) {
@@ -1637,9 +1616,8 @@ export async function setAppFramework(
   id: string,
   framework: string | null,
 ): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
-  await requireFolderCapabilityForApp(id, "configure_apps");
   const value = framework?.trim() || null;
   if (value !== null && !isFrameworkId(value))
     throw new Error(`Unknown framework "${value}"`);
@@ -1672,9 +1650,8 @@ export async function setAppComposeUpArgs(
   id: string,
   value: string | null,
 ): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
+  const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
-  await requireFolderCapabilityForApp(id, "configure_apps");
   const raw = value?.trim() || null;
   if (raw) {
     const problem = validateComposeUpArgs(raw);
@@ -1713,12 +1690,11 @@ async function setAppStatus(id: string, status: AppStatus): Promise<void> {
 
 /** Stop the project's running container. */
 export async function stopApp(id: string): Promise<void> {
-  const { membership } = await requireCapability("control_apps");
+  const { membership } = await requireAppCapability(id, "control_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(id, "control_apps");
   // Persist "stopping" BEFORE the (up to 60s) container stop so the transition
   // is visible to every client immediately and survives a reload — not just a
   // local label on the clicking user's button. We settle to "idle" once the
@@ -1742,12 +1718,11 @@ export async function stopApp(id: string): Promise<void> {
 
 /** Start a previously stopped project's container. */
 export async function startApp(id: string): Promise<void> {
-  const { membership } = await requireCapability("control_apps");
+  const { membership } = await requireAppCapability(id, "control_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(id, "control_apps");
   try {
     await startContainer(project.slug);
   } catch (e) {
@@ -1773,11 +1748,10 @@ export async function startApp(id: string): Promise<void> {
  * only makes the promise the same for every source.
  */
 export async function rebuildApp(id: string): Promise<void> {
-  const { membership } = await requireCapability("deploy_apps");
+  const { membership } = await requireAppCapability(id, "deploy_apps");
   const user = (await getCurrentUser())!;
   if (!(await appInTeam(id, membership.teamId)))
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(id, "deploy_apps");
   await startDeployment(id, {
     environment: "production",
     creator: user.name,
@@ -1787,12 +1761,11 @@ export async function rebuildApp(id: string): Promise<void> {
 }
 
 export async function deleteApp(id: string): Promise<void> {
-  const { membership } = await requireCapability("delete_apps");
+  const { membership } = await requireAppCapability(id, "delete_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(id, "delete_apps");
   // Tear down the running container/stack before dropping the records. A REMOTE
   // whose agent is unreachable can't be torn down now — proceed with the delete
   // anyway (P6 spirit: never leave records pinned to a dead box) and warn so the
@@ -1839,7 +1812,7 @@ export async function deleteApp(id: string): Promise<void> {
  * Returns the number actually deleted.
  */
 export async function deleteApps(ids: string[]): Promise<number> {
-  const { membership } = await requireCapability("delete_apps");
+  const { membership } = await requireMembership();
   const user = (await getCurrentUser())!;
   const idSet = [...new Set(ids)];
   // Team- and scope-scoped: only the caller's own apps, fully loaded for teardown.
@@ -1848,10 +1821,11 @@ export async function deleteApps(ids: string[]): Promise<number> {
   );
   if (apps.length === 0) return 0;
 
-  // Folder-scope EACH project: a project inside a folder the caller can't access
-  // may not be bulk-deleted through this path either.
+  // Gate EACH app on its own node: bulk delete is not a way around per-folder
+  // access, and since ADR-0016 `delete_apps` can be held on one app alone — so
+  // the question has to be asked per app rather than once for the team.
   for (const p of apps) {
-    await requireFolderCapabilityForApp(p.id, "delete_apps");
+    await requireAppCapability(p.id, "delete_apps");
   }
 
   const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));

@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
-import { hasCapability } from "@/lib/membership";
 import { listEnv } from "@/lib/data/env";
+import { hasAppCapability } from "@/lib/data/node-access";
 import { listSharedVars, listSharedVarsForApp } from "@/lib/data/shared-vars";
+import { hasCapability } from "@/lib/membership";
 import { EnvManager } from "@/components/env/env-manager";
 import { EmptyState } from "@/components/shared/empty-state";
 
@@ -15,10 +16,12 @@ export default async function AppEnvPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
+  const teamWideEnv = await hasCapability("manage_env");
 
-  // Viewing env values requires manage_env. Without it the tab is hidden, but
-  // guard the page too in case of a direct link / stale navigation.
-  if (!(await hasCapability("manage_env"))) {
+  // Viewing env values requires manage_env ON THIS APP — it can be held here and
+  // nowhere else (ADR-0016). Without it the tab is hidden, but guard the page too
+  // in case of a direct link / stale navigation.
+  if (!(await hasAppCapability(project.id, "manage_env"))) {
     return (
       <EmptyState
         icon={Lock}
@@ -32,8 +35,10 @@ export default async function AppEnvPage(
     listEnv(project.id),
     listSharedVarsForApp(project.id),
     // The full records back the value edit + "Shared with" chips a shared row now
-    // exposes here; narrow to the ones this app actually receives.
-    listSharedVars(),
+    // exposes here; narrow to the ones this app actually receives. Team-wide, so
+    // it stays behind the TEAM capability: someone whose `manage_env` comes from
+    // this app alone sees the app's own variables, not the team's library.
+    teamWideEnv ? listSharedVars() : Promise.resolve([]),
   ]);
   const linkedIds = new Set(
     sharedVars.filter((v) => v.linked).map((v) => v.id),

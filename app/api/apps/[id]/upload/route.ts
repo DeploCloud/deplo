@@ -1,11 +1,10 @@
 import { type NextRequest } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/auth";
-import { requireCapability } from "@/lib/membership";
 import { getDb } from "@/lib/db/client";
 import { deployments as deploymentsTable } from "@/lib/db/schema/control-plane";
 import { getAppById, setAppUpload } from "@/lib/data/apps";
-import { requireFolderCapabilityForApp } from "@/lib/data/folder-access";
+import { requireAppCapability } from "@/lib/data/node-access";
 import {
   storeUpload,
   pruneUploads,
@@ -59,8 +58,7 @@ export async function POST(
   // folder gate), but only after a potentially 512 MiB stream has already been
   // written. A viewer-only member must be refused here, not after the write.
   try {
-    await requireCapability("deploy_apps");
-    await requireFolderCapabilityForApp(appId, "deploy_apps");
+    await requireAppCapability(appId, "deploy_apps");
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "You don't have permission to deploy";

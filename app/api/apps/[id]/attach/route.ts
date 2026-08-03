@@ -1,9 +1,9 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth";
-import { requireActiveTeamId, requireCapability } from "@/lib/membership";
+import { requireActiveTeamId } from "@/lib/membership";
 import { resolveAttachTarget } from "@/lib/data/console";
-import { requireFolderCapabilityForApp } from "@/lib/data/folder-access";
+import { requireAppCapability } from "@/lib/data/node-access";
 import * as attach from "@/lib/attach/session";
 import { connectAgent } from "@/lib/infra/agent-client";
 
@@ -212,9 +212,8 @@ async function stillAuthorized(
 ): Promise<boolean> {
   if (session.userId !== userId) return false;
   try {
-    const { teamId } = await requireCapability("open_app_console");
+    const { teamId } = await requireAppCapability(appId, "open_app_console");
     if (teamId !== session.teamId) return false;
-    await requireFolderCapabilityForApp(appId, "open_app_console");
     return true;
   } catch {
     return false;

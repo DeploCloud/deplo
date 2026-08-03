@@ -11,7 +11,7 @@ import {
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import { requireActiveTeamId } from "../membership";
 import { recordActivity } from "./activity";
 import { assertLetsencryptQuota } from "../deploy/domains";
 import yaml from "js-yaml";
@@ -43,7 +43,7 @@ import {
   appScopeWhere,
 } from "./app-graph-load";
 import { domainToRow, domainMiddlewaresToRows } from "./app-graph-rows";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import { requireAppCapability } from "./node-access";
 import { getServerById } from "./servers";
 import {
   wwwCounterpart,
@@ -398,7 +398,7 @@ export async function addDomain(
   name: string,
   config: DomainConfig = {},
 ): Promise<Domain> {
-  const { membership } = await requireCapability("manage_domains");
+  const { membership } = await requireAppCapability(appId, "manage_domains");
   const user = (await getCurrentUser())!;
   const clean = name
     .trim()
@@ -409,7 +409,6 @@ export async function addDomain(
   const project = await loadAppGraph(appId);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "manage_domains");
   const isCompose = usesComposeStack(project);
 
   // A path lets several rows share one hostname (e.g. `app.com` for `/` and
@@ -672,14 +671,13 @@ export async function updateDomain(
   id: string,
   patch: DomainPatch,
 ): Promise<string> {
-  const { membership } = await requireCapability("manage_domains");
   const user = (await getCurrentUser())!;
   const current = await loadDomain(id);
   if (!current) throw new Error("Not found");
+  const { membership } = await requireAppCapability(current.appId, "manage_domains");
   const project = await loadAppGraph(current.appId);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(current.appId, "manage_domains");
 
   const isCompose = usesComposeStack(project);
 
@@ -1091,12 +1089,9 @@ async function insertPairedDomain(
 export async function verifyDomain(
   id: string,
 ): Promise<Domain & { statusChanged: boolean }> {
-  const { membership } = await requireCapability("manage_domains");
   const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
-  if (!(await appInTeam(dom.appId, membership.teamId)))
-    throw new Error("App not found");
-  await requireFolderCapabilityForApp(dom.appId, "manage_domains");
+  await requireAppCapability(dom.appId, "manage_domains");
 
   // The domain must point at the server THIS project runs on — not always the
   // panel host: a project on a remote server needs its A record on that server.
@@ -1374,12 +1369,9 @@ export async function pendingPrimaryRoute(
  * container serve it happens moments later in the same click.
  */
 export async function setPrimaryDomain(id: string): Promise<string> {
-  const { membership } = await requireCapability("manage_domains");
   const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
-  if (!(await appInTeam(dom.appId, membership.teamId)))
-    throw new Error("App not found");
-  await requireFolderCapabilityForApp(dom.appId, "manage_domains");
+  await requireAppCapability(dom.appId, "manage_domains");
   // A misconfigured domain has no working DNS to this server, so it can't be the
   // canonical host — block promoting it until its DNS is fixed and re-verified.
   // (A `pending` domain is allowed: the first domain added is pending+primary.)
@@ -1511,13 +1503,10 @@ export function successorPrimary(
 }
 
 export async function removeDomain(id: string): Promise<string> {
-  const { membership } = await requireCapability("manage_domains");
   const user = (await getCurrentUser())!;
   const dom = await loadDomain(id);
   if (!dom) throw new Error("Not found");
-  if (!(await appInTeam(dom.appId, membership.teamId)))
-    throw new Error("App not found");
-  await requireFolderCapabilityForApp(dom.appId, "manage_domains");
+  await requireAppCapability(dom.appId, "manage_domains");
   // Removing the PRIMARY hands the crown to the closest remaining domain, in the
   // same transaction as the delete: an app with domains must always have exactly
   // one primary, and a half-applied succession would leave the canonical host

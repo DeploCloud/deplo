@@ -8,11 +8,10 @@ import {
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
 import { appInTeam } from "./app-graph-load";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import { hasAppCapability, requireAppCapability } from "./node-access";
 import { authorOf, loadUserIdentities } from "./user-identity";
 import type { BasicAuthUser, VarAuthor } from "../types";
 
@@ -116,9 +115,10 @@ async function withAuthors(u: BasicAuthUser): Promise<BasicAuthUserDTO> {
 export async function listBasicAuthUsers(
   appId: string,
 ): Promise<BasicAuthUserDTO[]> {
-  const { teamId } = await requireCapability("manage_basic_auth");
-  if (!(await appInTeam(appId, teamId))) return [];
-  await requireFolderCapabilityForApp(appId, "manage_basic_auth");
+  // A read: an app the caller can't reach lists nothing rather than throwing, so
+  // the tab is simply absent. `manage_basic_auth` can be held on the app alone
+  // (ADR-0016), which is why the question is asked at the app.
+  if (!(await hasAppCapability(appId, "manage_basic_auth"))) return [];
   const rows = await getDb()
     .select()
     .from(basicAuthTable)
@@ -150,15 +150,13 @@ export async function listBasicAuthUsers(
  * means a decrypt failure — the same reasoning as {@link basicAuthUsersValue}.
  */
 export async function revealBasicAuthPassword(id: string): Promise<string> {
-  const { teamId } = await requireCapability("manage_basic_auth");
   const [row] = await getDb()
     .select()
     .from(basicAuthTable)
     .where(eq(basicAuthTable.id, id))
     .limit(1);
   if (!row) throw new Error("Not found");
-  if (!(await appInTeam(row.appId, teamId))) throw new Error("Not found");
-  await requireFolderCapabilityForApp(row.appId, "manage_basic_auth");
+  await requireAppCapability(row.appId, "manage_basic_auth");
   const password = decryptSecret(row.passwordEnc);
   if (password === "")
     throw new Error(
@@ -173,11 +171,10 @@ export async function addBasicAuthUser(
   username: string,
   password: string,
 ): Promise<BasicAuthUserDTO> {
-  const { membership } = await requireCapability("manage_basic_auth");
+  const { membership } = await requireAppCapability(appId, "manage_basic_auth");
   const user = (await getCurrentUser())!;
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "manage_basic_auth");
   const name = username.trim();
   if (!USERNAME_RE.test(name))
     throw new Error("Username can't contain spaces, ':' or ','");
@@ -227,7 +224,6 @@ export async function updateBasicAuthUserPassword(
   id: string,
   password: string,
 ): Promise<BasicAuthUserDTO> {
-  const { membership } = await requireCapability("manage_basic_auth");
   const user = (await getCurrentUser())!;
   if (!password) throw new Error("Password is required");
   const [existing] = await getDb()
@@ -236,9 +232,12 @@ export async function updateBasicAuthUserPassword(
     .where(eq(basicAuthTable.id, id))
     .limit(1);
   if (!existing) throw new Error("Not found");
+  const { membership } = await requireAppCapability(
+    existing.appId,
+    "manage_basic_auth",
+  );
   if (!(await appInTeam(existing.appId, membership.teamId)))
     throw new Error("Not found");
-  await requireFolderCapabilityForApp(existing.appId, "manage_basic_auth");
   const updated = {
     ...existing,
     passwordEnc: encryptSecret(password),
@@ -263,7 +262,6 @@ export async function updateBasicAuthUserPassword(
 }
 
 export async function removeBasicAuthUser(id: string): Promise<string> {
-  const { membership } = await requireCapability("manage_basic_auth");
   const user = (await getCurrentUser())!;
   const [existing] = await getDb()
     .select()
@@ -271,9 +269,12 @@ export async function removeBasicAuthUser(id: string): Promise<string> {
     .where(eq(basicAuthTable.id, id))
     .limit(1);
   if (!existing) throw new Error("Not found");
+  const { membership } = await requireAppCapability(
+    existing.appId,
+    "manage_basic_auth",
+  );
   if (!(await appInTeam(existing.appId, membership.teamId)))
     throw new Error("Not found");
-  await requireFolderCapabilityForApp(existing.appId, "manage_basic_auth");
   await getDb().delete(basicAuthTable).where(eq(basicAuthTable.id, id));
   await recordActivity(
     "domain",

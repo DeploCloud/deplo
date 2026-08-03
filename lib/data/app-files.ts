@@ -3,12 +3,12 @@ import "server-only";
 import { realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { status as GrpcStatus } from "@grpc/grpc-js";
-import { requireCapability, hasCapability, getActiveTeamId } from "../membership";
+import { hasCapability, getActiveTeamId } from "../membership";
 import type { Capability } from "../types";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
 import { loadTeamApp } from "./app-graph-load";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import { requireAppCapability } from "./node-access";
 import {
   connectAgent,
   AgentUnreachableError,
@@ -111,12 +111,11 @@ async function requireAppInTeam(
   // which it needs. Defaults to the read side — the weaker of the two.
   cap: Capability = "read_app_files",
 ): Promise<{ slug: string; teamId: string; serverId: string }> {
-  const { teamId } = await requireCapability(cap);
+  const { teamId } = await requireAppCapability(appId, cap);
   const project = await loadTeamApp(appId, teamId);
   if (!project) {
     throw new Error("App not found");
   }
-  await requireFolderCapabilityForApp(appId, cap);
   return { slug: project.slug, teamId, serverId: project.serverId };
 }
 

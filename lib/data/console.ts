@@ -1,8 +1,8 @@
 import "server-only";
 
 import { getServerById } from "./servers";
-import { requireActiveTeamId, requireCapability } from "../membership";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import { requireActiveTeamId } from "../membership";
+import { requireAppCapability } from "./node-access";
 import { loadTeamApp } from "./app-graph-load";
 import { primaryDomainApp } from "./domains";
 import { composeServiceNames } from "../deploy/compose-stack";
@@ -204,7 +204,7 @@ export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
-  await requireFolderCapabilityForApp(appId, "view");
+  await requireAppCapability(appId, "view");
   const found = await listInstancesForDisplay(p);
   return {
     running: found.instances.some((i) => i.running),
@@ -282,7 +282,7 @@ export async function getAppRuntime(appId: string): Promise<AppRuntime | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
-  await requireFolderCapabilityForApp(appId, "view");
+  await requireAppCapability(appId, "view");
 
   const hit = runtimeCache.get(p.id);
   if (hit && Date.now() - hit.at < RUNTIME_TTL_MS) return hit.value;
@@ -392,7 +392,7 @@ export async function getConsoleInfo(appId: string): Promise<ConsoleInfo | null>
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
-  await requireFolderCapabilityForApp(appId, "view");
+  await requireAppCapability(appId, "view");
   const { instances } = await listInstancesForDisplay(p);
   const def = instances[0];
   return {
@@ -417,7 +417,7 @@ export async function getShellLabel(
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return "raw exec (no shell)";
-  await requireFolderCapabilityForApp(appId, "view");
+  await requireAppCapability(appId, "view");
   // Display-grade list: an unreachable remote degrades to a not-running
   // placeholder, so we return "raw exec (no shell)" below rather than throwing.
   const { instances } = await listInstancesForDisplay(p);
@@ -434,7 +434,7 @@ export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
-  await requireFolderCapabilityForApp(appId, "view");
+  await requireAppCapability(appId, "view");
   const { instances } = await listInstancesForDisplay(p);
   // Default target: the app's own container first, thanks to orderInstances.
   const def = instances[0];
@@ -480,10 +480,9 @@ export async function resolveAttachTarget(
 > {
   // Attaching to PID 1 (full-duplex, stdin to the live container) is a
   // deploy-class operation — never available to a view-only member.
-  const { teamId } = await requireCapability("open_app_console");
+  const { teamId } = await requireAppCapability(appId, "open_app_console");
   const p = await loadTeamApp(appId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
-  await requireFolderCapabilityForApp(appId, "open_app_console");
 
   let instances: ConsoleInstance[];
   try {
@@ -520,7 +519,7 @@ export async function resolveLogsTarget(
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
-  await requireFolderCapabilityForApp(appId, "view");
+  await requireAppCapability(appId, "view");
 
   let instances: ConsoleInstance[];
   try {
@@ -547,10 +546,9 @@ export async function execInContainer(
 ): Promise<{ output: string; detach?: boolean }> {
   // Running arbitrary commands in the live container is RCE — gate on deploy,
   // never bare team membership (a viewer must never reach this).
-  const { teamId } = await requireCapability("open_app_console");
+  const { teamId } = await requireAppCapability(appId, "open_app_console");
   const p = await loadTeamApp(appId, teamId);
   if (!p) return { output: "Error: project not found" };
-  await requireFolderCapabilityForApp(appId, "open_app_console");
 
   const command = rawCommand.trim();
   if (!command) return { output: "" };

@@ -11,19 +11,19 @@ import {
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireCapability } from "../membership";
+import { requireMembership } from "../membership";
 import { recordActivity } from "./activity";
 import {
-  folderCapabilities,
-  requireFolderCapabilityForApp,
-} from "./folder-access";
+  appCapabilitiesForTeam,
+  hasAppCapability,
+  requireAppCapability,
+} from "./node-access";
 import { encryptSecret, decryptSecret } from "../crypto";
 import {
   insertEnvVars,
   loadEnvVar,
   loadEnvVarsForApp,
   loadEnvVarsForApps,
-  appInTeam,
   appScopeWhere,
 } from "./app-graph-load";
 import { authorOf, loadUserIdentities } from "./user-identity";
@@ -63,10 +63,10 @@ function authorIds(vars: EnvVar[]): (string | null)[] {
  * (the data calls below return empty / throw) — matching the hidden tabs.
  */
 export async function listEnv(appId: string): Promise<EnvVarDTO[]> {
-  const { teamId } = await requireCapability("manage_env");
-  // Env vars are owned through their project; an out-of-team project yields none.
-  if (!(await appInTeam(appId, teamId))) return [];
-  await requireFolderCapabilityForApp(appId, "manage_env");
+  // Env vars are owned through their app, and `manage_env` can be held on the app
+  // alone (ADR-0016) — so the reach question is asked once, at the app. A project
+  // the caller can't reach yields nothing rather than an error.
+  if (!(await hasAppCapability(appId, "manage_env"))) return [];
   const vars = (await loadEnvVarsForApp(appId)).sort((a, b) =>
     a.key.localeCompare(b.key),
   );
@@ -110,7 +110,7 @@ async function loadPrimaryDomains(appIds: string[]): Promise<Map<string, string>
 
 /** Every project's env vars, grouped by project (for the global Variables tab). */
 export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
-  const { teamId } = await requireCapability("manage_env");
+  const { teamId } = await requireMembership();
   const rows = await getDb()
     .select({
       id: appsTable.id,
@@ -123,16 +123,13 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
     })
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
-  // Folder scope, mirroring the per-app `listEnv` gate: an app inside a folder
-  // where the caller lacks `manage_env` is dropped instead of leaking its values
-  // through the global tab. A top-level app (no folder) is always included.
-  const folderIds = [...new Set(rows.map((p) => p.folderId).filter((f): f is string => !!f))];
-  const allowedFolders = new Set<string>();
-  for (const folderId of folderIds) {
-    if ((await folderCapabilities(folderId)).includes("manage_env"))
-      allowedFolders.add(folderId);
-  }
-  const apps = rows.filter((p) => !p.folderId || allowedFolders.has(p.folderId));
+  // The gate is asked PER APP, not once for the team: `manage_env` can now be held
+  // on a single folder or app (ADR-0016), so a team-level check would both refuse
+  // someone who legitimately holds it somewhere and — the old bug — wave through
+  // every top-level app for someone whose only claim was one folder. Five queries
+  // for the whole page, not five per app.
+  const reach = await appCapabilitiesForTeam(teamId, rows);
+  const apps = rows.filter((p) => reach.get(p.id)?.includes("manage_env"));
   // Batch-load every var across the team's apps (one pair of queries), then
   // group in memory — no per-project round-trip.
   const all = await loadEnvVarsForApps(apps.map((p) => p.id));
@@ -167,11 +164,9 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
 
 /** Reveal a single secret value. Requires `manage_env`; returns plaintext. */
 export async function revealEnv(id: string): Promise<string> {
-  const { teamId } = await requireCapability("manage_env");
   const e = await loadEnvVar(id);
   if (!e) throw new Error("Not found");
-  if (!(await appInTeam(e.appId, teamId))) throw new Error("Not found");
-  await requireFolderCapabilityForApp(e.appId, "manage_env");
+  await requireAppCapability(e.appId, "manage_env");
   return decryptSecret(e.valueEnc);
 }
 
@@ -188,7 +183,7 @@ export async function upsertEnv(input: {
   targets?: EnvTarget[];
   type: "plain" | "secret";
 }): Promise<void> {
-  const { membership, userId } = await requireCapability("manage_env");
+  const { userId } = await requireAppCapability(input.appId, "manage_env");
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
   if (!KEY_RE.test(key)) throw new Error("Invalid variable name");
@@ -196,9 +191,6 @@ export async function upsertEnv(input: {
   // update. Silently widening a legacy production-only secret would leak it into
   // runtimes it was never meant to reach.
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
-  if (!(await appInTeam(input.appId, membership.teamId)))
-    throw new Error("App not found");
-  await requireFolderCapabilityForApp(input.appId, "manage_env");
   // The editor sends the MASK back unchanged when only the targets/type changed on
   // a secret (you cannot read back a secret you didn't set) — keep the stored value
   // rather than encrypting the mask string over it. Same contract as the shared and
@@ -263,15 +255,13 @@ export async function upsertEnv(input: {
  * along untouched. Returns the owning app so the caller can reload the entity.
  */
 export async function renameEnv(id: string, newKeyRaw: string): Promise<string> {
-  const { teamId, userId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   const newKey = newKeyRaw.trim();
   if (!KEY_RE.test(newKey)) throw new Error("Invalid variable name");
   const existing = await loadEnvVar(id);
   if (!existing) throw new Error("Env var not found");
   // Env vars are owned through their app; an out-of-team id reads as "not found".
-  if (!(await appInTeam(existing.appId, teamId))) throw new Error("Env var not found");
-  await requireFolderCapabilityForApp(existing.appId, "manage_env");
+  const { userId } = await requireAppCapability(existing.appId, "manage_env");
   if (existing.key === newKey) return existing.appId; // no-op rename
   // Guard the `env_vars_app_key_uq (appId, key)` uniqueness with a readable message
   // instead of leaking the raw constraint violation the DB would otherwise throw.
@@ -301,10 +291,7 @@ export async function importEnv(
   blob: string,
   targets?: EnvTarget[],
 ): Promise<number> {
-  const { membership } = await requireCapability("manage_env");
-  if (!(await appInTeam(appId, membership.teamId)))
-    throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "manage_env");
+  await requireAppCapability(appId, "manage_env");
   let count = 0;
   const lines = blob.split("\n");
   for (const raw of lines) {
@@ -346,11 +333,8 @@ export async function setAppEnv(
   entries: { key: string; value: string }[],
   defaultTargets?: EnvTarget[],
 ): Promise<number> {
-  const { membership, userId } = await requireCapability("manage_env");
+  const { userId } = await requireAppCapability(appId, "manage_env");
   const user = (await getCurrentUser())!;
-  if (!(await appInTeam(appId, membership.teamId)))
-    throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "manage_env");
   const targets = defaultTargets?.length
     ? sanitizeTargets(defaultTargets)
     : [...ALL_ENV_TARGETS];
@@ -413,13 +397,10 @@ export async function setAppEnv(
 }
 
 export async function deleteEnv(id: string): Promise<void> {
-  const { membership } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   const e = await loadEnvVar(id);
   if (!e) throw new Error("Not found");
-  if (!(await appInTeam(e.appId, membership.teamId)))
-    throw new Error("Not found");
-  await requireFolderCapabilityForApp(e.appId, "manage_env");
+  await requireAppCapability(e.appId, "manage_env");
   // The env_var_targets child rows CASCADE on the delete.
   await getDb().delete(envVarsTable).where(eq(envVarsTable.id, id));
   await recordActivity("env", `Deleted env var ${e.key}`, user.name, e.appId);

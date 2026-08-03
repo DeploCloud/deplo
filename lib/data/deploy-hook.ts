@@ -7,12 +7,11 @@ import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
-import { requireCapability } from "../membership";
 import { constantTimeEquals, decryptSecret, encryptSecret, randomToken } from "../crypto";
 import { resolvePublicBaseUrl } from "../public-url";
 import { recordActivity } from "./activity";
 import { appInTeam } from "./app-graph-load";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import { requireAppCapability } from "./node-access";
 
 /**
  * The per-app DEPLOY HOOK: one URL that triggers a production deployment.
@@ -81,10 +80,9 @@ export async function deployHookUrlMasked(appId: string): Promise<string> {
  * with `configure_apps` deliberately opens the hook.
  */
 export async function revealDeployHook(appId: string): Promise<string> {
-  const { membership } = await requireCapability("configure_apps");
+  const { membership } = await requireAppCapability(appId, "configure_apps");
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "configure_apps");
 
   const [row] = await getDb()
     .select({ tokenEnc: appsTable.deployHookTokenEnc })
@@ -106,10 +104,9 @@ export async function revealDeployHook(appId: string): Promise<string> {
  * have been.
  */
 export async function rotateDeployHook(appId: string): Promise<string> {
-  const { membership } = await requireCapability("configure_apps");
+  const { membership } = await requireAppCapability(appId, "configure_apps");
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "configure_apps");
   const user = (await getCurrentUser())!;
   const url = await mint(appId, membership.teamId);
   await recordActivity("app", "Rotated the deploy hook URL", user.name, appId);
@@ -133,10 +130,9 @@ export async function setDeployHookEnabled(
   appId: string,
   value: boolean,
 ): Promise<void> {
-  const { membership } = await requireCapability("configure_apps");
+  const { membership } = await requireAppCapability(appId, "configure_apps");
   if (!(await appInTeam(appId, membership.teamId)))
     throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "configure_apps");
   const user = (await getCurrentUser())!;
   const updated = await getDb()
     .update(appsTable)

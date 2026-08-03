@@ -26,7 +26,7 @@ import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { membershipFor, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
-import { requireFolderCapabilityForApp } from "./folder-access";
+import { requireAppCapability } from "./node-access";
 import { assertServerAccessibleTx } from "./servers";
 import { withKeyedLock } from "./keyed-mutex";
 
@@ -279,8 +279,8 @@ export async function transferAppToTeam(
   appId: string,
   destTeamId: string,
 ): Promise<void> {
-  const { userId, teamId } = await requireCapability("move_apps");
-  await requireCapability("manage_env");
+  const { userId, teamId } = await requireAppCapability(appId, "move_apps");
+  await requireAppCapability(appId, "manage_env");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const db = getDb();
 
@@ -294,11 +294,6 @@ export async function transferAppToTeam(
   if (!app) throw new Error("App not found");
   if (destTeamId === teamId)
     throw new Error("That app is already in this team");
-  // Evicting the app from a folder needs the same rights on that folder as the
-  // team-level gates above. BEFORE any transaction: these read on their own
-  // connection.
-  await requireFolderCapabilityForApp(appId, "move_apps");
-  await requireFolderCapabilityForApp(appId, "manage_env");
 
   const dest = await membershipFor(userId, destTeamId);
   if (!dest) throw new Error("You're not a member of that team");

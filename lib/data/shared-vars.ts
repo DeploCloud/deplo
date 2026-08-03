@@ -16,10 +16,17 @@ import {
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireCapability, requireUnscoped } from "../membership";
+import {
+  requireCapability,
+  requireMembership,
+  requireUnscoped,
+} from "../membership";
 import { recordActivity } from "./activity";
-import { folderCapabilities, requireFolderCapabilityForApp } from "./folder-access";
-import { appInTeam } from "./app-graph-load";
+import {
+  appCapabilitiesForTeam,
+  hasAppCapability,
+  requireAppCapability,
+} from "./node-access";
 import { authorOf, loadUserIdentities } from "./user-identity";
 import { encryptSecret, decryptSecret } from "../crypto";
 import { ALL_ENV_TARGETS, sanitizeTargets } from "../types";
@@ -257,9 +264,8 @@ export interface AppSharedVarDTO {
 export async function listSharedVarsForApp(
   appId: string,
 ): Promise<AppSharedVarDTO[]> {
-  const { teamId } = await requireCapability("manage_env");
-  if (!(await appInTeam(appId, teamId))) return [];
-  await requireFolderCapabilityForApp(appId, "manage_env");
+  const { teamId } = await requireMembership();
+  if (!(await hasAppCapability(appId, "manage_env"))) return [];
   const app = (
     await getDb()
       .select({
@@ -327,24 +333,22 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
   const vars = await loadSharedVarsForTeam(teamId);
   // One identity query for every card on the page.
   const authors = await loadUserIdentities(authorIds(vars));
-  // Folder scope, mirroring `listAllAppEnv`: a link into a folder where the
-  // caller lacks `manage_env` is dropped instead of surfacing that app's
-  // applied rows through the aggregate tab (its card is filtered out there
-  // too). A top-level app (no folder) is always included.
+  // Node scope, mirroring `listAllAppEnv`: a link into an app the caller can't
+  // `manage_env` is dropped instead of surfacing that app's applied rows through
+  // the aggregate tab (its card is filtered out there too). Asked per app in one
+  // batch, because since ADR-0016 the answer can differ app by app.
   const linkedAppIds = [...new Set(vars.flatMap((v) => v.appIds))];
   const appRows = linkedAppIds.length
     ? await getDb()
-        .select({ id: appsTable.id, folderId: appsTable.folderId })
+        .select({
+          id: appsTable.id,
+          folderId: appsTable.folderId,
+          projectId: appsTable.projectId,
+        })
         .from(appsTable)
         .where(and(inArray(appsTable.id, linkedAppIds), eq(appsTable.teamId, teamId)))
     : [];
-  const folderByApp = new Map(appRows.map((r) => [r.id, r.folderId]));
-  const folderIds = [...new Set(appRows.map((r) => r.folderId).filter((f): f is string => !!f))];
-  const allowedFolders = new Set<string>();
-  for (const folderId of folderIds) {
-    if ((await folderCapabilities(folderId)).includes("manage_env"))
-      allowedFolders.add(folderId);
-  }
+  const reach = await appCapabilitiesForTeam(teamId, appRows);
   // A var linked to SEVERAL apps repeats below, so decrypt each value once here
   // rather than once per (app, var) pair.
   const shown = new Map(
@@ -356,11 +360,9 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
   const out: AppliedSharedVarDTO[] = [];
   for (const v of vars) {
     for (const appId of v.appIds) {
-      // A dangling/cross-team link reads as no app; a folder the caller can't
+      // A dangling/cross-team link reads as no app; an app the caller can't
       // manage_env drops the row.
-      if (!folderByApp.has(appId)) continue;
-      const folderId = folderByApp.get(appId);
-      if (folderId && !allowedFolders.has(folderId)) continue;
+      if (!reach.get(appId)?.includes("manage_env")) continue;
       out.push({
         appId,
         id: v.id,
@@ -511,7 +513,7 @@ export async function saveSharedVar(input: {
       ...storedLinks.filter((id) => !incoming.has(id)),
     ];
     for (const appId of changed)
-      await requireFolderCapabilityForApp(appId, "manage_env");
+      await requireAppCapability(appId, "manage_env");
   }
 
   // A shared var must be shared WITH something: offered through ≥1 availability
@@ -593,10 +595,8 @@ export async function setSharedVarAppLink(
   appId: string,
   linked: boolean,
 ): Promise<void> {
-  const { teamId, userId } = await requireCapability("manage_env");
+  const { teamId, userId } = await requireAppCapability(appId, "manage_env");
   const user = (await getCurrentUser())!;
-  if (!(await appInTeam(appId, teamId))) throw new Error("App not found");
-  await requireFolderCapabilityForApp(appId, "manage_env");
   const v = await getDb()
     .select({ key: varsTable.key })
     .from(varsTable)

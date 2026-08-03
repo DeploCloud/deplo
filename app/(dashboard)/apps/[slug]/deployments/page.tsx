@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { Loader2, Rocket } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { listDeployments } from "@/lib/data/deployments";
-import { hasCapability, isInstanceAdmin } from "@/lib/membership";
+import { isInstanceAdmin } from "@/lib/membership";
+import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploymentsTable } from "@/components/apps/deployments-table";
 
@@ -19,7 +20,7 @@ export default async function AppDeploymentsPage(
 
   const [deployments, canDeploy, isAdmin] = await Promise.all([
     listDeployments({ appId: project.id }),
-    hasCapability("deploy_apps"),
+    hasAppCapability(project.id, "deploy_apps"),
     isInstanceAdmin(),
   ]);
   const inProgress = deployments.filter((d) => IN_PROGRESS.has(d.status)).length;
