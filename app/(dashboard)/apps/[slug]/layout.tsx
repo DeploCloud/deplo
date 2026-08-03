@@ -61,7 +61,9 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
 
   return (
     <AppLiveStatusProvider key={initialLive.slug} initial={initialLive}>
-    <div className="space-y-6">
+    {/* An app's pages are forms and detail views, not grids — they stay at a
+        readable width instead of the wide shell the list pages use. */}
+    <div className="mx-auto w-full max-w-6xl space-y-6">
       <div>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">

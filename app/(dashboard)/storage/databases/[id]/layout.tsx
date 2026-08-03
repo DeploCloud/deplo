@@ -44,7 +44,8 @@ export default async function DatabaseLayout(
 
   return (
     <DatabaseLiveStatusProvider key={db.id} initial={initialLive}>
-      <div className="space-y-6">
+      {/* Same readable width as the App pages (see apps/[slug]/layout). */}
+      <div className="mx-auto w-full max-w-6xl space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <DatabaseLogo type={db.type} logo={db.logo} size={44} />
