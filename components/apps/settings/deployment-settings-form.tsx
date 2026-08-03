@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -34,8 +33,9 @@ import {
 } from "@/components/apps/github-repo-picker";
 import { UploadInput, type CurrentUpload } from "@/components/apps/upload-input";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
-import { BuildConfigFields } from "@/components/apps/build-config-fields";
+import { BuildOutputCard } from "@/components/apps/settings/build-output-card";
 import { BuildCachePanel } from "@/components/apps/settings/build-cache-panel";
+import { DeployHookPanel } from "@/components/apps/settings/deploy-hook-panel";
 import { RootDirectoryFields } from "@/components/apps/settings/root-directory-fields";
 import {
   GitDeployOptions,
@@ -64,6 +64,14 @@ const SOURCE_TABS: {
   { id: "upload", label: "Upload", icon: Upload },
   { id: "compose", label: "Compose", icon: FileText },
 ];
+
+/** How a repo's provider is named in the deploy-hook note. */
+const PROVIDER_LABELS: Record<string, string> = {
+  github: "GitHub",
+  gitlab: "GitLab",
+  bitbucket: "Bitbucket",
+  git: "Your git provider",
+};
 
 type SourceKeyInput = {
   source: DeploySource;
@@ -115,10 +123,11 @@ function computeSourceKey(s: SourceKeyInput): string {
 }
 
 /**
- * Deployment settings: how the app is built, where it runs, and whether
- * pushes redeploy it. Bundles the Deploy Source, Build & Output and Automatic
- * deployments cards — they share the live `source` state (a compose stack or a
- * prebuilt image hides the build card), so they must live on one page.
+ * Deployment settings: how the app is built, where it runs, and what makes it
+ * deploy again. Three cards on one page because they all read the live `source`
+ * state — Deploy Source, Build & Output (which owns deploy-on-push, since "run
+ * all of this again on every push" is the last stage of the same pipeline), and
+ * Advanced settings (the build cache and the deploy hook).
  */
 export function DeploymentSettingsForm({
   appId,
@@ -135,6 +144,8 @@ export function DeploymentSettingsForm({
   installations,
   framework,
   frameworkOverride: initialFrameworkOverride,
+  deployHookEnabled,
+  deployHookUrlMasked,
 }: {
   appId: string;
   slug: string;
@@ -157,6 +168,11 @@ export function DeploymentSettingsForm({
   serverId: string;
   servers: SettingsServer[];
   installations: GithubInstallationDTO[];
+  /** Whether the app's deploy hook answers at all (Advanced settings). */
+  deployHookEnabled: boolean;
+  /** The hook URL with its secret segment dotted out — resolved server-side so
+   * the page can show the link's shape without the token reaching the browser. */
+  deployHookUrlMasked: string;
 }) {
   const router = useRouter();
   const [build, setBuild] = React.useState<BuildConfig>(initialBuild);
@@ -176,8 +192,6 @@ export function DeploymentSettingsForm({
   // The Root Directory now lives in a second collapsed "Additional options" panel
   // of the Deploy Source card (advanced, rarely changed for a single-folder repo).
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
-  // The Build & Output card's own "Advanced" panel (build cache).
-  const [buildAdvancedOpen, setBuildAdvancedOpen] = React.useState(false);
 
   // Compose stack (template / multi-service deploys). Lives as a source tab.
   const [compose, setCompose] = React.useState(initialCompose ?? "");
@@ -250,6 +264,30 @@ export function DeploymentSettingsForm({
   // push-driven, so the skip-unchanged toggle would be inert — scope it to the
   // repo sources where all three controls fully apply.)
   const rootCardVisible = buildCardVisible && repoConfigVisible;
+
+  // Deploy-on-push is only real for the GitHub App source: it is the one
+  // provider that delivers pushes to Deplo (see app/api/github/webhook), so the
+  // stored flag does nothing for any other source. The stage is therefore shown
+  // exactly where it works; everything else triggers deploys with the deploy
+  // hook in Advanced settings.
+  const autoDeployPossible = usesGithubApp && installations.length > 0;
+  const autoDeployBranch =
+    (usesGithubApp ? ghSelection?.branch : branch) ||
+    initialRepo?.branch ||
+    "main";
+
+  // The deploy hook belongs to the app as SAVED, not to whichever source tab is
+  // on screen: its controls write straight through to the server, so they must
+  // reflect what this app actually deploys from rather than an unsaved draft.
+  // A repo source's deploys are the git provider's job, so its hook is read-only.
+  const savedRepoProvider =
+    initialSource === "github" || initialSource === "git"
+      ? (initialRepo?.provider ?? "git")
+      : null;
+  const hookManagedByProvider = savedRepoProvider !== null;
+  const providerLabel = savedRepoProvider
+    ? (PROVIDER_LABELS[savedRepoProvider] ?? "Your git provider")
+    : undefined;
 
   // ── Per-section dirty tracking ──────────────────────────────────────────────
   // Each editable card keeps a snapshot of its last-saved value; it is "dirty"
@@ -882,105 +920,60 @@ export function DeploymentSettingsForm({
             neither has install/build/run settings to configure. Gated off the live
             form state so flipping the source tab shows/hides the card immediately. */}
         {buildCardVisible && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex w-fit items-center gap-2 text-base">
-                Build &amp; Output Settings
-                <InfoTip content="How Deplo installs, builds and runs your app inside Docker." />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <BuildConfigFields
-                build={build}
-                onBuildChange={setBuild}
-                framework={frameworkOverride ?? framework}
-                detectedFramework={framework}
-                onFrameworkChange={setFrameworkOverride}
-              />
-              {/* Advanced: the build cache. Collapsed by default (nobody's first
-                  deploy needs it) with its current state in the closed header, so
-                  "why is my build slow" is answerable without expanding. Saves on
-                  change, so it does NOT join this card's Save button. */}
-              <div className="rounded-lg border border-border">
-                <button
-                  type="button"
-                  onClick={() => setBuildAdvancedOpen((v) => !v)}
-                  aria-expanded={buildAdvancedOpen}
-                  className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="font-medium">Advanced</span>
-                    {!buildAdvancedOpen && (
-                      <span className="truncate text-xs text-muted-foreground">
-                        {!build.buildCache
-                          ? "Build cache off"
-                          : build.buildCacheClearPending
-                            ? "Build cache cleared"
-                            : "Build cache on"}
-                      </span>
-                    )}
-                  </span>
-                  <ChevronDown
-                    className={cn(
-                      "size-4 shrink-0 text-muted-foreground transition-transform",
-                      buildAdvancedOpen && "rotate-180",
-                    )}
-                  />
-                </button>
-                {buildAdvancedOpen && (
-                  <div className="border-t border-border p-4">
-                    <BuildCachePanel
-                      appId={appId}
-                      buildCache={build.buildCache}
-                      clearPending={build.buildCacheClearPending}
-                      // Mirror the committed value into the build state the
-                      // header summary reads. Neither field is part of
-                      // currentBuildKey, so this can never light up "unsaved
-                      // changes" for something already saved.
-                      onChange={(next) =>
-                        setBuild((b) => ({
-                          ...b,
-                          buildCache: next.buildCache,
-                          buildCacheClearPending: next.clearPending,
-                        }))
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-            </CardContent>
-            <CardFooter className="justify-between border-t border-border pt-4">
-              <DirtyHint dirty={buildDirty} />
-              <Button size="sm" onClick={saveBuild} disabled={pending || !buildDirty}>
-                <Save className="size-4" />
-                Save build settings
-              </Button>
-            </CardFooter>
-          </Card>
+          <BuildOutputCard
+            build={build}
+            onBuildChange={setBuild}
+            framework={frameworkOverride ?? framework}
+            detectedFramework={framework}
+            onFrameworkChange={setFrameworkOverride}
+            autoDeploy={autoDeploy}
+            onAutoDeployChange={toggleAuto}
+            autoDeployBranch={autoDeployBranch}
+            showAutoDeploy={autoDeployPossible}
+            dirty={buildDirty}
+            pending={pending}
+            onSave={saveBuild}
+          />
         )}
 
-        {/* Automatic deployments — deploy-on-push behaviour. */}
+        {/* Advanced settings — the deploy controls that are nobody's first-run
+            business: the build cache, and the hook that lets something outside
+            deplo trigger a deployment. */}
         <Card>
           <CardHeader>
             <CardTitle className="flex w-fit items-center gap-2 text-base">
-              Automatic deployments
-              <InfoTip content="Deploy automatically on every push to the production branch." />
+              Advanced settings
+              <InfoTip content="Rarely-changed controls: how builds reuse their cache, and how a deployment can be triggered from outside Deplo." />
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div>
-                <p className="text-sm font-medium">Deploy on push</p>
-                <p className="text-xs text-muted-foreground">
-                  Every push to the production branch triggers a new deployment.
-                </p>
-              </div>
-              <Switch
-                checked={autoDeploy}
-                onCheckedChange={toggleAuto}
-                disabled={pending}
+          <CardContent className="space-y-3">
+            {/* The build cache is a single-image build concern, so it follows the
+                same gate as the Build card. Saves on change — a switch that needs
+                a separate Save is how people think a setting stuck when it didn't. */}
+            {buildCardVisible && (
+              <BuildCachePanel
+                appId={appId}
+                buildCache={build.buildCache}
+                clearPending={build.buildCacheClearPending}
+                // Mirror the committed value back into the build state. Neither
+                // field is part of currentBuildKey, so this can never light up
+                // "unsaved changes" for something already saved.
+                onChange={(next) =>
+                  setBuild((b) => ({
+                    ...b,
+                    buildCache: next.buildCache,
+                    buildCacheClearPending: next.clearPending,
+                  }))
+                }
               />
-            </div>
+            )}
+            <DeployHookPanel
+              appId={appId}
+              enabled={deployHookEnabled}
+              maskedUrl={deployHookUrlMasked}
+              managed={hookManagedByProvider}
+              providerLabel={providerLabel}
+            />
           </CardContent>
         </Card>
       </div>

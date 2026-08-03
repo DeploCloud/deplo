@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { Rocket } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
+import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
@@ -48,6 +49,10 @@ export default async function AppDeploymentSettingsPage(
         serverId={project.serverId}
         servers={servers}
         installations={installations}
+        deployHookEnabled={project.deployHookEnabled}
+        // The link's shape, never its token: the real URL is fetched only when
+        // someone with `configure_apps` deliberately reveals it.
+        deployHookUrlMasked={await deployHookUrlMasked(project.id)}
       />
     </section>
   );
