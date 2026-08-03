@@ -16,6 +16,10 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, seedApp, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import { projects as projectsTable } from "../db/schema/control-plane";
+import { createToken } from "./tokens";
+
+const T0 = "2026-01-01T00:00:00.000Z";
 import {
   deployHookUrlMasked,
   revealDeployHook,
@@ -47,7 +51,7 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
-    truncate table users, teams restart identity cascade;`);
+    truncate table api_tokens, projects, users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -178,4 +182,65 @@ test("a member without configure_apps can't open the hook", async () => {
       ),
     /permission/i,
   );
+});
+
+/**
+ * The route's own 404/403 parity, which the data layer alone can't show.
+ *
+ * `verifyDeployHookToken` answers 403 "the hook is turned off" and 404 "not
+ * found" for two different reasons, so the reachability check has to run BEFORE
+ * it — otherwise the 403 tells a caller that an app it may not see exists, and
+ * whether its hook is switched on.
+ */
+test("an app outside the token's project scope answers the same 404 as an unknown app", async () => {
+  const { POST } = await import(
+    "../../app/api/apps/[id]/deploy-hook/[token]/route"
+  );
+  await db.insert(projectsTable).values([
+    { id: "prc_in", teamId: TEAM_A, name: "In", slug: "in", createdAt: T0, updatedAt: T0 },
+    { id: "prc_out", teamId: TEAM_A, name: "Out", slug: "out", createdAt: T0, updatedAt: T0 },
+  ]);
+  await seedApp(db, { id: "prj_out", slug: "out-app", projectId: "prc_out" });
+  // The hook is deliberately OFF: that is the branch that used to answer 403.
+  const url = await asUser1(async () => {
+    await setDeployHookEnabled("prj_out", false);
+    return revealDeployHook("prj_out");
+  });
+
+  const raw = await asUser1(
+    async () =>
+      (
+        await createToken({
+          name: "Scoped CI",
+          capabilities: ["deploy_apps"],
+          projectIds: ["prc_in"],
+        })
+      ).raw,
+  );
+
+  const call = (appId: string, token: string) =>
+    POST(
+      new Request("https://deplo.test/hook", {
+        method: "POST",
+        headers: { authorization: `Bearer ${raw}` },
+      }),
+      { params: Promise.resolve({ id: appId, token }) },
+    );
+
+  const outOfScope = await call("prj_out", tokenOf(url));
+  const unknown = await call("prj_nope", tokenOf(url));
+  assert.equal(outOfScope.status, 404);
+  assert.equal(unknown.status, 404);
+  assert.deepEqual(await outOfScope.json(), await unknown.json());
+
+  // And the test has teeth: an app the token CAN see, with its hook off, still
+  // gets the honest 403 — so the 404 above is the scope talking, not a blanket.
+  await seedApp(db, { id: "prj_in", slug: "in-app", projectId: "prc_in" });
+  const inUrl = await asUser1(async () => {
+    await setDeployHookEnabled("prj_in", false);
+    return revealDeployHook("prj_in");
+  });
+  const inScope = await call("prj_in", tokenOf(inUrl));
+  assert.equal(inScope.status, 403);
+  assert.match((await inScope.json()).error, /turned off/);
 });
