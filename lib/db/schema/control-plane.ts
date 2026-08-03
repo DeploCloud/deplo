@@ -357,6 +357,32 @@ export const folderGrants = pgTable(
 );
 
 /**
+ * Per-App access grants — the third and most specific rung of the same ladder as
+ * `folder_grants` / `project_grants`: one row per (app, user, capability). An App
+ * has no owner column and no privacy story of its own (every member of the team
+ * can already SEE every app), so unlike a folder grant this one never makes
+ * anything visible — it only says what the user may DO to that one app, and it
+ * beats the folder, project and membership sets that would otherwise apply
+ * (ADR-0016). Both FKs CASCADE; `app_grants_user_idx` powers the per-user lookup.
+ */
+export const appGrants = pgTable(
+  "app_grants",
+  {
+    appId: text("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    capability: text("capability").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.appId, t.userId, t.capability] }),
+    index("app_grants_user_idx").on(t.userId),
+  ],
+);
+
+/**
  * A named, per-team capability set a member can be assigned — the team's Roles
  * (Settings → Team → Roles). Every team owns its own rows: three built-ins
  * (`builtin_key` 'owner' | 'member' | 'viewer', seeded lazily by
@@ -435,6 +461,13 @@ export const memberships = pgTable(
     roleId: text("role_id").references(() => teamRoles.id, {
       onDelete: "restrict",
     }),
+    // Whether this member's access is set per NODE on top of the role — the
+    // admin's MODE choice, not a derived fact. The role still supplies the base
+    // set (so editing the role still reaches them); the node grants in
+    // `app_grants` / `folder_grants` / `project_grants` override it inside the
+    // nodes they name (ADR-0016). Kept as a column because node rows cascade
+    // away: "granular with nothing left ticked" must not read as Role mode.
+    granular: boolean("granular").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("memberships_user_team_uq").on(t.userId, t.teamId)],
@@ -1701,6 +1734,9 @@ export const activities = pgTable(
     // app_id is ON DELETE SET NULL — index it so deleting an app doesn't scan the
     // whole activity history (migration 0042).
     index("activities_app_idx").on(t.appId),
+    // "What has this person done?" — the per-user feed on an account's admin
+    // page, which reads across every team and would otherwise seq-scan.
+    index("activities_actor_created_idx").on(t.actorUserId, t.createdAt.desc()),
   ],
 );
 

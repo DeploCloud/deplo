@@ -53,26 +53,51 @@ test("withView always includes view, in canonical order", async () => {
 
 test("a granter can never hand out a capability they lack (double-bound)", async () => {
   const { boundedBy, withView } = await import("./folder-access");
-  // The Share flow computes: requested ∩ granterCaps ∩ targetTeamCaps, +view.
-  // Granter holds only [view, deploy]; even if they request manage_infra for a
-  // target whose team caps include it, the granter's own bound removes it.
+  const { NODE_GRANTABLE_CAPABILITIES } = await import("../membership-shared");
+  // The Share flow computes: requested ∩ granterCaps ∩ NODE_GRANTABLE, +view.
+  // Granter holds only [view, deploy]; even if they request manage_backups,
+  // their own bound removes it. This is the bound ADR-0016 KEPT.
   const requested = ["deploy_apps", "manage_backups"] as const;
   const granterCaps = ["view", "deploy_apps"] as const;
-  const targetTeamCaps = ["view", "deploy_apps", "manage_backups"] as const;
   const result = withView(
-    boundedBy(boundedBy([...requested], [...granterCaps]), [...targetTeamCaps]),
+    boundedBy(boundedBy([...requested], [...granterCaps]), NODE_GRANTABLE_CAPABILITIES),
   );
-  assert.deepEqual(result, ["view", "deploy_apps"], "manage_infra can't be granted");
+  assert.deepEqual(result, ["view", "deploy_apps"], "manage_backups can't be granted");
 });
 
-test("a grantee never exceeds their own team caps", async () => {
-  const { boundedBy, withView } = await import("./folder-access");
-  // Grantee's team caps are just [view]; granting [view, deploy] yields [view].
-  const requested = ["view", "deploy_apps"] as const;
-  const granterCaps = ["view", "deploy_apps", "manage_env"] as const;
-  const granteeTeamCaps = ["view"] as const;
-  const result = withView(
-    boundedBy(boundedBy([...requested], [...granterCaps]), [...granteeTeamCaps]),
+test("a node grant can never name a team-wide capability", async () => {
+  const { NODE_GRANTABLE_CAPABILITIES, PROJECT_SCOPED_CAPABILITIES } = await import(
+    "../membership-shared"
   );
-  assert.deepEqual(result, ["view"], "clamped to the grantee's team caps");
+  // The bound that replaced the grantee clamp. Nothing in here can satisfy the
+  // last-admin check, mint a credential, or re-share, so a node grant is never a
+  // route back to team administration however it is asked for.
+  for (const cap of [
+    "manage_members",
+    "manage_roles",
+    "manage_team",
+    "delete_team",
+    "manage_tokens",
+    "manage_registries",
+    "manage_git",
+    "manage_s3",
+    "manage_notifications",
+    "manage_environments",
+    "create_databases",
+    "delete_databases",
+  ] as const) {
+    assert.ok(
+      !NODE_GRANTABLE_CAPABILITIES.includes(cap),
+      `${cap} must not be node-grantable`,
+    );
+  }
+  // It is the token's project set plus exactly three, for the reasons documented
+  // beside the constant.
+  for (const cap of PROJECT_SCOPED_CAPABILITIES) {
+    assert.ok(NODE_GRANTABLE_CAPABILITIES.includes(cap), `${cap} is node-grantable`);
+  }
+  const extra = NODE_GRANTABLE_CAPABILITIES.filter(
+    (c) => !PROJECT_SCOPED_CAPABILITIES.includes(c),
+  );
+  assert.deepEqual(extra.sort(), ["delete_folders", "move_apps", "organize_folders"]);
 });

@@ -11,6 +11,7 @@ import {
   apps as appsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
+import { currentCapabilities } from "../membership";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedS3 } from "./backup-test-helpers";
@@ -170,16 +171,35 @@ test("a grantee with a folder grant can act; without it they can't", async () =>
   });
 });
 
-test("a grant is bounded by the grantee's team caps and can't exceed the granter", async () => {
-  // GRANTEE has no team manage_infra, so granting it is a no-op (bounded away):
-  // their effective folder caps must not include manage_infra.
+test("a grant EXCEEDS the grantee's team caps and holds (ADR-0016)", async () => {
+  // GRANTEE has no team `manage_backups`. Granting it on the folder is exactly how
+  // you hand someone one corner of the fleet without widening their role, so it
+  // must survive — that is the invariant ADR-0016 reversed. The granter's own
+  // bound is what still keeps it safe, and it is asserted below.
   await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy_apps", "manage_backups"]));
   const caps = await as(GRANTEE, () => folderCapabilities(FLD));
   assert.ok(caps.includes("deploy_apps"), "granted+held deploy_apps survives");
   assert.ok(
-    !caps.includes("manage_backups"),
-    "manage_infra can't be granted to a user who lacks it at team level",
+    caps.includes("manage_backups"),
+    "a node grant replaces the team role inside the folder and may exceed it",
   );
+  // And it stays SCOPED to the folder: the team role is untouched everywhere else.
+  const teamCaps = await as(GRANTEE, () => currentCapabilities());
+  assert.ok(
+    !teamCaps.includes("manage_backups"),
+    "the grant must not leak into the team-wide set",
+  );
+});
+
+test("a grant can't exceed the GRANTER, and can't name a team-wide capability", async () => {
+  // The granter bound is the one that survived: OWNER can only hand out what they
+  // themselves hold on this folder. `manage_members` is team-wide by nature and is
+  // absent from NODE_GRANTABLE_CAPABILITIES, so a node can never become a route
+  // back to team administration however it is asked for.
+  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["manage_members", "deploy_apps"]));
+  const caps = await as(GRANTEE, () => folderCapabilities(FLD));
+  assert.ok(caps.includes("deploy_apps"));
+  assert.ok(!caps.includes("manage_members"), "a team-wide capability is never node-grantable");
 });
 
 test("manage_infra: a member without folder access can't back up a project in the folder", async () => {

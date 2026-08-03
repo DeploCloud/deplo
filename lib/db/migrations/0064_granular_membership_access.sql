@@ -1,0 +1,26 @@
+-- A member's access can be set per NODE, not only per team role.
+--
+-- Until now a person's capabilities in a team came from exactly one place: the
+-- role on their membership. The only per-node dimension was `folder_grants`, and
+-- it could never GIVE anything — it was clamped live by the member's team caps,
+-- so it could only ever narrow. "This person owns Prod and nothing else" was
+-- unexpressible: to hand someone `manage_env` in one folder you had to hand it to
+-- them team-wide, which is exactly the escalation the fine-grained capability
+-- model exists to remove.
+--
+-- So a node capability set now REPLACES the team role's inside that node, and may
+-- exceed it. Precedence is most-specific-wins: app → nearest ancestor folder →
+-- ancestor folders → project → membership. See ADR-0016.
+--
+-- This column is the admin's MODE choice, not a derived fact. Node rows cascade
+-- away when the app or folder they name is deleted; without it "granular with
+-- nothing left ticked" would be indistinguishable from a plain hand-picked set,
+-- and the user page would silently flip its own toggle back to Role mode. Same
+-- shape as `api_tokens.scoped` (ADR-0015 §6), for a narrower reason: nothing
+-- widens here, because the base capabilities are stored independently of the
+-- nodes.
+--
+-- It ships alone, ahead of `app_grants` in 0065, because it lands on a table the
+-- test seeds touch before the 0027 freeze point (see shared-env-migration.test.ts)
+-- and it depends on nothing but `memberships` itself.
+ALTER TABLE "memberships" ADD COLUMN "granular" boolean DEFAULT false NOT NULL;

@@ -94,11 +94,16 @@ before(async () => {
   // DROPS `users.password_hash` — which the seed no longer writes. Its own
   // credential backfill reads `users`, so running it before the seed simply
   // copies zero rows, which is exactly right for a database with no accounts yet.
+  // granular (0064) is the same case for `memberships.granular`: one ALTER on a
+  // table that has existed since 0000, invisible to 0027's backfill. Its sibling
+  // 0065 (app_grants) stays in the post-27 batch — it indexes
+  // `activities.actor_user_id`, which only exists from 0029.
   const preSeed = (f: string): boolean =>
     Number(f.slice(0, 4)) < 27 ||
     f.startsWith("0043_") ||
     f.startsWith("0054_") ||
-    f.startsWith("0055_");
+    f.startsWith("0055_") ||
+    f.startsWith("0064_");
   const pre27 = files.filter(preSeed);
   const from27 = files.filter((f) => !preSeed(f));
 

@@ -263,6 +263,11 @@ export async function membershipFor(
  * hydrate OTHER people's memberships (the member list, the roles page, a folder
  * grant's bound) — clamping those would make a token see the rest of the team
  * through its own permissions. A cookie request carries no token and is untouched.
+ *
+ * Exported as {@link clampCapabilitiesToToken} because a node grant (ADR-0016)
+ * REPLACES the membership set rather than narrowing it, so it never passes
+ * through the intersection below — `lib/data/node-access.ts` has to apply the
+ * same clamp itself or a scoped CI token would inherit its creator's grants.
  */
 function clampToToken(
   caps: Capability[],
@@ -278,6 +283,9 @@ function clampToToken(
   // ones, which have no per-project meaning.
   return narrowedScope() ? boundedBy(own, PROJECT_SCOPED_CAPABILITIES) : own;
 }
+
+/** {@link clampToToken}, for the node-level resolver that bypasses `membershipFor`. */
+export const clampCapabilitiesToToken = clampToToken;
 
 /**
  * Resolve the active team id for the current request. Reads the `deplo_team`

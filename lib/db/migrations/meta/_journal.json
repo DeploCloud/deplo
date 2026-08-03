@@ -449,6 +449,20 @@
       "when": 1784673800000,
       "tag": "0063_token_scope_folders",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1784674000000,
+      "tag": "0064_granular_membership_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1784674200000,
+      "tag": "0065_app_grants",
+      "breakpoints": true
     }
   ]
 }

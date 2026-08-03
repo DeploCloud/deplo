@@ -138,6 +138,33 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "view_activity",
 ];
 
+/**
+ * The capabilities that may be handed out ON A SINGLE NODE — an App, a Folder or
+ * a Project container (ADR-0016). A node grant REPLACES the team role's set
+ * inside that node and may exceed it, so this list is what stops one from ever
+ * becoming a route back to team administration: `manage_members`, `manage_roles`,
+ * `manage_team`, `delete_team`, `manage_tokens`, `manage_registries`,
+ * `manage_git`, `manage_s3`, `manage_notifications`, `manage_environments`, the
+ * folder/project CRUD verbs and every database capability are all absent, so a
+ * grant can never satisfy the last-admin check, mint a credential, or re-share.
+ *
+ * It is {@link PROJECT_SCOPED_CAPABILITIES} plus three, and the difference is
+ * deliberate rather than an oversight:
+ *  - `move_apps` — dropped for a TOKEN because moving an app is a token editing
+ *    its own boundary. A person is not their own boundary, and `folders.ts`
+ *    already gates the move per folder for humans.
+ *  - `organize_folders` / `delete_folders` — a folder-shaped verb has no meaning
+ *    for a project-scoped token (a folder never lives in a project), but it is
+ *    the whole point of handing someone one corner of the fleet.
+ */
+export const NODE_GRANTABLE_CAPABILITIES: Capability[] = ALL_CAPABILITIES.filter(
+  (c) =>
+    PROJECT_SCOPED_CAPABILITIES.includes(c) ||
+    c === "move_apps" ||
+    c === "organize_folders" ||
+    c === "delete_folders",
+);
+
 /** True if two capability sets grant exactly the same thing (order-blind). */
 export function sameCapabilities(a: Capability[], b: Capability[]): boolean {
   const left = new Set(a);

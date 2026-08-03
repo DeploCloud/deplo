@@ -62,6 +62,7 @@ const CONTROL_PLANE = [
   "folder_grants",
   "projects",
   "project_grants",
+  "app_grants",
   "team_project_order",
   "environments",
   "app_environments",
