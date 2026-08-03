@@ -60,8 +60,11 @@ export function RolesRail({
     ? pathname.slice("/settings/roles/".length).split("/")[0]
     : null;
 
+  // Sticky on desktop, like the role editor's summary card: the rail is the
+  // navigation, so it has to stay reachable while the permission list scrolls.
+  // It scrolls on its own once a team has more roles than fit the viewport.
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
       <div className="flex items-center justify-between gap-2 px-1">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Roles
