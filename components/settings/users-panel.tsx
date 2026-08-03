@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -36,7 +37,6 @@ import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
-import { EditUserDialog } from "@/components/settings/edit-user-dialog";
 import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
 import { RegistrationLinkRow } from "@/components/settings/registration-link-row";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -121,7 +121,6 @@ function UserRow({
   viewerIsOwner: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
   const [confirmSuspend, setConfirmSuspend] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmTransfer, setConfirmTransfer] = React.useState(false);
@@ -185,9 +184,8 @@ function UserRow({
     .join(" · ");
 
   const card = (
-    <button
-      type="button"
-      onClick={() => setOpen(true)}
+    <Link
+      href={`/settings/users/${user.userId}`}
       className="flex min-w-0 flex-1 items-center gap-3 text-left"
     >
       <Avatar>
@@ -230,13 +228,13 @@ function UserRow({
         <p className="truncate text-xs text-muted-foreground">{meta}</p>
       </div>
       <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-    </button>
+    </Link>
   );
 
   return (
     <>
-      {/* Left-click the card to open the full editor; the ⋯ menu offers the
-          quick admin/suspend actions. */}
+      {/* The card IS a link to the account's page — which is what the chevron
+          has always looked like. The ⋯ menu keeps the quick flag flips. */}
       <div
         className={cn(
           "flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-foreground/20 hover:bg-accent",
@@ -260,9 +258,11 @@ function UserRow({
               content="View details and edit this user's global permissions"
               side="left"
             >
-              <DropdownMenuItem onSelect={() => setOpen(true)}>
-                <UserCog className="size-4" />
-                Manage user
+              <DropdownMenuItem asChild>
+                <Link href={`/settings/users/${user.userId}`}>
+                  <UserCog className="size-4" />
+                  Manage user
+                </Link>
               </DropdownMenuItem>
             </SimpleTooltip>
             <DropdownMenuSeparator />
@@ -362,28 +362,6 @@ function UserRow({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {open && (
-        <EditUserDialog
-          user={{
-            userId: user.userId,
-            username: user.username,
-            name: user.name,
-            avatarColor: user.avatarColor,
-          }}
-          seed={{
-            isInstanceAdmin: user.isInstanceAdmin,
-            isInstanceOwner: user.isInstanceOwner,
-            suspended: user.suspended,
-            canExposePorts: user.canExposePorts,
-            canMountHostVolumes: user.canMountHostVolumes,
-            createdAt: user.createdAt,
-            teamCount: user.teamCount,
-          }}
-          isSelf={isSelf}
-          open={open}
-          onOpenChange={setOpen}
-        />
-      )}
       {confirmSuspend && (
         <ConfirmAction
           open={confirmSuspend}

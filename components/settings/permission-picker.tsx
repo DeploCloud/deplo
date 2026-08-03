@@ -32,12 +32,20 @@ export function PermissionPicker({
   capabilities,
   onChange,
   disabled = false,
+  only,
   hint = "Every action deplo can gate, one permission each. Tick exactly what this role should be able to do — search by what you want it to reach.",
 }: {
   capabilities: Capability[];
   onChange: (caps: Capability[]) => void;
   /** Read-only rendering (the locked Owner role, or a viewer). */
   disabled?: boolean;
+  /**
+   * Narrow the list to the permissions that can mean anything here — a node
+   * grant, for one, can never carry a team-wide capability (ADR-0016). Omitted
+   * ⇒ all forty. Absent permissions are hidden, not disabled: an unreachable
+   * checkbox invites the question "why not?" on every row it appears in.
+   */
+  only?: Capability[];
   /** Tooltip beside the heading — name the thing being granted. */
   hint?: string;
 }) {
@@ -54,15 +62,27 @@ export function PermissionPicker({
     [terms],
   );
 
+  const offered = React.useMemo(
+    () => (only ? new Set(only) : null),
+    [only],
+  );
+  const offerable = React.useCallback(
+    (cap: Capability) => !offered || offered.has(cap),
+    [offered],
+  );
+  const optional = OPTIONAL.filter(offerable);
+
   const sections = CAPABILITY_CATEGORIES.map((cat) => ({
     ...cat,
-    shown: cat.caps.filter(matches),
+    shown: cat.caps.filter(offerable).filter(matches),
   })).filter((cat) => cat.shown.length > 0);
   /** The always-on floor is listed like any other permission — it just can't be unticked. */
   const viewShown = matches("view");
   const shownCount =
     sections.reduce((n, s) => n + s.shown.length, 0) + (viewShown ? 1 : 0);
-  const grantedCount = capabilities.filter((c) => c !== "view").length;
+  const grantedCount = capabilities.filter(
+    (c) => c !== "view" && (!only || only.includes(c)),
+  ).length;
 
   function write(next: Set<Capability>) {
     next.add("view");
@@ -96,12 +116,12 @@ export function PermissionPicker({
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">
-            {grantedCount} of {OPTIONAL.length} granted
+            {grantedCount} of {optional.length} granted
           </span>
           {!disabled && grantedCount > 0 && (
             <button
               type="button"
-              onClick={() => setMany(OPTIONAL, false)}
+              onClick={() => setMany(optional, false)}
               className="rounded font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Clear all

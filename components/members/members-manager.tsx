@@ -41,7 +41,6 @@ import { Button } from "@/components/ui/button";
 import { RoleSelect } from "@/components/members/role-select";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
-import { EditUserDialog } from "@/components/settings/edit-user-dialog";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
@@ -162,7 +161,6 @@ function MemberCard({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [editOpen, setEditOpen] = React.useState(false);
-  const [userEditOpen, setUserEditOpen] = React.useState(false);
   // The ABSOLUTE owner (founder / "crown") is immutable — never editable or
   // removable by anyone (the data layer enforces this too). An *assigned* owner
   // (owner role, but not the founder) can be edited/removed, but only BY another
@@ -267,9 +265,11 @@ function MemberCard({
                   content="View and edit this user's instance-wide account and permissions"
                   side="left"
                 >
-                  <DropdownMenuItem onSelect={() => setUserEditOpen(true)}>
-                    <UserCog className="size-4" />
-                    Manage user account
+                  <DropdownMenuItem asChild>
+                    <Link href={`/settings/users/${member.userId}`}>
+                      <UserCog className="size-4" />
+                      Manage user account
+                    </Link>
                   </DropdownMenuItem>
                 </SimpleTooltip>
               )}
@@ -329,19 +329,6 @@ function MemberCard({
           canAssignOwner={viewerIsOwner}
           open={editOpen}
           onOpenChange={setEditOpen}
-        />
-      )}
-      {userEditOpen && (
-        <EditUserDialog
-          user={{
-            userId: member.userId,
-            username: member.username,
-            name: member.name,
-            avatarColor: member.avatarColor,
-          }}
-          isSelf={isSelf}
-          open={userEditOpen}
-          onOpenChange={setUserEditOpen}
         />
       )}
     </>
