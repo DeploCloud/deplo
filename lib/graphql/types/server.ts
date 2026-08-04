@@ -14,6 +14,7 @@ import {
   type ServerRemoval,
 } from "@/lib/data/servers";
 import { checkServerHealth, checkAllServerHealth } from "@/lib/data/server-health";
+import { refreshAgentVersion } from "@/lib/data/updates";
 import { checkServerReadiness } from "@/lib/data/server-readiness";
 import {
   isAgentOutdated,
@@ -416,14 +417,6 @@ builder.mutationFields((t) => ({
     authScopes: { instanceAdmin: true },
     description:
       "Force an immediate re-resolution of the latest agent release from GitHub, bypassing the in-process cache. Returns the resolved expected agent version so the dashboard re-renders with fresh outdated badges. Use after publishing a new agent release rather than waiting out the cache TTL.",
-    resolve: async () => {
-      // Bust the in-process memo, then re-resolve through the standard helper so
-      // the fallback rule (GitHub unreachable -> FALLBACK_AGENT_VERSION) stays in
-      // one place. resolveExpectedAgentVersion re-populates the memo, so the
-      // RSC re-render that follows reuses this fresh value.
-      const { refreshAgentRelease } = await import("@/lib/agent/release");
-      await refreshAgentRelease();
-      return resolveExpectedAgentVersion();
-    },
+    resolve: () => refreshAgentVersion(),
   }),
 }));

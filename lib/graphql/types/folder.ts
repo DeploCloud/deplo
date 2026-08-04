@@ -150,7 +150,7 @@ builder.queryFields((t) => ({
 // `reorderFolders` writes the team-wide folder order (like reorderApps), so
 // it stays gated on a super-user: an instance admin OR a member with manage_team.
 const folderScopes = {
-  $any: { instanceAdmin: true, capability: "organize_folders" },
+  $any: { instanceAdmin: true, capability: "manage_team" },
 } as const;
 
 // Every OTHER folder mutation is a PER-FOLDER decision (owner / grantee / super-

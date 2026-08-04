@@ -1,6 +1,7 @@
 import "server-only";
 
-import { DEPLO_VERSION, DEPLO_REPO, isNewer } from "../version";
+import { DEPLO_VERSION, DEPLO_REPO, isNewer, resolveExpectedAgentVersion } from "../version";
+import { requireInstanceAdmin } from "../membership";
 
 /** Result of checking the upstream GitHub repository for a newer release. */
 export interface UpdateInfo {
@@ -73,4 +74,24 @@ export async function getUpdateInfo(): Promise<UpdateInfo> {
       error: e instanceof Error ? e.message : "Update check failed",
     };
   }
+}
+
+/**
+ * Re-resolve the latest agent release from GitHub, bypassing the in-process
+ * cache, and return the version the fleet is now expected to run.
+ *
+ * Gated here rather than in the resolver, like every other instance-admin
+ * action: the field's `authScopes` reads `viewer.isInstanceAdmin`, which is the
+ * PERSON behind the request — an API token they minted is only an instance
+ * admin if it was given that switch, and only `requireInstanceAdmin` knows the
+ * difference.
+ */
+export async function refreshAgentVersion(): Promise<string> {
+  await requireInstanceAdmin();
+  const { refreshAgentRelease } = await import("../agent/release");
+  await refreshAgentRelease();
+  // Re-resolve through the standard helper so the fallback rule (GitHub
+  // unreachable -> FALLBACK_AGENT_VERSION) stays in one place; it re-populates
+  // the memo, so the RSC re-render that follows reuses this fresh value.
+  return resolveExpectedAgentVersion();
 }

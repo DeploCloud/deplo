@@ -67,9 +67,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   move_apps: {
     label: "Move & reorder apps",
-    description:
-      "Move an app into a folder, project or another team, and reorder the grid.",
-    keywords: "organize transfer drag arrange sort",
+    description: "Move an app into a folder, project or another team.",
+    keywords: "organize transfer drag",
   },
   open_app_console: {
     label: "Open an app's console",
@@ -123,9 +122,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   organize_folders: {
     label: "Organize folders",
-    description:
-      "Rename folders, nest them, reorder them and share them with members.",
-    keywords: "rename move reorder nest share arrange",
+    description: "Rename folders, nest them and share them with members.",
+    keywords: "rename move nest share",
   },
   delete_folders: {
     label: "Delete folders",
@@ -139,8 +137,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   organize_projects: {
     label: "Organize projects",
-    description: "Rename projects, change their colour and reorder them.",
-    keywords: "rename colour color reorder arrange",
+    description: "Rename projects and change their colour.",
+    keywords: "rename colour color",
   },
   delete_projects: {
     label: "Delete projects",
@@ -265,8 +263,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   manage_team: {
     label: "Manage team settings",
-    description: "Rename the team and change its settings.",
-    keywords: "settings rename workspace general",
+    description: "Rename the team, change its settings and order the overview.",
+    keywords: "settings rename workspace general reorder arrange sort order",
   },
   delete_team: {
     label: "Delete the team",

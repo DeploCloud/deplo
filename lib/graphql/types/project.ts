@@ -81,7 +81,7 @@ builder.queryFields((t) => ({
 // The team-wide container order (like reorderFolders/reorderApps) stays gated
 // on a super-user: instance admin OR manage_team.
 const reorderScope = {
-  $any: { instanceAdmin: true, capability: "organize_projects" },
+  $any: { instanceAdmin: true, capability: "manage_team" },
 } as const;
 
 // One scope per action — creating a project, renaming it, deleting it and
