@@ -11,7 +11,6 @@ import {
   FolderPlus,
   Boxes,
   Database,
-  Users,
   UserPlus,
   UserCog,
 } from "lucide-react";
@@ -27,7 +26,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CreateFolderDialog } from "@/components/apps/create-folder-dialog";
 import { CreateProjectDialog } from "@/components/apps/create-project-dialog";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
@@ -39,14 +42,18 @@ import {
 } from "@/lib/overview-links";
 
 /**
- * Overview "Add new" menu: a single entry point to create an app, a team, a
- * team member, or (for instance admins) a global user. Each creation flow reuses
- * the same dialog component as its dedicated page, so behaviour stays in sync.
+ * Overview "Add new" menu: a single entry point to create an app, a database, a
+ * folder, a project, a team member, or (for instance admins) a global user. Each
+ * creation flow reuses the same dialog component as its dedicated page, so
+ * behaviour stays in sync.
  *
  * Every item is gated on exactly the capability its flow needs — an entry that
- * only leads to "you don't have permission" is not offered at all. Creating a
- * team is the one thing available to everyone (a new team makes the viewer its
- * owner).
+ * only leads to "you don't have permission" is not offered at all. A viewer who
+ * holds none of them gets the button DISABLED, with a tooltip saying why, rather
+ * than an empty menu.
+ *
+ * Creating a TEAM is deliberately not here: it belongs to the team switcher in
+ * the topbar, which is where teams are chosen and left.
  */
 export function AddNewMenu({
   canCreateApp,
@@ -80,11 +87,39 @@ export function AddNewMenu({
    *  inside a folder is created IN it, not at the team top level. */
   placement?: OverviewPlacement | null;
 }) {
-  const [teamOpen, setTeamOpen] = React.useState(false);
   const [folderOpen, setFolderOpen] = React.useState(false);
   const [projectOpen, setProjectOpen] = React.useState(false);
   const [memberOpen, setMemberOpen] = React.useState(false);
   const [userOpen, setUserOpen] = React.useState(false);
+
+  // Nothing this menu offers is available: show the button disabled with the
+  // reason rather than a menu that opens onto nothing.
+  if (
+    !canCreateApp &&
+    !canCreateDatabase &&
+    !canCreateFolder &&
+    !canCreateProject &&
+    !canManageMembers &&
+    !isAdmin
+  )
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* Disabled buttons swallow pointer events, so wrap in a focusable
+              span to keep the tooltip reachable. */}
+          <span tabIndex={0}>
+            <Button size="sm" disabled>
+              <Plus className="size-4" />
+              Add New
+              <ChevronDown className="size-3.5 opacity-70" />
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          You don&apos;t have permission to create anything in this team
+        </TooltipContent>
+      </Tooltip>
+    );
 
   return (
     <>
@@ -151,23 +186,18 @@ export function AddNewMenu({
             </DropdownMenuItem>
           )}
 
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel>Team</DropdownMenuLabel>
-          <DropdownMenuItem
-            className="cursor-pointer"
-            onSelect={() => setTeamOpen(true)}
-          >
-            <Users className="size-4" />
-            New team
-          </DropdownMenuItem>
           {canManageMembers && (
-            <DropdownMenuItem
-              className="cursor-pointer"
-              onSelect={() => setMemberOpen(true)}
-            >
-              <UserPlus className="size-4" />
-              New team member
-            </DropdownMenuItem>
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Team</DropdownMenuLabel>
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onSelect={() => setMemberOpen(true)}
+              >
+                <UserPlus className="size-4" />
+                New team member
+              </DropdownMenuItem>
+            </>
           )}
 
           {isAdmin && (
@@ -186,7 +216,6 @@ export function AddNewMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <CreateTeamDialog open={teamOpen} onOpenChange={setTeamOpen} />
       {canCreateFolder && (
         <CreateFolderDialog
           open={folderOpen}
