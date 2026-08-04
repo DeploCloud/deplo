@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import { isStaleBuildError, reloadOnce } from "@/lib/stale-build";
+
 /**
  * Global error boundary. It replaces the root layout entirely, so it renders
  * its own <html>/<body> and must NOT use request-time APIs (headers/cookies)
@@ -13,6 +16,13 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // Same recovery as the dashboard boundary: a tab that outlived the build it
+  // was loaded from is one reload away from working. See lib/stale-build.ts.
+  const stale = isStaleBuildError(error);
+  useEffect(() => {
+    if (stale) reloadOnce();
+  }, [stale]);
+
   return (
     <html lang="en">
       <body
@@ -39,7 +49,7 @@ export default function GlobalError({
             }}
           />
           <h1 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>
-            Something went wrong
+            {stale ? "Deplo was updated" : "Something went wrong"}
           </h1>
           <p
             style={{
@@ -48,11 +58,13 @@ export default function GlobalError({
               fontSize: "0.875rem",
             }}
           >
-            An unexpected error occurred.
+            {stale
+              ? "This tab is still running the previous version. Reloading picks up the new one."
+              : "An unexpected error occurred."}
           </p>
           <button
             type="button"
-            onClick={reset}
+            onClick={stale ? () => window.location.reload() : reset}
             style={{
               marginTop: "1.5rem",
               cursor: "pointer",
@@ -65,7 +77,7 @@ export default function GlobalError({
               fontWeight: 500,
             }}
           >
-            Try again
+            {stale ? "Reload" : "Try again"}
           </button>
         </div>
       </body>
