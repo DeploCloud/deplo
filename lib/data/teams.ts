@@ -100,21 +100,6 @@ export async function listMyTeams(): Promise<
 }
 
 /**
- * Every team in the instance, for the server team-access picker. Gated by
- * `manage_infra` (whoever administers servers chooses which teams may target
- * them) — this is the one cross-team read that capability grants, so it is kept
- * minimal (id/name/…) and never exposes membership. Ordered by name.
- */
-export async function listAllTeams(): Promise<Team[]> {
-  await requireCapability("move_apps");
-  const rows = await getDb()
-    .select()
-    .from(teamsTable)
-    .orderBy(asc(teamsTable.name));
-  return rows.map(rowToTeam);
-}
-
-/**
  * Every team in the instance for the instance-admin registration-link picker
  * (assign a new user to existing teams). Gated by `requireInstanceAdmin` rather
  * than `manage_infra` — registering users is an instance-admin power, not a

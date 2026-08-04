@@ -2086,11 +2086,6 @@ type Query {
   apps: [App!]
 
   """
-  Every team in the instance, for the server team-access picker. Requires manage_infra.
-  """
-  assignableTeams: [Team!]
-
-  """
   How many stored backup artifacts (successful runs) one target has in S3. 0 means there is nothing to sweep — the delete dialog hides its 'also delete backup artifacts' option in that case.
   """
   backupArtifactCount(targetId: String!, targetKind: BackupTargetKind!): Int
