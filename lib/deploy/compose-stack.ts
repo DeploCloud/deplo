@@ -2,7 +2,8 @@ import "server-only";
 
 import yaml from "js-yaml";
 
-import type { ResourceLimits, VolumeMount } from "../types";
+import type { MountPropagation, ResourceLimits, VolumeMount } from "../types";
+import { mountOptions } from "../apps/volume-model";
 import { hostVolumeName } from "../utils";
 import { certResolver } from "./domains";
 import { traefikRouterLabels, hash6 } from "./routing";
@@ -436,18 +437,23 @@ function containerPathOf(entry: unknown): string | null {
   return null;
 }
 
+/** One injected mount line's parts, before {@link mountOptions} spells its tail. */
+type StackMount = {
+  source: string;
+  target: string;
+  readOnly: boolean;
+  propagation?: MountPropagation;
+};
+
 /**
  * Mount the app's Storage volumes into one service, appending a short-form
- * `- <source>:<target>[:ro]` per volume. EXISTING-WINS: a container path the
+ * `- <source>:<target>[:ro[,rslave]]` per volume. EXISTING-WINS: a container path the
  * service already mounts in the user's own compose is skipped, so the authored
  * compose always beats the injected mount (the same precedence `mergeEnvironment`
  * and `mergeResourceLimits` use). Nothing to add ⇒ the service is left exactly
  * as-is, so a service with no `volumes:` key never grows an empty one.
  */
-function mergeVolumes(
-  svc: App,
-  mounts: { source: string; target: string; readOnly: boolean }[],
-): void {
+function mergeVolumes(svc: App, mounts: StackMount[]): void {
   if (mounts.length === 0) return;
   const existing: unknown[] = Array.isArray(svc.volumes) ? [...svc.volumes] : [];
   const declared = new Set(
@@ -455,7 +461,7 @@ function mergeVolumes(
   );
   const added = mounts
     .filter((m) => !declared.has(m.target.replace(/\/+$/, "")))
-    .map((m) => `${m.source}:${m.target}${m.readOnly ? ":ro" : ""}`);
+    .map((m) => `${m.source}:${m.target}${mountOptions(m)}`);
   if (added.length === 0) return;
   svc.volumes = [...existing, ...added];
 }
@@ -545,10 +551,7 @@ function injectAppVolumes(
   // Per-service mount lists, so a service is rewritten once with all of its
   // volumes (and the existing-wins check sees the authored compose, not our own
   // earlier injections).
-  const byService = new Map<
-    string,
-    { source: string; target: string; readOnly: boolean }[]
-  >();
+  const byService = new Map<string, StackMount[]>();
   // Container paths each service ALREADY mounts in the authored compose, read
   // lazily once per service. Checked before a top-level alias is allocated, so an
   // existing-wins skip doesn't leave an orphan `volumes:` entry behind (compose
@@ -603,7 +606,13 @@ function injectAppVolumes(
       source = key;
     }
     const list = byService.get(svcName) ?? [];
-    list.push({ source, target: v.mountPath, readOnly: Boolean(v.readOnly) });
+    list.push({
+      source,
+      target: v.mountPath,
+      readOnly: Boolean(v.readOnly),
+      // Host binds only — `propagation` is dropped for the other kinds on write.
+      ...(v.propagation ? { propagation: v.propagation } : {}),
+    });
     byService.set(svcName, list);
   }
 

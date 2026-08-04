@@ -952,6 +952,9 @@ export const appVolumes = pgTable(
     hostPath: text("host_path"),
     mountPath: text("mount_path").notNull(),
     readOnly: boolean("read_only").notNull(),
+    // Host binds only: "rslave"/"rshared" ⇒ the mount follows submounts that
+    // appear later. NULL is docker's rprivate default (a startup snapshot).
+    propagation: text("propagation"),
   },
   (t) => [primaryKey({ columns: [t.appId, t.position] })],
 );

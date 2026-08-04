@@ -66,6 +66,7 @@ import {
   promoteToProduction,
 } from "@/lib/data/deployments";
 import { renderAppStack } from "@/lib/deploy/build";
+import { MOUNT_PROPAGATIONS } from "@/lib/types";
 import type {
   BuildMethod,
   Deployment,
@@ -134,6 +135,17 @@ export const DeploymentRef = builder
     }),
   });
 
+const MountPropagationEnum = builder.enumType("MountPropagation", {
+  description:
+    "How mounts appearing UNDER a host bind mount cross between the server and " +
+    "the container. Null is docker's `rprivate` default: the container sees only " +
+    "the submounts that existed when it started, so a network disk, a FUSE share " +
+    "or a volume another container mounts there never appears. `rslave` keeps " +
+    "following the server; `rshared` is two-way. Host binds only — docker rejects " +
+    "the option on a managed volume.",
+  values: MOUNT_PROPAGATIONS,
+});
+
 const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
   description:
     "A persistent volume mounted into an app — a docker named volume, an " +
@@ -151,6 +163,11 @@ const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
     service: t.string({ nullable: true, resolve: (v) => v.service ?? null }),
     mountPath: t.exposeString("mountPath"),
     readOnly: t.exposeBoolean("readOnly"),
+    propagation: t.field({
+      type: MountPropagationEnum,
+      nullable: true,
+      resolve: (v) => v.propagation ?? null,
+    }),
   }),
 });
 
@@ -352,6 +369,9 @@ const VolumeInput = builder.inputType("VolumeInput", {
     service: t.string({ required: false }),
     mountPath: t.string({ required: true }),
     readOnly: t.boolean({ required: false }),
+    /** Host binds only: follow submounts that appear later. Null ⇒ docker's
+     * `rprivate` default (a snapshot taken when the container started). */
+    propagation: t.field({ type: MountPropagationEnum, required: false }),
   }),
 });
 
@@ -770,6 +790,7 @@ builder.mutationFields((t) => ({
           service: v.service ?? undefined,
           mountPath: v.mountPath,
           readOnly: v.readOnly ?? false,
+          propagation: v.propagation ?? undefined,
         })),
       );
       return reloadApp(id);

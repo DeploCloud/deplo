@@ -47,6 +47,7 @@ import {
   VOLUME_NAME_MAX,
   VOLUME_NAME_RE,
 } from "../apps/volume-model";
+import { MOUNT_PROPAGATIONS } from "../types";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import { buildConfigFor } from "../frameworks";
@@ -1158,6 +1159,15 @@ export function validateVolumes(
       if (hostPath.split("/").includes("..")) {
         throw new Error(`The path on the server cannot contain "..": "${v.hostPath}"`);
       }
+      // Propagation rides into the compose mount line verbatim, so it is checked
+      // against the closed set here too and not only at the API's enum: this
+      // function is the boundary every writer goes through.
+      const propagation = v.propagation;
+      if (propagation && !MOUNT_PROPAGATIONS.includes(propagation)) {
+        throw new Error(
+          `Unknown mount propagation "${propagation}" — use ${MOUNT_PROPAGATIONS.join(" or ")}.`,
+        );
+      }
       out.push({
         id: v.id || newId("vol"),
         type: "host",
@@ -1166,6 +1176,7 @@ export function validateVolumes(
         ...(service ? { service } : {}),
         mountPath,
         readOnly: Boolean(v.readOnly),
+        ...(propagation ? { propagation } : {}),
       });
       continue;
     }

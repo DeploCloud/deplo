@@ -431,6 +431,24 @@ services:
   assert.deepEqual(topVolumes(doc), {});
 });
 
+test("a host bind's propagation reaches the injected mount line", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+`,
+    {
+      volumes: [
+        vol({ id: "vol_1", type: "host", name: "neon", hostPath: "/srv/neon", mountPath: "/srv/neon", propagation: "rslave" }),
+      ],
+    },
+  );
+  assert.deepEqual(volsOf(doc.services.web as Svc & { volumes?: unknown }), [
+    "/srv/neon:/srv/neon:rslave",
+  ]);
+});
+
 test("a top-level key the compose already uses is not clobbered", () => {
   const doc = buildDoc(
     `

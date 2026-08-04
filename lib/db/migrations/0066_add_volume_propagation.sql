@@ -1,0 +1,18 @@
+-- Mount propagation for a HOST bind mount (Storage → Bind).
+--
+-- A bind rendered as `- /srv/x:/srv/x` gets docker's `rprivate` default, which
+-- hands the container a SNAPSHOT of the submounts that existed the instant it
+-- started and never follows them again. Anything mounted under that folder
+-- afterwards — a network disk, a FUSE share, a volume another container puts
+-- there — is simply invisible inside the app, with no error on either side. The
+-- panel had no way to ask for anything else, so neither did the API.
+--
+-- NULL keeps the historical rendering byte-for-byte (`:ro` or nothing at all),
+-- which matters: a changed mount line restarts the container, so every existing
+-- app must render exactly as it does today.
+--
+-- Constrained to the two RECURSIVE modes on purpose. `slave`/`shared` (without
+-- the r) apply to the mount point alone and NOT to what is nested under it,
+-- which is the very thing anyone setting this is after; `private`/`rprivate` is
+-- the default and is spelled NULL here.
+ALTER TABLE "app_volumes" ADD COLUMN IF NOT EXISTS "propagation" text;

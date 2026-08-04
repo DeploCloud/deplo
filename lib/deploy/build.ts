@@ -90,9 +90,11 @@ import type {
   EnvTarget,
   GitRepo,
   LogLine,
+  MountPropagation,
   ResourceLimits,
   VolumeMount,
 } from "../types";
+import { mountOptions, parseMountPropagation } from "../apps/volume-model";
 
 /**
  * The owning server id for a slug's project — its lifecycle verbs run on that
@@ -573,6 +575,8 @@ export function renderCompose(opts: {
     hostPath?: string;
     mountPath: string;
     readOnly?: boolean;
+    /** Host binds only: follow submounts appearing later (`rslave`/`rshared`). */
+    propagation?: MountPropagation;
   }[];
   /**
    * Whether to inject `PORT=<port>` into the container env. True for sources
@@ -670,7 +674,7 @@ export function renderCompose(opts: {
               : v.type === "app"
                 ? `${filesDir}/${v.projectPath}`
                 : v.name;
-          return `      - ${source}:${v.mountPath}${v.readOnly ? ":ro" : ""}`;
+          return `      - ${source}:${v.mountPath}${mountOptions(v)}`;
         })
         .join("\n") +
       "\n"
@@ -1815,6 +1819,7 @@ type StackVolume = {
   hostPath?: string;
   mountPath: string;
   readOnly?: boolean;
+  propagation?: MountPropagation;
 };
 
 function readStackVolumesFromYaml(
@@ -1850,7 +1855,14 @@ export function parseStackVolumes(
     if (typeof e !== "string") return [];
     const [source, mountPath, flag] = e.split(":");
     if (!source || !mountPath) return [];
-    const readOnly = flag === "ro";
+    // The option field is a COMMA LIST (`ro,rslave`), not a single word: reading
+    // it as one dropped both flags off a bind that carried propagation, so a
+    // reroute would have quietly re-rendered it read-write and rprivate.
+    const opts = (flag ?? "").split(",");
+    const readOnly = opts.includes("ro");
+    const propagation = parseMountPropagation(opts);
+    // Absent unless set, so an unchanged mount still deep-equals what it was.
+    const prop = propagation ? { propagation } : {};
     if (source.startsWith(filesRoot)) {
       // `<filesRoot><slug>/<rel>` — drop the slug segment, the rest is the
       // project-relative path the "service" mount was authored with.
@@ -1862,7 +1874,9 @@ export function parseStackVolumes(
       }
     }
     if (source.startsWith("/")) {
-      return [{ type: "host" as const, name: "", hostPath: source, mountPath, readOnly }];
+      return [
+        { type: "host" as const, name: "", hostPath: source, mountPath, readOnly, ...prop },
+      ];
     }
     return [{ name: source, mountPath, readOnly }];
   });

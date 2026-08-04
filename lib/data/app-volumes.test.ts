@@ -163,6 +163,26 @@ test("volumes are replaced as a whole set, and an empty set clears them", async 
   assert.equal((await loadAppGraph("prj_1"))?.volumes, null);
 });
 
+test("a host bind's propagation survives the write and the read back", async () => {
+  await seedApp(db, {
+    id: "prj_1",
+    teamId: TEAM_A,
+    source: "compose",
+    compose: COMPOSE,
+  });
+  await asUser1(() =>
+    setAppVolumes("prj_1", [
+      vol({ type: "host", name: "neon", service: "web", hostPath: "/srv/neon_data", mountPath: "/srv/neon_data", propagation: "rslave" }),
+      vol({ type: "host", name: "plain", service: "web", hostPath: "/srv/plain", mountPath: "/plain" }),
+    ]),
+  );
+  const vols = (await loadAppGraph("prj_1"))!.volumes!;
+  assert.equal(vols[0].propagation, "rslave");
+  // NULL in the column comes back as an ABSENT key, not `null` — the renderers
+  // and the dirty key both read "no propagation" from its absence.
+  assert.ok(!("propagation" in vols[1]));
+});
+
 test("setAppVolumes refuses a cross-team app id", async () => {
   await seedApp(db, {
     id: "prj_b",

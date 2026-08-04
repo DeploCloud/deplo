@@ -11,6 +11,7 @@ import type {
   Folder,
   LogLine,
   App,
+  MountPropagation,
   ResourceLimits,
   VolumeMount,
 } from "../types";
@@ -317,6 +318,11 @@ function volumeRowToMount(v: AppVolumeRow): VolumeMount {
       ...service,
       mountPath: v.mountPath,
       readOnly: v.readOnly,
+      // Spread in only when set, for the same round-trip reason as `service`:
+      // NULL is docker's rprivate default and must stay an ABSENT key.
+      ...(v.propagation
+        ? { propagation: v.propagation as MountPropagation }
+        : {}),
     };
   }
   if (v.type === "app") {
@@ -492,6 +498,8 @@ export function volumesToRows(
     hostPath: v.type === "host" ? v.hostPath : null,
     mountPath: v.mountPath,
     readOnly: Boolean(v.readOnly),
+    // Host binds only — docker rejects a propagation option on a managed volume.
+    propagation: v.type === "host" ? (v.propagation ?? null) : null,
   }));
 }
 

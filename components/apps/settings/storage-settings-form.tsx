@@ -59,6 +59,7 @@ function volumesKey(vs: VolumeMount[], workdir?: string | null): string {
         service: (v.service ?? "").trim(),
         mountPath: effectiveMountPath(v, workdir),
         readOnly: v.readOnly,
+        propagation: kind === "host" ? (v.propagation ?? "") : "",
       };
     }),
   );
@@ -362,6 +363,10 @@ export function StorageSettingsForm({
           // cannot silently move a mount that is already live.
           mountPath: effectiveMountPath(v, containerWorkdir),
           readOnly: v.readOnly,
+          // Host binds only, like hostPath: a propagation left behind by a row
+          // that used to be a Bind must not ride along in another kind.
+          propagation:
+            kindOf(v) === "host" ? (v.propagation ?? undefined) : undefined,
         })),
       });
       if (!res.ok) {

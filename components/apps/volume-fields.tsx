@@ -50,7 +50,7 @@ import {
   type VolumeKind,
 } from "@/lib/apps/volume-model";
 import { cn, shortId } from "@/lib/utils";
-import type { VolumeMount } from "@/lib/types";
+import type { MountPropagation, VolumeMount } from "@/lib/types";
 
 /**
  * The Storage editor: a list of what this app keeps, one collapsed line each,
@@ -98,6 +98,10 @@ const KIND_ICON: Record<VolumeKind, LucideIcon> = {
  * pattern as `ENTRYPOINT_AUTO` in `components/domains/domain-config-fields.tsx`.
  */
 const SERVICE_AUTO = "auto";
+
+/** The same sentinel trick for "no propagation" — the stored value is absent,
+ *  and Radix forbids an empty item value. */
+const PROPAGATION_NONE = "none";
 
 export function VolumeFields({
   slug,
@@ -507,6 +511,50 @@ function MountRow({
                         {s}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Bind only, and the one control here that is pure Docker
+                underneath: a folder on the server can have OTHER things mounted
+                inside it (a network disk, a FUSE share, a volume another app
+                puts there), and by default the app sees a snapshot taken when it
+                started. Nothing on this screen said so, and the failure is
+                silent — the folder simply looks empty. Named volumes and Files
+                have no submounts, so they never ask. */}
+            {kind === "host" && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <FieldLabel
+                  className="text-xs"
+                  info="Another app, or the server itself, can mount a network disk or a shared folder inside this one. By default this app keeps seeing what was there the moment it started, and never notices the rest."
+                >
+                  What if something is mounted inside this folder?
+                </FieldLabel>
+                <Select
+                  value={mount.propagation ?? PROPAGATION_NONE}
+                  onValueChange={(p) =>
+                    onChange({
+                      propagation:
+                        p === PROPAGATION_NONE
+                          ? undefined
+                          : (p as MountPropagation),
+                    })
+                  }
+                >
+                  <SelectTrigger className="text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={PROPAGATION_NONE}>
+                      Only what is already there
+                    </SelectItem>
+                    <SelectItem value="rslave">
+                      Keep up with the server
+                    </SelectItem>
+                    <SelectItem value="rshared">
+                      Keep up, and let the server see this app&apos;s own
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>

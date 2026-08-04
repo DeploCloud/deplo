@@ -1,5 +1,5 @@
 import { hostVolumeName } from "../utils";
-import type { VolumeMount } from "../types";
+import { MOUNT_PROPAGATIONS, type MountPropagation, type VolumeMount } from "../types";
 
 /**
  * The pure model behind the Storage settings editor: what the three kinds of
@@ -183,6 +183,30 @@ export const RESERVED_MOUNT_PREFIXES = [
 /** Docker's name shape for a managed volume (also blocks YAML key injection). */
 export const VOLUME_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
 export const VOLUME_NAME_MAX = 40;
+
+/**
+ * The `:`-suffixed options a `- source:target` mount line ends with. The ONE
+ * place that spells them: both renderers (`renderCompose` for a single-container
+ * app, the compose-stack merge for a stack) and the reroute's reader go through
+ * here, so a bind can never be written one way and read back another.
+ *
+ * Empty string when there is nothing to add, so a plain read-write mount renders
+ * byte-identically to before (the reroute contract — a changed line restarts the
+ * container).
+ */
+export function mountOptions(m: {
+  readOnly?: boolean | null;
+  propagation?: MountPropagation | null;
+}): string {
+  const opts = [m.readOnly ? "ro" : "", m.propagation ?? ""].filter(Boolean);
+  return opts.length ? `:${opts.join(",")}` : "";
+}
+
+/** The propagation named in a mount line's option list, if any. Inverse of
+ *  {@link mountOptions}, for the reroute path that reads the deployed stack. */
+export function parseMountPropagation(opts: string[]): MountPropagation | undefined {
+  return MOUNT_PROPAGATIONS.find((p) => opts.includes(p));
+}
 
 /**
  * The one normaliser for a File entry's path in this app's Files: trimmed, the
@@ -454,7 +478,15 @@ export function volumeReadout(
   if (kind === "host") {
     const from = (v.hostPath ?? "").trim();
     if (!from || !at) return "Shares a folder that already exists on the server.";
-    return `Shares the server's ${from} at ${at} inside the app.${ro}`;
+    // Stated only when it is ON: the default (a snapshot of what was mounted at
+    // startup) is what every other kind does too, so saying it would be noise.
+    const follows =
+      v.propagation === "rslave"
+        ? " Anything mounted inside it later shows up too."
+        : v.propagation === "rshared"
+          ? " Anything mounted inside it later shows up on both sides."
+          : "";
+    return `Shares the server's ${from} at ${at} inside the app.${ro}${follows}`;
   }
   if (kind === "app") {
     const from = normalizeFilesPath(v.projectPath);

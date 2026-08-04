@@ -524,7 +524,13 @@ and the UI name is what every screen, tooltip and doc says:
    entry never points at a path with nothing behind it. Files are written **before** the
    rows, because Docker answers a missing bind source by inventing an empty *directory*.
  - **Bind** (`host`) — a folder that already exists on the server: outside deplo and shared
-   with everything else on the machine, so it needs the `canMountHostVolumes` grant.
+   with everything else on the machine, so it needs the `canMountHostVolumes` grant. A Bind
+   is also the only kind with a **propagation** (`rslave` / `rshared`, absent ⇒ docker's
+   `rprivate`): without it the container keeps a SNAPSHOT of the submounts that existed when
+   it started, so a network disk, a FUSE share or a volume another container mounts inside
+   that folder never appears — silently, an empty folder rather than an error. The other two
+   kinds have no submounts (and docker rejects the option on a managed volume), so the field
+   is dropped for them on write.
 Only the **source** is ever required. `mountPath` left empty is **derived** —
 `derivedMountPath`: the storage lands in the app's own working directory under the name its
 source gives (`uploads` → `/app/uploads`, Files `conf/app.toml` → `/app/conf/app.toml`,

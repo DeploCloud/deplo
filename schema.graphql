@@ -1310,6 +1310,14 @@ input MountInput {
   filePath: String!
 }
 
+"""
+How mounts appearing UNDER a host bind mount cross between the server and the container. Null is docker's `rprivate` default: the container sees only the submounts that existed when it started, so a network disk, a FUSE share or a volume another container mounts there never appears. `rslave` keeps following the server; `rshared` is two-way. Host binds only — docker rejects the option on a managed volume.
+"""
+enum MountPropagation {
+  rshared
+  rslave
+}
+
 type Mutation {
   """
   Add a basic-auth user to an app. The login is required on every one of its domains within seconds — the routing is re-applied to the running container, no redeploy needed.
@@ -3138,6 +3146,7 @@ type Volume {
   mountPath: String
   name: String
   projectPath: String
+  propagation: MountPropagation
   readOnly: Boolean
   service: String
   type: String
@@ -3150,6 +3159,7 @@ input VolumeInput {
   mountPath: String!
   name: String
   projectPath: String
+  propagation: MountPropagation
   readOnly: Boolean
   service: String
   type: String

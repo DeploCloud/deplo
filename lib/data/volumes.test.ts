@@ -158,6 +158,65 @@ test("host mount: the in-container mountPath is still reserved-checked", () => {
   );
 });
 
+test("host mount: keeps a propagation, and leaves the key ABSENT without one", () => {
+  const out = validateVolumes(
+    [vol({ id: "vol_h", type: "host", hostPath: "/srv/neon", mountPath: "/srv/neon", propagation: "rslave" })],
+    null,
+  );
+  assert.deepEqual(out, [
+    {
+      id: "vol_h",
+      type: "host",
+      name: "srv-neon",
+      hostPath: "/srv/neon",
+      mountPath: "/srv/neon",
+      readOnly: false,
+      propagation: "rslave",
+    },
+  ]);
+  // No propagation ⇒ no key at all, so the row (and the mount line it renders)
+  // is byte-identical to one written before the field existed.
+  const plain = validateVolumes(
+    [vol({ type: "host", hostPath: "/srv/neon", mountPath: "/srv/neon" })],
+    null,
+  );
+  assert.ok(!("propagation" in plain![0]));
+});
+
+test("host mount: rejects a propagation outside the closed set", () => {
+  assert.throws(
+    () =>
+      validateVolumes(
+        [
+          vol({
+            type: "host",
+            hostPath: "/srv/x",
+            mountPath: "/data",
+            // Docker's non-recursive modes and anything invented are refused
+            // here, not passed through into a compose mount line.
+            propagation: "shared" as never,
+          }),
+        ],
+        null,
+      ),
+    /Unknown mount propagation/,
+  );
+});
+
+test("propagation is dropped for a named volume and an app-files bind", () => {
+  // Docker rejects the option on a managed volume, and a files-dir bind has no
+  // submounts. A value left behind by a row that used to be a Bind must not ride
+  // along into the mount line.
+  const out = validateVolumes(
+    [
+      vol({ name: "data", mountPath: "/data", propagation: "rslave" }),
+      vol({ type: "app", projectPath: "conf.toml", mountPath: "/conf.toml", propagation: "rslave" }),
+    ],
+    null,
+  );
+  assert.ok(!out!.some((v) => "propagation" in v));
+});
+
 test("host mount: does not enforce docker-name rules and ignores name dupes", () => {
   // Two host mounts can share a derived name (no top-level volumes entry), but
   // their mountPaths must still differ.

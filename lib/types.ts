@@ -736,6 +736,23 @@ export interface BuildConfig {
 }
 
 /**
+ * How mounts appearing UNDERNEATH a bind mount cross between the server and the
+ * container. Bind mounts only (`VolumeMount.type === "host"`); docker rejects a
+ * propagation option on a managed volume.
+ *
+ * Absent is docker's `rprivate` default: the container gets a SNAPSHOT of the
+ * submounts that existed the instant it started and never follows them again —
+ * so a network disk, a FUSE share or a volume another container mounts inside
+ * that folder is invisible, with no error anywhere. That is what these fix:
+ *  - "rslave"  — the server's mounts keep showing up inside the app (one-way).
+ *  - "rshared" — two-way, so mounts the app makes appear on the server too.
+ * Both need the source to be a shared mount on the host (systemd's default), or
+ * docker refuses the mount with "not a shared mount".
+ */
+export const MOUNT_PROPAGATIONS = ["rslave", "rshared"] as const;
+export type MountPropagation = (typeof MOUNT_PROPAGATIONS)[number];
+
+/**
  * A persistent volume mounted into an app's container. Available to EVERY source:
  * a single-container app (the renderCompose path — github/git/docker-image/upload)
  * mounts it into its one service, a compose-stack app into the service named by
@@ -804,6 +821,13 @@ export interface VolumeMount {
   mountPath: string;
   /** Mount read-only (`:ro`). Defaults to false (read-write). */
   readOnly: boolean;
+  /**
+   * HOST binds only: whether the mount follows submounts that appear later.
+   * Absent ⇒ docker's `rprivate` default. See {@link MountPropagation}. Dropped
+   * for the other two kinds — a managed volume or a files-dir bind has no
+   * submounts, and docker rejects the option on the former.
+   */
+  propagation?: MountPropagation;
 }
 
 /**

@@ -139,6 +139,44 @@ test("host bind read-only flag emits :ro", () => {
   assert.match(yaml, /- \/srv\/ro:\/ro:ro/);
 });
 
+test("host bind propagation renders as an option, alongside :ro", () => {
+  // The whole point of the field: without it docker's rprivate default hands the
+  // container a snapshot of the submounts that existed at startup, so a FUSE
+  // share or a network disk mounted under the folder later never appears.
+  const follows = renderCompose({
+    ...base,
+    volumes: [
+      { type: "host", name: "", hostPath: "/srv/neon", mountPath: "/srv/neon", readOnly: false, propagation: "rslave" },
+    ],
+  });
+  assert.match(follows, /- \/srv\/neon:\/srv\/neon:rslave\n/);
+
+  // Read-only first, then propagation — one comma-separated option list.
+  const both = renderCompose({
+    ...base,
+    volumes: [
+      { type: "host", name: "", hostPath: "/srv/neon", mountPath: "/srv/neon", readOnly: true, propagation: "rslave" },
+    ],
+  });
+  assert.match(both, /- \/srv\/neon:\/srv\/neon:ro,rslave\n/);
+});
+
+test("propagation round-trips through parseStackVolumes, :ro included", () => {
+  // The reroute path re-renders from what it reads back here. Reading the option
+  // field as a single word (`flag === "ro"`) dropped BOTH flags off this line,
+  // which would have silently re-rendered the mount read-write and rprivate.
+  const volumes = [
+    { type: "host" as const, name: "", hostPath: "/srv/neon", mountPath: "/srv/neon", readOnly: true, propagation: "rslave" as const },
+    { type: "host" as const, name: "", hostPath: "/srv/plain", mountPath: "/plain", readOnly: false },
+  ];
+  const yaml = renderCompose({ ...base, volumes });
+  assert.deepEqual(parseStackVolumes(yaml, base.name), [
+    { type: "host", name: "", hostPath: "/srv/neon", mountPath: "/srv/neon", readOnly: true, propagation: "rslave" },
+    // No propagation ⇒ the key stays absent, so an untouched mount is unchanged.
+    { type: "host", name: "", hostPath: "/srv/plain", mountPath: "/plain", readOnly: false },
+  ]);
+});
+
 test("mixed named + host: named gets a top-level entry, host does not", () => {
   const yaml = renderCompose({
     ...base,
