@@ -480,13 +480,22 @@ export function volumeReadout(
     if (!from || !at) return "Shares a folder that already exists on the server.";
     // Stated only when it is ON: the default (a snapshot of what was mounted at
     // startup) is what every other kind does too, so saying it would be noise.
+    //
+    // The second clause is the one thing about this pair nobody could guess, and
+    // it is verified against docker, not assumed: a filesystem that ARRIVES
+    // through the propagation brings its OWN mount options, so `:ro` covers this
+    // folder and not what later appears inside it. Ticking both and reading
+    // "can read but not change it" would otherwise leave someone certain they
+    // had locked down exactly the part that is still writable.
     const follows =
       v.propagation === "rslave"
         ? " Anything mounted inside it later shows up too."
         : v.propagation === "rshared"
           ? " Anything mounted inside it later shows up on both sides."
           : "";
-    return `Shares the server's ${from} at ${at} inside the app.${ro}${follows}`;
+    const stillWritable =
+      v.propagation && v.readOnly ? " What arrives that way stays writable." : "";
+    return `Shares the server's ${from} at ${at} inside the app.${ro}${follows}${stillWritable}`;
   }
   if (kind === "app") {
     const from = normalizeFilesPath(v.projectPath);

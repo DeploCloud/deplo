@@ -375,6 +375,27 @@ test("the readout previews the DERIVED volume name when the name is blank", () =
   );
 });
 
+test("the readout says a propagated submount stays writable under :ro", () => {
+  // Verified against docker: a filesystem that arrives through the propagation
+  // carries its own mount options, so `:ro` covers the bound folder and NOT what
+  // later appears inside it. The pair reads as "locked down" otherwise.
+  const both = volumeReadout(
+    vol({ type: "host", hostPath: "/srv/m", mountPath: "/m", readOnly: true, propagation: "rslave" }),
+    "shop",
+  );
+  assert.match(both, /read it but not change it/);
+  assert.match(both, /stays writable/);
+  // Neither half alone earns the caveat.
+  assert.doesNotMatch(
+    volumeReadout(vol({ type: "host", hostPath: "/srv/m", mountPath: "/m", propagation: "rslave" }), "shop"),
+    /stays writable/,
+  );
+  assert.doesNotMatch(
+    volumeReadout(vol({ type: "host", hostPath: "/srv/m", mountPath: "/m", readOnly: true }), "shop"),
+    /stays writable/,
+  );
+});
+
 test("read-only is stated in the readout, not left to the switch alone", () => {
   assert.match(
     volumeReadout(vol({ name: "x", mountPath: "/x", readOnly: true }), "shop"),
