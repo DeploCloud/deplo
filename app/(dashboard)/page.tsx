@@ -13,7 +13,11 @@ import { listFolders } from "@/lib/data/folders";
 import { listProjects } from "@/lib/data/projects";
 import { listEnvironmentsForProject } from "@/lib/data/environments";
 import { listActivity } from "@/lib/data/activity";
-import { isInstanceAdmin, hasCapability } from "@/lib/membership";
+import {
+  isInstanceAdmin,
+  hasCapability,
+  hasCapabilityAnywhere,
+} from "@/lib/membership";
 import {
   folderCapabilities,
   folderIsOwnerOrAdmin,
@@ -62,6 +66,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     canCreateDatabase,
     canCreateFolder,
     canCreateProject,
+    canMoveApps,
   ] = await Promise.all([
     listApps(),
     listFolders(),
@@ -80,6 +85,12 @@ export default async function OverviewPage(props: PageProps<"/">) {
     // entry from opening a dialog the server then refuses.
     hasCapability("create_folders"),
     hasCapability("create_projects"),
+    // Moving an app is its own permission, and it is the one a folder or app
+    // GRANT can hand out on a single corner of the fleet - so this asks the
+    // wider "anywhere" question. Which apps and which folders actually accept
+    // the move is decided per node, by the card's own capabilities and by the
+    // server; this only decides whether the affordance exists at all.
+    hasCapabilityAnywhere("move_apps"),
   ]);
   const canManageOrder = isAdmin || canManageTeam;
   // Shown instead of a create button wherever the viewer can't create apps, so
@@ -199,6 +210,12 @@ export default async function OverviewPage(props: PageProps<"/">) {
   // also disabled mid-search (reordering a filtered list would persist a partial
   // order). When off, the grid renders statically.
   const canReorder = canManageOrder && !query;
+  // Dragging a card ONTO a folder or a project moves it, which is a different
+  // permission from arranging the grid - and the one that used to ride along
+  // with `manage_team`, leaving "Move & reorder apps" with nothing to do here.
+  // NOT search-restricted, unlike the reorder: the menu-driven moves stay usable
+  // while searching (a search is how you find the app you want to file), and a
+  // filtered grid renders no folder or project to drop onto anyway.
 
   const nothingToShow =
     visibleApps.length === 0 &&
@@ -448,6 +465,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
             folderPath={trailPath}
             view={view}
             canReorder={canReorder}
+            canMoveApps={canMoveApps}
             canCreateFolder={canCreateFolder}
             canManageAllFolders={canManageAllFolders}
             // The project card's manage menu (rename, recolor, delete, its

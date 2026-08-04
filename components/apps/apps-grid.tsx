@@ -133,8 +133,9 @@ interface SelectionBulk {
  * The dynamic BULK-actions bar. It floats at the bottom of the viewport whenever
  * one or more cards are selected (marquee drag / ⌘-click), replacing what used to
  * be a right-click menu. "New folder with selection" is a CREATE action (gated on
- * `canCreateFolder`); the team-wide Move is gated on `canManageAllFolders`, and
- * both only appear while the selection actually contains apps. Delete carries its
+ * `canCreateFolder`); Move is gated on `canMoveApps` - the same permission the
+ * server checks per app and per destination folder - and both only appear while
+ * the selection actually contains apps. Delete carries its
  * own already-resolved gate (`selection.canDelete`) because projects, folders and
  * apps don't share one. Select all + Clear are always shown. Keyboard shortcuts
  * (⌘A / Esc / ⌫) stay wired on the grid regardless of the bar. This is the one
@@ -143,11 +144,11 @@ interface SelectionBulk {
 function SelectionActionBar({
   selection,
   canCreateFolder,
-  canManageAllFolders,
+  canMoveApps,
 }: {
   selection: SelectionBulk;
   canCreateFolder: boolean;
-  canManageAllFolders: boolean;
+  canMoveApps: boolean;
 }) {
   if (selection.count === 0) return null;
   return (
@@ -167,7 +168,7 @@ function SelectionActionBar({
             New folder
           </Button>
         )}
-        {canManageAllFolders && selection.appCount > 0 && (
+        {canMoveApps && selection.appCount > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm">
@@ -253,8 +254,14 @@ export interface AppsGridProps {
   /** Breadcrumb trail from the top level down to the open folder or project. */
   folderPath: TrailSeg[];
   view: "grid" | "list";
-  /** Drag-to-reorder + drag-into-folder are enabled (gated; off during search). */
+  /** Drag-to-REORDER is enabled - a team-wide arrangement, so `manage_team` or
+   *  an instance admin (off during search). */
   canReorder: boolean;
+  /** Drag-into-folder / into-project and the Move actions are enabled - the
+   *  viewer holds `move_apps` somewhere (off during search). Separate from
+   *  `canReorder` on purpose: moving one app and arranging everyone's grid are
+   *  different permissions, and holding only the first must still work. */
+  canMoveApps: boolean;
   /** The viewer may CREATE folders (has `deploy`, or is an instance admin) —
    *  gates the "New ▸ Folder" and "New folder with selection" affordances. */
   canCreateFolder: boolean;
@@ -275,17 +282,20 @@ export interface AppsGridProps {
  * Overview project grid with team-wide drag-to-reorder, folders, and
  * drag-into-folder.
  *
- * Reordering writes a team-level order (everyone sees the same arrangement), so
- * it is only enabled for users who may change it — an instance admin or a member
- * with `manage_team` — surfaced via `canReorder`. When that is false (or a search
- * narrows the list) the grid renders statically, with no dnd-kit machinery.
+ * The drag does two DIFFERENT things, and they are two different permissions:
+ * dropping a card next to another writes the team-level order (everyone sees the
+ * same arrangement, so `manage_team` / instance admin - `canReorder`), while
+ * dropping it onto a folder, a project or the breadcrumb MOVES that one app
+ * (`move_apps` - `canMoveApps`). Holding either one gets the dnd-kit grid, with
+ * only the drops it may actually perform wired up; holding neither (or searching,
+ * where there is nothing to drop onto) renders statically with no dnd at all.
  *
  * Reordering is purely DRAG-BOUND: there is no toolbar, no instructional banner,
  * and no lingering "edit"/jiggle mode. Cards jiggle only while a drag is in
  * flight and settle the instant the pointer is released (onDragEnd/onDragCancel).
  */
 export function AppsGrid(props: AppsGridProps) {
-  if (!props.canReorder) return <StaticGrid {...props} />;
+  if (!props.canReorder && !props.canMoveApps) return <StaticGrid {...props} />;
   return <SortableGrid {...props} />;
 }
 
@@ -302,6 +312,7 @@ function StaticGrid({
   openProject,
   folderPath,
   view,
+  canMoveApps,
   canManageAllFolders,
   canManageProjects,
   environments,
@@ -347,8 +358,8 @@ function StaticGrid({
               project={p}
               view={view}
               folders={allFolders}
-              canManageFolders={canManageAllFolders}
-              environments={canManageProjects ? environments : undefined}
+              canMoveApps={canMoveApps}
+              environments={canMoveApps ? environments : undefined}
             />
           ))}
         </div>
@@ -418,6 +429,8 @@ function SortableGrid({
   openProject,
   folderPath,
   view,
+  canReorder,
+  canMoveApps,
   canCreateFolder,
   canManageAllFolders,
   canManageProjects,
@@ -941,6 +954,11 @@ function SortableGrid({
     if (!over) return;
     const a = String(active.id);
     const o = String(over.id);
+    // Which drops this viewer may actually perform. Both branches are reachable
+    // from the same drag, so each one asks for its own permission rather than
+    // the grid deciding once: a member with only `move_apps` files cards into
+    // folders and projects but never rewrites the team's arrangement, and a
+    // member with only `manage_team` arranges without moving anything.
 
     const aIsFolder = folderIdSet.has(a);
     const aIsProject = projectIdSet.has(a);
@@ -956,6 +974,7 @@ function SortableGrid({
     // Drop onto the breadcrumb zone → move OUT one level: to the open folder's
     // own parent, or out of the open project, back to the top level.
     if (o === UNGROUP_DROP_ID) {
+      if (!canMoveApps) return;
       if (aIsProject) return; // projects live only at the top level
       if (aIsFolder) {
         // A nested folder climbs out to its parent's level (top level when the
@@ -983,23 +1002,26 @@ function SortableGrid({
     if (aIsProject) {
       // Projects only reorder among themselves (collision detection already
       // restricts their targets, this is the belt to those braces).
-      if (oIsProject) reorderProjectList(a, o);
+      if (oIsProject && canReorder) reorderProjectList(a, o);
     } else if (aIsFolder) {
-      if (oIsFolder) reorderFolderList(a, o); // reorder among folders
+      if (oIsFolder && canReorder) reorderFolderList(a, o); // reorder among folders
       // (folder onto an app/project: ignored — folders don't nest there)
     } else if (oIsProject) {
       // App(s) dropped onto a project container card. The group path uses
       // selectedAppIds — the visibility-guarded selection — not the raw
       // `selApps` (see the breadcrumb branch above).
+      if (!canMoveApps) return;
       if (groupDrag) moveAppsToProject(selectedAppIds, o);
       else moveAppToProject(a, o);
     } else if (oIsFolder) {
       // App(s) dropped onto a folder → move the whole selection (or just the
       // one) into it.
+      if (!canMoveApps) return;
       if (groupDrag) bulkMoveTo(o);
       else moveApp(a, o);
     } else {
       // Reorder among apps — the whole selected group when multi-selecting.
+      if (!canReorder) return;
       if (groupDrag) reorderAppGroup(a, o, selApps);
       else reorderAppList(a, o);
     }
@@ -1160,9 +1182,9 @@ function SortableGrid({
                       dragHandle={handle}
                       dragActive={dragActive}
                       folders={allFolders}
-                      canManageFolders={canManageAllFolders}
+                      canMoveApps={canMoveApps}
                       environments={
-                        canManageProjects ? environments : undefined
+                        canMoveApps ? environments : undefined
                       }
                     />
                   )}
@@ -1174,7 +1196,7 @@ function SortableGrid({
         <SelectionActionBar
           selection={bulkSelection}
           canCreateFolder={canCreateFolder}
-          canManageAllFolders={canManageAllFolders}
+          canMoveApps={canMoveApps}
         />
       </>
 
@@ -1212,7 +1234,7 @@ function SortableGrid({
               project={activeApp}
               view={view}
               folders={allFolders}
-              canManageFolders={canManageAllFolders}
+              canMoveApps={canMoveApps}
             />
             {/* Dragging a multi-selection → a badge with how many move together. */}
             {activeIsSelectedMulti && (
@@ -1409,7 +1431,7 @@ function SortableItem({
     <button
       ref={setActivatorNodeRef}
       type="button"
-      aria-label="Drag to reorder"
+      aria-label="Drag to move or reorder"
       className="cursor-grab rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
       onClick={(e) => e.preventDefault()}
       onKeyDown={keyboardListener as React.KeyboardEventHandler}

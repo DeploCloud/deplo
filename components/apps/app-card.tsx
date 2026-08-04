@@ -115,7 +115,7 @@ export function AppCard({
   dragHandle,
   dragActive = false,
   folders,
-  canManageFolders = false,
+  canMoveApps = false,
   environments,
 }: {
   project: AppSummary;
@@ -131,11 +131,14 @@ export function AppCard({
   dragActive?: boolean;
   /** Team folders, for the "Move to folder" menu (omitted ⇒ no folders). */
   folders?: { id: string; name: string }[];
-  /** Whether the viewer may move this app between folders. */
-  canManageFolders?: boolean;
+  /** Whether the viewer holds `move_apps` at all - the menu is hidden without
+   *  it. Whether it may move THIS app is the card's own `can("move_apps")`,
+   *  which disables the individual entries. */
+  canMoveApps?: boolean;
   /** The surrounding project's environments, for the "Move to environment"
    *  menu (ADR-0009). Only passed inside a project drill-in view; omitted ⇒
-   *  the menu is hidden. The caller gates it on the `deploy` capability. */
+   *  the menu is hidden. Moving between environments is `move_apps`, so the
+   *  caller gates it on that. */
   environments?: { id: string; name: string }[];
 }) {
   const router = useRouter();
@@ -349,7 +352,7 @@ export function AppCard({
           </Link>
         </K.Item>
       </SimpleTooltip>
-      {canManageFolders && folders && folders.length > 0 && (
+      {canMoveApps && folders && folders.length > 0 && (
         <MenuSubTooltip
           Sub={K.Sub}
           SubTrigger={K.SubTrigger}
