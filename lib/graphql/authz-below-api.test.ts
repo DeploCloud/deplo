@@ -29,7 +29,7 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 /**
  * The other half of the API's authorization surface: the mutations whose field
  * gate is only `loggedIn`, because the capability they need is a PER-RESOURCE
- * question a static scope cannot ask — which folder, whose account, which
+ * question a static scope cannot ask - which folder, whose account, which
  * backup target. For those the data layer is not defense in depth, it is the
  * only depth, so each one is driven here against a REAL fixture (a real folder,
  * owned by someone else; a real app; a real team) rather than the unreachable
@@ -37,7 +37,7 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
  *
  * Every case is stated twice, because either half alone proves nothing:
  *  - a member holding only `view` must be refused, and
- *  - a member holding exactly the named capability must NOT be — otherwise the
+ *  - a member holding exactly the named capability must NOT be - otherwise the
  *    gate is really "manage the whole team", and the fine-grained permission the
  *    role editor offers is decoration.
  */
@@ -141,14 +141,14 @@ async function callAs(
 }
 
 // "not found" counts: every id below is REAL, so the only way a gate can answer
-// that is by refusing to admit the resource exists — the deliberate non-oracle.
+// that is by refusing to admit the resource exists - the deliberate non-oracle.
 const REFUSED =
   /not authorized|don't have permission|only the folder owner|only an instance admin|not a member|only its primary owner|not found/i;
 const refused = (messages: string[]): boolean => messages.some((m) => REFUSED.test(m));
 
 /**
  * One `loggedIn` mutation, the capability that must admit it, and the arguments
- * that reach a REAL row. `cap: null` means no team capability admits it — the
+ * that reach a REAL row. `cap: null` means no team capability admits it - the
  * gate is ownership (a folder's owner) or the founder's crown.
  */
 const CASES: { name: string; doc: string; cap: Capability | null }[] = [
@@ -255,7 +255,7 @@ for (const c of CASES) {
 
 test("a view-only member still owns their own account and sessions", async () => {
   await setCaps([]);
-  // These are `loggedIn` on purpose — they act on the caller, not on the team.
+  // These are `loggedIn` on purpose - they act on the caller, not on the team.
   // Refusing them would lock a Viewer out of their own profile and 2FA.
   for (const doc of [
     `mutation { updateProfile(name: "New Name") }`,
@@ -279,7 +279,7 @@ test("switching to a team you don't belong to is refused", async () => {
 
 test("the compose preview is served at the view floor with every value masked", async () => {
   await setCaps([]);
-  // The preview is deliberately readable by anyone who can see the app — which
+  // The preview is deliberately readable by anyone who can see the app - which
   // is only safe because the values are stripped on the way out. Assert the
   // masking, not the permission: this field IS the exception.
   const identity: RequestIdentity = { userId: USER_M, teamId: TEAM_A };
@@ -318,7 +318,7 @@ test("the compose preview is served at the view floor with every value masked", 
 
 test("a team capability does not reach into a folder the member can't see", async () => {
   // The folder is owned by USER_1 and shared with nobody: an app filed inside it
-  // is invisible, and stays invisible however much the TEAM role grants —
+  // is invisible, and stays invisible however much the TEAM role grants -
   // EXCEPT `manage_team`, which is the documented folder super-user, so the
   // subject holds everything but that.
   await setCaps(ALL_CAPABILITIES.filter((c) => c !== "manage_team"));

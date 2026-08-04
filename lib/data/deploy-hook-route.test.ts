@@ -35,7 +35,7 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 import { GET, POST } from "@/app/api/apps/[id]/deploy-hook/[token]/route";
 
 /**
- * The deploy hook END TO END — the HTTP handler, not the helpers under it.
+ * The deploy hook END TO END - the HTTP handler, not the helpers under it.
  *
  * It is the one route in the product authenticated by API token instead of the
  * session cookie, which makes it the only place where a URL someone pasted into
@@ -45,7 +45,7 @@ import { GET, POST } from "@/app/api/apps/[id]/deploy-hook/[token]/route";
  * capabilities, its creator's live ones, the app's folder, the two-factor
  * policy. Every one of those is asserted here through a real `Request`.
  *
- * The other half — that a wrong URL and an unknown app are indistinguishable —
+ * The other half - that a wrong URL and an unknown app are indistinguishable -
  * matters just as much: a hook URL is handed to third parties, so the endpoint
  * must never become an oracle for which app ids exist.
  */
@@ -74,7 +74,7 @@ before(async () => {
 
 after(async () => {
   // The queue re-drains its lane once a deploy finishes (`startOne`'s finally),
-  // so give that last pass a tick to run while the database is still there —
+  // so give that last pass a tick to run while the database is still there -
   // otherwise it fails on a torn-down fixture and re-arms itself on a timer,
   // which keeps the test process alive forever.
   await new Promise((r) => setTimeout(r, 100));
@@ -168,7 +168,7 @@ test("a valid API token with the wrong URL token deploys nothing", async () => {
   assert.equal(await deploymentCount(), 0);
 });
 
-test("an unknown app and a wrong secret answer identically — the hook is no oracle", async () => {
+test("an unknown app and a wrong secret answer identically - the hook is no oracle", async () => {
   const token = await hookToken();
   const bearer = await mint(DEPLOYER, TEAM_A, ["deploy_apps"]);
   const unknown = await post("prj_does_not_exist", token, bearer);
@@ -192,7 +192,7 @@ test("a token without deploy_apps is refused even holding the right URL", async 
 
 test("a token granted deploy_apps by someone who doesn't hold it is refused", async () => {
   const token = await hookToken();
-  // The viewer can only mint what they hold — so the token is minted by the
+  // The viewer can only mint what they hold - so the token is minted by the
   // deployer and then the CREATOR loses the capability, live.
   const bearer = await mint(DEPLOYER, TEAM_A, ["deploy_apps"]);
   await pg.exec(

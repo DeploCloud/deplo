@@ -82,7 +82,7 @@ export async function getUpdateInfo(): Promise<UpdateInfo> {
  *
  * Gated here rather than in the resolver, like every other instance-admin
  * action: the field's `authScopes` reads `viewer.isInstanceAdmin`, which is the
- * PERSON behind the request — an API token they minted is only an instance
+ * PERSON behind the request - an API token they minted is only an instance
  * admin if it was given that switch, and only `requireInstanceAdmin` knows the
  * difference.
  */

@@ -695,7 +695,7 @@ builder.mutationFields((t) => ({
   reorderApps: t.field({
     type: "Boolean",
     // Team-wide setting: an instance admin OR a member with manage_team. The
-    // data layer re-checks the same gate (defense-in-depth) — `move_apps` moves
+    // data layer re-checks the same gate (defense-in-depth): `move_apps` moves
     // ONE app between containers, it does not define the team's grid order.
     authScopes: { $any: { instanceAdmin: true, capability: "manage_team" } },
     description: "Set the team-wide display order of apps in Overview.",

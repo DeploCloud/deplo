@@ -35,7 +35,7 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 /**
  * Secrets are write-only: `reveal_secrets` is a permission of its own precisely
  * so that a member who configures variables cannot read them back. That only
- * holds if NO read anywhere returns a plaintext — so this sweeps every query the
+ * holds if NO read anywhere returns a plaintext - so this sweeps every query the
  * API exposes, as a member holding all thirty-nine OTHER permissions, and fails
  * on any response that contains a value the fixture planted.
  *
@@ -128,7 +128,7 @@ async function readAs(userId: string, doc: string): Promise<string> {
 
 /**
  * Every query in the schema, asked with the fixture's REAL ids wherever the
- * argument names one — a sweep against unreachable ids would prove nothing.
+ * argument names one - a sweep against unreachable ids would prove nothing.
  * Fields are selected one level deep, which is where a value would surface.
  */
 function everyQueryDocument(): { name: string; doc: string }[] {
@@ -165,7 +165,7 @@ function namedOutput(type: unknown): import("graphql").GraphQLNamedType | null {
   return "getFields" in (named as object) ? named : null;
 }
 
-/** Select every scalar leaf of an object type — one level, no recursion. */
+/** Select every scalar leaf of an object type - one level, no recursion. */
 function leafSelection(type: import("graphql").GraphQLNamedType): string {
   const fields = (
     type as unknown as {
@@ -220,7 +220,7 @@ test("the masked value is a mask, not the first characters of the secret", async
   assert.ok(!secret.value.includes(ENV_SECRET.slice(0, 8)), "no prefix of the value survives");
 });
 
-test("reveal is what reveals — with the permission, and only with it", async () => {
+test("reveal is what reveals - with the permission, and only with it", async () => {
   const [row] = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     listEnv(APP),
   );

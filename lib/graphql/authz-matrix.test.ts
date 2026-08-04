@@ -35,22 +35,22 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 
 /**
  * The API-surface authorization matrix: EVERY field of the public GraphQL API,
- * against EVERY capability, over both principals that can call it — a member
+ * against EVERY capability, over both principals that can call it - a member
  * acting through the dashboard's session and an API token acting on its own.
  *
  * It is generated from the built schema rather than hand-listed, so a new
  * mutation is covered the day it is written: `authScopes` is read back off the
  * Pothos field extensions, the arguments are synthesised from the field's own
- * input types (deliberately nonexistent ids — the gate we are testing runs
+ * input types (deliberately nonexistent ids - the gate we are testing runs
  * BEFORE the resolver, and a caller who gets as far as "not found" has passed
  * it), and each field is executed twice per principal:
  *
- *  - holding everything EXCEPT its capability — must be refused;
- *  - holding nothing but its capability (and the `view` floor) — must NOT be
+ *  - holding everything EXCEPT its capability - must be refused;
+ *  - holding nothing but its capability (and the `view` floor) - must NOT be
  *    refused, or the declared contract asks for a permission that isn't enough.
  *
  * `lib/graphql/yoga.ts` is reproduced rather than imported: it owns the HTTP
- * layer (and graphql-armor), while what matters here is what it wraps — the
+ * layer (and graphql-armor), while what matters here is what it wraps - the
  * context `buildContext` resolves and the `runWithIdentity` the identity plugin
  * re-applies around execution.
  */
@@ -80,7 +80,7 @@ after(async () => {
 
 /**
  * A fresh instance: an owner who is also the instance admin (USER_1, the token
- * minter of last resort) and the matrix subject — a plain member whose
+ * minter of last resort) and the matrix subject - a plain member whose
  * capabilities every test rewrites, and who is NOT an instance admin, so an
  * `$any: { instanceAdmin, capability }` field is decided by the capability.
  */
@@ -299,7 +299,7 @@ async function call(p: Principal, e: Endpoint): Promise<string[]> {
     assert.equal(
       invalid.length,
       0,
-      `${e.label}: generated document is invalid — ${invalid
+      `${e.label}: generated document is invalid - ${invalid
         .map((x) => x.message)
         .join("; ")}\n${e.doc}`,
     );
@@ -316,7 +316,7 @@ const refused = (messages: string[]): boolean => messages.some((m) => REFUSED.te
  * second gate is not a capability at all: `canExposePorts` and
  * `canMountHostVolumes` are instance-wide grants (they cross the team boundary,
  * so no team role can hand them out). Holding `create_databases` really is not
- * enough to pick a host port — that is the grant's whole job.
+ * enough to pick a host port - that is the grant's whole job.
  */
 const NEEDS_INSTANCE_GRANT = new Map<string, RegExp>([
   ["M.generateAvailableDbPort", /permission to publish ports/i],
@@ -360,14 +360,14 @@ test("every field of the API declares a gate, and only the auth surface is publi
   assert.deepEqual(
     [...declaredPublic].sort(),
     [...PUBLIC_FIELDS].sort(),
-    "the public surface changed — a new ungated field must be a deliberate one",
+    "the public surface changed - a new ungated field must be a deliberate one",
   );
 });
 
 test("every capability the catalogue offers is either enforced on the API or enforced below it", () => {
   // Not every capability names a field: the folder verbs and `delete_team` are
   // gated inside the data layer instead (their fields are `loggedIn`), and
-  // `view` is the floor no field asks for. Everything else must be reachable —
+  // `view` is the floor no field asks for. Everything else must be reachable -
   // a capability no endpoint consults is a permission that grants nothing.
   const enforcedBelow = new Set<Capability>([
     "view",
@@ -477,7 +477,7 @@ test(`a member holding all ${ALL_CAPABILITIES.length} capabilities reaches none 
 
 test("an instance admin's token administers the instance only when it was granted that", async () => {
   await reset(ALL_CAPABILITIES);
-  // Minted by the instance admin, holding every team capability — but not the
+  // Minted by the instance admin, holding every team capability - but not the
   // instance-admin switch, which is opt-in per token.
   const raw = await mintToken(ALL_CAPABILITIES, USER_1);
   const principal = await asToken(raw);
@@ -509,7 +509,7 @@ test("a token granted everything can do nothing its creator has since lost", asy
   // materialised, so the clamp has to bite on the next request.
   await setCaps([]);
   const principal = await asToken(raw);
-  assert.ok(principal, "the token still authenticates — it is the reach that narrows");
+  assert.ok(principal, "the token still authenticates - it is the reach that narrows");
   assert.deepEqual(
     principal.ctx.capabilities,
     ["view"],

@@ -29,7 +29,7 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 
 /**
  * Roles, end to end: a role is not a preset that a member's permissions drift
- * away from — it IS what they can do, so the only honest test of one is what the
+ * away from - it IS what they can do, so the only honest test of one is what the
  * API does after it is assigned and after it is edited.
  *
  * The capability→endpoint half lives in `authz-matrix.test.ts`; this file joins
@@ -140,7 +140,7 @@ test("deleting a role is refused while somebody still holds it", async () => {
 });
 
 test("a hand-picked capability set is not a role, and a role edit doesn't touch it", async () => {
-  // "Custom" — role_id NULL. The member list shows it as such, and it must be
+  // "Custom" - role_id NULL. The member list shows it as such, and it must be
   // immune to edits of the role they were previously on.
   const role = await asOwner(() =>
     createRole({ name: "Ops", capabilities: ["deploy_apps", "view_logs"] }),
@@ -170,7 +170,7 @@ test("a role's two-factor mandate closes the whole team to a member who hasn't e
     }),
   );
   await asOwner(() => updateMember({ userId: USER_M, roleId: role.id }));
-  // Not "fewer permissions" — none at all, reads included.
+  // Not "fewer permissions" - none at all, reads included.
   await assert.rejects(
     () => effectiveCaps(),
     /two-factor/i,
@@ -211,7 +211,7 @@ test("the Owner role is locked: it cannot be narrowed into a trap", async () => 
     .from(teamRolesTable)
     .where(eq(teamRolesTable.builtinKey, "owner"));
   if (!owner) {
-    // Roles are seeded lazily — touch them, then re-read.
+    // Roles are seeded lazily - touch them, then re-read.
     await asOwner(() => createRole({ name: "Seeder", capabilities: ["view"] }));
   }
   const [ownerRole] = await db
